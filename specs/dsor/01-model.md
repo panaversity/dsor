@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 part: 01-model
 ---
 
@@ -25,13 +25,13 @@ DSoR does own a control-plane store. The guarantees in Parts II and III cannot b
 
 ## 2. Normative architecture and reference profile
 
-**In plain words.** There are two kinds of content here. The *normative architecture* is the set of rules every DSoR must follow. The *reference profile* is a recommended toolkit: PostgreSQL, MCP, Better Auth, OpenViking, KSoR. Think of a recipe that says "use a sharp knife" (the rule) and also "we used this brand" (the reference). You can swap the brand and still cook the dish.
+**In plain words.** There are two kinds of content here. The *normative architecture* is the set of rules every DSoR must follow. The *reference profile* is a recommended toolkit: PostgreSQL, MCP, Better Auth, Graphiti, OpenViking, KSoR. Think of a recipe that says "use a sharp knife" (the rule) and also "we used this brand" (the reference). You can swap the brand and still cook the dish.
 
 **Why it matters.** Tools change every year. Rules about who may approve a payment should not change because a database went out of fashion.
 
 The normative architecture is the set of contracts that stay fixed across vendors: principal, tenant, delegation, resource identity, entity, operation, authorization, control decision, approval, execution semantics, connector, audit evidence, context-store abstraction, authority reference, and versioning. The reference profile (Part V) names default technologies.
 
-As a design rule for this specification, no L1, L2, or L3 requirement depends on a reference-profile technology. KSoR, OpenViking, MCP, Better Auth, and PostgreSQL each fill an abstract role that another component can fill.
+As a design rule for this specification, no L1, L2, or L3 requirement depends on a reference-profile technology. KSoR, Graphiti, OpenViking, MCP, Better Auth, and PostgreSQL each fill an abstract role that another component can fill.
 
 **The rules**
 

@@ -1,23 +1,24 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 claim: a governed operational data and action layer that stays safe when the AI worker using it is wrong, tricked, or hostile
 evidence: research/history.md · research/open-questions.md · packages/spec (schemas, examples, tests)
 ---
 
-# DSoR Specification v1.3.1
+# DSoR Specification v1.4.0
 
 **Data System of Record — governed operational data and action infrastructure for AI workers.**
 
 Draft for review. Written for students and junior developers: every section explains
-itself in plain words before it states its rules. v1.3.1 is an editorial revision of
-v1.3; no requirement, identifier, or schema changed.
+itself in plain words before it states its rules. v1.4.0 adds two STACK requirements
+(DSOR-CTX-07, DSOR-CTX-08) and splits the reference context store into Graphiti for
+memory and OpenViking for skills and resources. No other requirement and no schema changed.
 
 | | |
 | --- | --- |
 | **Companion system** | [KSoR](https://github.com/panaversity/ksor) — Knowledge System of Record |
-| **Reference profile** | MCP `2026-07-28` · OAuth 2.1/OIDC (Better Auth binding) · PostgreSQL + RLS · OpenViking · TypeScript |
+| **Reference profile** | MCP `2026-07-28` · OAuth 2.1/OIDC (Better Auth binding) · PostgreSQL + RLS · Graphiti (memory) · OpenViking (skills, resources) · TypeScript |
 | **Conformance levels** | L1 Core · L2 Autonomous · L3 Financial/Critical · RP Reference Profile · STACK Digital FTE stack |
 | **Machine-readable half** | [`packages/spec/`](../../packages/spec/): JSON Schemas, examples, [`requirements.json`](../../packages/spec/requirements.json), tests |
 
@@ -37,7 +38,7 @@ its last table.
 | [Part II — Security](02-security.md) | Threats, the instruction boundary, identity, delegation, tenants, authorization, segregation of duties, controls, the emergency brake, data classification |
 | [Part III — Execution](03-execution.md) | The command pipeline, idempotency, unknown outcomes, proposals and approvals, freshness, errors, audit, events |
 | [Part IV — Context](04-context.md) | Rules for the agent's memory and skills (STACK level) |
-| [Part V — Connectors and bindings](05-bindings.md) | Connectors, PostgreSQL, OAuth, MCP, REST, OpenViking, the reference workflow |
+| [Part V — Connectors and bindings](05-bindings.md) | Connectors, PostgreSQL, OAuth, MCP, REST, the Graphiti and OpenViking context bindings, the reference workflow |
 | [Part VI — Conformance](06-conformance.md) | Versioning, operational bounds, the security invariants, the requirement index, how to verify |
 | [Appendix A — Normative schemas](appendix-a-schemas.md) | What each JSON Schema enforces |
 | [Appendix B — CEL environment](appendix-b-cel.md) | Variables and `dsor_*` functions available to conditions |
@@ -97,7 +98,7 @@ Section numbers are global and stable, so "§21" means the same thing in every f
 | 37 | [Identity binding](05-bindings.md#37-identity-binding) | `05-bindings.md` |
 | 38 | [MCP binding](05-bindings.md#38-mcp-binding) | `05-bindings.md` |
 | 39 | [REST and SDK interfaces](05-bindings.md#39-rest-and-sdk-interfaces) | `05-bindings.md` |
-| 40 | [OpenViking binding](05-bindings.md#40-openviking-binding) | `05-bindings.md` |
+| 40 | [Context bindings: Graphiti and OpenViking](05-bindings.md#40-context-bindings-graphiti-and-openviking) | `05-bindings.md` |
 | 41 | [Reference profile, vertical, and workflow](05-bindings.md#41-reference-profile-vertical-and-workflow-informative) | `05-bindings.md` |
 | 42 | [Upstream compatibility baseline](05-bindings.md#42-upstream-compatibility-baseline-informative) | `05-bindings.md` |
 | 43 | [Versioning and deprecation](06-conformance.md#43-versioning-and-deprecation) | `06-conformance.md` |

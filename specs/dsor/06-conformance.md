@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 part: 06-conformance
 ---
 
@@ -72,6 +72,7 @@ Each invariant is mandatory, and each points to the requirements that make it te
 | State-changing operations are idempotent, and a proposal executes at most once. | DSOR-IDM-01b, DSOR-IDM-04 |
 | Tenant isolation holds regardless of agent behavior. | DSOR-TEN-01b, DSOR-TEN-01c |
 | A stale control is never silently dropped, and a broken condition never fails open. | DSOR-CTL-03b, DSOR-CTL-07 |
+| Memory never becomes a second system of record, and every model that touches context is a model boundary. | DSOR-CTX-07, DSOR-CTX-08 |
 
 ## 46. Requirement index
 
@@ -107,7 +108,7 @@ A system claims conformance at a level by satisfying every requirement at that l
 | APR, BAT | Approve with a wrong hash; supply a payload to `proposal.execute`; change bound state after approval; publish a stricter control version after approval; expire, revoke, and re-execute; alter a batch manifest; relay approval through the agent channel |
 | FRS, ERR | A cached value is never labelled `CURRENT`; every error validates and carries a retry class; no existence leak |
 | AUD, EVT, COR | Runtime identity cannot modify audit; chain verification detects tampering in every partition; denial present in audit; agent-asserted fields never reach a control; outbox event for every committed outcome; key destruction erases values and the chain still verifies |
-| CTX (STACK) | Cross-tenant retrieval; revalidation before consequential commands; no `RESTRICTED` values at rest; tainted memory not promoted; user-scoped skill blocked from `HIGH` operations |
+| CTX (STACK) | Cross-tenant retrieval; revalidation before consequential commands; no `RESTRICTED` values at rest; tainted memory not promoted; user-scoped skill blocked from `HIGH` operations; after a run, memory holds no status, balance, amount, or approval state of any resource; a field masked for the agent never reaches the extraction model; an agent-supplied group id is ignored |
 | RP | Tool names match operation ids; catalog differs by delegation; all four hints set; MRTR-supplied approval refused; header/body mismatch refused; foreign-audience token refused; shared-secret agent credential refused; RLS forced and transaction-local |
 
 ## 48. Final architectural principle
@@ -122,4 +123,4 @@ A governed Digital FTE distinguishes:
 > **what is operationally true,**
 > **and what the worker is authorized to change.**
 
-KSoR governs organizational knowledge. The context store — OpenViking by default — holds persistent context and experience. The agent runtime reasons and orchestrates. DSoR governs operational state, authority, transactions, approvals, and evidence, and it holds those guarantees without trusting the other three.
+KSoR governs organizational knowledge. The context store — Graphiti for memory and OpenViking for skills and resources, by default — holds persistent context and experience. The agent runtime reasons and orchestrates. DSoR governs operational state, authority, transactions, approvals, and evidence, and it holds those guarantees without trusting the other three.

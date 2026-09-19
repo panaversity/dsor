@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 part: 02-security
 ---
 
@@ -43,6 +43,7 @@ part: 02-security
 | T16 | Policy drift: a control keeps enforcing a superseded rule, or is silently dropped | [§17.4](#174-lifecycle-and-drift) |
 | T17 | Threshold evasion through currency or amount splitting | [§9](01-model.md#9-money-and-currency), [§13.4](#134-cumulative-limits) |
 | T18 | Stale authority: a delegator has lost their role but the unattended agent keeps acting | [§12.1](#121-role-source), [§13.1](#131-authority-of-the-delegation-record) |
+| T19 | Memory turns into a second, out-of-date copy of business state; or a memory system's own model receives data the agent's model was not allowed to see | [§34.6](04-context.md#346-memory-that-builds-itself) |
 
 ### 10.3 Out of scope
 

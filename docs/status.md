@@ -2,13 +2,19 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-09-19.
+2026-09-20.
 
 ## Specification
 
-**v1.3.1**, draft for review. 266 requirements: 89 at L1, 118 at L2, 25 at L3, 22 in
-the reference profile, 12 for the surrounding stack. v1.3.1 is an editorial revision
-of v1.3 for students and junior developers; no requirement text differs from v1.3.
+**v1.4.0**, draft for review. 268 requirements: 89 at L1, 118 at L2, 25 at L3, 22 in
+the reference profile, 14 for the surrounding stack. v1.4.0 adds DSOR-CTX-07 and
+DSOR-CTX-08 and splits the reference context store into Graphiti (memory) and
+OpenViking (skills and resources). No L1, L2, L3, or RP requirement and no schema
+differs from v1.3.
+
+Neither Graphiti nor OpenViking is integrated, installed, or tested in this
+repository. The bindings in §40 are a design, checked against both projects'
+public documentation on 2026-09-19 and not against running software.
 
 ## Packages
 

@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 part: 04-context
 ---
 
@@ -13,7 +13,19 @@ DSoR cannot enforce what an agent runtime or a context store does internally. Th
 
 **In plain words.** The context store is the agent's notebook: memories, working files, and skills (saved how-to recipes). Nothing in it is authoritative. Rules in this part are marked STACK because they bind the agent software, not DSoR. DSoR stays safe even if they are broken.
 
-The normative abstraction is `AgentContextStore`. The default implementation is OpenViking ([§40](05-bindings.md#40-openviking-binding)). It is not required for conformance, and DSoR and KSoR remain independently deployable.
+The normative abstraction is `AgentContextStore`. It is **composite**: each of the three categories below has its own provider, and one product may fill one, two, or all three.
+
+```typescript
+interface AgentContextStore {
+  memory: MemoryProvider;        // facts and experience, each with a time and a source
+  resources: ResourceProvider;   // working documents and files
+  skills: SkillProvider;         // versioned, hash-identified instruction packages
+}
+```
+
+The reference profile fills `memory` with Graphiti and fills `resources` and `skills` with OpenViking ([§40](05-bindings.md#40-context-bindings-graphiti-and-openviking)). Neither is required for conformance, and DSoR and KSoR remain independently deployable. Where a conformance statement names its "context store" (DSOR-MOD-02), it names the provider of each category.
+
+The two are chosen for what each is good at. A memory is a *fact with a time*: "INV-1008 was unpaid when checked on 18 September." A store that records when a fact was true, when it was learned, and which episode it came from fits [§34.1](#341-provenance-and-revalidation) and [§34.3](#343-the-experience-loop) directly. A skill is a *versioned folder of instructions*, which is a filesystem shape, not a graph shape.
 
 | Category | What it holds | Examples |
 |---|---|---|
@@ -105,3 +117,20 @@ DSoR records what the runtime reports under `agent_asserted` (DSOR-AUD-06). It i
 - **[DSOR-CTX-06 · STACK]** Agent context MUST NOT become organizational knowledge except through: agent observation → knowledge proposal → governance and human review → KSoR.
 
 Agent memory likewise never mutates business state directly. Change always follows: agent intent → DSoR command → the pipeline in [§21](03-execution.md#21-command-pipeline).
+
+### 34.6 Memory that builds itself
+
+**In plain words.** Some memory systems do not wait to be told what to remember. They read every conversation and task log, use an AI model to pull out facts ("VENDOR-44 — status — approved"), and store those facts as a graph. That is powerful, and it creates two dangers that a plain notebook does not have. First, the memory can quietly turn into a second copy of the company's data. Second, the AI model doing the pulling-out is one more place your data is sent.
+
+**Why it matters.** *The shadow copy.* The agent reads VENDOR-44 through DSoR. The memory system extracts "VENDOR-44 is approved" and stores it with a start date and no end date. Next week a human suspends the vendor. The memory still says "approved, valid from 12 September, still true", and it looks *more* trustworthy than a scribbled note, because it has dates on it. Now there are two systems that claim to know the vendor's status, and only one of them is right. *The second model.* DSoR masked the salary field before the agent's own model could see it ([§19.2](02-security.md#192-the-model-boundary)). But the raw task log went to the memory system, which sent it to a different AI model to extract facts. The field leaked through the side door.
+
+**The rules**
+
+- **[DSOR-CTX-07 · STACK]** A memory provider MUST NOT store an operational attribute of a DSoR resource — its status, balance, amount, or approval state — as a remembered fact; it refers to the resource by canonical URI, and the agent reads the attribute through DSoR.
+- **[DSOR-CTX-08 · STACK]** Every model that a context provider uses to extract, summarize, or embed content MUST be treated as a model boundary under the tenant's model-egress policy, exactly as the agent's own model is.
+
+What memory *should* hold is experience: lessons, preferences, how a counterparty tends to behave, how a task went, what failed and why. "VENDOR-44 often sends the same invoice twice" is experience. "VENDOR-44 is approved" is state, and state belongs to DSoR.
+
+A provider that extracts facts automatically SHOULD be given a closed list of fact types it may create, SHOULD be told which attributes to ignore, and SHOULD receive content only after the masking of DSOR-CLS-02a has been applied for the extraction model's boundary. Every remembered fact shown to the agent SHOULD carry its valid-from time, its learned-at time, and the label `observational`.
+
+**Common mistake.** Pointing a self-building memory at raw task transcripts with its default settings. It will happily build a private, unmasked, out-of-date copy of your accounting system.

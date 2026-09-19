@@ -5,7 +5,7 @@
 // requirement registry that `pnpm guard --write` generates from the prose.
 import { readdirSync, readFileSync } from "node:fs";
 
-export const SPEC_VERSION = "1.3.1";
+export const SPEC_VERSION = "1.4.0";
 
 /** The `$id` prefix shared by every schema, e.g. `urn:dsor:schema:1.3:control`. */
 export const SCHEMA_ID_PREFIX = "urn:dsor:schema:1.3:";

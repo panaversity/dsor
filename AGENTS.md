@@ -34,7 +34,7 @@ checks who is asking, under whose authority, against which rules and which curre
 state, gets a human's sign-off when the rules demand one, makes sure nothing happens
 twice, and keeps the evidence.
 
-Today this repository holds the **specification** (v1.3.1), its machine-readable half
+Today this repository holds the **specification** (v1.4.0), its machine-readable half
 (JSON Schemas, examples, requirement registry, all tested), and an empty
 implementation package. The implementation is built in the five stages of
 [`docs/learn/learning-path.md`](docs/learn/learning-path.md).
@@ -51,8 +51,8 @@ implementation package. The implementation is built in the five stages of
 - **The readers are students and junior developers.** Every document opens in plain
   words before it states a rule (decision 7). Writing that only an expert can follow
   is a defect here, the same as a failing test.
-- **Vendor-free.** The rules are normative; PostgreSQL, MCP, Better Auth, OpenViking,
-  and KSoR are a replaceable reference profile
+- **Vendor-free.** The rules are normative; PostgreSQL, MCP, Better Auth, Graphiti,
+  OpenViking, and KSoR are a replaceable reference profile
   ([§2](specs/dsor/01-model.md#2-normative-architecture-and-reference-profile)).
 
 ## Vocabulary
@@ -145,8 +145,16 @@ Numbered, dated, never renumbered. A reversed decision stays, marked superseded.
 10. **The §44 ceilings are provisional (2026-09-19).** They are the editor's
     proposals and are expected to move once a real deployment measures them. See
     `research/open-questions.md`.
-11. **Schemas keep the `1.3` URN (2026-09-19).** v1.3.1 was editorial, so
-    `urn:dsor:schema:1.3:*` did not change. The URN changes only when a schema does.
+11. **Schemas keep the `1.3` URN (2026-09-19).** v1.3.1 was editorial, and v1.4.0 added
+    requirements without touching a schema, so `urn:dsor:schema:1.3:*` did not change.
+    The URN changes only when a schema does.
+12. **Two context providers (2026-09-20).** `AgentContextStore` is composite. The
+    reference profile uses Graphiti for memory, because a memory is a fact with a time
+    and a source, and OpenViking for skills and resources, because those are folders
+    and documents. Two rules came with the split: memory never stores operational
+    state (`DSOR-CTX-07`), and every model a context provider uses is a model boundary
+    (`DSOR-CTX-08`). The agent reaches memory only through an adapter that sets the
+    tenant partition; Graphiti's own MCP server is never an agent tool.
 
 ## Product invariants
 
@@ -249,5 +257,7 @@ true; review findings were fixed or recorded, never quietly dropped.
   including MCP multi-round-trip input (`DSOR-APR-05b`, `DSOR-RP-08`).
 - Do not store a connector credential where the agent or the model can read it
   (`DSOR-CNR-02`).
+- Do not hand the agent a memory tool that takes a tenant or group id as an argument,
+  and do not point a self-building memory at unmasked transcripts (decision 12).
 - Do not add a symlink (decision 8) or a dependency outside the catalog without a
   why-comment (decision 5).

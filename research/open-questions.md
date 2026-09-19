@@ -47,3 +47,25 @@ for a human. An agent may gather evidence; it does not settle these alone.
 12. **The reference control-plane store shares a PostgreSQL cluster with the
     operational store** so that DSOR-EXE-04a can commit atomically. What is the story
     when the system of record is SAP?
+
+## The context providers (added 2026-09-20, decision 12)
+
+13. **Does Graphiti hold up on real payment-run episodes?** Nothing has been run. Before
+    the binding is frozen, feed it a few weeks of masked run logs and check: does the
+    closed fact-type list keep operational state out (DSOR-CTX-07), or does state leak
+    in through free-text summaries and community descriptions?
+14. **What is the closed list of fact types?** A first proposal: Lesson, Preference,
+    CounterpartyBehaviour, TaskOutcome, FailureCause. Who owns the list, and does
+    changing it need review the way a control does?
+15. **Which extraction model satisfies DSOR-CTX-08 for a tenant whose egress policy
+    denies external providers?** A local model changes extraction quality. How much?
+16. **A graph database on a student laptop.** FalkorDB or Neo4j beside PostgreSQL is a
+    real cost for the target audience. Is there a light mode for the class project,
+    and is memory even part of the class project? (No build stage needs it.)
+17. **Erasure in a graph.** DSOR-RES-05 assumes values can be made unreadable by
+    destroying a key. Extracted facts, summaries, and embeddings derived from an
+    episode are not encrypted per subject. What does erasure of one person mean there?
+18. **Two tenant-isolation models.** Graphiti partitions by group id, a filter. OpenViking
+    has tenant, user, and agent scopes of its own. The cross-tenant test suite for the
+    stack has to cover both, through the adapter.
+

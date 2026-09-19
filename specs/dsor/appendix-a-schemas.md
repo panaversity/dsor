@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 part: appendix-a-schemas
 ---
 

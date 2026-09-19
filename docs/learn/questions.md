@@ -34,6 +34,8 @@ Answer from memory first. Answers follow the questions.
 19. What is a *tainted* memory, and what can it not become without a human?
 20. Give two PostgreSQL row-level-security mistakes that [§36](../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) prevents.
 21. Why must every MCP tool set `destructiveHint` explicitly?
+22. The memory system stored "VENDOR-44 is approved, valid from 12 September". Which rule does that break, what should it have stored, and why do the dates make it worse?
+23. DSoR masked the salary field before the agent's model saw it. Name the other model that might still receive it, and the rule that covers it.
 
 **Answers**
 
@@ -58,3 +60,5 @@ Answer from memory first. Answers follow the questions.
 19. A memory extracted from a task that included untrusted outside content. It cannot become a skill or KSoR knowledge without human review (DSOR-CTX-04a, 04c).
 20. Forgetting `FORCE ROW LEVEL SECURITY`, so the table owner bypasses the policy; and setting the tenant per connection, so a pooled connection carries it into another tenant's request.
 21. MCP treats a missing `destructiveHint` as *true*, so a harmless tool looks dangerous, and clients prompt the user needlessly ([§38.2](../../specs/dsor/05-bindings.md#382-annotations)).
+22. DSOR-CTX-07: memory must not store an operational attribute such as a status. It should keep experience ("VENDOR-44 often sends the same invoice twice") and a link to `dsor://org_456/vendor/VENDOR-44`, so the agent reads the status through DSoR. A fact with a start date and no end date looks current, so a stale copy looks *more* trustworthy than a plain note ([§34.6](../../specs/dsor/04-context.md#346-memory-that-builds-itself)).
+23. The model the memory system uses to extract facts, or to summarize or embed. DSOR-CTX-08 makes every such model a model boundary under the same egress policy, so content is masked for it as well.

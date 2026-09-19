@@ -5,4 +5,4 @@
 // one entity, one query, one command, permissions, and an audit trail.
 
 /** The specification version this implementation targets. */
-export const TARGET_SPEC_VERSION = "1.3.1";
+export const TARGET_SPEC_VERSION = "1.4.0";

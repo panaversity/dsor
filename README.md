@@ -20,13 +20,13 @@ happens twice by accident, and that there is proof of everything afterwards.
 | Part | In the clerk analogy | Its job |
 | --- | --- | --- |
 | [KSoR](https://github.com/panaversity/ksor) — Knowledge System of Record | The company handbook | KNOW |
-| Context store (OpenViking by default) | The clerk's notebook | REMEMBER |
+| Context store (by default: Graphiti for memory, OpenViking for skills and files) | The clerk's notebook | REMEMBER |
 | Agent runtime | The clerk's brain | REASON |
 | **DSoR** — this repository | The company's systems, the desk that checks permissions and sign-offs, and the logbook | STATE + ACT |
 
 ## Status
 
-This repository currently holds the **specification, v1.3.1**, its machine-readable
+This repository currently holds the **specification, v1.4.0**, its machine-readable
 half, and a tested toolchain. **The reference implementation has not been started.**
 [`docs/status.md`](docs/status.md) is the only authority on what is built.
 
@@ -36,9 +36,9 @@ half, and a tested toolchain. **The reference implementation has not been starte
 | --- | --- |
 | New to all of this | [`docs/learn/start-here.md`](docs/learn/start-here.md) — fifteen minutes, no prior knowledge assumed |
 | A student who wants to build it | [`docs/learn/learning-path.md`](docs/learn/learning-path.md) — a small DSoR in five stages |
-| Checking what you learned | [`docs/learn/questions.md`](docs/learn/questions.md) — 21 questions with answers |
+| Checking what you learned | [`docs/learn/questions.md`](docs/learn/questions.md) — 23 questions with answers |
 | Reading the specification | [`specs/dsor/README.md`](specs/dsor/README.md) |
-| Writing a conformance test | [`packages/spec/requirements.json`](packages/spec/requirements.json) — 266 requirements, one MUST each |
+| Writing a conformance test | [`packages/spec/requirements.json`](packages/spec/requirements.json) — 268 requirements, one MUST each |
 | A coding agent, or working with one | [`AGENTS.md`](AGENTS.md) |
 
 ## What is in the repository
@@ -63,7 +63,7 @@ pnpm check               # spec guard, lint, format, typecheck, tests
 
 `pnpm check` proves that every example validates against its schema, that the schemas
 reject what the specification says they reject, that the `high-value-payment` control
-passes its own test vectors in a real CEL evaluator, and that every one of the 266
+passes its own test vectors in a real CEL evaluator, and that every one of the 268
 requirements holds exactly one MUST.
 
 Try one thing: open `packages/spec/src/control-cel.test.ts` and find the test named

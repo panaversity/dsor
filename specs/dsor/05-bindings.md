@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.3.1
-date: 2026-09-19
+version: 1.4.0
+date: 2026-09-20
 part: 05-bindings
 ---
 
@@ -208,23 +208,51 @@ Operation  invoice.get      MCP  invoice_get      REST  GET /invoices/{id}      
 
 All of them invoke the same pipeline (DSOR-OPR-04a). The invocation mode, idempotency key, expected version, and correlation identifiers have one canonical representation per interface, documented by the implementation.
 
-## 40. OpenViking binding
+## 40. Context bindings: Graphiti and OpenViking
 
-**In plain words.** How the default notebook, OpenViking, maps onto the three context categories of [§33](04-context.md#33-the-context-store).
+**In plain words.** The reference profile uses two products for the agent's notebook ([§33](04-context.md#33-the-context-store)). Graphiti keeps the *memories*, because it records when each fact was true and where it came from. OpenViking keeps the *skills* and the *working files*, because those are folders and documents. The agent never talks to either one directly. It goes through an adapter that decides which tenant's notebook it is looking at.
 
 ```text
-OpenViking Resource → contextual reference material
-OpenViking Memory   → persistent non-authoritative experience
-OpenViking Skill    → reusable agent capability
-
-viking://resources/...            shared reference resources
-viking://user/{user_id}/...       user-scoped context
-viking://~/memories/...           the authenticated user's memory alias
-viking://~/skills/...             the authenticated user's skills alias
-viking://agent/skills/...         shared agent capabilities, when enabled
+AgentContextStore.memory     →  Graphiti     temporal graph of facts, each tied to its source episode
+AgentContextStore.resources  →  OpenViking   viking://resources/...
+AgentContextStore.skills     →  OpenViking   viking://agent/skills/...  and  viking://~/skills/...
 ```
 
-The adapter SHOULD keep OpenViking's native `viking://` identifiers and scope boundaries and SHOULD NOT invent a parallel addressing scheme. It MAY use progressive (L0/L1/L2) loading and hierarchical retrieval. Material stored in OpenViking does not become authoritative by being stored there; material that must govern behavior SHOULD be promoted into KSoR or referenced from it. Under DSOR-CTX-05c, skills under `viking://~/skills/` are user-scoped and cannot drive `HIGH` or `CRITICAL` operations.
+### 40.1 Graphiti: memory
+
+**In plain words.** Graphiti stores what the agent experienced as *episodes*, and extracts from them a graph of facts. Each fact knows two times: when it was true in the world, and when the system learned it. When a newer fact contradicts an older one, the older one is marked as ended. It is not deleted, so you can still ask what the agent believed last Tuesday.
+
+| The specification needs | Graphiti provides |
+|---|---|
+| `observed_at`, `source_version`, provenance ([§34.1](04-context.md#341-provenance-and-revalidation)) | Valid time and learned-at time on every fact; every fact points to its source episodes |
+| `authoritative_now: false` | Set by the adapter on everything it returns. A fact with no end date is *not yet contradicted*, which is weaker than *true* |
+| `tainted` ([§34.3](04-context.md#343-the-experience-loop)) | Recorded on the episode. A fact is tainted if any episode behind it is |
+| No cross-tenant retrieval (DSOR-CTX-01) | A group id per graph partition. **The adapter sets it from the security context** |
+| No shadow copy of state (DSOR-CTX-07) | A closed list of custom fact types; excluded types and extraction instructions on each episode |
+| The extraction model is a boundary (DSOR-CTX-08) | The adapter chooses the extraction model per tenant and masks content before an episode is added |
+
+The adapter SHOULD derive the group id from the active tenant and the agent, and SHOULD NOT accept one from the agent. The open-source Graphiti engine leaves users, conversations, and governance to the application, and its MCP server is described by its authors as experimental. That server accepts a group id as an ordinary argument, so it SHOULD NOT be given to the agent as a tool: an agent that can name any group id can read any tenant's memory. The agent reaches memory only through the adapter.
+
+Entities that stand for DSoR resources SHOULD be keyed by their `dsor://` URI, so that a remembered fact about VENDOR-44 leads the agent back to `vendor_get`, and not around it.
+
+Erasure ([§20](02-security.md#20-data-residency-and-erasure)) is harder in a graph, because one episode can produce many facts and summaries. The adapter SHOULD be able to delete an episode together with everything derived only from it.
+
+**Common mistake.** Treating "no end date" as "true now". It means nobody has told the memory otherwise. DSOR-CTX-02 still applies: check with DSoR before acting.
+
+### 40.2 OpenViking: resources and skills
+
+**In plain words.** OpenViking presents context as a filesystem with `viking://` addresses. A skill is a folder. A resource is a document. It loads a short summary first and the full text only when needed.
+
+```text
+viking://resources/...            shared reference resources
+viking://user/{user_id}/...       user-scoped context
+viking://~/skills/...             the authenticated user's skills alias
+viking://agent/skills/...         skills shared across the account
+```
+
+The adapter SHOULD keep OpenViking's native `viking://` identifiers and scope boundaries and SHOULD NOT invent a parallel addressing scheme. It MAY use progressive (L0/L1/L2) loading and hierarchical retrieval. Material stored in OpenViking does not become authoritative by being stored there; material that must govern behavior SHOULD be promoted into KSoR or referenced from it. Under DSOR-CTX-05c, skills under `viking://~/skills/` are user-scoped and cannot drive `HIGH` or `CRITICAL` operations; organization-approved skills live under `viking://agent/skills/`.
+
+OpenViking also offers a memory feature of its own. The reference profile does not use it, so that there is one place where memories live and one set of rules ([§34.6](04-context.md#346-memory-that-builds-itself)) to get right. If a deployment uses OpenViking's summarizing or embedding on resources, DSOR-CTX-08 applies to those models too.
 
 ## 41. Reference profile, vertical, and workflow *(informative)*
 
@@ -237,7 +265,8 @@ Identity modes         on_behalf_of: RFC 8693 token exchange · unattended: priv
 Role source            SCIM directory synchronization
 Knowledge authority    KSoR
 Expression language    CEL
-Context                OpenViking
+Memory                 Graphiti (graph database: FalkorDB or Neo4j), reached only through the adapter
+Resources and skills   OpenViking
 Agent interface        MCP 2026-07-28 (stateless core; Tasks extension optional)
 Operational store      PostgreSQL, RLS forced
 Control-plane store    PostgreSQL — same cluster, so DSOR-EXE-04a atomic commit applies
@@ -255,7 +284,8 @@ user_123 ── delegates (del_100, modes include unattended) ──▶ accounts
 
 IDENTITY    agent authenticates as itself (private_key_jwt); DSoR takes subject user_123 from del_100
             role source confirms user_123 still holds AP-supervisor, as of 08:45                → authority current
-CONTEXT     OpenViking: earlier run experience (data, never instruction) · KSoR: payment-approval-policy v4
+CONTEXT     Graphiti: earlier run experience, with dates (data, never instruction) · OpenViking: the
+            vendor-payment skill v3 · KSoR: payment-approval-policy v4
 STATE       invoice_get INV-1008, vendor_get VENDOR-44                  (CURRENT, masked per egress policy)
 
 INTENT 1    payment_create  → PAY-901, 31,400.00 USD, INV-1008 → VENDOR-44      COMPENSATABLE · ALLOW · COMMITTED
@@ -274,7 +304,9 @@ EXECUTION   agent calls proposal_execute { prop_123 }
             intent record → connector executes with downstream key → COMMITTED
             (on timeout: OUTCOME_UNKNOWN → PAY-901 and INV-1008 held → reconciliation → COMMITTED | FAILED)
 EVIDENCE    reservation committed · payment.executed event via outbox · decision bundle dec_123 sealed
-LEARNING    OpenViking records the experience; tainted flag set if untrusted content was in the task
+LEARNING    Graphiti records the run as an episode, masked for the extraction model; it keeps
+            "VENDOR-44 was paid on the first attempt", not "PAY-901 is executed"; tainted flag set if
+            untrusted content was in the task
 ```
 
 ## 42. Upstream compatibility baseline *(informative)*
@@ -286,6 +318,11 @@ Aligned to these upstream reference points as of **2026-09-19**:
 ```text
 KSoR         one authoritative record · one governance boundary · many open projections ·
              MCP as an agent projection · OAuth/OIDC identity · provenance and observability
+Graphiti     open-source temporal context graph engine (Zep) · episodes → entities and facts ·
+             two timelines per fact: valid time and learned-at time · contradicted facts are ended,
+             not deleted · group id partitions · custom entity types, excluded types, extraction
+             instructions · hybrid semantic + keyword + graph search · Neo4j or FalkorDB ·
+             users and governance left to the application · MCP server marked experimental
 OpenViking   context database for agents · Resource + Memory + Skill · viking:// addressing ·
              hierarchical retrieval · progressive L0/L1/L2 loading · session-derived memory
 MCP          2026-07-28 · stateless core, no initialize handshake, no Mcp-Session-Id ·
