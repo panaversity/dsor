@@ -26,7 +26,7 @@ happens twice by accident, and that there is proof of everything afterwards.
 
 ## Status
 
-This repository currently holds the **specification, v1.4.0**, its machine-readable
+This repository currently holds the **[specification, v1.4.0](https://github.com/panaversity/dsor/blob/main/docs/original_specs/DSoR_Specification_v1_4_0_Learners_Edition.md)**, its machine-readable
 half, and a tested toolchain. **The reference implementation has not been started.**
 [`docs/status.md`](docs/status.md) is the only authority on what is built.
 
