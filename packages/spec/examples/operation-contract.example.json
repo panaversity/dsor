@@ -1,0 +1,72 @@
+{
+  "id": "payment.execute",
+  "version": 1,
+  "kind": "command",
+  "effect": "destructive",
+  "input": {
+    "schema": "PaymentExecutionRequest"
+  },
+  "output": {
+    "schema": "PaymentExecutionResult"
+  },
+  "authorization": {
+    "permission": "payment:execute",
+    "approve_permission": "payment:approve"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": true
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "optimistic"
+  },
+  "execution": {
+    "semantics": "non_compensatable"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "bind": {
+    "payment": "input.payment",
+    "invoice": "state.payment.invoice",
+    "vendor": "state.payment.vendor"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": [
+      "state.vendor.status == \"approved\"",
+      "state.invoice.status == \"issued\"",
+      "state.payment.status == \"draft\"",
+      "dsor_covers(state.invoice.open_amount, state.payment.amount)"
+    ]
+  },
+  "in_flight": {
+    "exclusive_over": [
+      "payment"
+    ],
+    "hold_on_unknown": [
+      "payment",
+      "invoice"
+    ]
+  },
+  "controls": [
+    "high-value-payment",
+    "approved-vendors-only"
+  ],
+  "sod": {
+    "incompatible_with": [
+      "proposal.approve"
+    ]
+  },
+  "audit": {
+    "level": "full"
+  },
+  "connector_requirements": {
+    "downstream_idempotency_or_outcome_lookup": true
+  }
+}

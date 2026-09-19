@@ -1,0 +1,24 @@
+{
+  "id": "xero",
+  "contract_version": 1,
+  "region": "eu",
+  "external": true,
+  "capabilities": {
+    "transactions": false,
+    "optimistic_concurrency": true,
+    "downstream_idempotency": true,
+    "outcome_lookup": true,
+    "events": true,
+    "batch": false,
+    "row_level_security": false,
+    "freshness": [
+      "current",
+      "bounded_staleness"
+    ]
+  },
+  "write_exclusivity": "shared",
+  "change_detection": {
+    "method": "webhook",
+    "max_detection_lag_seconds": 120
+  }
+}

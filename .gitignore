@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tgz
+*.log
+.DS_Store
+coverage/
+
+# Local secrets and machine-local Claude Code settings are never committed.
+.env
+.env.*
+!.env.example
+.claude/settings.local.json

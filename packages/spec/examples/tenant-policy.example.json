@@ -1,0 +1,39 @@
+{
+  "tenant": "org_456",
+  "money": {
+    "control_currency": "USD",
+    "rate_source": "ecb-daily",
+    "max_rate_age": "P3D",
+    "on_unconvertible": "restrictive"
+  },
+  "role_source": {
+    "kind": "scim",
+    "max_staleness": "PT1H"
+  },
+  "sod": {
+    "owner_approval": {
+      "enabled": false
+    }
+  },
+  "egress": {
+    "restricted": {
+      "external_provider": "deny",
+      "in_tenant": "allow"
+    },
+    "confidential": {
+      "external_provider": "allow_masked_identifiers",
+      "in_tenant": "allow"
+    }
+  },
+  "residency": {
+    "control_plane": [
+      "eu"
+    ],
+    "audit": [
+      "eu"
+    ],
+    "events": [
+      "eu"
+    ]
+  }
+}

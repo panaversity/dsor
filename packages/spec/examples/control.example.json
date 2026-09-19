@@ -1,0 +1,89 @@
+{
+  "id": "high-value-payment",
+  "version": 8,
+  "status": "active",
+  "operation": "payment.execute",
+  "condition": "dsor_exceeds(state.payment.amount, dsor_money(\"25000\", \"USD\"))",
+  "effect": {
+    "require_approval": {
+      "role": "CFO",
+      "quorum": 1
+    }
+  },
+  "authority": {
+    "system": "ksor",
+    "uri": "ksor://org_456/finance/payment-approval-policy",
+    "rule": "high-value-payment",
+    "version": 4,
+    "content_hash": "sha256:9f2c1e7ab4d0"
+  },
+  "owner": "user_900",
+  "compiled_by": "policy-compiler-fte",
+  "reviewed_by": "user_900",
+  "on_stale": "require_approval",
+  "stale_grace": "P7D",
+  "effective_from": "2026-09-01T00:00:00Z",
+  "tests": [
+    {
+      "state": {
+        "payment": {
+          "amount": {
+            "value": "25000.00",
+            "currency": "USD"
+          }
+        }
+      },
+      "expect": "ALLOW"
+    },
+    {
+      "state": {
+        "payment": {
+          "amount": {
+            "value": "25000.01",
+            "currency": "USD"
+          }
+        }
+      },
+      "expect": "REQUIRE_APPROVAL"
+    },
+    {
+      "state": {
+        "payment": {
+          "amount": {
+            "value": "50000000.00",
+            "currency": "PKR"
+          }
+        }
+      },
+      "rates": {
+        "PKR": "280"
+      },
+      "expect": "REQUIRE_APPROVAL"
+    },
+    {
+      "state": {
+        "payment": {
+          "amount": {
+            "value": "6000000.00",
+            "currency": "PKR"
+          }
+        }
+      },
+      "rates": {
+        "PKR": "280"
+      },
+      "expect": "ALLOW"
+    },
+    {
+      "state": {
+        "payment": {
+          "amount": {
+            "value": "100.00",
+            "currency": "XXX"
+          }
+        }
+      },
+      "expect": "REQUIRE_APPROVAL"
+    }
+  ]
+}

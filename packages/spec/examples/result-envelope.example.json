@@ -1,0 +1,22 @@
+{
+  "outcome": "PENDING_APPROVAL",
+  "proposal": "dsor://org_456/proposal/prop_123",
+  "payload_hash": "sha256:9f2c1e7ab4d0",
+  "requires": [
+    {
+      "approval": {
+        "role": "CFO",
+        "quorum": 1
+      },
+      "control": "high-value-payment"
+    }
+  ],
+  "semantics": "non_compensatable",
+  "expires_at": "2026-09-22T22:00:00Z",
+  "correlation": {
+    "request_id": "req_1",
+    "trace_id": "tr_9",
+    "tenant_id": "org_456",
+    "agent_id": "accounts-payable-fte"
+  }
+}

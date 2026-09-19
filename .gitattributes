@@ -1,0 +1,4 @@
+# One set of bytes on every platform. The schemas and the requirement registry
+# are compared byte-for-byte by the guard, so line endings must not vary.
+* text=auto eol=lf
+*.png binary

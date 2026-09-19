@@ -1,0 +1,39 @@
+{
+  "name": "dsor-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo for DSoR — the Data System of Record: governed operational data and action infrastructure for AI workers.",
+  "homepage": "https://github.com/panaversity/dsor#readme",
+  "license": "Apache-2.0",
+  "author": "Panaversity",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/panaversity/dsor.git"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r build && pnpm -r typecheck",
+    "lint": "oxlint --fix",
+    "lint:ci": "oxlint",
+    "fmt": "oxfmt",
+    "fmt:ci": "oxfmt --check",
+    "guard": "node scripts/guard-spec.mjs",
+    "coverage:req": "node scripts/guard-spec.mjs --coverage",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "check": "pnpm guard && pnpm lint:ci && pnpm fmt:ci && pnpm typecheck && pnpm test:unit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "oxfmt": "0.63.0",
+    "oxlint": "1.78.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

@@ -1,0 +1,49 @@
+# Open questions
+
+Things the specification decided provisionally, or has not decided. Each is a question
+for a human. An agent may gather evidence; it does not settle these alone.
+
+## Provisional numbers
+
+1. **The §44 ceilings.** Five seconds for a kill switch, one hour of role staleness,
+   seventy-two hours of approval validity, and the rest are the editor's proposals
+   (AGENTS.md → decision 10). They need measurement in a real deployment. Which are
+   too tight for a small tenant on a cheap host? Which are too loose for a bank?
+
+## Design choices that deserve a second opinion
+
+2. **Owner-approval mode at L3** (§16.2). The first instinct was to forbid it at L3.
+   That would stop a sole proprietor from ever letting an agent pay a bill, so it is
+   allowed with a ceiling, a cooling-off period, step-up authentication, a
+   DSoR-rendered payload, and a second-channel notification. Is that set of
+   compensating controls enough for an auditor?
+3. **CEL over Rego** (§17.3). Chosen because a control condition is an expression
+   inside a record, and CEL terminates. `@marcbachmann/cel-js` 8.0.0 ran the spec's
+   vectors with flat `dsor_*` functions on 2026-09-19. Not yet checked: its behavior
+   with `now`, with large lists, and its error types for DSOR-CTL-07.
+4. **A recorded DENY is replayed for the same idempotency key** (§22). After a human
+   fixes the permission, the caller needs a new key. Is that the behavior users
+   expect, or should denials not claim a key?
+5. **An invalidated proposal ends.** When re-evaluation finds a new `REQUIRE_*`
+   outcome, the proposal becomes `INVALIDATED` and the caller proposes again (§26.4).
+   The alternative, returning to `PENDING_APPROVAL` for the extra approval, is kinder
+   to users and harder to reason about.
+6. **Compound actions under one MUST.** A few requirements join closely related
+   actions ("detect, mark stale, and notify"). Should they be split further?
+
+## Not yet specified
+
+7. **How DSoR learns that KSoR published a new policy version** (DSOR-CTL-03a says
+   "detect"; it does not say subscription or polling, or what KSoR must expose).
+8. **The conformance suite's shape.** One test per id is the goal. Is it a vitest
+   package that targets any DSoR over HTTP and MCP, or a harness each implementation
+   embeds?
+9. **The rate source contract.** §9 names a tenant rate source. What interface does it
+   have, and how is a stale or missing rate reported?
+10. **Tokenized fields as command inputs** (DSOR-CLS-02c). The rule exists; the token
+    format and lifetime do not.
+11. **MCP catalog size.** §38.1 recommends domain-scoped endpoints. Nothing has
+    measured tool-selection quality against catalog size for this vertical.
+12. **The reference control-plane store shares a PostgreSQL cluster with the
+    operational store** so that DSOR-EXE-04a can commit atomically. What is the story
+    when the system of record is SAP?

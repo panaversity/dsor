@@ -1,0 +1,44 @@
+{
+  "id": "apr_555",
+  "proposal": "dsor://org_456/proposal/prop_123",
+  "operation": "payment.execute@1",
+  "tenant": "org_456",
+  "resources": [
+    "dsor://org_456/payment/PAY-901",
+    "dsor://org_456/invoice/INV-1008",
+    "dsor://org_456/vendor/VENDOR-44"
+  ],
+  "payload_hash": "sha256:9f2c1e7ab4d0",
+  "risk": "high",
+  "bound_state": {
+    "mode": "predicate",
+    "versions": {
+      "dsor://org_456/payment/PAY-901": 2,
+      "dsor://org_456/invoice/INV-1008": 18,
+      "dsor://org_456/vendor/VENDOR-44": 6
+    }
+  },
+  "satisfies": [
+    {
+      "control": "high-value-payment",
+      "version": 8,
+      "requirement": {
+        "role": "CFO",
+        "quorum": 1
+      }
+    }
+  ],
+  "approvers": [
+    {
+      "principal": "cfo_100",
+      "basis": "role:CFO",
+      "authn": {
+        "acr": "mfa",
+        "at": "2026-09-20T07:41:00Z"
+      }
+    }
+  ],
+  "sod_mode": "standard",
+  "status": "active",
+  "expires_at": "2026-09-21T07:41:00Z"
+}

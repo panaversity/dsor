@@ -1,0 +1,7 @@
+# oxfmt reads this file. Prose and generated or normative JSON are not reformatted:
+# the guard compares requirements.json byte-for-byte, and the schemas are normative.
+pnpm-lock.yaml
+*.md
+packages/spec/schemas/
+packages/spec/examples/
+packages/spec/requirements.json

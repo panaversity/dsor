@@ -1,0 +1,34 @@
+{
+  "name": "@panaversity/dsor-spec",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The machine-readable half of the DSoR specification: JSON Schemas, validated examples, and the requirement registry.",
+  "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "schemas",
+    "examples",
+    "requirements.json"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./requirements.json": "./requirements.json",
+    "./schemas/*": "./schemas/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@marcbachmann/cel-js": "catalog:",
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "identity_mode": "unattended",
+  "subject": "user_123",
+  "subject_type": "human",
+  "actor_chain": [
+    "accounts-payable-fte"
+  ],
+  "active_tenant": "org_456",
+  "delegation": "del_100",
+  "token_scopes": [
+    "invoice:read",
+    "vendor:read",
+    "payment:create",
+    "payment:execute"
+  ],
+  "subject_authority": {
+    "source": "role_source",
+    "as_of": "2026-09-20T08:45:00Z"
+  }
+}

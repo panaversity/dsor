@@ -1,0 +1,85 @@
+{
+  "decision_id": "dec_123",
+  "operation": "payment.execute@1",
+  "proposal": "dsor://org_456/proposal/prop_123",
+  "tenant": "org_456",
+  "identity": {
+    "mode": "unattended",
+    "subject": "user_123",
+    "actor_chain": [
+      "accounts-payable-fte"
+    ],
+    "subject_authority": {
+      "source": "role_source",
+      "as_of": "2026-09-20T08:45:00Z"
+    }
+  },
+  "authority": {
+    "delegation": "del_100",
+    "authorization": "ALLOW",
+    "controls": [
+      {
+        "id": "high-value-payment",
+        "version": 8,
+        "outcome": "REQUIRE_APPROVAL",
+        "satisfied_by": [
+          "apr_555"
+        ],
+        "authority": {
+          "system": "ksor",
+          "uri": "ksor://org_456/finance/payment-approval-policy",
+          "rule": "high-value-payment",
+          "version": 4,
+          "content_hash": "sha256:9f2c1e7ab4d0"
+        }
+      }
+    ]
+  },
+  "money": {
+    "conversions": []
+  },
+  "state": [
+    {
+      "uri": "dsor://org_456/payment/PAY-901",
+      "version": 2,
+      "observed_at": "2026-09-20T09:00:00Z",
+      "freshness": "CURRENT"
+    },
+    {
+      "uri": "dsor://org_456/invoice/INV-1008",
+      "version": 18,
+      "observed_at": "2026-09-20T09:00:00Z",
+      "freshness": "CURRENT"
+    },
+    {
+      "uri": "dsor://org_456/vendor/VENDOR-44",
+      "version": 6,
+      "observed_at": "2026-09-20T09:00:00Z",
+      "freshness": "CURRENT"
+    }
+  ],
+  "approval": {
+    "id": "apr_555",
+    "payload_hash": "sha256:9f2c1e7ab4d0",
+    "approvers": [
+      "cfo_100"
+    ]
+  },
+  "sod_mode": "standard",
+  "agent_asserted": {
+    "skill": {
+      "uri": "viking://agent/skills/vendor-payment",
+      "version": 3,
+      "hash": "sha256:9f2c1e7ab4d0"
+    },
+    "purpose": "weekly payment run"
+  },
+  "execution": {
+    "idempotency_key": "prop_123",
+    "connector": "postgres",
+    "semantics": "non_compensatable",
+    "intent_at": "2026-09-20T09:00:00.120Z",
+    "result": "committed",
+    "finalized_at": "2026-09-20T09:00:00.480Z"
+  }
+}

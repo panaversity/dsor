@@ -1,0 +1,16 @@
+{
+  "event_id": "evt_77",
+  "type": "payment.executed",
+  "tenant": "org_456",
+  "resource": "dsor://org_456/payment/PAY-901",
+  "ordering_key": 3,
+  "origin": "dsor",
+  "at": "2026-09-20T09:00:00.500Z",
+  "classification": "internal",
+  "correlation": {
+    "request_id": "req_1",
+    "trace_id": "tr_9",
+    "tenant_id": "org_456",
+    "agent_id": "accounts-payable-fte"
+  }
+}

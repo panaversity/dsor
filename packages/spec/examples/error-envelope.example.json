@@ -1,0 +1,12 @@
+{
+  "code": "OUTCOME_UNKNOWN",
+  "message": "Payment submission timed out; outcome is being reconciled.",
+  "retry": "after_reconciliation",
+  "proposal": "dsor://org_456/proposal/prop_123",
+  "correlation": {
+    "request_id": "req_1",
+    "trace_id": "tr_9",
+    "tenant_id": "org_456",
+    "agent_id": "accounts-payable-fte"
+  }
+}

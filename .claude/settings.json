@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm check)",
+      "Bash(pnpm guard:*)",
+      "Bash(pnpm coverage:req:*)",
+      "Bash(pnpm test:unit:*)",
+      "Bash(pnpm test:db:*)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm build)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm fmt:*)",
+      "Bash(node scripts/guard-spec.mjs:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "ask": ["Bash(git push:*)"],
+    "deny": ["Read(./.env)", "Read(./.env.*)"]
+  }
+}

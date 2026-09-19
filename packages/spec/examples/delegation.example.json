@@ -1,0 +1,48 @@
+{
+  "id": "del_100",
+  "tenant": "org_456",
+  "delegator": "user_123",
+  "delegate": "accounts-payable-fte",
+  "modes": [
+    "on_behalf_of",
+    "unattended"
+  ],
+  "permissions": [
+    "invoice:read",
+    "vendor:read",
+    "payment:create",
+    "payment:execute"
+  ],
+  "constraints": {
+    "per_transaction_limit": {
+      "value": "50000",
+      "currency": "USD"
+    },
+    "cumulative_limits": [
+      {
+        "window": "P1D",
+        "amount": {
+          "value": "200000",
+          "currency": "USD"
+        }
+      }
+    ],
+    "counterparties": "approved_vendors_only",
+    "time_window": {
+      "days": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri"
+      ],
+      "hours": "08:00-18:00",
+      "tz": "Asia/Karachi"
+    }
+  },
+  "subdelegation": {
+    "allowed": false
+  },
+  "status": "active",
+  "expires_at": "2026-12-31T23:59:59Z"
+}
