@@ -20,7 +20,7 @@ happens twice by accident, and that there is proof of everything afterwards.
 | Part | In the clerk analogy | Its job |
 | --- | --- | --- |
 | [KSoR](https://github.com/panaversity/ksor) — Knowledge System of Record | The company handbook | KNOW |
-| Context store (by default: Graphiti for memory, OpenViking for skills and files) | The clerk's notebook | REMEMBER |
+| Context store (by default: [Graphiti](https://github.com/getzep/graphiti) for memory, [OpenViking](https://github.com/volcengine/OpenViking) for skills and files) | The clerk's notebook | REMEMBER |
 | Agent runtime | The clerk's brain | REASON |
 | **DSoR** — this repository | The company's systems, the desk that checks permissions and sign-offs, and the logbook | STATE + ACT |
 
