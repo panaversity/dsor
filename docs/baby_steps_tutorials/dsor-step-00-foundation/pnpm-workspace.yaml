@@ -1,0 +1,31 @@
+# Workspace layout and shared version pins. The catalog is the one place to look
+# for a shared dependency version (AGENTS.md → Decisions 5). The pins match the
+# sister repository, panaversity/ksor, so one toolchain serves both.
+packages:
+  - packages/*
+  # Each baby step is a small package of its own. Steps pin plain version numbers
+  # instead of `catalog:` so a learner can copy one folder anywhere and run it; the
+  # guard checks those numbers against the catalog below (AGENTS.md → decision 13).
+  - docs/baby_steps_tutorials/*
+
+catalog:
+  # TypeScript 7 is the native compiler. Nothing in this repo imports the
+  # "typescript" package programmatically.
+  typescript: 7.0.2
+  vitest: ^4.1.10
+  "@types/node": ^24.13.3
+  # JSON Schema draft 2020-12 validation for the normative schemas (Appendix A).
+  ajv: 8.20.0
+  ajv-formats: 3.0.1
+  # CEL evaluator used to run the spec's control test vectors (Appendix B).
+  # Checked 2026-09-19: supports the flat dsor_* extension functions.
+  "@marcbachmann/cel-js": 8.0.0
+
+# Supply-chain hygiene: a 48-hour quarantine on newly published versions, so a
+# routine install never picks up a day-zero compromised release.
+minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+  - "@panaversity/*"
+
+# Dependency install scripts are denied by default; each decision is recorded here.
+allowBuilds: { esbuild: false }

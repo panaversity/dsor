@@ -1,0 +1,22 @@
+{
+  "name": "@dsor-steps/00-foundation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 00: the foundation. TypeScript, tests, and nothing else. Every later step starts as a copy of the step before it.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

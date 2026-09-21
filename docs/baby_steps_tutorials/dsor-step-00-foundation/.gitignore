@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tgz
+*.log
+.DS_Store
+coverage/
+
+# Local secrets and machine-local Claude Code settings are never committed.
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# A learner's own attempts at the baby steps. Only the folder's README is tracked.
+docs/baby_steps_tutorials/workbench/*
+!docs/baby_steps_tutorials/workbench/README.md
