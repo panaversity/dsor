@@ -2,7 +2,7 @@
   "name": "@dsor-steps/00-foundation",
   "version": "0.0.0",
   "private": true,
-  "description": "Baby step 00: the foundation. TypeScript, tests, and nothing else. Every later step starts as a copy of the step before it.",
+  "description": "Baby step 00: the foundation. A self-contained TypeScript project with tests. Every later step starts as a copy of the step before it.",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -18,5 +18,6 @@
   },
   "engines": {
     "node": ">=22.18"
-  }
+  },
+  "packageManager": "pnpm@11.22.0"
 }
