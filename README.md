@@ -27,7 +27,8 @@ happens twice by accident, and that there is proof of everything afterwards.
 ## Status
 
 This repository currently holds the **[specification, v1.4.0](https://github.com/panaversity/dsor/blob/main/docs/original_specs/DSoR_Specification_v1_4_0_Learners_Edition.md)**, its machine-readable
-half, and a tested toolchain. **The reference implementation has not been started.**
+half, a tested toolchain, and the first step of a build-it-yourself tutorial. **The
+reference implementation has not been started.**
 [`docs/status.md`](docs/status.md) is the only authority on what is built.
 
 ## Start here
@@ -35,11 +36,27 @@ half, and a tested toolchain. **The reference implementation has not been starte
 | You are… | Go to |
 | --- | --- |
 | New to all of this | [`docs/learn/start-here.md`](docs/learn/start-here.md) — fifteen minutes, no prior knowledge assumed |
-| A student who wants to build it | [`docs/learn/learning-path.md`](docs/learn/learning-path.md) — a small DSoR in five stages |
+| A student who wants to build it | [`docs/baby_steps_tutorials/`](docs/baby_steps_tutorials/readme.md) — DSoR in 52 baby steps, built with Claude Code. The short map is [`docs/learn/learning-path.md`](docs/learn/learning-path.md) |
 | Checking what you learned | [`docs/learn/questions.md`](docs/learn/questions.md) — 23 questions with answers |
 | Reading the specification | [`specs/dsor/README.md`](specs/dsor/README.md) |
 | Writing a conformance test | [`packages/spec/requirements.json`](packages/spec/requirements.json) — 268 requirements, one MUST each |
 | A coding agent, or working with one | [`AGENTS.md`](AGENTS.md) |
+
+## Learn by building: the baby steps
+
+The best way to understand DSoR is to build it. The
+[baby steps tutorial](docs/baby_steps_tutorials/readme.md) builds a working DSoR in 52
+small, numbered steps. Each step adds **one new idea**, lives in its own folder, and
+starts as a copy of the step before it, so you never meet two new things on the same
+day. The technology arrives slowly: plain TypeScript first, then PostgreSQL on
+[Neon](https://neon.com/), then rules and approvals, then a bank that sometimes does
+not answer, then [Better Auth](https://better-auth.com/) and an MCP server, and at the
+end a complete digital employee. Every step is built with Claude Code, has a "break it"
+exercise that shows you the failure its rule prevents, and carries tests named after
+the rules of the specification. **Step 00,
+[the foundation](docs/baby_steps_tutorials/00_foundation/README.md), is ready; steps 01
+to 51 are planned.** Start there after the fifteen-minute
+[Start here](docs/learn/start-here.md) chapter.
 
 ## What is in the repository
 
@@ -48,6 +65,7 @@ specs/dsor/        the specification, in seven parts and two appendices
 packages/spec/     JSON Schemas, validated examples, the requirement registry, and their tests
 packages/dsor/     the reference implementation (not started)
 docs/learn/        start here · learning path · questions and answers
+docs/baby_steps_tutorials/   DSoR in 52 baby steps; one self-contained folder per step
 docs/status.md     what is implemented
 research/          how the specification got here, and what is still open
 .claude/           Claude Code settings, skills, and a reviewer subagent
@@ -77,6 +95,12 @@ This is also the repository DSoR is built in, with Claude Code. `CLAUDE.md` impo
 discipline — `implement-spec`, `change-the-spec`, `write-for-learners` — and a
 read-only `requirement-reviewer` subagent gives a hostile pass before work is called
 done. Start a session and say which stage of the learning path you are on.
+
+The baby steps work a little differently. Each step folder carries its own `CLAUDE.md`
+and its own `build-baby-step` skill, so you start Claude Code **inside the step's
+folder**, and the agent writes only there. The
+[tutorial overview](docs/baby_steps_tutorials/readme.md#build-the-steps-with-claude-code)
+has the directions and the prompts.
 
 ## Contributing, security, license
 
