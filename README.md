@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="repo-image.png" alt="DSoR — open, vendor-neutral data and action infrastructure for AI workers. One governed pipeline: who is asking, is it allowed, human sign-off, act once and prove it." width="100%">
+</p>
+
 # DSoR — Data System of Record
 
 **The governed layer between an AI worker and a company's real systems.**
@@ -15,6 +19,13 @@ happens twice by accident, and that there is proof of everything afterwards.
 
 **DSoR never takes the agent's word for anything. It checks for itself.**
 
+**DSoR has a twin.** [KSoR — the Knowledge System of Record](https://github.com/panaversity/ksor)
+— is the governed record of what the organization officially knows: its policies,
+procedures, and definitions. KSoR tells an AI worker how the organization operates.
+DSoR checks the facts for itself, carries out the action safely, and keeps the evidence.
+An AI worker needs both. See
+[DSoR and KSoR](#dsor-and-ksor-twin-systems-of-record-for-ai-workers).
+
 ## Where it fits
 
 | Part | In the clerk analogy | Its job |
@@ -23,6 +34,90 @@ happens twice by accident, and that there is proof of everything afterwards.
 | Context store (by default: [Graphiti](https://github.com/getzep/graphiti) for memory, [OpenViking](https://github.com/volcengine/OpenViking) for skills and files) | The clerk's notebook | REMEMBER |
 | Agent runtime | The clerk's brain | REASON |
 | **DSoR** — this repository | The company's systems, the desk that checks permissions and sign-offs, and the logbook | STATE + ACT |
+
+## DSoR and KSoR: twin systems of record for AI workers
+
+Before a company lets a new employee work alone, it gives them two things. It gives
+them **the handbook**: the policies and procedures that say how things are done here.
+And it gives them **the desk that controls the systems**: a login, a list of what they
+may do, a spending limit, a manager who signs off on large actions, and a logbook.
+
+An AI worker needs the same two things.
+
+- **[KSoR](https://github.com/panaversity/ksor) is the handbook, governed.** It is the
+  authority on what the organization knows, requires, and prescribes.
+- **DSoR is the desk, governed.** It is the authority on what is true right now in the
+  company's systems, and on what the worker may do there.
+
+They are twins: born of the same idea, built on the same principles, and meant to serve
+an AI worker together.
+
+> **KSoR governs what an AI worker may _know_. DSoR governs what it may _do_.**
+
+### The same principles, applied to two different things
+
+|  | KSoR | DSoR |
+| --- | --- | --- |
+| Authority on | Institutional knowledge | Operational state, and the actions taken on it |
+| The question it answers | What do we know, and how should we operate? | What is true right now, and what may safely be done? |
+| Holds | Policies, procedures, standards, definitions, decision criteria | A governed door to invoices, payments, vendors, balances, approvals |
+| How it changes | Review, approval by an authorized person, versioning | Commands through one fixed checklist: who, authority, rules, approval, evidence |
+| When it says no | It **abstains**: the record does not contain enough to answer | It **refuses, or waits for a human**: no authority, or a rule demands approval |
+| What it can prove | Which document, version, and publication an answer came from | Who asked, under whose authority, which rules ran, who approved, what happened |
+| Agent surface | MCP: `search`, `outline`, `read` | MCP: one tool for each governed operation |
+| Trusts the model? | No. Authority comes from the governed record | No. Authority comes from its own checks |
+
+### Where they meet: a policy becomes a control
+
+A policy is a sentence, and software cannot enforce a sentence.
+
+The company's policy says: *payments above 25,000 USD need the CFO's approval.* That
+sentence lives in the KSoR, with an owner, an approval, and a version number. In DSoR, a
+human turns it into a **control**: a small rule a program can check, attached to the
+`payment.execute` operation. The control records exactly which KSoR document, which
+version, and which fingerprint of the text it was built from
+([§17](specs/dsor/02-security.md#17-policy-compilation-from-authority-to-control)).
+
+```text
+KSoR   policy     "Payments above 25,000 USD need the CFO's approval."      version 4, approved
+          │
+          │  one human compiles it, another human reviews it
+          ▼
+DSoR   control    high-value-payment: amount exceeds 25,000 USD             built from version 4
+                  → REQUIRE_APPROVAL(CFO)
+          │
+          ▼
+       an action  PAY-901, 31,400 USD, waits until cfo_100 approves from her own login
+```
+
+When an auditor asks "why did the system allow this?", you can walk from the action, to
+the control, to the exact policy sentence and version. When the policy changes in the
+KSoR, the specification requires DSoR to mark the control *stale* and tell its owner. A
+stale control is never quietly switched off.
+
+Neither twin crosses the line between them
+([§4](specs/dsor/01-model.md#4-authority-boundaries-and-precedence)):
+
+- **KSoR never decides whether an action is permitted.** It says what the policy is.
+- **DSoR never decides what the policy is.** It enforces what was approved, and points
+  back to it.
+- **The agent's memory decides nothing.** For knowledge, KSoR wins. For current state,
+  DSoR wins. Memory only helps the agent decide where to look.
+
+### Independent, and better together
+
+Neither twin requires the other. DSoR names KSoR as its default source of policy, and
+accepts any governed source in its place; every rule in the specification is
+vendor-neutral. KSoR is complete with no DSoR beside it.
+
+Together they give an AI worker the two things no model can supply for itself: **what is
+authoritative to know, and what is authorized to do.**
+
+KSoR is the older twin. Its command-line tool is published as `@panaversity/ksor`, and
+its own status page says exactly which parts are released. DSoR is younger, as the next
+section says plainly. No code connects the two yet, and how DSoR learns that a
+KSoR policy has a new version is still an
+[open question](research/open-questions.md).
 
 ## Status
 
