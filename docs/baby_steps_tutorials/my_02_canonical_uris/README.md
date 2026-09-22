@@ -1,256 +1,248 @@
-# Step 01 · One invoice in memory
+# Step 02 · Canonical URIs
 
-**New in this step:** the first business record, and the first rule of the
-specification — money is an amount *and* a currency, and the amount is written as text.
+**New in this step:** every record gets one permanent address, and a pair of functions
+that write it and read it.
 
 ## In plain words
 
-An invoice is the first thing DSoR knows about. This step adds a type that says what an
-invoice is, two invoices held in a plain array, and one function that finds an invoice
-by its id. "In memory" means the array lives in the running program and disappears when
-the program stops. There is no database until step 09.
+An invoice needs a name the whole system can use. Not "the Acme invoice", and not a
+number that means something only inside one database, but one address written the same
+way everywhere:
 
-The amount is the part to look at. It is not the number `31400`. It is
-`{ value: "31400.00", currency: "USD" }`: a decimal written as text, together with a
-three-letter currency code. That shape is rule `DSOR-MON-01`, one of the shortest rules
-in the specification, and one of the easiest to get wrong.
+```text
+dsor://org_456/invoice/INV-1008
+^^^^   ^^^^^^^ ^^^^^^^ ^^^^^^^^
+scheme tenant  entity  id
+```
+
+Read it left to right. `dsor://` says this is a DSoR address, the way `https://` says a
+web address. `org_456` says **which company**. `invoice` says **what kind of thing**.
+`INV-1008` says **which one**.
+
+Two words for this, because the specification uses them. A **URI** is a Uniform
+Resource Identifier, which is a long way of saying an address. **Canonical** means
+there is one correct way to write it and everybody writes it that way, so two people
+naming the same invoice always produce the same text.
+
+This step adds two functions. `parseUri` reads an address and hands back its three
+parts. `formatUri` does the reverse. Both refuse an address that is not allowed, and
+the refusing is the half that matters.
 
 ## Why it matters
 
-INV-1008 is 31,400.00 USD owed to VENDOR-44. Suppose the amount were an ordinary
-number, and three late fees of ten cents each were added to it:
+The address is how one invoice is followed from end to end. The approval says
+`dsor://org_456/invoice/INV-1008`. The payment says it. The audit log says it. That is
+what lets you prove, later, that the invoice the CFO approved is the invoice that was
+paid.
+
+So the address must never change. Rule `DSOR-RID-01b` says the company part must be an
+**id** and never a **name**, and here is the failure it prevents.
+
+Suppose the address used the name: `dsor://acme/invoice/INV-1008`. Next year Acme is
+bought and renamed. Every record written before the rename now points at a company
+under a name that no longer exists, and the trail between the approval and the payment
+is broken. An id like `org_456` means nothing to anybody, so nobody ever renames it,
+so the address written in 2026 still reads the same in 2036.
+
+The specification puts it in one line: *company names change, and database keys change
+when data is re-imported.*
+
+## The part that cannot be checked by looking
+
+Look at these two pieces of text:
 
 ```text
-31400 + 0.1 + 0.1 + 0.1  =  31400.299999999996
+acme
+org_456
 ```
 
-Not 31,400.30. Computers store decimals in binary, and 0.1 has no exact binary form, so
-the sum lands just beside the right answer. The books are now wrong by a fraction of a
-cent. Nobody can say where it went, and an auditor who finds a difference nobody can
-explain does not stop looking. Text does not drift. `"31400.00"` holds exactly what was
-written, for as long as it is kept.
+You know one is a name and one is an id. **The program does not.** Both are letters,
+digits and punctuation. Nothing in the text itself says "I am a name".
 
-The currency half matters for a different reason. `31400` on its own does not say
-31,400 of *what*. In step 27 you will write a rule that says "payments above 25,000 USD
-need the CFO's approval". A rule like that cannot be applied honestly to an amount that
-carries no currency. The specification records the real version of this bug: a rule
-written as `amount > 25000 && currency == "USD"` let a payment of 50,000,000 PKR
-straight through, because the currency was not USD, so the condition was false. Keeping
-the currency beside the amount from the first line is what makes that fixable later.
-
-## What changed since step 00
+So the shape check cannot do this job on its own. The specification's own JSON Schema,
+in `packages/spec/schemas/common.schema.json`, describes an address as:
 
 ```text
-my_01_one_invoice_in_memory/
-  src/money.ts          NEW  the Money type, and money() which refuses bad amounts
-  src/invoice.ts        NEW  the Invoice type, two invoices, and getInvoice
-  test/money.test.ts    NEW  five tests: one "yes", three refusals, one recorded gap
-  test/invoice.test.ts  NEW  six tests: reading, searching, refusing, the float bug, immutability
-  src/main.ts        CHANGED now reads INV-1008 and prints it
+^dsor://[A-Za-z0-9_-]+/[a-z][a-z0-9_]*/[A-Za-z0-9_.-]+$
+```
+
+and `acme` matches `[A-Za-z0-9_-]+` exactly as well as `org_456` does. The repository
+knows this: its own test for `DSOR-RID-01a` breaks an address with a **space**, not
+with a name, because a bare name passes.
+
+That is why `src/uri.ts` has a second pattern:
+
+```ts
+const TENANT_ID = /^org_[0-9]+$/;
+```
+
+**This pattern is this deployment's own convention, not a rule from §5.** Section 5
+says a tenant id is "an immutable opaque identifier" — *opaque* meaning the id carries
+no meaning you can read, it is a label rather than a description, and *immutable*
+meaning it never changes. Section 5 never says what shape such an id takes. We are choosing, here, that our company ids are `org_` followed by digits — and
+that choice is what lets the program tell `acme` from `org_456`. A company that
+numbers its tenants differently changes that one line.
+
+This is the same lesson as `money()` in step 01. Checking the **shape** of something
+and checking its **meaning** are different jobs, and the second one always needs
+knowledge from outside the text.
+
+## What changed since step 01
+
+```text
+my_02_canonical_uris/
+  src/uri.ts            NEW  parseUri, formatUri, and the two patterns
+  test/uri.test.ts      NEW  nine tests: the shape, the refusals, the round trip
+  src/invoice.ts     CHANGED an Invoice now carries its own uri
+  test/invoice.test.ts CHANGED two tests for an invoice's address
+  src/main.ts        CHANGED prints the address
+  src/money.ts       CHANGED step 01's NEW IN STEP markers removed
+  test/money.test.ts CHANGED step 01's NEW IN STEP markers removed
   package.json       CHANGED name and description only
 ```
-
-Everything else is step 00, byte for byte. To see that for yourself:
 
 ```bash
 cd docs/baby_steps_tutorials
 diff -rq --exclude=node_modules --exclude=pnpm-lock.yaml \
-  00_foundation my_01_one_invoice_in_memory
+  my_01_one_invoice_in_memory my_02_canonical_uris
 ```
 
-```text
-Files 00_foundation/README.md and my_01_one_invoice_in_memory/README.md differ
-Files 00_foundation/package.json and my_01_one_invoice_in_memory/package.json differ
-Only in my_01_one_invoice_in_memory/src: invoice.ts
-Files 00_foundation/src/main.ts and my_01_one_invoice_in_memory/src/main.ts differ
-Only in my_01_one_invoice_in_memory/src: money.ts
-Only in my_01_one_invoice_in_memory/test: invoice.test.ts
-Only in my_01_one_invoice_in_memory/test: money.test.ts
-```
-
-Seven lines, and six of them are this step. To read one of those changes in full, name
-the two files:
-
-```bash
-git diff --no-index 00_foundation/src/main.ts my_01_one_invoice_in_memory/src/main.ts
-```
-
-Give `git diff --no-index` the two folders instead and it will also walk
-`node_modules`, which both folders have after `pnpm install`. That is why the folder
-comparison above uses `diff` with an exclude.
-
-Search the folder for `NEW IN STEP 01` and you will find this step's lesson and nothing
-else. Each step removes the previous step's markers, so the marker always points at the
-one new idea.
+Search the folder for `NEW IN STEP 02` and you find this step's lesson and nothing
+else. Step 01's markers are gone, which is why `money.ts` and `money.test.ts` show up
+in the diff without having changed in any way that matters.
 
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_01_one_invoice_in_memory
+cd docs/baby_steps_tutorials/my_02_canonical_uris
 pnpm install
 pnpm start
 ```
 
 ```text
 Hello, accounts-payable-fte.
-INV-1008: 31400.00 USD to VENDOR-44 (issued)
+dsor://org_456/invoice/INV-1008
+  31400.00 USD to VENDOR-44 (issued)
 INV-9999: not found.
 ```
 
-The last line matters as much as the one above it. `getInvoice` returns `undefined` when
-there is no such invoice. A missing record is an ordinary answer, not a crash. Proper
-error shapes arrive in step 04.
-
-`(issued)` is the invoice's **status**: where it has got to in its life. An invoice is
-`draft` before it is sent, `issued` once it is, then `paid` or `cancelled`. In this step
-the status is only a label on the record. Nothing reads it before acting. Turning "a
-payment needs an issued invoice" into a rule the system checks is step 32.
-
 ```bash
-pnpm check                 # typecheck, then test. 13 tests pass
+pnpm check                 # typecheck, then test. 24 tests pass
 ```
 
-### Why some tests are titled with a rule id
+### Why the address is built from the id
 
-A test that proves a rule begins with that rule's id, then says in plain words what it
-proves:
+`makeInvoice` in `src/invoice.ts` builds the address out of the id it was given,
+instead of the id being typed a second time:
 
 ```ts
-it("DSOR-MON-01: INV-1008 is 31400.00 USD, an amount and a currency", () => { … });
+uri: formatUri({ tenant: TENANT, entity: "invoice", id }),
 ```
 
-The convention is not decoration. In `packages/` — the repository's own implementation,
-not this tutorial — `pnpm coverage:req` reads test titles to count which of the 268
-rules a test names. That command walks `packages/` only, so it never sees this folder,
-and neither does the repository's `pnpm test:unit`. CI does check this folder's links
-and its formatting; it does not run its tests. Your step is run by you. You use the
-convention here so the habit is already yours when you write a test that does get
-counted.
+Writing `"INV-1008"` twice is how a record ends up carrying an address that belongs to
+a different record. An address that points at the wrong invoice is worse than no
+address, because every log line and every approval that quotes it is now confidently
+wrong. Break 3 below shows exactly that going wrong.
 
-Three of the eleven new tests carry no rule id. Two of them test `getInvoice` — that it
-searches the list, and that it returns `undefined` for a missing invoice — and no rule
-in §9 governs either. The third is the float test. It does not touch this step's code at
-all, so it would still pass if `src/` were deleted: it shows the fact about computers
-that the rule exists to guard against. That is motivation, not proof, and a title
-claiming otherwise would misdescribe what the test checks.
-
-### Why `getInvoice` makes the compiler complain
-
-`getInvoice` returns `Invoice | undefined`. TypeScript will not let you reach
-`invoice.amount` until you have ruled out `undefined`. The test answers that with a
-check the compiler can follow:
+### Why `formatUri` reads back what it writes, and compares
 
 ```ts
-if (invoice === undefined) {
-  throw new Error("INV-1008 is missing from the list of invoices");
+const uri = `dsor://${parts.tenant}/${parts.entity}/${parts.id}`;
+const back = parseUri(uri);
+
+if (back.tenant !== parts.tenant || back.entity !== parts.entity || back.id !== parts.id) {
+  throw new TypeError(`address does not read back the same: ${JSON.stringify(uri)}`);
 }
 ```
 
-You could write `invoice!.amount` instead. The `!` tells the compiler to stop asking
-without answering the question, and in a system that moves money that habit is how a
-crash reaches production. Answer the compiler; do not silence it.
+Without this, `formatUri` would be a back door: you could not get a bad address *past*
+`parseUri`, but you could *create* one.
+
+Parsing alone is not enough, and this is the subtle part. Building text with
+`${...}` turns whatever it is given into text first. So if the id is missing, the
+address becomes:
+
+```text
+dsor://org_456/invoice/undefined
+```
+
+which parses perfectly. It is canonical, it is permanent, and it points at nothing. The
+types do not save you: `readonly id: string` is erased before Node runs the file, so a
+`null` from a database row in step 09 arrives here and quietly becomes the word
+`"null"`. Comparing the parts catches it, because `"undefined"` is not `undefined`.
 
 ## Break it
 
-This step has four locks on the amount, and they are not the same lock. Break each one
-and watch which tool complains. Change the code back after each break.
+Four breaks, each one showing a different guard. Change the code back after each.
 
-**1. Break the text, and a test catches it.** In `src/invoice.ts`, change INV-1008's
-amount from `money("31400.00", "USD")` to `money("31400", "USD")`. It is still a valid
-decimal string, so the guard is happy and the compiler is happy. Run `pnpm test`:
-
-```text
-AssertionError: expected '31400' to be '31400.00' // Object.is equality
-Expected: "31400.00"
-Received: "31400"
- Test Files  1 failed | 2 passed (3)
-      Tests  3 failed | 10 passed (13)
-```
-
-Only a test knows what the string is supposed to *say*.
-
-**2. Break the type, and the compiler catches it.** Change it to `money(31400, "USD")`
-— the number. Run `pnpm typecheck`:
+**1. Loosen `TENANT_ID` to the schema's own pattern.** In `src/uri.ts`, change it to
+`/^[A-Za-z0-9_-]+$/` — the exact pattern the normative schema uses for the tenant part.
+Run `pnpm test`:
 
 ```text
-src/invoice.ts(42,19): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+ FAIL  test/uri.test.ts > parseUri > DSOR-RID-01b: a company name in place of a tenant id is refused
+AssertionError: expected function to throw an error, but it didn't
+ FAIL  test/uri.test.ts > parseUri > DSOR-RID-01b: the refusal says which half was wrong
+ FAIL  test/uri.test.ts > formatUri > DSOR-RID-01b: refuses to write an address it would not read
+ Test Files  1 failed | 3 passed (4)
+      Tests  3 failed | 21 passed (24)
 ```
 
-You never ran the code, and no test had to fail.
+This is the break to sit with. The pattern you just pasted in is not wrong — it is what
+the specification's schema actually says. It is simply not enough on its own, and three
+tests say so. `dsor://acme/invoice/INV-1008` is now accepted.
 
-**3. Break the content, and `money()` catches it.** Change it to
-`money("2,500 dollars-ish", "USD")`. This is a perfectly good `string`, so the compiler
-has nothing to say. Run `pnpm test`:
-
-```text
-TypeError: not a decimal amount: "2,500 dollars-ish"
- Test Files  1 failed | 2 passed (3)
-      Tests  7 passed (7)
-```
-
-Read that test count carefully. Seven tests passed, not thirteen. The six tests in
-`invoice.test.ts` did not fail — they never ran. `money()` threw while the file was
-being loaded, before any test in it started. A bad amount stops at the moment it is
-made, which is the whole point of checking there.
-
-This is the break that matters most. Without `money()`, that line compiles and the
-`Money` type has nothing to say, because `"2,500 dollars-ish"` is a string. Here it
-would still be caught, because a test pins INV-1008's amount. Nothing would catch it in
-a record that no test happens to pin — a payment in step 17, say. A guard at the point
-the money is made covers every record; a test covers the ones you remembered to write.
-
-**4. Break the lock on changing a stored amount — twice, because there are two.**
-
-First delete the word `readonly` from `value` in `src/money.ts`. Run `pnpm typecheck`:
-
-```text
-test/invoice.test.ts(99,7): error TS2578: Unused '@ts-expect-error' directive.
-```
-
-That error *is* the test. The line said "what comes next must not compile"; with
-`readonly` gone it compiles, so the directive is unused and the build fails.
-
-Now put `readonly` back and delete `Object.freeze` from the `return` instead. Run
-`pnpm test`:
+**2. Remove the `^` and `$`.** These mean "the whole text must be the address, and
+nothing else". Without them a match anywhere inside a longer string counts:
 
 ```text
 AssertionError: expected function to throw an error, but it didn't
-AssertionError: expected false to be true // Object.is equality
- Test Files  1 failed | 2 passed (3)
-      Tests  2 failed | 11 passed (13)
+ Test Files  1 failed | 3 passed (4)
+      Tests  2 failed | 22 passed (24)
 ```
 
-The compiler was satisfied and the amount changed anyway. `readonly` is a promise the
-compiler checks and then **erases**: Node deletes every type before it runs the file, so
-at run time there is nothing left to stop an assignment. `Object.freeze` is the run-time
-half. You need both, and the two breaks above prove neither one covers for the other.
+`dsor://org_456/invoice/INV-1008 and more` now parses cleanly.
 
-Change everything back and run `pnpm check` to confirm 13 tests pass again.
+**3. Type the id twice.** In `makeInvoice`, change `id` inside `formatUri` to the
+literal `"INV-1008"`. Run `pnpm test`:
+
+```text
+AssertionError: expected 'dsor://org_456/invoice/INV-1008' to be 'dsor://org_456/invoice/INV-1009' // Object.is equality
+ Test Files  1 failed | 3 passed (4)
+      Tests  2 failed | 22 passed (24)
+```
+
+INV-1009 now claims INV-1008's address. Nothing crashed, nothing looked broken, and two
+different invoices answer to the same name.
+
+**4. Misspell a part.** Change `id` to `invoiceId: id` in that same call. Run
+`pnpm typecheck`:
+
+```text
+src/invoice.ts(50,57): error TS2353: Object literal may only specify known properties, and 'invoiceId' does not exist in type 'ResourceUri'.
+```
+
+No test had to run. Change everything back and run `pnpm check` to see 24 tests pass.
 
 ## Build it yourself with Claude Code
 
-This folder **is** a learner copy. Its name starts with `my_`, which is the convention
-for a copy you build yourself, kept beside the official steps. The official
-`01_one_invoice_in_memory` is still listed as planned in the [map](../readme.md), so
-there is nothing to compare against yet. When it is published, compare then.
-
-To build your own copy of a step, you copy the step before it and start Claude Code
-inside the copy. The human does the copying, not the agent:
+This folder is a learner copy — the `my_` prefix is the convention for a copy you build
+yourself. The official `02_canonical_uris` is still listed as planned in the
+[map](../readme.md), so there is nothing to compare against yet.
 
 ```bash
 cd docs/baby_steps_tutorials
-cp -r 00_foundation my_01_one_invoice_in_memory
-cd my_01_one_invoice_in_memory
+cp -r my_01_one_invoice_in_memory my_02_canonical_uris
+cd my_02_canonical_uris
 rm -rf node_modules && pnpm install
 claude
 ```
 
-Then paste one line, because `CLAUDE.md` and the `build-baby-step` skill travelled with
-the copy and already know the rest:
+Then paste one line:
 
 ```text
-Use the build-baby-step skill in learner mode. We are building step 01,
-one_invoice_in_memory.
+Use the build-baby-step skill in learner mode. We are building step 02,
+canonical_uris.
 ```
 
 Ask for a plan before any code, and ask to see the new tests fail before they pass. The
@@ -259,77 +251,76 @@ general directions are in the
 
 ## Check yourself
 
-1. Why is the amount stored as `"31400.00"` and not as `31400.00`?
-2. `31400 + 0.1 + 0.1 + 0.1` is not `31400.3`. Would writing the result as
-   `.toFixed(2)` fix the problem?
-3. Why does the amount carry a currency code, when every invoice in this step is in
-   USD anyway?
-4. `getInvoice("INV-9999")` returns `undefined` rather than throwing an error. Why is
-   that a reasonable choice here?
-5. `Money.value` is `readonly`, and the code *also* calls `Object.freeze`. Why is one
-   of them not enough?
-6. A test passed and `pnpm typecheck` failed. Is the step done?
+1. Why is `dsor://acme/invoice/INV-1008` a bad address, when `acme` is a real company?
+2. The specification's own schema pattern accepts `acme` as a tenant. Is the schema
+   wrong?
+3. `TENANT_ID` is `/^org_[0-9]+$/`. Which part of that is the specification's decision,
+   and which part is ours?
+4. Why does `formatUri` read the address back and compare the parts, instead of just
+   parsing it?
+5. `makeInvoice` builds the address from the `id` it was given. What goes wrong if you
+   type the id a second time instead?
 
 <details>
 <summary>Answers</summary>
 
-1. Because a decimal number is stored in binary, and most decimals have no exact binary
-   form. `0.1 + 0.2` is `0.30000000000000004`. Text keeps exactly the digits that were
-   written, so nothing drifts.
-2. No. `.toFixed(2)` rounds the *display*. The number underneath is still wrong, and the
-   next calculation uses the wrong number. Rounding hides the error instead of removing
-   it, which is worse, because now nobody can see it.
-3. Because a rule about money is a rule about an amount in a currency. A later rule will
-   say "above 25,000 USD, get the CFO's approval". Applied to a bare `50000000` with no
-   currency, that rule cannot give an honest answer.
-4. Because the invoice being absent is a normal thing to find out, not a failure of the
-   system. The caller asked a question and got an answer. Errors that a caller can see
-   get a proper shape in step 04.
-5. They work at different times. `readonly` is checked by the compiler and then erased,
-   because Node deletes all types before running the file, so it stops *your* code from
-   being written wrongly and stops nothing at run time. `Object.freeze` is a real lock
-   on the object while the program runs. Break 4 shows each one failing on its own.
-6. No. A step is done when `pnpm check` passes, and `pnpm check` runs the typecheck
-   first and the tests second.
+1. Because a name changes. If Acme is renamed, every record written before the rename
+   points at a company under a name that no longer exists, and you can no longer prove
+   the invoice the CFO approved is the invoice that was paid. `org_456` means nothing
+   to anybody, so nobody renames it.
+2. No. The schema checks the **shape** of an address, and it does that correctly.
+   `DSOR-RID-01b` is about **meaning** — is this part an id or a name — and no pattern
+   can see that in the text alone. Break 1 is exactly this: the schema's pattern is
+   right and insufficient at the same time.
+3. The specification decides that a tenant id is an immutable opaque identifier, and
+   that no name or alias may appear in an address. It never says what an id looks like.
+   `org_` followed by digits is our deployment's convention, which is why it lives in
+   one line that another deployment would change.
+4. Parsing alone only proves the text is a well-formed address. Building the text
+   converts whatever it was given into text first, so a missing id becomes the word
+   `"undefined"` and `dsor://org_456/invoice/undefined` parses perfectly — canonical,
+   permanent, and pointing at nothing. Comparing the parts catches that, because
+   `"undefined"` is not `undefined`.
+5. The address and the record drift apart. Break 3 shows INV-1009 carrying INV-1008's
+   address: nothing crashes, and two invoices answer to one name, so every log line and
+   approval quoting that address is confidently wrong.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-MON-01 · L1]** A monetary amount MUST be represented as a `money` object with
-  a decimal-string value and an ISO 4217 currency code.
-  ([§9](../../../specs/dsor/01-model.md#9-money-and-currency))
+- **[DSOR-RID-01a · L1]** Every DSoR resource MUST have a canonical URI of the form
+  `dsor://{tenant_id}/{entity}/{id}`.
+  ([§5](../../../specs/dsor/01-model.md#5-resource-identity))
+- **[DSOR-RID-01b · L1]** A display name, slug, or alias MUST NOT appear in a canonical
+  URI; `tenant_id` is an immutable opaque identifier.
+  ([§5](../../../specs/dsor/01-model.md#5-resource-identity))
 
-Three things together meet it, and no one of them is enough:
+Both are met for the addresses this step creates, and both come with a limit worth
+knowing.
 
-| What | Catches |
+**`DSOR-RID-01b` is checked on the tenant segment only.** Read the rule again: a name
+"MUST NOT appear in a canonical URI" — the whole address, not just the company part.
+§5's **Common mistake** names the other half too: *"using the company's name (`acme`)
+or one system's internal row id as the identifier"*. `TENANT_ID` stops the first.
+Nothing here stops the second, so `dsor://org_456/vendor/acme` and
+`dsor://org_456/invoice/row-4182` both parse today. The entity and id segments are
+still trusted text. They stop being trusted text in step 03, where an operation
+contract says which entity names exist, and in step 34, where a connector owns the
+mapping from a canonical id to a system's own id.
+
+**`TENANT_ID` is narrower than the rule.** It refuses `acme`, and it would also refuse
+a perfectly valid opaque id of another shape, such as a UUID. That is this deployment's
+choice, written in one line so another deployment can change it.
+
+Three rules in §5 are not met yet and are not claimed:
+
+| Rule | Why not |
 | --- | --- |
-| the `Money` type | an amount that is a number, or has no currency at all |
-| `money()` | text that is not a decimal, and a currency that is not three upper-case letters |
-| the tests in `test/money.test.ts` | that `money()` really does refuse, and says why |
+| `DSOR-RID-02a` | Needs a mapping from a canonical id to a system's own id. There is no connector until step 34. |
+| `DSOR-RID-02b` | Nothing reassigns ids, because nothing creates them. Invoices are a fixed list. |
+| `DSOR-RID-03` | Says the same address is used across every interface, in audit, events and approvals. There is one interface and no audit log yet. |
 
-The two *patterns* inside `money()` are copied from the specification's own JSON Schema,
-`packages/spec/schemas/common.schema.json`. Be exact about what that buys, because two
-gaps are easy to read past:
-
-- **The currency check is a shape check.** `^[A-Z]{3}$` accepts `ZZZ` and `QQQ`, which
-  are not assigned currencies. Checking a code against the real ISO 4217 list needs the
-  list, and this step does not have one. `test/money.test.ts` records the gap in a test
-  so that nobody has to rediscover it.
-- **`money()` is a convention, not a gate.** TypeScript matches types by their shape, so
-  a plain `{ value: "oops", currency: "lol" }` is a valid `Money` as far as the compiler
-  is concerned, and nothing forces a future step to call `money()`. The schema also sets
-  `additionalProperties: false`, which an interface cannot express — an extra field
-  rides along unnoticed.
-
-So this step meets `DSOR-MON-01` for every amount built through `money()`, which is
-every amount in it. Making the guard the only door needs more of the type system than
-belongs in step 01. Validating at a boundary, where it cannot be skipped, is what
-operation contracts do in step 03.
-
-`DSOR-MON-02` says that monetary arithmetic and comparison MUST use decimal arithmetic.
-This step does no arithmetic on money, so there is nothing yet to meet it with. Adding
-and comparing amounts safely is step 26.
-
-**Next:** step 02, canonical URIs — giving every record one permanent address,
-`dsor://org_456/invoice/INV-1008`.
+**Next:** step 03, operations and contracts — every action a caller can take becomes a
+named operation with a spec sheet, and a registry that refuses a contract with a
+missing field.
