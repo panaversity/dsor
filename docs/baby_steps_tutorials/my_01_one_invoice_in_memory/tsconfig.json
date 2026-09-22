@@ -1,0 +1,33 @@
+{
+  // One file, no inheritance, so you can read every setting this step uses.
+  "compilerOptions": {
+    // Modern JavaScript, and Node's own rules for finding modules.
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+
+    // Catch mistakes early. These stay on for every step.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Node runs our .ts files directly by deleting the types. These three
+    // settings keep us inside what Node can delete (see the README).
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+
+    // Every exported function states its return type, so a reader never has to guess.
+    "isolatedDeclarations": true,
+    "declaration": true,
+
+    // We never build. TypeScript only checks; Node and vitest run the source.
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "test"]
+}
