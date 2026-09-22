@@ -1,177 +1,335 @@
-# Step 00 · The foundation
+# Step 01 · One invoice in memory
 
-**New in this step:** Node.js, TypeScript, pnpm, vitest, and the Claude Code setup that
-every later step inherits. Nothing here is about DSoR yet.
+**New in this step:** the first business record, and the first rule of the
+specification — money is an amount *and* a currency, and the amount is written as text.
 
 ## In plain words
 
-Before you build a house you pour a floor. This step is the floor. It is a tiny
-TypeScript project with one function, one program that runs it, and two tests. It
-proves that your tools work. Every one of the next 51 steps begins as a copy of the
-step before it, so everything in this folder travels with you to the end, including
-the instructions that tell Claude Code how to build a step.
+An invoice is the first thing DSoR knows about. This step adds a type that says what an
+invoice is, two invoices held in a plain array, and one function that finds an invoice
+by its id. "In memory" means the array lives in the running program and disappears when
+the program stops. There is no database until step 09.
+
+The amount is the part to look at. It is not the number `31400`. It is
+`{ value: "31400.00", currency: "USD" }`: a decimal written as text, together with a
+three-letter currency code. That shape is rule `DSOR-MON-01`, one of the shortest rules
+in the specification, and one of the easiest to get wrong.
 
 ## Why it matters
 
-When a test fails in step 20, you need to know the cause is your new code and not your
-setup. If this step runs on your computer, you can trust the tools and think only about
-the ideas.
-
-This step also sets four habits that the rest of the tutorial depends on:
-
-1. **Small pure functions.** `greet` takes an input and returns an output. It reads
-   nothing else and changes nothing else. Almost every check DSoR makes will be built
-   from functions like this, because they are easy to test.
-2. **Test the "no" as carefully as the "yes".** There is a test for the greeting and a
-   test for the refusal. From step 06 onward, most of what DSoR does is refuse things.
-3. **Strict TypeScript.** The compiler is set to complain early, and every exported
-   function states its return type.
-4. **No build step.** Node runs the `.ts` files directly.
-
-## What is in this folder
+INV-1008 is 31,400.00 USD owed to VENDOR-44. Suppose the amount were an ordinary
+number, and three late fees of ten cents each were added to it:
 
 ```text
-00_foundation/
-  README.md            this page
-  package.json         the project: its name, its scripts, its three tools
-  pnpm-workspace.yaml  makes this folder a project of its own, with two safety settings
-  pnpm-lock.yaml       the exact versions that were tested. Do not edit by hand
-  tsconfig.json        how strict TypeScript is. Every setting has a comment
-  vitest.config.ts     tells the test runner where this step's tests live
-  src/greet.ts         one pure function
-  src/main.ts          a program that calls it
-  test/greet.test.ts   two tests: one "yes", one "no"
-  CLAUDE.md            what Claude Code must know when it works in a step
-  .claude/             the build-baby-step skill, and which commands may run unasked
-  .gitignore           keeps node_modules and secrets out of git
+31400 + 0.1 + 0.1 + 0.1  =  31400.299999999996
 ```
 
-This folder is self-contained. It works where it is, inside the dsor repository, and
-it works if you copy it anywhere else on your computer.
+Not 31,400.30. Computers store decimals in binary, and 0.1 has no exact binary form, so
+the sum lands just beside the right answer. The books are now wrong by a fraction of a
+cent. Nobody can say where it went, and an auditor who finds a difference nobody can
+explain does not stop looking. Text does not drift. `"31400.00"` holds exactly what was
+written, for as long as it is kept.
 
-**If you received this step as `00_foundation.zip`:** its files must end up directly in
-`docs/baby_steps_tutorials/00_foundation/`. Check that
-`docs/baby_steps_tutorials/00_foundation/package.json` exists. If you see
-`00_foundation/00_foundation/package.json`, the files went one folder too deep; move
-them up.
+The currency half matters for a different reason. `31400` on its own does not say
+31,400 of *what*. In step 27 you will write a rule that says "payments above 25,000 USD
+need the CFO's approval". A rule like that cannot be applied honestly to an amount that
+carries no currency. The specification records the real version of this bug: a rule
+written as `amount > 25000 && currency == "USD"` let a payment of 50,000,000 PKR
+straight through, because the currency was not USD, so the condition was false. Keeping
+the currency beside the amount from the first line is what makes that fixable later.
 
-## Run it
-
-You need **Node.js 22.18 or newer** and **pnpm**.
-
-```bash
-node --version             # v22.18 or higher
-corepack enable            # gives you pnpm; or: npm install -g pnpm
-```
-
-Then, in this folder:
-
-```bash
-cd docs/baby_steps_tutorials/00_foundation
-pnpm install               # installs this step only
-pnpm start                 # prints: Hello, accounts-payable-fte.
-pnpm test                  # 2 tests pass
-pnpm typecheck             # prints nothing, which means no type errors
-pnpm check                 # typecheck, then test. Run this before you call a step done
-```
-
-### Why the imports end in `.ts`
-
-Look at the first line of `src/main.ts`: `import { greet } from "./greet.ts"`. Node can
-run a TypeScript file by deleting the type annotations and running what is left. It
-does not rename files, so the import has to name the real file, `greet.ts`. Three
-settings in `tsconfig.json` keep our code inside what Node can delete. The payoff is
-that there is never a build step between you and your running code.
-
-## Break it
-
-Do both. Each takes a minute, and each shows you what a tool is for.
-
-**1. Break the behaviour, and let a test catch it.** In `src/greet.ts`, change
-`Hello` to `Hi`. Run `pnpm test`:
+## What changed since step 00
 
 ```text
-Expected: "Hello, accounts-payable-fte."
-Received: "Hi, accounts-payable-fte."
-Tests  1 failed | 1 passed (2)
+my_01_one_invoice_in_memory/
+  src/money.ts          NEW  the Money type, and money() which refuses bad amounts
+  src/invoice.ts        NEW  the Invoice type, two invoices, and getInvoice
+  test/money.test.ts    NEW  five tests: one "yes", three refusals, one recorded gap
+  test/invoice.test.ts  NEW  six tests: reading, searching, refusing, the float bug, immutability
+  src/main.ts        CHANGED now reads INV-1008 and prints it
+  package.json       CHANGED name and description only
 ```
 
-The test knew what the function promised. Change it back.
-
-**2. Break the types, and let the compiler catch it.** Change the last line of
-`greet` to `return name.length;`. Run `pnpm typecheck`:
-
-```text
-src/greet.ts(9,3): error TS2322: Type 'number' is not assignable to type 'string'.
-```
-
-The function promised a `string`. You never even ran the code. Change it back, and run
-`pnpm check` to confirm everything is green again.
-
-## Build it yourself with Claude Code
-
-This folder is the finished step. You learn more by building your own and comparing.
-Step 00 is the one step you build from an empty folder, so its prompt is complete in
-itself. Make a folder beside this one and start Claude Code inside it:
+Everything else is step 00, byte for byte. To see that for yourself:
 
 ```bash
 cd docs/baby_steps_tutorials
-mkdir my_00_foundation && cd my_00_foundation
+diff -rq --exclude=node_modules --exclude=pnpm-lock.yaml \
+  00_foundation my_01_one_invoice_in_memory
+```
+
+```text
+Files 00_foundation/README.md and my_01_one_invoice_in_memory/README.md differ
+Files 00_foundation/package.json and my_01_one_invoice_in_memory/package.json differ
+Only in my_01_one_invoice_in_memory/src: invoice.ts
+Files 00_foundation/src/main.ts and my_01_one_invoice_in_memory/src/main.ts differ
+Only in my_01_one_invoice_in_memory/src: money.ts
+Only in my_01_one_invoice_in_memory/test: invoice.test.ts
+Only in my_01_one_invoice_in_memory/test: money.test.ts
+```
+
+Seven lines, and six of them are this step. To read one of those changes in full, name
+the two files:
+
+```bash
+git diff --no-index 00_foundation/src/main.ts my_01_one_invoice_in_memory/src/main.ts
+```
+
+Give `git diff --no-index` the two folders instead and it will also walk
+`node_modules`, which both folders have after `pnpm install`. That is why the folder
+comparison above uses `diff` with an exclude.
+
+Search the folder for `NEW IN STEP 01` and you will find this step's lesson and nothing
+else. Each step removes the previous step's markers, so the marker always points at the
+one new idea.
+
+## Run it
+
+```bash
+cd docs/baby_steps_tutorials/my_01_one_invoice_in_memory
+pnpm install
+pnpm start
+```
+
+```text
+Hello, accounts-payable-fte.
+INV-1008: 31400.00 USD to VENDOR-44 (issued)
+INV-9999: not found.
+```
+
+The last line matters as much as the one above it. `getInvoice` returns `undefined` when
+there is no such invoice. A missing record is an ordinary answer, not a crash. Proper
+error shapes arrive in step 04.
+
+`(issued)` is the invoice's **status**: where it has got to in its life. An invoice is
+`draft` before it is sent, `issued` once it is, then `paid` or `cancelled`. In this step
+the status is only a label on the record. Nothing reads it before acting. Turning "a
+payment needs an issued invoice" into a rule the system checks is step 32.
+
+```bash
+pnpm check                 # typecheck, then test. 13 tests pass
+```
+
+### Why some tests are titled with a rule id
+
+A test that proves a rule begins with that rule's id, then says in plain words what it
+proves:
+
+```ts
+it("DSOR-MON-01: INV-1008 is 31400.00 USD, an amount and a currency", () => { … });
+```
+
+The convention is not decoration. In `packages/` — the repository's own implementation,
+not this tutorial — `pnpm coverage:req` reads test titles to count which of the 268
+rules a test names. That command walks `packages/` only, so it never sees this folder,
+and neither does the repository's `pnpm test:unit`. CI does check this folder's links
+and its formatting; it does not run its tests. Your step is run by you. You use the
+convention here so the habit is already yours when you write a test that does get
+counted.
+
+Three of the eleven new tests carry no rule id. Two of them test `getInvoice` — that it
+searches the list, and that it returns `undefined` for a missing invoice — and no rule
+in §9 governs either. The third is the float test. It does not touch this step's code at
+all, so it would still pass if `src/` were deleted: it shows the fact about computers
+that the rule exists to guard against. That is motivation, not proof, and a title
+claiming otherwise would misdescribe what the test checks.
+
+### Why `getInvoice` makes the compiler complain
+
+`getInvoice` returns `Invoice | undefined`. TypeScript will not let you reach
+`invoice.amount` until you have ruled out `undefined`. The test answers that with a
+check the compiler can follow:
+
+```ts
+if (invoice === undefined) {
+  throw new Error("INV-1008 is missing from the list of invoices");
+}
+```
+
+You could write `invoice!.amount` instead. The `!` tells the compiler to stop asking
+without answering the question, and in a system that moves money that habit is how a
+crash reaches production. Answer the compiler; do not silence it.
+
+## Break it
+
+This step has four locks on the amount, and they are not the same lock. Break each one
+and watch which tool complains. Change the code back after each break.
+
+**1. Break the text, and a test catches it.** In `src/invoice.ts`, change INV-1008's
+amount from `money("31400.00", "USD")` to `money("31400", "USD")`. It is still a valid
+decimal string, so the guard is happy and the compiler is happy. Run `pnpm test`:
+
+```text
+AssertionError: expected '31400' to be '31400.00' // Object.is equality
+Expected: "31400.00"
+Received: "31400"
+ Test Files  1 failed | 2 passed (3)
+      Tests  3 failed | 10 passed (13)
+```
+
+Only a test knows what the string is supposed to *say*.
+
+**2. Break the type, and the compiler catches it.** Change it to `money(31400, "USD")`
+— the number. Run `pnpm typecheck`:
+
+```text
+src/invoice.ts(42,19): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+```
+
+You never ran the code, and no test had to fail.
+
+**3. Break the content, and `money()` catches it.** Change it to
+`money("2,500 dollars-ish", "USD")`. This is a perfectly good `string`, so the compiler
+has nothing to say. Run `pnpm test`:
+
+```text
+TypeError: not a decimal amount: "2,500 dollars-ish"
+ Test Files  1 failed | 2 passed (3)
+      Tests  7 passed (7)
+```
+
+Read that test count carefully. Seven tests passed, not thirteen. The six tests in
+`invoice.test.ts` did not fail — they never ran. `money()` threw while the file was
+being loaded, before any test in it started. A bad amount stops at the moment it is
+made, which is the whole point of checking there.
+
+This is the break that matters most. Without `money()`, that line compiles and the
+`Money` type has nothing to say, because `"2,500 dollars-ish"` is a string. Here it
+would still be caught, because a test pins INV-1008's amount. Nothing would catch it in
+a record that no test happens to pin — a payment in step 17, say. A guard at the point
+the money is made covers every record; a test covers the ones you remembered to write.
+
+**4. Break the lock on changing a stored amount — twice, because there are two.**
+
+First delete the word `readonly` from `value` in `src/money.ts`. Run `pnpm typecheck`:
+
+```text
+test/invoice.test.ts(99,7): error TS2578: Unused '@ts-expect-error' directive.
+```
+
+That error *is* the test. The line said "what comes next must not compile"; with
+`readonly` gone it compiles, so the directive is unused and the build fails.
+
+Now put `readonly` back and delete `Object.freeze` from the `return` instead. Run
+`pnpm test`:
+
+```text
+AssertionError: expected function to throw an error, but it didn't
+AssertionError: expected false to be true // Object.is equality
+ Test Files  1 failed | 2 passed (3)
+      Tests  2 failed | 11 passed (13)
+```
+
+The compiler was satisfied and the amount changed anyway. `readonly` is a promise the
+compiler checks and then **erases**: Node deletes every type before it runs the file, so
+at run time there is nothing left to stop an assignment. `Object.freeze` is the run-time
+half. You need both, and the two breaks above prove neither one covers for the other.
+
+Change everything back and run `pnpm check` to confirm 13 tests pass again.
+
+## Build it yourself with Claude Code
+
+This folder **is** a learner copy. Its name starts with `my_`, which is the convention
+for a copy you build yourself, kept beside the official steps. The official
+`01_one_invoice_in_memory` is still listed as planned in the [map](../readme.md), so
+there is nothing to compare against yet. When it is published, compare then.
+
+To build your own copy of a step, you copy the step before it and start Claude Code
+inside the copy. The human does the copying, not the agent:
+
+```bash
+cd docs/baby_steps_tutorials
+cp -r 00_foundation my_01_one_invoice_in_memory
+cd my_01_one_invoice_in_memory
+rm -rf node_modules && pnpm install
 claude
 ```
 
-Then paste:
+Then paste one line, because `CLAUDE.md` and the `build-baby-step` skill travelled with
+the copy and already know the rest:
 
 ```text
-Teach me by building, one file at a time. Create a minimal TypeScript project here:
-pnpm, strict TypeScript that Node can run directly without a build step, and vitest.
-One pure function greet(name) that returns "Hello, <name>." and refuses an empty name,
-a main.ts that prints greet("accounts-payable-fte"), and two tests: one for the
-greeting and one for the refusal. Scripts: start, test, typecheck, check. Explain each
-file in two or three plain sentences before you create it, and wait for me to say "go".
-Do not look at ../00_foundation until I ask you to compare.
+Use the build-baby-step skill in learner mode. We are building step 01,
+one_invoice_in_memory.
 ```
 
-When `pnpm check` is green in your folder:
-
-```text
-Now compare this folder with ../00_foundation. Explain every difference, and tell me
-which ones matter and why.
-```
-
-Then copy `CLAUDE.md` and the `.claude` folder from `../00_foundation` into your folder.
-From step 01 onward they travel with every copy, and the prompt becomes one line:
-"Use the build-baby-step skill in learner mode." The general directions are in the
+Ask for a plan before any code, and ask to see the new tests fail before they pass. The
+general directions are in the
 [tutorial overview](../readme.md#build-the-steps-with-claude-code).
 
 ## Check yourself
 
-1. What makes `greet` a *pure* function? Name one thing it would have to do to stop
-   being pure.
-2. Why is there a test for the empty name? What would you not know without it?
-3. `pnpm test` passed and `pnpm typecheck` failed. Is the step done?
-4. Why do the imports end in `.ts` and not `.js`?
-5. What is `pnpm-lock.yaml` for, and why should you not edit it by hand?
+1. Why is the amount stored as `"31400.00"` and not as `31400.00`?
+2. `31400 + 0.1 + 0.1 + 0.1` is not `31400.3`. Would writing the result as
+   `.toFixed(2)` fix the problem?
+3. Why does the amount carry a currency code, when every invoice in this step is in
+   USD anyway?
+4. `getInvoice("INV-9999")` returns `undefined` rather than throwing an error. Why is
+   that a reasonable choice here?
+5. `Money.value` is `readonly`, and the code *also* calls `Object.freeze`. Why is one
+   of them not enough?
+6. A test passed and `pnpm typecheck` failed. Is the step done?
 
 <details>
 <summary>Answers</summary>
 
-1. Its result depends only on its argument, and it changes nothing outside itself.
-   Reading a file, the clock, or a global variable, or writing to a log, would end that.
-2. It proves the refusal works. Without it you would only know the function says yes
-   to good input. You would not know it says no to bad input.
-3. No. A step is done when `pnpm check` passes, and that runs both.
-4. Node runs the TypeScript file itself and does not rename anything, so the import
-   must name the file that really exists.
-5. It records the exact version of every package that was installed and tested, so your
-   computer gets the same ones. pnpm writes it; a hand edit makes it lie.
+1. Because a decimal number is stored in binary, and most decimals have no exact binary
+   form. `0.1 + 0.2` is `0.30000000000000004`. Text keeps exactly the digits that were
+   written, so nothing drifts.
+2. No. `.toFixed(2)` rounds the *display*. The number underneath is still wrong, and the
+   next calculation uses the wrong number. Rounding hides the error instead of removing
+   it, which is worse, because now nobody can see it.
+3. Because a rule about money is a rule about an amount in a currency. A later rule will
+   say "above 25,000 USD, get the CFO's approval". Applied to a bare `50000000` with no
+   currency, that rule cannot give an honest answer.
+4. Because the invoice being absent is a normal thing to find out, not a failure of the
+   system. The caller asked a question and got an answer. Errors that a caller can see
+   get a proper shape in step 04.
+5. They work at different times. `readonly` is checked by the compiler and then erased,
+   because Node deletes all types before running the file, so it stops *your* code from
+   being written wrongly and stops nothing at run time. `Object.freeze` is a real lock
+   on the object while the program runs. Break 4 shows each one failing on its own.
+6. No. A step is done when `pnpm check` passes, and `pnpm check` runs the typecheck
+   first and the tests second.
 
 </details>
 
 ## The rules this step meets
 
-None yet. This step is only the floor. The first rule of the specification arrives in
-step 01: money is an amount *and* a currency, written as a decimal string
-(DSOR-MON-01).
+- **[DSOR-MON-01 · L1]** A monetary amount MUST be represented as a `money` object with
+  a decimal-string value and an ISO 4217 currency code.
+  ([§9](../../../specs/dsor/01-model.md#9-money-and-currency))
 
-**Next:** step 01, one invoice in memory.
+Three things together meet it, and no one of them is enough:
+
+| What | Catches |
+| --- | --- |
+| the `Money` type | an amount that is a number, or has no currency at all |
+| `money()` | text that is not a decimal, and a currency that is not three upper-case letters |
+| the tests in `test/money.test.ts` | that `money()` really does refuse, and says why |
+
+The two *patterns* inside `money()` are copied from the specification's own JSON Schema,
+`packages/spec/schemas/common.schema.json`. Be exact about what that buys, because two
+gaps are easy to read past:
+
+- **The currency check is a shape check.** `^[A-Z]{3}$` accepts `ZZZ` and `QQQ`, which
+  are not assigned currencies. Checking a code against the real ISO 4217 list needs the
+  list, and this step does not have one. `test/money.test.ts` records the gap in a test
+  so that nobody has to rediscover it.
+- **`money()` is a convention, not a gate.** TypeScript matches types by their shape, so
+  a plain `{ value: "oops", currency: "lol" }` is a valid `Money` as far as the compiler
+  is concerned, and nothing forces a future step to call `money()`. The schema also sets
+  `additionalProperties: false`, which an interface cannot express — an extra field
+  rides along unnoticed.
+
+So this step meets `DSOR-MON-01` for every amount built through `money()`, which is
+every amount in it. Making the guard the only door needs more of the type system than
+belongs in step 01. Validating at a boundary, where it cannot be skipped, is what
+operation contracts do in step 03.
+
+`DSOR-MON-02` says that monetary arithmetic and comparison MUST use decimal arithmetic.
+This step does no arithmetic on money, so there is nothing yet to meet it with. Adding
+and comparing amounts safely is step 26.
+
+**Next:** step 02, canonical URIs — giving every record one permanent address,
+`dsor://org_456/invoice/INV-1008`.
