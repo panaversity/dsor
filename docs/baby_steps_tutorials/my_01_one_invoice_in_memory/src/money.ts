@@ -9,10 +9,15 @@
 
 /** An amount of money. Never a `number`. */
 export interface Money {
-  /** A decimal written as text, such as "31400.00". */
-  value: string;
+  /**
+   * A decimal written as text, such as "31400.00".
+   *
+   * `readonly` means nobody can change it after the object is built. Without it, a
+   * caller who is handed this object could edit the stored amount in place.
+   */
+  readonly value: string;
   /** An ISO 4217 currency code, such as "USD". */
-  currency: string;
+  readonly currency: string;
 }
 
 // These two patterns are copied from the specification's own JSON Schema, at
@@ -41,5 +46,9 @@ export function money(value: string, currency: string): Money {
   if (!ISO_4217.test(currency)) {
     throw new TypeError(`not an ISO 4217 currency code: ${JSON.stringify(currency)}`);
   }
-  return { value, currency };
+  // `readonly` above is a promise to the compiler, and the compiler is the only one
+  // who hears it: Node deletes every type before it runs the file, so `readonly` is
+  // gone at run time. Object.freeze is the run-time half of the same promise. In a
+  // module, which is always strict mode, assigning to a frozen property throws.
+  return Object.freeze({ value, currency });
 }

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { getInvoice } from "../src/invoice.ts";
+import { money } from "../src/money.ts";
 
 describe("getInvoice", () => {
   it("DSOR-MON-01: INV-1008 is 31400.00 USD, an amount and a currency", () => {
@@ -72,3 +73,60 @@ describe("getInvoice", () => {
   });
 });
 
+// NEW IN STEP 01: a stored amount cannot be edited from outside.
+describe("the stored invoices", () => {
+  it("DSOR-MON-01: a caller cannot change a stored amount", () => {
+    const invoice = getInvoice("INV-1008");
+
+    if (invoice === undefined) {
+      throw new Error("INV-1008 is missing from the list of invoices");
+    }
+
+    // This one test checks two different locks.
+    //
+    // The compiler's lock is the `@ts-expect-error` line itself. It says "the next
+    // line must not compile". If anyone removes `readonly` from Money, the line
+    // starts compiling, the directive becomes unused, and `pnpm typecheck` fails
+    // with TS2578. A test that runs only at compile time is still a test.
+    //
+    // Be aware of what that directive cannot do: it is satisfied by ANY error on the
+    // next line, so a typo there would keep it happy while `readonly` was gone. That
+    // is why the run-time checks below do not rely on it.
+    //
+    // The run-time lock is Object.freeze, and it is a separate promise, because Node
+    // deletes `readonly` before it runs anything.
+    expect(() => {
+      // @ts-expect-error the fields are readonly, so this assignment must not compile
+      invoice.amount.value = "1.00";
+    }).toThrow(TypeError);
+
+    // And the next reader still sees the real amount.
+    expect(getInvoice("INV-1008")?.amount.value).toBe("31400.00");
+  });
+
+  // Freezing the Money is not enough on its own. It protects the amount object that
+  // is there; it does not stop a caller putting a different one in its place.
+  it("DSOR-MON-01: a caller cannot swap a stored amount for another one", () => {
+    const invoice = getInvoice("INV-1008");
+
+    if (invoice === undefined) {
+      throw new Error("INV-1008 is missing from the list of invoices");
+    }
+
+    expect(Object.isFrozen(invoice)).toBe(true);
+    expect(Object.isFrozen(invoice.amount)).toBe(true);
+
+    expect(() => {
+      // @ts-expect-error amount is readonly, so this assignment must not compile
+      invoice.amount = money("0.01", "USD");
+    }).toThrow(TypeError);
+
+    expect(() => {
+      // @ts-expect-error status is readonly, so this assignment must not compile
+      invoice.status = "paid";
+    }).toThrow(TypeError);
+
+    expect(getInvoice("INV-1008")?.amount.value).toBe("31400.00");
+    expect(getInvoice("INV-1008")?.status).toBe("issued");
+  });
+});

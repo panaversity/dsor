@@ -13,12 +13,18 @@ import { money, type Money } from "./money.ts";
  */
 export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
 
-/** One invoice, owed by us to a vendor. */
+/**
+ * One invoice, owed by us to a vendor.
+ *
+ * Every field is `readonly`, so a caller who is handed an invoice can read it and
+ * cannot change what is stored. `readonly Invoice[]` on the list below is not enough
+ * on its own: it freezes the array, not the objects inside it.
+ */
 export interface Invoice {
-  id: string;
-  vendor: string;
-  amount: Money;
-  status: InvoiceStatus;
+  readonly id: string;
+  readonly vendor: string;
+  readonly amount: Money;
+  readonly status: InvoiceStatus;
 }
 
 // The running example of the specification. Every step of this tutorial uses the same
@@ -26,22 +32,25 @@ export interface Invoice {
 //
 // The amounts go through money(), so an amount that is not a decimal string with an
 // ISO 4217 code fails here, when the file is first loaded, and not later in a payment.
-const invoices: readonly Invoice[] = [
-  {
+//
+// Object.freeze does at run time what `readonly` does at compile time. Both are
+// needed, because Node deletes the types before it runs the file.
+const invoices: readonly Invoice[] = Object.freeze([
+  Object.freeze({
     id: "INV-1008",
     vendor: "VENDOR-44",
     amount: money("31400.00", "USD"),
     status: "issued",
-  },
+  }),
   // A second invoice, so that a test can prove getInvoice searches the list instead
   // of always handing back the first entry.
-  {
+  Object.freeze({
     id: "INV-1009",
     vendor: "VENDOR-44",
     amount: money("2500.00", "USD"),
     status: "draft",
-  },
-];
+  }),
+]);
 
 /**
  * Finds one invoice by its id.
