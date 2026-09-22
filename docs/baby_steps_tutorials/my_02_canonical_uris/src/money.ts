@@ -1,4 +1,4 @@
-// NEW IN STEP 01: money is an amount AND a currency, and the amount is text.
+// Money is an amount AND a currency, and the amount is text.
 //
 // Why text? Computers store decimals in binary, and some decimals have no exact
 // binary form. So 0.1 + 0.2 is 0.30000000000000004, not 0.3. For money that is a

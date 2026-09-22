@@ -1,4 +1,4 @@
-// NEW IN STEP 01: the first tests that prove a rule of the specification.
+// The first tests that prove a rule of the specification.
 //
 // A test that proves a rule starts its title with that rule's id. A test that only
 // shows why a rule exists does not. The difference matters, and both kinds are here.
@@ -73,7 +73,7 @@ describe("getInvoice", () => {
   });
 });
 
-// NEW IN STEP 01: a stored amount cannot be edited from outside.
+// A stored amount cannot be edited from outside.
 describe("the stored invoices", () => {
   it("DSOR-MON-01: a caller cannot change a stored amount", () => {
     const invoice = getInvoice("INV-1008");

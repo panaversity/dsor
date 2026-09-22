@@ -1,4 +1,4 @@
-// NEW IN STEP 01: the first business entity, and a place to keep it.
+// The first business entity, and a place to keep it.
 //
 // "In memory" means a plain array in this file. There is no database until step 09.
 // Everything else about an invoice stays the same when the storage changes, which is

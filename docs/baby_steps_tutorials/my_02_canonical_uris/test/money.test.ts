@@ -1,4 +1,4 @@
-// NEW IN STEP 01: the refusals. A rule with no refusal test is a rule nobody has.
+// The refusals. A rule with no refusal test is a rule nobody has.
 //
 // The cases below are the ones money() has to reject. Its two patterns come from the
 // specification's own JSON Schema, packages/spec/schemas/common.schema.json.
