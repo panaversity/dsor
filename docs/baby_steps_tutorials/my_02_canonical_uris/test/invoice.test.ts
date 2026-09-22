@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { getInvoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
+import { parseUri } from "../src/uri.ts";
 
 describe("getInvoice", () => {
   it("DSOR-MON-01: INV-1008 is 31400.00 USD, an amount and a currency", () => {
@@ -128,5 +129,32 @@ describe("the stored invoices", () => {
 
     expect(getInvoice("INV-1008")?.amount.value).toBe("31400.00");
     expect(getInvoice("INV-1008")?.status).toBe("issued");
+  });
+});
+
+// NEW IN STEP 02: every invoice carries its own permanent address.
+describe("an invoice's address", () => {
+  it("DSOR-RID-01a: INV-1008's address is dsor://org_456/invoice/INV-1008", () => {
+    expect(getInvoice("INV-1008")?.uri).toBe("dsor://org_456/invoice/INV-1008");
+    expect(getInvoice("INV-1009")?.uri).toBe("dsor://org_456/invoice/INV-1009");
+  });
+
+  // If an invoice's address ever named a different record, every log line and every
+  // approval pointing at it would be pointing at the wrong invoice. No rule id: this
+  // guards our own code, not a sentence of the specification.
+  it("the id inside the address is the invoice's own id", () => {
+    for (const id of ["INV-1008", "INV-1009"]) {
+      const invoice = getInvoice(id);
+
+      if (invoice === undefined) {
+        throw new Error(`${id} is missing from the list of invoices`);
+      }
+
+      expect(parseUri(invoice.uri)).toEqual({
+        tenant: "org_456",
+        entity: "invoice",
+        id: invoice.id,
+      });
+    }
   });
 });
