@@ -1,149 +1,152 @@
-# Step 03 · Operations and contracts
+# Step 04 · Result and error envelopes
 
-**New in this step:** every action a caller can take has a name and a spec sheet, and a
-bad spec sheet stops the program before it answers anything.
+**New in this step:** every refusal comes back with a code and says whether trying again
+could ever help, instead of being a thrown error with a sentence in it.
 
 ## In plain words
 
-Until now, code called `getInvoice("INV-1008")` directly. This step stops that.
+Until now, when something was refused your code threw an error:
 
-Every action becomes a named **operation**. `invoice.get` reads one invoice.
-`invoice.issue` turns a draft into an issued invoice. And every operation has a
-**contract**: a document that describes it. Does it read, or change something? Which
-permission does it need? How risky is it? Can it be undone?
+```text
+TypeError: INV-1009 is issued, and only a draft invoice can be issued
+```
 
-Two names for that first question, because the specification uses them. An operation that
-only reads is a **query**. One that changes something is a **command**. `invoice.get` is a
-query; `invoice.issue` is a command. And each operation needs a **handler**: the code that
-actually carries it out.
+A person can read that. A program cannot *act* on it. Should it try again in a minute?
+Never try again? Fix its input and retry? The sentence does not say, so the caller has to
+guess — and a caller that guesses wrong about money sends a second payment.
 
-Both contracts ship in this step. Only `invoice.get` is carried out. Actually changing an
-invoice is a second idea, and a step is allowed one. "A contract without a handler, on
-purpose", below, says where the change goes and why.
+An **envelope** is a standard outer wrapper around every answer, so a caller always knows
+where to look. This step adds two, both from the specification:
 
-The contracts are JSON files in `src/contracts/`, because a spec sheet is *data*, not
-code. A **registry** loads them all when the program starts. If one is broken, the
-program refuses to start.
+An **error envelope** carries four things:
 
-That last sentence is the whole step. Not "the request fails" — the program does not
-start.
+| Field | What it holds |
+|---|---|
+| `code` | one of 32 fixed names, such as `CONFLICT` or `RESOURCE_NOT_FOUND` |
+| `message` | the sentence, for a human reading a log |
+| `retry` | **whether trying again could ever help** |
+| `correlation.request_id` | a name for this one request, so it can be followed |
+
+A **result envelope** is the same idea for success. `invoice.issue` — the command step 03
+declared but did not carry out — is carried out here and answers with one.
+
+The `retry` field is the new idea. There are six possible values, and they are advice a
+program can follow without understanding the situation:
+
+| Retry class | Means |
+|---|---|
+| `never` | asking again cannot help. Something must change first |
+| `after_delay` | it may work later. Wait, then try |
+| `after_state_refresh` | re-read the data, decide again, then try |
+| `after_reconciliation` | nobody knows what happened. Find out first |
+| `safe_same_key` | it is safe to send the identical request again |
+| `per_item` | a **batch** — one request carrying many items. Each item has its own answer |
 
 ## Why it matters
 
-A contract is where a rule finds its target.
-
-Every later step asks a question of an operation. Step 06 asks "does this caller hold
-`invoice:issue`?" Step 20 asks "does this need an idempotency key?" Step 27 asks "is
-this risky enough to need the CFO?" Every one of those reads the contract. A single
-generic `update(record, fields)` has nowhere to put those answers, which is why §7 says:
-
-> DSoR prefers domain operations to generic CRUD: `invoice.issue`, `payment.execute`,
-> `period.close`, not `invoice.update(status="issued")`.
-
-Why stop the program, rather than fail the one request that uses the broken contract?
-Because nobody would notice the failed request.
-
-A contract with no risk level is a contract no **control** can ever fire on — a control
-being a rule DSoR checks before it acts, which answers allow, deny, or needs approval. If
-that gap only showed up on the one payment a month large enough to need the CFO, it would
-look fine for the other thirty days.
-
-§7's Common mistake names the extreme version:
-
-> Giving the agent a `run_sql` tool or a "call any API" tool "just for now". That one
-> tool bypasses every protection in this document.
-
-`pnpm start` ends by asking for `execute_sql`. There is no contract for it, so there is
-no such operation, so it cannot be called. That is the shape the rule is after.
-
-## The new tool
-
-**ajv**, at exactly version `8.20.0`, is the first dependency this tutorial has added
-since step 00. It checks a JSON document against a **JSON Schema** — itself a JSON
-document describing what a valid document looks like.
-
-It is a real **dependency**, not a `devDependency`: `src/registry.ts` imports it at run
-time, so `pnpm start` needs it. Putting it under `devDependencies` would let `pnpm test`
-pass while `pnpm start` failed for anyone who installed this folder on its own.
-
-The version is exact, with no `^`, so an install six months from now fetches the same ajv
-this step was tested against rather than a newer one that behaves differently. This
-folder's `pnpm-workspace.yaml` also sets `minimumReleaseAge: 2880`, a 48-hour quarantine:
-a version published minutes ago is refused, which buys the world two days to notice if a
-bad release slips out.
-
-## Checking against the real schema, not one of our own
-
-`src/schemas/` holds two files copied **byte for byte** from `packages/spec/schemas/`:
+Look at what `pnpm start` prints now. Six refusals, five different codes, and **every one
+says `never`** (the full output is under "Run it" below):
 
 ```text
-operation-contract.schema.json   363 lines
-common.schema.json               228 lines
+CONFLICT                 retry: never                INV-1009 is issued, and only a draft invoice can be issued
+RESOURCE_NOT_FOUND       retry: never                INV-9999 is not an invoice we hold
+TENANT_MISMATCH          retry: never                dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
+VALIDATION_FAILED        retry: never                invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
+VALIDATION_FAILED        retry: never                not a canonical URI: "INV-1008"
+UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an operation: this program has no contract for it
 ```
 
-Neither is trimmed, and that is deliberate. `DSOR-OPR-01` says a contract "MUST validate
-against `operation-contract.schema.json`" — it names that exact file. Checking against a
-smaller schema of our own would be checking against something else. And a hand-trimmed
-copy is worse than either — *normative* means a conforming system has to obey the file as
-written, so cutting it down silently stops enforcing whatever you removed, with nothing to
-tell you.
+They are all the same, and that is the point. Not one of them is worth retrying, and a
+caller now knows that without reading English. An agent that retries a `never` is an agent
+in a loop.
 
-The step keeps its own copies because a step has to run outside this repository.
+The dangerous one is not here yet. In step 37 a bank stops answering, and DSoR does not
+know whether the money moved. That answer is `OUTCOME_UNKNOWN`, retry
+`after_reconciliation` — *find out what happened, do not send it again*. The rule
+`DSOR-UNK-01b` exists because reporting that as a retry-safe error is how a payment goes
+out twice. The retry class you are building today is the machinery that rule needs.
 
-`operation-contract.schema.json` refers to `common.schema.json` **eleven times**, to
-seven of its definitions — `operationId`, `permission`, `risk`, `semantics`, `freshness`,
-`cel` and `extensions`. That is why both are registered:
+## The schema checks the shape. It does not check the meaning.
 
-```ts
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-ajv.addSchema(read("./schemas/common.schema.json"));
-ajv.addSchema(read("./schemas/operation-contract.schema.json"));
-```
+This is the part worth slowing down for.
 
-Three details worth knowing.
-
-`Ajv2020` comes from `ajv/dist/2020.js`. JSON Schema has versions, called drafts, and
-plain `Ajv` reads draft-07 while these schemas are written to draft 2020-12.
-
-`allErrors: true` makes ajv report every problem it finds in a contract, instead of
-stopping at the first.
-
-`strict: false` is not laziness. Strict mode makes ajv refuse a *schema* that contains
-anything it does not recognise. Turn it on and thirteen of the specification's fourteen
-schemas will not load at all: nine because an `if`/`then` block requires a property that
-is not listed beside it, the rest over an unknown `format`, a union type, and a block with
-no `type`. Those schemas are normative — a conforming system has to obey them — so they
-are not ours to change. Turning strict mode off has a cost, and Break 4 shows you exactly
-what it is.
-
-## What changed since step 02
+`error-envelope.schema.json` is the specification's own file, and it checks that `retry`
+holds one of the six allowed words. It does **not** check that it holds the *right* one:
 
 ```text
-my_03_operations_and_contracts/
-  src/schemas/*.json       NEW  two schema files, copied byte for byte
-  src/contracts/*.json     NEW  invoice.get and invoice.issue, as documents
-  src/registry.ts          NEW  validateContract, loadRegistry, contractsFromDisk
-  src/operations.ts        NEW  callOperation, assertPaired, and the invoice.get handler
-  test/registry.test.ts    NEW  thirteen tests: what the registry refuses, and what it keeps
-  test/operations.test.ts  NEW  sixteen tests: calling by name, and the refusals
-  src/main.ts          CHANGED  calls through the registry, and no longer imports getInvoice
-  src/invoice.ts       CHANGED  TENANT is exported for the tenant check; markers removed
-  src/uri.ts           CHANGED  step 02's NEW IN STEP markers removed
-  test/uri.test.ts     CHANGED  step 02's NEW IN STEP markers removed
-  test/invoice.test.ts CHANGED  step 02's NEW IN STEP markers removed
-  package.json         CHANGED  name, description, and ajv
+CONFLICT + never          schema says: true   table says: never
+CONFLICT + safe_same_key  schema says: true   table says: never
+```
+
+Both validate. A `CONFLICT` marked `safe_same_key` would make an agent retry the same
+request for ever, and the schema has nothing to say about it.
+
+There are three exceptions, and they are the three worth pinning:
+
+```text
+OUTCOME_UNKNOWN + safe_same_key  schema says: false
+RESOURCE_HELD   + safe_same_key  schema says: false
+BATCH_PARTIAL   + never          schema says: false
+CONFLICT        + safe_same_key  schema says: true
+RATE_LIMITED    + never          schema says: true
+```
+
+The schema fixes `OUTCOME_UNKNOWN` and `RESOURCE_HELD` to `after_reconciliation`, and
+`BATCH_PARTIAL` to `per_item`. The other twenty-nine it leaves alone. Somebody decided
+those three were too dangerous to leave to an implementation — the first two are both
+"nobody knows what happened yet", which is the one situation where retrying sends money
+twice.
+
+So the code→retry table lives in `src/envelopes.ts`, transcribed from
+[§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes), and
+`refusal(code, message)` looks the class up rather than accepting one from its caller.
+A test reads the schema's own list of 32 codes and fails if the table falls behind it.
+
+This is the same lesson as `money()` in step 01 and `parseUri` in step 02, one level up:
+**a shape check and a meaning check are different jobs.** By now you should expect it.
+
+## What changed since step 03
+
+```text
+my_04_result_and_error_envelopes/
+  src/envelopes.ts          NEW  the two builders, the §28 table, request ids
+  test/envelopes.test.ts    NEW  twenty-one tests: the table, the shapes, the refusals
+  src/schemas/*.json        NEW  result-envelope and error-envelope, copied byte for byte
+  src/invoice.ts        CHANGED  a new issueInvoice, which reports an outcome instead of throwing
+  src/operations.ts     CHANGED  every refusal is an envelope; invoice.issue has a handler
+  src/main.ts           CHANGED  reads every answer in one place, printing its code and retry class
+  test/operations.test.ts CHANGED every refusal test asserts a code and a retry class; five new
+  src/registry.ts       CHANGED  step 03's NEW IN STEP markers removed
+  test/registry.test.ts CHANGED  step 03's NEW IN STEP markers removed
+  package.json          CHANGED  name, description, and ajv-formats
 ```
 
 ```bash
 cd docs/baby_steps_tutorials
 diff -rq --exclude=node_modules --exclude=pnpm-lock.yaml \
-  my_02_canonical_uris my_03_operations_and_contracts
+  my_03_operations_and_contracts my_04_result_and_error_envelopes
 ```
+
+### One new dependency, and a warning it silences
+
+This step adds one package, `ajv-formats@3.0.1`. The version is pinned exactly, and like
+ajv it is a real dependency rather than a `devDependency`.
+
+The result envelope has a field, `expires_at`, whose schema says `"format": "date-time"`.
+Without `ajv-formats`, ajv does not know that format: it prints `unknown format
+"date-time" ignored` and then accepts `"tomorrow"` as a date. A step that teaches schema
+validation should not ship a validator that quietly skips a check.
+
+It comes with one oddity you will meet again. `ajv-formats` is published in CommonJS,
+Node's older module format, so the function you call sits on the import's `.default`
+rather than being the import itself. `tsc` reports *"This expression is not callable"*
+without the cast in `src/envelopes.ts`. Node runs the plain import fine — only the
+typecheck complains.
 
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_03_operations_and_contracts
+cd docs/baby_steps_tutorials/my_04_result_and_error_envelopes
 pnpm install
 pnpm start
 ```
@@ -152,205 +155,159 @@ pnpm start
 Hello, accounts-payable-fte.
 operations: invoice.get, invoice.issue
 
-invoice.get    dsor://org_456/invoice/INV-1008  31400.00 USD  issued
-invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
+(no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+(no envelope)            dsor://org_456/invoice/INV-1009  2500.00 USD  draft
 
-refused  not built yet: invoice.issue has a contract, and no handler until step 04
-refused  wrong company: dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
-refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
-refused  no contract: execute_sql is not an operation: this program has no contract for it
+COMMITTED                dsor://org_456/invoice/INV-1009  issued
+                         proposal dsor://org_456/proposal/prop_0001
+                         payload  sha256:e2f80b67d9a15698…
+CONFLICT                 retry: never                INV-1009 is issued, and only a draft invoice can be issued
+
+RESOURCE_NOT_FOUND       retry: never                INV-9999 is not an invoice we hold
+TENANT_MISMATCH          retry: never                dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
+VALIDATION_FAILED        retry: never                invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
+VALIDATION_FAILED        retry: never                not a canonical URI: "INV-1008"
+UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an operation: this program has no contract for it
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 53 tests pass
+pnpm check                 # typecheck, then test. 76 tests pass
 ```
 
-### A contract without a handler, on purpose
+### Why two lines say "(no envelope)"
 
-`invoice.issue` has a contract in `src/contracts/` and no code behind it. Ask for it and
-you get told so:
+Because the specification has no way to put a read's answer in one, and this step will
+not pretend otherwise.
 
-```text
-refused  not built yet: invoice.issue has a contract, and no handler until step 04
-```
+`result-envelope.schema.json` has an `outcome` field with four allowed values, and none
+of them means "here is the data you asked for":
 
-Two questions that deserve answers.
+| Value | What it demands |
+|---|---|
+| `COMMITTED`, `READY`, `PENDING_APPROVAL` | a proposal address, a payload fingerprint, and execution semantics — how the command runs, named in its contract |
+| `VALIDATED` | a `decision` of `ALLOW` / `DENY` / … — the spec means this as a **dry run**: run the checks, decide, change nothing |
 
-**Why ship the contract at all?** Because a command's contract is the interesting one. A
-query needs ten fields. A command needs six more — `delegation`, `idempotency`,
-`concurrency`, `execution`, `preconditions`, `controls` — and the schema only demands them
-when `kind` is `command`. Without a command contract, that whole branch of the schema is
-never exercised and `DSOR-OPR-02a` is a much thinner claim.
+A read did not commit anything, did not create a proposal, and was not a dry run. Appendix
+A says this schema covers "command and query results", and it cannot express a query
+result. That is a gap in the specification, not something this step can fix quietly, so
+`invoice.get` keeps handing back the invoice and this paragraph says why.
 
-**Why not write the handler?** Because it is a different lesson. Changing stored state
-brings its own problems: the store has to become writable, an invoice that is already
-issued has to be refused, and that refusal needs a shape a caller can act on. That shape
-is step 04's error envelope, which is exactly why the command waits for it — "this
-invoice is already issued" needs a code, and a query's refusals are too thin to show why
-envelopes matter.
+Refusals are different: `invoice.get`'s refusals *are* enveloped, because the error
+envelope fits any operation.
 
-The waiting is recorded in code, not left as a silent gap. `NOT_YET_IMPLEMENTED` lists the
-ids, and `assertPaired` checks the list both ways: an id on it must still have a contract,
-and must *not* already have a handler. So the note cannot outlive its reason.
+### What `COMMITTED` cost, honestly
 
-### The address names a company, so the company is honoured
+`invoice.issue` succeeded, so `outcome: "COMMITTED"` is the truthful value — and the
+schema then demands three companions. Two of them are placeholders, and it matters that
+you know which:
 
-`invoice.get` takes an address, and an address has three parts. Step 02 built the parser;
-this step is the first to *use* what it parsed:
+| Field | What it is here | What it becomes |
+|---|---|---|
+| `proposal` | an address from a counter | step 22, where a proposal is a *record* with states and approvals |
+| `payload_hash` | a hash (sha256) of `JSON.stringify(args)` — a short fixed-length fingerprint of the arguments | step 29, where *canonical* JSON settles key order so the fingerprint is stable |
+| `semantics` | **not** a placeholder — copied from the operation's contract | already real |
 
-```ts
-const { tenant, entity, id } = parseUri(given);
-```
+The hash is only as stable as `JSON.stringify` key order today. That is a real limit, and
+writing a false fingerprint into what later becomes evidence is worse than writing none —
+so it is stated here rather than discovered in step 29.
 
-All three are checked. The entity must match what the operation is named for —
-`invoice.get` is for an `invoice`, so `dsor://org_456/vendor/VENDOR-44` is refused. And
-the tenant must be the one company this program serves.
+### Where the code is chosen
 
-That second check is worth dwelling on, because leaving it out is worse than never
-parsing the tenant at all. Without it:
+`issueInvoice` in `src/invoice.ts` reports a *fact*: `issued`, `not_found`, or `not_draft`.
+It does not choose an error code. `src/operations.ts` does that, because a code is part of
+the answer to a caller rather than part of the store.
 
-```text
-callOperation("invoice.get", { invoice: "dsor://org_999/invoice/INV-1009" })
-  → reads org_456's INV-1009
-```
+The obvious alternative is for the store to throw, and `operations.ts` to catch and
+translate. Reporting a fact instead means there is nothing to catch: the outcome is a
+value, and the layer that answers callers reads it. That separation is what made the codes
+possible.
 
-The caller asked about one company and quietly got another's records. Reading a part of
-the address and then ignoring it is how one tenant reaches into another's data. The
-specification's threat table calls that cross-tenant disclosure or action, threat T4, and
-real multi-tenancy is specified in §14 and arrives in step 10. This step is not that. It
-is the smaller promise that a part of the address we read is a part we honour.
+### The request id you cannot avoid
 
-### The part that cannot be checked by looking
+Both envelopes require `correlation.request_id`, so nothing can be returned until one
+exists. That is the schema's own minimum, not extra work this step chose to take on.
 
-Step 01 found that `money()` accepts `ZZZ`. Step 02 found that the schema's tenant
-pattern accepts `acme`. Step 03's version of the same discovery is bigger:
+It comes from a counter (`req_1`, `req_2`, …) so a test can say exactly which one it
+expects. A real deployment would use something unguessable, because a counter tells anyone
+who sees one id how many requests came before it and what the next one will be.
 
-The contract `invoice.issue` declares `predicates: ["state.invoice.status == \"draft\""]`.
-Nothing reads it.
-
-That line is written in **CEL** — Common Expression Language, a small language for
-writing a condition that a program can check safely. It cannot loop forever, it cannot
-reach the network, and DSoR uses it for every rule in §17. **Nothing in this tutorial
-parses CEL until step 27.**
-
-So an empty `predicates: []` validates. So does `predicates: ["not CEL at all !!!"]`,
-because the schema's `cel` definition is only "a string with at least one character".
-
-The same is true of `input.schema: "InvoiceIssueRequest"`. No such schema exists anywhere
-in this repository, and nothing checks an operation's arguments against it until step 07,
-where "is the input valid" becomes a line of the pipeline's checklist.
-
-So the schema proves a contract **has the fields**. It never proves the fields **say
-anything true**. That is the third time this tutorial has met the same lesson, and it is
-the reason every "the rules this step meets" section here comes with limits attached.
+`correlation` holds seven ids in all, and nothing else in it is filled in — a test asserts
+exactly that. `tenant_id` waits for step 10, `agent_id` and `principal_id` for step 05, and
+carrying all seven through connectors, audit and events for step 40.
 
 ## Break it
 
-Four breaks. Change the code back after each.
+Five breaks. Change the code back after each.
 
-**1. Delete `risk` from `src/contracts/invoice.issue.json`.** This is the break the step
-exists for. Run `pnpm start`:
-
-```text
-TypeError: src/contracts/invoice.issue.json is not a valid operation contract: (root) must have required property 'risk'
-```
-
-The program printed nothing at all — not the greeting, not the operation list. Now run
+**1. Let the caller choose the retry class.** In `src/envelopes.ts`, replace
+`const retry = CODE_RETRY[code];` with `const retry = "safe_same_key" as Retry;`. Run
 `pnpm test`:
 
 ```text
- Test Files  2 failed | 4 passed (6)
-      Tests  4 failed | 33 passed (37)
+      Tests  9 failed | 67 passed (76)
 ```
 
-Read the totals. **37 collected, not 53.** Sixteen tests did not fail — they never ran,
-because `operations.test.ts` imports a module that throws while it is loading. That is
-what "refused at start-up" looks like from the outside.
+Every refusal in the step is now wrong, and note *what is not wrong*: every envelope
+still validates against the schema. For twenty-nine of the thirty-two codes, the schema
+never had an opinion.
 
-**2. Remove the `common.schema.json` line from `src/registry.ts`,** keeping the other
-`addSchema`. Run `pnpm start`:
+**2. Change one row of the table.** Set `CONFLICT: "safe_same_key"`. Run `pnpm test`:
 
 ```text
-MissingRefError: can't resolve reference urn:dsor:schema:1.3:common#/$defs/operationId from id urn:dsor:schema:1.3:operation-contract
+     × DSOR-ERR-01a: a refusal carries a retry class and a request id
+     × DSOR-ERR-01a: the retry class comes from the code, not from the caller
+     × the schema pins three codes' retry classes, and only three
+     × DSOR-ERR-01a: the table cannot be edited at run time
+     × DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT
+      Tests  5 failed | 71 passed (76)
 ```
 
-The contract schema cannot stand alone. Notice ajv did not complain at `addSchema` —
-ajv follows a reference only when the schema is first used to check a document, not when
-it is added, so the failure lands later than the mistake.
+This is the break worth sitting with. You have just told every caller that re-issuing an
+already-issued invoice is safe to retry. The schema validates it. Five tests are the only
+thing standing between that and a caller in a loop.
 
-**3. Add `"description": "Issues an invoice"` to `invoice.issue.json`.** A helpful thing
-to want. Run `pnpm start`:
+**3. Drop a code from the table.** Delete the `RATE_LIMITED` line. Run `pnpm test`:
 
 ```text
-TypeError: src/contracts/invoice.issue.json is not a valid operation contract: (root) must NOT have additional properties
+      Tests  3 failed | 73 passed (76)
 ```
 
-The schema closes its top level, so a field it does not know about is refused. The way in
-is `extensions`, keyed by a **reverse-DNS namespace** — your domain name backwards, so
-`example.com` becomes `com.example`, which keeps two companies' extra fields from
-colliding:
+One of those three is the test that reads the schema's own list of 32 codes. The table
+cannot fall behind the specification without something going red.
 
-```json
-"extensions": { "com.example.notes": { "description": "Issues an invoice" } }
-```
-
-That is rule `DSOR-SCH-02`, and `test/registry.test.ts` tests both halves: the bare field
-refused, the namespaced one accepted.
-
-Note the refusal never says *which* field is extra. ajv reports each problem as an object;
-the offending field name sits in that object's `params`, and this step prints only its
-`message`.
-
-**4. Misspell one of the schema's own keywords — the field names JSON Schema itself
-recognises, such as `required` or `properties` — and see what `strict: false` costs.**
-In `src/schemas/operation-contract.schema.json`, rename the top-level `"required"` to
-`"requird"`. Then delete `risk` from `invoice.issue.json` as in Break 1. Run
-`pnpm start`:
+**4. Remove the self-check.** In `refusal`, delete the `if (!validateEnvelope(...))` block
+that runs before the envelope is returned. Run `pnpm test`:
 
 ```text
-Hello, accounts-payable-fte.
-operations: invoice.get, invoice.issue
-
-invoice.get    dsor://org_456/invoice/INV-1008  31400.00 USD  issued
-invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
-
-refused  not built yet: invoice.issue has a contract, and no handler until step 04
-refused  wrong company: dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
-refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
-refused  no contract: execute_sql is not an operation: this program has no contract for it
+      Tests  1 failed | 75 passed (76)
 ```
 
-It ran. Happily. Every line exactly as before, with a contract that has **no risk level
-at all**. Now `pnpm test`:
+That check is why a `BATCH_PARTIAL` cannot be built in this step: the schema requires an
+`items` array listing each item's own answer, and there are no batches until step 41.
+Without the check, a half-built envelope would be handed to the caller.
+
+**5. Use the wrong code for the right situation.** In `src/operations.ts`, change the
+re-issue refusal from `CONFLICT` to `RESOURCE_NOT_FOUND`. Run `pnpm test`:
 
 ```text
- Test Files  1 failed | 5 passed (6)
-      Tests  4 failed | 49 passed (53)
+      Tests  2 failed | 74 passed (76)
 ```
 
-All 53 collected this time, because nothing threw while loading. Only the four tests
-that expect a refusal failed.
+The envelope is perfectly valid. The retry class is correct for the code. And the answer
+is a lie: the invoice exists. Nothing but a test knows the difference.
 
-Compare that with Break 1. Same broken contract; the difference is one letter in the
-schema. Under `strict: false`, ajv ignores a keyword it does not recognise — so the rule
-you thought you wrote is absent, and nothing warns you. Under `strict: true` the
-same typo raises `strict mode: unknown keyword: "requird"`, but then thirteen of the
-specification's own schemas will not compile.
-
-There is no free option here. `strict: false` is the right choice for these schemas, and
-the cost is that nobody checks your spelling: a keyword ajv does not recognise is ignored
-rather than refused. The tests are what catch it instead.
+Change everything back and run `pnpm check` to see 76 tests pass.
 
 ## Build it yourself with Claude Code
 
 This folder is a learner copy — the `my_` prefix. The official
-`03_operations_and_contracts` is still listed as planned in the [map](../readme.md), so
+`04_result_and_error_envelopes` is still listed as planned in the [map](../readme.md), so
 there is nothing to compare against yet.
 
 ```bash
 cd docs/baby_steps_tutorials
-cp -r my_02_canonical_uris my_03_operations_and_contracts
-cd my_03_operations_and_contracts
+cp -r my_03_operations_and_contracts my_04_result_and_error_envelopes
+cd my_04_result_and_error_envelopes
 rm -rf node_modules && pnpm install
 claude
 ```
@@ -358,8 +315,8 @@ claude
 Then paste one line:
 
 ```text
-Use the build-baby-step skill in learner mode. We are building step 03,
-operations_and_contracts.
+Use the build-baby-step skill in learner mode. We are building step 04,
+result_and_error_envelopes.
 ```
 
 Ask for a plan before any code, and ask to see the new tests fail before they pass. The
@@ -368,130 +325,77 @@ general directions are in the
 
 ## Check yourself
 
-1. Why must a broken contract stop the program, instead of failing the one request that
-   uses it?
-2. `invoice.issue` declares `predicates: ["state.invoice.status == \"draft\""]`. What
-   reads that line today?
-3. `invoice.issue` has a contract and no handler. Why ship a contract for something the
-   step does not do?
-4. Why are the two schema files copied unchanged, instead of a smaller schema written
-   for this step?
-5. `strict: false` let a misspelled `required` through. Why not use `strict: true`?
-6. `NOT_YET_IMPLEMENTED` lists `invoice.issue`. What stops that list going stale?
-7. `invoice.get` reads the tenant out of the address and then refuses anything that is
-   not `org_456`. Why is that better than not reading the tenant at all?
+1. Why is a thrown `TypeError` not good enough for a caller?
+2. `CONFLICT` with `retry: "safe_same_key"` passes the specification's own schema. So what
+   stops it happening?
+3. The schema *does* pin one code's retry class. Which, and why that one?
+4. `invoice.get` succeeds and gets no envelope. Is that a bug in this step?
+5. `payload_hash` is a sha256 of the arguments. Why is the README careful to call it a
+   placeholder?
+6. `issueInvoice` reports `not_draft` instead of choosing `CONFLICT` itself. Why?
 
 <details>
 <summary>Answers</summary>
 
-1. Because nobody would notice. A contract with no risk level is a contract no control
-   can fire on, and if that only broke on the rare request that needed approval, it
-   would look fine the rest of the time. Refusing at start-up turns a quiet gap into a
-   loud one.
-2. Nothing. It is a *declaration* — data sitting in the contract. Nothing in this
-   tutorial parses CEL until step 27, so an empty `predicates: []` would validate equally
-   well, and so would a line of nonsense. That is the step's central limit: the schema
-   proves a contract has the fields, never that they say anything true.
-3. Because a command's contract is the interesting one. A query needs ten fields; a
-   command needs six more, and the schema only demands them when `kind` is `command`. Drop
-   the command contract and that whole branch of the schema is never tested. Carrying out
-   the change is a separate lesson, and it needs step 04's error envelope to refuse
-   properly.
-4. Because `DSOR-OPR-01` names `operation-contract.schema.json` specifically. Checking
-   against a schema of our own would be checking against something else. And trimming a
-   normative schema silently drops whatever you removed, with nothing to tell you —
-   which is the same class of mistake as claiming `money()` checks ISO 4217.
-5. Because under `strict: true` thirteen of the specification's fourteen schemas refuse
-   to compile, since their if/then blocks declare `required` without repeating `type`.
-   The trade is real and unavoidable here; Break 4 shows the cost and the tests are what
-   cover for it.
-6. `assertPaired` checks it both ways. An id on the list must still have a contract, so
-   the note cannot refer to nothing; and it must *not* already have a handler, so nobody
-   can implement the operation and forget to cross it off. A test hands `assertPaired` a
-   handler for `invoice.issue` and expects it to complain.
-7. Because the alternative is not "no check", it is a silent wrong answer. Parse the
-   address, ignore the tenant, and a caller asking about `org_999`'s invoice gets
-   `org_456`'s changed instead — with nothing to say so. A part of an address you read is
-   a part you have to honour, or not read at all.
+1. Because a caller cannot act on a sentence. It cannot tell "wait and retry" from "never
+   retry" without reading English, and guessing wrong about a command that moves money
+   means sending it twice.
+2. Nothing in the schema. The table in `src/envelopes.ts` and the tests over it are the
+   only thing. That is the step's lesson: the schema proves the shape of an answer, and
+   only code can prove its meaning.
+3. `OUTCOME_UNKNOWN`, which must be `after_reconciliation`. It is the one case where
+   nobody knows whether the side effect happened, so a retry-safe class would invite a
+   duplicate payment — the failure `DSOR-UNK-01b` exists to prevent. It arrives properly
+   in step 37.
+4. No, it is a gap in the specification, stated plainly. `result-envelope.schema.json` has
+   no `outcome` value meaning "here is your data": three demand proposal machinery and the
+   fourth means a dry run. Borrowing one would put something untrue in every read.
+5. Because the hash depends on `JSON.stringify` key order, so the same payload written
+   with keys in a different order fingerprints differently. Canonical JSON arrives in step
+   29. A fingerprint that looks authoritative and is not is worse than none, because this
+   field later becomes evidence.
+6. Because choosing an error code is part of answering a caller, not part of storing data.
+   The store reports what happened; `operations.ts` decides how to say it. Splitting those
+   two is what let the thrown sentence become a code.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-OPR-01 · L1]** Every operation MUST have a contract that validates against
-  `operation-contract.schema.json`.
-  ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
-- **[DSOR-OPR-02a · L1]** The operation registry MUST reject a contract that omits a
-  mandatory field.
-  ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
-- **[DSOR-OPR-02b · L1]** The registry MUST NOT infer a default for risk level,
-  execution semantics, effect, or idempotency.
-  ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
+- **[DSOR-ERR-01a · L1]** Every error MUST validate against `error-envelope.schema.json`,
+  carrying a code from this table or a documented extension code, a retry class, and
+  correlation identifiers.
+  ([§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes))
+- **[DSOR-SCH-01 · L1]** Every artifact named in Appendix A MUST validate against its JSON
+  Schema (draft 2020-12) wherever it crosses an interface or is stored as evidence.
+  ([§0.5](../../../specs/dsor/00-conventions.md#05-normative-artifacts))
+- **[DSOR-COR-01b · L1]** DSoR MUST generate a `request_id` when the caller supplies none.
+  ([§32](../../../specs/dsor/03-execution.md#32-correlation)) — met wherever an envelope is
+  built. A successful read carries no correlation at all, for the same reason it carries no
+  envelope.
 
-`DSOR-OPR-02a` is met squarely: the schema is the specification's own, and the registry
-refuses while it is loading.
+`DSOR-ERR-01a` is met for every refusal this step can produce, and each one is checked
+against the schema before it leaves `refusal()`. The rule's phrase "a documented extension
+code" is worth noting: the schema also allows any code matching `^X_[A-Z0-9_]+$`, which is
+how an implementation could escape the closed list entirely. This step never does, and
+nothing in the schema would stop it.
 
-**`DSOR-OPR-01` is met for everything that goes through the registry, which is not the
-same as everything.** `callOperation` cannot reach an operation with no contract.
-`assertPaired` runs at module load, beside the registry. It refuses any handler with no
-contract, and any contract with no handler unless the id is on the waiting list — today
-that is `invoice.issue`, and nothing else. Two tests hand it a mismatched pair directly,
-rather than checking the list of ids the registry loaded: that list is built from the
-contract files, so it would look right whether the check existed or not.
+`DSOR-SCH-01` is met for every artifact this step actually puts in an envelope: both
+envelope kinds, plus the operation contracts step 03 already validated. The one Appendix A
+artifact it leaves unvalidated is a query result — see "Why two lines say (no envelope)"
+above, which is the same gap seen from the other side.
 
-What is *not* covered: nothing stops a future file writing `import { getInvoice }` and
-going round the side. There is no door to close until step 42 puts an HTTP server in front
-of the pipeline, and no agent-facing door until step 46.
-
-**`DSOR-OPR-02b` cannot be proved by a schema at all.** A `required` list shows a field
-was missing from the document; it can never show the registry did not quietly supply the
-value itself. So the tests do it behaviourally, and they go after the *values*, not just
-the objects holding them: `risk.level` is deleted as well as `risk`, because a registry
-that filled in the level while leaving `risk` in place would break the rule and sail past
-a test that only deleted the parent. A second test asserts the whole loaded contract
-equals the file, so any key added at any depth turns red.
-
-ajv can be told to rewrite the document it is checking, and all three such options are
-off. `coerceTypes` would turn a `version` of `"1"` into `1` instead of refusing it, and
-there is a test for exactly that. `useDefaults` would fill in any `default` the schema
-declared; no DSoR schema declares one today, so it has nothing to act on — which is why
-the whole-document comparison, rather than a test of the flag, is what guards it.
-`removeAdditional` would quietly strip a field the schema does not know instead of
-refusing the contract, which would turn Break 3 from a refusal into a silent edit.
-
-Rules in §7 this step does **not** claim:
+Nearby rules this step does **not** claim. Three are §28 and §32; the others live in §19,
+§25 and §27, and are here because a reader meeting envelopes will wonder about them:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-OPR-03a` | Forbids a generic execution tool on an *agent interface*. There is no agent interface until step 46, when each operation becomes an MCP tool. `execute_sql` being unreachable here is the right shape, not the rule. |
-| `DSOR-OPR-04a`, `04b` | Say every interface invokes the same pipeline and none does its own authorization. There is no pipeline until step 07 and no interface until 42. |
-| `DSOR-OPR-05`, `06` | The three invocation modes, `execute` / `propose_only` / `validate_only`. Step 23. |
-| `DSOR-QRY-01` | A server-side page limit on every query. There is no query returning a list until step 13. |
+| `DSOR-ERR-01b` | An error must not reveal a resource **the caller is not authorized to read**. That condition is the whole rule, and this step has no caller and no permissions — so `RESOURCE_NOT_FOUND` naming the id is safe here and stops being safe in step 06. The schema could not see it either way. |
+| `DSOR-ERR-02` | A command's connector error must not be retry-safe unless the side effect provably did not occur. There is no connector until step 34, and "provably" cannot be expressed in a table. |
+| `DSOR-UNK-01b` | Nothing in this step can produce an unknown outcome, because nothing can fail halfway. A test shows the schema pins that code's retry class, and carries no rule id, because showing what the schema does is not meeting the rule. Step 37. |
+| `DSOR-COR-01a` | All seven correlation ids propagated through connectors, audit and events. Only `request_id` exists here. Step 40. |
+| `DSOR-FRS-01a` | A query result must carry when it was read, the resource version, the connector, and the freshness mode — how recent the data had to be. `result-envelope.schema.json` has no field for any of them, and this step puts no read in an envelope at all. Step 15. |
+| `DSOR-CLS-03` | A read result must carry its classification — how sensitive the data is. The schema has a `classification` field, but it is optional and no branch of the schema ever requires it, so it could not enforce this even if a read were enveloped. Step 14. |
 
-`invoice.issue` is declared and not carried out, so nothing about a state change is
-claimed here at all. Its handler, and the error envelope its refusals need, are step 04.
-
-Most fields in these contracts are declared and not yet read. Each arrives in a later
-step:
-
-| Field | Read from |
-| --- | --- |
-| `authorization.permission` | step 06 |
-| `tenancy` | steps 10, 11 — the one-company check in `invoice.get` is hard-coded, not read from here |
-| `delegation` | steps 18, 19 |
-| `idempotency` | step 20 |
-| `concurrency` | step 21 |
-| `execution.semantics` | step 17 |
-| `preconditions` | steps 15, 27, 32 |
-| `controls`, `risk.level` | steps 27, 28 |
-| `audit.level` | steps 08, 33 |
-| `input.schema`, `output.schema` | step 07 |
-
-Where a field can say nothing, it does: `delegation` and `idempotency` are `false`,
-`concurrency` is `none`, `controls` is empty. The rest cannot — `tenancy` has to say
-`true` or `false`, and `execution.semantics` has to name one of five values — so they
-carry the value the operation will have once the step that reads them arrives.
-
-**Next:** step 04, result and error envelopes — the thrown `TypeError`s above become
-structured errors with a code and a retry class, and "this needs approval" becomes a
-result rather than a failure.
+**Next:** step 05, who is calling — every request starts carrying a caller, and the
+handler signature stops being `(args)`.
