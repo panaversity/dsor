@@ -1,0 +1,23 @@
+{
+  "name": "@dsor-steps/my-03-operations-and-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 03 (learner copy): every action is a named operation with a contract, and a registry that refuses a bad one.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}
