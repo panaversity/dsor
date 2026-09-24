@@ -149,7 +149,7 @@ export function callOperation(
   const handler = handlers[id];
 
   if (contract === undefined) {
-    throw new TypeError(`${id} is not an operation this program has a contract for`);
+    throw new TypeError(`${id} is not an operation: this program has no contract for it`);
   }
 
   if (handler === undefined) {

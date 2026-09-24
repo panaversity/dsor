@@ -105,8 +105,8 @@ my_03_operations_and_contracts/
   src/contracts/*.json     NEW  invoice.get and invoice.issue, as documents
   src/registry.ts          NEW  validateContract, loadRegistry, contractsFromDisk
   src/operations.ts        NEW  callOperation, assertPaired, and the two handlers
-  test/registry.test.ts    NEW  thirteen tests: what the registry refuses, and what it keeps
-  test/operations.test.ts  NEW  thirteen tests: calling by name, and the refusals
+  test/registry.test.ts    NEW  fourteen tests: what the registry refuses, and what it keeps
+  test/operations.test.ts  NEW  fifteen tests: calling by name, and the refusals
   src/main.ts          CHANGED  calls through the registry; imports getInvoice no more
   src/invoice.ts       CHANGED  step 02's NEW IN STEP markers removed
   src/uri.ts           CHANGED  step 02's NEW IN STEP markers removed
@@ -143,7 +143,7 @@ refused  no contract: execute_sql is not an operation this program has a contrac
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 50 tests pass
+pnpm check                 # typecheck, then test. 53 tests pass
 ```
 
 ### A contract without a handler, on purpose
@@ -240,10 +240,10 @@ The program printed nothing at all — not the greeting, not the operation list.
 
 ```text
  Test Files  2 failed | 4 passed (6)
-      Tests  4 failed | 32 passed (36)
+      Tests  4 failed | 33 passed (37)
 ```
 
-Read the totals. **36 collected, not 50.** Fourteen tests did not fail — they never ran,
+Read the totals. **37 collected, not 53.** Sixteen tests did not fail — they never ran,
 because `operations.test.ts` imports a module that throws while it is loading. That is
 what "refused at start-up" looks like from the outside.
 
@@ -302,10 +302,10 @@ at all**. Now `pnpm test`:
 
 ```text
  Test Files  1 failed | 5 passed (6)
-      Tests  3 failed | 47 passed (50)
+      Tests  4 failed | 49 passed (53)
 ```
 
-All 50 collected this time, because nothing threw while loading. Only the three tests
+All 53 collected this time, because nothing threw while loading. Only the four tests
 that expect a refusal failed.
 
 Compare that with Break 1. Same broken contract; the difference is one letter in the

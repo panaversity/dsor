@@ -199,4 +199,25 @@ describe("validateContract", () => {
 
     expect(() => validateContract(proper, "proper.json")).not.toThrow();
   });
+
+  // ajv is built with allErrors: true. Without it, ajv stops at the first problem and a
+  // contract with three mistakes sends you round three times.
+  it("DSOR-OPR-02a: one refusal reports every problem it found", () => {
+    const broken = contractCopy("invoice.issue");
+    delete broken["risk"];
+    delete broken["audit"];
+    delete broken["controls"];
+
+    let message = "";
+
+    try {
+      loadRegistry([{ where: "many.json", document: broken }]);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toMatch(/risk/);
+    expect(message).toMatch(/audit/);
+    expect(message).toMatch(/controls/);
+  });
 });

@@ -34,8 +34,40 @@ describe("callOperation", () => {
   });
 
   it("an operation that has no contract cannot be called", () => {
-    expect(() => callOperation("invoice.delete", { invoice: INV_1008 })).toThrow(/invoice\.delete/);
-    expect(() => callOperation("execute_sql", { sql: "drop table invoices" })).toThrow(TypeError);
+    // Two different refusals, and the difference is the point. "No contract at all" and
+    // "a contract whose handler is not built yet" are not the same situation, and a
+    // caller reading the message needs to be able to tell them apart.
+    expect(() => callOperation("invoice.delete", { invoice: INV_1008 })).toThrow(
+      /no contract for it/,
+    );
+    expect(() => callOperation("execute_sql", { sql: "drop table invoices" })).toThrow(
+      /no contract for it/,
+    );
+    expect(() => callOperation("invoice.issue", { invoice: INV_1009 })).toThrow(/no handler/);
+  });
+
+  // The module runs loadRegistry and assertPaired as it loads. No test in this process
+  // can watch those lines run — by the time a test imports the module, they already have.
+  // What a test can do is assert the state they guarantee, from outside.
+  it("DSOR-OPR-01: on load, every contract is accounted for", () => {
+    const ids = operationIds();
+
+    expect(ids).toEqual(["invoice.get", "invoice.issue"]);
+
+    // Each id either runs, or refuses for the single allowed reason. A contract nobody
+    // had thought about would refuse with "no contract for", which cannot happen for an
+    // id the registry just handed us — and that is the pairing, seen from the outside.
+    for (const id of ids) {
+      let refusal = "";
+
+      try {
+        callOperation(id, { invoice: INV_1008 });
+      } catch (error) {
+        refusal = (error as Error).message;
+      }
+
+      expect(refusal).not.toMatch(/no contract for it/);
+    }
   });
 
   describe("invoice.get", () => {
@@ -110,6 +142,11 @@ describe("callOperation", () => {
       expect(issue.kind).toBe("command");
       expect(issue.effect).toBe("mutating");
       expect(issue.execution).toEqual({ semantics: "atomic" });
+    });
+
+    it("an id on the waiting list must still have a contract", () => {
+      // The other half of the rot check: a note about an operation that does not exist.
+      expect(() => assertPaired(new Map(), {})).toThrow(/waiting for a handler/);
     });
 
     it("the waiting list cannot rot", () => {

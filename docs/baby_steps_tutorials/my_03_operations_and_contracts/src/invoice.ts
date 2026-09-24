@@ -64,6 +64,13 @@ function makeInvoice(id: string, vendor: string, amount: Money, status: InvoiceS
 //
 // Object.freeze does at run time what `readonly` does at compile time. Both are
 // needed, because Node deletes the types before it runs the file.
+//
+// Be honest about this one: no test can see it. `invoices` is not exported, and
+// `readonly Invoice[]` already stops a `push` from inside this file, so removing the
+// freeze breaks nothing today and no test would go red. It stays because the day this
+// list is handed to a caller — step 09, when a real store arrives — is the day it
+// matters, and a guard added then is a guard added late. The freeze on each invoice at
+// line 49 is the one that does real work now, and that one is tested.
 const invoices: readonly Invoice[] = Object.freeze([
   makeInvoice("INV-1008", "VENDOR-44", money("31400.00", "USD"), "issued"),
   // A second invoice, so that a test can prove getInvoice searches the list instead
