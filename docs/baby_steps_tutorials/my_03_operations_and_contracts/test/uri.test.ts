@@ -1,4 +1,4 @@
-// NEW IN STEP 02: the address of a record, read and written.
+// the address of a record, read and written.
 //
 // parseUri reads an address and hands back its three parts. formatUri does the
 // reverse. Both refuse an address that is not allowed, and the refusals are the

@@ -13,7 +13,7 @@ const invoice = getInvoice("INV-1008");
 if (invoice === undefined) {
   console.log("INV-1008: not found.");
 } else {
-  // NEW IN STEP 02: the address is printed first. It is how this invoice is named
+  // the address is printed first. It is how this invoice is named
   // everywhere else: in the logs, the events and the approval.
   console.log(
     `${invoice.uri}\n  ${invoice.amount.value} ${invoice.amount.currency} to ${invoice.vendor} (${invoice.status})`,

@@ -1,4 +1,4 @@
-// NEW IN STEP 02: every record gets one permanent address.
+// every record gets one permanent address.
 //
 //     dsor://org_456/invoice/INV-1008
 //     ^^^^   ^^^^^^^ ^^^^^^^ ^^^^^^^^

@@ -132,7 +132,7 @@ describe("the stored invoices", () => {
   });
 });
 
-// NEW IN STEP 02: every invoice carries its own permanent address.
+// every invoice carries its own permanent address.
 describe("an invoice's address", () => {
   it("DSOR-RID-01a: INV-1008's address is dsor://org_456/invoice/INV-1008", () => {
     expect(getInvoice("INV-1008")?.uri).toBe("dsor://org_456/invoice/INV-1008");

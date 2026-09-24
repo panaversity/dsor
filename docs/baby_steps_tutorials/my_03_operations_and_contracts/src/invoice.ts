@@ -5,7 +5,7 @@
 // the point of separating the shape from where it lives.
 
 import { money, type Money } from "./money.ts";
-// NEW IN STEP 02: an invoice now knows its own address.
+// an invoice now knows its own address.
 import { formatUri } from "./uri.ts";
 
 /**
@@ -23,7 +23,7 @@ export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
  * on its own: it freezes the array, not the objects inside it.
  */
 export interface Invoice {
-  // NEW IN STEP 02: the permanent address, `dsor://org_456/invoice/INV-1008`.
+  // the permanent address, `dsor://org_456/invoice/INV-1008`.
   //
   // The type says `string`, and every string fits, so the type cannot promise this
   // is a real address. `makeInvoice` below is the only thing that builds one, and
@@ -36,10 +36,10 @@ export interface Invoice {
   readonly status: InvoiceStatus;
 }
 
-// NEW IN STEP 02: the one company in the story. Real multi-tenancy is step 10.
+// the one company in the story. Real multi-tenancy is step 10.
 const TENANT = "org_456";
 
-// NEW IN STEP 02: builds one invoice and its address together.
+// builds one invoice and its address together.
 //
 // The address is made from the id rather than typed out a second time. Writing
 // "INV-1008" in two places is how a record ends up with an address belonging to a
