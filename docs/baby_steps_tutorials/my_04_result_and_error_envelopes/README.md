@@ -100,7 +100,11 @@ twice.
 So the code→retry table lives in `src/envelopes.ts`, transcribed from
 [§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes), and
 `refusal(code, message)` looks the class up rather than accepting one from its caller.
-A test reads the schema's own list of 32 codes and fails if the table falls behind it.
+
+Two tests hold the table to the specification. One reads the schema's own list of 32 codes
+and fails if the table is missing any. The other pins every row's value, because only ten
+of the thirty-two are reached by a refusal a test happens to build — the other twenty-two
+could have said anything, and a wrong row is a wrong instruction.
 
 This is the same lesson as `money()` in step 01 and `parseUri` in step 02, one level up:
 **a shape check and a meaning check are different jobs.** By now you should expect it.
@@ -110,12 +114,12 @@ This is the same lesson as `money()` in step 01 and `parseUri` in step 02, one l
 ```text
 my_04_result_and_error_envelopes/
   src/envelopes.ts          NEW  the two builders, the §28 table, request ids
-  test/envelopes.test.ts    NEW  twenty-one tests: the table, the shapes, the refusals
+  test/envelopes.test.ts    NEW  twenty-two tests: the table, the shapes, the refusals
   src/schemas/*.json        NEW  result-envelope and error-envelope, copied byte for byte
   src/invoice.ts        CHANGED  a new issueInvoice, which reports an outcome instead of throwing
   src/operations.ts     CHANGED  every refusal is an envelope; invoice.issue has a handler
   src/main.ts           CHANGED  reads every answer in one place, printing its code and retry class
-  test/operations.test.ts CHANGED every refusal test asserts a code and a retry class; five new
+  test/operations.test.ts CHANGED every refusal test asserts a code and a retry class; seven new
   src/registry.ts       CHANGED  step 03's NEW IN STEP markers removed
   test/registry.test.ts CHANGED  step 03's NEW IN STEP markers removed
   package.json          CHANGED  name, description, and ajv-formats
@@ -171,7 +175,7 @@ UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an opera
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 76 tests pass
+pnpm check                 # typecheck, then test. 79 tests pass
 ```
 
 ### Why two lines say "(no envelope)"
@@ -244,7 +248,7 @@ Five breaks. Change the code back after each.
 `pnpm test`:
 
 ```text
-      Tests  9 failed | 67 passed (76)
+      Tests  9 failed | 70 passed (79)
 ```
 
 Every refusal in the step is now wrong, and note *what is not wrong*: every envelope
@@ -259,27 +263,28 @@ never had an opinion.
      × the schema pins three codes' retry classes, and only three
      × DSOR-ERR-01a: the table cannot be edited at run time
      × DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT
-      Tests  5 failed | 71 passed (76)
+      Tests  6 failed | 73 passed (79)
 ```
 
 This is the break worth sitting with. You have just told every caller that re-issuing an
-already-issued invoice is safe to retry. The schema validates it. Five tests are the only
+already-issued invoice is safe to retry. The schema validates it. Six tests are the only
 thing standing between that and a caller in a loop.
 
 **3. Drop a code from the table.** Delete the `RATE_LIMITED` line. Run `pnpm test`:
 
 ```text
-      Tests  3 failed | 73 passed (76)
+      Tests  4 failed | 75 passed (79)
 ```
 
-One of those three is the test that reads the schema's own list of 32 codes. The table
+One of those four is the test that reads the schema's own list of 32 codes; another is the
+one that pins all thirty-two rows to §28. The table
 cannot fall behind the specification without something going red.
 
 **4. Remove the self-check.** In `refusal`, delete the `if (!validateEnvelope(...))` block
 that runs before the envelope is returned. Run `pnpm test`:
 
 ```text
-      Tests  1 failed | 75 passed (76)
+      Tests  1 failed | 78 passed (79)
 ```
 
 That check is why a `BATCH_PARTIAL` cannot be built in this step: the schema requires an
@@ -290,13 +295,13 @@ Without the check, a half-built envelope would be handed to the caller.
 re-issue refusal from `CONFLICT` to `RESOURCE_NOT_FOUND`. Run `pnpm test`:
 
 ```text
-      Tests  2 failed | 74 passed (76)
+      Tests  2 failed | 77 passed (79)
 ```
 
 The envelope is perfectly valid. The retry class is correct for the code. And the answer
 is a lie: the invoice exists. Nothing but a test knows the difference.
 
-Change everything back and run `pnpm check` to see 76 tests pass.
+Change everything back and run `pnpm check` to see 79 tests pass.
 
 ## Build it yourself with Claude Code
 

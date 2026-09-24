@@ -216,6 +216,17 @@ export function operationIds(): string[] {
 }
 
 /**
+ * The operations that have code behind them.
+ *
+ * Exported so a test can compare the two lists. assertPaired runs at module load and no
+ * test can watch that line execute, but a test can check the state it guarantees: these
+ * two lists, matching.
+ */
+export function handlerIds(): string[] {
+  return Object.keys(handlers);
+}
+
+/**
  * Calls one operation by name.
  *
  * There is deliberately no caller, no permission check and no ordered checklist here. Who

@@ -56,6 +56,48 @@ describe("the error envelope", () => {
     expect(() => refusal("MADE_UP_CODE", "x")).toThrow(/not an error code from §28/);
   });
 
+  // Ten of the thirty-two rows happen to be pinned by a test that builds that particular
+  // refusal. The other twenty-two could say anything the Retry type allows, and a wrong
+  // row is a wrong instruction: retry an AUTHORIZATION_DENIED for ever, or give up on a
+  // TRANSACTION_FAILED that a retry would have fixed. This pins the whole table to §28 in
+  // one place, so a mistyped row cannot be silent.
+  it("DSOR-ERR-01a: every row of the table is the retry class §28 gives that code", () => {
+    expect(CODE_RETRY).toEqual({
+      AUTHENTICATION_REQUIRED: "never",
+      AUTHORIZATION_DENIED: "never",
+      DELEGATION_REQUIRED: "never",
+      DELEGATION_EXPIRED: "never",
+      DELEGATION_REVOKED: "never",
+      TENANT_MISMATCH: "never",
+      RESOURCE_NOT_FOUND: "never",
+      VALIDATION_FAILED: "never",
+      POLICY_DENIED: "never",
+      SOD_VIOLATION: "never",
+      LIMIT_EXCEEDED: "after_delay",
+      AGENT_SUSPENDED: "never",
+      OPERATION_FROZEN: "never",
+      APPROVAL_REQUIRED: "never",
+      APPROVAL_EXPIRED: "never",
+      APPROVAL_MISMATCH: "never",
+      APPROVAL_INVALIDATED: "after_state_refresh",
+      COOLING_OFF_ACTIVE: "after_delay",
+      CONFLICT: "never",
+      STALE_STATE: "after_state_refresh",
+      IDEMPOTENCY_CONFLICT: "never",
+      RESOURCE_HELD: "after_reconciliation",
+      OUTCOME_UNKNOWN: "after_reconciliation",
+      FRESHNESS_UNSATISFIABLE: "after_delay",
+      RATE_LIMITED: "after_delay",
+      BATCH_PARTIAL: "per_item",
+      CONNECTOR_UNAVAILABLE: "safe_same_key",
+      TRANSACTION_FAILED: "safe_same_key",
+      EVIDENCE_STORE_UNAVAILABLE: "safe_same_key",
+      DEPENDENCY_TIMEOUT: "safe_same_key",
+      UNSUPPORTED_CAPABILITY: "never",
+      INTERNAL_ERROR: "never",
+    });
+  });
+
   // If the specification adds a code and this step does not, refusal() would have no
   // retry class for it. This test reads the normative schema's own list and refuses to
   // let the table fall behind it.

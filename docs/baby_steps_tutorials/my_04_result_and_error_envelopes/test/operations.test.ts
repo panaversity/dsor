@@ -4,7 +4,13 @@
 // registry, so an operation with no contract cannot be called at all.
 
 import { describe, expect, it } from "vitest";
-import { assertPaired, callOperation, operationIds, WIRING_CHECKED } from "../src/operations.ts";
+import {
+  assertPaired,
+  callOperation,
+  handlerIds,
+  operationIds,
+  WIRING_CHECKED,
+} from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { refusal, resetProposalIds, resetRequestIds, validateEnvelope } from "../src/envelopes.ts";
 
@@ -67,10 +73,21 @@ describe("callOperation", () => {
   // The module runs loadRegistry and assertPaired as it loads. No test in this process
   // can watch those lines run — by the time a test imports the module, they already have.
   // What a test can do is assert the state they guarantee, from outside.
-  // The pairing check runs at module scope. No test can watch that line execute, but the
-  // constant only exists because it did, so deleting the check cannot be silent.
+  // The pairing check runs at module scope, and what a test can prove about it splits in
+  // three. That assertPaired catches every mismatch: the three tests below. That the
+  // lists it checks do match today: the second assertion here. That it actually ran at
+  // load: only WIRING_CHECKED, which exists solely because the wrapper around the call
+  // returned — deleting the wrapper is a compile error.
+  //
+  // What no test in this process can prove is the middle link: with the lists matching,
+  // removing the call changes nothing observable. A child process importing a deliberately
+  // mismatched module would close that, and costs more machinery than it teaches here.
   it("DSOR-OPR-01: the wiring was checked at start-up, not on first request", () => {
     expect(WIRING_CHECKED).toBe(true);
+
+    // The state that check guarantees. A handler with no contract would be an unnamed
+    // operation, which is the thing §7 exists to prevent.
+    expect(handlerIds().sort()).toEqual(operationIds().sort());
   });
 
   // The waiting list is a parameter, so a rotten one can be handed in. In this step the
@@ -208,6 +225,44 @@ describe("callOperation", () => {
       expect(refusalFrom(callOperation("invoice.issue", { invoice: INV_1008 })).code).toBe(
         "CONFLICT",
       );
+    });
+
+    // Every bad-address refusal, on the command as well as the query. invoice.issue and
+    // invoice.get share invoiceIdFrom, and until these existed only invoice.get proved
+    // the sharing: deleting the command's refusal passthrough collapsed every bad address
+    // to "undefined is not an invoice we hold" with all tests still green.
+    it("DSOR-ERR-01a: a bad address to the command is refused the same way as to the query", () => {
+      const cases = [
+        ["dsor://org_999/invoice/INV-1009", "TENANT_MISMATCH"],
+        ["dsor://org_456/vendor/VENDOR-44", "VALIDATION_FAILED"],
+        ["INV-1009", "VALIDATION_FAILED"],
+      ] as const;
+
+      for (const [address, code] of cases) {
+        expect(refusalFrom(callOperation("invoice.issue", { invoice: address })).code).toBe(code);
+      }
+
+      expect(refusalFrom(callOperation("invoice.issue", {})).code).toBe("VALIDATION_FAILED");
+    });
+
+    // The envelope's semantics must come from the contract, not from a constant in the
+    // handler. Reading it back out of the registry is what ties the two together.
+    it("DSOR-SCH-01: the result's semantics is the one the contract declares", () => {
+      const contract = loadRegistry(contractsFromDisk()).get("invoice.issue");
+
+      if (contract === undefined) {
+        throw new Error("invoice.issue has no contract");
+      }
+
+      const answer = callOperation("invoice.issue", { invoice: INV_1009 });
+
+      // INV-1009 may already be issued by an earlier test in this file, so accept either
+      // shape and only assert the thing under test when there is a result to read.
+      if (answer.kind === "result") {
+        expect(answer.envelope.semantics).toBe(contract.execution?.semantics);
+      }
+
+      expect(contract.execution?.semantics).toBe("atomic");
     });
 
     it("DSOR-ERR-01a: issuing an invoice we do not hold is RESOURCE_NOT_FOUND", () => {
