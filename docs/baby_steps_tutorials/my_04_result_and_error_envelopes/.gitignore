@@ -1,0 +1,8 @@
+node_modules/
+*.log
+.DS_Store
+
+# Secrets never go into git. From step 09 this folder has a .env file.
+.env
+.env.*
+!.env.example
