@@ -12,9 +12,14 @@ Every action becomes a named **operation**. `invoice.get` reads one invoice.
 **contract**: a document that describes it. Does it read, or change something? Which
 permission does it need? How risky is it? Can it be undone?
 
+Two names for that first question, because the specification uses them. An operation that
+only reads is a **query**. One that changes something is a **command**. `invoice.get` is a
+query; `invoice.issue` is a command. And each operation needs a **handler**: the code that
+actually carries it out.
+
 Both contracts ship in this step. Only `invoice.get` is carried out. Actually changing an
-invoice is a second idea, and this step has one — see the last section for where the
-command goes and why.
+invoice is a second idea, and a step is allowed one. "A contract without a handler, on
+purpose", below, says where the change goes and why.
 
 The contracts are JSON files in `src/contracts/`, because a spec sheet is *data*, not
 code. A **registry** loads them all when the program starts. If one is broken, the
@@ -35,10 +40,13 @@ generic `update(record, fields)` has nowhere to put those answers, which is why 
 > DSoR prefers domain operations to generic CRUD: `invoice.issue`, `payment.execute`,
 > `period.close`, not `invoice.update(status="issued")`.
 
-And the reason a broken contract must stop the program, rather than fail a request, is
-that nobody would notice. A contract with no risk level is a contract no control can
-ever fire on. If that only broke on the one request per month that needed approval, it
-would sit there for the other thirty days looking fine.
+Why stop the program, rather than fail the one request that uses the broken contract?
+Because nobody would notice the failed request.
+
+A contract with no risk level is a contract no **control** can ever fire on — a control
+being a rule DSoR checks before it acts, which answers allow, deny, or needs approval. If
+that gap only showed up on the one payment a month large enough to need the CFO, it would
+look fine for the other thirty days.
 
 §7's Common mistake names the extreme version:
 
@@ -58,9 +66,11 @@ It is a real **dependency**, not a `devDependency`: `src/registry.ts` imports it
 time, so `pnpm start` needs it. Putting it under `devDependencies` would let `pnpm test`
 pass while `pnpm start` failed for anyone who installed this folder on its own.
 
-The version is exact, with no `^`. This folder's `pnpm-workspace.yaml` also sets
-`minimumReleaseAge: 2880`, a 48-hour quarantine, so a freshly published version would be
-refused at install anyway.
+The version is exact, with no `^`, so an install six months from now fetches the same ajv
+this step was tested against rather than a newer one that behaves differently. This
+folder's `pnpm-workspace.yaml` also sets `minimumReleaseAge: 2880`, a 48-hour quarantine:
+a version published minutes ago is refused, which buys the world two days to notice if a
+bad release slips out.
 
 ## Checking against the real schema, not one of our own
 
@@ -73,9 +83,10 @@ common.schema.json               228 lines
 
 Neither is trimmed, and that is deliberate. `DSOR-OPR-01` says a contract "MUST validate
 against `operation-contract.schema.json`" — it names that exact file. Checking against a
-smaller schema of our own would be checking against something else, and a hand-trimmed
-copy of a normative schema is worse than either: it silently stops enforcing whatever
-you removed, and nothing tells you.
+smaller schema of our own would be checking against something else. And a hand-trimmed
+copy is worse than either — *normative* means a conforming system has to obey the file as
+written, so cutting it down silently stops enforcing whatever you removed, with nothing to
+tell you.
 
 The step keeps its own copies because a step has to run outside this repository.
 
@@ -89,13 +100,21 @@ ajv.addSchema(read("./schemas/common.schema.json"));
 ajv.addSchema(read("./schemas/operation-contract.schema.json"));
 ```
 
-Two details worth knowing. `Ajv2020` comes from `ajv/dist/2020.js`, because plain `Ajv`
-is draft-07 and these schemas are draft 2020-12. And `strict: false` is not laziness —
-under `strict: true`, thirteen of the specification's fourteen schemas refuse to compile
-at all. Nine of them trip on `strictRequired`, because an `if`/`then` block names a
-property in `required` that is not listed in the `properties` beside it; the rest trip on
-an unknown `format`, a union type, and a `properties` block with no `type`. It has a
-cost, and Break 4 shows you exactly what it is.
+Three details worth knowing.
+
+`Ajv2020` comes from `ajv/dist/2020.js`. JSON Schema has versions, called drafts, and
+plain `Ajv` reads draft-07 while these schemas are written to draft 2020-12.
+
+`allErrors: true` makes ajv report every problem it finds in a contract, instead of
+stopping at the first.
+
+`strict: false` is not laziness. Strict mode makes ajv refuse a *schema* that contains
+anything it does not recognise. Turn it on and thirteen of the specification's fourteen
+schemas will not load at all: nine because an `if`/`then` block requires a property that
+is not listed beside it, the rest over an unknown `format`, a union type, and a block with
+no `type`. Those schemas are normative — a conforming system has to obey them — so they
+are not ours to change. Turning strict mode off has a cost, and Break 4 shows you exactly
+what it is.
 
 ## What changed since step 02
 
@@ -104,11 +123,11 @@ my_03_operations_and_contracts/
   src/schemas/*.json       NEW  two schema files, copied byte for byte
   src/contracts/*.json     NEW  invoice.get and invoice.issue, as documents
   src/registry.ts          NEW  validateContract, loadRegistry, contractsFromDisk
-  src/operations.ts        NEW  callOperation, assertPaired, and the two handlers
-  test/registry.test.ts    NEW  fourteen tests: what the registry refuses, and what it keeps
-  test/operations.test.ts  NEW  fifteen tests: calling by name, and the refusals
-  src/main.ts          CHANGED  calls through the registry; imports getInvoice no more
-  src/invoice.ts       CHANGED  step 02's NEW IN STEP markers removed
+  src/operations.ts        NEW  callOperation, assertPaired, and the invoice.get handler
+  test/registry.test.ts    NEW  thirteen tests: what the registry refuses, and what it keeps
+  test/operations.test.ts  NEW  sixteen tests: calling by name, and the refusals
+  src/main.ts          CHANGED  calls through the registry, and no longer imports getInvoice
+  src/invoice.ts       CHANGED  TENANT is exported for the tenant check; markers removed
   src/uri.ts           CHANGED  step 02's NEW IN STEP markers removed
   test/uri.test.ts     CHANGED  step 02's NEW IN STEP markers removed
   test/invoice.test.ts CHANGED  step 02's NEW IN STEP markers removed
@@ -139,7 +158,7 @@ invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
 refused  not built yet: invoice.issue has a contract, and no handler until step 04
 refused  wrong company: dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
 refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
-refused  no contract: execute_sql is not an operation this program has a contract for
+refused  no contract: execute_sql is not an operation: this program has no contract for it
 ```
 
 ```bash
@@ -191,15 +210,15 @@ That second check is worth dwelling on, because leaving it out is worse than nev
 parsing the tenant at all. Without it:
 
 ```text
-callOperation("invoice.issue", { invoice: "dsor://org_999/invoice/INV-1009" })
-  → issues org_456's INV-1009
+callOperation("invoice.get", { invoice: "dsor://org_999/invoice/INV-1009" })
+  → reads org_456's INV-1009
 ```
 
-The caller asked about one company and quietly got another's records changed. Reading a
-part of the address and then ignoring it is how one tenant reaches into another's data —
-the specification calls that shape a *confused deputy*, and §14 is where real
-multi-tenancy arrives in step 10. This step is not that. It is the smaller promise that a
-part of the address we read is a part we honour.
+The caller asked about one company and quietly got another's records. Reading a part of
+the address and then ignoring it is how one tenant reaches into another's data. The
+specification's threat table calls that cross-tenant disclosure or action, threat T4, and
+real multi-tenancy is specified in §14 and arrives in step 10. This step is not that. It
+is the smaller promise that a part of the address we read is a part we honour.
 
 ### The part that cannot be checked by looking
 
@@ -217,8 +236,9 @@ parses CEL until step 27.**
 So an empty `predicates: []` validates. So does `predicates: ["not CEL at all !!!"]`,
 because the schema's `cel` definition is only "a string with at least one character".
 
-The same is true of `input.schema: "InvoiceIssueRequest"`. No such schema exists
-anywhere in this repository, and nothing validates arguments against it until step 04.
+The same is true of `input.schema: "InvoiceIssueRequest"`. No such schema exists anywhere
+in this repository, and nothing checks an operation's arguments against it until step 07,
+where "is the input valid" becomes a line of the pipeline's checklist.
 
 So the schema proves a contract **has the fields**. It never proves the fields **say
 anything true**. That is the third time this tutorial has met the same lesson, and it is
@@ -228,8 +248,8 @@ the reason every "the rules this step meets" section here comes with limits atta
 
 Four breaks. Change the code back after each.
 
-**1. Delete `risk` from `src/contracts/invoice.issue.json`.** This is the step's goal.
-Run `pnpm start`:
+**1. Delete `risk` from `src/contracts/invoice.issue.json`.** This is the break the step
+exists for. Run `pnpm start`:
 
 ```text
 TypeError: src/contracts/invoice.issue.json is not a valid operation contract: (root) must have required property 'risk'
@@ -255,14 +275,14 @@ MissingRefError: can't resolve reference urn:dsor:schema:1.3:common#/$defs/opera
 ```
 
 The contract schema cannot stand alone. Notice ajv did not complain at `addSchema` —
-references are resolved when the schema is *fetched*, so the failure lands later than the
-mistake.
+ajv follows a reference only when the schema is first used to check a document, not when
+it is added, so the failure lands later than the mistake.
 
 **3. Add `"description": "Issues an invoice"` to `invoice.issue.json`.** A helpful thing
 to want. Run `pnpm start`:
 
 ```text
-src/contracts/invoice.issue.json is not a valid operation contract: (root) must NOT have additional properties
+TypeError: src/contracts/invoice.issue.json is not a valid operation contract: (root) must NOT have additional properties
 ```
 
 The schema closes its top level, so a field it does not know about is refused. The way in
@@ -275,11 +295,14 @@ colliding:
 ```
 
 That is rule `DSOR-SCH-02`, and `test/registry.test.ts` tests both halves: the bare field
-refused, the namespaced one accepted. Note the message never says *which* field is extra
-— ajv keeps the field name in a separate `params` object, not in the human-readable
+refused, the namespaced one accepted.
+
+Note the refusal never says *which* field is extra. ajv reports each problem as an object;
+the offending field name sits in that object's `params`, and this step prints only its
 `message`.
 
-**4. Misspell a keyword in the copied schema, and see what `strict: false` costs.**
+**4. Misspell one of the schema's own keywords — the field names JSON Schema itself
+recognises, such as `required` or `properties` — and see what `strict: false` costs.**
 In `src/schemas/operation-contract.schema.json`, rename the top-level `"required"` to
 `"requird"`. Then delete `risk` from `invoice.issue.json` as in Break 1. Run
 `pnpm start`:
@@ -294,7 +317,7 @@ invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
 refused  not built yet: invoice.issue has a contract, and no handler until step 04
 refused  wrong company: dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
 refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
-refused  no contract: execute_sql is not an operation this program has a contract for
+refused  no contract: execute_sql is not an operation: this program has no contract for it
 ```
 
 It ran. Happily. Every line exactly as before, with a contract that has **no risk level
@@ -310,12 +333,13 @@ that expect a refusal failed.
 
 Compare that with Break 1. Same broken contract; the difference is one letter in the
 schema. Under `strict: false`, ajv ignores a keyword it does not recognise — so the rule
-you thought you wrote is simply absent, and nothing warns you. Under `strict: true` the
+you thought you wrote is absent, and nothing warns you. Under `strict: true` the
 same typo raises `strict mode: unknown keyword: "requird"`, but then thirteen of the
 specification's own schemas will not compile.
 
-There is no free option here. `strict: false` is the right choice for these schemas and
-it costs you spelling. The tests are what stand in for it.
+There is no free option here. `strict: false` is the right choice for these schemas, and
+the cost is that nobody checks your spelling: a keyword ajv does not recognise is ignored
+rather than refused. The tests are what catch it instead.
 
 ## Build it yourself with Claude Code
 
@@ -365,7 +389,7 @@ general directions are in the
    would look fine the rest of the time. Refusing at start-up turns a quiet gap into a
    loud one.
 2. Nothing. It is a *declaration* — data sitting in the contract. Nothing in this
-   tutorial parses CEL until step 27, so an empty `predicates: []` would validate just as
+   tutorial parses CEL until step 27, so an empty `predicates: []` would validate equally
    well, and so would a line of nonsense. That is the step's central limit: the schema
    proves a contract has the fields, never that they say anything true.
 3. Because a command's contract is the interesting one. A query needs ten fields; a
@@ -409,12 +433,15 @@ refuses while it is loading.
 
 **`DSOR-OPR-01` is met for everything that goes through the registry, which is not the
 same as everything.** `callOperation` cannot reach an operation with no contract.
-`assertPaired` runs at module load, beside the registry, and refuses a contract with no
-handler or a handler with no contract — and two tests hand it mismatched pairs directly,
-because asserting on `operationIds()` would pass whether the check existed or not.
+`assertPaired` runs at module load, beside the registry. It refuses any handler with no
+contract, and any contract with no handler unless the id is on the waiting list — today
+that is `invoice.issue`, and nothing else. Two tests hand it a mismatched pair directly,
+rather than checking the list of ids the registry loaded: that list is built from the
+contract files, so it would look right whether the check existed or not.
 
 What is *not* covered: nothing stops a future file writing `import { getInvoice }` and
-going round the side. There is no door to close until step 42 gives this an interface.
+going round the side. There is no door to close until step 42 puts an HTTP server in front
+of the pipeline, and no agent-facing door until step 46.
 
 **`DSOR-OPR-02b` cannot be proved by a schema at all.** A `required` list shows a field
 was missing from the document; it can never show the registry did not quietly supply the
@@ -424,18 +451,19 @@ that filled in the level while leaving `risk` in place would break the rule and 
 a test that only deleted the parent. A second test asserts the whole loaded contract
 equals the file, so any key added at any depth turns red.
 
-ajv can be told to rewrite the document it is checking, and both such options are off.
-`coerceTypes` would turn a `version` of `"1"` into `1` instead of refusing it, and there
-is a test for exactly that. `useDefaults` would fill in any `default` the schema
-declared; no DSoR schema declares one today, so the option currently has nothing to act
-on — which is why the whole-document comparison, rather than a test of the flag, is what
-guards it.
+ajv can be told to rewrite the document it is checking, and all three such options are
+off. `coerceTypes` would turn a `version` of `"1"` into `1` instead of refusing it, and
+there is a test for exactly that. `useDefaults` would fill in any `default` the schema
+declared; no DSoR schema declares one today, so it has nothing to act on — which is why
+the whole-document comparison, rather than a test of the flag, is what guards it.
+`removeAdditional` would quietly strip a field the schema does not know instead of
+refusing the contract, which would turn Break 3 from a refusal into a silent edit.
 
 Rules in §7 this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-OPR-03a` | Forbids a generic execution tool on an *agent interface*. There is no agent interface until step 42. `execute_sql` being unreachable is the right shape, not the rule. |
+| `DSOR-OPR-03a` | Forbids a generic execution tool on an *agent interface*. There is no agent interface until step 46, when each operation becomes an MCP tool. `execute_sql` being unreachable here is the right shape, not the rule. |
 | `DSOR-OPR-04a`, `04b` | Say every interface invokes the same pipeline and none does its own authorization. There is no pipeline until step 07 and no interface until 42. |
 | `DSOR-OPR-05`, `06` | The three invocation modes, `execute` / `propose_only` / `validate_only`. Step 23. |
 | `DSOR-QRY-01` | A server-side page limit on every query. There is no query returning a list until step 13. |
@@ -443,11 +471,26 @@ Rules in §7 this step does **not** claim:
 `invoice.issue` is declared and not carried out, so nothing about a state change is
 claimed here at all. Its handler, and the error envelope its refusals need, are step 04.
 
-And what the contracts *declare* but nothing yet enforces — `tenancy` (steps 10, 11),
-`delegation` (18, 19), `idempotency` (20), `concurrency` (21), `execution.semantics`
-(17), `preconditions` (15, 27, 32), `controls` (27, 28), `audit.level` (08, 33). Each is
-declared honestly: anything unenforced says `false` rather than making a promise DSoR
-cannot keep today.
+Most fields in these contracts are declared and not yet read. Each arrives in a later
+step:
+
+| Field | Read from |
+| --- | --- |
+| `authorization.permission` | step 06 |
+| `tenancy` | steps 10, 11 — the one-company check in `invoice.get` is hard-coded, not read from here |
+| `delegation` | steps 18, 19 |
+| `idempotency` | step 20 |
+| `concurrency` | step 21 |
+| `execution.semantics` | step 17 |
+| `preconditions` | steps 15, 27, 32 |
+| `controls`, `risk.level` | steps 27, 28 |
+| `audit.level` | steps 08, 33 |
+| `input.schema`, `output.schema` | step 07 |
+
+Where a field can say nothing, it does: `delegation` and `idempotency` are `false`,
+`concurrency` is `none`, `controls` is empty. The rest cannot — `tenancy` has to say
+`true` or `false`, and `execution.semantics` has to name one of five values — so they
+carry the value the operation will have once the step that reads them arrives.
 
 **Next:** step 04, result and error envelopes — the thrown `TypeError`s above become
 structured errors with a code and a retry class, and "this needs approval" becomes a

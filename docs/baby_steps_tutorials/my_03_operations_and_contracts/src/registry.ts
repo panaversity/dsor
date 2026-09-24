@@ -59,8 +59,8 @@ const read = (path: string): object =>
 // operation-contract.schema.json, so checking against anything else would not be that
 // rule. The step keeps its own copies because a step has to run outside this repository.
 //
-// operation-contract.schema.json refers to common.schema.json in seven places, so both
-// have to be registered. ajv resolves those references when the schema is fetched, not
+// operation-contract.schema.json refers to common.schema.json eleven times, to seven of
+// its definitions, so both have to be registered. ajv resolves those references when the schema is fetched, not
 // when it is added, so registering them in either order works — and forgetting `common`
 // gives "can't resolve reference urn:dsor:schema:1.3:common#/$defs/operationId".
 //
