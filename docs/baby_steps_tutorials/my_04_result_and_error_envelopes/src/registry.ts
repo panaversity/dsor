@@ -1,4 +1,4 @@
-// NEW IN STEP 03: the spec sheet is a document, and a bad one stops the program.
+// the spec sheet is a document, and a bad one stops the program.
 //
 // An operation is a named thing a caller can do: `invoice.get`, `invoice.issue`. Its
 // *contract* is a document describing it — does it read or change, which permission it

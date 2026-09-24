@@ -1,4 +1,4 @@
-// NEW IN STEP 03: the registry refuses a bad contract before anything runs.
+// the registry refuses a bad contract before anything runs.
 //
 // "At start-up" is the point. A contract that is wrong must stop the program while it
 // is loading, not on the first request that happens to use it.
