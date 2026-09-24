@@ -12,6 +12,10 @@ Every action becomes a named **operation**. `invoice.get` reads one invoice.
 **contract**: a document that describes it. Does it read, or change something? Which
 permission does it need? How risky is it? Can it be undone?
 
+Both contracts ship in this step. Only `invoice.get` is carried out. Actually changing an
+invoice is a second idea, and this step has one — see the last section for where the
+command goes and why.
+
 The contracts are JSON files in `src/contracts/`, because a spec sheet is *data*, not
 code. A **registry** loads them all when the program starts. If one is broken, the
 program refuses to start.
@@ -103,8 +107,8 @@ my_03_operations_and_contracts/
   src/operations.ts        NEW  callOperation, assertPaired, and the two handlers
   test/registry.test.ts    NEW  thirteen tests: what the registry refuses, and what it keeps
   test/operations.test.ts  NEW  thirteen tests: calling by name, and the refusals
-  src/invoice.ts       CHANGED  issueInvoice, and the list is no longer frozen
   src/main.ts          CHANGED  calls through the registry; imports getInvoice no more
+  src/invoice.ts       CHANGED  step 02's NEW IN STEP markers removed
   src/uri.ts           CHANGED  step 02's NEW IN STEP markers removed
   test/uri.test.ts     CHANGED  step 02's NEW IN STEP markers removed
   test/invoice.test.ts CHANGED  step 02's NEW IN STEP markers removed
@@ -132,9 +136,8 @@ operations: invoice.get, invoice.issue
 invoice.get    dsor://org_456/invoice/INV-1008  31400.00 USD  issued
 invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
 
-invoice.issue  dsor://org_456/invoice/INV-1009  2500.00 USD  issued
-
-refused  already issued: INV-1008 is issued, and only a draft invoice can be issued
+refused  not built yet: invoice.issue has a contract, and no handler until step 04
+refused  wrong company: dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
 refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
 refused  no contract: execute_sql is not an operation this program has a contract for
 ```
@@ -143,20 +146,33 @@ refused  no contract: execute_sql is not an operation this program has a contrac
 pnpm check                 # typecheck, then test. 50 tests pass
 ```
 
-### The first thing that changes state, and what it cost
+### A contract without a handler, on purpose
 
-`invoice.issue` has to change the stored invoices, and that forced the only awkward
-change in this step: **the invoices array is no longer frozen.** Step 01 froze it; step
-03 gives that up, because a command must be able to change state.
+`invoice.issue` has a contract in `src/contracts/` and no code behind it. Ask for it and
+you get told so:
 
-Be clear about the price, because no test caught it. Step 01's tests check
-`Object.isFrozen(invoice)` and `Object.isFrozen(invoice.amount)` — never the list. The
-guarantee could be dropped without one red line.
+```text
+refused  not built yet: invoice.issue has a contract, and no handler until step 04
+```
 
-What is kept: every `Invoice` is still frozen, so a caller holding one cannot edit it;
-the array stays private to the module; and `issueInvoice` is the only way to change
-anything. An invoice is *replaced*, not edited. A real store with a real transaction
-arrives in step 09.
+Two questions that deserve answers.
+
+**Why ship the contract at all?** Because a command's contract is the interesting one. A
+query needs ten fields. A command needs six more — `delegation`, `idempotency`,
+`concurrency`, `execution`, `preconditions`, `controls` — and the schema only demands them
+when `kind` is `command`. Without a command contract, that whole branch of the schema is
+never exercised and `DSOR-OPR-02a` is a much thinner claim.
+
+**Why not write the handler?** Because it is a different lesson. Changing stored state
+brings its own problems: the store has to become writable, an invoice that is already
+issued has to be refused, and that refusal needs a shape a caller can act on. That shape
+is step 04's error envelope, which is exactly why the command waits for it — "this
+invoice is already issued" needs a code, and a query's refusals are too thin to show why
+envelopes matter.
+
+The waiting is recorded in code, not left as a silent gap. `NOT_YET_IMPLEMENTED` lists the
+ids, and `assertPaired` checks the list both ways: an id on it must still have a contract,
+and must *not* already have a handler. So the note cannot outlive its reason.
 
 ### The address names a company, so the company is honoured
 
@@ -184,16 +200,6 @@ part of the address and then ignoring it is how one tenant reaches into another'
 the specification calls that shape a *confused deputy*, and §14 is where real
 multi-tenancy arrives in step 10. This step is not that. It is the smaller promise that a
 part of the address we read is a part we honour.
-
-### Why the second `invoice.issue` is refused
-
-It is refused because INV-1009's status moved from `draft` to `issued`. That is a plain
-`if` on the status.
-
-It is **not** idempotency, which is step 20, and **not** in-flight exclusivity, which is
-step 32. Those answer "you already asked me this" and "something else is already acting
-on this". This one answers "that is not a draft any more". They look alike from outside
-and they are different rules.
 
 ### The part that cannot be checked by looking
 
@@ -285,9 +291,8 @@ operations: invoice.get, invoice.issue
 invoice.get    dsor://org_456/invoice/INV-1008  31400.00 USD  issued
 invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
 
-invoice.issue  dsor://org_456/invoice/INV-1009  2500.00 USD  issued
-
-refused  already issued: INV-1008 is issued, and only a draft invoice can be issued
+refused  not built yet: invoice.issue has a contract, and no handler until step 04
+refused  wrong company: dsor://org_999/invoice/INV-1008 is for org_999, and this program serves org_456
 refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
 refused  no contract: execute_sql is not an operation this program has a contract for
 ```
@@ -341,13 +346,14 @@ general directions are in the
 
 1. Why must a broken contract stop the program, instead of failing the one request that
    uses it?
-2. `invoice.issue` declares `predicates: ["state.invoice.status == \"draft\""]`, and
-   there is also a plain `if` in `issueInvoice` checking the same thing. Why both?
-3. The second `invoice.issue` on INV-1009 is refused. Is that idempotency?
+2. `invoice.issue` declares `predicates: ["state.invoice.status == \"draft\""]`. What
+   reads that line today?
+3. `invoice.issue` has a contract and no handler. Why ship a contract for something the
+   step does not do?
 4. Why are the two schema files copied unchanged, instead of a smaller schema written
    for this step?
 5. `strict: false` let a misspelled `required` through. Why not use `strict: true`?
-6. Step 01 froze the invoices list. Step 03 unfroze it. What is still guaranteed?
+6. `NOT_YET_IMPLEMENTED` lists `invoice.issue`. What stops that list going stale?
 7. `invoice.get` reads the tenant out of the address and then refuses anything that is
    not `org_456`. Why is that better than not reading the tenant at all?
 
@@ -358,13 +364,15 @@ general directions are in the
    can fire on, and if that only broke on the rare request that needed approval, it
    would look fine the rest of the time. Refusing at start-up turns a quiet gap into a
    loud one.
-2. The `predicates` line is a *declaration* — data in the contract, which nothing reads
-   until CEL arrives in step 27. The `if` is what actually refuses today. They agree by
-   hand right now, and that is a gap, not a design: the README says so and step 27 is
-   where the declaration starts doing the work.
-3. No. It is refused because the status is no longer `draft`. Idempotency, in step 20,
-   answers a different question — "you already asked me this, with this key" — and would
-   return the first answer again rather than refuse.
+2. Nothing. It is a *declaration* — data sitting in the contract. Nothing in this
+   tutorial parses CEL until step 27, so an empty `predicates: []` would validate just as
+   well, and so would a line of nonsense. That is the step's central limit: the schema
+   proves a contract has the fields, never that they say anything true.
+3. Because a command's contract is the interesting one. A query needs ten fields; a
+   command needs six more, and the schema only demands them when `kind` is `command`. Drop
+   the command contract and that whole branch of the schema is never tested. Carrying out
+   the change is a separate lesson, and it needs step 04's error envelope to refuse
+   properly.
 4. Because `DSOR-OPR-01` names `operation-contract.schema.json` specifically. Checking
    against a schema of our own would be checking against something else. And trimming a
    normative schema silently drops whatever you removed, with nothing to tell you —
@@ -373,10 +381,10 @@ general directions are in the
    to compile, since their if/then blocks declare `required` without repeating `type`.
    The trade is real and unavoidable here; Break 4 shows the cost and the tests are what
    cover for it.
-6. Every `Invoice` is still frozen, so a caller cannot edit one it is holding. The array
-   is still private to the module, and `issueInvoice` is still the only way to change
-   anything. What was given up is the list itself being immutable — and no test caught
-   that, which is why it is written down here.
+6. `assertPaired` checks it both ways. An id on the list must still have a contract, so
+   the note cannot refer to nothing; and it must *not* already have a handler, so nobody
+   can implement the operation and forget to cross it off. A test hands `assertPaired` a
+   handler for `invoice.issue` and expects it to complain.
 7. Because the alternative is not "no check", it is a silent wrong answer. Parse the
    address, ignore the tenant, and a caller asking about `org_999`'s invoice gets
    `org_456`'s changed instead — with nothing to say so. A part of an address you read is
@@ -431,6 +439,9 @@ Rules in §7 this step does **not** claim:
 | `DSOR-OPR-04a`, `04b` | Say every interface invokes the same pipeline and none does its own authorization. There is no pipeline until step 07 and no interface until 42. |
 | `DSOR-OPR-05`, `06` | The three invocation modes, `execute` / `propose_only` / `validate_only`. Step 23. |
 | `DSOR-QRY-01` | A server-side page limit on every query. There is no query returning a list until step 13. |
+
+`invoice.issue` is declared and not carried out, so nothing about a state change is
+claimed here at all. Its handler, and the error envelope its refusals need, are step 04.
 
 And what the contracts *declare* but nothing yet enforces — `tenancy` (steps 10, 11),
 `delegation` (18, 19), `idempotency` (20), `concurrency` (21), `execution.semantics`

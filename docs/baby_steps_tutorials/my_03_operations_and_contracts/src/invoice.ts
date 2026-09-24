@@ -62,20 +62,14 @@ function makeInvoice(id: string, vendor: string, amount: Money, status: InvoiceS
 // ISO 4217 code fails here, when the file is first loaded, and not later in a payment.
 // The addresses go through formatUri() for the same reason.
 //
-// NEW IN STEP 03: the list is no longer frozen, because invoice.issue has to change
-// it. That is a guarantee this step gives up, and it is worth saying out loud: nothing
-// in the test suite would have caught it, because the step 01 tests freeze-check each
-// invoice and never the list.
-//
-// What is kept: every Invoice is still frozen, so a caller holding one cannot edit it,
-// and the array stays private to this module so issueInvoice is the only way to change
-// anything. A real store, with a real transaction, arrives in step 09.
-const invoices: Invoice[] = [
+// Object.freeze does at run time what `readonly` does at compile time. Both are
+// needed, because Node deletes the types before it runs the file.
+const invoices: readonly Invoice[] = Object.freeze([
   makeInvoice("INV-1008", "VENDOR-44", money("31400.00", "USD"), "issued"),
   // A second invoice, so that a test can prove getInvoice searches the list instead
   // of always handing back the first entry.
   makeInvoice("INV-1009", "VENDOR-44", money("2500.00", "USD"), "draft"),
-];
+]);
 
 /**
  * Finds one invoice by its id.
@@ -85,39 +79,4 @@ const invoices: Invoice[] = [
  */
 export function getInvoice(id: string): Invoice | undefined {
   return invoices.find((invoice) => invoice.id === id);
-}
-
-/**
- * Issues a draft invoice, or refuses.
- *
- * NEW IN STEP 03: the first thing in this tutorial that changes state.
- *
- * Returns `undefined` when there is no such invoice, the same ordinary answer
- * getInvoice gives. Throws when the invoice is real but not a draft, the same refusal
- * style as money() and parseUri. Both become error envelopes with a code in step 04.
- *
- * The invoice is replaced rather than edited, because every Invoice is frozen. That is
- * not a workaround: a record that is never edited in place is a record you can hold on
- * to without it changing under you.
- */
-export function issueInvoice(id: string): Invoice | undefined {
-  const at = invoices.findIndex((invoice) => invoice.id === id);
-  const current = invoices[at];
-
-  if (current === undefined) {
-    return undefined;
-  }
-
-  // A plain `if`, deliberately. This is not the precondition machinery of the
-  // contract's `predicates` — nothing reads CEL until step 27 — and it is not
-  // idempotency, which is step 20. A second issue is refused because the status moved
-  // on, not because a key was replayed.
-  if (current.status !== "draft") {
-    throw new TypeError(`${id} is ${current.status}, and only a draft invoice can be issued`);
-  }
-
-  const issued = makeInvoice(current.id, current.vendor, current.amount, "issued");
-  invoices[at] = issued;
-
-  return issued;
 }

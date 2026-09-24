@@ -8,7 +8,7 @@
 //
 // Rule DSOR-OPR-01: every operation MUST have a contract.
 
-import { getInvoice, issueInvoice, TENANT, type Invoice } from "./invoice.ts";
+import { getInvoice, TENANT, type Invoice } from "./invoice.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { parseUri } from "./uri.ts";
 
@@ -24,6 +24,25 @@ const registry = loadRegistry(contractsFromDisk());
  * refusals below stop being thrown errors and become error envelopes with a code.
  */
 export type OperationResult = Invoice | undefined;
+
+/**
+ * Contracts that describe an operation this step does not carry out yet.
+ *
+ * `invoice.issue` is here on purpose. Its contract ships in this step, because a
+ * command's contract is what makes the schema interesting — it is the only kind that
+ * has to declare idempotency, concurrency, execution semantics and preconditions. But
+ * *doing* the change is a second idea, and this step has one: a spec sheet is data, and
+ * a bad one stops the program.
+ *
+ * The handler arrives in step 04, where a refusal gets an error code and a retry class.
+ * That is the right place for it: "this invoice is already issued" is exactly the kind
+ * of answer an error envelope exists to carry.
+ *
+ * Listing them here rather than leaving a silent gap means assertPaired can still
+ * insist that every other contract has a handler, and that nothing on this list has
+ * quietly lost its contract.
+ */
+const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set(["invoice.issue"]);
 
 type Handler = (
   args: Readonly<Record<string, unknown>>,
@@ -67,7 +86,6 @@ function invoiceIdFrom(
 
 const handlers: Readonly<Record<string, Handler>> = {
   "invoice.get": (args, contract) => getInvoice(invoiceIdFrom(args, contract)),
-  "invoice.issue": (args, contract) => issueInvoice(invoiceIdFrom(args, contract)),
 };
 
 /**
@@ -83,7 +101,7 @@ export function assertPaired(
   named: Readonly<Record<string, Handler>>,
 ): void {
   for (const id of contracts.keys()) {
-    if (named[id] === undefined) {
+    if (named[id] === undefined && !NOT_YET_IMPLEMENTED.has(id)) {
       throw new TypeError(`${id} has a contract and no handler`);
     }
   }
@@ -91,6 +109,18 @@ export function assertPaired(
   for (const id of Object.keys(named)) {
     if (!contracts.has(id)) {
       throw new TypeError(`${id} has a handler and no contract`);
+    }
+  }
+
+  // The waiting list cannot rot. An id here with no contract would be a note about
+  // nothing; an id here that also has a handler means someone forgot to cross it off.
+  for (const id of NOT_YET_IMPLEMENTED) {
+    if (!contracts.has(id)) {
+      throw new TypeError(`${id} is waiting for a handler and has no contract`);
+    }
+
+    if (named[id] !== undefined) {
+      throw new TypeError(`${id} has a handler, so take it off the waiting list`);
     }
   }
 }
@@ -118,8 +148,12 @@ export function callOperation(
   const contract = registry.get(id);
   const handler = handlers[id];
 
-  if (contract === undefined || handler === undefined) {
+  if (contract === undefined) {
     throw new TypeError(`${id} is not an operation this program has a contract for`);
+  }
+
+  if (handler === undefined) {
+    throw new TypeError(`${id} has a contract, and no handler until step 04`);
   }
 
   return handler(args, contract);

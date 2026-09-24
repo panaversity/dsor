@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { assertPaired, callOperation, operationIds } from "../src/operations.ts";
+import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -79,46 +80,49 @@ describe("callOperation", () => {
         callOperation("invoice.get", { invoice: "dsor://org_999/invoice/INV-1008" }),
       ).toThrow(/org_999/);
       expect(() =>
-        callOperation("invoice.issue", { invoice: "dsor://org_999/invoice/INV-1009" }),
-      ).toThrow(/org_999/);
+        callOperation("invoice.get", { invoice: "dsor://org_1/invoice/INV-1008" }),
+      ).toThrow(/this program serves org_456/);
     });
   });
 
-  describe("invoice.issue", () => {
-    // Draft, issued, then refused — in one test on purpose. Tests in one file share the
-    // module, so a second test could not assume INV-1009 was still a draft.
-    it("turns a draft into an issued invoice, and refuses the second attempt", () => {
-      expect(callOperation("invoice.get", { invoice: INV_1009 })?.status).toBe("draft");
-
-      const issued = callOperation("invoice.issue", { invoice: INV_1009 });
-
-      expect(issued?.status).toBe("issued");
-      expect(callOperation("invoice.get", { invoice: INV_1009 })?.status).toBe("issued");
-
-      // Refused because the status moved on. This is NOT idempotency, which arrives in
-      // step 20, and NOT in-flight exclusivity, which is step 32.
-      expect(() => callOperation("invoice.issue", { invoice: INV_1009 })).toThrow(/draft/);
+  // invoice.issue ships a contract in this step and no handler. The command itself is
+  // step 04's, where a refusal gets an error code — "this invoice is already issued" is
+  // exactly what an error envelope is for.
+  describe("invoice.issue, declared but not yet carried out", () => {
+    it("DSOR-OPR-01: has a contract, and the registry knows it", () => {
+      expect(operationIds()).toContain("invoice.issue");
     });
 
-    it("refuses an invoice that is already issued", () => {
-      expect(() => callOperation("invoice.issue", { invoice: INV_1008 })).toThrow(/draft/);
+    it("cannot be called yet, and says why", () => {
+      expect(() => callOperation("invoice.issue", { invoice: INV_1009 })).toThrow(/step 04/);
     });
 
-    it("returns undefined for an address that names no invoice we hold", () => {
-      expect(callOperation("invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" })).toBe(
-        undefined,
-      );
-    });
+    it("its contract declares a command, which is what makes the schema interesting", () => {
+      // A query needs ten fields. A command needs six more — delegation, idempotency,
+      // concurrency, execution, preconditions, controls — so the command contract is
+      // what exercises the schema's conditional branch.
+      const issue = loadRegistry(contractsFromDisk()).get("invoice.issue");
 
-    it("the issued invoice is still frozen, and still carries its own address", () => {
-      const issued = callOperation("invoice.get", { invoice: INV_1008 });
-
-      if (issued === undefined) {
-        throw new Error("INV-1008 is missing");
+      if (issue === undefined) {
+        throw new Error("invoice.issue has no contract");
       }
 
-      expect(Object.isFrozen(issued)).toBe(true);
-      expect(issued.uri).toBe(INV_1008);
+      expect(issue.kind).toBe("command");
+      expect(issue.effect).toBe("mutating");
+      expect(issue.execution).toEqual({ semantics: "atomic" });
+    });
+
+    it("the waiting list cannot rot", () => {
+      // An id waiting for a handler must still have a contract, and must not already
+      // have a handler. assertPaired checks both, so the note cannot outlive its reason.
+      const registry = loadRegistry(contractsFromDisk());
+
+      expect(() =>
+        assertPaired(registry, {
+          "invoice.get": () => undefined,
+          "invoice.issue": () => undefined,
+        }),
+      ).toThrow(/take it off the waiting list/);
     });
   });
 });
