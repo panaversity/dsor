@@ -420,7 +420,11 @@ parser and the formatter.
 
 Stop calling functions directly. Everything a caller can do becomes a named
 *operation* with a spec sheet called a *contract*: `invoice.get` reads, `invoice.issue`
-changes. A registry loads the contracts.
+changes. Both contracts ship here, because only a command's contract has to declare
+idempotency, concurrency, semantics and preconditions, and that is what makes the schema
+worth validating against. A registry loads the contracts and refuses a bad one before
+any request runs. Only the query is carried out; `invoice.issue` waits for step 04, so
+this step stays one idea.
 **New:** JSON Schema validation (ajv). **Spec:**
 [§7](../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) ·
 DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b.
@@ -429,10 +433,13 @@ DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b.
 ### 04 · `04_result_and_error_envelopes`
 
 Every answer gets the same outer shape. Every error gets a code and says whether a
-retry is safe.
+retry is safe. `invoice.issue` is carried out here, because a command is what makes an
+envelope worth having: "this invoice is already issued" needs a code a caller can act
+on, and a query's refusals are too thin to show that.
 **Spec:** [§28](../../specs/dsor/03-execution.md#28-result-and-error-envelopes) ·
 DSOR-ERR-01a, DSOR-SCH-01.
-**Done when:** every response in the tests validates against its schema.
+**Done when:** every response in the tests validates against its schema, and issuing an
+invoice twice returns an error envelope rather than throwing.
 
 ### 05 · `05_who_is_calling`
 
