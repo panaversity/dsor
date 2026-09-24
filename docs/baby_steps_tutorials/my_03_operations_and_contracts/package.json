@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test"
   },
+  "dependencies": {
+    "ajv": "8.20.0"
+  },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "typescript": "7.0.2",
