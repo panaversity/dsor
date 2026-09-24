@@ -62,21 +62,16 @@ function makeInvoice(id: string, vendor: string, amount: Money, status: InvoiceS
 // ISO 4217 code fails here, when the file is first loaded, and not later in a payment.
 // The addresses go through formatUri() for the same reason.
 //
-// Object.freeze does at run time what `readonly` does at compile time. Both are
-// needed, because Node deletes the types before it runs the file.
-//
-// Be honest about this one: no test can see it. `invoices` is not exported, and
-// `readonly Invoice[]` already stops a `push` from inside this file, so removing the
-// freeze breaks nothing today and no test would go red. It stays because the day this
-// list is handed to a caller — step 09, when a real store arrives — is the day it
-// matters, and a guard added then is a guard added late. The freeze on each invoice at
-// line 49 is the one that does real work now, and that one is tested.
-const invoices: readonly Invoice[] = Object.freeze([
+// NEW IN STEP 04: the list itself can change again, because invoice.issue is carried
+// out here. Every Invoice inside it stays frozen, the array stays private to this
+// module, and issueInvoice is the only thing that writes to it. A real store, with a
+// real transaction, arrives in step 09.
+const invoices: Invoice[] = [
   makeInvoice("INV-1008", "VENDOR-44", money("31400.00", "USD"), "issued"),
   // A second invoice, so that a test can prove getInvoice searches the list instead
   // of always handing back the first entry.
   makeInvoice("INV-1009", "VENDOR-44", money("2500.00", "USD"), "draft"),
-]);
+];
 
 /**
  * Finds one invoice by its id.
@@ -86,4 +81,46 @@ const invoices: readonly Invoice[] = Object.freeze([
  */
 export function getInvoice(id: string): Invoice | undefined {
   return invoices.find((invoice) => invoice.id === id);
+}
+
+/**
+ * What happened when an invoice was asked to be issued.
+ *
+ * NEW IN STEP 04: this reports a *fact*, and says nothing about how to tell a caller.
+ * Choosing the error code belongs to the layer that answers callers, in operations.ts,
+ * because a code is part of the answer rather than part of the store. Before this step
+ * the store threw a TypeError and the caller got a sentence it could not act on.
+ */
+export type IssueOutcome =
+  | { readonly kind: "issued"; readonly invoice: Invoice }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "not_draft"; readonly status: InvoiceStatus };
+
+/**
+ * Issues a draft invoice.
+ *
+ * The invoice is replaced rather than edited, because every Invoice is frozen. That is
+ * not a workaround: a record that is never edited in place is a record you can hold on
+ * to without it changing under you.
+ */
+export function issueInvoice(id: string): IssueOutcome {
+  const at = invoices.findIndex((invoice) => invoice.id === id);
+  const current = invoices[at];
+
+  if (current === undefined) {
+    return { kind: "not_found" };
+  }
+
+  // A plain `if`, deliberately. This is not the precondition machinery of the contract's
+  // `predicates` — nothing reads CEL until step 27 — and it is not idempotency, which is
+  // step 20. A second issue is refused because the status moved on, not because a key
+  // was replayed.
+  if (current.status !== "draft") {
+    return { kind: "not_draft", status: current.status };
+  }
+
+  const issued = makeInvoice(current.id, current.vendor, current.amount, "issued");
+  invoices[at] = issued;
+
+  return { kind: "issued", invoice: issued };
 }

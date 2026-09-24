@@ -1,11 +1,30 @@
-// NEW IN STEP 03: nobody calls getInvoice directly any more.
+// nobody calls getInvoice directly any more.
 //
 // A caller names an operation and passes arguments. The operation is looked up in the
 // registry, so an operation with no contract cannot be called at all.
 
 import { describe, expect, it } from "vitest";
-import { assertPaired, callOperation, operationIds } from "../src/operations.ts";
+import { assertPaired, callOperation, operationIds, WIRING_CHECKED } from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
+import { refusal, resetProposalIds, resetRequestIds, validateEnvelope } from "../src/envelopes.ts";
+
+/** A stand-in handler table with both operations, for assertPaired tests. */
+function handlersForBoth() {
+  const stub = () => ({ kind: "error", envelope: refusal("CONFLICT", "x") }) as const;
+
+  return { "invoice.get": stub, "invoice.issue": stub };
+}
+
+/** The error envelope a refusal came back in, or a failure if it was not a refusal. */
+function refusalFrom(answer: ReturnType<typeof callOperation>) {
+  if (answer.kind !== "error") {
+    throw new Error(`expected a refusal, got ${answer.kind}`);
+  }
+
+  expect(validateEnvelope("error", answer.envelope)).toBe(true);
+
+  return answer.envelope;
+}
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -28,27 +47,47 @@ describe("callOperation", () => {
   });
 
   it("DSOR-OPR-01: a handler with no contract is refused", () => {
-    expect(() => assertPaired(new Map(), { "invoice.cancel": () => undefined })).toThrow(
-      /invoice\.cancel/,
-    );
+    expect(() =>
+      assertPaired(new Map(), {
+        "invoice.cancel": () => ({ kind: "error", envelope: refusal("CONFLICT", "x") }),
+      }),
+    ).toThrow(/invoice\.cancel/);
   });
 
-  it("an operation that has no contract cannot be called", () => {
-    // Two different refusals, and the difference is the point. "No contract at all" and
-    // "a contract whose handler is not built yet" are not the same situation, and a
-    // caller reading the message needs to be able to tell them apart.
-    expect(() => callOperation("invoice.delete", { invoice: INV_1008 })).toThrow(
-      /no contract for it/,
-    );
-    expect(() => callOperation("execute_sql", { sql: "drop table invoices" })).toThrow(
-      /no contract for it/,
-    );
-    expect(() => callOperation("invoice.issue", { invoice: INV_1009 })).toThrow(/no handler/);
+  it("DSOR-ERR-01a: an operation with no contract is refused with UNSUPPORTED_CAPABILITY", () => {
+    for (const id of ["invoice.delete", "execute_sql"]) {
+      const envelope = refusalFrom(callOperation(id, { invoice: INV_1008 }));
+
+      expect(envelope.code).toBe("UNSUPPORTED_CAPABILITY");
+      expect(envelope.retry).toBe("never");
+      expect(envelope.message).toContain(id);
+    }
   });
 
   // The module runs loadRegistry and assertPaired as it loads. No test in this process
   // can watch those lines run — by the time a test imports the module, they already have.
   // What a test can do is assert the state they guarantee, from outside.
+  // The pairing check runs at module scope. No test can watch that line execute, but the
+  // constant only exists because it did, so deleting the check cannot be silent.
+  it("DSOR-OPR-01: the wiring was checked at start-up, not on first request", () => {
+    expect(WIRING_CHECKED).toBe(true);
+  });
+
+  // The waiting list is a parameter, so a rotten one can be handed in. In this step the
+  // real list is empty — invoice.issue came off it — and these two checks are what stop a
+  // future step leaving a stale note behind.
+  it("DSOR-OPR-01: an id waiting for a handler must still have a contract", () => {
+    expect(() => assertPaired(new Map(), {}, new Set(["invoice.delete"]))).toThrow(
+      /waiting for a handler and has no contract/,
+    );
+  });
+
+  it("DSOR-OPR-01: an id that has a handler must come off the waiting list", () => {
+    expect(() =>
+      assertPaired(loadRegistry(contractsFromDisk()), handlersForBoth(), new Set(["invoice.get"])),
+    ).toThrow(/take it off the waiting list/);
+  });
+
   it("DSOR-OPR-01: on load, every contract is accounted for", () => {
     const ids = operationIds();
 
@@ -71,95 +110,122 @@ describe("callOperation", () => {
   });
 
   describe("invoice.get", () => {
+    // A query's success is not in an envelope. There is no outcome value that means
+    // "here is the data", so a read keeps handing back the invoice — the README says so.
     it("reads one invoice by its canonical address", () => {
-      expect(callOperation("invoice.get", { invoice: INV_1008 })?.amount.value).toBe("31400.00");
+      const answer = callOperation("invoice.get", { invoice: INV_1008 });
+
+      if (answer.kind !== "data") {
+        throw new Error(`expected data, got ${answer.kind}`);
+      }
+
+      expect(answer.invoice.amount.value).toBe("31400.00");
     });
 
-    it("returns undefined for an address that names no invoice we hold", () => {
-      expect(callOperation("invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" })).toBe(
-        undefined,
+    it("DSOR-ERR-01a: an invoice we do not hold is RESOURCE_NOT_FOUND, never retryable", () => {
+      const envelope = refusalFrom(
+        callOperation("invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }),
       );
+
+      expect(envelope.code).toBe("RESOURCE_NOT_FOUND");
+      expect(envelope.retry).toBe("never");
     });
 
     // Step 02's README promised the entity segment stops being trusted text in step 03.
     // No rule id: this keeps that promise, it is not DSOR-RID-01b.
-    it("refuses an address whose entity no operation is named for", () => {
-      expect(() =>
+    it("DSOR-ERR-01a: an address whose entity no operation is named for is VALIDATION_FAILED", () => {
+      const envelope = refusalFrom(
         callOperation("invoice.get", { invoice: "dsor://org_456/vendor/VENDOR-44" }),
-      ).toThrow(/vendor/);
+      );
+
+      expect(envelope.code).toBe("VALIDATION_FAILED");
+      expect(envelope.retry).toBe("never");
     });
 
-    it("refuses an address that is not a canonical URI at all", () => {
-      expect(() => callOperation("invoice.get", { invoice: "INV-1008" })).toThrow(TypeError);
-      expect(() => callOperation("invoice.get", {})).toThrow(TypeError);
+    it("DSOR-ERR-01a: an address that is not canonical, or missing, is VALIDATION_FAILED", () => {
+      expect(refusalFrom(callOperation("invoice.get", { invoice: "INV-1008" })).code).toBe(
+        "VALIDATION_FAILED",
+      );
+      expect(refusalFrom(callOperation("invoice.get", {})).code).toBe("VALIDATION_FAILED");
     });
 
     // A regular expression turns whatever it is given into text first, so an object
     // with a toString would sail past parseUri and read a real invoice. Only checking
     // the type stops it — the same lesson formatUri taught in step 02.
-    it("refuses an argument that is not text, however convincing it looks", () => {
+    it("DSOR-ERR-01a: an argument that is not text is VALIDATION_FAILED, however convincing", () => {
       const disguised = { toString: () => INV_1008 } as unknown as string;
+      const envelope = refusalFrom(callOperation("invoice.get", { invoice: disguised }));
 
-      expect(() => callOperation("invoice.get", { invoice: disguised })).toThrow(
-        /needs an invoice address/,
-      );
+      expect(envelope.code).toBe("VALIDATION_FAILED");
+      expect(envelope.message).toMatch(/needs an invoice address/);
     });
 
     // The address names a company. Acting on a different company's invoice than the
     // address asked for is how one tenant reads another's records.
-    it("refuses an address for a company this program does not serve", () => {
-      expect(() =>
+    it("DSOR-ERR-01a: an address for another company is TENANT_MISMATCH", () => {
+      const envelope = refusalFrom(
         callOperation("invoice.get", { invoice: "dsor://org_999/invoice/INV-1008" }),
-      ).toThrow(/org_999/);
-      expect(() =>
-        callOperation("invoice.get", { invoice: "dsor://org_1/invoice/INV-1008" }),
-      ).toThrow(/this program serves org_456/);
+      );
+
+      expect(envelope.code).toBe("TENANT_MISMATCH");
+      expect(envelope.retry).toBe("never");
+      expect(envelope.message).toContain("org_999");
     });
   });
 
-  // invoice.issue ships a contract in this step and no handler. The command itself is
-  // step 04's, where a refusal gets an error code — "this invoice is already issued" is
-  // exactly what an error envelope is for.
-  describe("invoice.issue, declared but not yet carried out", () => {
-    it("DSOR-OPR-01: has a contract, and the registry knows it", () => {
-      expect(operationIds()).toContain("invoice.issue");
-    });
+  // NEW IN STEP 04: the command split out of step 03 is carried out here, because a
+  // command is what makes an envelope worth having.
+  describe("invoice.issue", () => {
+    // Issue, then issue again — in one test on purpose. Tests in one file share the
+    // module, so a second test could not assume INV-1009 was still a draft. This also
+    // covers the map's "done when": issuing twice returns an error envelope, not a throw.
+    it("DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT", () => {
+      resetRequestIds();
+      resetProposalIds();
 
-    it("cannot be called yet, and says why", () => {
-      expect(() => callOperation("invoice.issue", { invoice: INV_1009 })).toThrow(/step 04/);
-    });
+      const first = callOperation("invoice.issue", { invoice: INV_1009 });
 
-    it("its contract declares a command, which is what makes the schema interesting", () => {
-      // A query needs ten fields. A command needs six more — delegation, idempotency,
-      // concurrency, execution, preconditions, controls — so the command contract is
-      // what exercises the schema's conditional branch.
-      const issue = loadRegistry(contractsFromDisk()).get("invoice.issue");
-
-      if (issue === undefined) {
-        throw new Error("invoice.issue has no contract");
+      if (first.kind !== "result") {
+        throw new Error(`expected a result, got ${first.kind}`);
       }
 
-      expect(issue.kind).toBe("command");
-      expect(issue.effect).toBe("mutating");
-      expect(issue.execution).toEqual({ semantics: "atomic" });
+      expect(validateEnvelope("result", first.envelope)).toBe(true);
+      expect(first.envelope.outcome).toBe("COMMITTED");
+      expect(first.envelope.semantics).toBe("atomic");
+      expect(first.envelope.proposal).toBe("dsor://org_456/proposal/prop_0001");
+      expect((first.envelope.data as { status: string }).status).toBe("issued");
+
+      // Again. Nothing is thrown; the refusal is an envelope a caller can act on, and
+      // its retry class says plainly that trying again cannot help.
+      const second = refusalFrom(callOperation("invoice.issue", { invoice: INV_1009 }));
+
+      expect(second.code).toBe("CONFLICT");
+      expect(second.retry).toBe("never");
+      expect(second.message).toMatch(/draft/);
     });
 
-    it("an id on the waiting list must still have a contract", () => {
-      // The other half of the rot check: a note about an operation that does not exist.
-      expect(() => assertPaired(new Map(), {})).toThrow(/waiting for a handler/);
+    it("DSOR-ERR-01a: issuing an invoice that is already issued is CONFLICT", () => {
+      expect(refusalFrom(callOperation("invoice.issue", { invoice: INV_1008 })).code).toBe(
+        "CONFLICT",
+      );
     });
 
-    it("the waiting list cannot rot", () => {
-      // An id waiting for a handler must still have a contract, and must not already
-      // have a handler. assertPaired checks both, so the note cannot outlive its reason.
-      const registry = loadRegistry(contractsFromDisk());
+    it("DSOR-ERR-01a: issuing an invoice we do not hold is RESOURCE_NOT_FOUND", () => {
+      expect(
+        refusalFrom(callOperation("invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" }))
+          .code,
+      ).toBe("RESOURCE_NOT_FOUND");
+    });
 
+    it("the contract is no longer on the waiting list", () => {
+      // assertPaired refuses an id that has both a handler and a place in the queue, so
+      // this could not have been forgotten.
+      expect(operationIds()).toContain("invoice.issue");
       expect(() =>
-        assertPaired(registry, {
-          "invoice.get": () => undefined,
-          "invoice.issue": () => undefined,
+        assertPaired(loadRegistry(contractsFromDisk()), {
+          "invoice.get": () => ({ kind: "error", envelope: refusal("CONFLICT", "x") }),
         }),
-      ).toThrow(/take it off the waiting list/);
+      ).toThrow(/invoice\.issue has a contract and no handler/);
     });
   });
 });
