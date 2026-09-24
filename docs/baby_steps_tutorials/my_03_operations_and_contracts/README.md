@@ -1,239 +1,327 @@
-# Step 02 · Canonical URIs
+# Step 03 · Operations and contracts
 
-**New in this step:** every record gets one permanent address, and a pair of functions
-that write it and read it.
+**New in this step:** every action a caller can take has a name and a spec sheet, and a
+bad spec sheet stops the program before it answers anything.
 
 ## In plain words
 
-An invoice needs a name the whole system can use. Not "the Acme invoice", and not a
-number that means something only inside one database, but one address written the same
-way everywhere:
+Until now, code called `getInvoice("INV-1008")` directly. This step stops that.
 
-```text
-dsor://org_456/invoice/INV-1008
-^^^^   ^^^^^^^ ^^^^^^^ ^^^^^^^^
-scheme tenant  entity  id
-```
+Every action becomes a named **operation**. `invoice.get` reads one invoice.
+`invoice.issue` turns a draft into an issued invoice. And every operation has a
+**contract**: a document that describes it. Does it read, or change something? Which
+permission does it need? How risky is it? Can it be undone?
 
-Read it left to right. `dsor://` says this is a DSoR address, the way `https://` says a
-web address. `org_456` says **which company**. `invoice` says **what kind of thing**.
-`INV-1008` says **which one**.
+The contracts are JSON files in `src/contracts/`, because a spec sheet is *data*, not
+code. A **registry** loads them all when the program starts. If one is broken, the
+program refuses to start.
 
-Two words for this, because the specification uses them. A **URI** is a Uniform
-Resource Identifier, which is a long way of saying an address. **Canonical** means
-there is one correct way to write it and everybody writes it that way, so two people
-naming the same invoice always produce the same text.
-
-This step adds two functions. `parseUri` reads an address and hands back its three
-parts. `formatUri` does the reverse. Both refuse an address that is not allowed, and
-the refusing is the half that matters.
+That last sentence is the whole step. Not "the request fails" — the program does not
+start.
 
 ## Why it matters
 
-The address is how one invoice is followed from end to end. The approval says
-`dsor://org_456/invoice/INV-1008`. The payment says it. The audit log says it. That is
-what lets you prove, later, that the invoice the CFO approved is the invoice that was
-paid.
+A contract is where a rule finds its target.
 
-So the address must never change. Rule `DSOR-RID-01b` says the company part must be an
-**id** and never a **name**, and here is the failure it prevents.
+Every later step asks a question of an operation. Step 06 asks "does this caller hold
+`invoice:issue`?" Step 20 asks "does this need an idempotency key?" Step 27 asks "is
+this risky enough to need the CFO?" Every one of those reads the contract. A single
+generic `update(record, fields)` has nowhere to put those answers, which is why §7 says:
 
-Suppose the address used the name: `dsor://acme/invoice/INV-1008`. Next year Acme is
-bought and renamed. Every record written before the rename now points at a company
-under a name that no longer exists, and the trail between the approval and the payment
-is broken. An id like `org_456` means nothing to anybody, so nobody ever renames it,
-so the address written in 2026 still reads the same in 2036.
+> DSoR prefers domain operations to generic CRUD: `invoice.issue`, `payment.execute`,
+> `period.close`, not `invoice.update(status="issued")`.
 
-The specification puts it in one line: *company names change, and database keys change
-when data is re-imported.*
+And the reason a broken contract must stop the program, rather than fail a request, is
+that nobody would notice. A contract with no risk level is a contract no control can
+ever fire on. If that only broke on the one request per month that needed approval, it
+would sit there for the other thirty days looking fine.
 
-## The part that cannot be checked by looking
+§7's Common mistake names the extreme version:
 
-Look at these two pieces of text:
+> Giving the agent a `run_sql` tool or a "call any API" tool "just for now". That one
+> tool bypasses every protection in this document.
+
+`pnpm start` ends by asking for `execute_sql`. There is no contract for it, so there is
+no such operation, so it cannot be called. That is the shape the rule is after.
+
+## The new tool
+
+**ajv**, at exactly version `8.20.0`, is the first dependency this tutorial has added
+since step 00. It checks a JSON document against a **JSON Schema** — itself a JSON
+document describing what a valid document looks like.
+
+It is a real **dependency**, not a `devDependency`: `src/registry.ts` imports it at run
+time, so `pnpm start` needs it. Putting it under `devDependencies` would let `pnpm test`
+pass while `pnpm start` failed for anyone who installed this folder on its own.
+
+The version is exact, with no `^`. This folder's `pnpm-workspace.yaml` also sets
+`minimumReleaseAge: 2880`, a 48-hour quarantine, so a freshly published version would be
+refused at install anyway.
+
+## Checking against the real schema, not one of our own
+
+`src/schemas/` holds two files copied **byte for byte** from `packages/spec/schemas/`:
 
 ```text
-acme
-org_456
+operation-contract.schema.json   363 lines
+common.schema.json               228 lines
 ```
 
-You know one is a name and one is an id. **The program does not.** Both are letters,
-digits and punctuation. Nothing in the text itself says "I am a name".
+Neither is trimmed, and that is deliberate. `DSOR-OPR-01` says a contract "MUST validate
+against `operation-contract.schema.json`" — it names that exact file. Checking against a
+smaller schema of our own would be checking against something else, and a hand-trimmed
+copy of a normative schema is worse than either: it silently stops enforcing whatever
+you removed, and nothing tells you.
 
-So the shape check cannot do this job on its own. The specification's own JSON Schema,
-in `packages/spec/schemas/common.schema.json`, describes an address as:
+The step keeps its own copies because a step has to run outside this repository.
 
-```text
-^dsor://[A-Za-z0-9_-]+/[a-z][a-z0-9_]*/[A-Za-z0-9_.-]+$
-```
-
-and `acme` matches `[A-Za-z0-9_-]+` exactly as well as `org_456` does. The repository
-knows this: its own test for `DSOR-RID-01a` breaks an address with a **space**, not
-with a name, because a bare name passes.
-
-That is why `src/uri.ts` has a second pattern:
+`operation-contract.schema.json` refers to `common.schema.json` **eleven times**, to
+seven of its definitions — `operationId`, `permission`, `risk`, `semantics`, `freshness`,
+`cel` and `extensions`. That is why both are registered:
 
 ```ts
-const TENANT_ID = /^org_[0-9]+$/;
+const ajv = new Ajv2020({ strict: false, allErrors: true });
+ajv.addSchema(read("./schemas/common.schema.json"));
+ajv.addSchema(read("./schemas/operation-contract.schema.json"));
 ```
 
-**This pattern is this deployment's own convention, not a rule from §5.** Section 5
-says a tenant id is "an immutable opaque identifier" — *opaque* meaning the id carries
-no meaning you can read, it is a label rather than a description, and *immutable*
-meaning it never changes. Section 5 never says what shape such an id takes. We are choosing, here, that our company ids are `org_` followed by digits — and
-that choice is what lets the program tell `acme` from `org_456`. A company that
-numbers its tenants differently changes that one line.
+Two details worth knowing. `Ajv2020` comes from `ajv/dist/2020.js`, because plain `Ajv`
+is draft-07 and these schemas are draft 2020-12. And `strict: false` is not laziness —
+under `strict: true`, thirteen of the specification's fourteen schemas refuse to compile
+at all. Nine of them trip on `strictRequired`, because an `if`/`then` block names a
+property in `required` that is not listed in the `properties` beside it; the rest trip on
+an unknown `format`, a union type, and a `properties` block with no `type`. It has a
+cost, and Break 4 shows you exactly what it is.
 
-This is the same lesson as `money()` in step 01. Checking the **shape** of something
-and checking its **meaning** are different jobs, and the second one always needs
-knowledge from outside the text.
-
-## What changed since step 01
+## What changed since step 02
 
 ```text
-my_02_canonical_uris/
-  src/uri.ts            NEW  parseUri, formatUri, and the two patterns
-  test/uri.test.ts      NEW  nine tests: the shape, the refusals, the round trip
-  src/invoice.ts     CHANGED an Invoice now carries its own uri
-  test/invoice.test.ts CHANGED two tests for an invoice's address
-  src/main.ts        CHANGED prints the address
-  src/money.ts       CHANGED step 01's NEW IN STEP markers removed
-  test/money.test.ts CHANGED step 01's NEW IN STEP markers removed
-  package.json       CHANGED name and description only
+my_03_operations_and_contracts/
+  src/schemas/*.json       NEW  two schema files, copied byte for byte
+  src/contracts/*.json     NEW  invoice.get and invoice.issue, as documents
+  src/registry.ts          NEW  validateContract, loadRegistry, contractsFromDisk
+  src/operations.ts        NEW  callOperation, assertPaired, and the two handlers
+  test/registry.test.ts    NEW  thirteen tests: what the registry refuses, and what it keeps
+  test/operations.test.ts  NEW  thirteen tests: calling by name, and the refusals
+  src/invoice.ts       CHANGED  issueInvoice, and the list is no longer frozen
+  src/main.ts          CHANGED  calls through the registry; imports getInvoice no more
+  src/uri.ts           CHANGED  step 02's NEW IN STEP markers removed
+  test/uri.test.ts     CHANGED  step 02's NEW IN STEP markers removed
+  test/invoice.test.ts CHANGED  step 02's NEW IN STEP markers removed
+  package.json         CHANGED  name, description, and ajv
 ```
 
 ```bash
 cd docs/baby_steps_tutorials
 diff -rq --exclude=node_modules --exclude=pnpm-lock.yaml \
-  my_01_one_invoice_in_memory my_02_canonical_uris
+  my_02_canonical_uris my_03_operations_and_contracts
 ```
-
-Search the folder for `NEW IN STEP 02` and you find this step's lesson and nothing
-else. Step 01's markers are gone, which is why `money.ts` and `money.test.ts` show up
-in the diff without having changed in any way that matters.
 
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_02_canonical_uris
+cd docs/baby_steps_tutorials/my_03_operations_and_contracts
 pnpm install
 pnpm start
 ```
 
 ```text
 Hello, accounts-payable-fte.
-dsor://org_456/invoice/INV-1008
-  31400.00 USD to VENDOR-44 (issued)
-INV-9999: not found.
+operations: invoice.get, invoice.issue
+
+invoice.get    dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
+
+invoice.issue  dsor://org_456/invoice/INV-1009  2500.00 USD  issued
+
+refused  already issued: INV-1008 is issued, and only a draft invoice can be issued
+refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
+refused  no contract: execute_sql is not an operation this program has a contract for
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 24 tests pass
+pnpm check                 # typecheck, then test. 50 tests pass
 ```
 
-### Why the address is built from the id
+### The first thing that changes state, and what it cost
 
-`makeInvoice` in `src/invoice.ts` builds the address out of the id it was given,
-instead of the id being typed a second time:
+`invoice.issue` has to change the stored invoices, and that forced the only awkward
+change in this step: **the invoices array is no longer frozen.** Step 01 froze it; step
+03 gives that up, because a command must be able to change state.
+
+Be clear about the price, because no test caught it. Step 01's tests check
+`Object.isFrozen(invoice)` and `Object.isFrozen(invoice.amount)` — never the list. The
+guarantee could be dropped without one red line.
+
+What is kept: every `Invoice` is still frozen, so a caller holding one cannot edit it;
+the array stays private to the module; and `issueInvoice` is the only way to change
+anything. An invoice is *replaced*, not edited. A real store with a real transaction
+arrives in step 09.
+
+### The address names a company, so the company is honoured
+
+`invoice.get` takes an address, and an address has three parts. Step 02 built the parser;
+this step is the first to *use* what it parsed:
 
 ```ts
-uri: formatUri({ tenant: TENANT, entity: "invoice", id }),
+const { tenant, entity, id } = parseUri(given);
 ```
 
-Writing `"INV-1008"` twice is how a record ends up carrying an address that belongs to
-a different record. An address that points at the wrong invoice is worse than no
-address, because every log line and every approval that quotes it is now confidently
-wrong. Break 3 below shows exactly that going wrong.
+All three are checked. The entity must match what the operation is named for —
+`invoice.get` is for an `invoice`, so `dsor://org_456/vendor/VENDOR-44` is refused. And
+the tenant must be the one company this program serves.
 
-### Why `formatUri` reads back what it writes, and compares
-
-```ts
-const uri = `dsor://${parts.tenant}/${parts.entity}/${parts.id}`;
-const back = parseUri(uri);
-
-if (back.tenant !== parts.tenant || back.entity !== parts.entity || back.id !== parts.id) {
-  throw new TypeError(`address does not read back the same: ${JSON.stringify(uri)}`);
-}
-```
-
-Without this, `formatUri` would be a back door: you could not get a bad address *past*
-`parseUri`, but you could *create* one.
-
-Parsing alone is not enough, and this is the subtle part. Building text with
-`${...}` turns whatever it is given into text first. So if the id is missing, the
-address becomes:
+That second check is worth dwelling on, because leaving it out is worse than never
+parsing the tenant at all. Without it:
 
 ```text
-dsor://org_456/invoice/undefined
+callOperation("invoice.issue", { invoice: "dsor://org_999/invoice/INV-1009" })
+  → issues org_456's INV-1009
 ```
 
-which parses perfectly. It is canonical, it is permanent, and it points at nothing. The
-types do not save you: `readonly id: string` is erased before Node runs the file, so a
-`null` from a database row in step 09 arrives here and quietly becomes the word
-`"null"`. Comparing the parts catches it, because `"undefined"` is not `undefined`.
+The caller asked about one company and quietly got another's records changed. Reading a
+part of the address and then ignoring it is how one tenant reaches into another's data —
+the specification calls that shape a *confused deputy*, and §14 is where real
+multi-tenancy arrives in step 10. This step is not that. It is the smaller promise that a
+part of the address we read is a part we honour.
+
+### Why the second `invoice.issue` is refused
+
+It is refused because INV-1009's status moved from `draft` to `issued`. That is a plain
+`if` on the status.
+
+It is **not** idempotency, which is step 20, and **not** in-flight exclusivity, which is
+step 32. Those answer "you already asked me this" and "something else is already acting
+on this". This one answers "that is not a draft any more". They look alike from outside
+and they are different rules.
+
+### The part that cannot be checked by looking
+
+Step 01 found that `money()` accepts `ZZZ`. Step 02 found that the schema's tenant
+pattern accepts `acme`. Step 03's version of the same discovery is bigger:
+
+The contract `invoice.issue` declares `predicates: ["state.invoice.status == \"draft\""]`.
+Nothing reads it.
+
+That line is written in **CEL** — Common Expression Language, a small language for
+writing a condition that a program can check safely. It cannot loop forever, it cannot
+reach the network, and DSoR uses it for every rule in §17. **Nothing in this tutorial
+parses CEL until step 27.**
+
+So an empty `predicates: []` validates. So does `predicates: ["not CEL at all !!!"]`,
+because the schema's `cel` definition is only "a string with at least one character".
+
+The same is true of `input.schema: "InvoiceIssueRequest"`. No such schema exists
+anywhere in this repository, and nothing validates arguments against it until step 04.
+
+So the schema proves a contract **has the fields**. It never proves the fields **say
+anything true**. That is the third time this tutorial has met the same lesson, and it is
+the reason every "the rules this step meets" section here comes with limits attached.
 
 ## Break it
 
-Four breaks, each one showing a different guard. Change the code back after each.
+Four breaks. Change the code back after each.
 
-**1. Loosen `TENANT_ID` to the schema's own pattern.** In `src/uri.ts`, change it to
-`/^[A-Za-z0-9_-]+$/` — the exact pattern the normative schema uses for the tenant part.
-Run `pnpm test`:
-
-```text
- FAIL  test/uri.test.ts > parseUri > DSOR-RID-01b: a company name in place of a tenant id is refused
-AssertionError: expected function to throw an error, but it didn't
- FAIL  test/uri.test.ts > parseUri > DSOR-RID-01b: the refusal says which half was wrong
- FAIL  test/uri.test.ts > formatUri > DSOR-RID-01b: refuses to write an address it would not read
- Test Files  1 failed | 3 passed (4)
-      Tests  3 failed | 21 passed (24)
-```
-
-This is the break to sit with. The pattern you just pasted in is not wrong — it is what
-the specification's schema actually says. It is simply not enough on its own, and three
-tests say so. `dsor://acme/invoice/INV-1008` is now accepted.
-
-**2. Remove the `^` and `$`.** These mean "the whole text must be the address, and
-nothing else". Without them a match anywhere inside a longer string counts:
+**1. Delete `risk` from `src/contracts/invoice.issue.json`.** This is the step's goal.
+Run `pnpm start`:
 
 ```text
-AssertionError: expected function to throw an error, but it didn't
- Test Files  1 failed | 3 passed (4)
-      Tests  2 failed | 22 passed (24)
+TypeError: src/contracts/invoice.issue.json is not a valid operation contract: (root) must have required property 'risk'
 ```
 
-`dsor://org_456/invoice/INV-1008 and more` now parses cleanly.
-
-**3. Type the id twice.** In `makeInvoice`, change `id` inside `formatUri` to the
-literal `"INV-1008"`. Run `pnpm test`:
+The program printed nothing at all — not the greeting, not the operation list. Now run
+`pnpm test`:
 
 ```text
-AssertionError: expected 'dsor://org_456/invoice/INV-1008' to be 'dsor://org_456/invoice/INV-1009' // Object.is equality
- Test Files  1 failed | 3 passed (4)
-      Tests  2 failed | 22 passed (24)
+ Test Files  2 failed | 4 passed (6)
+      Tests  4 failed | 32 passed (36)
 ```
 
-INV-1009 now claims INV-1008's address. Nothing crashed, nothing looked broken, and two
-different invoices answer to the same name.
+Read the totals. **36 collected, not 50.** Fourteen tests did not fail — they never ran,
+because `operations.test.ts` imports a module that throws while it is loading. That is
+what "refused at start-up" looks like from the outside.
 
-**4. Misspell a part.** Change `id` to `invoiceId: id` in that same call. Run
-`pnpm typecheck`:
+**2. Remove the `common.schema.json` line from `src/registry.ts`,** keeping the other
+`addSchema`. Run `pnpm start`:
 
 ```text
-src/invoice.ts(50,57): error TS2353: Object literal may only specify known properties, and 'invoiceId' does not exist in type 'ResourceUri'.
+MissingRefError: can't resolve reference urn:dsor:schema:1.3:common#/$defs/operationId from id urn:dsor:schema:1.3:operation-contract
 ```
 
-No test had to run. Change everything back and run `pnpm check` to see 24 tests pass.
+The contract schema cannot stand alone. Notice ajv did not complain at `addSchema` —
+references are resolved when the schema is *fetched*, so the failure lands later than the
+mistake.
+
+**3. Add `"description": "Issues an invoice"` to `invoice.issue.json`.** A helpful thing
+to want. Run `pnpm start`:
+
+```text
+src/contracts/invoice.issue.json is not a valid operation contract: (root) must NOT have additional properties
+```
+
+The schema closes its top level, so a field it does not know about is refused. The way in
+is `extensions`, keyed by a **reverse-DNS namespace** — your domain name backwards, so
+`example.com` becomes `com.example`, which keeps two companies' extra fields from
+colliding:
+
+```json
+"extensions": { "com.example.notes": { "description": "Issues an invoice" } }
+```
+
+That is rule `DSOR-SCH-02`, and `test/registry.test.ts` tests both halves: the bare field
+refused, the namespaced one accepted. Note the message never says *which* field is extra
+— ajv keeps the field name in a separate `params` object, not in the human-readable
+`message`.
+
+**4. Misspell a keyword in the copied schema, and see what `strict: false` costs.**
+In `src/schemas/operation-contract.schema.json`, rename the top-level `"required"` to
+`"requird"`. Then delete `risk` from `invoice.issue.json` as in Break 1. Run
+`pnpm start`:
+
+```text
+Hello, accounts-payable-fte.
+operations: invoice.get, invoice.issue
+
+invoice.get    dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+invoice.get    dsor://org_456/invoice/INV-1009  2500.00 USD  draft
+
+invoice.issue  dsor://org_456/invoice/INV-1009  2500.00 USD  issued
+
+refused  already issued: INV-1008 is issued, and only a draft invoice can be issued
+refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor
+refused  no contract: execute_sql is not an operation this program has a contract for
+```
+
+It ran. Happily. Every line exactly as before, with a contract that has **no risk level
+at all**. Now `pnpm test`:
+
+```text
+ Test Files  1 failed | 5 passed (6)
+      Tests  3 failed | 47 passed (50)
+```
+
+All 50 collected this time, because nothing threw while loading. Only the three tests
+that expect a refusal failed.
+
+Compare that with Break 1. Same broken contract; the difference is one letter in the
+schema. Under `strict: false`, ajv ignores a keyword it does not recognise — so the rule
+you thought you wrote is simply absent, and nothing warns you. Under `strict: true` the
+same typo raises `strict mode: unknown keyword: "requird"`, but then thirteen of the
+specification's own schemas will not compile.
+
+There is no free option here. `strict: false` is the right choice for these schemas and
+it costs you spelling. The tests are what stand in for it.
 
 ## Build it yourself with Claude Code
 
-This folder is a learner copy — the `my_` prefix is the convention for a copy you build
-yourself. The official `02_canonical_uris` is still listed as planned in the
-[map](../readme.md), so there is nothing to compare against yet.
+This folder is a learner copy — the `my_` prefix. The official
+`03_operations_and_contracts` is still listed as planned in the [map](../readme.md), so
+there is nothing to compare against yet.
 
 ```bash
 cd docs/baby_steps_tutorials
-cp -r my_01_one_invoice_in_memory my_02_canonical_uris
-cd my_02_canonical_uris
+cp -r my_02_canonical_uris my_03_operations_and_contracts
+cd my_03_operations_and_contracts
 rm -rf node_modules && pnpm install
 claude
 ```
@@ -241,8 +329,8 @@ claude
 Then paste one line:
 
 ```text
-Use the build-baby-step skill in learner mode. We are building step 02,
-canonical_uris.
+Use the build-baby-step skill in learner mode. We are building step 03,
+operations_and_contracts.
 ```
 
 Ask for a plan before any code, and ask to see the new tests fail before they pass. The
@@ -251,76 +339,105 @@ general directions are in the
 
 ## Check yourself
 
-1. Why is `dsor://acme/invoice/INV-1008` a bad address, when `acme` is a real company?
-2. The specification's own schema pattern accepts `acme` as a tenant. Is the schema
-   wrong?
-3. `TENANT_ID` is `/^org_[0-9]+$/`. Which part of that is the specification's decision,
-   and which part is ours?
-4. Why does `formatUri` read the address back and compare the parts, instead of just
-   parsing it?
-5. `makeInvoice` builds the address from the `id` it was given. What goes wrong if you
-   type the id a second time instead?
+1. Why must a broken contract stop the program, instead of failing the one request that
+   uses it?
+2. `invoice.issue` declares `predicates: ["state.invoice.status == \"draft\""]`, and
+   there is also a plain `if` in `issueInvoice` checking the same thing. Why both?
+3. The second `invoice.issue` on INV-1009 is refused. Is that idempotency?
+4. Why are the two schema files copied unchanged, instead of a smaller schema written
+   for this step?
+5. `strict: false` let a misspelled `required` through. Why not use `strict: true`?
+6. Step 01 froze the invoices list. Step 03 unfroze it. What is still guaranteed?
+7. `invoice.get` reads the tenant out of the address and then refuses anything that is
+   not `org_456`. Why is that better than not reading the tenant at all?
 
 <details>
 <summary>Answers</summary>
 
-1. Because a name changes. If Acme is renamed, every record written before the rename
-   points at a company under a name that no longer exists, and you can no longer prove
-   the invoice the CFO approved is the invoice that was paid. `org_456` means nothing
-   to anybody, so nobody renames it.
-2. No. The schema checks the **shape** of an address, and it does that correctly.
-   `DSOR-RID-01b` is about **meaning** — is this part an id or a name — and no pattern
-   can see that in the text alone. Break 1 is exactly this: the schema's pattern is
-   right and insufficient at the same time.
-3. The specification decides that a tenant id is an immutable opaque identifier, and
-   that no name or alias may appear in an address. It never says what an id looks like.
-   `org_` followed by digits is our deployment's convention, which is why it lives in
-   one line that another deployment would change.
-4. Parsing alone only proves the text is a well-formed address. Building the text
-   converts whatever it was given into text first, so a missing id becomes the word
-   `"undefined"` and `dsor://org_456/invoice/undefined` parses perfectly — canonical,
-   permanent, and pointing at nothing. Comparing the parts catches that, because
-   `"undefined"` is not `undefined`.
-5. The address and the record drift apart. Break 3 shows INV-1009 carrying INV-1008's
-   address: nothing crashes, and two invoices answer to one name, so every log line and
-   approval quoting that address is confidently wrong.
+1. Because nobody would notice. A contract with no risk level is a contract no control
+   can fire on, and if that only broke on the rare request that needed approval, it
+   would look fine the rest of the time. Refusing at start-up turns a quiet gap into a
+   loud one.
+2. The `predicates` line is a *declaration* — data in the contract, which nothing reads
+   until CEL arrives in step 27. The `if` is what actually refuses today. They agree by
+   hand right now, and that is a gap, not a design: the README says so and step 27 is
+   where the declaration starts doing the work.
+3. No. It is refused because the status is no longer `draft`. Idempotency, in step 20,
+   answers a different question — "you already asked me this, with this key" — and would
+   return the first answer again rather than refuse.
+4. Because `DSOR-OPR-01` names `operation-contract.schema.json` specifically. Checking
+   against a schema of our own would be checking against something else. And trimming a
+   normative schema silently drops whatever you removed, with nothing to tell you —
+   which is the same class of mistake as claiming `money()` checks ISO 4217.
+5. Because under `strict: true` thirteen of the specification's fourteen schemas refuse
+   to compile, since their if/then blocks declare `required` without repeating `type`.
+   The trade is real and unavoidable here; Break 4 shows the cost and the tests are what
+   cover for it.
+6. Every `Invoice` is still frozen, so a caller cannot edit one it is holding. The array
+   is still private to the module, and `issueInvoice` is still the only way to change
+   anything. What was given up is the list itself being immutable — and no test caught
+   that, which is why it is written down here.
+7. Because the alternative is not "no check", it is a silent wrong answer. Parse the
+   address, ignore the tenant, and a caller asking about `org_999`'s invoice gets
+   `org_456`'s changed instead — with nothing to say so. A part of an address you read is
+   a part you have to honour, or not read at all.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-RID-01a · L1]** Every DSoR resource MUST have a canonical URI of the form
-  `dsor://{tenant_id}/{entity}/{id}`.
-  ([§5](../../../specs/dsor/01-model.md#5-resource-identity))
-- **[DSOR-RID-01b · L1]** A display name, slug, or alias MUST NOT appear in a canonical
-  URI; `tenant_id` is an immutable opaque identifier.
-  ([§5](../../../specs/dsor/01-model.md#5-resource-identity))
+- **[DSOR-OPR-01 · L1]** Every operation MUST have a contract that validates against
+  `operation-contract.schema.json`.
+  ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
+- **[DSOR-OPR-02a · L1]** The operation registry MUST reject a contract that omits a
+  mandatory field.
+  ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
+- **[DSOR-OPR-02b · L1]** The registry MUST NOT infer a default for risk level,
+  execution semantics, effect, or idempotency.
+  ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
 
-Both are met for the addresses this step creates, and both come with a limit worth
-knowing.
+`DSOR-OPR-02a` is met squarely: the schema is the specification's own, and the registry
+refuses while it is loading.
 
-**`DSOR-RID-01b` is checked on the tenant segment only.** Read the rule again: a name
-"MUST NOT appear in a canonical URI" — the whole address, not just the company part.
-§5's **Common mistake** names the other half too: *"using the company's name (`acme`)
-or one system's internal row id as the identifier"*. `TENANT_ID` stops the first.
-Nothing here stops the second, so `dsor://org_456/vendor/acme` and
-`dsor://org_456/invoice/row-4182` both parse today. The entity and id segments are
-still trusted text. They stop being trusted text in step 03, where an operation
-contract says which entity names exist, and in step 34, where a connector owns the
-mapping from a canonical id to a system's own id.
+**`DSOR-OPR-01` is met for everything that goes through the registry, which is not the
+same as everything.** `callOperation` cannot reach an operation with no contract.
+`assertPaired` runs at module load, beside the registry, and refuses a contract with no
+handler or a handler with no contract — and two tests hand it mismatched pairs directly,
+because asserting on `operationIds()` would pass whether the check existed or not.
 
-**`TENANT_ID` is narrower than the rule.** It refuses `acme`, and it would also refuse
-a perfectly valid opaque id of another shape, such as a UUID. That is this deployment's
-choice, written in one line so another deployment can change it.
+What is *not* covered: nothing stops a future file writing `import { getInvoice }` and
+going round the side. There is no door to close until step 42 gives this an interface.
 
-Three rules in §5 are not met yet and are not claimed:
+**`DSOR-OPR-02b` cannot be proved by a schema at all.** A `required` list shows a field
+was missing from the document; it can never show the registry did not quietly supply the
+value itself. So the tests do it behaviourally, and they go after the *values*, not just
+the objects holding them: `risk.level` is deleted as well as `risk`, because a registry
+that filled in the level while leaving `risk` in place would break the rule and sail past
+a test that only deleted the parent. A second test asserts the whole loaded contract
+equals the file, so any key added at any depth turns red.
+
+ajv can be told to rewrite the document it is checking, and both such options are off.
+`coerceTypes` would turn a `version` of `"1"` into `1` instead of refusing it, and there
+is a test for exactly that. `useDefaults` would fill in any `default` the schema
+declared; no DSoR schema declares one today, so the option currently has nothing to act
+on — which is why the whole-document comparison, rather than a test of the flag, is what
+guards it.
+
+Rules in §7 this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-RID-02a` | Needs a mapping from a canonical id to a system's own id. There is no connector until step 34. |
-| `DSOR-RID-02b` | Nothing reassigns ids, because nothing creates them. Invoices are a fixed list. |
-| `DSOR-RID-03` | Says the same address is used across every interface, in audit, events and approvals. There is one interface and no audit log yet. |
+| `DSOR-OPR-03a` | Forbids a generic execution tool on an *agent interface*. There is no agent interface until step 42. `execute_sql` being unreachable is the right shape, not the rule. |
+| `DSOR-OPR-04a`, `04b` | Say every interface invokes the same pipeline and none does its own authorization. There is no pipeline until step 07 and no interface until 42. |
+| `DSOR-OPR-05`, `06` | The three invocation modes, `execute` / `propose_only` / `validate_only`. Step 23. |
+| `DSOR-QRY-01` | A server-side page limit on every query. There is no query returning a list until step 13. |
 
-**Next:** step 03, operations and contracts — every action a caller can take becomes a
-named operation with a spec sheet, and a registry that refuses a contract with a
-missing field.
+And what the contracts *declare* but nothing yet enforces — `tenancy` (steps 10, 11),
+`delegation` (18, 19), `idempotency` (20), `concurrency` (21), `execution.semantics`
+(17), `preconditions` (15, 27, 32), `controls` (27, 28), `audit.level` (08, 33). Each is
+declared honestly: anything unenforced says `false` rather than making a promise DSoR
+cannot keep today.
+
+**Next:** step 04, result and error envelopes — the thrown `TypeError`s above become
+structured errors with a code and a retry class, and "this needs approval" becomes a
+result rather than a failure.
