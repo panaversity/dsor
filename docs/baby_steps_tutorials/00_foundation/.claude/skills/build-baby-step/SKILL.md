@@ -17,7 +17,7 @@ Ask which mode you are in if it is not obvious.
 | | Author mode | Learner mode |
 |---|---|---|
 | Who | A contributor adding the official step | A student building their own copy |
-| Folder | `NN_name/`, named as in the map | `my_NN_name/`, beside the official steps or anywhere else |
+| Folder | `NN_name/`, named as in the map | `my_NN_name/`, beside the official steps or anywhere else. Your initials instead of `my` (`mj_NN_name/`) when several people push copies to one repository |
 | Your job | Build it, prove it, document it | **Teach.** See "Learner mode" below |
 
 ## 1 · Read before you write

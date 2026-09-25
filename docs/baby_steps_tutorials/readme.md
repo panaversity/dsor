@@ -332,7 +332,9 @@ pull request. One step per pull request.
 
 The finished steps are there to read. You will learn far more by building each one
 yourself and comparing. Keep your copies beside the finished ones, with `my_` in front
-of the name, on a branch or fork of your own:
+of the name, on a branch or fork of your own. When several people push their copies to
+one repository, use your initials instead, such as `mj_`, so two copies of a step never
+share a folder name:
 
 ```bash
 cd docs/baby_steps_tutorials
