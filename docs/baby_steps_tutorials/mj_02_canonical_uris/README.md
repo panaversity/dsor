@@ -1,82 +1,62 @@
-# Step 01 · One invoice in memory
+# Step 02 · Canonical URIs
 
-**New in this step:** money is an amount *and* a currency, and the amount is a decimal
-string, never a `number` (DSOR-MON-01).
+**New in this step:** every record has one permanent address,
+`dsor://org_456/invoice/INV-1008`, and a company's name never appears in it
+(DSOR-RID-01a, DSOR-RID-01b).
 
 ## In plain words
 
-This step holds one kind of business record, an **invoice**, in the computer's memory.
-There is no database yet. An invoice is a plain object with the field names the
-specification uses: `id`, `vendor_id`, `amount`, `open_amount`, and `status`. A
-function, `getInvoice`, finds one invoice by its id. If no invoice has that id, it
-returns `undefined`. That is a normal answer ("there is none"), not an error.
+In step 01, `INV-1008` was an id in one list inside one program. That is not enough.
+An approval, the audit log, and later a payment must all name the same invoice. And
+DSoR serves more than one company. So every record gets one permanent address, called
+its **canonical URI**. "Canonical" means "the one official form". A **URI** is an
+address written as text, like a web link.
 
-The real lesson is how the invoice holds money. An amount of money is always two
-things: a **value** and a **currency**. The value is a **decimal string**, which means
-digits written as text, like `"31400.00"`. So the amount of `INV-1008` is:
-
-```ts
-{ value: "31400.00", currency: "USD" }
+```text
+dsor://org_456/invoice/INV-1008
+       ───┬───  ──┬───  ──┬────
+       tenant   entity    id
 ```
 
-The currency is an **ISO 4217 code**: the three capital letters the world agrees on
-for each currency, such as `USD` or `PKR`. We check it against the list of currencies
-that Node knows, `Intl.supportedValuesOf("currency")`.
+- `dsor://` is the **scheme**. It says "this is a DSoR address".
+- The **tenant** is the company the record belongs to. DSoR calls each customer
+  company a tenant. Here it is `org_456`.
+- The **entity** is the kind of record: `invoice`, `vendor`, `payment`.
+- The **id** says which record: `INV-1008`.
+
+This step writes two functions. `formatUri` builds an address from its three parts.
+`parseUri` does the reverse: it takes text, splits it into the three parts, or refuses
+it. Text from outside the program enters through `parseUri`, so it must refuse a wrong
+scheme, a missing part, an extra part, and an empty part.
+
+It must also refuse a company's *name*. The company `org_456` has the display name
+`acme`, which people see on screen. The name is for people. It never goes into an
+address. The tenant part holds only an **opaque identifier**: an id that means nothing
+by itself and never changes.
 
 ## Why it matters
 
-**A number without a currency.** Suppose `INV-1008` is stored as only `31400`. In step
-27, a rule will ask: "Is this payment above 25,000 USD? Then `cfo_100` must approve
-it." The rule cannot answer. 31,400 USD needs the CFO. 31,400 PKR, about 110 USD, does
-not. Whatever the code assumes, it is right for one currency and wrong for the other.
-A wrong "no" sends 31,400 USD out without the CFO ever seeing it.
+**A name changes.** Suppose addresses used the name. In March, `cfo_100` approves
+payment `PAY-901` for `dsor://acme/invoice/INV-1008`, and 31,400.00 USD is paid. The
+audit log records both under that address. In June, Acme renames itself to Globex. In
+July, an auditor looks up `dsor://globex/invoice/INV-1008` and finds no approval and
+no payment. The records still exist, but they are filed under a name that no longer
+belongs to anyone. Nobody can prove that the invoice the CFO approved is the invoice
+that was paid.
 
-Writing the currency down is only the first half. Section 9 of the specification tells
-the second: a rule written as "amount > 25000 and currency is USD" lets 50,000,000 PKR
-straight through, because the currency is not USD. Step 27 closes that hole, and it
-needs this step first.
+**A name comes back.** A year later, a new customer signs up and calls itself `acme`.
+Now `dsor://acme/invoice/INV-1008` could be the old company's invoice or the new
+one's. An approval for one could be read as an approval for the other. The id
+`org_456` is never changed and never given to another company, so neither story can
+happen.
 
-**A number that is not exact.** A `number` in JavaScript is a **floating-point
-number**, or **float** for short. Money is never a float in this tutorial. Run this in
-Node:
+**Common mistake:** using the company's name as the tenant, as in
+`dsor://acme/invoice/INV-1008`. It is short and easy to read, and it breaks the day
+the name changes. Put the id `org_456` in the address. Keep the name somewhere else,
+for people to read.
 
-```text
-> 0.1 + 0.2
-0.30000000000000004
-> 0.1 + 0.2 === 0.3
-false
-> 31400 + 0.1 + 0.1 + 0.1
-31400.299999999996
-```
-
-The last line is `INV-1008` with three fees of 0.10 added. It should be 31400.30.
-
-A computer stores a `number` in **binary**: numbers written with only the digits 0 and
-1. One-tenth cannot be written exactly in binary. This is the same problem as writing
-one-third in decimal: you get 0.3333… and must stop somewhere. So `0.1` is stored as a
-value very close to 0.1, and the small errors show up when you add. For money, "very
-close" is wrong. Money is counted in tenths and hundredths, and decimal digits write
-those exactly. That is why the value keeps decimal digits.
-
-**Why a string, then.** A string keeps exactly the digits someone wrote: `"31400.00"`
-stays `"31400.00"`, but the number `31400.00` prints as `31400`. A string does not do
-arithmetic at all. `+` only joins text: `"100" + "50"` is `"10050"`, which even looks
-like valid money. So a string does not add money for you, correctly or wrongly. Adding
-and comparing money correctly is DSOR-MON-02. Step 26 will do it with real decimal
-arithmetic. This step only *stores* money correctly.
-
-**Stricter than the schema, on purpose.** The specification's JSON Schema asks only
-for three capital letters, so it would accept `"ABC"`. Our check accepts only the
-codes Node lists as money. Everything we accept, the schema also accepts, and a test
-checks this. So we never let through something the specification forbids. The cost: a
-brand-new currency that Node does not know yet is refused. Refusing is the safe
-direction, like a lock that stays locked when the power fails. Someone notices and
-asks, and no wrong payment leaves.
-
-**Common mistake:** writing `amount: 31400.00`. It breaks the rule twice: it is a
-float, and it has no currency. TypeScript allows it wherever the type says `number`.
-Here the type says `Money`, so the compiler refuses it ("Break it" shows this). But
-data read from outside the program has no types, and there only `money()` refuses it.
+> **Work in progress.** Everything below this line is still step 01's README. It is
+> rewritten once step 02's code exists.
 
 ## What changed since step 00
 
