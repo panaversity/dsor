@@ -1,8 +1,10 @@
-// NEW IN STEP 03: every operation has a name and a contract, checked at start-up.
+// Every operation has a name and a contract, checked at start-up.
 // DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b in specs/dsor/01-model.md, section 7.
+import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
+import type { Answer } from "./envelope.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -100,12 +102,16 @@ export function buildRegistry(
 }
 
 /** Runs an operation by its name. */
-export function call(registry: Registry, name: string, input: unknown): unknown {
+export function call(registry: Registry, name: string, input: unknown): Answer {
+  // NEW IN STEP 04: DSoR makes the request id for every call, because no caller can send
+  // one yet (DSOR-COR-01b, README decision 4). Nothing in the input is read for it.
+  const correlation = { request_id: `req_${randomUUID()}` };
   if (!registry.contracts.has(name)) throw new Error(`no operation named ${preview(name)}`);
   const handler = registry.handlers.get(name);
   // Step 04 turns this refusal into an error envelope.
   if (!handler) throw new Error(`${preview(name)} is not built yet`);
-  return handler(input);
+  // NEW IN STEP 04: a query's answer is { data, correlation } (README, decision 3).
+  return { data: handler(input), correlation };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

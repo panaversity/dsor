@@ -1,4 +1,4 @@
-// NEW IN STEP 03: the code behind each operation, keyed by the operation's name.
+// The code behind each operation, keyed by the operation's name.
 // A name here with no contract in contracts/ stops start-up (DSOR-OPR-01).
 import { getInvoice, invoices } from "./invoice.ts";
 import type { Handler } from "./registry.ts";

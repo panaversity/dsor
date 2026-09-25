@@ -146,8 +146,11 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
   });
 
+  // Found by a run: before INV-9999 was refused, it came back as { data: undefined } with
+  // a request id, and a test that looked only at the id passed. So the code comes first.
   it("DSOR-COR-01b: a refusal carries a request_id that DSoR made", () => {
     const answer = call(registry, "invoice.get", { id: "INV-9999" });
+    expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
   });
 

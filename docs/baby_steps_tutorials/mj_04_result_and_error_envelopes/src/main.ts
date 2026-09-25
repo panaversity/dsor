@@ -7,8 +7,8 @@ import { handlers } from "./operations.ts";
 import { buildRegistry, call, readContracts, type Registry } from "./registry.ts";
 import { parseUri } from "./uri.ts";
 
-// NEW IN STEP 03: start-up checks every contract first. If one is broken, the program
-// stops here and names every problem, before any caller can ask for anything.
+// Start-up checks every contract first. If one is broken, the program stops here and
+// names every problem, before any caller can ask for anything.
 const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
 let registry: Registry;
 try {
@@ -19,18 +19,19 @@ try {
 }
 console.log("operations:", [...registry.contracts.keys()]);
 
-// NEW IN STEP 03: the invoice is read through the operation's name, not getInvoice().
-const invoice = call(registry, "invoice.get", { id: "INV-1008" }) as Invoice | undefined;
-console.log(invoice);
+// NEW IN STEP 04: the answer is an envelope. A success carries the invoice as its data,
+// and the request id DSoR made for this call.
+const answer = call(registry, "invoice.get", { id: "INV-1008" });
+console.log(answer);
 
 // The invoice's permanent address, and the address read back.
-if (invoice) {
-  const uri = invoiceUri(invoice);
+if ("data" in answer) {
+  const uri = invoiceUri(answer.data as Invoice);
   console.log(uri);
   console.log(parseUri(uri));
 }
 
-// NEW IN STEP 03: invoice.issue has a contract but no code yet, so the call is refused.
+// invoice.issue has a contract but no code yet, so the call is refused.
 try {
   call(registry, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" });
 } catch (error) {
