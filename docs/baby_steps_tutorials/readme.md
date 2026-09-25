@@ -306,16 +306,7 @@ Do the break-it exercise for real. Paste the actual output into this step's READ
 Then restore the code and run pnpm check.
 ```
 
-**6. Ask for a hostile review.**
-
-```text
-Start a fresh subagent that has not seen this session. Have it review this step as an
-attacker and as a strict teacher, against DSOR-EXE-01a and DSOR-OPR-04a: is each rule
-proved by a test that would fail if the code were wrong? Is there exactly one new idea?
-Fix what it finds, or tell me why a finding is wrong.
-```
-
-**7. Prove it runs by itself.**
+**6. Prove it runs by itself.**
 
 ```text
 Run pnpm install --frozen-lockfile and pnpm check here. Then copy this folder to a
@@ -323,11 +314,22 @@ temporary place outside the repository, run the same two commands there, and del
 copy. Show me what each command printed.
 ```
 
+**7. Ask for a hostile review.**
+
+```text
+Start a fresh subagent that has not seen this session. Have it review this step as an
+attacker and as a strict teacher, against DSOR-EXE-01a and DSOR-OPR-04a: is each rule
+proved by a test that would fail if the code were wrong? Is there exactly one new idea?
+Does the README teach, and is every analogy one the write-for-learners skill already
+uses? Fix what it finds, or record it in the README under "Think it through".
+```
+
 **8. Land it.** Leave the step session. The last changes are outside the step's folder,
 so they are yours: in this page, turn the step's name into a link and update the status
-line at the top; update [`docs/status.md`](../status.md); run `pnpm guard` at the
-repository root to check every link and rule number; then commit on a branch and open a
-pull request. One step per pull request.
+line at the top; add the step's rows to [`rules-met.md`](rules-met.md); update
+[`docs/status.md`](../status.md); run `pnpm guard` at the repository root to check every
+link and rule number; then commit on a branch and open a pull request. One step per
+pull request.
 
 ### Learner mode: build your own copy
 
@@ -925,7 +927,8 @@ emergency brake really is, measured.
 DSOR-MOD-02, DSOR-BND-01.
 **Done when:** you can explain every line of the
 [security invariants](../../specs/dsor/06-conformance.md#45-security-invariants) by
-pointing at the step where you built it.
+pointing at the step where you built it. [`rules-met.md`](rules-met.md) will be your
+index: each rule, the step that proved it, and the tests.
 
 ---
 
@@ -945,5 +948,5 @@ new idea, a copy of the previous step plus a marked diff, tests written first an
 titled by rule id, a break-it exercise you really performed, and a README in plain
 words. A step is done when `pnpm check` is green inside its folder, and again in a
 copy of the folder outside the repository. When a step lands, remove nothing from this
-page, turn the step's name into a link, update [`docs/status.md`](../status.md), and
-run `pnpm guard` at the repository root.
+page, turn the step's name into a link, add its rows to [`rules-met.md`](rules-met.md),
+update [`docs/status.md`](../status.md), and run `pnpm guard` at the repository root.

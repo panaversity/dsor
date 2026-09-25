@@ -1,13 +1,14 @@
 # Rules met by the baby steps
 
-This page lists every rule of the specification that a baby step proves, and the test
-that proves it. It grows by one or more rows each time a step is built. Step 51 walks
-the security invariants of
-[§45](../../specs/dsor/06-conformance.md#45-security-invariants) and starts from this
-page.
+This page lists every rule of the specification that a baby step's tests prove, and
+where those tests are. It grows by one or more rows each time a step lands.
 
-A rule is listed only when a test titled with its id passes in that step. A rule named
-in a step's README but not tested there does not belong here.
+A rule is listed only when a test titled with its id passes in that step. `pnpm guard`
+checks that each linked test file has such a title, and CI runs every step's own
+`pnpm check`. A rule named in a step's README but not tested there does not belong here.
+
+Until an official step exists, its row may point at a learner build, marked
+"(learner build)". When the official step lands, its row replaces the learner row.
 
 | Rule | Step | Proved by |
 | --- | --- | --- |

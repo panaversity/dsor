@@ -98,8 +98,10 @@ scripts/guard-spec.mjs    the spec guard (zero dependencies)
 
 ```bash
 pnpm install              # frozen in CI
-pnpm check                # everything CI runs: guard, lint, format, typecheck, unit tests
-pnpm guard                # spec guard: ids, one-MUST, links, registry freshness
+pnpm check                # guard, lint, format, typecheck, unit tests; CI also runs
+                          # pnpm check inside every baby step
+pnpm guard                # spec guard: ids, one-MUST, links, registry freshness,
+                          # and baby steps drifting from the spec
 pnpm guard --write        # regenerate packages/spec/requirements.json after a spec edit
 pnpm coverage:req         # how many requirement ids are named by a test, per level
 pnpm coverage:req --list  # ...and which ones are not

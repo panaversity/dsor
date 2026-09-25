@@ -15,7 +15,8 @@ concurrency:
 
 jobs:
   # The spec guard has no dependencies, so it runs first and fails fast:
-  # ids, one MUST per requirement, links, and registry freshness.
+  # ids, one MUST per requirement, links, registry freshness, and baby steps
+  # drifting from the spec.
   guard:
     name: Spec guard
     runs-on: ubuntu-latest
@@ -49,3 +50,29 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test:unit
       - run: pnpm coverage:req
+
+  # Each baby step is its own project with its own lockfile, and must pass by itself.
+  # rules-met.md claims a step's tests pass; this job is what makes that true.
+  baby-steps:
+    name: Baby steps
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Students unzip and run the steps on Windows.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: pnpm check in every step
+        shell: bash
+        run: |
+          for step in docs/baby_steps_tutorials/*/; do
+            [ -f "$step/package.json" ] || continue
+            echo "::group::$step"
+            (cd "$step" && pnpm install --frozen-lockfile && pnpm check)
+            echo "::endgroup::"
+          done

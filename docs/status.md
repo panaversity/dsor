@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-09-20.
+2026-09-25.
 
 ## Specification
 
@@ -36,6 +36,20 @@ public documentation on 2026-09-19 and not against running software.
 These are checks of the specification's own examples. They are not an implementation
 of any requirement. `pnpm coverage:req` counts test titles, and most of the ids it
 reports today are named by these example checks.
+
+## Baby steps
+
+The [baby steps](baby_steps_tutorials/readme.md) are teaching code: small, separate
+projects that build DSoR's ideas one at a time. They are not the reference
+implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
+`pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
+schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
+
+| Step | State |
+| --- | --- |
+| 00 · foundation | Built. Tools only; no rule |
+| 01 · one invoice in memory | Planned. A learner build, `mj_01_one_invoice_in_memory`, tests DSOR-MON-01; it is not the official step |
+| 02 to 51 | Planned |
 
 ## Learning-path stages
 

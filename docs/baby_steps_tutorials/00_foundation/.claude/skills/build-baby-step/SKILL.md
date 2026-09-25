@@ -2,7 +2,7 @@
 name: build-baby-step
 description: Builds one numbered step of the DSoR baby-steps tutorial. Use when asked to build, plan, continue, fix, or review a baby step or tutorial step ("plan step 07", "build this step"), or when a learner wants to build a step themselves ("learner mode"). Covers the one-new-idea rule, tests titled by rule id and written first, the NEW IN STEP marker, performing the break-it exercise for real, the learner-shaped README, and proving the step runs by itself.
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Building a baby step
@@ -39,7 +39,8 @@ the map, never to build a double step.
 ## 2 · Make the copy yours
 
 The folder is a copy of the previous step. Before any real work, change exactly these:
-the `name` in `package.json` (`@dsor-steps/NN-name`) and its `description`. Delete
+the `name` in `package.json` (`@dsor-steps/NN-name`, or `@dsor-steps/mj-NN-name` for a
+learner copy named `mj_NN_name`) and its `description`. Delete
 `node_modules` if it was copied, and run `pnpm install`.
 
 Everything else stays byte for byte unless this step's idea requires changing it.
@@ -85,7 +86,7 @@ confirm `pnpm check` is green. Never write expected output from imagination.
 
 ## 6 · The step's README
 
-Same headings as step 00's README, in this order:
+Step 00's headings, plus "Think it through", which step 00 does not have. In this order:
 
 `# Step NN · Title` → **New in this step** (one line) → In plain words → Why it matters
 (a concrete failure from the running story) → What changed since step MM (a short file
@@ -112,13 +113,18 @@ commands there, and delete the copy. A step must run by itself.
 
 Then ask a fresh subagent, one that has not seen the conversation, for a hostile
 review: the rule ids against the code and tests, and the README against the
-`write-for-learners` skill. It lists every analogy and flags each one that is not on
-that skill's established list. Fix what it finds or record it under "Think it through".
+`write-for-learners` skill. That skill is `.claude/skills/write-for-learners/SKILL.md`
+in the repository, otherwise
+<https://github.com/panaversity/dsor/blob/main/.claude/skills/write-for-learners/SKILL.md>.
+The reviewer lists every analogy and flags each one that is not on that skill's
+established list. Fix what it finds or record it under "Think it through".
 
 Finish by telling the human exactly what to do next, because these are outside this
-folder and are theirs to do: turn the step's name into a link in the map and update
-its status line; update `docs/status.md` in the repository; commit on a branch and
-open a pull request with one step in it.
+folder and are theirs to do: add this step's rows to `rules-met.md` beside the steps; in
+author mode, turn the step's name into a link in the map and update its status line;
+update `docs/status.md` in the repository, where a learner copy is listed as a learner
+build and never as the step itself; run `pnpm guard` at the repository root; commit on
+a branch and open a pull request with one step in it.
 
 ## Learner mode
 
