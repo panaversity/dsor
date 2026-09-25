@@ -27,10 +27,14 @@ that Node knows, `Intl.supportedValuesOf("currency")`.
 
 **A number without a currency.** Suppose `INV-1008` is stored as only `31400`. In step
 27, a rule will ask: "Is this payment above 25,000 USD? Then `cfo_100` must approve
-it." The answer depends on a currency nobody wrote down. If the code guesses PKR,
-31,400 PKR is about 110 USD, so the answer is "no". A payment of 31,400 **USD** then
-leaves the company without the CFO ever seeing it. A number with no currency looks
-exact, but it cannot be read correctly.
+it." The rule cannot answer. 31,400 USD needs the CFO. 31,400 PKR, about 110 USD, does
+not. Whatever the code assumes, it is right for one currency and wrong for the other.
+A wrong "no" sends 31,400 USD out without the CFO ever seeing it.
+
+Writing the currency down is only the first half. Section 9 of the specification tells
+the second: a rule written as "amount > 25000 and currency is USD" lets 50,000,000 PKR
+straight through, because the currency is not USD. Step 27 closes that hole, and it
+needs this step first.
 
 **A number that is not exact.** A `number` in JavaScript is a **floating-point
 number**, or **float** for short. Money is never a float in this tutorial. Run this in
@@ -228,9 +232,10 @@ and tell me which ones matter and why.
    cannot be written exactly in binary, the way one-third cannot be written exactly in
    decimal. So `0.1` and `0.2` are each stored slightly off, and the sum shows the
    error.
-2. It breaks DSOR-MON-01: an amount must have a currency. If the code guesses PKR, it
-   reads 31,400 as PKR, which is about 110 USD. That is under 25,000 USD, so a real
-   31,400 USD payment is made without the CFO's approval.
+2. It breaks DSOR-MON-01: an amount must have a currency. The rule cannot tell 31,400
+   USD, which needs the CFO, from 31,400 PKR, about 110 USD, which does not. If the
+   code assumes the wrong one, a real 31,400 USD payment is made without the CFO's
+   approval.
 3. Only (a). (b) is a `number`, not a string. (c) is lowercase, and currency codes are
    capital letters. (d) has the right shape but is not a currency. (e) needs a
    digit before the dot: write `"0.50"`.
