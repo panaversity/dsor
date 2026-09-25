@@ -55,9 +55,9 @@ export function buildRegistry(
   // Every problem is collected first, and the refusal names them all (README, decision 2).
   const problems: string[] = [];
   const contracts = new Map<string, Contract>();
+  // Which file first wrote each id, broken files too. So two files with one id are named
+  // at once, and the code for a broken contract is not also called "no contract".
   const fileOf = new Map<string, string>();
-  // The ids of broken contracts too, so their code is not also reported as "no contract".
-  const written = new Set<string>();
 
   for (const { file, text } of sources) {
     // The text is parsed here and checked at once. Nothing touches it in between.
@@ -69,27 +69,24 @@ export function buildRegistry(
       continue;
     }
     const id = (data as { id?: unknown } | null)?.id;
-    if (typeof id === "string") written.add(id);
+    if (typeof id === "string") {
+      const first = fileOf.get(id);
+      // Keeping one of two would be a guess about which one the author meant.
+      if (first === undefined) fileOf.set(id, file);
+      else problems.push(`${preview(id)} has two contracts: ${first} and ${file}`);
+    }
 
     if (!validateContract(data)) {
       for (const error of validateContract.errors ?? []) problems.push(`${file}: ${explain(error)}`);
       continue;
     }
-    const contract = data as Contract;
-    // Keeping one of two would be a guess about which one the author meant.
-    const first = fileOf.get(contract.id);
-    if (first !== undefined) {
-      problems.push(`${contract.id} has two contracts: ${first} and ${file}`);
-      continue;
-    }
-    fileOf.set(contract.id, file);
-    contracts.set(contract.id, contract);
+    contracts.set((data as Contract).id, data as Contract);
   }
 
   // A Map, not the plain object: a plain object already has "toString" and "constructor".
   const code = new Map<string, Handler>();
   for (const [name, handler] of Object.entries(handlers)) {
-    if (!written.has(name)) problems.push(`${name} has code but no contract`);
+    if (!fileOf.has(name)) problems.push(`${name} has code but no contract`);
     code.set(name, handler);
   }
 
@@ -104,7 +101,7 @@ export function call(registry: Registry, name: string, input: unknown): unknown 
   if (!registry.contracts.has(name)) throw new Error(`no operation named ${preview(name)}`);
   const handler = registry.handlers.get(name);
   // Step 04 turns this refusal into an error envelope.
-  if (!handler) throw new Error(`${name} is not built yet`);
+  if (!handler) throw new Error(`${preview(name)} is not built yet`);
   return handler(input);
 }
 

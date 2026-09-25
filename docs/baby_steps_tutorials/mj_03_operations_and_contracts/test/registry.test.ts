@@ -1,7 +1,7 @@
 // NEW IN STEP 03: the registry at start-up, and calls by name, by claim (see the README).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handlers } from "../src/operations.ts";
-import { buildRegistry, call } from "../src/registry.ts";
+import { buildRegistry, call, type Handler } from "../src/registry.ts";
 import { contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
 
 describe("C1: nothing can be called without a contract", () => {
@@ -28,16 +28,28 @@ describe("C1: nothing can be called without a contract", () => {
     );
   });
 
+  // Found by the review: the test above sees a refusal only by its words. Here the code
+  // table holds a name with no contract, which buildRegistry never allows. The code must
+  // still never run.
+  it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", () => {
+    const spy = vi.fn<Handler>(() => "deleted");
+    const handMade = { contracts: new Map(), handlers: new Map([["invoice.delete", spy]]) };
+    expect(() => call(handMade, "invoice.delete", {})).toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
-    expect(() => call(registry, "invoice.issue", {})).toThrow(/invoice\.issue is not built yet/);
+    expect(() => call(registry, "invoice.issue", {})).toThrow('"invoice.issue" is not built yet');
   });
 });
 
 describe("C5: the refusal happens at start-up, and names every problem", () => {
   it("DSOR-OPR-02a: one broken contract stops the whole registry loading", () => {
     const bad = without(contract("invoice.get"), "risk");
-    expect(() => buildRegistry(shippedWith(bad), handlers)).toThrow();
+    expect(refusal(() => buildRegistry(shippedWith(bad), handlers))).toMatch(
+      "invoice.get.json: must have required property 'risk'",
+    );
   });
 
   it("DSOR-OPR-02a: a contract with two problems gets both named", () => {
@@ -99,8 +111,18 @@ describe("C7: a loaded contract is exactly what was written", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source({ ...contract("invoice.get"), risk: { level: "high" } }, "b.json");
     expect(refusal(() => buildRegistry([a, b], {}))).toMatch(
-      "invoice.get has two contracts: a.json and b.json",
+      '"invoice.get" has two contracts: a.json and b.json',
     );
+  });
+
+  // Found by the review: when the second file was also broken, only its schema problem
+  // was named. The two files were found only after a fix and a restart.
+  it("DSOR-OPR-02b: two contracts with one id are named even when one is broken", () => {
+    const a = source(contract("invoice.get"), "a.json");
+    const b = source(without(contract("invoice.get"), "risk"), "b.json");
+    const message = refusal(() => buildRegistry([a, b], {}));
+    expect(message).toMatch('"invoice.get" has two contracts: a.json and b.json');
+    expect(message).toMatch("b.json: must have required property 'risk'");
   });
 });
 
