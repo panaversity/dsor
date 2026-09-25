@@ -216,11 +216,97 @@ schema check existed, its three tests failed.
 
 ## What changed since step 03
 
-_To be written when the code exists._
+```text
+src/envelope.ts                NEW: the envelope types, the §28 table, Refusal, and
+                               toEnvelope(), which checks every error envelope
+                               against its schema
+src/registry.ts                changed: call() makes the request id, answers with an
+                               envelope, and never throws. preview() is exported
+src/operations.ts              changed: invoice.get refuses with a Refusal and a code
+src/main.ts                    changed: prints one success and two refusals, all
+                               envelopes
+schemas/error-envelope.schema.json
+                               NEW: a byte-for-byte copy of the specification's
+test/envelope.test.ts          NEW: the tests, by claim (C1 to C7)
+test/helpers.ts                changed: the tests' own schema check, and a registry
+                               with a test operation, test.run
+test/registry.test.ts,         changed: a refusal is now an envelope, not a throw
+test/startup.test.ts
+test/schemas.test.ts           changed: the new copy must equal the original
+test/contract.test.ts          changed: its first comment says the claims are step 03's
+src/, test/                    step 03's NEW IN STEP markers are now plain comments
+```
+
+There is no new dependency. ajv, from step 03, checks the envelopes too.
+
+Every new region is marked `NEW IN STEP 04`. To see the whole diff, run this from
+`docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_03_operations_and_contracts/src mj_04_result_and_error_envelopes/src
+git diff --no-index mj_03_operations_and_contracts/test mj_04_result_and_error_envelopes/test
+```
+
+Three choices in the code are worth a look:
+
+- **There is one way out for an error.** Every error envelope is made by
+  `toEnvelope()`. It takes the retry class from the table and checks the schema, so no
+  refusal can skip either. `call()` catches everything a handler throws and sends it
+  through `toEnvelope()`.
+- **A `Refusal` has no retry class.** A handler names a code and a message. It cannot
+  say "safe to retry". Only the table can.
+- **The tests check envelopes with their own ajv.** `test/helpers.ts` builds its own
+  check from the schema file. If the check in `src` were broken to accept anything, the
+  tests would still see a bad envelope.
 
 ## Run it
 
-_To be written when the code exists._
+```bash
+cd docs/baby_steps_tutorials/mj_04_result_and_error_envelopes
+pnpm install
+pnpm start
+```
+
+```text
+$ node src/main.ts
+operations: [ 'invoice.get', 'invoice.issue' ]
+{
+  data: {
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    amount: { value: '31400.00', currency: 'USD' },
+    open_amount: { value: '31400.00', currency: 'USD' },
+    status: 'issued'
+  },
+  correlation: { request_id: 'req_0875db27-8042-41d8-93d2-89eb0b5cd944' }
+}
+dsor://org_456/invoice/INV-1008
+{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
+{
+  code: 'RESOURCE_NOT_FOUND',
+  message: 'no invoice "INV-9999"',
+  retry: 'never',
+  correlation: { request_id: 'req_df9f4c45-dbbd-49db-8b47-17c6ef9b9ae4' }
+}
+{
+  code: 'UNSUPPORTED_CAPABILITY',
+  message: '"invoice.issue" is not built yet',
+  retry: 'never',
+  correlation: { request_id: 'req_4fdf3d89-8903-4dc3-8b3e-fada19433850' }
+}
+```
+
+Your request ids will be different. DSoR makes a new one for every call.
+
+`pnpm check` runs the type check, then 187 tests:
+
+```text
+ Test Files  8 passed (8)
+      Tests  187 passed (187)
+```
+
+Outside the dsor repository, the three tests that compare the schema copies have no
+original to compare with, so they are skipped: `184 passed | 3 skipped`.
 
 ## Break it
 
@@ -275,7 +361,48 @@ green again.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built. Each row is one commit or more:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Copy | Copy your step 03. Change the name in `package.json` |
+| 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
+| 3 | Check the design | Read Appendix A, §32, and the real schemas before any code. Fix the design where they say it is wrong |
+| 4 | Red | Write the tests, one group per claim. Watch every one fail for the right reason |
+| 5 | Green | One commit per rule: DSOR-COR-01b, then DSOR-ERR-01a, then DSOR-SCH-01. Before each run, predict which tests turn green |
+| 6 | Break it | Run every predicted break. Compare the results with your predictions |
+| 7 | Review | A reviewer who has not seen your conversation attacks the step. Fix what it finds |
+
+The tests were written all at once, so they turn green one rule at a time. After the
+first green commit, 63 tests still fail. After the second, 3 fail. After the third,
+none do. Move 3 found three mistakes in the design. Move 5 found a test that passed for
+the wrong reason. Both are under "Think it through".
+
+Build your own step 04 from a copy of your step 03. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_03_operations_and_contracts my_04_result_and_error_envelopes
+cd my_04_result_and_error_envelopes
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 04. Design first: before any
+code, we split the rules into claims and I predict which breaks survive. Then check the
+design against Appendix A, §32, and the real schemas. Three questions to settle with
+me: does DSOR-SCH-01 cover a query's answer, and what outcome would it carry? Who makes
+the request_id? And how does call tell a refusal from a bug?
+```
+
+When `pnpm check` is green in your folder, and once the official step 04 exists:
+
+```text
+Now compare this folder with ../04_result_and_error_envelopes. Explain every difference,
+and tell me which ones matter and why.
+```
 
 ## Check yourself
 
@@ -332,15 +459,47 @@ things:
   mistake. And with every code chosen inside `call`, no test could reach the schema
   check, so N3 would survive. Handlers now throw a `Refusal` that names its code.
 
-_The rest is written after the review, with the result of every break in the table
-above._
+### Found by a run
+
+- **A test passed for the wrong reason.** After the first green commit, INV-9999 still
+  came back as `{ data: undefined, correlation }`: a success, with a request id. The
+  test "a refusal carries a request_id that DSoR made" looked only at the id, so it
+  passed on an answer that was not a refusal. It now checks the code first. That test
+  is one of the four that catch N5.
+
+### The breaks, run
+
+The results are in the table under "Breaks we will try". Each break was made in `src`,
+all tests were run, and the files were put back from a copy. None survived.
+
+What the results teach:
+
+- **A test written for a break catches it.** N4, N5, and N6 were predicted to survive.
+  Each one has tests written for it: C7's rows for bad input catch N4, the INV-9999
+  rows catch N5, and the rows for bugs catch N6.
+- **N2 is caught by one test only.** No other test puts a `request_id` in the input.
+  Delete that test, and code that takes the caller's id passes everything.
+- **N1 breaks the fallback too.** With every code `safe_same_key`, the envelope for
+  `OUTCOME_UNKNOWN` fails the schema, and `INTERNAL_ERROR` goes out in its place. But
+  that envelope takes its retry class from the same table, so it says `safe_same_key`
+  too. Only the tests notice.
+
+_What the review found is written after the review._
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-ERR-01a | Every error validates against `error-envelope.schema.json`, with a code from the §28 table or a documented extension code, a retry class, and correlation identifiers | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes), and [`error-envelope.schema.json`](../../../packages/spec/schemas/error-envelope.schema.json) | _to be counted_ |
-| DSOR-SCH-01 | Every artifact named in Appendix A validates against its JSON Schema wherever it crosses an interface or is stored as evidence | [§0.5 Normative artifacts](../../../specs/dsor/00-conventions.md#05-normative-artifacts), and [Appendix A](../../../specs/dsor/appendix-a-schemas.md) | _to be counted_. Met for error envelopes only. A query's answer does not meet it (finding 2) |
-| DSOR-COR-01b | DSoR generates a `request_id` when the caller supplies none | [§32 Correlation](../../../specs/dsor/03-execution.md#32-correlation) | _to be counted_ |
+| DSOR-ERR-01a | Every error validates against `error-envelope.schema.json`, with a code from the §28 table or a documented extension code, a retry class, and correlation identifiers | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes), and [`error-envelope.schema.json`](../../../packages/spec/schemas/error-envelope.schema.json) | 40 tests: 39 in `test/envelope.test.ts` (C1 5, C2 2, C3 32), and 1 in `test/schemas.test.ts` (the copy) |
+| DSOR-SCH-01 | Every artifact named in Appendix A validates against its JSON Schema wherever it crosses an interface or is stored as evidence | [§0.5 Normative artifacts](../../../specs/dsor/00-conventions.md#05-normative-artifacts), and [Appendix A](../../../specs/dsor/appendix-a-schemas.md) | 3 tests in `test/envelope.test.ts` (C5). Met for error envelopes only. A query's answer does not meet it (finding 2) |
+| DSOR-COR-01b | DSoR generates a `request_id` when the caller supplies none | [§32 Correlation](../../../specs/dsor/03-execution.md#32-correlation) | 4 tests in `test/envelope.test.ts` (C4) |
+
+Fifteen more new tests carry no rule id. They prove this tutorial's own choices: the
+shape of a query's success (C6), that nothing a caller can cause makes `call` throw
+(C7), and that the test's own copy of the table has every code.
+
+The schema files in `schemas/` are copies of the specification's. Inside the dsor
+repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every
+rule id and every link on this page.
 
 **Next:** step 05, who is calling.
