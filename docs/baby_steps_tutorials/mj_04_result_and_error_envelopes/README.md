@@ -1,13 +1,14 @@
 # Step 04 · Result and error envelopes
 
 **New in this step:** every answer has one outer shape, and every refusal says whether
-it is safe to try again (DSOR-ERR-01a, DSOR-SCH-01, DSOR-COR-01b).
+it is safe to try again (DSOR-ERR-01a, DSOR-COR-01b, and DSOR-SCH-01 for error
+envelopes only).
 
 ## In plain words
 
 Until now, a refusal was a thrown JavaScript error with a sentence in it. A caller had
 to read the sentence and guess. From this step, every answer from `call` is an
-**envelope**: an object with a fixed outer shape, like the envelope a letter comes in.
+**envelope**: an object with a fixed outer shape.
 
 A refusal is an **error envelope**. It carries a **code**, such as `RESOURCE_NOT_FOUND`,
 a message for people, a **retry class**, and **correlation identifiers**. The retry
@@ -21,13 +22,11 @@ The specification's table in
 code its retry class. Its JSON Schema, `error-envelope.schema.json`, checks the shape of
 every error envelope.
 
-A success has a shape too, the **result envelope**. The specification uses it for the
-answer to a *command* and to a *query*. Every result envelope names an **outcome**, a
-word such as `COMMITTED` that says what happened. None of the four outcomes fits a query
-that reads an invoice. So this step answers a query with a small shape of its own,
-`{ data, correlation }`, and says so.
+A success has a shape too. The specification's shape for it, the **result envelope**,
+does not fit a query yet, and the design below says why. So this step answers a query
+with a small shape of its own, `{ data, correlation }`, and says so.
 
-`call` never throws for anything a caller can cause. It returns an envelope.
+`call` never throws for anything a caller can send as JSON. It returns an envelope.
 
 ## Why it matters
 
@@ -38,7 +37,7 @@ it sends the payment again. VENDOR-44 is paid 31,400.00 USD twice. The retry cla
 how DSoR says "do not try again until someone finds out what happened". For that case
 it is `after_reconciliation`.
 
-The retry class is honest advice, not the lock. An agent can ignore advice. Later
+The retry class is advice. It stops nothing: an agent can ignore it. Later
 steps make DSoR refuse a second attempt anyway: step 20 with idempotency keys, and
 step 37 by holding the payment. The envelope tells a careful agent the truth. The
 checks stop a careless one.
@@ -46,8 +45,9 @@ checks stop a careless one.
 **"Needs approval" is a result, not an error.** An error invites "fix it". The obvious
 fix for a 25,000 USD threshold is to split PAY-901 into two payments of 15,700.00 USD,
 each below it. A result that says `PENDING_APPROVAL` means: your part is done, the work
-is waiting, and `cfo_100` decides. That result needs proposals (step 22) and a rule
-that asks for approval (step 27). This step only makes room for it.
+is waiting, and `cfo_100` decides. That result needs a *proposal*: the record of one
+command and its state, like an order-tracking page (step 22). It also needs a rule that
+asks for approval (step 27). This step does not build it.
 
 **Common mistake:** returning `{ error: "something went wrong" }` and leaving the agent
 to guess whether to try again. Every refusal carries a code and the retry class the
@@ -69,7 +69,7 @@ test. "Think it through" says what changed and why.
 | DSOR-ERR-01a, DSOR-COR-01b | **C4.** It carries correlation identifiers. The caller sent no `request_id`, so DSoR makes one | Every answer has a `request_id`. Two calls get two different ones. A `request_id` inside the operation's input is not used |
 | DSOR-SCH-01 | **C5.** An error envelope is checked against the schema before it leaves `call` | An envelope that fails the schema is never returned. `INTERNAL_ERROR` goes out in its place |
 | (our decision) | **C6.** A query's success is `{ data, correlation }` | `invoice.get` for INV-1008 returns it |
-| (our decision) | **C7.** Nothing a caller can cause makes `call` throw | Every refusal comes back as a value. A bug comes back as `INTERNAL_ERROR` |
+| (our decision) | **C7.** Nothing a caller can send as JSON makes `call` throw | Every refusal comes back as a value. A bug comes back as `INTERNAL_ERROR` |
 
 DSOR-SCH-01 covers the documents listed in
 [Appendix A](../../../specs/dsor/appendix-a-schemas.md), and Appendix A lists the result
@@ -86,27 +86,34 @@ Two findings, checked with ajv on 2026-09-25 against the specification's own sch
    and `BATCH_PARTIAL` must be `per_item`. For the other codes it accepts any retry
    class. `AUTHORIZATION_DENIED` with `safe_same_key`, "denied, try again at once",
    passes the schema. The §28 table says `never`.
-2. **No outcome fits a query's answer.** A result envelope must name one of four
-   outcomes. `COMMITTED`, `READY`, and `PENDING_APPROVAL` each need a proposal (step 22)
-   and a payload hash (step 29). `VALIDATED` needs only a `decision`, and
+2. **No outcome fits a query's answer.** A result envelope must name an **outcome**, a
+   word that says what happened, and there are four. `COMMITTED`, `READY`, and
+   `PENDING_APPROVAL` each need a proposal (step 22), a payload hash (a hash of the
+   request, step 29), and more. `VALIDATED` needs only a `decision`, and
    `{ outcome: "VALIDATED", decision: "ALLOW", data, correlation }` passes. But
    `VALIDATED` answers a dry run, a call that asks "would this be allowed?" and does
    nothing. And `ALLOW` would claim a permission check that arrives in step 06. Our
    `{ data, correlation }` fails, because it has no outcome. So the map's "every
    response in the tests validates against its schema" cannot be met honestly in this
-   step. Only refusals can. This is a gap in the specification (see "Left open").
+   step. Only refusals can. This is a gap in the specification (see "Think it
+   through").
 
 ### Decisions the specification leaves to us
 
 Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 
 1. **This step is error envelopes, plus a small shape for a query's success.**
-   `invoice.issue` stays unbuilt. *Price:* `invoice.issue` moves again. Its success
-   needs a proposal, and proposals are step 22.
-2. **Every code carries exactly the retry class the §28 table gives it.** This is
-   stricter than the schema, never looser. The table is copied from the prose into
-   code, with one test for each code. *Price:* the guard cannot watch a table copied
-   from prose. The tests do.
+   `invoice.issue` stays unbuilt, and `call` refuses every command before its code
+   runs, so no command can answer in a query's shape. *Price:* `invoice.issue` moves
+   again. Its success needs a proposal, and proposals are step 22.
+2. **The §28 table is typed into code twice.** DSOR-ERR-01a names the table, so each
+   code's retry class is the table's, and C3's tests carry the rule's id. The schema
+   checks only three of them (finding 1). Our method is to type the table into `src`,
+   and again into the test. *Price:* both copies come from the same prose. If §28
+   changes a retry class, no test fails until someone types the change. If §28 adds or
+   removes a code, the schema changes too, and the tests that compare with it fail. The
+   rule's sentence says only "a retry class", not "the table's": a question for the
+   specification.
 3. **A query's success is `{ data, correlation }`.** Both names are the ones
    `result-envelope.schema.json` already uses, and `correlation` follows the
    specification's own definition. There is no `outcome`, because none fits (finding
@@ -116,23 +123,27 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 4. **DSoR makes the `request_id` for every call, because no caller can send one yet.**
    [§32](../../../specs/dsor/03-execution.md#32-correlation) says a caller passes its
    correlation identifiers along, and DSoR makes a `request_id` when the caller sends
-   none (DSOR-COR-01b). In this step, `call` takes an operation's name and its input,
-   and nothing else. A `request_id` written inside the input is not a correlation
-   identifier, because the input holds the operation's arguments. The form is this
-   tutorial's decision: `req_` and a random UUID, a 36-character id made from random
-   numbers. *Price:* until DSoR has a real front door (the REST API is step 42), a
-   caller cannot send its own ids to match its own logs. It can record the `request_id`
-   that comes back in every answer.
+   none (DSOR-COR-01b). In this step, `call` takes the registry, an operation's name,
+   and its input. There is no place for correlation identifiers. A `request_id` written
+   inside the input is not one, because the input holds the operation's arguments. The
+   form is this tutorial's decision: `req_` and a random UUID, a 36-character id made
+   from random numbers. *Price:* a caller cannot send its own ids to match its own logs.
+   That needs a way to reach DSoR from outside, the REST API of step 42. Until then, a
+   caller can record the `request_id` that comes back in every answer.
 5. **A refusal names its code, and `call` does the rest.** The code behind an operation,
    its *handler*, refuses by throwing a `Refusal`: an error that carries a code from the
    §28 table and a message. `call` turns it into an envelope. It adds the retry class
-   from the table and the correlation, then checks the schema. A `Refusal` has no retry
-   class of its own, so a handler cannot choose one. Anything else that is thrown is a
-   bug, and becomes `INTERNAL_ERROR`. `call` cannot sort errors by JavaScript's own
-   classes: JavaScript throws a `TypeError` for bad input, and also for a bug such as
-   reading `.id` of `undefined`. `money()` and `parseUri()` keep throwing a
-   `TypeError`, and stay pure. *Price:* a handler that gives a caller's input to
-   `money()` or `parseUri()` must catch the `TypeError` and throw a `Refusal` itself.
+   from the table and the correlation, then checks the schema. A `Refusal` has no field
+   for a retry class, and `call` ignores one added to it. But the handler picks the
+   code, and four codes mean `safe_same_key`. `DEPENDENCY_TIMEOUT` is allowed only for a
+   query, or a command that provably did not run (DSOR-ERR-02). This step runs no
+   command, so nothing checks that yet. Anything else that is thrown is a bug, and
+   becomes `INTERNAL_ERROR`. Our checks threw a `TypeError` for bad input in step 03.
+   JavaScript throws the same class for a bug, such as reading `.id` of `undefined`. So
+   `call` cannot sort errors by their class. `money()` and `parseUri()` keep throwing a
+   `TypeError`. They know nothing about envelopes. *Price:* a handler that gives a
+   caller's input to `money()` or `parseUri()` must catch the `TypeError` and throw a
+   `Refusal` itself.
 6. **`error-envelope.schema.json` is copied in, as step 03 copied its schemas.** The
    guard fails if the copy differs from the original.
 7. **Which code each refusal gets.** From the §28 table:
@@ -141,11 +152,12 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    | --- | --- | --- |
    | An operation name with no contract, such as `invoice.delete` | `UNSUPPORTED_CAPABILITY` | never |
    | `invoice.issue`: a contract, and no code yet | `UNSUPPORTED_CAPABILITY` | never |
+   | `invoice.issue` given code: a command (decision 1) | `UNSUPPORTED_CAPABILITY` | never |
    | `invoice.get` without a text `id` | `VALIDATION_FAILED` | never |
    | `invoice.get` for `INV-9999`, which does not exist | `RESOURCE_NOT_FOUND` | never |
    | Anything unexpected: a bug | `INTERNAL_ERROR` | never |
 
-   The first two share a code and differ in their message. The learner chose
+   The first three share a code and differ in their message. The learner chose
    `UNSUPPORTED_CAPABILITY` for an unknown name: DSoR cannot do that thing, so the
    caller learns it is a missing capability, not a typo in its input. A broken contract
    at start-up gets no envelope: the program never starts, so there is no caller to
@@ -164,55 +176,52 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 
 ### The tests, by claim
 
-The tests check every envelope with their own ajv, built from the schema file. So a
-broken check in `src` cannot pass its own work.
+The tests check every error envelope with their own ajv, built from the schema file.
+C1, C2, C3, and C5 are in `test/envelope.test.ts`. C4, C6, and C7 are in
+`test/call.test.ts`.
 
 - **C1:** every row of the table in decision 7 returns an envelope that passes the
-  schema.
-- **C2:** an envelope with a made-up code is refused by the schema. The table in `src`
-  lists exactly the schema's 32 codes.
+  schema. Each envelope is compared whole, its message too.
+- **C2:** the table in `src` lists exactly the schema's 32 codes. A second test shows
+  that the schema refuses a made-up code. It checks the schema, not this step, so it
+  has no rule id.
 - **C3:** one test for each code in the §28 table. A `Refusal` with that code goes
   through `call`, and the test checks the retry class. The test types the table out
   again from §28, so a mistake in `src` is not copied into it. `BATCH_PARTIAL` is the
   exception. The schema also requires its `items`, which this step cannot build. So its
-  retry class is checked in the table, and its envelope is C5's test.
-- **C4:** every answer has a `request_id`. Two calls get two different ones. A
-  `request_id` inside the input is not used.
+  retry class is checked in the table, and its envelope is C5's test. A `Refusal` that
+  carries its own retry class still gets the table's.
+- **C4:** every kind of answer has a `request_id`, and a new one on every call. A
+  `request_id` in the input, at the top or in a `correlation` object, is not used. That
+  last test proves decision 4, not the rule, so it has no rule id.
 - **C5:** an envelope that would fail the schema comes back as `INTERNAL_ERROR`. Three
   cases: `BATCH_PARTIAL` without its `items`, a code the table does not list, and an
   extension code this step has not documented.
 - **C6:** `invoice.get` for INV-1008 returns `{ data, correlation }`, and `data` is the
-  invoice.
-- **C7:** each refusal in decision 7 comes back as a value. None is thrown. A bug that
-  throws a `TypeError` comes back as `INTERNAL_ERROR`, not `VALIDATION_FAILED`, and its
-  own message is not in the envelope.
+  invoice. A command's code never runs.
+- **C7:** each refusal in decision 7 comes back as a value. None is thrown. A bug comes
+  back as `INTERNAL_ERROR` with the fixed message, whatever it throws: a `TypeError`, a
+  text, `undefined`, or an `Error` with a code of its own.
 
 ### Breaks we will try, and what we expect
 
 Run against the finished step. N1 was predicted before any code. N2, N4, N5, and N6 were
 predicted after the code, before the breaks ran. N3 was seen while building: before the
-schema check existed, its three tests failed.
+schema check existed, its three tests failed. The results are from the step after the
+review, which added tests.
 
 | # | The break | Expected to be caught by | Learner's prediction | Result |
 | --- | --- | --- | --- | --- |
-| N1 | Every code gets `safe_same_key` | C3, one test per code | caught by many tests | Caught by 43: C3 28, C7 7, C1 5, C5 3 |
+| N1 | Every code gets `safe_same_key` | C3, one test per code | caught by many tests | Caught by 49: C3 29, C7 11, C1 6, C5 3 |
 | N2 | A `request_id` inside the input is used | C4 | caught by exactly one | Caught by 1, C4's test for it |
 | N3 | The schema check before `call` returns is removed | C5 | seen while building | Caught by 3, C5's |
-| N4 | A `Refusal` from the input check escapes `call` as a throw | C7 | survives | Caught by 9: every test with a bad input, and C3's `VALIDATION_FAILED` row |
-| N5 | `INV-9999` returns `{ data: undefined }` as a success | C1, `RESOURCE_NOT_FOUND` | survives | Caught by 4, in three files |
-| N6 | `call` reports every thrown error as `VALIDATION_FAILED`, bugs too | C7 | survives | Caught by 3, the bug tests in C1 and C7 |
+| N4 | A `Refusal` from the input check escapes `call` as a throw | C7 | survives | Caught by 10: every test with a bad input, and C3's `VALIDATION_FAILED` row |
+| N5 | `INV-9999` returns `{ data: undefined }` as a success | C1, `RESOURCE_NOT_FOUND` | survives | Caught by 5, in four files |
+| N6 | `call` reports every thrown error as `VALIDATION_FAILED`, bugs too | C7 | survives | Caught by 7, the bug tests in C1 and C7 |
 
-### Left open, and not this step's idea
+### Left open
 
-- **Should an operation's input name a record by its canonical URI?** `invoice.get`
-  takes `{ id: "INV-1008" }`, not `dsor://org_456/invoice/INV-1008`. DSOR-RID-03 says
-  the same URI identifies a resource across every interface.
-- **Where does "this invoice is already issued" go?** With `invoice.issue`, once
-  proposals exist.
-- **Where does a query's answer get its outcome?** Appendix A says the result envelope
-  carries query results. DSOR-FRS-01a says every query result states `observed_at` and
-  its freshness. The schema has no outcome for a query, and no field for either. This
-  is a question for the specification, raised outside this step.
+What this step leaves open, on purpose, is listed under "Think it through".
 
 ## What changed since step 03
 
@@ -220,16 +229,19 @@ schema check existed, its three tests failed.
 src/envelope.ts                NEW: the envelope types, the §28 table, Refusal, and
                                toEnvelope(), which checks every error envelope
                                against its schema
-src/registry.ts                changed: call() makes the request id, answers with an
-                               envelope, and never throws. preview() is exported
+src/registry.ts                changed: call() makes the request id, refuses commands,
+                               answers with an envelope, and never throws. preview()
+                               is exported
 src/operations.ts              changed: invoice.get refuses with a Refusal and a code
 src/main.ts                    changed: prints one success and two refusals, all
                                envelopes
 schemas/error-envelope.schema.json
-                               NEW: a byte-for-byte copy of the specification's
-test/envelope.test.ts          NEW: the tests, by claim (C1 to C7)
-test/helpers.ts                changed: the tests' own schema check, and a registry
-                               with a test operation, test.run
+                               NEW: a byte-for-byte copy of the specification's own
+test/envelope.test.ts          NEW: what an error envelope holds (C1, C2, C3, C5)
+test/call.test.ts              NEW: what call answers (C4, C6, C7)
+test/helpers.ts                changed: the tests' own schema check, every refusal
+                               with its code and message, and a registry with a test
+                               operation, test.run
 test/registry.test.ts,         changed: a refusal is now an envelope, not a throw
 test/startup.test.ts
 test/schemas.test.ts           changed: the new copy must equal the original
@@ -249,17 +261,21 @@ git diff --no-index mj_03_operations_and_contracts/test mj_04_result_and_error_e
 
 Three choices in the code are worth a look:
 
-- **There is one way out for an error.** Every error envelope is made by
-  `toEnvelope()`. It takes the retry class from the table and checks the schema, so no
-  refusal can skip either. `call()` catches everything a handler throws and sends it
-  through `toEnvelope()`.
-- **A `Refusal` has no retry class.** A handler names a code and a message. It cannot
-  say "safe to retry". Only the table can.
+- **Every error envelope is made in one place, `toEnvelope()`.** `call()` catches
+  everything a handler throws and hands it to `toEnvelope()`. For a `Refusal`, it takes
+  the retry class from the table and checks the envelope against the schema. Anything
+  else gets the fixed `INTERNAL_ERROR` envelope. That one is built from fixed parts, and
+  the tests check it.
+- **A `Refusal` has no field for a retry class.** A handler names a code and a message.
+  `call()` ignores a retry class added to a `Refusal`, and takes the table's. The
+  handler still picks the code, and four codes mean `safe_same_key` (decision 5).
 - **The tests check envelopes with their own ajv.** `test/helpers.ts` builds its own
   check from the schema file. If the check in `src` were broken to accept anything, the
   tests would still see a bad envelope.
 
 ## Run it
+
+From the root of the dsor repository:
 
 ```bash
 cd docs/baby_steps_tutorials/mj_04_result_and_error_envelopes
@@ -298,15 +314,15 @@ dsor://org_456/invoice/INV-1008
 
 Your request ids will be different. DSoR makes a new one for every call.
 
-`pnpm check` runs the type check, then 187 tests:
+`pnpm check` runs the type check, then 203 tests:
 
 ```text
- Test Files  8 passed (8)
-      Tests  187 passed (187)
+ Test Files  9 passed (9)
+      Tests  203 passed (203)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `184 passed | 3 skipped`.
+original to compare with, so they are skipped: `200 passed | 3 skipped`.
 
 ## Break it
 
@@ -329,13 +345,14 @@ AssertionError: expected { code: 'INTERNAL_ERROR', …(3) } to match object { co
 +   "code": "INTERNAL_ERROR",
 +   "retry": "never",
   }
-      Tests  1 failed | 186 passed (187)
+      Tests  1 failed | 202 passed (203)
 ```
 
 Two things stopped it. The schema ties `OUTCOME_UNKNOWN` to `after_reconciliation`, so
 the envelope failed the check, and `call` sent `INTERNAL_ERROR` with `never` in its
 place. The agent was told not to try again. And the test, which holds its own copy of
-the table, saw the wrong answer.
+the table, saw the wrong answer. One thing was still lost: the agent heard "internal
+error", not "unknown". That is left open for step 37 (see "Think it through").
 
 **Now a lie the schema allows.** Put that row back, and change another:
 
@@ -351,13 +368,21 @@ AssertionError: expected { code: 'AUTHORIZATION_DENIED', …(3) } to match objec
 -   "retry": "never",
 +   "retry": "safe_same_key",
   }
-      Tests  1 failed | 186 passed (187)
+ FAIL  test/envelope.test.ts > C3: every code carries the retry class the §28 table gives it > DSOR-ERR-01a: a Refusal that carries its own retry class still gets the table's
+AssertionError: expected { code: 'AUTHORIZATION_DENIED', …(3) } to match object { code: 'AUTHORIZATION_DENIED', …(1) }
+  {
+    "code": "AUTHORIZATION_DENIED",
+-   "retry": "never",
++   "retry": "safe_same_key",
+  }
+      Tests  2 failed | 201 passed (203)
 ```
 
 This envelope passed the schema and left `call`. It told the agent "denied, try again
-at once". Only the test saw it. This is finding 1: the schema checks the retry class of
-three codes, and the table gives one to all 32. Put the row back, and `pnpm check` is
-green again.
+at once". Only the tests saw it: C3's row for `AUTHORIZATION_DENIED`, and a second test
+that uses the same code. This is finding 1: the schema checks the retry class of three
+codes, and the table gives one to all 32. Put the row back, and `pnpm check` is green
+again.
 
 ## Build it yourself with Claude Code
 
@@ -365,7 +390,7 @@ This is how the step was built. Each row is one commit or more:
 
 | # | Move | What you do |
 |---|---|---|
-| 1 | Copy | Copy your step 03. Change the name in `package.json` |
+| 1 | Copy | Copy your step 03. Change the name and the description in `package.json` |
 | 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
 | 3 | Check the design | Read Appendix A, §32, and the real schemas before any code. Fix the design where they say it is wrong |
 | 4 | Red | Write the tests, one group per claim. Watch every one fail for the right reason |
@@ -376,7 +401,9 @@ This is how the step was built. Each row is one commit or more:
 The tests were written all at once, so they turn green one rule at a time. After the
 first green commit, 63 tests still fail. After the second, 3 fail. After the third,
 none do. Move 3 found three mistakes in the design. Move 5 found a test that passed for
-the wrong reason. Both are under "Think it through".
+the wrong reason. Move 7 found 20 breaks that passed `pnpm check`. 15 of them now fail a
+test, 2 are left open, and 3 belong to step 03. All of this is under "Think it
+through".
 
 Build your own step 04 from a copy of your step 03. From `docs/baby_steps_tutorials`:
 
@@ -426,12 +453,13 @@ and tell me which ones matter and why.
 2. Nothing went wrong. The work is waiting for `cfo_100`. An error invites a fix, and
    the obvious fix for a threshold is to split the payment into smaller ones that each
    pass below it.
-3. The §28 table says `AUTHORIZATION_DENIED` is `never`. The schema checks the retry
-   class for only three codes. This step refuses more than the schema, never less.
+3. DSOR-ERR-01a names the §28 table, and the table says `AUTHORIZATION_DENIED` is
+   `never`. The schema checks the retry class for only three codes, so this step checks
+   the other 29 itself. It refuses more than the schema, never less.
 4. §32 says DSoR makes a `request_id` whenever the caller sends none (DSOR-COR-01b).
-   In this step no caller has a way to send one. The input holds the operation's
-   arguments, so a `request_id` written there is an argument, not a correlation
-   identifier.
+   In this step no caller has a way to send one. This tutorial treats the input as the
+   operation's arguments only (decision 4). So a `request_id` written there is an
+   argument, not a correlation identifier.
 5. DSOR-SCH-01 does cover a query's answer: Appendix A lists the result envelope for
    command and query results. But `{ data, correlation }` fails that schema, because it
    has no outcome, and no outcome fits a query yet. A test titled DSOR-SCH-01 would
@@ -465,7 +493,7 @@ things:
   came back as `{ data: undefined, correlation }`: a success, with a request id. The
   test "a refusal carries a request_id that DSoR made" looked only at the id, so it
   passed on an answer that was not a refusal. It now checks the code first. That test
-  is one of the four that catch N5.
+  is one of the five that catch N5.
 
 ### The breaks, run
 
@@ -484,19 +512,115 @@ What the results teach:
   that envelope takes its retry class from the same table, so it says `safe_same_key`
   too. Only the tests notice.
 
-_What the review found is written after the review._
+### What the review found
+
+Two reviewers who had not seen how the step was built attacked it. One checked each
+rule, clause by clause, against the tests and the code. The other broke the code in 77
+ways and read this README against the house style. Neither found a blocker. But 20
+breaks passed `pnpm check`.
+
+Fixed. Each fix has a test that fails when the break comes back:
+
+- **The check that tells a refusal from a bug had no test of its own.** Every bug test
+  threw something with no code, so the schema check sent `INTERNAL_ERROR` anyway. With
+  the check gone, an `Error` that carried `code: "CONFLICT"` went out as `CONFLICT`,
+  with its internal message. A bug that threw `undefined` made `call` throw. The bug
+  tests now throw `undefined`, `null`, and an `Error` with a code of its own.
+- **A `Refusal` could carry its own retry class.** Code that read it passed every test.
+  A test now throws one that says `safe_same_key`, and expects the table's `never`.
+- **Request ids were checked twice only on successes.** A fixed id on every refusal, on
+  a bug, or on the envelope sent in place of a broken one passed. Every kind of answer
+  is now called twice.
+- **A refusal could carry fields that the schema allows.** A stack trace in `cause`
+  showed the file paths on the server. `retry_after_seconds: 0` sat on a refusal that
+  says `never`. Each refusal is now compared whole.
+- **A bug's message could leak in part, and the fixed message could be empty.** The
+  fixed message is now pinned, for every kind of bug.
+- **A request id in a `correlation` object inside the input was used.** It is tested
+  there too now.
+- **A huge id went whole into a refusal's message.** A test now keeps it short.
+- **The program test could not tell that the success was printed.** It now looks for
+  `data: {` and the invoice's address.
+- **A command with code answered in a query's shape.** `call` now refuses a command
+  before its code runs (decision 1).
+
+Changed in the design, with the learner:
+
+- **C7 covers what JSON can carry.** A live object, which only code inside the program
+  can pass, can make `call` throw.
+- **DSOR-SCH-01 is partly met.** It holds for error envelopes, and a query's answer
+  breaks it. So it left "The rules this step meets" for a line of its own.
+- **Decision 2 said two things at once.** It called the table's retry classes our
+  choice, while C3's tests claimed them for DSOR-ERR-01a. The table is the rule's.
+  Typing it into code twice is our method.
+- **Two tests lost their rule id.** One checks the schema, not this step. The other
+  proves decision 4, not DSOR-COR-01b.
+- **Two comparisons were replaced.** A letter's envelope, and advice that is "not the
+  lock", are not on the house style's list of analogies.
+
+### Left open, on purpose
+
+The next step starts from this list.
+
+- **Should an operation's input name a record by its canonical URI?** `invoice.get`
+  takes `{ id: "INV-1008" }`, not `dsor://org_456/invoice/INV-1008`. DSOR-RID-03 says
+  the same URI identifies a resource across every interface.
+- **Where does "this invoice is already issued" go?** With `invoice.issue`, once
+  proposals exist.
+- **Where does a query's answer get its outcome?** Appendix A says the result envelope
+  carries query results. DSOR-FRS-01a says every query result states `observed_at` and
+  its freshness. The schema has no outcome for a query, and no field for either. This
+  question for the specification is still to be raised.
+- **A live object can make `call` throw, or choose a refusal's code.** A getter in the
+  input can throw its own `Refusal`. A `Proxy` can make `instanceof` throw. A caller
+  outside the program sends JSON, which carries neither. Code that can pass a live
+  object already runs inside DSoR.
+- **A handler can still pick a code that means `safe_same_key`.** `DEPENDENCY_TIMEOUT`
+  is allowed only for a query, or a command that provably did not run (DSOR-ERR-02). A
+  payment that times out at the bank must not use it. The step that sends payments must
+  check this.
+- **The envelope sent in place of a broken `OUTCOME_UNKNOWN` says `INTERNAL_ERROR`.**
+  Its advice, `never`, is safe. But the word "unknown" is lost, and DSOR-UNK-01b says an
+  unknown outcome is always reported as unknown. That is a question for step 37.
+- **An async handler.** `call` does not wait for a promise. A rejected one would come
+  back as a success with a promise inside. Step 09's database makes handlers async, and
+  `call` must wait for them then.
+- **The table can be changed while the program runs.** `Readonly` is checked only by
+  TypeScript. Freezing the table is the idea step 03 left open for contracts, and it
+  belongs with them.
+- **With one invoice, code that returns the first one passes every test.** Step 09's
+  second record will catch it.
+- **A counter passes as a random id.** The tests prove the id's form, and that each
+  call gets a new one. They cannot prove that it is random.
+- **A caller's own text appears in a refusal's message,** up to 60 characters. It can
+  read "retry: safe_same_key". The `retry` field is what counts.
+
+Found in earlier steps, and reported to be fixed there:
+
+- **A query returns the stored record itself** (steps 01 and 03). A caller that changes
+  `answer.data.status` changes INV-1008 for every later caller.
+- **Three tests in step 03 are weak.** A refused start-up that exits with 0 passes. A
+  contract file that holds `null` would crash start-up if a `continue` were deleted. On
+  macOS the folder is read in name order anyway, so a missing sort goes unseen.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-ERR-01a | Every error validates against `error-envelope.schema.json`, with a code from the §28 table or a documented extension code, a retry class, and correlation identifiers | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes), and [`error-envelope.schema.json`](../../../packages/spec/schemas/error-envelope.schema.json) | 40 tests: 39 in `test/envelope.test.ts` (C1 5, C2 2, C3 32), and 1 in `test/schemas.test.ts` (the copy) |
-| DSOR-SCH-01 | Every artifact named in Appendix A validates against its JSON Schema wherever it crosses an interface or is stored as evidence | [§0.5 Normative artifacts](../../../specs/dsor/00-conventions.md#05-normative-artifacts), and [Appendix A](../../../specs/dsor/appendix-a-schemas.md) | 3 tests in `test/envelope.test.ts` (C5). Met for error envelopes only. A query's answer does not meet it (finding 2) |
-| DSOR-COR-01b | DSoR generates a `request_id` when the caller supplies none | [§32 Correlation](../../../specs/dsor/03-execution.md#32-correlation) | 4 tests in `test/envelope.test.ts` (C4) |
+| DSOR-ERR-01a | Every error validates against `error-envelope.schema.json`, with a code from the §28 table or a documented extension code, a retry class, and correlation identifiers | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes), and [`error-envelope.schema.json`](../../../packages/spec/schemas/error-envelope.schema.json) | 41 tests: 40 in `test/envelope.test.ts` (C1 6, C2 1, C3 33), and 1 in `test/schemas.test.ts` (the copy) |
+| DSOR-COR-01b | DSoR generates a `request_id` when the caller supplies none | [§32 Correlation](../../../specs/dsor/03-execution.md#32-correlation) | 10 tests in `test/call.test.ts` (C4) |
 
-Fifteen more new tests carry no rule id. They prove this tutorial's own choices: the
-shape of a query's success (C6), that nothing a caller can cause makes `call` throw
-(C7), and that the test's own copy of the table has every code.
+**Partly met: DSOR-SCH-01.** Every artifact named in Appendix A validates against its
+JSON Schema wherever it crosses an interface or is stored as evidence
+([§0.5 Normative artifacts](../../../specs/dsor/00-conventions.md#05-normative-artifacts),
+[Appendix A](../../../specs/dsor/appendix-a-schemas.md)). Here it holds for error
+envelopes. 3 tests in `test/envelope.test.ts` (C5) prove that an error envelope that
+fails its schema never leaves `call`. A query's answer breaks the rule (finding 2).
+
+24 more new tests carry no rule id. They prove this tutorial's own choices. C6 is the
+shape of a query's success, and that a command's code never runs. C7 is that nothing
+JSON can carry makes `call` throw. The rest check the schema itself, the test's own copy
+of the table, decision 4, and the length of a refusal's message.
 
 The schema files in `schemas/` are copies of the specification's. Inside the dsor
 repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every
