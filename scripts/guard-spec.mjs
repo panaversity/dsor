@@ -9,9 +9,13 @@
 // Checks, each reported with a stable slug (AGENTS.md → Decisions 2 and 3):
 //   unique-id         every requirement id is defined once
 //   one-must          every requirement holds exactly one MUST / MUST NOT, and no SHOULD / MAY
-//   known-id          every DSOR-XXX-NN mentioned in any markdown file is defined by the spec
+//   known-id          every DSOR-XXX-NN mentioned in any markdown file, or in a baby step's
+//                     code or tests, is defined by the spec
 //   link-target       every relative markdown link, and its #anchor, resolves
 //   registry-current  packages/spec/requirements.json equals what the spec says today
+//   copied-pattern    a baby-step regex marked "// copied from <schema>#<pointer>" still
+//                     equals that schema's pattern
+//   rules-met         every test file a row of rules-met.md links to names that row's rule
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,6 +124,45 @@ for (const file of markdown) {
         fail("link-target", `${where} links to a missing file: ${href}`);
       } else if (anchor && target.endsWith(".md") && !anchors.get(target)?.has(anchor)) {
         fail("link-target", `${where} links to a missing anchor: ${href}`);
+      }
+    }
+  }
+}
+
+// The baby steps are separate projects that must run outside this repository, so their
+// tests cannot read the spec. The guard reads them instead, and fails when they drift.
+const STEPS = join(ROOT, "docs", "baby_steps_tutorials");
+const COPIED = /\/\/ copied from (packages\/spec\/schemas\/[\w.-]+\.json)#(\S+)/;
+const stepCode = existsSync(STEPS) ? walk(STEPS, (p) => p.endsWith(".ts")) : [];
+for (const file of stepCode) {
+  const where = relative(ROOT, file);
+  const lines = readFileSync(file, "utf8").split("\n");
+  for (const id of lines.join("\n").match(ID) ?? []) {
+    if (!ids.has(id)) fail("known-id", `${where} mentions ${id}, which the spec does not define`);
+  }
+  lines.forEach((line, i) => {
+    const marker = line.match(COPIED);
+    if (!marker) return;
+    const code = lines.slice(i + 1).find((l) => !l.trim().startsWith("//")) ?? "";
+    const literal = code.match(/=\s*\/(.+)\/[a-z]*;/)?.[1];
+    let expected = JSON.parse(readFileSync(join(ROOT, marker[1]), "utf8"));
+    for (const key of marker[2].split("/").slice(1)) {
+      expected = expected?.[key.replaceAll("~1", "/").replaceAll("~0", "~")];
+    }
+    if (typeof expected !== "string" || literal !== expected) {
+      fail("copied-pattern", `${where}:${i + 1} no longer matches ${marker[1]}#${marker[2]}`);
+    }
+  });
+}
+const RULES_MET = join(STEPS, "rules-met.md");
+if (existsSync(RULES_MET)) {
+  for (const row of prose(readFileSync(RULES_MET, "utf8"))) {
+    const id = row.match(/^\| (DSOR-[A-Z]+-\d+[a-z]?) \|/)?.[1];
+    if (!id) continue;
+    for (const [, href] of row.matchAll(/\]\(([^)\s]+\.test\.ts)\)/g)) {
+      const test = join(STEPS, href);
+      if (existsSync(test) && !readFileSync(test, "utf8").includes(id)) {
+        fail("rules-met", `rules-met.md says ${href} proves ${id}, but no test there names it`);
       }
     }
   }
