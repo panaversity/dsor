@@ -1,4 +1,4 @@
-// NEW IN STEP 01: money is an amount and a currency, and the amount is a decimal string.
+// Money is an amount and a currency, and the amount is a decimal string.
 // DSOR-MON-01 in specs/dsor/01-model.md, section 9.
 
 /** An amount of money. `value` is digits written as text, never a `number`. */

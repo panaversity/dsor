@@ -1,4 +1,4 @@
-// NEW IN STEP 01: the tests for the invoice held in memory.
+// The tests for the invoice held in memory.
 import { describe, expect, it } from "vitest";
 import { money } from "../src/money.ts";
 import { getInvoice, invoices } from "../src/invoice.ts";

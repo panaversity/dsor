@@ -1,4 +1,4 @@
-// NEW IN STEP 01: one kind of business record, held in memory. No database yet.
+// One kind of business record, held in memory. No database yet.
 // The field names are the ones in specs/dsor/01-model.md, section 6.
 import { money, type Money } from "./money.ts";
 

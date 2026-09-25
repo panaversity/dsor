@@ -1,4 +1,4 @@
-// NEW IN STEP 01: the tests for money, the refusals first among them.
+// The tests for money, the refusals first among them.
 import { describe, expect, it } from "vitest";
 import { money } from "../src/money.ts";
 
