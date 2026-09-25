@@ -189,16 +189,18 @@ broken check in `src` cannot pass its own work.
 
 ### Breaks we will try, and what we expect
 
-Run against the finished step. The learner's prediction is recorded before any code.
+Run against the finished step. N1 was predicted before any code. N2, N4, N5, and N6 were
+predicted after the code, before the breaks ran. N3 was seen while building: before the
+schema check existed, its three tests failed.
 
-| # | The break | Expected to be caught by | Learner's prediction |
-| --- | --- | --- | --- |
-| N1 | Every code gets `safe_same_key` | C3, one test per code | caught by many tests |
-| N2 | A `request_id` inside the input is used | C4 | to predict |
-| N3 | The schema check before `call` returns is removed | C5 | to predict |
-| N4 | A `Refusal` from the input check escapes `call` as a throw | C7 | to predict |
-| N5 | `INV-9999` returns `{ data: undefined }` as a success | C1, `RESOURCE_NOT_FOUND` | to predict |
-| N6 | `call` reports every thrown error as `VALIDATION_FAILED`, bugs too | C7 | to predict |
+| # | The break | Expected to be caught by | Learner's prediction | Result |
+| --- | --- | --- | --- | --- |
+| N1 | Every code gets `safe_same_key` | C3, one test per code | caught by many tests | Caught by 43: C3 28, C7 7, C1 5, C5 3 |
+| N2 | A `request_id` inside the input is used | C4 | caught by exactly one | Caught by 1, C4's test for it |
+| N3 | The schema check before `call` returns is removed | C5 | seen while building | Caught by 3, C5's |
+| N4 | A `Refusal` from the input check escapes `call` as a throw | C7 | survives | Caught by 9: every test with a bad input, and C3's `VALIDATION_FAILED` row |
+| N5 | `INV-9999` returns `{ data: undefined }` as a success | C1, `RESOURCE_NOT_FOUND` | survives | Caught by 4, in three files |
+| N6 | `call` reports every thrown error as `VALIDATION_FAILED`, bugs too | C7 | survives | Caught by 3, the bug tests in C1 and C7 |
 
 ### Left open, and not this step's idea
 
@@ -222,7 +224,54 @@ _To be written when the code exists._
 
 ## Break it
 
-_To be written when the code exists, with real output._
+**Make a timed-out payment look safe to retry.** In `src/envelope.ts`, change one row of
+the table:
+
+```ts
+  OUTCOME_UNKNOWN: "safe_same_key",
+```
+
+That row now says: nobody knows whether the money left, and it is safe to send it again.
+Run `pnpm test`. These are the lines that matter:
+
+```text
+ FAIL  test/envelope.test.ts > C3: every code carries the retry class the §28 table gives it > DSOR-ERR-01a: OUTCOME_UNKNOWN is refused with retry class after_reconciliation
+AssertionError: expected { code: 'INTERNAL_ERROR', …(3) } to match object { code: 'OUTCOME_UNKNOWN', …(1) }
+  {
+-   "code": "OUTCOME_UNKNOWN",
+-   "retry": "after_reconciliation",
++   "code": "INTERNAL_ERROR",
++   "retry": "never",
+  }
+      Tests  1 failed | 186 passed (187)
+```
+
+Two things stopped it. The schema ties `OUTCOME_UNKNOWN` to `after_reconciliation`, so
+the envelope failed the check, and `call` sent `INTERNAL_ERROR` with `never` in its
+place. The agent was told not to try again. And the test, which holds its own copy of
+the table, saw the wrong answer.
+
+**Now a lie the schema allows.** Put that row back, and change another:
+
+```ts
+  AUTHORIZATION_DENIED: "safe_same_key",
+```
+
+```text
+ FAIL  test/envelope.test.ts > C3: every code carries the retry class the §28 table gives it > DSOR-ERR-01a: AUTHORIZATION_DENIED is refused with retry class never
+AssertionError: expected { code: 'AUTHORIZATION_DENIED', …(3) } to match object { code: 'AUTHORIZATION_DENIED', …(1) }
+  {
+    "code": "AUTHORIZATION_DENIED",
+-   "retry": "never",
++   "retry": "safe_same_key",
+  }
+      Tests  1 failed | 186 passed (187)
+```
+
+This envelope passed the schema and left `call`. It told the agent "denied, try again
+at once". Only the test saw it. This is finding 1: the schema checks the retry class of
+three codes, and the table gives one to all 32. Put the row back, and `pnpm check` is
+green again.
 
 ## Build it yourself with Claude Code
 
