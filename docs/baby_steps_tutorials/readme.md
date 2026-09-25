@@ -41,6 +41,11 @@ meet two new ideas on the same day.
 - **Tests carry rule numbers.** A test is titled with the rule it proves, for example
   `DSOR-EXE-02: a denied command is recorded before the response`. When you finish a
   step you can say exactly which rules of the specification your code now meets.
+  [`rules-met.md`](rules-met.md) collects them: rule, step, and the test that proves it.
+- **Each step ends with "Think it through".** A green test run means the tests you
+  wrote pass, not that you wrote the right ones. So a reviewer who has not seen the
+  work attacks each step, and its README records what was found and what was left open
+  on purpose. The next step starts from that list.
 
 ### What is inside every step directory
 
@@ -48,7 +53,7 @@ meet two new ideas on the same day.
 NN_step_name/
   README.md            In plain words · Why it matters · What changed since the last step ·
                        Run it · Break it · Build it yourself with Claude Code ·
-                       Check yourself · The rules this step meets
+                       Check yourself · Think it through · The rules this step meets
   src/                 the code so far, with the new part marked  // NEW IN STEP NN
   test/                the tests so far, plus the new ones, titled by rule id
   package.json         the project and its scripts: start, test, typecheck, check
