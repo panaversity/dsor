@@ -1,5 +1,7 @@
-// NEW IN STEP 03: the registry at start-up, and calls by name, by claim (see the README).
+// The registry at start-up, and calls by name, by step 03's claims (C1 to C7 in step 03's
+// README). From step 04, call answers with an envelope instead of throwing.
 import { describe, expect, it, vi } from "vitest";
+import type { ErrorEnvelope } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
 import { contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
@@ -7,29 +9,38 @@ import { contract, refusal, shipped, shippedWith, source, without } from "./help
 describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers);
 
+  // NEW IN STEP 04: the invoice comes back as the envelope's data.
   it("DSOR-OPR-01: invoice.get runs by its name", () => {
-    const invoice = call(registry, "invoice.get", { id: "INV-1008" }) as { id: string };
-    expect(invoice.id).toBe("INV-1008");
+    expect(call(registry, "invoice.get", { id: "INV-1008" })).toMatchObject({
+      data: { id: "INV-1008" },
+    });
   });
 
   // Found by the review: with one invoice, code that ignored the caller's input and
   // always read INV-1008 passed the test above.
+  // NEW IN STEP 04: INV-9999 is refused with a code, not answered with undefined.
   it("DSOR-OPR-01: invoice.get passes the caller's input to its code", () => {
-    expect(call(registry, "invoice.get", { id: "INV-9999" })).toBeUndefined();
+    expect(call(registry, "invoice.get", { id: "INV-9999" })).toMatchObject({
+      code: "RESOURCE_NOT_FOUND",
+    });
   });
 
-  // No rule id: checking an operation's input is not this step's rule. Step 04 turns
-  // this refusal into an error envelope.
+  // No rule id: checking an operation's input is not step 03's rule.
+  // NEW IN STEP 04: the refusal is an envelope, not a thrown TypeError.
   it("invoice.get without an id is refused", () => {
-    expect(() => call(registry, "invoice.get", {})).toThrow(TypeError);
+    expect(call(registry, "invoice.get", {})).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   // "toString" and "constructor" are on every JavaScript object. A registry that looks
   // names up in a plain object would find code for them.
+  // NEW IN STEP 04: the refusal is an envelope, not a throw.
   it.each([["invoice.delete"], ["toString"], ["constructor"]])(
     "DSOR-OPR-01: an operation with no contract is refused: %s",
     (name) => {
-      expect(() => call(registry, name, {})).toThrow(`no operation named "${name}"`);
+      expect(call(registry, name, {})).toMatchObject({
+        code: "UNSUPPORTED_CAPABILITY",
+        message: `no operation named "${name}"`,
+      });
     },
   );
 
@@ -46,13 +57,20 @@ describe("C1: nothing can be called without a contract", () => {
   it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", () => {
     const spy = vi.fn<Handler>(() => "deleted");
     const handMade = { contracts: new Map(), handlers: new Map([["invoice.delete", spy]]) };
-    expect(() => call(handMade, "invoice.delete", {})).toThrow();
+    // NEW IN STEP 04: the refusal is an envelope, not a throw.
+    expect(call(handMade, "invoice.delete", {})).toMatchObject({
+      code: "UNSUPPORTED_CAPABILITY",
+    });
     expect(spy).not.toHaveBeenCalled();
   });
 
+  // NEW IN STEP 04: the refusal is an envelope, not a throw.
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
-    expect(() => call(registry, "invoice.issue", {})).toThrow('"invoice.issue" is not built yet');
+    expect(call(registry, "invoice.issue", {})).toMatchObject({
+      code: "UNSUPPORTED_CAPABILITY",
+      message: '"invoice.issue" is not built yet',
+    });
   });
 });
 
@@ -144,10 +162,12 @@ describe("C7: a loaded contract is exactly what was written", () => {
 // No rule id: this is about the refusal's message, as in steps 01 and 02. The name comes
 // from the caller, so it may be anything, even something huge.
 describe("a refusal of a huge name", () => {
+  // NEW IN STEP 04: the message is in the envelope.
   it("shows only a short piece of it", () => {
     const registry = buildRegistry(shipped, handlers);
     const huge = "invoice." + "a".repeat(100_000);
-    expect(() => call(registry, huge, {})).toThrow("no operation named");
-    expect(refusal(() => call(registry, huge, {})).length).toBeLessThan(200);
+    const { message } = call(registry, huge, {}) as ErrorEnvelope;
+    expect(message).toMatch("no operation named");
+    expect(message.length).toBeLessThan(200);
   });
 });

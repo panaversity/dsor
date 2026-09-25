@@ -1,5 +1,5 @@
-// NEW IN STEP 03: the two schema files are copies. This test keeps them equal to the
-// specification's own, whenever the specification is there to compare with.
+// The schema files are copies. This test keeps them equal to the specification's own,
+// whenever the specification is there to compare with.
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -15,6 +15,15 @@ describe("the schema copies", () => {
     .each([["operation-contract.schema.json"], ["common.schema.json"]])(
     "DSOR-OPR-01: schemas/%s equals the specification's own",
     (file) => {
+      expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
+    },
+  );
+
+  // NEW IN STEP 04: the error envelope's schema is a copy too (README, decision 6).
+  it.skipIf(!existsSync(ORIGINALS))(
+    "DSOR-ERR-01a: schemas/error-envelope.schema.json equals the specification's own",
+    () => {
+      const file = "error-envelope.schema.json";
       expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
     },
   );

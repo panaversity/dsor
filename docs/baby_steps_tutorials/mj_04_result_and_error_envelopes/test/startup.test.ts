@@ -1,4 +1,4 @@
-// NEW IN STEP 03: start-up. How the contract files are found, and the program itself.
+// Start-up. How the contract files are found, and the program itself.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,11 +29,14 @@ describe("reading the contracts folder", () => {
 // No rule id: the program itself. Found by the review: nothing ran src/main.ts, so a
 // start-up that skipped the registry passed every test.
 describe("the program", () => {
-  it("starts, reads INV-1008 through invoice.get, and refuses invoice.issue", () => {
+  // NEW IN STEP 04: every answer the program prints is an envelope.
+  it("starts, reads INV-1008 through invoice.get, and prints every answer as an envelope", () => {
     const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
     const output = execFileSync(process.execPath, [main], { encoding: "utf8" });
     expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue' ]");
     expect(output).toMatch("id: 'INV-1008'");
-    expect(output).toMatch('refused: "invoice.issue" is not built yet');
+    expect(output).toMatch("correlation: { request_id: 'req_");
+    expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
+    expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
   });
 });
