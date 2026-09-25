@@ -82,7 +82,7 @@ test/greet.test.ts    removed, with it
 src/money.ts          NEW: the Money type and money(), which refuses bad money
 src/invoice.ts        NEW: the Invoice type, the list in memory, and getInvoice()
 src/main.ts           changed: prints INV-1008 instead of a greeting
-test/money.test.ts    NEW: 19 tests for DSOR-MON-01, and 2 for the float bug
+test/money.test.ts    NEW: 22 tests for DSOR-MON-01, and 2 for the float bug
 test/invoice.test.ts  NEW: 4 tests: read INV-1008, its amounts are money,
                       every amount passes money(), a missing id
 package.json          changed: the step's name and description
@@ -92,8 +92,8 @@ Every changed region in `src/` is marked `NEW IN STEP 01`. To see the whole diff
 this from `docs/baby_steps_tutorials`:
 
 ```bash
-git diff --no-index 00_foundation/src my_01_one_invoice_in_memory/src
-git diff --no-index 00_foundation/test my_01_one_invoice_in_memory/test
+git diff --no-index 00_foundation/src mj_01_one_invoice_in_memory/src
+git diff --no-index 00_foundation/test mj_01_one_invoice_in_memory/test
 ```
 
 Compare `src` and `test`, not the whole folders. Each folder has its own
@@ -117,7 +117,7 @@ Three design choices are worth a look:
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_01_one_invoice_in_memory
+cd docs/baby_steps_tutorials/mj_01_one_invoice_in_memory
 pnpm install
 pnpm start
 ```
@@ -132,11 +132,11 @@ pnpm start
 }
 ```
 
-`pnpm check` runs the type check, then 25 tests:
+`pnpm check` runs the type check, then 28 tests:
 
 ```text
  Test Files  2 passed (2)
-      Tests  25 passed (25)
+      Tests  28 passed (28)
 ```
 
 ## Break it
@@ -151,7 +151,7 @@ so that only the pattern check is left. Run both commands (output shortened):
 $ pnpm test
  FAIL  test/money.test.ts > money > DSOR-MON-01: a number is refused, even one that slipped past the types
 AssertionError: expected function to throw an error, but it didn't
-      Tests  1 failed | 24 passed (25)
+      Tests  1 failed | 27 passed (28)
 
 $ pnpm typecheck
 $ tsc --noEmit
@@ -172,7 +172,7 @@ src/invoice.ts(20,5): error TS2322: Type 'number' is not assignable to type 'Mon
 $ pnpm test
  × DSOR-MON-01: INV-1008 holds its amounts as money, not as numbers
  × DSOR-MON-01: every amount in the invoice list passes money()
-      Tests  2 failed | 23 passed (25)
+      Tests  2 failed | 26 passed (28)
 ```
 
 Two separate checks catch this mistake. The compiler catches it before the code runs.
@@ -261,6 +261,10 @@ where later steps begin.
 3. **"TypeScript accepts `amount: 31400.00`" was half true.** It is accepted where the
    type says `number`, and refused where the type says `Money`. Data from outside the
    program has no type at all, and there only `money()` stands guard.
+4. **No test said what must be accepted.** The only "yes" values were `"31400.00"`
+   and `"50000000.00"`. A pattern that refused negative amounts, or demanded exactly
+   two decimal places, passed every test, although the schema allows both. Now `"0"`,
+   `"-12.50"`, and `"1.5"` must be accepted. Test the "yes" as carefully as the "no".
 
 **Left open, on purpose.** Each of these needs a new idea, so it waits:
 
@@ -276,7 +280,7 @@ where later steps begin.
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-MON-01 | A monetary amount is a `money` object with a decimal-string value and an ISO 4217 currency code | [§9 Money and currency](../../../specs/dsor/01-model.md#9-money-and-currency), and the `money` definition in [`common.schema.json`](../../../packages/spec/schemas/common.schema.json) | 19 tests in `test/money.test.ts`, 2 in `test/invoice.test.ts` |
+| DSOR-MON-01 | A monetary amount is a `money` object with a decimal-string value and an ISO 4217 currency code | [§9 Money and currency](../../../specs/dsor/01-model.md#9-money-and-currency), and the `money` definition in [`common.schema.json`](../../../packages/spec/schemas/common.schema.json) | 22 tests in `test/money.test.ts`, 2 in `test/invoice.test.ts` |
 
 The value pattern in `src/money.ts` is copied from that schema. This step has no
 operation yet, so it has no operation *contract*. Contracts arrive in step 03. Inside

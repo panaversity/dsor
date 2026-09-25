@@ -11,4 +11,4 @@ in a step's README but not tested there does not belong here.
 
 | Rule | Step | Proved by |
 | --- | --- | --- |
-| DSOR-MON-01 | [01 · One invoice in memory](my_01_one_invoice_in_memory/README.md) (learner build) | [`test/money.test.ts`](my_01_one_invoice_in_memory/test/money.test.ts) (19 tests), [`test/invoice.test.ts`](my_01_one_invoice_in_memory/test/invoice.test.ts) (2 tests) |
+| DSOR-MON-01 | [01 · One invoice in memory](mj_01_one_invoice_in_memory/README.md) (learner build) | [`test/money.test.ts`](mj_01_one_invoice_in_memory/test/money.test.ts) (22 tests), [`test/invoice.test.ts`](mj_01_one_invoice_in_memory/test/invoice.test.ts) (2 tests) |

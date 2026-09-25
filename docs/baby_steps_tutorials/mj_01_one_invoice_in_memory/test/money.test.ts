@@ -7,6 +7,16 @@ describe("money", () => {
     expect(money("31400.00", "USD")).toEqual({ value: "31400.00", currency: "USD" });
   });
 
+  // The schema allows a minus sign and any number of decimal places. A stricter
+  // pattern would pass every other test here, so these pin what must be accepted.
+  it.each([
+    ["zero", "0"],
+    ["a negative amount", "-12.50"],
+    ["one decimal place", "1.5"],
+  ])("DSOR-MON-01: a decimal string the schema allows is accepted: %s", (_why, value) => {
+    expect(money(value, "USD")).toEqual({ value, currency: "USD" });
+  });
+
   // Test the "no" as carefully as the "yes".
   it("DSOR-MON-01: a number is refused, even one that slipped past the types", () => {
     // TypeScript stops `money(31400, "USD")` before it runs. Data from outside the
