@@ -266,6 +266,10 @@ where later steps begin.
    two decimal places, passed every test, although the schema allows both. Now `"0"`,
    `"-12.50"`, and `"1.5"` must be accepted. Test the "yes" as carefully as the "no".
 
+**Removed from step 00, on purpose:** `src/greet.ts` and its test. `greet` was a check
+that the tools work, not part of DSoR, so step 01 replaces it. Steps are cumulative, so
+removing earlier code is the exception, and every removal gets a line here.
+
 **Left open, on purpose.** Each of these needs a new idea, so it waits:
 
 - A type that only `money()` can create, so a hand-written `Money` does not compile.

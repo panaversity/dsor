@@ -43,6 +43,8 @@ the `name` in `package.json` (`@dsor-steps/NN-name`) and its `description`. Dele
 `node_modules` if it was copied, and run `pnpm install`.
 
 Everything else stays byte for byte unless this step's idea requires changing it.
+Steps are cumulative, so removing an earlier step's code is the exception. When you do,
+say why in one line under "Think it through".
 
 - **Write only inside this folder.** If you find a bug that came from an earlier step,
   stop and report it. The fix belongs in the earliest step that has it, and is then
