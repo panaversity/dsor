@@ -31,6 +31,17 @@ our decision. The rule really bites at the moment an id is made: whatever create
 tenants must never make an id out of a name. Tenants are first created in step 10, so
 that is the place to think about this again.
 
+### Can a list of undo operations be empty?
+
+The contract schema says a `compensatable` or `saga` command needs
+`execution.compensated_by`, the operations that undo it. A command that can never be
+undone needs `in_flight`, the records no other command may touch while it runs. But
+the schema accepts `compensated_by: []` and `in_flight: {}`. Both fields are there, and
+neither says anything. `compensated_by` can also name an operation that has no
+contract. Step 03 found this in review and left it open. The question for the spec:
+should "required" here mean "present and not empty", and must each named operation
+exist?
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -49,12 +60,14 @@ schema's shape, so the test proves DSOR-RID-01b and not DSOR-RID-01a. We checked
 thing in theirs by running it: `parseUri` accepts an array that holds a valid URI,
 because the pattern turns the array into text first.
 
-**Step 03, which we have not built.** They split step 03 in their copy of the map.
-Their reasoning: step 03 taught two ideas, "a spec sheet is data, and a bad one stops
-the program" and "the first action that changes stored state". So step 03 keeps both
-contracts but runs only the query, and `invoice.issue` runs from step 04, where a
-command gives error envelopes a reason to exist. Worth reading before we plan our own
-step 03. It is their decision, not ours.
+**Step 03.** They split step 03 in their copy of the map. Their reasoning: step 03
+taught two ideas, "a spec sheet is data, and a bad one stops the program" and "the
+first action that changes stored state". So step 03 keeps both contracts but runs only
+the query, and `invoice.issue` runs from step 04, where a command gives error envelopes
+a reason to exist. Our step 03 made the same choice after reading theirs: `invoice.issue`
+has a contract, and a call to it is refused as "not built yet". So our build differs
+from the map, which has `invoice.issue` change the invoice in step 03. The map itself
+is unchanged. We have not yet compared the two step 03 builds.
 
 **Ways of working we noticed.** They run a mutation sweep: break each guard in the
 code, one at a time, and check that some test fails. They split a large README review
@@ -74,6 +87,22 @@ reviewer for a mutation sweep too.
 - A list with one item cannot catch a function that ignores its argument. Test with a
   second item.
 - When the spec is silent and we decide, the README says it is our decision.
+- Design first (step 03). Write the claims, the decisions, and predicted breaks before
+  code. Then check the design against the real schema before the first test. That
+  check found five missing tests. Without them, three of the nine predicted breaks
+  would have left every test green.
+- A test that expects "no" catches a change that turns "no" into "yes". We predicted
+  that `coerceTypes` and `removeAdditional` would survive. Both were caught, because a
+  refusal test got no refusal.
+- **A friction item for the skill.** Step 03's README has a section, "The design,
+  before any code", that the `build-baby-step` skill's README shape (§6) does not
+  list. It sits between "Why it matters" and "What changed". If design first stays,
+  the skill's heading order should include it.
+- **Copied schema files.** A step that copies whole schema files can check them itself.
+  Step 03's `test/schemas.test.ts` compares each copy with the original when the
+  repository is there, and is skipped outside it. CI runs every step's tests, so a copy
+  that drifts fails CI. A `pnpm guard` check for copied files, which we had planned, is
+  now optional.
 
 ## Still unknown
 
@@ -81,4 +110,7 @@ reviewer for a mutation sweep too.
 - **The cost of running every step's check in CI.** Every step installs its own
   packages, on two operating systems. Deferred until it matters.
 - **Our map and the other learner's map differ at step 03.** That is fine. Both of us
-  are learning, and we are at step 02.
+  are learning.
+- **Where DSOR-OPR-03a is taught.** The rule says an agent must never get a general
+  tool, like `execute_sql` or "call any API". The specification's §7 and step 03's
+  story both lead with it. No step in the map names it yet.
