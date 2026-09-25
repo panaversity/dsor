@@ -31,7 +31,7 @@ export function getInvoice(list: Invoice[], id: string): Invoice | undefined {
   return list.find((invoice) => invoice.id === id);
 }
 
-// NEW IN STEP 02: every invoice has its canonical URI (DSOR-RID-01a). This step knows
+// Every invoice has its canonical URI (DSOR-RID-01a). This step knows
 // one company, so every invoice belongs to it. From step 10, each record carries its own
 // tenant_id, and this constant goes away.
 export const TENANT = "org_456";

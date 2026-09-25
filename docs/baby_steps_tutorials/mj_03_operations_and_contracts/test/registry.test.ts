@@ -281,3 +281,14 @@ describe("C7: a loaded contract is exactly what was written", () => {
     );
   });
 });
+
+// No rule id: this is about the refusal's message, as in steps 01 and 02. The name comes
+// from the caller, so it may be anything, even something huge.
+describe("a refusal of a huge name", () => {
+  it("shows only a short piece of it", () => {
+    const registry = buildRegistry(shipped, handlers);
+    const huge = "invoice." + "a".repeat(100_000);
+    expect(() => call(registry, huge, {})).toThrow("no operation named");
+    expect(refusal(() => call(registry, huge, {})).length).toBeLessThan(200);
+  });
+});

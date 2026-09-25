@@ -1,4 +1,4 @@
-// NEW IN STEP 02: every record has one permanent address, its canonical URI.
+// Every record has one permanent address, its canonical URI.
 // DSOR-RID-01a in specs/dsor/01-model.md, section 5.
 
 /** The three parts of a canonical URI: dsor://{tenant_id}/{entity}/{id}. */
@@ -13,7 +13,7 @@ const RESOURCE_URI = /^dsor:\/\/[A-Za-z0-9_\-]+\/[a-z][a-z0-9_]*\/[A-Za-z0-9_.\-
 
 const SCHEME = "dsor://";
 
-// NEW IN STEP 02: DSOR-RID-01b. The schema's pattern above accepts "acme" as a tenant,
+// DSOR-RID-01b. The schema's pattern above accepts "acme" as a tenant,
 // because a name and an id are both letters. So this step fixes one form for every
 // tenant id: "org_" and digits, like org_456. The names people use, like acme, do not
 // have that form, so they are refused. (A name made to look like "org_457" would pass.

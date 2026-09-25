@@ -1,4 +1,4 @@
-// NEW IN STEP 02: the tests for canonical URIs, the refusals first among them.
+// The tests for canonical URIs, the refusals first among them.
 import { describe, expect, it } from "vitest";
 import { invoiceUri, invoices, type Invoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
@@ -143,7 +143,7 @@ describe("the tenant part is an id, never a name", () => {
   });
 });
 
-// NEW IN STEP 02. No rule id: this is about the refusal's message, not about URIs. Both
+// No rule id: this is about the refusal's message, not about URIs. Both
 // refusals promise to show only a short piece of the bad input. A huge URI goes to the
 // shape check, and a huge tenant of the right shape goes to the name check.
 describe("a refusal of a huge input", () => {
