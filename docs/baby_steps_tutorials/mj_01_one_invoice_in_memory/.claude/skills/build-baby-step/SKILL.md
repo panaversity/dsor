@@ -100,6 +100,8 @@ link to its spec section, the tests that prove it) → **Next:**.
 
 Write for a student whose second language may be English: short sentences, one idea
 each, every term defined where it first appears, no "simply" and no "just".
+When the specification is silent and the step decides something, such as the form of an
+id, say that it is this tutorial's decision. Never word it as a rule of DSoR.
 
 ## 7 · Prove it, review it, then hand over
 
@@ -117,7 +119,10 @@ review: the rule ids against the code and tests, and the README against the
 in the repository, otherwise
 <https://github.com/panaversity/dsor/blob/main/.claude/skills/write-for-learners/SKILL.md>.
 The reviewer lists every analogy and flags each one that is not on that skill's
-established list. Fix what it finds or record it under "Think it through".
+established list. It also breaks the code on purpose, one small change at a time: it
+deletes a `^`, a type check, or a guard, or makes a function ignore its argument. It
+reports every change that leaves all tests green. Fix what it finds or record it under
+"Think it through".
 
 Finish by telling the human exactly what to do next, because these are outside this
 folder and are theirs to do: add this step's rows to `rules-met.md` beside the steps; in
