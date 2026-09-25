@@ -365,17 +365,24 @@ and tell me which ones matter and why.
 
 1. `invoice.issue` says what the caller means, so a rule can be attached to it.
    `invoice.update` hides the meaning. A rule about issuing, or about payments, never
-   runs, because nothing says an invoice is being issued or paid.
+   runs, because nothing says an invoice is being issued or paid. And one contract
+   cannot fit every change `update` might make. Its risk level, its idempotency, and
+   its preconditions would have to be right for all of them at once.
 2. No. The rule forbids any default for the risk level, even the strictest one. A
    default hides the fact that nobody decided. It also makes the log show `high` as if someone chose it. And there is no
    safe default for every field the rule covers. The contract is refused, so its author
    decides.
 3. At start-up the mistake is found before any caller can reach anything. A refusal per
    call lets the program run, and the mistake waits for the first unlucky caller.
-4. No. Only a command must declare `idempotency`. A test for each side of the rule
-   proves that the registry asks it of commands and not of queries.
-5. Because one mistake stops the whole program. If only the first problem is named, the
-   author fixes it, restarts, and meets the next one, again and again.
+4. No. A query only reads, so it does not declare `idempotency`. The schema says "if
+   `kind` is `command`, then `idempotency` is required", so the rule asks it of
+   commands only. A test for each side proves it: a command without it is refused, and
+   a query without it is accepted.
+5. Because one mistake stops the whole program (decision 2). If only the first problem
+   is named, the author fixes it, restarts, and meets the next one, again and again.
+   There is a second reason, found by break M2. The first problem can be the
+   misleading one. With only the first named, a contract with no `kind` was refused
+   for its `effect`, and the missing `kind` was never shown.
 
 </details>
 
