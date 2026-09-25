@@ -1,16 +1,22 @@
 // The code behind each operation, keyed by the operation's name.
 // A name here with no contract in contracts/ stops start-up (DSOR-OPR-01).
+import { Refusal } from "./envelope.ts";
 import { getInvoice, invoices } from "./invoice.ts";
-import type { Handler } from "./registry.ts";
+import { preview, type Handler } from "./registry.ts";
 
 export const handlers: Record<string, Handler> = {
   "invoice.get": (input) => {
-    // The input comes from outside the program, so it has no types yet. Step 04 turns
-    // this refusal into an error envelope.
+    // The input comes from outside the program, so it has no types yet.
     const id = (input as { id?: unknown } | null)?.id;
-    if (typeof id !== "string") throw new TypeError("invoice.get needs { id: string }");
-    return getInvoice(invoices, id);
+    // NEW IN STEP 04: each refusal names its code from the §28 table, and call does the
+    // rest (README, decision 5).
+    if (typeof id !== "string") {
+      throw new Refusal("VALIDATION_FAILED", "invoice.get needs { id: string }");
+    }
+    const invoice = getInvoice(invoices, id);
+    if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
+    return invoice;
   },
-  // invoice.issue has a contract but no code yet. Changing an invoice needs an answer
-  // for "already issued", and that answer is an error envelope, which is step 04.
+  // invoice.issue has a contract but no code yet. Its success needs a proposal, and
+  // proposals are step 22 (README, decision 1).
 };

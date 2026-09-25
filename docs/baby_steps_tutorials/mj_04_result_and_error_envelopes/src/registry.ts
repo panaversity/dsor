@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
-import type { Answer } from "./envelope.ts";
+import { Refusal, toEnvelope, type Answer } from "./envelope.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -101,17 +101,24 @@ export function buildRegistry(
   return { contracts, handlers: code };
 }
 
-/** Runs an operation by its name. */
+/** Runs an operation by its name. It answers with an envelope, and never throws. */
 export function call(registry: Registry, name: string, input: unknown): Answer {
   // NEW IN STEP 04: DSoR makes the request id for every call, because no caller can send
   // one yet (DSOR-COR-01b, README decision 4). Nothing in the input is read for it.
   const correlation = { request_id: `req_${randomUUID()}` };
-  if (!registry.contracts.has(name)) throw new Error(`no operation named ${preview(name)}`);
-  const handler = registry.handlers.get(name);
-  // Step 04 turns this refusal into an error envelope.
-  if (!handler) throw new Error(`${preview(name)} is not built yet`);
-  // NEW IN STEP 04: a query's answer is { data, correlation } (README, decision 3).
-  return { data: handler(input), correlation };
+  // NEW IN STEP 04: every refusal is thrown as a Refusal, which names its code. The catch
+  // below turns it, and anything else thrown, into an error envelope (README, C7).
+  try {
+    if (!registry.contracts.has(name)) {
+      throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
+    }
+    const handler = registry.handlers.get(name);
+    if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
+    // NEW IN STEP 04: a query's answer is { data, correlation } (README, decision 3).
+    return { data: handler(input), correlation };
+  } catch (thrown) {
+    return toEnvelope(thrown, correlation);
+  }
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.
@@ -122,6 +129,7 @@ function explain(error: ErrorObject): string {
 }
 
 // The refused input may be anything, even something huge. Show a short piece of it.
-function preview(input: unknown): string {
+// NEW IN STEP 04: exported, so a handler's refusal can show a piece of the input too.
+export function preview(input: unknown): string {
   return typeof input === "string" ? JSON.stringify(input.slice(0, 60)) : typeof input;
 }

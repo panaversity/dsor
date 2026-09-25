@@ -1,6 +1,7 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
-// The program checks every contract, then reads one invoice by the operation's name.
+// The program checks every contract, then calls operations by name. Every answer it
+// prints is an envelope: one success, then two refusals.
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
@@ -31,9 +32,8 @@ if ("data" in answer) {
   console.log(parseUri(uri));
 }
 
+// NEW IN STEP 04: a refusal comes back as an error envelope, never as a throw. Each one
+// has a code, and the retry class the §28 table gives that code.
+console.log(call(registry, "invoice.get", { id: "INV-9999" }));
 // invoice.issue has a contract but no code yet, so the call is refused.
-try {
-  call(registry, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" });
-} catch (error) {
-  console.log("refused:", (error as Error).message);
-}
+console.log(call(registry, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));

@@ -62,10 +62,46 @@ export type Success = { data: unknown; correlation: Correlation };
 /** Everything call can return. */
 export type Answer = Success | ErrorEnvelope;
 
-// SKELETON for the red tests: the table is empty until the code is written.
-export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {} as Readonly<
-  Record<ErrorCode, RetryClass>
->;
+// The §28 table, copied from the prose: every code, and the retry class the table gives
+// it. The guard cannot watch prose, so a test types the table out again (README,
+// decision 2). TypeScript refuses this table if a code is missing from it.
+export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {
+  AUTHENTICATION_REQUIRED: "never", // log in again
+  AUTHORIZATION_DENIED: "never",
+  DELEGATION_REQUIRED: "never",
+  DELEGATION_EXPIRED: "never",
+  DELEGATION_REVOKED: "never",
+  TENANT_MISMATCH: "never",
+  RESOURCE_NOT_FOUND: "never",
+  VALIDATION_FAILED: "never",
+  POLICY_DENIED: "never",
+  SOD_VIOLATION: "never",
+  LIMIT_EXCEEDED: "after_delay",
+  AGENT_SUSPENDED: "never", // a human must lift it
+  OPERATION_FROZEN: "never", // a human must lift it
+  APPROVAL_REQUIRED: "never", // obtain the approval
+  APPROVAL_EXPIRED: "never", // propose again
+  APPROVAL_MISMATCH: "never", // propose again
+  APPROVAL_INVALIDATED: "after_state_refresh", // propose again
+  COOLING_OFF_ACTIVE: "after_delay",
+  CONFLICT: "never",
+  STALE_STATE: "after_state_refresh",
+  IDEMPOTENCY_CONFLICT: "never",
+  RESOURCE_HELD: "after_reconciliation",
+  OUTCOME_UNKNOWN: "after_reconciliation",
+  FRESHNESS_UNSATISFIABLE: "after_delay",
+  RATE_LIMITED: "after_delay",
+  BATCH_PARTIAL: "per_item",
+  CONNECTOR_UNAVAILABLE: "safe_same_key",
+  TRANSACTION_FAILED: "safe_same_key",
+  EVIDENCE_STORE_UNAVAILABLE: "safe_same_key",
+  // Only for a query, or a command that provably did not run (DSOR-ERR-02).
+  DEPENDENCY_TIMEOUT: "safe_same_key",
+  UNSUPPORTED_CAPABILITY: "never",
+  // The table says "never for commands", and nothing about queries. This tutorial
+  // chooses never for queries too (README, decision 8).
+  INTERNAL_ERROR: "never",
+};
 
 /** A refusal, as a handler throws it: a code from the table and a message for people. */
 export class Refusal extends Error {
@@ -75,4 +111,20 @@ export class Refusal extends Error {
     super(message);
     this.code = code;
   }
+}
+
+// The only message INTERNAL_ERROR carries. A bug's own message can name internal details,
+// so it never reaches the caller (README, decision 8).
+const UNEXPECTED = "DSoR hit an unexpected error";
+
+/** Turns whatever was thrown into an error envelope. Only a Refusal names its code. */
+export function toEnvelope(thrown: unknown, correlation: Correlation): ErrorEnvelope {
+  if (thrown instanceof Refusal) {
+    // The retry class comes from the table, never from the code that refused.
+    const { code, message } = thrown;
+    return { code, message, retry: RETRY[code], correlation };
+  }
+  // Anything else is a bug, a TypeError too: JavaScript throws those for bugs as well as
+  // for bad input, so the class cannot tell them apart (README, decision 5).
+  return { code: "INTERNAL_ERROR", message: UNEXPECTED, retry: RETRY.INTERNAL_ERROR, correlation };
 }
