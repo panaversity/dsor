@@ -51,3 +51,51 @@ describe("formatUri and parseUri", () => {
     expect(() => parseUri("dsor://org_456/invoice")).toThrow(/not a canonical URI/);
   });
 });
+
+// The schema's own URI pattern. Inside the dsor repository, `pnpm guard` checks that it
+// still matches:
+// copied from packages/spec/schemas/common.schema.json#/$defs/resourceUri/pattern
+const SCHEMA_URI = /^dsor:\/\/[A-Za-z0-9_\-]+\/[a-z][a-z0-9_]*\/[A-Za-z0-9_.\-]+$/;
+
+// Each of these has the right shape, so the schema accepts it. Only the meaning is
+// wrong: the tenant part is a name, or almost an id.
+const NAMES_NOT_IDS = [
+  ["the company's display name", "acme"],
+  ["a name with the id's prefix", "org_acme"],
+  ["the name joined to digits", "acme_456"],
+  ["the prefix in capital letters", "ORG_456"],
+  ["the prefix with no digits", "org_"],
+  ["a dash instead of the underscore", "org-456"],
+  ["letters after the digits", "org_456a"],
+];
+
+describe("the tenant part is an id, never a name", () => {
+  it("DSOR-RID-01b: every refused tenant below has the shape the schema accepts", () => {
+    // If one did not, its test would prove DSOR-RID-01a again, not DSOR-RID-01b.
+    for (const [, tenant] of NAMES_NOT_IDS) {
+      expect(`dsor://${tenant}/invoice/INV-1008`).toMatch(SCHEMA_URI);
+    }
+  });
+
+  it.each(NAMES_NOT_IDS)("DSOR-RID-01b: parseUri refuses %s as the tenant", (_why, tenant) => {
+    expect(() => parseUri(`dsor://${tenant}/invoice/INV-1008`)).toThrow(TypeError);
+  });
+
+  it.each(NAMES_NOT_IDS)("DSOR-RID-01b: formatUri refuses %s as the tenant", (_why, tenant) => {
+    expect(() => formatUri({ ...INVOICE_PARTS, tenant_id: tenant })).toThrow(TypeError);
+  });
+
+  // A leading zero is allowed on purpose: the id is opaque, so "org_0456" is simply a
+  // different id from "org_456". Nothing here reads the digits as a number.
+  it.each([["org_456"], ["org_1"], ["org_0456"]])(
+    "DSOR-RID-01b: an id of the form org_ and digits is accepted: %s",
+    (tenant) => {
+      const uri = `dsor://${tenant}/invoice/INV-1008`;
+      expect(parseUri(uri).tenant_id).toBe(tenant);
+    },
+  );
+
+  it("DSOR-RID-01b: the refusal says the tenant must be an id", () => {
+    expect(() => parseUri("dsor://acme/invoice/INV-1008")).toThrow(/tenant_id must be an id/);
+  });
+});

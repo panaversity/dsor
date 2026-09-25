@@ -13,6 +13,14 @@ const RESOURCE_URI = /^dsor:\/\/[A-Za-z0-9_\-]+\/[a-z][a-z0-9_]*\/[A-Za-z0-9_.\-
 
 const SCHEME = "dsor://";
 
+// NEW IN STEP 02: DSOR-RID-01b. The schema's pattern above accepts "acme" as a tenant,
+// because a name and an id are both letters. So this step fixes one form for every
+// tenant id: "org_" and digits, like org_456. A company name never has that form, so
+// it is refused. This is stricter than the schema, never looser: every id it accepts,
+// the schema accepts too. The digits are never read as a number, so org_0456 is a
+// different id from org_456.
+const TENANT_ID = /^org_[0-9]+$/;
+
 /** Splits a canonical URI into its three parts, refusing anything else. */
 export function parseUri(uri: string): ResourceParts {
   // Check the type first, as money() does. `.test()` turns a number into text.
@@ -26,6 +34,9 @@ export function parseUri(uri: string): ResourceParts {
   if (tenant_id === undefined || entity === undefined || id === undefined) {
     throw new TypeError(`not a canonical URI: ${preview(uri)}`);
   }
+  if (!TENANT_ID.test(tenant_id)) {
+    throw new TypeError(`tenant_id must be an id like org_456, not a name: ${preview(tenant_id)}`);
+  }
   return { tenant_id, entity, id };
 }
 
@@ -36,11 +47,10 @@ export function formatUri(parts: ResourceParts): string {
     throw new TypeError("not a canonical URI: every part must be a string");
   }
   const uri = `${SCHEME}${tenant_id}/${entity}/${id}`;
-  // A "/" inside a part would add a fourth part. Checking the result with the same
-  // pattern means formatUri can never build a URI that parseUri would refuse.
-  if (!RESOURCE_URI.test(uri)) {
-    throw new TypeError(`not a canonical URI: ${preview(uri)}`);
-  }
+  // A "/" inside a part would add a fourth part, and a name would pass the shape.
+  // Reading the result back with parseUri means formatUri can never build a URI that
+  // parseUri would refuse.
+  parseUri(uri);
   return uri;
 }
 
