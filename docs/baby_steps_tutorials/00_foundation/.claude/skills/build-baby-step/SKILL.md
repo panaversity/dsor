@@ -87,15 +87,18 @@ Same headings as step 00's README, in this order:
 
 `# Step NN · Title` → **New in this step** (one line) → In plain words → Why it matters
 (a concrete failure from the running story) → What changed since step MM (a short file
-list, and the `git diff --no-index` command for the two folders) → Run it → Break it
-(with real output) → Build it yourself with Claude Code (the learner prompt for this
-step) → Check yourself (3 to 5 questions, answers inside `<details>`) → The rules this
-step meets → **Next:**.
+list, and `git diff --no-index` commands for the two folders' `src` and `test`; a
+whole-folder diff buries the lesson under `node_modules`) → Run it → Break it (with real
+output) → Build it yourself with Claude Code (the learner prompt for this step) → Check
+yourself (3 to 5 questions, answers inside `<details>`) → Think it through (what the
+hostile review found and fixed, and what was left open on purpose; the next step starts
+from this list) → The rules this step meets (a table: rule, what it says, a relative
+link to its spec section, the tests that prove it) → **Next:**.
 
 Write for a student whose second language may be English: short sentences, one idea
 each, every term defined where it first appears, no "simply" and no "just".
 
-## 7 · Prove it, then hand over
+## 7 · Prove it, review it, then hand over
 
 ```bash
 pnpm install --frozen-lockfile
@@ -104,6 +107,11 @@ pnpm check
 
 Then copy this folder to a temporary place outside the repository, run the same two
 commands there, and delete the copy. A step must run by itself.
+
+Then ask a fresh subagent, one that has not seen the conversation, for a hostile
+review: the rule ids against the code and tests, and the README against the
+`write-for-learners` skill. It lists every analogy and flags each one that is not on
+that skill's established list. Fix what it finds or record it under "Think it through".
 
 Finish by telling the human exactly what to do next, because these are outside this
 folder and are theirs to do: turn the step's name into a link in the map and update
@@ -114,6 +122,10 @@ open a pull request with one step in it.
 
 The learner is here to understand, not to receive a folder.
 
+- **Stop after each section of this skill** and wait for the learner.
+- **Teach before code.** After section 1, ask the learner to read the linked spec
+  section, then teach the idea and quiz them. Write the README's "In plain words" and
+  "Why it matters" before the first test.
 - **Explain before each file**, in two or three plain sentences, and wait for "go".
 - **Ask before you tell.** Before running a test, ask what they expect. Before the
   break-it exercise, ask them to predict the failure.
