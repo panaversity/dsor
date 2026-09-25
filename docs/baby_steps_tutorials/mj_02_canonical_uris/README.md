@@ -70,13 +70,14 @@ people to read.
 
 ```text
 src/uri.ts            NEW: the ResourceParts type, parseUri(), and formatUri()
-test/uri.test.ts      NEW: 20 tests for DSOR-RID-01a, 21 for DSOR-RID-01b
+test/uri.test.ts      NEW: 20 tests for DSOR-RID-01a, 21 for DSOR-RID-01b, and 1 for
+                      the length of a refusal
 src/main.ts           changed: also prints INV-1008's canonical URI and reads it back
 src/invoice.ts        changed: invoiceUri() gives every invoice its canonical URI;
                       step 01's NEW IN STEP marker is now a plain comment
 src/money.ts          changed: the same
 test/invoice.test.ts  changed: the same
-test/money.test.ts    changed: the same
+test/money.test.ts    changed: the same, and it carries step 01's new length test
 package.json          changed: the step's name and description
 ```
 
@@ -127,11 +128,11 @@ dsor://org_456/invoice/INV-1008
 { tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
 ```
 
-`pnpm check` runs the type check, then 69 tests:
+`pnpm check` runs the type check, then 71 tests:
 
 ```text
  Test Files  3 passed (3)
-      Tests  69 passed (69)
+      Tests  71 passed (71)
 ```
 
 ## Break it
@@ -150,8 +151,8 @@ src/uri.ts(23,7): error TS6133: 'TENANT_ID' is declared but its value is never r
 ```
 
 The compiler notices first: the pattern is still there, but nothing uses it. Run
-`pnpm test` on its own, and 17 tests fail: every test that expects a name to be
-refused. Put the lines back.
+`pnpm test` on its own, and 18 tests fail: the 17 that expect a name to be refused,
+and the length test, whose huge tenant is now accepted. Put the lines back.
 
 **2. Make the well-meaning mistake.** The schema already has a pattern for a tenant
 id, `^[A-Za-z0-9_\-]+$`. Using it looks tidy. In `src/uri.ts`, change the line
@@ -160,11 +161,11 @@ id, `^[A-Za-z0-9_\-]+$`. Using it looks tidy. In `src/uri.ts`, change the line
 
 ```text
 $ tsc --noEmit
- ❯ test/uri.test.ts (41 tests | 17 failed) 15ms
+ ❯ test/uri.test.ts (42 tests | 18 failed) 15ms
 AssertionError: expected function to throw an error, but it didn't
  ❯ test/uri.test.ts:123:65
  Test Files  1 failed | 2 passed (3)
-      Tests  17 failed | 52 passed (69)
+      Tests  18 failed | 53 passed (71)
 ```
 
 This time the compiler prints nothing. The code is correct TypeScript, and the
@@ -314,6 +315,11 @@ has a test that fails:
 2. **One invoice cannot catch a copy.** The list holds only INV-1008. An `invoiceUri`
    that always returned INV-1008's URI passed every test. A second test now asks for
    the URI of INV-1009, an invoice that is not in the list.
+
+**Found later, by breaking the code on purpose:** both refusals promise to show only a
+short piece of the bad input. Deleting that limit left every test green. A test now
+sends a 100,000-character URI, and one with a 100,000-character tenant, and checks the
+message stays short. A promise in a comment needs a test that keeps it.
 
 **Removed from step 01:** nothing. Its `NEW IN STEP 01` markers are now plain comments,
 so a search for "NEW IN STEP" finds only this step's lesson.

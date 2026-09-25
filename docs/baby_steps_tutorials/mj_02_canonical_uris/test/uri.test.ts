@@ -142,3 +142,23 @@ describe("the tenant part is an id, never a name", () => {
     expect(() => parseUri("dsor://acme/invoice/INV-1008")).toThrow(/tenant_id must be an id/);
   });
 });
+
+// NEW IN STEP 02. No rule id: this is about the refusal's message, not about URIs. Both
+// refusals promise to show only a short piece of the bad input. A huge URI goes to the
+// shape check, and a huge tenant of the right shape goes to the name check.
+describe("a refusal of a huge input", () => {
+  it("shows only a short piece of it", () => {
+    const hugeUri = "dsor://" + "a".repeat(100_000);
+    const hugeTenant = `dsor://${"a".repeat(100_000)}/invoice/INV-1008`;
+    for (const uri of [hugeUri, hugeTenant]) {
+      let message = "";
+      try {
+        parseUri(uri);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).not.toBe("");
+      expect(message.length).toBeLessThan(200);
+    }
+  });
+});

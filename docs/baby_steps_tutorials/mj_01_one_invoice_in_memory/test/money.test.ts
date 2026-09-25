@@ -84,3 +84,25 @@ describe("the float bug", () => {
     expect(31400 + 0.1 + 0.1 + 0.1).toBe(31400.299999999996);
   });
 });
+
+// No rule id: this is about the refusal's message, not about money. The code promises to
+// show only a short piece of a bad input. Without this test, deleting that limit left
+// every test green, and a refused 100,000-character input went whole into the message.
+describe("a refusal of a huge input", () => {
+  const huge = "9".repeat(100_000) + "x";
+  it("shows only a short piece of it", () => {
+    for (const refuse of [() => money(huge, "USD"), () => money("1.00", huge)]) {
+      expect(refuse).toThrow(TypeError);
+      expect(messageOf(refuse).length).toBeLessThan(200);
+    }
+  });
+});
+
+function messageOf(refuse: () => unknown): string {
+  try {
+    refuse();
+  } catch (error) {
+    return (error as Error).message;
+  }
+  return "";
+}

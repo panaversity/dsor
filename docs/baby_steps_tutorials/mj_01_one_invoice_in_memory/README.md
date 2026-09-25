@@ -86,7 +86,8 @@ test/greet.test.ts    removed, with it
 src/money.ts          NEW: the Money type and money(), which refuses bad money
 src/invoice.ts        NEW: the Invoice type, the list in memory, and getInvoice()
 src/main.ts           changed: prints INV-1008 instead of a greeting
-test/money.test.ts    NEW: 22 tests for DSOR-MON-01, and 2 for the float bug
+test/money.test.ts    NEW: 22 tests for DSOR-MON-01, 2 for the float bug, and 1 for
+                      the length of a refusal
 test/invoice.test.ts  NEW: 4 tests: read INV-1008, its amounts are money,
                       every amount passes money(), a missing id
 package.json          changed: the step's name and description
@@ -136,11 +137,11 @@ pnpm start
 }
 ```
 
-`pnpm check` runs the type check, then 28 tests:
+`pnpm check` runs the type check, then 29 tests:
 
 ```text
  Test Files  2 passed (2)
-      Tests  28 passed (28)
+      Tests  29 passed (29)
 ```
 
 ## Break it
@@ -155,7 +156,7 @@ so that only the pattern check is left. Run both commands (output shortened):
 $ pnpm test
  FAIL  test/money.test.ts > money > DSOR-MON-01: a number is refused, even one that slipped past the types
 AssertionError: expected function to throw an error, but it didn't
-      Tests  1 failed | 27 passed (28)
+      Tests  1 failed | 28 passed (29)
 
 $ pnpm typecheck
 $ tsc --noEmit
@@ -176,7 +177,7 @@ src/invoice.ts(20,5): error TS2322: Type 'number' is not assignable to type 'Mon
 $ pnpm test
  × DSOR-MON-01: INV-1008 holds its amounts as money, not as numbers
  × DSOR-MON-01: every amount in the invoice list passes money()
-      Tests  2 failed | 26 passed (28)
+      Tests  2 failed | 27 passed (29)
 ```
 
 Two separate checks catch this mistake. The compiler catches it before the code runs.
@@ -270,6 +271,11 @@ where later steps begin.
    and `"50000000.00"`. A pattern that refused negative amounts, or demanded exactly
    two decimal places, passed every test, although the schema allows both. Now `"0"`,
    `"-12.50"`, and `"1.5"` must be accepted. Test the "yes" as carefully as the "no".
+
+**Found later, by breaking the code on purpose:** `money()` promises to show only a short
+piece of a bad input in its message. Deleting that limit left every test green, so a
+refused 100,000-character input went whole into the message. A test now sends one and
+checks the message stays short. A promise in a comment needs a test that keeps it.
 
 **Removed from step 00, on purpose:** `src/greet.ts` and its test. `greet` was a check
 that the tools work, not part of DSoR, so step 01 replaces it. Steps are cumulative, so
