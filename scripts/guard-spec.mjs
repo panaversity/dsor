@@ -17,6 +17,8 @@
 //                     equals that schema's pattern, with no flags but u or v. It relies on
 //                     the marker: deleting the comment turns the check off for that regex,
 //                     so review such a diff. A misspelled marker fails
+//   copied-schema     every *.schema.json in a baby step's schemas/ folder equals the file
+//                     of the same name in packages/spec/schemas, byte for byte
 //   rules-met         every row of rules-met.md links a test file with a test titled by
 //                     that row's rule id
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -196,6 +198,22 @@ for (const file of stepCode) {
     } catch {}
     if (!same) fail("copied-pattern", `${at} no longer matches ${marker[1]}#${marker[2]}`);
   });
+}
+
+// A step that validates against the spec's schemas carries copies of them in its own
+// schemas/ folder, so it runs outside this repository. Each copy must equal the original.
+const SCHEMAS = join(ROOT, "packages", "spec", "schemas");
+const stepSchemas = existsSync(STEPS)
+  ? walk(STEPS, (p) => p.endsWith(".schema.json") && dirname(p).endsWith("schemas"))
+  : [];
+for (const copy of stepSchemas) {
+  const where = relative(ROOT, copy);
+  const original = join(SCHEMAS, copy.split(/[\\/]/).at(-1));
+  if (!existsSync(original)) {
+    fail("copied-schema", `${where} has no original in packages/spec/schemas`);
+  } else if (readFileSync(copy, "utf8") !== readFileSync(original, "utf8")) {
+    fail("copied-schema", `${where} differs from ${relative(ROOT, original)}`);
+  }
 }
 
 // rules-met.md may only claim what a step's tests name. CI runs each step's own tests.
