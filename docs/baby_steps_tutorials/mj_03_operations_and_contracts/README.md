@@ -139,7 +139,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
   is refused, and without `approve_permission`. `compensatable` and `saga` without
   `compensated_by` are refused.
 - **C5:** the registry does not load. A contract with two problems gets both named. Two
-  broken files, and code with no contract, are all named in one refusal.
+  broken files, a file that is not JSON, and code with no contract, are all named in
+  one refusal.
 - **C6:** `risk: {}`, `execution: {}`, `idempotency: {}`, and a contract with no
   `effect` are each refused.
 - **C7:** the loaded contract equals the file. `version: "1"`, text instead of a
