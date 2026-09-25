@@ -13,7 +13,7 @@ can do. A **query** reads, like `invoice.get`. A **command** changes something, 
 
 Every operation has a **contract**: its spec sheet. The contract says what goes in,
 what comes out, which permission it needs, how risky it is, and whether it can be
-undone. A contract is a JSON file. It holds data only, never code.
+undone. In this step, each contract is a JSON file. It holds data only, never code.
 
 A **registry** is the list of every operation DSoR knows, each with its contract. The
 program builds the registry at **start-up**, the moment it begins, before any caller
@@ -27,13 +27,10 @@ the contract, so that the person who wrote it has to decide.
 
 ## Why it matters
 
-**An action with no name cannot be checked.** Suppose `accounts-payable-fte` is given a
-general tool, `invoice.update(fields)`. At 2 a.m. it "tidies up" INV-1008 by setting
-its status to `paid`. No money was sent. VENDOR-44 is still owed 31,400.00 USD, and the
-books now say it is not. The company's rule "payments above 25,000 USD need
-`cfo_100`" never ran, because nothing here was called a payment. A rule can only be
-attached to an operation that says what it does: `invoice.issue`, `payment.execute`.
-A general `update` hides what the caller means, so no rule fits it.
+**An action with no name cannot be checked.** A general `invoice.update(fields)` could
+set INV-1008 to `paid` when no money was sent. The rule "payments above 25,000 USD need
+`cfo_100`" would never run, because nothing was called a payment. A rule can only be
+attached to an operation that says what it does, like `invoice.issue`.
 
 **A missing field must not be guessed.** Suppose the contract for `payment.execute`
 leaves out its risk level, and the code says `contract.risk?.level ?? "low"`. The most
@@ -42,9 +39,11 @@ read an operation's risk level, for example "every high-risk operation needs a s
 person". That rule now never runs for `payment.execute`. Nothing fails and nothing
 warns.
 
-**Common mistake:** giving an agent a `run_sql` tool, or "call any API", for now. That
-one tool goes around every check in this tutorial. Every action is a named operation,
-or it does not exist.
+**Common mistake:** checking a contract with your own `if` statements instead of the
+schema. A list of the 16 field names feels complete. But the schema has more rules than
+that. A command that cannot be undone also needs `in_flight` and `approve_permission`,
+and a hand-written list forgets them. Check against the schema itself, and the rules
+you did not know about are checked too.
 
 ## The design, before any code
 
@@ -58,14 +57,26 @@ If the code finds the plan wrong, the plan changes here first.
 | DSOR-OPR-01 | **C1.** Nothing can be called without a contract | Code for an operation with no contract stops start-up |
 | DSOR-OPR-01 | **C2.** The contract passes the real schema, not a copy of some of its checks | Our contracts pass, and a wrong value such as `risk.level: "extreme"` is refused |
 | DSOR-OPR-02a | **C3.** A contract missing a field every contract needs is refused | Each of the 10 always-required fields, removed in turn |
-| DSOR-OPR-02a | **C4.** A command needs 6 more fields, and a query does not | A command missing each of the 6 is refused. A query without them is accepted |
-| DSOR-OPR-02a | **C5.** The refusal happens at start-up, and names every problem | The registry never loads. Two problems are both named |
-| DSOR-OPR-02b | **C6.** A loaded contract is exactly what was written | Nothing is added, changed, or removed while loading |
+| DSOR-OPR-02a | **C4.** A command needs more fields, and a query does not | A command missing each of the 6 is refused, and so is one missing a field its `execution.semantics` asks for. A query without them is accepted |
+| DSOR-OPR-02a | **C5.** The refusal happens at start-up, and names every problem | The registry never loads. Two problems in one file, and problems in two files, are all named |
+| DSOR-OPR-02b | **C6.** Nothing is filled in for the four fields the rule names | `risk: {}`, `execution: {}`, `idempotency: {}`, and a missing `effect` are each refused |
+| DSOR-OPR-02b | **C7.** A loaded contract is exactly what was written | Nothing is added, changed, or removed while loading. Two contracts with one id are refused, not one picked |
 
 The schema decides which fields are required. Every contract needs `id`, `version`,
 `kind`, `effect`, `input`, `output`, `authorization`, `tenancy`, `risk`, and `audit`. A
 command also needs `delegation`, `idempotency`, `concurrency`, `execution`,
 `preconditions`, and `controls`. A query's `effect` must be `read`.
+
+Two more rules depend on `execution.semantics`, the promise about undoing a command:
+
+- `compensatable` or `saga` (it can be undone by other operations) also needs
+  `execution.compensated_by`, the list of those operations.
+- `non_compensatable` (it can never be undone) also needs `in_flight` and
+  `authorization.approve_permission`.
+
+A field can be missing inside an object that is there. `risk: {}` has a `risk` and no
+level. The schema refuses it. The test for it is separate from the test with no `risk`
+at all, because code can guess a level in one case and not in the other.
 
 ### Decisions the specification leaves to us
 
@@ -85,33 +96,57 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 3. **The two schema files are copied into this step.** The step must run outside the
    repository, so it cannot read `packages/spec`. `schemas/operation-contract.schema.json`
    and `schemas/common.schema.json` are byte-for-byte copies, because the first one
-   points into the second. *Price:* two copies of the same truth. Inside the repository,
-   `pnpm guard` must fail if a copy drifts from the original.
+   points into the second. *Price:* two copies of the same truth. So a test compares each
+   copy with the original in `../../../packages/spec/schemas/` when that folder is
+   there. Outside the repository it is not there, and the test is skipped. CI runs
+   `pnpm check` in every step, so a copy that drifts fails CI.
 4. **Contracts are JSON files in `contracts/`.** A contract is data. It is checked the
    way anything from outside the program is checked. *Price:* start-up reads files from
    disk.
-5. **The validator is ajv 8.20.0 with ajv-formats 3.0.1.** These are the versions the
-   repository already pins. A **validator** is a library that checks a document against
-   a JSON Schema. `allErrors` is on, so every problem is reported. `useDefaults`,
-   `coerceTypes`, and `removeAdditional` stay off, because each one changes the
-   contract while checking it. `strict` is off, as in the repository. With it on, ajv refuses to
-   read the specification's schema at all: the rule "a command needs 6 more fields"
-   names fields in a way strict mode does not accept (checked 2026-09-25:
-   `strictRequired`). *Price:* ajv checks the schema file itself less strictly. The
-   guard keeps that file equal to the original.
+5. **The validator is ajv 8.20.0, the version the repository already pins.** A
+   **validator** is a library that checks a document against a JSON Schema. The
+   specification's schemas are written in the 2020-12 edition of JSON Schema, so the
+   code uses `Ajv2020`. The plain `Ajv` reads an older edition. `allErrors` is on, so
+   every problem is reported. `useDefaults`, `coerceTypes`, and `removeAdditional` stay
+   off, because each one changes the contract while checking it. `strict` is off, as in
+   the repository. With `strict: true`, ajv refuses to read the schema at all, because
+   the rule "a command needs 6 more fields" names fields in a way strict mode does not
+   accept (`strictRequired`). Left at its default, ajv reads the schema but prints six
+   warnings at every start-up (`strictTypes`). Both checked 2026-09-25. The repository
+   also installs ajv-formats, which checks values such as dates. This step does not: no
+   field of a contract has a `format`. *Price:* ajv checks the schema file itself less
+   strictly. The test in decision 3 keeps that file equal to the original.
+6. **The registry is handed each file's text, not an object.** It parses and checks the
+   text itself, so no code can change a contract before it is checked.
+7. **Two contracts with the same id stop start-up.** Keeping one of them would be a
+   guess about which one the author meant. *Price:* none found yet.
+8. **`invoice.issue` is `atomic`.** It changes one invoice, all at once or not at all.
+   `non_compensatable` would need `in_flight` and an approver permission, and
+   `compensatable` would point to `invoice.cancel`, which has no contract. The two
+   permissions, `invoice:read` and `invoice:issue`, are the names the specification
+   uses. *Price:* the semantics are chosen before the command does anything.
 
 ### The tests, by claim
 
 - **C1:** `invoice.get` by name runs. An unknown name, `invoice.delete`, is refused.
-  Code registered for an operation with no contract stops start-up. `invoice.issue`
-  has a contract and no code yet, so a call is refused.
+  So are `toString` and `constructor`, which every JavaScript object already has. Code
+  registered for an operation with no contract stops start-up. `invoice.issue` has a
+  contract and no code yet, so a call is refused.
 - **C2:** both contracts pass. `risk.level: "extreme"` is refused.
 - **C3:** one test for each of the 10 always-required fields.
 - **C4:** one test for each of the 6 command-only fields. A query without them passes.
-  A query with `effect: "mutating"` is refused.
-- **C5:** the registry does not load. A contract with two problems gets both named.
-- **C6:** the loaded contract equals the file. `version: "1"`, text instead of a
-  number, is refused. An unknown extra field is refused, not deleted.
+  A query with `effect: "mutating"` is refused. `non_compensatable` without `in_flight`
+  is refused, and without `approve_permission`. `compensatable` and `saga` without
+  `compensated_by` are refused.
+- **C5:** the registry does not load. A contract with two problems gets both named. Two
+  broken files, and code with no contract, are all named in one refusal.
+- **C6:** `risk: {}`, `execution: {}`, `idempotency: {}`, and a contract with no
+  `effect` are each refused.
+- **C7:** the loaded contract equals the file. `version: "1"`, text instead of a
+  number, is refused. An unknown extra field is refused, not deleted. Two files with
+  the id `invoice.get` are refused.
+- **The copies:** each file in `schemas/` equals its original, when the original is
+  there.
 
 ### Breaks we will try, and what we expect
 
@@ -123,10 +158,13 @@ predicted which would survive, meaning every test stays green. The results go un
 | --- | --- | --- | --- |
 | M1 | The registry skips a bad contract and loads the rest | C5 | caught |
 | M2 | `allErrors` off, so only the first problem is named | C5, two problems | caught |
-| M3 | `coerceTypes` on, so `"1"` quietly becomes `1` | C6, `version: "1"` | survives |
-| M4 | `removeAdditional` on, so unknown fields are quietly deleted | C6, unknown field | survives |
-| M5 | `useDefaults` on, so defaults from the schema are filled in | not yet known | survives |
+| M3 | `coerceTypes` on, so `"1"` quietly becomes `1` | C7, `version: "1"` | survives |
+| M4 | `removeAdditional` on, so unknown fields are quietly deleted | C7, unknown field | survives |
+| M5 | `useDefaults` on, so defaults from the schema are filled in | nothing: the schemas have no `default` to fill in | survives |
 | M6 | A call runs code without checking for a contract | C1 | caught |
+| M7 | The registry stops at the first broken file | C5, two files | _to ask_ |
+| M8 | Two files with one id: the last one wins | C7, two files | _to ask_ |
+| M9 | A level is filled in when `risk` is there without one | C6, `risk: {}` | _to ask_ |
 
 The learner also predicted that C1 is the claim a first build would most likely miss.
 
@@ -179,6 +217,16 @@ _To be written when the code exists._
 ## Think it through
 
 _To be written after the review, with the result of every break in the table above._
+
+Found while checking the design against the schema, before any code:
+
+- A contract with no `kind` gets two misleading problems as well as the true one. A
+  schema `if` about `kind` passes when there is no `kind`, so both `then` rules apply:
+  the command fields are asked for, and `effect` must be `read`. "Name every problem"
+  also names problems that are not really there. The true one, "must have required
+  property 'kind'", is always in the list.
+- The specification's rule against a general tool, DSOR-OPR-03a, has no step in the
+  map yet.
 
 ## The rules this step meets
 
