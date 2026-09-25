@@ -1,5 +1,7 @@
 // NEW IN STEP 04: every answer from call has one outer shape, an envelope.
 // DSOR-ERR-01a in specs/dsor/03-execution.md, section 28.
+import { readFileSync } from "node:fs";
+import { Ajv2020 } from "ajv/dist/2020.js";
 
 /** What an error tells the caller about trying again. */
 export type RetryClass =
@@ -113,18 +115,34 @@ export class Refusal extends Error {
   }
 }
 
-// The only message INTERNAL_ERROR carries. A bug's own message can name internal details,
-// so it never reaches the caller (README, decision 8).
-const UNEXPECTED = "DSoR hit an unexpected error";
+// The specification's own schema, copied byte for byte (README, decision 6). strict is
+// off for the reason registry.ts gives. The options that change data while checking it
+// stay off, as they are by default, so the check can never repair what it checks.
+const SCHEMAS = new URL("../schemas/", import.meta.url);
+function loadSchema(file: string): object {
+  return JSON.parse(readFileSync(new URL(file, SCHEMAS), "utf8")) as object;
+}
+const ajv = new Ajv2020({ strict: false });
+ajv.addSchema(loadSchema("common.schema.json"));
+const passesSchema = ajv.compile(loadSchema("error-envelope.schema.json"));
 
-/** Turns whatever was thrown into an error envelope. Only a Refusal names its code. */
+/** Turns whatever was thrown into an error envelope that passes its schema. */
 export function toEnvelope(thrown: unknown, correlation: Correlation): ErrorEnvelope {
-  if (thrown instanceof Refusal) {
-    // The retry class comes from the table, never from the code that refused.
-    const { code, message } = thrown;
-    return { code, message, retry: RETRY[code], correlation };
-  }
-  // Anything else is a bug, a TypeError too: JavaScript throws those for bugs as well as
-  // for bad input, so the class cannot tell them apart (README, decision 5).
-  return { code: "INTERNAL_ERROR", message: UNEXPECTED, retry: RETRY.INTERNAL_ERROR, correlation };
+  // Anything that is not a Refusal is a bug, a TypeError too: JavaScript throws those for
+  // bugs as well as for bad input, so the class cannot tell them apart (decision 5).
+  if (!(thrown instanceof Refusal)) return unexpected(correlation);
+  // The retry class comes from the table, never from the code that refused.
+  const { code, message } = thrown;
+  const envelope = { code, message, retry: RETRY[code], correlation };
+  // NEW IN STEP 04: DSOR-SCH-01. An envelope that fails its schema never leaves call. The
+  // fixed INTERNAL_ERROR envelope goes out in its place (README, decision 8).
+  return passesSchema(envelope) ? envelope : unexpected(correlation);
+}
+
+// The error envelope for a bug. It is built from fixed parts, so it passes the schema,
+// and the tests check that it does. Its message is fixed: a bug's own message can name
+// internal details, so it never reaches the caller (README, decision 8).
+function unexpected(correlation: Correlation): ErrorEnvelope {
+  const message = "DSoR hit an unexpected error";
+  return { code: "INTERNAL_ERROR", message, retry: RETRY.INTERNAL_ERROR, correlation };
 }
