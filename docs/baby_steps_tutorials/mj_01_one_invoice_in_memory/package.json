@@ -1,5 +1,5 @@
 {
-  "name": "@dsor-steps/01-one-invoice-in-memory",
+  "name": "@dsor-steps/mj-01-one-invoice-in-memory",
   "version": "0.0.0",
   "private": true,
   "description": "Baby step 01: one invoice held in memory. Built from a copy of step 00.",

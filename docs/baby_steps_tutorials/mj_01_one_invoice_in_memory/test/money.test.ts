@@ -1,5 +1,11 @@
+// NEW IN STEP 01: the tests for money, the refusals first among them.
 import { describe, expect, it } from "vitest";
 import { money } from "../src/money.ts";
+
+// The schema's own currency pattern. Inside the dsor repository, `pnpm guard` checks
+// that it still matches:
+// copied from packages/spec/schemas/common.schema.json#/$defs/money/properties/currency/pattern
+const SCHEMA_CURRENCY = /^[A-Z]{3}$/;
 
 describe("money", () => {
   it("DSOR-MON-01: money is a decimal-string value and an ISO 4217 currency", () => {
@@ -60,7 +66,7 @@ describe("money", () => {
   it("DSOR-MON-01: every currency we accept, the schema accepts too", () => {
     // We may refuse more than the schema, never less. This checks Node's list.
     for (const code of Intl.supportedValuesOf("currency")) {
-      expect(code).toMatch(/^[A-Z]{3}$/);
+      expect(code).toMatch(SCHEMA_CURRENCY);
     }
   });
 });

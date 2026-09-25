@@ -14,7 +14,8 @@
 //   link-target       every relative markdown link, and its #anchor, resolves
 //   registry-current  packages/spec/requirements.json equals what the spec says today
 //   copied-pattern    a baby-step regex marked "// copied from <schema>#<pointer>" still
-//                     equals that schema's pattern
+//                     equals that schema's pattern. It relies on the marker: deleting the
+//                     comment turns the check off for that regex, so review such a diff
 //   rules-met         every test file a row of rules-met.md links to names that row's rule
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";

@@ -21,15 +21,15 @@ export function money(value: string, currency: string): Money {
   // Check the type first. `DECIMAL_STRING.test(31400)` is true, because `.test()`
   // turns the number into the text "31400" before it matches.
   if (typeof value !== "string" || !DECIMAL_STRING.test(value)) {
-    throw new TypeError(`money value must be a decimal string, got ${describe(value)}`);
+    throw new TypeError(`money value must be a decimal string, got ${preview(value)}`);
   }
   if (!CURRENCIES.has(currency)) {
-    throw new TypeError(`money currency must be an ISO 4217 code, got ${describe(currency)}`);
+    throw new TypeError(`money currency must be an ISO 4217 code, got ${preview(currency)}`);
   }
   return { value, currency };
 }
 
 // The refused input may be anything, even something huge. Show a short piece of it.
-function describe(input: unknown): string {
+function preview(input: unknown): string {
   return typeof input === "string" ? JSON.stringify(input.slice(0, 40)) : typeof input;
 }
