@@ -240,3 +240,35 @@ surface: a mistyped rule id or a dead link here fails the repository's guard.
 **Rejected:** a `notes/` directory at the repository root, which collides with an existing
 branch that already puts `notes/DSoR-baby-steps-notes.md` there; and putting notes inside a
 step folder, which would travel into every later copy.
+
+## 19 · The six gaps were closed by extending existing tests, not adding new ones (2026-09-25)
+
+**Decided by:** the learner asked for the fix; the shape was the agent's call.
+**What:** the missing cases were added to the tests that already covered those rules —
+`money.test.ts`'s two refusal tests and `uri.test.ts`'s `DSOR-RID-01b` test — rather than
+written as new `it` blocks. Then propagated forward into every later copy.
+**Why:** the counts stay at 13, 24, 53 and 79, so no README had to change. Four READMEs
+quote test counts and break-it output, and a count written from memory has already been
+wrong three times in this work — see [lessons 4](lessons.md#4--writing-counts-from-memory).
+Fewer numbers to move is fewer chances to move one wrongly. The cases also read better
+beside the rule they test than in a block of their own.
+**Cost:** the two refusal tests are now longer, and a failure names the test rather than
+the exact gap, so a reader has to look at which assertion failed. The `NEW IN STEP` marker
+line differs between step 01 and the later copies, so propagating forward is a copy plus
+one comment edit rather than a plain copy.
+**Rejected:** one new test per gap, which names each gap in its own title and would have
+moved every count in four READMEs and their break-it blocks.
+
+## 20 · The real cause was the currency pattern, not "trailing junk" (2026-09-25)
+
+**What:** the gaps are pinned by cases that are wrong *late* in the text, not at the start:
+`--12.5`, `1.5.5`, `31400.00.00` for the value, and `fakeUSD`, `USDollars`, `EURO`, `US1`,
+`123` for the currency. For the address: `xorg_456`, `org_456x`, `notorg_456`, `org_`.
+**Why:** the first diagnosis — "nothing tests trailing junk" — was wrong, and verification
+caught it. Trailing junk on the *value* was already tested: `"2,500 dollars-ish"` and
+`"31400."` both start with something valid and carry rubbish after it. What was untested
+was the value's two **quantifiers** and the currency pattern in every direction at once.
+**Cost:** none, beyond having written the wrong cause down first and needing to correct it.
+**Rejected:** nothing — this is a correction, recorded because the wrong version was
+published in these notes before it was caught.
+

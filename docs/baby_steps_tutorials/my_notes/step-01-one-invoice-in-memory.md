@@ -54,10 +54,12 @@ compiler says `TS2578`; drop `Object.freeze` and a test says
 - `DSOR-MON-02` (decimal arithmetic) is not claimed. The step does no arithmetic; that is
   step 26.
 
-## Known gaps, still open
+## Gaps found later, and closed
 
-Found later, in step 04's sweep, and belonging here by
-[decision 17](decisions.md#17--defects-from-an-earlier-step-are-reported-not-patched-forward-2026-09-25):
+Found in step 04's mutation sweep, and fixed **here** by
+[decision 17](decisions.md#17--defects-from-an-earlier-step-are-reported-not-patched-forward-2026-09-25),
+then repeated forward into steps 02, 03 and 04. All six mutations are now killed in every
+step that has the code, verified by running them there. Closed 2026-09-25.
 
 Six mutations survive, and the cause is narrower than it first looked. Trailing junk on the
 *value* **is** tested — `"2,500 dollars-ish"` and `"31400."` both start with a valid decimal
@@ -70,4 +72,5 @@ is different:
   `US`, `""`, `United States Dollars`. Nothing gives it trailing junk or a wrong length, so
   `fakeUSD`, `USDollars`, `EURO`, `US1` and `123` all pass with one character changed.
 
-Fixing these belongs here, then repeating forward into steps 02, 03 and 04.
+The cases that pin them were added to the two refusal tests that already existed rather
+than as new tests, so no count moved — [decision 19](decisions.md#19--the-six-gaps-were-closed-by-extending-existing-tests-not-adding-new-ones-2026-09-25).

@@ -58,9 +58,13 @@ insufficient, and you can watch it be insufficient.
 - `DSOR-RID-02a`, `DSOR-RID-02b` and `DSOR-RID-03` are not claimed. They need a connector,
   something that creates ids, and more than one interface.
 
-## Known gaps, still open
+## Gap found later, and closed
 
-`TENANT_ID` without its `^` and `$` anchors accepts `xorg_456`, and no test catches the
-missing anchors. Found in step 04's sweep. A real `DSOR-RID-01b` hole, and by
-[decision 17](decisions.md#17--defects-from-an-earlier-step-are-reported-not-patched-forward-2026-09-25)
-it is fixed here and repeated forward, not patched in a later copy.
+`TENANT_ID` without its `^` and `$` anchors accepts `xorg_456`, and no test caught the
+missing anchors — a real `DSOR-RID-01b` hole. Found in step 04's sweep, fixed **here** and
+repeated forward into steps 03 and 04, by
+[decision 17](decisions.md#17--defects-from-an-earlier-step-are-reported-not-patched-forward-2026-09-25).
+
+Four cases now pin it: `xorg_456` (something in front), `org_456x` (something after),
+`notorg_456`, and `org_` (the prefix with no digits). Each of the four ways to weaken the
+pattern is killed, verified in every step that has the code. Closed 2026-09-25.
