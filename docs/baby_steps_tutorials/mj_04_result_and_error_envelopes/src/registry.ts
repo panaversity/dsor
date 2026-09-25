@@ -114,6 +114,12 @@ export function call(registry: Registry, name: string, input: unknown): Answer {
     }
     const handler = registry.handlers.get(name);
     if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
+    // NEW IN STEP 04: a command's success needs a result envelope, and that needs a
+    // proposal (step 22). So a command is refused before its code runs (README, decision 1).
+    if (registry.contracts.get(name)?.["kind"] !== "query") {
+      const why = "is a command, and commands are not built yet";
+      throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} ${why}`);
+    }
     // NEW IN STEP 04: a query's answer is { data, correlation } (README, decision 3).
     return { data: handler(input), correlation };
   } catch (thrown) {

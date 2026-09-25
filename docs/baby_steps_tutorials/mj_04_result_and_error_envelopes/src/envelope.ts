@@ -128,8 +128,9 @@ const passesSchema = ajv.compile(loadSchema("error-envelope.schema.json"));
 
 /** Turns whatever was thrown into an error envelope that passes its schema. */
 export function toEnvelope(thrown: unknown, correlation: Correlation): ErrorEnvelope {
-  // Anything that is not a Refusal is a bug, a TypeError too: JavaScript throws those for
-  // bugs as well as for bad input, so the class cannot tell them apart (decision 5).
+  // Anything that is not a Refusal is a bug, even a TypeError. Our checks threw TypeError
+  // for bad input in step 03, and JavaScript throws it for bugs, so the class cannot tell
+  // them apart (decision 5).
   if (!(thrown instanceof Refusal)) return unexpected(correlation);
   // The retry class comes from the table, never from the code that refused.
   const { code, message } = thrown;

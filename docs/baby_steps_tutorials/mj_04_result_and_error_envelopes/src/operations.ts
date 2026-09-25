@@ -17,6 +17,7 @@ export const handlers: Record<string, Handler> = {
     if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
     return invoice;
   },
-  // invoice.issue has a contract but no code yet. Its success needs a proposal, and
-  // proposals are step 22 (README, decision 1).
+  // NEW IN STEP 04: invoice.issue has a contract but no code yet. Its success needs a
+  // proposal, and proposals are step 22. Until then, call refuses every command before
+  // its code runs (README, decision 1).
 };

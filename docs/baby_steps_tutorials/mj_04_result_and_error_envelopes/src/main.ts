@@ -26,6 +26,7 @@ const answer = call(registry, "invoice.get", { id: "INV-1008" });
 console.log(answer);
 
 // The invoice's permanent address, and the address read back.
+// NEW IN STEP 04: the invoice is the answer's data. A refusal has no data.
 if ("data" in answer) {
   const uri = invoiceUri(answer.data as Invoice);
   console.log(uri);

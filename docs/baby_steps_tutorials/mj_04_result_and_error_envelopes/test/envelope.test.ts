@@ -1,69 +1,31 @@
-// NEW IN STEP 04: every answer from call is an envelope, by claim (see the README).
+// NEW IN STEP 04: what an error envelope holds, by claim (C1, C2, C3, C5 in the README).
 import { describe, expect, it } from "vitest";
-import { RETRY, Refusal, type Answer, type ErrorCode, type RetryClass } from "../src/envelope.ts";
-import { handlers } from "../src/operations.ts";
-import { buildRegistry, call, type Handler } from "../src/registry.ts";
-import { SCHEMA_CODES, registryWith, schemaProblems, shipped } from "./helpers.ts";
-
-const registry = buildRegistry(shipped, handlers);
-
-/** Calls "test.run", an operation whose code is the handler the test wrote. */
-function run(handler: Handler): Answer {
-  return call(registryWith(handler), "test.run", {});
-}
-
-/** Calls "test.run", whose code refuses with this code. */
-function refusedWith(code: ErrorCode): Answer {
-  return run(() => {
-    throw new Refusal(code, "refused on purpose");
-  });
-}
-
-// "req_" and a random UUID (README, decision 4).
-const REQUEST_ID = /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-// Every refusal this step can give, and its code (README, decision 7). Each one is a
-// function, so each test makes its own call.
-const REFUSALS: [string, () => Answer, ErrorCode][] = [
-  [
-    "an operation with no contract",
-    () => call(registry, "invoice.delete", {}),
-    "UNSUPPORTED_CAPABILITY",
-  ],
-  [
-    "invoice.issue, which has no code yet",
-    () => call(registry, "invoice.issue", {}),
-    "UNSUPPORTED_CAPABILITY",
-  ],
-  ["invoice.get without a text id", () => call(registry, "invoice.get", {}), "VALIDATION_FAILED"],
-  [
-    "invoice.get for INV-9999",
-    () => call(registry, "invoice.get", { id: "INV-9999" }),
-    "RESOURCE_NOT_FOUND",
-  ],
-  [
-    "a bug in an operation's code",
-    () =>
-      run(() => {
-        throw new Error("boom");
-      }),
-    "INTERNAL_ERROR",
-  ],
-];
+import { RETRY, Refusal, type ErrorCode, type RetryClass } from "../src/envelope.ts";
+import { REFUSALS, REQUEST_ID, SCHEMA_CODES, refusedWith, run, schemaProblems } from "./helpers.ts";
 
 describe("C1: every refusal is an error envelope that passes the real schema", () => {
+  // The whole envelope is compared, so no field the schema allows can slip in. Found by
+  // the review: a stack trace in `cause`, and `retry_after_seconds: 0` on a refusal that
+  // says `never`, passed every test.
   it.each(REFUSALS)(
     "DSOR-ERR-01a: %s is refused with an envelope that passes the schema",
-    (_why, ask, code) => {
+    (_why, ask, code, message) => {
       const envelope = ask();
-      expect(envelope).toMatchObject({ code, retry: "never" });
+      expect(envelope).toStrictEqual({
+        code,
+        message,
+        retry: "never",
+        correlation: { request_id: expect.stringMatching(REQUEST_ID) },
+      });
       expect(schemaProblems(envelope)).toEqual([]);
     },
   );
 });
 
 describe("C2: the code is one from the §28 table", () => {
-  it("DSOR-ERR-01a: an envelope with a made-up code is refused by the schema", () => {
+  // No rule id: this checks the specification's schema, not this step's code (found by the
+  // review). C5 sends a made-up code through call.
+  it("an envelope with a made-up code is refused by the schema", () => {
     const madeUp = {
       code: "NOT_FOUND",
       message: "no invoice",
@@ -138,36 +100,17 @@ describe("C3: every code carries the retry class the §28 table gives it", () =>
   it("DSOR-ERR-01a: BATCH_PARTIAL has retry class per_item in the table", () => {
     expect(RETRY.BATCH_PARTIAL).toBe("per_item");
   });
-});
 
-describe("C4: every answer carries a request_id that DSoR made", () => {
-  it("DSOR-COR-01b: a success carries a request_id that DSoR made", () => {
-    const answer = call(registry, "invoice.get", { id: "INV-1008" });
-    expect(answer.correlation.request_id).toMatch(REQUEST_ID);
-  });
-
-  // Found by a run: before INV-9999 was refused, it came back as { data: undefined } with
-  // a request id, and a test that looked only at the id passed. So the code comes first.
-  it("DSOR-COR-01b: a refusal carries a request_id that DSoR made", () => {
-    const answer = call(registry, "invoice.get", { id: "INV-9999" });
-    expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
-    expect(answer.correlation.request_id).toMatch(REQUEST_ID);
-  });
-
-  it("DSOR-COR-01b: two calls get two different request ids", () => {
-    const first = call(registry, "invoice.get", { id: "INV-1008" });
-    const second = call(registry, "invoice.get", { id: "INV-1008" });
-    expect(first.correlation.request_id).not.toBe(second.correlation.request_id);
-  });
-
-  // The input holds the operation's arguments. A request_id there is one of them, not a
-  // correlation identifier (README, decision 4). It has the right form, so code that
-  // used any well-formed id it found would fail here too.
-  it("DSOR-COR-01b: a request_id inside the input is not used", () => {
-    const mine = "req_00000000-0000-4000-8000-000000000000";
-    const answer = call(registry, "invoice.get", { id: "INV-1008", request_id: mine });
-    expect(answer.correlation.request_id).toMatch(REQUEST_ID);
-    expect(answer.correlation.request_id).not.toBe(mine);
+  // Found by the review: code that let a Refusal carry its own retry class passed every
+  // test. A handler names the code. Only the table gives the retry class.
+  it("DSOR-ERR-01a: a Refusal that carries its own retry class still gets the table's", () => {
+    const refusal = Object.assign(new Refusal("AUTHORIZATION_DENIED", "denied"), {
+      retry: "safe_same_key",
+    });
+    const envelope = run(() => {
+      throw refusal;
+    });
+    expect(envelope).toMatchObject({ code: "AUTHORIZATION_DENIED", retry: "never" });
   });
 });
 
@@ -181,64 +124,5 @@ describe("C5: an error envelope is checked against the schema before it leaves c
     const envelope = refusedWith(code as ErrorCode);
     expect(envelope).toMatchObject({ code: "INTERNAL_ERROR", retry: "never" });
     expect(schemaProblems(envelope)).toEqual([]);
-  });
-});
-
-// No rule id: this shape is the tutorial's decision 3, and it does not meet DSOR-SCH-01.
-describe("C6: a query's success is { data, correlation }", () => {
-  it("invoice.get for INV-1008 answers with the invoice as its data", () => {
-    expect(call(registry, "invoice.get", { id: "INV-1008" })).toStrictEqual({
-      data: {
-        id: "INV-1008",
-        vendor_id: "VENDOR-44",
-        amount: { value: "31400.00", currency: "USD" },
-        open_amount: { value: "31400.00", currency: "USD" },
-        status: "issued",
-      },
-      correlation: { request_id: expect.stringMatching(REQUEST_ID) },
-    });
-  });
-});
-
-// No rule id: C7 is the tutorial's own claim.
-describe("C7: nothing a caller can cause makes call throw", () => {
-  it.each(REFUSALS)("%s comes back as a value, not a throw", (_why, ask) => {
-    expect(ask).not.toThrow();
-  });
-
-  // The input comes from outside the program, so it may be anything JSON can carry.
-  it.each([
-    ["null", null],
-    ["a number", 1008],
-    ["a text", "INV-1008"],
-    ["an id that is a number", { id: 1008 }],
-    ["a list", ["INV-1008"]],
-  ])("invoice.get with %s as its input is refused with VALIDATION_FAILED", (_why, input) => {
-    expect(call(registry, "invoice.get", input)).toMatchObject({
-      code: "VALIDATION_FAILED",
-      retry: "never",
-    });
-  });
-
-  // JavaScript throws a TypeError for this bug: the same class a bad input threw in step
-  // 03. So call cannot tell the two apart by the class (README, decision 5).
-  it("a bug that throws a TypeError comes back as INTERNAL_ERROR, not VALIDATION_FAILED", () => {
-    const envelope = run((input) => (input as { invoice: { id: string } }).invoice.id);
-    expect(envelope).toMatchObject({ code: "INTERNAL_ERROR", retry: "never" });
-    expect(schemaProblems(envelope)).toEqual([]);
-  });
-
-  it("a bug that throws something that is not an Error comes back as INTERNAL_ERROR", () => {
-    const envelope = run(() => {
-      throw "the ledger did not answer";
-    });
-    expect(envelope).toMatchObject({ code: "INTERNAL_ERROR", retry: "never" });
-  });
-
-  it("a bug's own message never reaches the caller", () => {
-    const envelope = run(() => {
-      throw new Error("ledger connection failed at 10.0.0.12:5432");
-    });
-    expect(JSON.stringify(envelope)).not.toContain("10.0.0.12");
   });
 });
