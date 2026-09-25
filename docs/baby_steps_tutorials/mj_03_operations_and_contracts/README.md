@@ -180,7 +180,42 @@ _To be written when the code exists._
 
 ## Break it
 
-_To be written when the code exists, with real output._
+**Break two contracts.** In `contracts/invoice.issue.json`, change
+`"risk": { "level": "medium" }` to `"risk": {}`. In `contracts/invoice.get.json`, change
+`"version": 1` to `"version": "1"`. Then run `pnpm start`:
+
+```text
+$ node src/main.ts
+the registry refused to start:
+  invoice.get.json: /version must be integer
+  invoice.issue.json: /risk must have required property 'level'
+[ELIFECYCLE] Command failed with exit code 1.
+```
+
+Nothing ran, not even `invoice.get`. Both problems are named in one refusal. Put the
+files back with `git checkout -- contracts`.
+
+**Break the registry.** Now make the registry "helpful". In `src/registry.ts`, above the
+line `const id = (data as { id?: unknown } | null)?.id;`, add a guess for a missing
+level:
+
+```ts
+const risk = (data as { risk?: { level?: unknown } } | null)?.risk;
+if (risk && typeof risk === "object" && risk.level === undefined) risk.level = "low";
+```
+
+Run `pnpm test`:
+
+```text
+     × DSOR-OPR-02b: a command with no risk level is refused, not given one 10ms
+ FAIL  test/contract.test.ts > C6: nothing is filled in for the four fields the rule names > DSOR-OPR-02b: a command with no risk level is refused, not given one
+AssertionError: expected '' to match '/risk must have required property \'l…'
+      Tests  1 failed | 116 passed (117)
+```
+
+One test in 117 sees it. The test that removes the whole `risk` still passes, because
+the guess only runs when `risk` is there. Delete the two lines, and `pnpm check` is
+green again.
 
 ## Build it yourself with Claude Code
 
@@ -218,7 +253,51 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+_The hostile review is still to come._
+
+### The breaks, run
+
+Each break was made in `src/registry.ts`, all tests were run, and the file was put
+back.
+
+| # | The break | Learner's prediction | Result |
+| --- | --- | --- | --- |
+| M1 | Skip a bad contract, load the rest | caught | caught, by 32 tests |
+| M2 | `allErrors` off | caught | caught, by 2 tests |
+| M3 | `coerceTypes` on | survives | caught, by 1 test: `version: "1"` |
+| M4 | `removeAdditional` on | survives | caught, by 1 test: the unknown field |
+| M5 | `useDefaults` on | survives | survives |
+| M6 | A call skips the contract check | caught | caught, by 4 tests, but only by the message |
+| M7 | Stop at the first broken file | caught | caught, by 1 test |
+| M8 | Two files, one id: the last one wins | caught (not sure) | caught, by 1 test |
+| M9 | Fill a level when `risk` has none | "nope" | caught, by 1 test |
+
+What the results teach:
+
+- **M3 and M4 were caught.** Each option changes the contract so that it passes. The
+  test expected a refusal, got none, and failed. A test that expects "no" catches a
+  change that turns "no" into "yes".
+- **M2 was caught for a surprising reason.** With `allErrors` off, ajv stops at the
+  first problem. For a contract with no `kind`, the first problem is the misleading one:
+
+  ```text
+  the registry refused to start:
+    invoice.issue.json: /effect must be equal to constant
+  ```
+
+  The real problem, the missing `kind`, is never shown. With `allErrors` on, it is the
+  third line.
+- **M5 survives, and nothing can catch it today.** `useDefaults` fills in only a
+  `default` written in the schema, and the schemas have none. It becomes a real danger
+  the day the schema gains one. The danger DSOR-OPR-02b names comes from our own
+  code, as M9 shows.
+- **M6 is caught only by the words of the refusal.** With the check gone, an unknown
+  name reaches the code table, finds nothing, and is refused as "not built yet". The
+  code table only holds names that have a contract, so a second wall stands behind
+  the first. The tests see the first wall by its message.
+- **M7, M8, and M9 are each caught by exactly one test.** All three tests were added
+  when the design was checked against the schema. The first design would have let all
+  three survive.
 
 Found while checking the design against the schema, before any code:
 
