@@ -22,13 +22,31 @@ describe("money", () => {
     expect(() => money("31400.", "USD")).toThrow(TypeError);
     expect(() => money("", "USD")).toThrow(TypeError);
     expect(() => money("1e5", "USD")).toThrow(TypeError);
+
+    // These two pin the quantifiers rather than the ends of the pattern. One minus sign
+    // is allowed, so a test is needed to say that two are not; and one fraction is
+    // allowed, so a test is needed to say that two are not. Without them, `-?` could
+    // become `-*` and `(\.[0-9]+)?` could become `(\.[0-9]+)*` with nothing complaining.
+    expect(() => money("--12.5", "USD")).toThrow(TypeError);
+    expect(() => money("1.5.5", "USD")).toThrow(TypeError);
+    expect(() => money("31400.00.00", "USD")).toThrow(TypeError);
   });
 
   it("DSOR-MON-01: a currency that is not an ISO 4217 code is refused", () => {
     expect(() => money("31400.00", "United States Dollars")).toThrow(TypeError);
     expect(() => money("31400.00", "usd")).toThrow(TypeError); // must be upper case
-    expect(() => money("31400.00", "US")).toThrow(TypeError);
+    expect(() => money("31400.00", "US")).toThrow(TypeError); // too short
     expect(() => money("31400.00", "")).toThrow(TypeError);
+
+    // Every case above is wrong at the START of the text, and a pattern can be broken in
+    // ways that only show up later in it. These four cover the rest: a real code with
+    // something in front of it, a real code with something after it, one letter too many,
+    // and a digit where a letter belongs.
+    expect(() => money("31400.00", "fakeUSD")).toThrow(TypeError);
+    expect(() => money("31400.00", "USDollars")).toThrow(TypeError);
+    expect(() => money("31400.00", "EURO")).toThrow(TypeError); // too long
+    expect(() => money("31400.00", "US1")).toThrow(TypeError);
+    expect(() => money("31400.00", "123")).toThrow(TypeError);
   });
 
   it("DSOR-MON-01: the refusal says what was wrong", () => {

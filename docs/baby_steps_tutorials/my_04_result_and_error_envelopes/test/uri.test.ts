@@ -1,4 +1,4 @@
-// the address of a record, read and written.
+// The address of a record, read and written.
 //
 // parseUri reads an address and hands back its three parts. formatUri does the
 // reverse. Both refuse an address that is not allowed, and the refusals are the
@@ -37,6 +37,16 @@ describe("parseUri", () => {
     expect(() => parseUri("dsor://acme/invoice/INV-1008")).toThrow(TypeError);
     expect(() => parseUri("dsor://acme-corp/invoice/INV-1008")).toThrow(TypeError);
     expect(() => parseUri("dsor://ACME/invoice/INV-1008")).toThrow(TypeError);
+
+    // The three above are wrong from their first letter. A pattern can also be broken so
+    // that it only has to find an id somewhere inside the text, which is what these pin:
+    // a real id with something in front of it, a real id with something after it, and the
+    // prefix on its own with no digits. Without them the `^`, the `$` and the `+` could
+    // each be dropped with nothing complaining.
+    expect(() => parseUri("dsor://xorg_456/invoice/INV-1008")).toThrow(TypeError);
+    expect(() => parseUri("dsor://org_456x/invoice/INV-1008")).toThrow(TypeError);
+    expect(() => parseUri("dsor://notorg_456/invoice/INV-1008")).toThrow(TypeError);
+    expect(() => parseUri("dsor://org_/invoice/INV-1008")).toThrow(TypeError);
   });
 
   // Step 01 learned this the hard way: `readonly` is erased before Node runs the
