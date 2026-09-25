@@ -13,3 +13,5 @@ Until an official step exists, its row may point at a learner build, marked
 | Rule | Step | Proved by |
 | --- | --- | --- |
 | DSOR-MON-01 | [01 · One invoice in memory](mj_01_one_invoice_in_memory/README.md) (learner build) | [`test/money.test.ts`](mj_01_one_invoice_in_memory/test/money.test.ts), [`test/invoice.test.ts`](mj_01_one_invoice_in_memory/test/invoice.test.ts) |
+| DSOR-RID-01a | [02 · Canonical URIs](mj_02_canonical_uris/README.md) (learner build) | [`test/uri.test.ts`](mj_02_canonical_uris/test/uri.test.ts) |
+| DSOR-RID-01b | [02 · Canonical URIs](mj_02_canonical_uris/README.md) (learner build), tenant part only | [`test/uri.test.ts`](mj_02_canonical_uris/test/uri.test.ts) |

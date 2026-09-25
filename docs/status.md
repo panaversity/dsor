@@ -49,7 +49,8 @@ schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.m
 | --- | --- |
 | 00 · foundation | Built. Tools only; no rule |
 | 01 · one invoice in memory | Planned. A learner build, `mj_01_one_invoice_in_memory`, tests DSOR-MON-01; it is not the official step |
-| 02 to 51 | Planned |
+| 02 · canonical URIs | Planned. A learner build, `mj_02_canonical_uris`, tests DSOR-RID-01a, and DSOR-RID-01b for the tenant part only; it is not the official step |
+| 03 to 51 | Planned |
 
 ## Learning-path stages
 
