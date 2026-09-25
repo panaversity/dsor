@@ -12,6 +12,18 @@ describe("C1: nothing can be called without a contract", () => {
     expect(invoice.id).toBe("INV-1008");
   });
 
+  // Found by the review: with one invoice, code that ignored the caller's input and
+  // always read INV-1008 passed the test above.
+  it("DSOR-OPR-01: invoice.get passes the caller's input to its code", () => {
+    expect(call(registry, "invoice.get", { id: "INV-9999" })).toBeUndefined();
+  });
+
+  // No rule id: checking an operation's input is not this step's rule. Step 04 turns
+  // this refusal into an error envelope.
+  it("invoice.get without an id is refused", () => {
+    expect(() => call(registry, "invoice.get", {})).toThrow(TypeError);
+  });
+
   // "toString" and "constructor" are on every JavaScript object. A registry that looks
   // names up in a plain object would find code for them.
   it.each([["invoice.delete"], ["toString"], ["constructor"]])(
@@ -45,11 +57,13 @@ describe("C1: nothing can be called without a contract", () => {
 });
 
 describe("C5: the refusal happens at start-up, and names every problem", () => {
-  it("DSOR-OPR-02a: one broken contract stops the whole registry loading", () => {
+  it("DSOR-OPR-02a: a broken contract is rejected, and with it the whole registry", () => {
     const bad = without(contract("invoice.get"), "risk");
-    expect(refusal(() => buildRegistry(shippedWith(bad), handlers))).toMatch(
-      "invoice.get.json: must have required property 'risk'",
-    );
+    const message = refusal(() => buildRegistry(shippedWith(bad), handlers));
+    expect(message).toMatch("invoice.get.json: must have required property 'risk'");
+    // Found by the review: the contract is broken, not missing. Its code must not also
+    // be reported as "no contract", which would send the author to the wrong file.
+    expect(message).not.toMatch("has code but no contract");
   });
 
   it("DSOR-OPR-02a: a contract with two problems gets both named", () => {
@@ -107,7 +121,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     );
   });
 
-  it("DSOR-OPR-02b: two contracts with one id are refused, not one picked", () => {
+  // No rule id: refusing both is this tutorial's decision 7. Keeping one would be a guess.
+  it("two contracts with one id are refused, not one picked", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source({ ...contract("invoice.get"), risk: { level: "high" } }, "b.json");
     expect(refusal(() => buildRegistry([a, b], {}))).toMatch(
@@ -117,7 +132,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
 
   // Found by the review: when the second file was also broken, only its schema problem
   // was named. The two files were found only after a fix and a restart.
-  it("DSOR-OPR-02b: two contracts with one id are named even when one is broken", () => {
+  it("two contracts with one id are named even when one is broken", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source(without(contract("invoice.get"), "risk"), "b.json");
     const message = refusal(() => buildRegistry([a, b], {}));

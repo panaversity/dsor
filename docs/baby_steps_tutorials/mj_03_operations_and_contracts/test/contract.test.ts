@@ -135,6 +135,14 @@ describe("C6: nothing is filled in for the four fields the rule names", () => {
     expect(refusal(() => buildRegistry([source(bad)], {}))).toMatch(problem);
   });
 
+  // Found by the review: a guess made only for queries passed every test above.
+  it("DSOR-OPR-02b: a query with no risk level is refused, not given one", () => {
+    const bad = { ...contract("invoice.get"), risk: {} };
+    expect(refusal(() => buildRegistry([source(bad)], {}))).toMatch(
+      "/risk must have required property 'level'",
+    );
+  });
+
   it("DSOR-OPR-02b: a contract with no effect is refused, not given one", () => {
     const bad = without(contract("invoice.get"), "effect");
     expect(refusal(() => buildRegistry([source(bad)], {}))).toMatch(
