@@ -14,9 +14,11 @@
 //   link-target       every relative markdown link, and its #anchor, resolves
 //   registry-current  packages/spec/requirements.json equals what the spec says today
 //   copied-pattern    a baby-step regex marked "// copied from <schema>#<pointer>" still
-//                     equals that schema's pattern. It relies on the marker: deleting the
-//                     comment turns the check off for that regex, so review such a diff
-//   rules-met         every test file a row of rules-met.md links to names that row's rule
+//                     equals that schema's pattern, with no flags but u or v. It relies on
+//                     the marker: deleting the comment turns the check off for that regex,
+//                     so review such a diff. A misspelled marker fails
+//   rules-met         every row of rules-met.md links a test file with a test titled by
+//                     that row's rule id
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -135,6 +137,20 @@ for (const file of markdown) {
 const STEPS = join(ROOT, "docs", "baby_steps_tutorials");
 const COPIED = /\/\/ copied from (packages\/spec\/schemas\/[\w.-]+\.json)#(\S+)/;
 const stepCode = existsSync(STEPS) ? walk(STEPS, (p) => p.endsWith(".ts")) : [];
+
+/** The value at a JSON pointer in a schema file, or undefined when there is none. */
+const resolvePointer = (file, pointer) => {
+  const path = join(ROOT, file);
+  if (!existsSync(path)) return undefined;
+  let node = JSON.parse(readFileSync(path, "utf8"));
+  for (const raw of pointer.split("/").slice(1)) {
+    const key = raw.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (node === null || typeof node !== "object" || !Object.hasOwn(node, key)) return undefined;
+    node = node[key];
+  }
+  return node;
+};
+
 for (const file of stepCode) {
   const where = relative(ROOT, file);
   const lines = readFileSync(file, "utf8").split("\n");
@@ -142,28 +158,68 @@ for (const file of stepCode) {
     if (!ids.has(id)) fail("known-id", `${where} mentions ${id}, which the spec does not define`);
   }
   lines.forEach((line, i) => {
+    // Any "copied from" comment counts, so a misspelled marker fails instead of
+    // quietly switching the check off.
+    if (!/copied from/i.test(line)) return;
+    const at = `${where}:${i + 1}`;
     const marker = line.match(COPIED);
-    if (!marker) return;
+    if (!marker) {
+      fail(
+        "copied-pattern",
+        `${at}: write the marker as // copied from packages/spec/schemas/<file>.json#<pointer>`,
+      );
+      return;
+    }
+    const expected = resolvePointer(marker[1], marker[2]);
+    if (typeof expected !== "string") {
+      fail("copied-pattern", `${at}: ${marker[1]}#${marker[2]} is not a pattern in that schema`);
+      return;
+    }
     const code = lines.slice(i + 1).find((l) => !l.trim().startsWith("//")) ?? "";
-    const literal = code.match(/=\s*\/(.+)\/[a-z]*;/)?.[1];
-    let expected = JSON.parse(readFileSync(join(ROOT, marker[1]), "utf8"));
-    for (const key of marker[2].split("/").slice(1)) {
-      expected = expected?.[key.replaceAll("~1", "/").replaceAll("~0", "~")];
+    const literal = code.match(/=\s*\/(.+)\/([a-z]*);/);
+    if (!literal) {
+      fail("copied-pattern", `${at}: the next code line must be  const NAME = /pattern/;`);
+      return;
     }
-    if (typeof expected !== "string" || literal !== expected) {
-      fail("copied-pattern", `${where}:${i + 1} no longer matches ${marker[1]}#${marker[2]}`);
+    // A flag changes what the pattern accepts: m lets "31400.00\n1" through, i lets "usd".
+    if (/[^uv]/.test(literal[2])) {
+      fail(
+        "copied-pattern",
+        `${at}: a copied pattern takes no flags but u or v, found "${literal[2]}"`,
+      );
+      return;
     }
+    // Compare as regexes, not as text: a literal must write "/" as "\/", the schema not.
+    let same = false;
+    try {
+      same = new RegExp(literal[1]).source === new RegExp(expected).source;
+    } catch {}
+    if (!same) fail("copied-pattern", `${at} no longer matches ${marker[1]}#${marker[2]}`);
   });
 }
+
+// rules-met.md may only claim what a step's tests name. CI runs each step's own tests.
 const RULES_MET = join(STEPS, "rules-met.md");
 if (existsSync(RULES_MET)) {
   for (const row of prose(readFileSync(RULES_MET, "utf8"))) {
-    const id = row.match(/^\| (DSOR-[A-Z]+-\d+[a-z]?) \|/)?.[1];
-    if (!id) continue;
-    for (const [, href] of row.matchAll(/\]\(([^)\s]+\.test\.ts)\)/g)) {
+    if (!row.startsWith("|") || !/DSOR-[A-Z]+-\d/.test(row)) continue;
+    const id = row.match(/^\|\s*(DSOR-[A-Z]+-\d+[a-z]?)\s*\|/)?.[1];
+    if (!id) {
+      fail("rules-met", `a row does not start with a rule id: ${row.trim()}`);
+      continue;
+    }
+    const tests = [...row.matchAll(/\]\(([^)\s#]+\.test\.ts)(?:#[^)\s]*)?\)/g)].map((m) => m[1]);
+    if (tests.length === 0) fail("rules-met", `the ${id} row links to no test file`);
+    // A title, not a mention: it("ID: …"), test("ID: …"), or it.each(…)("ID: …").
+    // it.skip does not count, and DSOR-MON-01 does not match inside DSOR-MON-01a.
+    const title = new RegExp(`\\b(?:it|test)(?:\\.each\\([\\s\\S]*?\\))?\\(\\s*["'\`]${id}:`);
+    for (const href of tests) {
       const test = join(STEPS, href);
-      if (existsSync(test) && !readFileSync(test, "utf8").includes(id)) {
-        fail("rules-met", `rules-met.md says ${href} proves ${id}, but no test there names it`);
+      if (existsSync(test) && !title.test(readFileSync(test, "utf8"))) {
+        fail(
+          "rules-met",
+          `rules-met.md says ${href} proves ${id}, but no test there is titled "${id}: …"`,
+        );
       }
     }
   }
