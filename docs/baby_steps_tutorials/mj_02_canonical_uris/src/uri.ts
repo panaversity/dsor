@@ -15,22 +15,24 @@ const SCHEME = "dsor://";
 
 // NEW IN STEP 02: DSOR-RID-01b. The schema's pattern above accepts "acme" as a tenant,
 // because a name and an id are both letters. So this step fixes one form for every
-// tenant id: "org_" and digits, like org_456. A company name never has that form, so
-// it is refused. This is stricter than the schema, never looser: every id it accepts,
-// the schema accepts too. The digits are never read as a number, so org_0456 is a
-// different id from org_456.
+// tenant id: "org_" and digits, like org_456. The names people use, like acme, do not
+// have that form, so they are refused. (A name made to look like "org_457" would pass.
+// The pattern checks the form of the text, not where it came from.) This is stricter
+// than the schema, never looser: every id it accepts, the schema accepts too. The
+// digits are never read as a number, so org_0456 is a different id from org_456.
 const TENANT_ID = /^org_[0-9]+$/;
 
 /** Splits a canonical URI into its three parts, refusing anything else. */
 export function parseUri(uri: string): ResourceParts {
-  // Check the type first, as money() does. `.test()` turns a number into text.
+  // Check the type first, as money() does. `.test()` turns anything into text before it
+  // matches, so a String object holding a valid URI would match.
   if (typeof uri !== "string" || !RESOURCE_URI.test(uri)) {
     throw new TypeError(`not a canonical URI: ${preview(uri)}`);
   }
   // The pattern matched, so the text after "dsor://" is exactly three parts.
   const [tenant_id, entity, id] = uri.slice(SCHEME.length).split("/");
-  // The compiler cannot read a regex, so it does not know that. We check, rather than
-  // tell it "trust me" with `!`.
+  // The compiler cannot read a pattern, so it does not know that. We check here, rather
+  // than overrule the compiler with `!`.
   if (tenant_id === undefined || entity === undefined || id === undefined) {
     throw new TypeError(`not a canonical URI: ${preview(uri)}`);
   }
