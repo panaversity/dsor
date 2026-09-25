@@ -5,3 +5,5 @@ pnpm-lock.yaml
 packages/spec/schemas/
 packages/spec/examples/
 packages/spec/requirements.json
+# A baby step's copies of the schemas must stay byte-for-byte equal (copied-schema guard).
+docs/baby_steps_tutorials/*/schemas/

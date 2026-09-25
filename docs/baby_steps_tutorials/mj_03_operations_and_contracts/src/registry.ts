@@ -43,7 +43,9 @@ const validateContract = ajv.compile(loadSchema("operation-contract.schema.json"
 /** Reads every contract file in a folder. */
 export function readContracts(dir: string): ContractSource[] {
   // Sorted, so the problems are always named in the same order.
-  const files = readdirSync(dir).filter((file) => file.endsWith(".json")).sort();
+  const files = readdirSync(dir)
+    .filter((file) => file.endsWith(".json"))
+    .sort();
   return files.map((file) => ({ file, text: readFileSync(join(dir, file), "utf8") }));
 }
 
@@ -77,7 +79,8 @@ export function buildRegistry(
     }
 
     if (!validateContract(data)) {
-      for (const error of validateContract.errors ?? []) problems.push(`${file}: ${explain(error)}`);
+      for (const error of validateContract.errors ?? [])
+        problems.push(`${file}: ${explain(error)}`);
       continue;
     }
     contracts.set((data as Contract).id, data as Contract);

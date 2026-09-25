@@ -37,7 +37,6 @@ const COMMAND_ONLY = [
   "controls",
 ];
 
-
 describe("C3: a field every contract needs, left out, is refused", () => {
   it.each(ALWAYS_REQUIRED)("DSOR-OPR-02a: a contract without %s is refused", (field) => {
     const bad = without(contract("invoice.issue"), field);
@@ -122,13 +121,16 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
   });
 });
 
-
 // The four fields DSOR-OPR-02b names. Each is missing inside an object that is there,
 // which is where code is most tempted to guess: `contract.risk.level ?? "low"`.
 describe("C6: nothing is filled in for the four fields the rule names", () => {
   it.each([
     ["risk level", { risk: {} }, "/risk must have required property 'level'"],
-    ["execution semantics", { execution: {} }, "/execution must have required property 'semantics'"],
+    [
+      "execution semantics",
+      { execution: {} },
+      "/execution must have required property 'semantics'",
+    ],
     ["idempotency", { idempotency: {} }, "/idempotency must have required property 'required'"],
   ])("DSOR-OPR-02b: a command with no %s is refused, not given one", (_why, change, problem) => {
     const bad = { ...contract("invoice.issue"), ...change };

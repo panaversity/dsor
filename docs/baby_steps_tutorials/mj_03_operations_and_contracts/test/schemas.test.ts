@@ -10,10 +10,12 @@ const COPIES = fileURLToPath(new URL("../schemas/", import.meta.url));
 const ORIGINALS = fileURLToPath(new URL("../../../../packages/spec/schemas/", import.meta.url));
 
 describe("the schema copies", () => {
-  it.skipIf(!existsSync(ORIGINALS)).each([
-    ["operation-contract.schema.json"],
-    ["common.schema.json"],
-  ])("DSOR-OPR-01: schemas/%s equals the specification's own", (file) => {
-    expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
-  });
+  it
+    .skipIf(!existsSync(ORIGINALS))
+    .each([["operation-contract.schema.json"], ["common.schema.json"]])(
+    "DSOR-OPR-01: schemas/%s equals the specification's own",
+    (file) => {
+      expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
+    },
+  );
 });
