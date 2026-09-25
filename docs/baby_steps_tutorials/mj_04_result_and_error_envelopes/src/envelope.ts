@@ -64,8 +64,8 @@ export type Success = { data: unknown; correlation: Correlation };
 /** Everything call can return. */
 export type Answer = Success | ErrorEnvelope;
 
-// The §28 table, copied from the prose: every code, and the retry class the table gives
-// it. The guard cannot watch prose, so a test types the table out again (README,
+// The §28 table, typed out from the prose: every code, and the retry class the table
+// gives it. The guard cannot watch prose, so a test types the table out again (README,
 // decision 2). TypeScript refuses this table if a code is missing from it.
 export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {
   AUTHENTICATION_REQUIRED: "never", // log in again
