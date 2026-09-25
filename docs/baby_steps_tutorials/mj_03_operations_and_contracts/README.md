@@ -152,7 +152,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 ### Breaks we will try, and what we expect
 
 These are run against the finished step. Before any code existed, the learner
-predicted which would survive, meaning every test stays green. The results go under
+predicted which would survive, meaning every test stays green. M7 to M9 were added
+with the design fixes and predicted before they were run. The results go under
 "Think it through".
 
 | # | The break | Expected to be caught by | Learner's prediction |
@@ -163,9 +164,9 @@ predicted which would survive, meaning every test stays green. The results go un
 | M4 | `removeAdditional` on, so unknown fields are quietly deleted | C7, unknown field | survives |
 | M5 | `useDefaults` on, so defaults from the schema are filled in | nothing: the schemas have no `default` to fill in | survives |
 | M6 | A call runs code without checking for a contract | C1 | caught |
-| M7 | The registry stops at the first broken file | C5, two files | _to ask_ |
-| M8 | Two files with one id: the last one wins | C7, two files | _to ask_ |
-| M9 | A level is filled in when `risk` is there without one | C6, `risk: {}` | _to ask_ |
+| M7 | The registry stops at the first broken file | C5, two files | caught |
+| M8 | Two files with one id: the last one wins | C7, two files | caught: "it shall fail to start" (not sure) |
+| M9 | A level is filled in when `risk` is there without one | C6, `risk: {}` | "nope" |
 
 The learner also predicted that C1 is the claim a first build would most likely miss.
 
