@@ -172,11 +172,79 @@ The learner also predicted that C1 is the claim a first build would most likely 
 
 ## What changed since step 02
 
-_To be written when the code exists._
+```text
+contracts/invoice.get.json     NEW: the contract for the query invoice.get
+contracts/invoice.issue.json   NEW: the contract for the command invoice.issue
+schemas/*.schema.json          NEW: byte-for-byte copies of the specification's
+                               operation-contract and common schemas
+src/registry.ts                NEW: readContracts(), buildRegistry(), and call()
+src/operations.ts              NEW: the code behind each operation, by name
+src/main.ts                    changed: builds the registry first, then reads INV-1008
+                               through invoice.get
+test/contract.test.ts          NEW: what the schema refuses (C2, C3, C4, C6)
+test/registry.test.ts          NEW: the registry and calls by name (C1, C5, C7)
+test/schemas.test.ts           NEW: the two copies equal the originals
+test/helpers.ts                NEW: what the two test files share
+src/invoice.ts, src/uri.ts,    changed: step 02's NEW IN STEP markers are now plain
+test/uri.test.ts               comments
+package.json                   changed: the step's name and description, and ajv 8.20.0
+```
+
+**The one new dependency is ajv 8.20.0**, the validator (decision 5). Checking a
+contract against the real schema is the lesson of this step, and ajv reads the
+2020-12 edition of JSON Schema that the specification uses.
+
+Every new region is marked `NEW IN STEP 03`. To see the whole diff, run this from
+`docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_02_canonical_uris/src mj_03_operations_and_contracts/src
+git diff --no-index mj_02_canonical_uris/test mj_03_operations_and_contracts/test
+```
+
+Three choices in the code are worth a look:
+
+- **The registry is handed text, not objects.** `buildRegistry` parses each file's text
+  and checks it on the next line. No code can run between reading a contract and
+  checking it. So no code can fill in a field first (decision 6).
+- **Every problem is collected before anything is refused.** Broken files, text that is
+  not JSON, two files with one id, and code with no contract all go into one list. The
+  refusal is thrown once, at the end (decision 2).
+- **The code for each operation is kept in a `Map`.** A plain object already has
+  `toString` and `constructor`, so `handlers["toString"]` finds a function. A `Map`
+  holds only what was put in it.
 
 ## Run it
 
-_To be written when the code exists._
+```bash
+cd docs/baby_steps_tutorials/mj_03_operations_and_contracts
+pnpm install
+pnpm start
+```
+
+```text
+operations: [ 'invoice.get', 'invoice.issue' ]
+{
+  id: 'INV-1008',
+  vendor_id: 'VENDOR-44',
+  amount: { value: '31400.00', currency: 'USD' },
+  open_amount: { value: '31400.00', currency: 'USD' },
+  status: 'issued'
+}
+dsor://org_456/invoice/INV-1008
+{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
+refused: invoice.issue is not built yet
+```
+
+`pnpm check` runs the type check, then 117 tests:
+
+```text
+ Test Files  6 passed (6)
+      Tests  117 passed (117)
+```
+
+Outside the dsor repository, the two tests that compare the schema copies have no
+original to compare with, so they are skipped: `115 passed | 2 skipped`.
 
 ## Break it
 
@@ -219,7 +287,47 @@ green again.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built. Each row is one commit or more, and every commit after
+the design passes `pnpm check`, except the red ones, which fail on purpose:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Copy | Copy your step 02. Change the name in `package.json` |
+| 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
+| 3 | Check the design | Run the real schema through ajv before writing code. Fix the design where the schema says it is wrong |
+| 4 | Red | Write the tests, one group per claim. Watch every one fail for the right reason |
+| 5 | Green | Write the smallest code that passes them |
+| 6 | Break it | Run every predicted break. Compare the results with your predictions |
+| 7 | Review | A reviewer who has not seen your conversation attacks the step. Fix what it finds |
+
+Move 3 found five tests the first design lacked. Three of the breaks are caught only by
+those tests.
+
+Build your own step 03 from a copy of your step 02. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_02_canonical_uris my_03_operations_and_contracts
+cd my_03_operations_and_contracts
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 03. Design first: before any
+code, we split the three rules into claims and I predict which breaks survive. Then
+check the design against the real schema. Two questions to settle with me: a contract
+with risk: {} has a risk and no level, so what could code guess, and which test
+catches it? And should one broken contract stop the whole program?
+```
+
+When `pnpm check` is green in your folder, and once the official step 03 exists:
+
+```text
+Now compare this folder with ../03_operations_and_contracts. Explain every difference,
+and tell me which ones matter and why.
+```
 
 ## Check yourself
 
@@ -313,8 +421,12 @@ Found while checking the design against the schema, before any code:
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-OPR-01 | Every operation has a contract that validates against `operation-contract.schema.json` | [§7 Operations and the operation contract](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract), and [`operation-contract.schema.json`](../../../packages/spec/schemas/operation-contract.schema.json) | _to be counted_ |
-| DSOR-OPR-02a | The registry rejects a contract that omits a mandatory field | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | _to be counted_ |
-| DSOR-OPR-02b | The registry never fills in a default for risk level, execution semantics, effect, or idempotency | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | _to be counted_ |
+| DSOR-OPR-01 | Every operation has a contract that validates against `operation-contract.schema.json` | [§7 Operations and the operation contract](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract), and [`operation-contract.schema.json`](../../../packages/spec/schemas/operation-contract.schema.json) | 10 tests: 6 in `test/registry.test.ts` (C1), 2 in `test/contract.test.ts` (C2), and 2 in `test/schemas.test.ts` (the copies) |
+| DSOR-OPR-02a | The registry rejects a contract that omits a mandatory field | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 27 tests: 23 in `test/contract.test.ts` (C3, C4), and 4 in `test/registry.test.ts` (C5) |
+| DSOR-OPR-02b | The registry never fills in a default for risk level, execution semantics, effect, or idempotency | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 8 tests: 4 in `test/contract.test.ts` (C6), and 4 in `test/registry.test.ts` (C7) |
+
+The two schema files in `schemas/` are copies of the specification's. Inside the dsor
+repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every
+rule id and every link on this page.
 
 **Next:** step 04, result and error envelopes.
