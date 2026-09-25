@@ -1,6 +1,7 @@
 // One kind of business record, held in memory. No database yet.
 // The field names are the ones in specs/dsor/01-model.md, section 6.
 import { money, type Money } from "./money.ts";
+import { formatUri } from "./uri.ts";
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
 
@@ -28,4 +29,14 @@ export function getInvoice(list: Invoice[], id: string): Invoice | undefined {
   // The list is passed in, so this stays a pure function. In step 09 it will move into
   // a database.
   return list.find((invoice) => invoice.id === id);
+}
+
+// NEW IN STEP 02: every invoice has its canonical URI (DSOR-RID-01a). This step knows
+// one company, so every invoice belongs to it. From step 10, each record carries its own
+// tenant_id, and this constant goes away.
+export const TENANT = "org_456";
+
+/** The invoice's canonical URI, such as dsor://org_456/invoice/INV-1008. */
+export function invoiceUri(invoice: Invoice): string {
+  return formatUri({ tenant_id: TENANT, entity: "invoice", id: invoice.id });
 }

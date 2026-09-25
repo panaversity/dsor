@@ -1,6 +1,7 @@
 // NEW IN STEP 02: the tests for canonical URIs, the refusals first among them.
 import { describe, expect, it } from "vitest";
-import { invoices } from "../src/invoice.ts";
+import { invoiceUri, invoices, type Invoice } from "../src/invoice.ts";
+import { money } from "../src/money.ts";
 import { formatUri, parseUri } from "../src/uri.ts";
 
 const INVOICE_URI = "dsor://org_456/invoice/INV-1008";
@@ -19,12 +20,29 @@ describe("formatUri and parseUri", () => {
     expect(formatUri(parseUri(INVOICE_URI))).toBe(INVOICE_URI);
   });
 
-  // The rule says every resource. This step has one tenant, org_456, and one list.
+  // The rule says every resource HAS a URI. So the URI comes from the invoice code, not
+  // from this test. A test that built the URI itself would only prove formatUri works.
   it("DSOR-RID-01a: every invoice in the list has a canonical URI", () => {
     for (const invoice of invoices) {
-      const uri = formatUri({ tenant_id: "org_456", entity: "invoice", id: invoice.id });
-      expect(parseUri(uri).id).toBe(invoice.id);
+      expect(parseUri(invoiceUri(invoice))).toEqual({
+        tenant_id: "org_456",
+        entity: "invoice",
+        id: invoice.id,
+      });
     }
+  });
+
+  // The list holds one invoice, so an invoiceUri that always returned INV-1008's URI
+  // would pass the test above. A second invoice tells the two apart.
+  it("DSOR-RID-01a: each invoice gets its own URI", () => {
+    const other: Invoice = {
+      id: "INV-1009",
+      vendor_id: "VENDOR-44",
+      amount: money("2500.00", "USD"),
+      open_amount: money("2500.00", "USD"),
+      status: "draft",
+    };
+    expect(invoiceUri(other)).toBe("dsor://org_456/invoice/INV-1009");
   });
 
   // Test the "no" as carefully as the "yes".

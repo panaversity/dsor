@@ -57,8 +57,9 @@ invoice that was paid.
 **A name comes back.** A year later, a new customer signs up and calls itself `acme`.
 Now `dsor://acme/invoice/INV-1008` could be the old company's invoice or the new
 one's. An approval for one could be read as an approval for the other. DSOR-RID-01b
-says the tenant id is **immutable**: it must never change. It must also never be given
-to another company. With `org_456` in the URI, neither story can happen.
+says the tenant id is **immutable**: it must never change. And DSOR-RID-02b says an id
+is never given to a different object. With `org_456` in the URI, neither story can
+happen.
 
 **Common mistake:** using the company's name as the tenant, as in
 `dsor://acme/invoice/INV-1008`. It is short and easy to read, and it breaks the day
@@ -69,9 +70,10 @@ people to read.
 
 ```text
 src/uri.ts            NEW: the ResourceParts type, parseUri(), and formatUri()
-test/uri.test.ts      NEW: 19 tests for DSOR-RID-01a, 21 for DSOR-RID-01b
+test/uri.test.ts      NEW: 20 tests for DSOR-RID-01a, 21 for DSOR-RID-01b
 src/main.ts           changed: also prints INV-1008's canonical URI and reads it back
-src/invoice.ts        changed: step 01's NEW IN STEP marker is now a plain comment
+src/invoice.ts        changed: invoiceUri() gives every invoice its canonical URI;
+                      step 01's NEW IN STEP marker is now a plain comment
 src/money.ts          changed: the same
 test/invoice.test.ts  changed: the same
 test/money.test.ts    changed: the same
@@ -125,11 +127,11 @@ dsor://org_456/invoice/INV-1008
 { tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
 ```
 
-`pnpm check` runs the type check, then 68 tests:
+`pnpm check` runs the type check, then 69 tests:
 
 ```text
  Test Files  3 passed (3)
-      Tests  68 passed (68)
+      Tests  69 passed (69)
 ```
 
 ## Break it
@@ -158,11 +160,11 @@ id, `^[A-Za-z0-9_\-]+$`. Using it looks tidy. In `src/uri.ts`, change the line
 
 ```text
 $ tsc --noEmit
- ❯ test/uri.test.ts (40 tests | 17 failed) 17ms
+ ❯ test/uri.test.ts (41 tests | 17 failed) 15ms
 AssertionError: expected function to throw an error, but it didn't
- ❯ test/uri.test.ts:105:65
+ ❯ test/uri.test.ts:123:65
  Test Files  1 failed | 2 passed (3)
-      Tests  17 failed | 51 passed (68)
+      Tests  17 failed | 52 passed (69)
 ```
 
 This time the compiler prints nothing. The code is correct TypeScript, and the
@@ -301,6 +303,18 @@ has a test that fails:
    "Like a web link" was dropped: a web link opens something, and a DSoR URI opens
    nothing.
 
+**Found by a second review, and fixed:**
+
+1. **The test proved the tool, not the rule.** DSOR-RID-01a says every resource *has*
+   a canonical URI. The test built each invoice's URI itself, with `org_456` written
+   in the test. So it proved that `formatUri` works, and nothing more. Delete every
+   trace of URIs from the invoice code, and that test stayed green. Now
+   `invoiceUri()` in `src/invoice.ts` gives every invoice its URI, and the test reads
+   it from there.
+2. **One invoice cannot catch a copy.** The list holds only INV-1008. An `invoiceUri`
+   that always returned INV-1008's URI passed every test. A second test now asks for
+   the URI of INV-1009, an invoice that is not in the list.
+
 **Removed from step 01:** nothing. Its `NEW IN STEP 01` markers are now plain comments,
 so a search for "NEW IN STEP" finds only this step's lesson.
 
@@ -322,6 +336,9 @@ so a search for "NEW IN STEP" finds only this step's lesson.
 - **What stops a tenant id from changing?** DSOR-RID-01b says it is immutable. Nothing
   here enforces it, because nothing here stores tenants. It belongs with DSOR-RID-02b,
   "an id is never given to a different object".
+- **Where does an invoice's tenant come from?** Today it is one constant,
+  `TENANT = "org_456"`, because this step knows one company. From step 10, every record
+  carries its own `tenant_id` (DSOR-TEN-01a).
 - **Does `org_999` exist?** Its form is right, so it is accepted. Step 10 answers
   whether the company exists.
 - **Are `org_0456` and `org_456` the same company?** Here, no. Nothing reads the
@@ -342,7 +359,7 @@ so a search for "NEW IN STEP" finds only this step's lesson.
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-RID-01a | Every resource has a canonical URI of the form `dsor://{tenant_id}/{entity}/{id}` | [§5 Resource identity](../../../specs/dsor/01-model.md#5-resource-identity), and `resourceUri` in [`common.schema.json`](../../../packages/spec/schemas/common.schema.json) | 19 tests in `test/uri.test.ts` |
+| DSOR-RID-01a | Every resource has a canonical URI of the form `dsor://{tenant_id}/{entity}/{id}` | [§5 Resource identity](../../../specs/dsor/01-model.md#5-resource-identity), and `resourceUri` in [`common.schema.json`](../../../packages/spec/schemas/common.schema.json) | 20 tests in `test/uri.test.ts` |
 | DSOR-RID-01b | No display name, slug, or alias appears in a canonical URI; the tenant id is an immutable opaque id | [§5 Resource identity](../../../specs/dsor/01-model.md#5-resource-identity) | 21 tests in `test/uri.test.ts`: 20 for the tenant part, and 1 that checks every refused tenant has the schema's shape. Met for the tenant part only (see "Open questions") |
 
 The URI pattern in `src/uri.ts` is copied from that schema. Inside the dsor
