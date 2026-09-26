@@ -49,3 +49,7 @@ console.log(call(registry, {}, "invoice.get", { id: "INV-1008" }));
 // NEW IN STEP 05: the agent names the CFO in its arguments. DSoR still knows it is the
 // agent, from its token, and refuses the call.
 console.log(call(registry, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }));
+// NEW IN STEP 05: user_123 logs in with their own token, and labels the call with a request
+// id of their own. The answer carries that id, and names user_123 as the caller.
+const USER_123: RequestEnvelope = { token: "tok_2c91", request_id: "ap-desk-7" };
+console.log(call(registry, USER_123, "invoice.get", { id: "INV-1008" }).correlation);

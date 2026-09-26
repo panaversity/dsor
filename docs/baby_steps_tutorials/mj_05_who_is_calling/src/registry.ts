@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
-import type { RequestEnvelope } from "./request.ts";
+import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -111,9 +111,10 @@ export function call(
   name: string,
   input: unknown,
 ): Answer {
-  // DSoR makes the request id for every call, because no caller can send one yet
-  // (DSOR-COR-01b, step 04's README, decision 4). Nothing in the input is read for it.
-  let correlation: Correlation = { request_id: `req_${randomUUID()}` };
+  // NEW IN STEP 05: the caller's own request id labels every answer, when DSoR can use it.
+  // Otherwise DSoR makes one (DSOR-COR-01b), and a bad one is refused below (README,
+  // decisions 6 and 7). Nothing in the input is read for it.
+  let correlation: Correlation = { request_id: usableRequestId(request) ?? `req_${randomUUID()}` };
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (README, C7).
   try {
@@ -121,7 +122,9 @@ export function call(
     // token and DSoR's own table only (DSOR-SRC-02a). From here, every answer names it.
     const caller = whoIsCalling(request);
     correlation = { ...correlation, ...callerIds(caller) };
-    // NEW IN STEP 05: a principal named in the arguments must be the caller (DSOR-SRC-02b).
+    // NEW IN STEP 05: then what the caller sent is checked: the request id (README,
+    // decision 6), and any principal the arguments name (DSOR-SRC-02b).
+    checkRequestId(request);
     checkNamedPrincipals(input, caller);
     if (!registry.contracts.has(name)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
