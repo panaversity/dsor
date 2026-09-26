@@ -9,6 +9,7 @@ import {
   CFO,
   REFUSALS,
   REQUEST_ID,
+  SUPERVISOR,
   THE_AGENT,
   UNEXPECTED,
   correlationFor,
@@ -16,6 +17,7 @@ import {
   registry,
   run,
   shipped,
+  shippedRoles,
 } from "./helpers.ts";
 
 // Every call carries the agent's login token, and every answer names the
@@ -98,11 +100,16 @@ describe("C6: a query's success is { data, correlation }", () => {
 
   // A command's success needs a result envelope, and that needs a proposal (step 22). So
   // call refuses a command before its code runs (step 04's README, decision 1). Found by
-  // the review: a command with code answered in the query's shape.
+  // the review: a command with code answered in the query's shape. NEW IN STEP 06: user_123
+  // calls, who holds invoice:issue, so the permission check is not what refuses the call.
   it("a command's code never runs, even when the command has code", () => {
     const spy = vi.fn<Handler>(() => "issued");
-    const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": spy });
-    expect(call(issueHasCode, AGENT, "invoice.issue", {})).toMatchObject({
+    const issueHasCode = buildRegistry(
+      shipped,
+      { ...handlers, "invoice.issue": spy },
+      shippedRoles,
+    );
+    expect(call(issueHasCode, SUPERVISOR, "invoice.issue", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
     expect(spy).not.toHaveBeenCalled();

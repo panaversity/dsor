@@ -4,12 +4,22 @@ import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
-import { AGENT, contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
+import {
+  AGENT,
+  SUPERVISOR,
+  contract,
+  refusal,
+  shipped,
+  shippedRoles,
+  shippedWith,
+  source,
+  without,
+} from "./helpers.ts";
 
 // Every call carries the agent's login token (step 05's README, decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
-  const registry = buildRegistry(shipped, handlers);
+  const registry = buildRegistry(shipped, handlers, shippedRoles);
 
   // The invoice comes back as the envelope's data.
   it("DSOR-OPR-01: invoice.get runs by its name", () => {
@@ -48,7 +58,7 @@ describe("C1: nothing can be called without a contract", () => {
 
   it("DSOR-OPR-01: code for an operation with no contract stops start-up", () => {
     const withExtra = { ...handlers, "invoice.delete": () => "deleted" };
-    expect(refusal(() => buildRegistry(shipped, withExtra))).toMatch(
+    expect(refusal(() => buildRegistry(shipped, withExtra, shippedRoles))).toMatch(
       /invoice\.delete has code but no contract/,
     );
   });
@@ -58,7 +68,12 @@ describe("C1: nothing can be called without a contract", () => {
   // still never run.
   it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", () => {
     const spy = vi.fn<Handler>(() => "deleted");
-    const handMade = { contracts: new Map(), handlers: new Map([["invoice.delete", spy]]) };
+    // NEW IN STEP 06: a registry holds a role table too. This one grants nothing.
+    const handMade = {
+      contracts: new Map(),
+      handlers: new Map([["invoice.delete", spy]]),
+      roles: new Map(),
+    };
     // The refusal is an envelope, not a throw.
     expect(call(handMade, AGENT, "invoice.delete", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
@@ -66,10 +81,11 @@ describe("C1: nothing can be called without a contract", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  // The refusal is an envelope, not a throw.
+  // The refusal is an envelope, not a throw. NEW IN STEP 06: user_123 calls, because only a
+  // caller who holds invoice:issue gets as far as "not built yet" (step 06's README, C5).
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
-    expect(call(registry, AGENT, "invoice.issue", {})).toMatchObject({
+    expect(call(registry, SUPERVISOR, "invoice.issue", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
     });
@@ -79,7 +95,7 @@ describe("C1: nothing can be called without a contract", () => {
 describe("C5: the refusal happens at start-up, and names every problem", () => {
   it("DSOR-OPR-02a: a broken contract is rejected, and with it the whole registry", () => {
     const bad = without(contract("invoice.get"), "risk");
-    const message = refusal(() => buildRegistry(shippedWith(bad), handlers));
+    const message = refusal(() => buildRegistry(shippedWith(bad), handlers, shippedRoles));
     expect(message).toMatch("invoice.get.json: must have required property 'risk'");
     // Found by the review: the contract is broken, not missing. Its code must not also
     // be reported as "no contract", which would send the author to the wrong file.
@@ -88,7 +104,9 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
 
   it("DSOR-OPR-02a: a contract with two problems gets both named", () => {
     const bad = without(without(contract("invoice.issue"), "risk"), "audit");
-    const message = refusal(() => buildRegistry([source(bad, "invoice.issue.json")], {}));
+    const message = refusal(() =>
+      buildRegistry([source(bad, "invoice.issue.json")], {}, shippedRoles),
+    );
     expect(message).toMatch("invoice.issue.json");
     expect(message).toMatch("must have required property 'risk'");
     expect(message).toMatch("must have required property 'audit'");
@@ -101,6 +119,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
       buildRegistry(
         [source(noRisk, "invoice.get.json"), source(noAudit, "invoice.issue.json"), source(0)],
         { ...handlers, "invoice.delete": () => "deleted" },
+        shippedRoles,
       ),
     );
     expect(message).toMatch("invoice.get.json: must have required property 'risk'");
@@ -112,7 +131,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
   it("DSOR-OPR-02a: a file that is not JSON is named with the others", () => {
     const broken = { file: "broken.json", text: '{ "id": "invoice.get",' };
     const noRisk = without(contract("invoice.issue"), "risk");
-    const message = refusal(() => buildRegistry([broken, source(noRisk)], {}));
+    const message = refusal(() => buildRegistry([broken, source(noRisk)], {}, shippedRoles));
     expect(message).toMatch("broken.json: not valid JSON");
     expect(message).toMatch("test.json: must have required property 'risk'");
   });
@@ -121,7 +140,9 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
   // that holds null crashed start-up with a TypeError, and the other problem went unnamed.
   it("DSOR-OPR-02a: a file that holds null is named with the others", () => {
     const noRisk = without(contract("invoice.issue"), "risk");
-    const message = refusal(() => buildRegistry([source(noRisk), source(null, "null.json")], {}));
+    const message = refusal(() =>
+      buildRegistry([source(noRisk), source(null, "null.json")], {}, shippedRoles),
+    );
     expect(message).toMatch("test.json: must have required property 'risk'");
     expect(message).toMatch("null.json: must be object");
   });
@@ -129,7 +150,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
 
 describe("C7: a loaded contract is exactly what was written", () => {
   it("DSOR-OPR-02b: each loaded contract equals its file", () => {
-    const registry = buildRegistry(shipped, handlers);
+    const registry = buildRegistry(shipped, handlers, shippedRoles);
     // An empty list would make the loop below prove nothing.
     expect(shipped).toHaveLength(2);
     for (const s of shipped) {
@@ -140,12 +161,14 @@ describe("C7: a loaded contract is exactly what was written", () => {
 
   it('DSOR-OPR-02b: version "1", text instead of a number, is refused', () => {
     const bad = { ...contract("invoice.get"), version: "1" };
-    expect(refusal(() => buildRegistry([source(bad)], {}))).toMatch(/\/version must be integer/);
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      /\/version must be integer/,
+    );
   });
 
   it("DSOR-OPR-02b: an unknown extra field is refused, not deleted", () => {
     const bad = { ...contract("invoice.get"), owner: "user_123" };
-    expect(refusal(() => buildRegistry([source(bad)], {}))).toMatch(
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       'must NOT have additional properties: "owner"',
     );
   });
@@ -154,7 +177,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
   it("two contracts with one id are refused, not one picked", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source({ ...contract("invoice.get"), risk: { level: "high" } }, "b.json");
-    expect(refusal(() => buildRegistry([a, b], {}))).toMatch(
+    expect(refusal(() => buildRegistry([a, b], {}, shippedRoles))).toMatch(
       '"invoice.get" has two contracts: a.json and b.json',
     );
   });
@@ -164,7 +187,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
   it("two contracts with one id are named even when one is broken", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source(without(contract("invoice.get"), "risk"), "b.json");
-    const message = refusal(() => buildRegistry([a, b], {}));
+    const message = refusal(() => buildRegistry([a, b], {}, shippedRoles));
     expect(message).toMatch('"invoice.get" has two contracts: a.json and b.json');
     expect(message).toMatch("b.json: must have required property 'risk'");
   });
@@ -175,7 +198,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
 describe("a refusal of a huge name", () => {
   // The message is in the envelope.
   it("shows only a short piece of it", () => {
-    const registry = buildRegistry(shipped, handlers);
+    const registry = buildRegistry(shipped, handlers, shippedRoles);
     const huge = "invoice." + "a".repeat(100_000);
     const { message } = call(registry, AGENT, huge, {}) as ErrorEnvelope;
     expect(message).toMatch("no operation named");

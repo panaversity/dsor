@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
+import type { RoleSource, Roles } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
@@ -21,6 +22,8 @@ export type Handler = (input: unknown) => unknown;
 export type Registry = {
   contracts: ReadonlyMap<string, Contract>;
   handlers: ReadonlyMap<string, Handler>;
+  // NEW IN STEP 06: what each role grants (step 06's README, decision 1).
+  roles: Roles;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -62,6 +65,8 @@ export function contractFiles(names: string[]): string[] {
 export function buildRegistry(
   sources: ContractSource[],
   handlers: Record<string, Handler>,
+  // NEW IN STEP 06: the role table, checked with the contracts. Nothing reads it yet.
+  _roles: RoleSource,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -106,7 +111,7 @@ export function buildRegistry(
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code };
+  return { contracts, handlers: code, roles: new Map() };
 }
 
 /** Runs an operation by its name. It answers with an envelope, and never throws. */

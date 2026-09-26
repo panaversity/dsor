@@ -6,6 +6,7 @@
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
+import { readRoles } from "./permissions.ts";
 import { buildRegistry, call, readContracts, type Registry } from "./registry.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { parseUri } from "./uri.ts";
@@ -15,9 +16,12 @@ import { parseUri } from "./uri.ts";
 // Another folder of contracts can be named on the command line, so a test can start the
 // program with a broken one.
 const CONTRACTS = process.argv[2] ?? fileURLToPath(new URL("../contracts", import.meta.url));
+// NEW IN STEP 06: start-up checks the role table too (step 06's README, decision 1). A role
+// table can be named after the contracts folder, so a test can start with a broken one.
+const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.meta.url));
 let registry: Registry;
 try {
-  registry = buildRegistry(readContracts(CONTRACTS), handlers);
+  registry = buildRegistry(readContracts(CONTRACTS), handlers, readRoles(ROLES));
 } catch (error) {
   console.error((error as Error).message);
   process.exit(1);

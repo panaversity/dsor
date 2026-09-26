@@ -102,8 +102,9 @@ describe("C3: every principal has a type and at least one tenant membership", ()
   });
 
   // Found by the review: the test above checks the table, not what a call finds in it.
+  // NEW IN STEP 06: the agent holds one role, ap_agent (step 06's README, decision 5).
   const FOUND: [string, string, string, string[]][] = [
-    ["tok_7f3a", "accounts-payable-fte", "agent", []],
+    ["tok_7f3a", "accounts-payable-fte", "agent", ["ap_agent"]],
     ["tok_2c91", "user_123", "human", ["ap_supervisor"]],
     ["tok_d4e8", "cfo_100", "human", ["CFO"]],
   ];
@@ -115,11 +116,12 @@ describe("C3: every principal has a type and at least one tenant membership", ()
     },
   );
 
-  // No rule id: the story's three principals are step 05's decision 3.
+  // No rule id: the story's three principals are step 05's decision 3. NEW IN STEP 06: the
+  // agent's role is step 06's decision 5.
   it("the table holds the story's three principals, each with its own token", () => {
     const inOrg456 = (roles: string[]) => [{ tenant_id: "org_456", roles }];
     expect(Object.fromEntries(logins)).toStrictEqual({
-      tok_7f3a: { id: "accounts-payable-fte", type: "agent", memberships: inOrg456([]) },
+      tok_7f3a: { id: "accounts-payable-fte", type: "agent", memberships: inOrg456(["ap_agent"]) },
       tok_2c91: { id: "user_123", type: "human", memberships: inOrg456(["ap_supervisor"]) },
       tok_d4e8: { id: "cfo_100", type: "human", memberships: inOrg456(["CFO"]) },
     });

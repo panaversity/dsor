@@ -6,6 +6,7 @@ import { expect } from "vitest";
 import type { Answer, ErrorCode } from "../src/envelope.ts";
 import { Refusal } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
+import { readRoles, type RoleSource } from "../src/permissions.ts";
 import {
   buildRegistry,
   call,
@@ -20,6 +21,23 @@ const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
 
 // The contracts this step ships, read from disk the way start-up reads them.
 export const shipped: ContractSource[] = readContracts(CONTRACTS);
+
+// NEW IN STEP 06: the role table this step ships, read from disk the way start-up reads it.
+const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
+export const shippedRoles: RoleSource = readRoles(ROLES);
+
+// NEW IN STEP 06: what each role grants, typed out again from step 06's decision 6 rather
+// than read from roles.json, so a mistake in the file is not copied into the tests.
+export const STARTING_ROLES: Record<string, string[]> = {
+  ap_agent: ["invoice:read"],
+  ap_supervisor: ["invoice:read", "invoice:issue"],
+  CFO: ["invoice:read"],
+};
+
+/** NEW IN STEP 06: a role table as a file would hold it. */
+export function rolesFile(table: unknown): RoleSource {
+  return { file: "roles.json", text: JSON.stringify(table) };
+}
 
 /** The shipped contract with this id, as a plain object the test may change. */
 export function contract(id: string): Record<string, unknown> {
@@ -89,6 +107,9 @@ export const CFO: RequestEnvelope = { token: "tok_d4e8" };
 export type Caller = { agent_id?: string; principal_id?: string };
 export const THE_AGENT: Caller = { agent_id: "accounts-payable-fte" };
 export const NOBODY: Caller = {};
+// NEW IN STEP 06: the two people, now that some calls are theirs to make.
+export const THE_SUPERVISOR: Caller = { principal_id: "user_123" };
+export const THE_CFO: Caller = { principal_id: "cfo_100" };
 
 /** An answer's correlation: a request id DSoR made, and the caller. */
 export function correlationFor(caller: Caller): Record<string, unknown> {
@@ -104,17 +125,24 @@ export function notTheCaller(place: string): string {
   return `the arguments name someone other than the caller, in ${place}`;
 }
 
+/** NEW IN STEP 06: the message when the caller does not hold the permission a call needs. */
+export function notGranted(name: string, permission: string): string {
+  return `"${name}" needs ${permission}, which the caller does not hold`;
+}
+
 /** A real registry: the shipped operations, plus "test.run", whose code the test writes. */
 export function registryWith(handler: Handler): Registry {
   const testRun = { ...contract("invoice.get"), id: "test.run" };
-  return buildRegistry([...shipped, source(testRun, "test.run.json")], {
-    ...handlers,
-    "test.run": handler,
-  });
+  return buildRegistry(
+    [...shipped, source(testRun, "test.run.json")],
+    { ...handlers, "test.run": handler },
+    // NEW IN STEP 06: test.run needs invoice:read, as invoice.get does. The agent holds it.
+    shippedRoles,
+  );
 }
 
-/** The shipped operations and their code, as start-up builds them. */
-export const registry: Registry = buildRegistry(shipped, handlers);
+/** The shipped operations, their code, and the role table, as start-up builds them. */
+export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles);
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
 export function run(handler: Handler): Answer {
@@ -138,7 +166,11 @@ export const UNEXPECTED = "DSoR hit an unexpected error";
 
 // invoice.issue with code. A command must be refused before its code runs (step 04's
 // README, decision 1).
-const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": () => "issued" });
+const issueHasCode = buildRegistry(
+  shipped,
+  { ...handlers, "invoice.issue": () => "issued" },
+  shippedRoles,
+);
 
 // Every refusal this step can give: its code and its message (step 04's README, decision
 // 7). Each one is a function, so each test makes its own call.
@@ -173,19 +205,29 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
     'no operation named "invoice.delete"',
     THE_AGENT,
   ],
+  // NEW IN STEP 06: the agent's one role grants invoice:read, and not invoice:issue.
+  [
+    "the agent calling invoice.issue, which no role of its grants",
+    () => call(registry, AGENT, "invoice.issue", {}),
+    "AUTHORIZATION_DENIED",
+    notGranted("invoice.issue", "invoice:issue"),
+    THE_AGENT,
+  ],
+  // NEW IN STEP 06: user_123 holds invoice:issue, so these two calls get past the
+  // permission check and hear that invoice.issue is not built yet (step 06's README, C5).
   [
     "invoice.issue, which has no code yet",
-    () => call(registry, AGENT, "invoice.issue", {}),
+    () => call(registry, SUPERVISOR, "invoice.issue", {}),
     "UNSUPPORTED_CAPABILITY",
     '"invoice.issue" is not built yet',
-    THE_AGENT,
+    THE_SUPERVISOR,
   ],
   [
     "invoice.issue given code, because it is a command",
-    () => call(issueHasCode, AGENT, "invoice.issue", {}),
+    () => call(issueHasCode, SUPERVISOR, "invoice.issue", {}),
     "UNSUPPORTED_CAPABILITY",
     '"invoice.issue" is a command, and commands are not built yet',
-    THE_AGENT,
+    THE_SUPERVISOR,
   ],
   [
     "invoice.get without a text id",

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { contractFiles, readContracts } from "../src/registry.ts";
-import { contract, shipped, without } from "./helpers.ts";
+import { STARTING_ROLES, contract, notGranted, shipped, without } from "./helpers.ts";
 
 // No rule id: how start-up finds the contract files.
 describe("reading the contracts folder", () => {
@@ -61,6 +61,8 @@ describe("the program", () => {
       expect(output).toMatch("dsor://org_456/invoice/INV-1008");
       expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
       expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
+      // NEW IN STEP 06: the agent may not issue. user_123 may, and hears "not built yet".
+      expect(output).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
       // A call with no login and a call that names the CFO are refused. The
       // CFO is never named as the caller. A person's own request id comes back with its id.
@@ -86,6 +88,28 @@ describe("the program", () => {
         expect(run.status).toBe(1);
         expect(run.stderr).toMatch("invoice.get.json: must have required property 'risk'");
         expect(run.stderr).not.toMatch("TypeError");
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
+  // NEW IN STEP 06: start-up checks the role table too (step 06's README, decision 1). The
+  // shipped contracts are named first, because the role table comes after them.
+  it(
+    "refuses to start with a broken role table: it names the problem and exits with code 1",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-roles-"));
+      try {
+        const roles = join(dir, "roles.json");
+        writeFileSync(roles, JSON.stringify({ ...STARTING_ROLES, CFO: ["invoice:*"] }));
+        const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
+        const contracts = fileURLToPath(new URL("../contracts", import.meta.url));
+        const run = spawnSync(process.execPath, [main, contracts, roles], { encoding: "utf8" });
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch(`roles.json: the role "CFO" grants "invoice:*"`);
         expect(run.stdout).not.toMatch("operations:");
       } finally {
         rmSync(dir, { recursive: true });
