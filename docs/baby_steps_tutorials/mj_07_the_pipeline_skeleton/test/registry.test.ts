@@ -87,7 +87,7 @@ describe("C1: nothing can be called without a contract", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  // The refusal is an envelope, not a throw. User_123 calls, because only a
+  // The refusal is an envelope, not a throw. user_123 calls, because only a
   // caller who holds invoice:issue gets as far as "not built yet" (step 06's README, C5).
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);

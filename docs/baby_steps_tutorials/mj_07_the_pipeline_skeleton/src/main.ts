@@ -9,6 +9,7 @@ import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
 import { call } from "./pipeline.ts";
+import { readInputs } from "./inputs.ts";
 import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { parseUri } from "./uri.ts";
@@ -21,9 +22,17 @@ const CONTRACTS = process.argv[2] ?? fileURLToPath(new URL("../contracts", impor
 // Start-up checks the role table too (step 06's README, decision 1). A role table can be
 // named after the contracts folder, so a test can start with a broken one.
 const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.meta.url));
+// NEW IN STEP 07: start-up checks the input schemas too. A folder of them can be named after
+// the role table, so a test can start without one. With none named, the step's own is read.
+const INPUTS: string | undefined = process.argv[4];
 let registry: Registry;
 try {
-  registry = buildRegistry(readContracts(CONTRACTS), handlers, readRoles(ROLES));
+  registry = buildRegistry(
+    readContracts(CONTRACTS),
+    handlers,
+    readRoles(ROLES),
+    readInputs(INPUTS),
+  );
 } catch (error) {
   console.error((error as Error).message);
   process.exit(1);
@@ -50,8 +59,8 @@ if ("data" in answer) {
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
 console.log(call(registry, AGENT, "invoice.get", { id: "INV-9999" }));
-// The agent's role grants invoice:read and not invoice:issue, so this call is denied at
-// line ⑤, before DSoR looks at the input or asks whether invoice.issue is built.
+// The agent's role grants invoice:read and not invoice:issue. NEW IN STEP 07: so this call
+// is denied at line ⑤, before DSoR looks at the input or asks whether it is built.
 console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // A call with no login token is refused before DSoR checks anything else.
@@ -63,8 +72,8 @@ console.log(call(registry, AGENT, "invoice.get", { id: "INV-1008", principal: "c
 // id of their own. The answer carries that id, and names user_123 as the caller.
 const USER_123: RequestEnvelope = { token: "tok_2c91", request_id: "ap-desk-7" };
 console.log(call(registry, USER_123, "invoice.get", { id: "INV-1008" }).correlation);
-// user_123 holds invoice:issue, so the same call passes lines ①, ⑤, and ⑥. It is refused
-// after them: invoice.issue has a contract but no code yet.
+// user_123 holds invoice:issue. NEW IN STEP 07: so the same call passes lines ①, ⑤, and ⑥.
+// It is refused after them: invoice.issue has a contract but no code yet.
 console.log(
   call(registry, USER_123, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
 );

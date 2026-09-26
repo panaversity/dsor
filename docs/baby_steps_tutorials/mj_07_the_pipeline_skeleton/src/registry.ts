@@ -2,7 +2,6 @@
 // DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b in specs/dsor/01-model.md, section 7.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { keysWrittenTwice } from "./json.ts";
@@ -27,9 +26,6 @@ export type Registry = {
   // NEW IN STEP 07: the check for each operation's input (step 07's README, decision 2).
   inputs: InputChecks;
 };
-
-// NEW IN STEP 07: this step's own input schemas, found beside the contracts folder.
-const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
 const SCHEMAS = new URL("../schemas/", import.meta.url);
@@ -72,9 +68,8 @@ export function buildRegistry(
   handlers: Record<string, Handler>,
   // The role table, checked with the contracts (step 06's README, decision 1).
   roleSource: RoleSource,
-  // NEW IN STEP 07: the input schemas. This step's own, unless a test gives others. They
-  // are read here, inside start-up's checks, so a missing folder is named, not a crash.
-  inputSources: InputSource[] = readInputs(INPUTS),
+  // NEW IN STEP 07: the input schemas. This step's own, unless the caller gives others.
+  inputSources: InputSource[] = readInputs(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).

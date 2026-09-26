@@ -156,7 +156,7 @@ export function registryWith(handler: Handler): Registry {
   return buildRegistry(
     [...shipped, source(testRun, "test.run.json")],
     { ...handlers, "test.run": handler },
-    // Test.run needs invoice:read, as invoice.get does. The agent holds it.
+    // test.run needs invoice:read, as invoice.get does. The agent holds it.
     shippedRoles,
   );
 }
@@ -234,7 +234,7 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
     notGranted("invoice.issue", "invoice:issue"),
     THE_AGENT,
   ],
-  // User_123 holds invoice:issue, so these two calls get past the
+  // user_123 holds invoice:issue, so these two calls get past the
   // permission check and hear that invoice.issue is not built yet (step 06's README, C5).
   [
     "invoice.issue, which has no code yet",

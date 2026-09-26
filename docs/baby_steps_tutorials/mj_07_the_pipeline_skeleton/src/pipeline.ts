@@ -70,7 +70,9 @@ export function call(
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
     //   computing its payload hash: not built yet, step 29.
-    line(6, () => checkInput(name, registry.inputs, input));
+    //   From here on, only the copy that line ⑥ checked is used (step 07's README,
+    //   decision 9).
+    const checked = line(6, () => checkInput(name, registry.inputs, input));
 
     // Ours, not §21's: is it built? Never before ⑤, so "not allowed" is never answered as
     // "not built yet" (step 06's README, C5), and never before ⑥ (step 07's README,
@@ -86,9 +88,9 @@ export function call(
 
     // ⑦ Idempotency claim. Commands only. Not built yet: step 20.
     // ⑧ Create the proposal, or load it. Commands only. Not built yet: step 22.
-    // ⑨ Read bound state at the required freshness; evaluate preconditions. Freshness and
-    //   preconditions are not built yet: steps 15 and 32. A query's code reads here.
-    const data = handler(input);
+    // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
+    //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
+    const data = line(9, () => handler(checked));
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
     // ⑪ Record the decision, including every refusal. Not built yet: step 08.
