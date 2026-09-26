@@ -20,6 +20,8 @@ const SCHEME = "dsor://";
 // The pattern checks the form of the text, not where it came from.) This is stricter
 // than the schema, never looser: every id it accepts, the schema accepts too. The
 // digits are never read as a number, so org_0456 is a different id from org_456.
+// not copied: this tutorial's own form for a tenant id, stricter than the schema's
+// (step 02's README).
 const TENANT_ID = /^org_[0-9]+$/;
 
 /** Splits a canonical URI into its three parts, refusing anything else. */

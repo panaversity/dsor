@@ -14,9 +14,13 @@
 //   link-target       every relative markdown link, and its #anchor, resolves
 //   registry-current  packages/spec/requirements.json equals what the spec says today
 //   copied-pattern    a baby-step regex marked "// copied from <schema>#<pointer>" still
-//                     equals that schema's pattern, with no flags but u or v. It relies on
-//                     the marker: deleting the comment turns the check off for that regex,
-//                     so review such a diff. A misspelled marker fails
+//                     equals that schema's pattern, with no flags but u or v. A misspelled
+//                     marker fails
+//   pattern-origin    every regex a baby step's src/ gives a name says where it comes from:
+//                     "// copied from …" above it, or "// not copied: <why>" for the
+//                     tutorial's own. So deleting a marker fails, instead of quietly
+//                     turning copied-pattern off for that regex. A regex built with
+//                     new RegExp() is not seen
 //   copied-schema     every *.schema.json in a baby step's schemas/ folder equals the file
 //                     of the same name in packages/spec/schemas, byte for byte
 //   rules-met         every row of rules-met.md links a test file with a test titled by
@@ -197,6 +201,27 @@ for (const file of stepCode) {
       same = new RegExp(literal[1]).source === new RegExp(expected).source;
     } catch {}
     if (!same) fail("copied-pattern", `${at} no longer matches ${marker[1]}#${marker[2]}`);
+  });
+
+  // A regex that a step's src/ gives a name is either a copy of the spec's pattern,
+  // checked above, or the tutorial's own. It says which in the comment right above it.
+  // Found by step 06's review: deleting a marker and loosening its pattern passed.
+  if (!/[\\/]src[\\/]/.test(where)) continue;
+  lines.forEach((line, i) => {
+    const oneLine = /^\s*(export\s+)?const\s+\w+(\s*:\s*RegExp)?\s*=\s*\/.+\/[a-z]*;/.test(line);
+    const twoLines =
+      /^\s*(export\s+)?const\s+\w+(\s*:\s*RegExp)?\s*=\s*$/.test(line) &&
+      /^\s*\/.+\/[a-z]*;/.test(lines[i + 1] ?? "");
+    if (!oneLine && !twoLines) return;
+    const above = [];
+    for (let j = i - 1; j >= 0 && lines[j].trim().startsWith("//"); j--) above.push(lines[j]);
+    if (!above.some((l) => COPIED.test(l) || /\/\/ not copied: \S/.test(l))) {
+      fail(
+        "pattern-origin",
+        `${where}:${i + 1}: say where this pattern comes from, in the comment above it: ` +
+          "// copied from packages/spec/schemas/<file>.json#<pointer>, or // not copied: <why>",
+      );
+    }
   });
 }
 

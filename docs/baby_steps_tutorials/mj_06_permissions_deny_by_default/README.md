@@ -593,8 +593,12 @@ Two breaks were left. One changes only the order of the lines in a refusal. The 
 ignores capitals where start-up already allows only small letters, so it changes
 nothing.
 
-The review also found DSOR-AUT-02a and DSOR-AUT-02c in no step of the map. After the
-step, the map placed them in steps 27 and 29.
+The review also found DSOR-AUT-02a and DSOR-AUT-02c in no step of the map, and a blind
+spot in the repository's guard: a break that deleted the `// copied from` line and
+loosened the pattern passed `pnpm guard`. After the step, the map placed the two rules
+in steps 27 and 29. The guard gained a check, `pattern-origin`: every pattern that a
+step's `src/` gives a name must say where it comes from, so deleting the line now
+fails.
 
 ### Left open
 
@@ -615,9 +619,6 @@ step, the map placed them in steps 27 and 29.
   caller may not read, and an operation is not a resource. The step that lists
   operations to an agent should decide
   ([open question 26](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)).
-- **The repository's guard cannot see a pattern whose marker is deleted.** A break that
-  deleted the `// copied from` line and loosened the pattern passed `pnpm guard`. This
-  step's tests now catch it. The guard is outside this folder.
 - **Files past about 150 lines.** `src/registry.ts` has 181 lines, and
   `test/permissions.test.ts` and `test/helpers.ts` are longer. Step 07 moves the checks
   in `call()` into a function of their own.
