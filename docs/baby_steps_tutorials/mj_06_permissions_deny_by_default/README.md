@@ -167,19 +167,256 @@ The keycard analogy is new. The review checks that it fits and does not mislead.
 
 ## What changed since step 05
 
-_To be written when the code exists._
+```text
+roles.json                     NEW: what each role grants (decision 6)
+src/permissions.ts             NEW: readRoles() reads the role table, and checkRoles()
+                               checks it and every role a principal holds.
+                               permissionsOf() works out what a caller holds, and
+                               checkPermission() denies a call whose permission the
+                               caller does not hold
+src/registry.ts                changed: buildRegistry() takes the role table and names
+                               its problems with the contracts' problems. call() checks
+                               the permission after the contract, before "is it built"
+src/principals.ts              changed: the agent holds ap_agent (decision 5)
+src/main.ts                    changed: reads roles.json (a second argument names
+                               another file), and shows the agent denied invoice.issue
+                               and user_123 hearing "not built yet"
+test/permissions.test.ts       NEW: what a caller may do (C1 to C6)
+test/helpers.ts                changed: the shipped role table, the starting roles typed
+                               out again, the denial's message, and the table of
+                               refusals: the agent is denied invoice.issue, and user_123
+                               now makes the two "not built yet" calls
+test/who-is-calling.test.ts    changed: the agent holds ap_agent
+test/registry.test.ts,         changed: every registry is built with the role table,
+test/contract.test.ts,         and the calls that expect "not built yet" are made by
+test/call.test.ts              user_123
+test/startup.test.ts           changed: the program shows the denial, and refuses to
+                               start with a broken role table
+src/, test/                    step 05's NEW IN STEP markers are now plain comments
+```
+
+There is no new dependency.
+
+Every new region is marked `NEW IN STEP 06`. To see the whole diff, run this from
+`docs/baby_steps_tutorials`. `roles.json` is new, beside `contracts/`:
+
+```bash
+git diff --no-index mj_05_who_is_calling/src mj_06_permissions_deny_by_default/src
+git diff --no-index mj_05_who_is_calling/test mj_06_permissions_deny_by_default/test
+```
+
+Three choices in the code are worth a look:
+
+- **The permission is checked after the contract, and before "is it built".** The
+  contract names the permission, so DSoR finds the contract first. "Is it built" comes
+  after, so a caller who may not issue hears "denied", never "not built yet".
+- **Only the same text grants a permission.** `permissionsOf()` returns the set of what
+  the caller holds, and `checkPermission()` asks whether the set has the exact
+  permission the contract needs. There is no `startsWith` and no wildcard. So
+  `invoice:read` never grants `invoice:read_all`, and `invoice:issue.propose` never
+  grants `invoice:issue`.
+- **The role table is checked with the contracts.** `buildRegistry()` names every
+  problem at once: a broken contract, a role granting `invoice:*`, and a principal
+  holding a role that the table does not have. The type of each permission is checked
+  before its pattern, because a pattern test turns the list `["invoice:read"]` into the
+  text `"invoice:read"`.
 
 ## Run it
 
-_To be written when the code exists._
+From the root of the dsor repository:
+
+```bash
+cd docs/baby_steps_tutorials/mj_06_permissions_deny_by_default
+pnpm install
+pnpm start
+```
+
+```text
+$ node src/main.ts
+operations: [ 'invoice.get', 'invoice.issue' ]
+{
+  data: {
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    amount: { value: '31400.00', currency: 'USD' },
+    open_amount: { value: '31400.00', currency: 'USD' },
+    status: 'issued'
+  },
+  correlation: {
+    request_id: 'req_2e379a5c-cb9f-45d3-93a8-ad3d6feee515',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+dsor://org_456/invoice/INV-1008
+{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
+{
+  code: 'RESOURCE_NOT_FOUND',
+  message: 'no invoice "INV-9999"',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_45c5d0c8-43ad-4a6f-b160-fb9e1cfc1d91',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'AUTHORIZATION_DENIED',
+  message: '"invoice.issue" needs invoice:issue, which the caller does not hold',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_8ed975c0-4708-4f16-83b2-5834daeed1e4',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'AUTHENTICATION_REQUIRED',
+  message: 'log in first: the call has no login token that DSoR gave',
+  retry: 'never',
+  correlation: { request_id: 'req_44be9dcb-d2b1-4798-919c-00d3fcf0d29d' }
+}
+{
+  code: 'AUTHORIZATION_DENIED',
+  message: 'the arguments name someone other than the caller, in principal',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_909efdc3-aa84-4abe-8be4-9d64f7232b30',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{ request_id: 'ap-desk-7', principal_id: 'user_123' }
+{
+  code: 'UNSUPPORTED_CAPABILITY',
+  message: '"invoice.issue" is not built yet',
+  retry: 'never',
+  correlation: { request_id: 'ap-desk-7', principal_id: 'user_123' }
+}
+```
+
+Compare the second refusal with the last one. The agent and user_123 asked for the same
+operation, `invoice.issue`. The agent was denied, because its one role, `ap_agent`,
+grants `invoice:read` and nothing else. user_123 holds `invoice:issue`, so the call got
+one check further, and heard that `invoice.issue` is not built yet. Your request ids
+will be different.
+
+The success signal from the design is a test. It adds `invoice.void`, which no role
+grants, and changes nothing else. Run it on its own:
+
+```bash
+pnpm test -t "invoice.void"
+```
+
+```text
+ Test Files  1 passed | 10 skipped (11)
+      Tests  3 passed | 347 skipped (350)
+```
+
+All three callers are denied `invoice.void`. Nobody wrote a rule against it.
+
+`pnpm check` runs the type check, then 350 tests:
+
+```text
+ Test Files  11 passed (11)
+      Tests  350 passed (350)
+```
+
+Outside the dsor repository, the three tests that compare the schema copies have no
+original to compare with, so they are skipped: `347 passed | 3 skipped`.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+**Check only what looks dangerous.** This is the common mistake from "Why it matters".
+In `src/registry.ts`, find the permission check:
+
+```ts
+    checkPermission(caller, contract, registry.roles);
+```
+
+Change it so that it checks only the one operation that looks dangerous today:
+
+```ts
+    if (name === "invoice.issue") checkPermission(caller, contract, registry.roles);
+```
+
+Run `pnpm start`. The output is the same as before, apart from the request ids. The
+agent is still denied `invoice.issue`. Nothing looks wrong.
+
+Run `pnpm test`. These are the lines that matter, and "…" marks what is left out:
+
+```text
+ FAIL  test/permissions.test.ts > C4: an operation nobody was granted is denied to everyone > DSOR-AUT-01b: accounts-payable-fte is denied vendor.get, new code no role grants, and the code never runs
+AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal { code: 'AUTHORIZATION_DENIED', …(3) }
+
+- Expected
++ Received
+
+  {
+-   "code": "AUTHORIZATION_DENIED",
+    "correlation": {
+      "agent_id": "accounts-payable-fte",
+      "request_id": "req_78936b13-8af9-47a9-a799-f0a59338fa6f",
+    },
+-   "message": "\"vendor.get\" needs vendor:read, which the caller does not hold",
+-   "retry": "never",
++   "data": {
++     "id": "VENDOR-44",
++   },
+  }
+…
+      Tests  9 failed | 341 passed (350)
+```
+
+`vendor.get` is a new operation with code, added after the check was written. Nobody
+granted `vendor:read`. Still, the agent's call ran the code and got `VENDOR-44` back.
+The same happened for user_123 and cfo_100. `invoice.void` was not denied either: its
+callers heard "not built yet". Three C3 tests failed too, where a test changes a
+contract or the role table. Look at what did not fail: every test about
+`invoice.issue`. The check still guards the one operation it names. Put the line back,
+and `pnpm check` is green again.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built. Each row is one commit or more:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Copy | Copy your step 05. Change the name and the description in `package.json` |
+| 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the intent and the outcome, the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
+| 3 | Check the design | Read §7.3, §12, §13, §15, §21, and §28 again, and the permission pattern in `common.schema.json`. Fix the design where they say it is wrong |
+| 4 | Red | Write the tests, one group per claim. Predict which pass before any code, then watch every one fail for the right reason |
+| 5 | Green | One commit per rule: DSOR-AUT-01a, then DSOR-AUT-01b |
+| 6 | Break it | Run every predicted break. Compare the results with your predictions |
+| 7 | Review | A reviewer who has not seen your conversation attacks the step. Fix what it finds |
+
+The tests were written all at once, so they turn green one rule at a time. In the red
+run, 43 tests fail. After the first green commit, 18 still fail. After the second, none.
+Move 3 split one predicted break in two, and added a test. Move 4 showed 8 of the 48 new
+tests passing before any code. All of this is under "Think it through".
+
+Build your own step 06 from a copy of your step 05. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_05_who_is_calling my_06_permissions_deny_by_default
+cd my_06_permissions_deny_by_default
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 06. Design first: the intent and
+the outcome, then the rules split into claims, and I predict which breaks survive. Then
+check the design against §7.3, §15, and the permission pattern in common.schema.json.
+Three questions to settle with me: where does the table of what each role grants live?
+Does one permission ever grant another? What may the agent do before it has a
+permission slip?
+```
+
+When `pnpm check` is green in your folder, and once the official step 06 exists:
+
+```text
+Now compare this folder with ../06_permissions_deny_by_default. Explain every
+difference, and tell me which ones matter and why.
+```
 
 ## Check yourself
 
@@ -223,8 +460,42 @@ _To be written when the code exists._
   operation that needs `invoice:read_all`. The learner's prediction, "survives", was
   made before the split. It stands for both.
 
-_The rest is written after the review, with the result of every break in the table
-above._
+### Found by the red run
+
+- **8 of the 48 new tests passed before any code.** Six are in the new test file: the
+  three forms a role may grant, a contract that needs `Invoice:Read` (step 03's schema
+  check already refuses it), user_123 hearing "not built yet", and an empty list of
+  permissions that takes nothing away. The other two are the new refusal row's tests
+  that look only at the request id and at not throwing. The learner predicted more
+  than 10.
+- **Two "no" tests that the learner expected to pass failed, as they must.** The CFO
+  holding only `invoice:issue.propose`, and the agent sending its own list of
+  permissions, both came back "not built yet". Nothing checked permissions yet, so the
+  call went on to the next check. A "no" test passes only once the code that says no
+  exists.
+- **The first green commit did not turn C4 green.** Working out what a caller holds
+  (DSOR-AUT-01a) is not checking it (DSOR-AUT-01b). The learner expected C4 to pass
+  after the first commit, and the program with a broken role table to wait. It was the
+  other way round. `main.ts` already calls `buildRegistry()`, so the program refused
+  the broken table as soon as `buildRegistry()` did.
+
+### The breaks, run
+
+| # | The break | Caught by | Learner's prediction |
+| --- | --- | --- | --- |
+| Q1 | "Is it built" is checked before the permission | 12 tests | survives |
+| Q2a | `held.startsWith(needed)` | 1 test: the `.propose` test | survives |
+| Q2b | `needed.startsWith(held)` | 1 test: the `invoice:read_all` test | survives |
+| Q3 | A role missing from the table is skipped | 3 tests | survives |
+| Q4 | A permission listed in the input counts as held | 1 test: C6's input test | survives |
+| Break it | Only `invoice.issue` is checked | 9 tests | not sure |
+
+Every break was caught. The learner predicted that each one would survive. Each break
+turns a "no" into a "yes", and the tests written for its claim expect the "no". Three
+breaks are caught by one test each. Q2b's test exists only because the design check
+split Q2 in two.
+
+_The review's findings, and what is left open, are written after the review._
 
 ## The rules this step meets
 
