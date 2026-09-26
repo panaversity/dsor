@@ -20,8 +20,8 @@ a principal's roles from the company directory, or from a trusted login token (�
 When a call arrives, DSoR compares the permission the contract needs with the
 permissions the caller holds. The permission check has two answers. If the caller holds
 the permission, the call goes on. If not, it is refused with `AUTHORIZATION_DENIED`.
-There is no "allowed because nobody said no". In this tutorial, "holds" means the very
-same text (decision 2).
+There is no "allowed because nobody said no". In this tutorial, only the very same text
+counts (decision 2).
 
 Think of office **keycards**. The login token from step 05 is the card, and each
 operation is a door. The card holds only a number. Each time you touch a door, it asks
@@ -54,7 +54,8 @@ the check was written.
 
 This section was written before the first test, in a learner session. Every sentence of
 the specification it relies on was read on 2026-09-26: §7.3 (the `.propose` suffix),
-§12, §13, §13.1, and §15. If the code finds the plan wrong, the plan changes here first.
+§12, §13, §13.1, §13.2, and §15. If the code finds the plan wrong, the plan changes here
+first.
 
 ### The intent and the outcome
 
@@ -206,8 +207,9 @@ test/who-is-calling.test.ts    changed: the agent holds ap_agent
 test/registry.test.ts,         changed: every registry is built with the role table,
 test/contract.test.ts,         and the calls that expect "not built yet" are made by
 test/call.test.ts              user_123
-test/startup.test.ts           changed: the program shows the denial, and refuses to
-                               start with a broken role table
+test/startup.test.ts           changed: how the role table is read, and the program: it
+                               shows the denial, finds its role table from any folder,
+                               and refuses to start with a broken or missing one
 src/, test/                    step 05's NEW IN STEP markers are now plain comments
 ```
 
@@ -322,20 +324,20 @@ pnpm test -t "invoice.void"
 
 ```text
  Test Files  1 passed | 10 skipped (11)
-      Tests  3 passed | 347 skipped (350)
+      Tests  3 passed | 380 skipped (383)
 ```
 
 All three callers are denied `invoice.void`. Nobody wrote a rule against it.
 
-`pnpm check` runs the type check, then 350 tests:
+`pnpm check` runs the type check, then 383 tests:
 
 ```text
  Test Files  11 passed (11)
-      Tests  350 passed (350)
+      Tests  383 passed (383)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `347 passed | 3 skipped`.
+original to compare with, so they are skipped: `380 passed | 3 skipped`.
 
 ## Break it
 
@@ -369,7 +371,7 @@ AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal
 -   "code": "AUTHORIZATION_DENIED",
     "correlation": {
       "agent_id": "accounts-payable-fte",
-      "request_id": "req_78936b13-8af9-47a9-a799-f0a59338fa6f",
+      "request_id": "req_96da2795-afc6-49d2-aac3-cc4d28215db0",
     },
 -   "message": "\"vendor.get\" needs vendor:read, which the caller does not hold",
 -   "retry": "never",
@@ -378,16 +380,16 @@ AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal
 +   },
   }
 …
-      Tests  9 failed | 341 passed (350)
+      Tests  11 failed | 372 passed (383)
 ```
 
 `vendor.get` is a new operation with code, added after the check was written. Nobody
 granted `vendor:read`. Still, the agent's call ran the code and got `VENDOR-44` back.
 The same happened for user_123 and cfo_100. `invoice.void` was not denied either: its
-callers heard "not built yet". Three C3 tests failed too, where a test changes a
-contract or the role table. Look at what did not fail: every test about
-`invoice.issue`. The check still guards the one operation it names. Put the line back,
-and `pnpm check` is green again.
+callers heard "not built yet". Five more tests failed: three where a test changes a
+contract or the role table, and two where a contract names no permission. Look at
+what did not fail: every test about `invoice.issue`. The check still guards the one
+operation it names. Put the line back, and `pnpm check` is green again.
 
 ## Build it yourself with Claude Code
 
@@ -397,7 +399,7 @@ This is how the step was built. Each row is one commit or more:
 |---|---|---|
 | 1 | Copy | Copy your step 05. Change the name and the description in `package.json` |
 | 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the intent and the outcome, the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
-| 3 | Check the design | Read §7.3, §12, §13, §15, §21, and §28 again, and the permission pattern in `common.schema.json`. Fix the design where they say it is wrong |
+| 3 | Check the design | Read §7.3, §12, §13, §13.2, §15, §21, and §28 again, and the permission pattern in `common.schema.json`. Fix the design where they say it is wrong |
 | 4 | Red | Write the tests, one group per claim. Predict which pass before any code, then watch every one fail for the right reason |
 | 5 | Green | One commit per rule: DSOR-AUT-01a, then DSOR-AUT-01b |
 | 6 | Break it | Run every predicted break. Compare the results with your predictions |
@@ -406,7 +408,9 @@ This is how the step was built. Each row is one commit or more:
 The tests were written all at once, so they turn green one rule at a time. In the red
 run, 43 tests fail. After the first green commit, 18 still fail. After the second, none.
 Move 3 split one predicted break in two, and added a test. Move 4 showed 8 of the 48 new
-tests passing before any code. All of this is under "Think it through".
+tests passing before any code. Move 7 added 33 tests, corrected decision 5 and the
+analogy, and corrected sentences that claimed more than was true. All of this is under
+"Think it through".
 
 Build your own step 06 from a copy of your step 05. From `docs/baby_steps_tutorials`:
 
@@ -422,7 +426,8 @@ Then paste:
 ```text
 Use the build-baby-step skill in learner mode for step 06. Design first: the intent and
 the outcome, then the rules split into claims, and I predict which breaks survive. Then
-check the design against §7.3, §15, and the permission pattern in common.schema.json.
+check the design against §7.3, §13.2, §15, and the permission pattern in
+common.schema.json.
 Three questions to settle with me: where does the table of what each role grants live?
 Does one permission ever grant another? What may the agent do before it has a
 permission slip?
@@ -500,27 +505,143 @@ difference, and tell me which ones matter and why.
 
 ### The breaks, run
 
-| # | The break | Caught by | Learner's prediction |
-| --- | --- | --- | --- |
-| Q1 | "Is it built" is checked before the permission | 12 tests | survives |
-| Q2a | `held.startsWith(needed)` | 1 test: the `.propose` test | survives |
-| Q2b | `needed.startsWith(held)` | 1 test: the `invoice:read_all` test | survives |
-| Q3 | A role missing from the table is skipped | 3 tests | survives |
-| Q4 | A permission listed in the input counts as held | 1 test: C6's input test | survives |
-| Break it | Only `invoice.issue` is checked | 9 tests | not sure |
+| # | The break | Caught by, before the review | After it | Learner's prediction |
+| --- | --- | --- | --- | --- |
+| Q1 | "Is it built" is checked before the permission | 12 tests | 14 tests | survives |
+| Q2a | `held.startsWith(needed)` | 1 test: the `.propose` test | 1 test | survives |
+| Q2b | `needed.startsWith(held)` | 1 test: the `invoice:read_all` test | 1 test | survives |
+| Q3 | A role missing from the table is skipped | 3 tests | 6 tests | survives |
+| Q4 | A permission listed in the input counts as held | 1 test: C6's input test | 2 tests | survives |
+| Break it | Only `invoice.issue` is checked | 9 tests | 11 tests | not sure |
 
 Every break was caught. The learner predicted that each one would survive. Each break
-turns a "no" into a "yes", and the tests written for its claim expect the "no". Three
-breaks are caught by one test each. Q2b's test exists only because the design check
-split Q2 in two.
+turns a "no" into a "yes", and the tests written for its claim expect the "no". Q2a and
+Q2b are still caught by one test each. Q2b's test exists only because the design check
+split Q2 in two. One of Q4's two catches is not real: the break's own code reads the
+contract's `authorization` without checking that it is there, and trips over a contract
+that names none.
 
-_The review's findings, and what is left open, are written after the review._
+### Found by the review
+
+Two reviewers who had not seen the conversation attacked the step. One checked each
+rule against the tests and the code, tried the threats T2 and T3 with 4,301 calls of
+its own, and read this README against the house style. The other made 151 small breaks
+in a copy of the code, one at a time. 39 of them passed `pnpm check`.
+
+The threats, as the review tried them:
+
+- **T2 is held for roles.** No call got the agent past the permission check, and
+  nothing a caller sent made `call` throw. T2 stays open for the task: the agent may
+  read every invoice, not only the ones a task needs, until permission slips arrive in
+  step 18.
+- **T3 is open for reads, because of decision 5.** With the CFO role granting nothing,
+  `cfo_100` is denied INV-1008, and can still get it by asking the agent. Borrowing
+  more authority through the arguments or the envelope is refused. Steps 18, 19, and 45
+  close the rest.
+
+Changed in the design, with the learner:
+
+- **Decision 5 gave a wrong reason.** It said a permission slip is needed only for a
+  command that changes something (DSOR-DEL-01a). But DSOR-DEL-07 accepts an agent that
+  calls alone only under a slip, reads included, and §13.2 gives an agent no `direct`
+  mode. Both are L2 rules. The agent keeps its role, as a stand-in until step 18, and
+  the downside now names T3. The decision also reverses step 05's decision 3, which gave
+  the agent no role, so two step 05 tests now list `ap_agent`.
+- **The keycard analogy said two false things.** Most keycards hold only a number, and
+  the door asks a list every time, which is what DSoR does. The analogy now maps a role
+  to an access group, and stops at the door.
+- **The intent called the principle "fail closed".** The specification uses that name
+  for a failure, such as a control whose condition throws (DSOR-CTL-07). This step's
+  principle is deny by default. The electric door now stands for the missing and broken
+  cases, where it fits exactly.
+- **Sentences claimed more than was true.** "There is no third answer" contradicted
+  DSOR-AUT-02a, which asks for `REQUIRE_APPROVAL` too. Three of this tutorial's choices
+  were worded as DSoR rules: DSoR keeping the role tables itself, the exact match, and
+  "one never implies another". Approvals are step 29, not step 27. C5 left out step 05's
+  checks. "T2 … this step's whole purpose" claimed more than the step does. Decisions 3
+  and 4 had no downside, `propose_only` was never defined, "a near miss" reads as an
+  accident to a second-language reader, and the Break it block hid six failures without
+  "…".
+
+Fixed with a test, and each test was checked against the break it answers:
+
+- **A contract that names no permission** let every caller through, in a registry built
+  by hand. The schema refuses such a contract at start-up, so no caller can reach this
+  today. The refusal now says that the contract names no permission.
+- **A caller's roles.** Only the first, or only the last, counted. Every principal in the
+  story holds one role.
+- **The unknown-role check skipped agents.** Every test of it named a person.
+- **C5's "yes" test** passed with no permission check at all. It now asks a reader too.
+- **Another company's roles** counted when org_456 was not listed last, when a company
+  id only started with `org_456`, or when it differed in capitals.
+- **A role missing from the table** granted every permission in the table.
+- **One role table shared by every registry** passed, by the luck of the order the
+  tests ran in.
+- **Twelve one-character changes to the permission pattern** passed the step's own
+  tests. Only the repository's guard saw them, and a step must run by itself.
+- **The order of the checks.** The permission check could move ahead of step 05's
+  checks.
+- **The start-up check of the table** missed a bad permission that was not last in its
+  list, a typo in another company's membership, and a role name in the wrong case. A
+  role whose permissions were `null` crashed it.
+- **The program** looked for `roles.json` only in the folder it was started from,
+  printed a stack trace for a missing role table, and could name the table wrongly in a
+  message.
+
+Two breaks were left. One changes only the order of the lines in a refusal. The other
+ignores capitals where start-up already allows only small letters, so it changes
+nothing.
+
+### Left open
+
+- **A role named twice in `roles.json`.** `JSON.parse` keeps the last one, so a second
+  `ap_agent` line could widen the agent to `invoice:issue`, and start-up would not see
+  it. Step 03 left the same flaw open for a contract that names one field twice. Both
+  are best fixed once, in the earliest step. From step 16, each role is one row in
+  DSoR's own store.
+- **The agent's stand-in role** (decision 5): a permission that no person signed for,
+  and T3 for reads. Step 18 should remove it.
+- **A person's token in the agent's hands.** An agent that holds user_123's token is
+  served as user_123, and now passes user_123's `invoice:issue` check (DSOR-IDN-02a,
+  T13). This came from step 05.
+- **One role table for every company.** DSOR-IDN-04a accepts role assertions only from a
+  source that is authoritative for the active tenant. Tenants arrive in step 10.
+- **What a refusal tells a caller.** A logged-in caller can learn which operations exist,
+  and which permission each one needs. DSOR-ERR-01b forbids revealing a resource the
+  caller may not read, and an operation is not a resource. The step that lists
+  operations to an agent should decide.
+- **The repository's guard cannot see a pattern whose marker is deleted.** A break that
+  deleted the `// copied from` line and loosened the pattern passed `pnpm guard`. This
+  step's tests now catch it. The guard is outside this folder.
+- **Files past about 150 lines.** `src/registry.ts` has 181 lines, and
+  `test/permissions.test.ts` and `test/helpers.ts` are longer. Step 07 moves the checks
+  in `call()` into a function of their own.
+- **DSOR-AUT-02a and DSOR-AUT-02c** are in no step of the map.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-AUT-01a | Role-based access control, with permissions in the form `<resource>:<action>` | [§15 Authorization](../../../specs/dsor/02-security.md#15-authorization) | _to be counted_ |
-| DSOR-AUT-01b | Any operation for which no permission is granted is denied | [§15](../../../specs/dsor/02-security.md#15-authorization) | _to be counted_ |
+| DSOR-AUT-01a | Role-based access control, with permissions in the form `<resource>:<action>` | [§15 Authorization](../../../specs/dsor/02-security.md#15-authorization) | 47 tests in `test/permissions.test.ts` (C1 41, C2 6) |
+| DSOR-AUT-01b | Any operation for which no permission is granted is denied | [§15](../../../specs/dsor/02-security.md#15-authorization) | 19 tests in `test/permissions.test.ts` (C3 5, C4 8, C5 3, C6 3) |
+
+13 more new tests carry no rule id. They prove this tutorial's own choices:
+
+- only the roles held in org_456 count (decision 1): 4 tests
+- building a second registry leaves what the first one grants alone
+- step 05's checks come before the permission (C5): 2 tests
+- an empty list of permissions in the input takes nothing away
+- how start-up reads the role table, and the program itself: 4 tests in
+  `test/startup.test.ts`
+- that the new refusal comes back as a value, not a throw: 1 new row in step 04's table
+  of refusals
+
+The same table gives DSOR-ERR-01a and DSOR-COR-01b one new test each: the new refusal
+passes the schema, and gets a new request id on every call.
+
+The schema files in `schemas/` are copies of the specification's. Inside the dsor
+repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every
+rule id, every link on this page, and the permission pattern copied into
+`src/permissions.ts`.
 
 **Next:** step 07, the pipeline skeleton.
