@@ -96,6 +96,15 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
     expect(message).toMatch("broken.json: not valid JSON");
     expect(message).toMatch("test.json: must have required property 'risk'");
   });
+
+  // Found by step 04's review: without the `continue` after a contract's problems, a file
+  // that holds null crashed start-up with a TypeError, and the other problem went unnamed.
+  it("DSOR-OPR-02a: a file that holds null is named with the others", () => {
+    const noRisk = without(contract("invoice.issue"), "risk");
+    const message = refusal(() => buildRegistry([source(noRisk), source(null, "null.json")], {}));
+    expect(message).toMatch("test.json: must have required property 'risk'");
+    expect(message).toMatch("null.json: must be object");
+  });
 });
 
 describe("C7: a loaded contract is exactly what was written", () => {

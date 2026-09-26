@@ -44,11 +44,16 @@ const validateContract = ajv.compile(loadSchema("operation-contract.schema.json"
 
 /** Reads every contract file in a folder. */
 export function readContracts(dir: string): ContractSource[] {
-  // Sorted, so the problems are always named in the same order.
-  const files = readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
-    .sort();
+  const files = contractFiles(readdirSync(dir));
   return files.map((file) => ({ file, text: readFileSync(join(dir, file), "utf8") }));
+}
+
+/** The contract files among a folder's file names, in name order. */
+export function contractFiles(names: string[]): string[] {
+  // Sorted, so the problems are always named in the same order. A folder may list its
+  // files in any order. macOS lists them by name anyway, so only a test of this
+  // function, not of a real folder, sees a missing sort there.
+  return names.filter((file) => file.endsWith(".json")).sort();
 }
 
 /** Checks every contract and every handler, and refuses to build if anything is wrong. */

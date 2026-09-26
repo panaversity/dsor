@@ -12,7 +12,9 @@ import { parseUri } from "./uri.ts";
 
 // Start-up checks every contract first. If one is broken, the program stops here and
 // names every problem, before any caller can ask for anything.
-const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
+// Another folder of contracts can be named on the command line, so a test can start the
+// program with a broken one.
+const CONTRACTS = process.argv[2] ?? fileURLToPath(new URL("../contracts", import.meta.url));
 let registry: Registry;
 try {
   registry = buildRegistry(readContracts(CONTRACTS), handlers);

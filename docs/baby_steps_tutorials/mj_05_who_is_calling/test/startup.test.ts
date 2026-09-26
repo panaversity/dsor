@@ -1,12 +1,12 @@
 // Start-up. How the contract files are found, and the program itself.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readContracts } from "../src/registry.ts";
-import { shipped } from "./helpers.ts";
+import { contractFiles, readContracts } from "../src/registry.ts";
+import { contract, shipped, without } from "./helpers.ts";
 
 // No rule id: how start-up finds the contract files.
 describe("reading the contracts folder", () => {
@@ -19,6 +19,16 @@ describe("reading the contracts folder", () => {
     } finally {
       rmSync(dir, { recursive: true });
     }
+  });
+
+  // Found by step 04's review: macOS lists a folder by name, so the test above passed with
+  // the sort deleted. This one hands the names over out of order.
+  it("sorts the file names, whatever order the folder lists them in", () => {
+    expect(contractFiles(["z.json", "notes.txt", "m.json", "a.json"])).toEqual([
+      "a.json",
+      "m.json",
+      "z.json",
+    ]);
   });
 
   it("the shipped folder holds the two contracts", () => {
@@ -58,6 +68,28 @@ describe("the program", () => {
       expect(output).toMatch("code: 'AUTHORIZATION_DENIED'");
       expect(output).not.toMatch("principal_id: 'cfo_100'");
       expect(output).toMatch("{ request_id: 'ap-desk-7', principal_id: 'user_123' }");
+    },
+  );
+
+  // Found by step 04's review: no test started the program with a broken contract, so a
+  // refused start-up that ended with exit code 0, "success", passed every test.
+  it(
+    "refuses to start with a broken contract: it names the problem and exits with code 1",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-contracts-"));
+      try {
+        const noRisk = without(contract("invoice.get"), "risk");
+        writeFileSync(join(dir, "invoice.get.json"), JSON.stringify(noRisk));
+        const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
+        const run = spawnSync(process.execPath, [main, dir], { encoding: "utf8" });
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch("invoice.get.json: must have required property 'risk'");
+        expect(run.stderr).not.toMatch("TypeError");
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
     },
   );
 });
