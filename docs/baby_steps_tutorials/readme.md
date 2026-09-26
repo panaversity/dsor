@@ -670,7 +670,7 @@ written in CEL, a tiny safe expression language, with its own test cases that ru
 the control is switched on.
 **New:** CEL. **Spec:**
 [§17](../../specs/dsor/02-security.md#17-policy-compilation-from-authority-to-control) ·
-DSOR-CTL-01a, DSOR-CTL-05, DSOR-CTL-07, DSOR-CTL-02c, DSOR-AUT-02b.
+DSOR-CTL-01a, DSOR-CTL-05, DSOR-CTL-07, DSOR-CTL-02c, DSOR-AUT-02a, DSOR-AUT-02b.
 **Break it:** write the rule as `amount > 25000 && currency == "USD"` and pay
 50,000,000 PKR straight through it.
 
@@ -690,7 +690,8 @@ fingerprint of the exact request, and it expires.
 **New:** hashing canonical JSON. **Spec:**
 [§26.3](../../specs/dsor/03-execution.md#263-what-an-approval-binds),
 [§26.5](../../specs/dsor/03-execution.md#265-the-approval-channel) · DSOR-APR-02a,
-DSOR-APR-02b, DSOR-APR-05a, DSOR-APR-09.
+DSOR-APR-02b, DSOR-APR-05a, DSOR-APR-09, and DSOR-AUT-02c: when two rules each ask for
+an approval, both must be given.
 **Done when:** approving with the wrong fingerprint is refused.
 
 ### 30 · `30_who_may_not_approve`

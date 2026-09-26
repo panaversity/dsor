@@ -176,8 +176,9 @@ The keycard analogy is new. The review checks that it fits and does not mislead.
 
 ### Left open, and not this step's idea
 
-- **The strictest answer winning** (DSOR-AUT-02b): step 27. **Approvals:** step 29.
-  DSOR-AUT-02a and DSOR-AUT-02c are in no step of the map yet.
+- **The outcomes a check may give** (DSOR-AUT-02a) and **the strictest answer winning**
+  (DSOR-AUT-02b): step 27. **Approvals**, and every demand being met (DSOR-AUT-02c):
+  step 29.
 - **What `.propose` allows** (`propose_only` mode): step 23.
 - **An agent's authority from a person's permission slip**, and its limits: step 18.
 - **Roles in more than one company:** step 10.
@@ -592,6 +593,9 @@ Two breaks were left. One changes only the order of the lines in a refusal. The 
 ignores capitals where start-up already allows only small letters, so it changes
 nothing.
 
+The review also found DSOR-AUT-02a and DSOR-AUT-02c in no step of the map. After the
+step, the map placed them in steps 27 and 29.
+
 ### Left open
 
 - **A role named twice in `roles.json`.** `JSON.parse` keeps the last one, so a second
@@ -609,14 +613,17 @@ nothing.
 - **What a refusal tells a caller.** A logged-in caller can learn which operations exist,
   and which permission each one needs. DSOR-ERR-01b forbids revealing a resource the
   caller may not read, and an operation is not a resource. The step that lists
-  operations to an agent should decide.
+  operations to an agent should decide
+  ([open question 26](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)).
 - **The repository's guard cannot see a pattern whose marker is deleted.** A break that
   deleted the `// copied from` line and loosened the pattern passed `pnpm guard`. This
   step's tests now catch it. The guard is outside this folder.
 - **Files past about 150 lines.** `src/registry.ts` has 181 lines, and
   `test/permissions.test.ts` and `test/helpers.ts` are longer. Step 07 moves the checks
   in `call()` into a function of their own.
-- **DSOR-AUT-02a and DSOR-AUT-02c** are in no step of the map.
+- **Whether one permission may grant another.** This tutorial grants a permission only
+  for the very same text (decision 2), and the specification does not say
+  ([open question 27](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)).
 
 ## The rules this step meets
 

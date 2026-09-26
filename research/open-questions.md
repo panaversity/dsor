@@ -138,4 +138,24 @@ for a human. An agent may gather evidence; it does not settle these alone.
     in, or what proves the person the agent works for. Step 05's learner build meets
     exactly this case: the agent logs in as itself, has no mode, and reads INV-1008
     just as `cfo_100` does. Must an agent at L1 call `on_behalf_of`? If so, should
-    DSOR-DEL-03a be L1? Or does serving an agent need L2?
+    DSOR-DEL-03a be L1? Or does serving an agent need L2? Step 06's learner build shows
+    what the gap costs. It gives the agent a stand-in role that grants `invoice:read`,
+    until delegations arrive in step 18. Then anyone who can ask the agent can read
+    what it reads: with the CFO role granting nothing, `cfo_100` is denied INV-1008
+    directly, and gets it by asking the agent. That is T3, the confused deputy, for
+    reads.
+26. **May a refusal show that an operation exists?** DSOR-ERR-01b forbids an error
+    that reveals "the existence or attributes of a resource the caller is not
+    authorized to read". An operation is not a resource, so no rule covers it. Step
+    06's learner build refuses an unknown name with `UNSUPPORTED_CAPABILITY`, and a
+    known operation the caller may not call with `AUTHORIZATION_DENIED`, naming the
+    permission it needs. So any caller who can log in can list which operations exist,
+    and what each one needs. Should an operation the caller may not call be refused
+    exactly like one that does not exist? Should DSOR-ERR-01b cover operations too?
+27. **May one permission grant another?** §15 fixes the form `<resource>:<action>`,
+    with an optional `.propose`, and §7.3 says what the `.propose` form allows. The
+    pattern refuses `*`, so a wildcard is out. Nothing says whether a permission may
+    imply another, for example whether `invoice:issue` grants `invoice:read`. Step
+    06's learner build grants a permission only for the very same text (its decision
+    2). Is that DSoR's rule, or each deployment's choice? If one permission may imply
+    another, where is that written down, so that someone can review it?
