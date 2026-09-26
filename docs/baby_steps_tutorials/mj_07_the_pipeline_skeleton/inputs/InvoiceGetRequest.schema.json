@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InvoiceGetRequest",
+  "description": "The input of invoice.get. This tutorial's own schema: the specification names it and does not define it (step 07's README, decision 2).",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" }
+  },
+  "required": ["id"],
+  "additionalProperties": false
+}

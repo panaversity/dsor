@@ -10,6 +10,7 @@ import {
   AGENT,
   BAD_REQUEST_ID,
   CFO,
+  GOOD_ISSUE,
   STARTING_ROLES,
   SUPERVISOR,
   THE_AGENT,
@@ -429,7 +430,8 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
     expect(call(registry, CFO, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", THE_CFO),
     );
-    expect(call(registry, SUPERVISOR, "invoice.issue", {})).toStrictEqual({
+    // NEW IN STEP 07: a good input, so the call also passes line ⑥.
+    expect(call(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toStrictEqual({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
       retry: "never",
@@ -508,8 +510,12 @@ describe("C6: permissions never come from the caller", () => {
 
   // No rule id: DSOR-AUT-01b is about what is denied. "Changes nothing" works the other
   // way too: an empty list takes nothing away.
-  it("an empty list of permissions in the input takes nothing away", () => {
+  // NEW IN STEP 07: line ⑥ now refuses the list itself, since invoice.get's input schema
+  // does not name it. It is refused as a bad input, and not as a denied permission.
+  it("an empty list of permissions in the input is refused as a bad input", () => {
     const input = { id: "INV-1008", permissions: [] };
-    expect(call(registry, AGENT, "invoice.get", input)).toMatchObject({ data: { id: "INV-1008" } });
+    expect(call(registry, AGENT, "invoice.get", input)).toMatchObject({
+      code: "VALIDATION_FAILED",
+    });
   });
 });

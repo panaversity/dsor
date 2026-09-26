@@ -239,10 +239,12 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     });
   });
 
-  it.each(PLACES)("DSOR-SRC-02b: the agent's own id in %s is accepted", (place) => {
+  // NEW IN STEP 07: step 05 accepted these, and never used the name. Line ⑥ now refuses
+  // them, because invoice.get's input schema lists only id (step 07's README, decision 3).
+  it.each(PLACES)("the agent's own id in %s is refused as a bad input", (place) => {
     expect(
       call(registry, AGENT, "invoice.get", naming(place, "accounts-payable-fte")),
-    ).toMatchObject({ data: { id: "INV-1008" } });
+    ).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   // A check made only for agents would pass every test above.
@@ -257,9 +259,10 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     );
   });
 
-  it("DSOR-SRC-02b: a person who names themselves is accepted", () => {
+  // NEW IN STEP 07: refused at line ⑥, as the agent is (step 07's README, decision 3).
+  it("a person who names themselves is refused as a bad input", () => {
     expect(call(registry, CFO, "invoice.get", naming("principal_id", "cfo_100"))).toMatchObject({
-      data: { id: "INV-1008" },
+      code: "VALIDATION_FAILED",
     });
   });
 

@@ -82,6 +82,10 @@ describe("the program", () => {
       // NEW IN STEP 06: the agent may not issue. user_123 may, and hears "not built yet".
       expect(output).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
+      // NEW IN STEP 07: user_123 sends a bad input, and line ⑥ refuses it.
+      expect(output).toMatch(
+        `message: 'the input of "invoice.issue" is not valid: /invoice must match pattern`,
+      );
       // A call with no login and a call that names the CFO are refused. The
       // CFO is never named as the caller. A person's own request id comes back with its id.
       expect(output).toMatch("code: 'AUTHENTICATION_REQUIRED'");
@@ -106,6 +110,27 @@ describe("the program", () => {
         expect(run.status).toBe(1);
         expect(run.stderr).toMatch("invoice.get.json: must have required property 'risk'");
         expect(run.stderr).not.toMatch("TypeError");
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
+  // NEW IN STEP 07: start-up checks that every contract's input schema has a file.
+  it(
+    "refuses to start when a contract's input schema has no file: it names it and exits with code 1",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-contracts-"));
+      try {
+        const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceListRequest" } };
+        writeFileSync(join(dir, "invoice.get.json"), JSON.stringify(renamed));
+        const run = spawnSync(process.execPath, [MAIN, dir], { encoding: "utf8" });
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch(
+          "invoice.get: its input schema InvoiceListRequest has no file inputs/InvoiceListRequest.schema.json",
+        );
         expect(run.stdout).not.toMatch("operations:");
       } finally {
         rmSync(dir, { recursive: true });

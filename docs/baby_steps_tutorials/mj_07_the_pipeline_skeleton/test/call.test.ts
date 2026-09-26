@@ -8,6 +8,7 @@ import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
   AGENT,
   CFO,
+  GOOD_ISSUE,
   REFUSALS,
   REQUEST_ID,
   SUPERVISOR,
@@ -110,7 +111,8 @@ describe("C6: a query's success is { data, correlation }", () => {
       { ...handlers, "invoice.issue": spy },
       shippedRoles,
     );
-    expect(call(issueHasCode, SUPERVISOR, "invoice.issue", {})).toMatchObject({
+    // NEW IN STEP 07: a good input, so line ⑥ is not what refuses the call either.
+    expect(call(issueHasCode, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
     expect(spy).not.toHaveBeenCalled();
