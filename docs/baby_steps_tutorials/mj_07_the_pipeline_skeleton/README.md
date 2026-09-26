@@ -19,7 +19,7 @@ diagram.
 Think of a pilot's checklist before take-off. The same items, in the same order, on
 every flight, whoever the pilot is. A new item is added in its place, and never moves
 the others. The analogy stops at one point: a pilot can skip a line. Here a test fails
-if a line moves.
+if a line that runs code is skipped or moved.
 
 One check is new. Line ⑥ of the diagram asks **is the input valid?** Each operation
 gets an **input schema**: a JSON Schema that says exactly which fields its input may
@@ -44,19 +44,21 @@ once:
 The rule under all three: the earlier checks protect the later ones. DSoR must know who
 you are before it says what exists, and whether you may, before it discusses how.
 
-**Every door must lead to the same checklist.** Step 42 adds a web door, and step 46 a
-door for AI agents. If each door ran its own checks, one would sooner or later run them
-in another order, or leave one out. The same invoice would be guarded through one door
-and open through the other. DSOR-OPR-04a says every interface invokes the same
-pipeline. Then there is only one list to get right.
+**Every way in must lead to the same checklist.** A way into DSoR is called an
+**interface**. Today there is one: the function `call`. Step 42 adds a web API, and step
+46 an MCP server that AI agents call. If each interface ran its own checks, one would
+sooner or later run them in another order, or leave one out. The same invoice would be
+guarded through one interface and open through the other. DSOR-OPR-04a says every
+interface invokes the same pipeline. Then there is only one list to get right.
 
 §21's own "Why it matters" and "Common mistake" are about writing the decision down
 before the answer. That is step 08. The reason for a fixed order comes from steps 05 and
 06.
 
 **Common mistake:** a check that does nothing yet, written as a function that returns
-without complaint, so the list looks complete. It is a door that opens when the power
-fails. A reader believes the tenant is checked, and it is not.
+without complaint, so the list looks complete. When it has nothing to say, it says
+"fine". A safe check is the opposite: a lock that stays locked when the power fails. A
+reader believes the tenant is checked, and it is not.
 
 ## The design, before any code
 
@@ -75,7 +77,7 @@ call, and pins it with a test. The analogy is the pilot's checklist.
 **Outcome.** What is true when this step is done:
 
 1. Every call goes through one function whose lines follow §21's numbers: ① who are
-   you, ⑤ may you, ⑥ is the input valid.
+   you, ⑤ may you, ⑥ is the input valid, and, for a query, ⑨ where its code reads.
 2. "Is the input valid?" is a real line of the checklist, not something each operation
    does in its own way.
 3. When a call would fail two checks, the refusal comes from the earlier line, always.
@@ -88,7 +90,8 @@ call, and pins it with a test. The analogy is the pilot's checklist.
 (step 20), ⑪ write the decision down (step 08), and the rest.
 
 **The success signal.** A test records which lines of the checklist ran for a call, in
-order, and compares them with §21's numbers. Swap any two lines, and it fails.
+order, and compares them with §21's numbers. Swap any two lines that run code, and it
+fails.
 
 ### What each rule really says
 
@@ -96,15 +99,15 @@ order, and compares them with §21's numbers. Swap any two lines, and it fails.
 | --- | --- | --- |
 | DSOR-EXE-01a | **C1.** Every call runs the lines of the checklist in §21's order | The record of the lines that ran matches §21's numbers, for `invoice.get` and for `invoice.issue` |
 | DSOR-EXE-01a | **C2.** When two lines would refuse, the earlier one answers | The table below |
-| (our decision) | **C3.** Line ⑥ checks the input against the operation's input schema, and a field the schema does not list is refused | `as_user`, and a `principal` that agrees with the login, are refused with `VALIDATION_FAILED` |
-| (our decision) | **C4.** Start-up is refused for a contract whose input schema is missing or broken | Step 03's lesson: loud, and early |
+| (our decision) | **C3.** Line ⑥ checks the input against the operation's input schema, and a field the schema does not list is refused. The value checked is the value the code gets | `as_user`, and a `principal` that agrees with the login, are refused with `VALIDATION_FAILED` |
+| (our decision) | **C4.** Start-up is refused for an input schema that is missing, broken, or lets unlisted fields through, and for one that no contract names | Step 03's lesson: loud, and early |
 | DSOR-OPR-04a | **C5.** The code behind an operation is reached only through the checklist | Code that records each time it runs never runs on a call that a line refuses, and `main.ts` reaches operations only through `call` |
 | (our decision) | **C6.** A line not built yet is a numbered comment that names its step. No code pretends to check | Read beside §21 |
 
 DSOR-EXE-01a says that **commands** pass through the steps in the order given. So C1
 and C2 test `invoice.issue`, the one command, which now passes lines ①, ⑤, and ⑥ before
-it hears "not built yet". §21 also says that queries pass through steps 1 to 6, so
-`invoice.get` follows the same order.
+it hears "not built yet". §21 also says that queries pass through steps 1 to 6 and 9,
+so `invoice.get` runs ①, ⑤, ⑥, and then ⑨, where its code reads the invoice.
 
 C2, for calls to `invoice.issue` that are wrong in more than one way:
 
@@ -127,12 +130,17 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    `inputs/`, named by the contract: `inputs/InvoiceGetRequest.schema.json` is
    `{ id }`, and `inputs/InvoiceIssueRequest.schema.json` is `{ invoice }`. The
    `invoice` field points at the specification's own `resourceUri` definition in the
-   copied `common.schema.json`, by its URN, so no pattern is copied a second time. The
+   copied `common.schema.json`, by its URN, so no pattern is copied a second time. A URN
+   is a permanent name for a schema, such as `urn:dsor:schema:1.3:common`. The
    `invoice.issue` contract already says `"bind": { "invoice": "input.invoice" }`.
    Start-up reads every file in `inputs/`, the way it reads `contracts/`, and looks each
    contract's input schema up among those files. It never builds a path from the text
-   of a contract. Every input schema refuses a field it does not list. The specification's
-   `resourceUri` accepts any tenant of the right shape, `acme` too. Step 02's stricter
+   of a contract. Every input schema refuses a field it does not list, and start-up
+   makes sure of it: the top level must say `"type": "object"` and
+   `"additionalProperties": false`, and ajv's strict mode refuses a keyword it does not
+   know, such as the typo `additionalProperty`. A file in `inputs/` that no contract
+   names stops start-up too. The specification's `resourceUri` accepts any tenant of
+   the right shape, even step 02's `acme`. Step 02's stricter
    rule, `org_` and digits, still applies wherever the URI is read with `parseUri`, so
    line ⑥ checks the shape only. *Downside:* the specification
    names these inputs and never defines them. They are this tutorial's invention, and
@@ -147,39 +155,53 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    and not used". "Think it through" records the change.
 4. **"Which operation?" comes right after ①,** before the comment for ②. §21 does not
    list it, but ⑤ needs the contract to know which permission applies, and ③ and ④ will
-   likely need it too: a permission slip covers operations, and a breaker can stop one
-   operation. *Downside:* a line of ours inside §21's numbering, and ②'s comment sits
+   likely need it too: a permission slip covers operations, and a breaker, a switch
+   that stops one operation for everyone, names one. *Downside:* a line of ours inside §21's numbering, and ②'s comment sits
    after it. The function marks it as ours.
 5. **"Is it built?" comes after ⑥,** where §21 goes on to ⑦. *Downside:* also ours. It
    goes away when commands are built.
 6. **The order test sees the lines through an observer:** an optional function the
    checklist tells each line's number as it runs it. Each line is written as one call,
    `line(5, () => checkPermission(…))`, so a check cannot move without its number.
-   *Downside:* production code carries a hook that only tests use. Spying on the
-   functions of a module would be harder to read.
-7. **Line ⑥'s other half, "compute payload hash", waits for approvals in step 29.**
-   Line ⑥'s comment says so.
+   Line ① holds three checks inside one `line(1, …)`. The observer sees line ① start,
+   and not each check inside it. *Downside:* production code carries a hook that only
+   tests use. Spying on the functions of a module would be harder to read.
+7. **Line ⑥'s other half, "compute payload hash", waits for approvals in step 29.** A
+   payload hash is a fingerprint of the exact input, which an approval will be tied
+   to. Line ⑥'s comment says so.
 8. **The request id is still checked in line ①,** as part of "build the request
-   security context". So `cfo_100` with a bad request id hears `VALIDATION_FAILED`
+   security context": who is calling, and the labels of the request, gathered before
+   anything else is checked. So `cfo_100` with a bad request id hears `VALIDATION_FAILED`
    before line ⑤. *Downside:* one `VALIDATION_FAILED` comes before "may you?". It is
    about the envelope beside the arguments, so it tells the caller nothing about what
    an operation's input looks like.
+9. **Line ⑥ checks a JSON copy of the input, and the code gets that copy.** Without
+   the copy, one input could show one id to the check and another to the code. A
+   getter, a small function that runs each time a field is read, can answer
+   differently each time. A JSON copy holds plain values only. An input that JSON
+   cannot copy, such as one that contains itself, is refused with `VALIDATION_FAILED`.
+   This is the first small part of "canonicalize" in line ⑥. *Downside:* one copy per
+   call. And a value JSON leaves out, such as `undefined`, is gone before the check
+   sees it. The interfaces of steps 42 and 46 will receive JSON anyway.
 
 ### The tests, by claim
 
-- **C1:** the lines that ran, for `invoice.get` and for `invoice.issue`, match §21's
-  order.
+- **C1:** the lines that ran match §21's order: ①, ⑤, ⑥ for `invoice.issue`, and ①,
+  ⑤, ⑥, ⑨ for `invoice.get`.
 - **C2:** the four rows of the table above.
 - **C3:** `invoice.get` refuses `{}`, `{ id: 1008 }`, `{ id: "INV-1008", as_user:
   "cfo_100" }`, and `{ id: "INV-1008", principal: "accounts-payable-fte" }` from the
   agent. `invoice.issue` refuses an `invoice` that is not a canonical URI. The good
-  inputs pass.
-- **C4:** start-up is refused when an input schema file is missing, and when one is not
-  valid JSON Schema.
+  inputs pass. An input whose getter answers differently each time is checked and run
+  with one value. A schema's `default` is never filled in.
+- **C4:** start-up is refused when an input schema file is missing, is not JSON, is not
+  valid JSON Schema, writes a key twice, uses a keyword ajv does not know, or does not
+  refuse unlisted fields, and when a file in `inputs/` has no contract. Each problem is
+  named once. The program names a missing `inputs/` folder, with no stack trace.
 - **C5:** for every refused call in C2 and C3, the operation's code never runs. The
   rest is a reading check: `main.ts` reaches operations only through `call`. In one
-  program, any code can reach a function. The rule is about doors, and today there is
-  one door. Steps 42 and 46 add the second and third.
+  program, any code can reach a function. The rule is about interfaces, and today
+  there is one. Steps 42 and 46 add the second and third.
 - **C6:** a reading check, done by the review, beside §21's diagram.
 
 ### Breaks we will try, and what we expect
@@ -190,7 +212,7 @@ Run against the finished step. The learner's predictions were recorded before an
 | --- | --- | --- | --- | --- |
 | R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives | Caught: 16 tests fail |
 | R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 427 pass. Written as `line(2, …)`, it is caught by 6 tests, because the order test sees a line ② |
-| R3 | An input schema allows fields it does not list | C3 | survives | Caught: 16 tests fail for `InvoiceGetRequest`, 1 for `InvoiceIssueRequest` |
+| R3 | An input schema allows fields it does not list | C3, and C4 after the review | survives | Caught: 16 tests fail for `InvoiceGetRequest`, 1 for `InvoiceIssueRequest` |
 | R4 | A contract whose input schema file is missing loads, and its input is never checked | C4 | survives | Caught: 4 tests fail |
 
 R2 is different from every break so far. It changes no answer to any call, so no test
@@ -198,8 +220,8 @@ can catch it, even in principle. That is why decision 1 forbids it, instead of t
 a test to find it.
 
 The review also attacks the step with the §10.2 threats that fit its idea: T2, an agent
-reaching past its task through a door with fewer checks, and T1, instructions hidden in
-an input's extra fields.
+reaching past its task through an interface with fewer checks, and T1, instructions
+hidden in an input's extra fields.
 
 ### Left open, and not this step's idea
 
@@ -209,6 +231,10 @@ an input's extra fields.
 - **Should an unknown field that names a principal be refused as a denied principal?**
   DSOR-SRC-02b wants `AUTHORIZATION_DENIED`. DSoR cannot recognise every spelling, so
   `as_user` gets `VALIDATION_FAILED` (decision 3).
+- **A URI that names another company passes line ⑥.** `dsor://org_999/invoice/INV-1008`
+  sent by user_123 hears "not built yet". DSOR-SRC-02b wants `TENANT_MISMATCH` or
+  `AUTHORIZATION_DENIED` for a tenant in the arguments that disagrees with the caller.
+  Line ② does that, in step 10.
 - **The lines of later steps,** each in its numbered place: ② step 10, ③ step 18, ④ step
   25, ⑦ step 20, ⑪ step 08.
 
@@ -475,7 +501,7 @@ tell me which ones matter and why.
    both change no answer today?
 3. `cfo_100` sends `invoice.issue` with a bad input. Which refusal comes back, and why
    that one?
-4. Why does step 42's web door not get checks of its own?
+4. Why does step 42's web API not get checks of its own?
 5. The agent sends `{ id: "INV-1008", principal: "accounts-payable-fte" }`. The
    principal is the agent itself. Why is the call refused?
 
@@ -490,8 +516,8 @@ tell me which ones matter and why.
    and which step brings it.
 3. `AUTHORIZATION_DENIED`. `cfo_100` may not issue, and line ⑤ runs before line ⑥, so
    the input is never looked at.
-4. Every door must lead to the same checklist (DSOR-OPR-04a). A door with checks of its
-   own could run them in another order, or leave one out.
+4. Every interface must invoke the same checklist (DSOR-OPR-04a). An interface with
+   checks of its own could run them in another order, or leave one out.
 5. `invoice.get`'s input schema lists only `id`, so any other field is refused at line
    ⑥, even one that agrees with the login. This is this tutorial's decision, and it
    changes step 05's behavior.
