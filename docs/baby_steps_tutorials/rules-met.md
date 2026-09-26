@@ -24,3 +24,5 @@ Until an official step exists, its row may point at a learner build, marked
 | DSOR-IDN-01 | [05 · Who is calling](mj_05_who_is_calling/README.md) (learner build) | [`test/who-is-calling.test.ts`](mj_05_who_is_calling/test/who-is-calling.test.ts) |
 | DSOR-SRC-02a | [05 · Who is calling](mj_05_who_is_calling/README.md) (learner build), who is calling only; the rest of the security context is not built yet | [`test/who-is-calling.test.ts`](mj_05_who_is_calling/test/who-is-calling.test.ts) |
 | DSOR-SRC-02b | [05 · Who is calling](mj_05_who_is_calling/README.md) (learner build), a principal only; tenant and delegation ids come in steps 10 and 18 | [`test/who-is-calling.test.ts`](mj_05_who_is_calling/test/who-is-calling.test.ts) |
+| DSOR-AUT-01a | [06 · Permissions, denied by default](mj_06_permissions_deny_by_default/README.md) (learner build) | [`test/permissions.test.ts`](mj_06_permissions_deny_by_default/test/permissions.test.ts) |
+| DSOR-AUT-01b | [06 · Permissions, denied by default](mj_06_permissions_deny_by_default/README.md) (learner build) | [`test/permissions.test.ts`](mj_06_permissions_deny_by_default/test/permissions.test.ts) |
