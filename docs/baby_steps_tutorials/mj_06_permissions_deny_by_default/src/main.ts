@@ -1,8 +1,9 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
 // The program checks every contract, then calls operations by name. It
-// prints one success and four refusals, each an envelope, and last the correlation of a
-// call by user_123.
+// prints one success and four refusals, each an envelope, and the correlation of a call
+// by user_123. NEW IN STEP 06: start-up checks the role table too. The agent is now denied
+// invoice.issue, and a fifth refusal shows user_123, who may issue, hearing "not built yet".
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
@@ -48,7 +49,8 @@ if ("data" in answer) {
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
 console.log(call(registry, AGENT, "invoice.get", { id: "INV-9999" }));
-// invoice.issue has a contract but no code yet, so the call is refused.
+// NEW IN STEP 06: the agent's role grants invoice:read and not invoice:issue, so this call
+// is denied before DSoR asks whether invoice.issue is built.
 console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // A call with no login token is refused before DSoR checks anything else.
@@ -60,3 +62,8 @@ console.log(call(registry, AGENT, "invoice.get", { id: "INV-1008", principal: "c
 // id of their own. The answer carries that id, and names user_123 as the caller.
 const USER_123: RequestEnvelope = { token: "tok_2c91", request_id: "ap-desk-7" };
 console.log(call(registry, USER_123, "invoice.get", { id: "INV-1008" }).correlation);
+// NEW IN STEP 06: user_123 holds invoice:issue, so the same call gets past the permission
+// check. It is refused one check later: invoice.issue has a contract but no code yet.
+console.log(
+  call(registry, USER_123, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
+);

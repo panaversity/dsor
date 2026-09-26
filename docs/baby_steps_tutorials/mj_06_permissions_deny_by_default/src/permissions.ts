@@ -2,7 +2,9 @@
 // refused. DSOR-AUT-01a and DSOR-AUT-01b in specs/dsor/02-security.md, section 15.
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
+import { Refusal } from "./envelope.ts";
 import type { Principal } from "./principals.ts";
+import type { Contract } from "./registry.ts";
 
 /** The role table, as it was read from disk: its file name and its text. */
 export type RoleSource = { file: string; text: string };
@@ -85,4 +87,17 @@ export function permissionsOf(caller: Principal, roles: Roles): ReadonlySet<stri
     for (const name of names) for (const permission of roles.get(name) ?? []) held.add(permission);
   }
   return held;
+}
+
+/** Refuses the call unless the caller holds the very permission the contract names. */
+export function checkPermission(caller: Principal, contract: Contract, roles: Roles): void {
+  // The schema makes every contract name one at start-up. If one ever did not, nobody could
+  // call it: when the answer is missing, the answer is no.
+  const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;
+  // Only the same text grants it. No wildcard, no "issue grants read", and the ".propose"
+  // form does not stand in for the full one (step 06's README, decisions 2 and 3).
+  if (typeof needed !== "string" || !permissionsOf(caller, roles).has(needed)) {
+    const why = `needs ${String(needed)}, which the caller does not hold`;
+    throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(contract.id)} ${why}`);
+  }
 }

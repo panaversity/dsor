@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
-import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
+import { checkPermission, checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, logins, whoIsCalling } from "./principals.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
@@ -142,15 +142,21 @@ export function call(
     // arguments name (DSOR-SRC-02b), then the request id (step 05's README, decisions 6 and 7).
     checkNamedPrincipals(input, caller);
     checkRequestId(request);
-    if (!registry.contracts.has(name)) {
+    // NEW IN STEP 06: the contract is kept, because the permission it names is checked next.
+    const contract = registry.contracts.get(name);
+    if (contract === undefined) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }
+    // NEW IN STEP 06: the caller must hold that permission, or the call is denied
+    // (DSOR-AUT-01b). It is checked before "is it built", so "not allowed" is never
+    // answered as "not built yet" (step 06's README, C5).
+    checkPermission(caller, contract, registry.roles);
     const handler = registry.handlers.get(name);
     if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
     // A command's success needs a result envelope, and that needs a
     // proposal (step 22). So a command is refused before its code runs (step 04's
     // README, decision 1).
-    if (registry.contracts.get(name)?.["kind"] !== "query") {
+    if (contract["kind"] !== "query") {
       const why = "is a command, and commands are not built yet";
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} ${why}`);
     }
