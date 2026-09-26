@@ -170,6 +170,21 @@ Step 05 found two more on 2026-09-26:
   reads as the later step. **Fixed on 2026-09-26:** it says "step 02", in `mj_02` and
   every build after it.
 
+Step 06 found two more on 2026-09-26:
+
+- **A key written twice in a JSON file** (from `mj_03`). `JSON.parse` keeps the last
+  value and says nothing. So a contract that wrote `risk` twice, or `permission` twice
+  inside `authorization`, loaded with one of its two values, picked without a word. Step
+  03 had left it open, thinking it needed another JSON reader. **Fixed on 2026-09-26:**
+  `keysWrittenTwice()` in `src/json.ts` scans the text that `JSON.parse` accepted, in
+  `mj_03` and every build after it, and such a contract stops start-up. In `mj_06` the
+  same scan refuses a role written twice in `roles.json`.
+- **The guard could not see a pattern whose marker was deleted.** Deleting the
+  `// copied from` line above a pattern turned its check off, so a loosened pattern
+  passed `pnpm guard`. **Fixed on 2026-09-26:** every pattern that a step's `src/`
+  gives a name must say where it comes from, `// copied from …` or
+  `// not copied: <why>`. `TENANT_ID` (from `mj_02`) gained the note in every build.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { Refusal } from "./envelope.ts";
+import { keysWrittenTwice } from "./json.ts";
 import type { Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
 
@@ -45,7 +46,11 @@ export function checkRoles(
     return { roles, problems: [problem] };
   }
 
-  const problems: string[] = [];
+  // JSON.parse keeps the last of two lines for one role, and says nothing, so a second
+  // ap_agent line could widen the agent without a word. Found by step 06's review.
+  const problems = keysWrittenTwice(text).map(
+    (key) => `${file}: ${JSON.stringify(key)} is written twice in one object`,
+  );
   for (const [role, grants] of Object.entries(data)) {
     // A text is not a list, even though JavaScript can loop over its letters.
     if (!Array.isArray(grants)) {

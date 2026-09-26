@@ -314,15 +314,15 @@ dsor://org_456/invoice/INV-1008
 
 Your request ids will be different. DSoR makes a new one for every call.
 
-`pnpm check` runs the type check, then 208 tests:
+`pnpm check` runs the type check, then 212 tests:
 
 ```text
  Test Files  9 passed (9)
-      Tests  208 passed (208)
+      Tests  212 passed (212)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `205 passed | 3 skipped`.
+original to compare with, so they are skipped: `209 passed | 3 skipped`.
 
 ## Break it
 
@@ -345,7 +345,7 @@ AssertionError: expected { code: 'INTERNAL_ERROR', …(3) } to match object { co
 +   "code": "INTERNAL_ERROR",
 +   "retry": "never",
   }
-      Tests  1 failed | 207 passed (208)
+      Tests  1 failed | 211 passed (212)
 ```
 
 Two things stopped it. The schema ties `OUTCOME_UNKNOWN` to `after_reconciliation`, so
@@ -375,7 +375,7 @@ AssertionError: expected { code: 'AUTHORIZATION_DENIED', …(3) } to match objec
 -   "retry": "never",
 +   "retry": "safe_same_key",
   }
-      Tests  2 failed | 206 passed (208)
+      Tests  2 failed | 210 passed (212)
 ```
 
 This envelope passed the schema and left `call`. It told the agent "denied, try again
@@ -600,7 +600,7 @@ The next step starts from this list.
 
 This step's review also found two bugs in earlier builds, and recorded them in
 [`mj_notes.md`](../mj_notes.md). On 2026-09-26 both were fixed in the earliest build
-that had them, and carried here, with one more fix:
+that had them, and carried here, with two more fixes:
 
 - **A read could change the stored invoice** (fixed in step 01). `call` hands the found
   invoice to the caller as `data`, and it was the stored object itself. A caller that
@@ -610,6 +610,9 @@ that had them, and carried here, with one more fix:
   that reports success, a contract file that holds `null`, and a missing sort.
 - **Every comment that points into a README names its step.** Four comments copied
   from step 03 had pointed at this README's decisions.
+- **A contract could write a key twice** (fixed in step 03, from step 06's review).
+  `JSON.parse` kept the last value without a word. A contract that writes a key twice
+  now stops start-up, with every other problem.
 
 ## The rules this step meets
 

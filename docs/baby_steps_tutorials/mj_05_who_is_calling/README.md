@@ -336,15 +336,15 @@ the CFO is still named as the agent. user_123 chose the request id `ap-desk-7`, 
 came back. Your other request ids will be different. DSoR makes a new one for every
 call that does not send one.
 
-`pnpm check` runs the type check, then 302 tests:
+`pnpm check` runs the type check, then 306 tests:
 
 ```text
  Test Files  10 passed (10)
-      Tests  302 passed (302)
+      Tests  306 passed (306)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `299 passed | 3 skipped`.
+original to compare with, so they are skipped: `303 passed | 3 skipped`.
 
 ## Break it
 
@@ -399,13 +399,13 @@ AssertionError: expected { Object (data, correlation) } to strictly equal { code
     "correlation": {
 -     "agent_id": "accounts-payable-fte",
 +     "principal_id": "cfo_100",
-      "request_id": "req_6be208e1-9144-4bd2-b494-99b39a4d69cc",
+      "request_id": "req_c05ab1b5-f488-4fb4-b3be-e05943920b51",
     },
 -   "message": "the arguments name someone other than the caller, in principal",
 -   "retry": "never",
 +   "data": {
 …
-      Tests  9 failed | 293 passed (302)
+      Tests  9 failed | 297 passed (306)
 ```
 
 The worst of the nine is the C1 test: with no login at all, a caller that wrote
@@ -601,6 +601,9 @@ read returns a copy of the stored invoice (step 01), so the agent can no longer 
 INV-1008 paid by changing its answer: a test here shows the CFO still reads it as
 issued. And step 03's three weak tests now fail when their code breaks: a refused
 start-up that reports success, a contract file that holds `null`, and a missing sort.
+Later that day, step 06's review found that a contract could write a key twice, and
+`JSON.parse` kept the last value without a word. From step 03 on, such a contract stops
+start-up.
 
 The analogies, checked against the house style's list: "permission slip" and "a pilot's
 checklist" are on it. The review flagged two words. "Request envelope" is the

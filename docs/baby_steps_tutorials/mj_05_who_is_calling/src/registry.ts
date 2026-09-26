@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
+import { keysWrittenTwice } from "./json.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
@@ -79,6 +80,12 @@ export function buildRegistry(
     } catch {
       problems.push(`${file}: not valid JSON`);
       continue;
+    }
+    // JSON.parse keeps the last of two values for one key, and says nothing. Keeping one
+    // would be a guess, as with two contracts for one id (step 03's README, decision 7).
+    // Found by step 06's review, and fixed from step 03 on.
+    for (const key of keysWrittenTwice(text)) {
+      problems.push(`${file}: ${JSON.stringify(key)} is written twice in one object`);
     }
     const id = (data as { id?: unknown } | null)?.id;
     if (typeof id === "string") {

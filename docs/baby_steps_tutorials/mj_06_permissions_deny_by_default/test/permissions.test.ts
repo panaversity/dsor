@@ -154,6 +154,18 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     ]);
   });
 
+  // Found by the review: JSON.parse keeps the last of two lines for one role, so a second
+  // ap_agent line could widen the agent to invoice:issue, and start-up saw nothing.
+  it("DSOR-AUT-01a: a role written twice in the table stops start-up", () => {
+    const text = JSON.stringify(STARTING_ROLES).replace(
+      "}",
+      ',"ap_agent":["invoice:read","invoice:issue"]}',
+    );
+    expect(refusal(() => buildRegistry(shipped, handlers, { file: "roles.json", text }))).toMatch(
+      'roles.json: "ap_agent" is written twice in one object',
+    );
+  });
+
   it("DSOR-AUT-01a: a role table that is not JSON stops start-up", () => {
     const broken = { file: "roles.json", text: '{ "CFO": [' };
     expect(refusal(() => buildRegistry(shipped, handlers, broken))).toMatch(

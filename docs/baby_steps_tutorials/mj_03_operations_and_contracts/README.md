@@ -194,6 +194,8 @@ schemas/*.schema.json          NEW: byte-for-byte copies of the specification's
                                operation-contract and common schemas
 src/registry.ts                NEW: readContracts(), contractFiles(), buildRegistry(),
                                and call()
+src/json.ts                    NEW: keysWrittenTwice() finds a key that one object in a
+                               file writes twice (added after the step)
 src/operations.ts              NEW: the code behind each operation, by name
 src/main.ts                    changed: builds the registry first, then reads INV-1008
                                through invoice.get. Another folder of contracts can be
@@ -256,15 +258,15 @@ dsor://org_456/invoice/INV-1008
 refused: "invoice.issue" is not built yet
 ```
 
-`pnpm check` runs the type check, then 129 tests:
+`pnpm check` runs the type check, then 133 tests:
 
 ```text
  Test Files  7 passed (7)
-      Tests  129 passed (129)
+      Tests  133 passed (133)
 ```
 
 Outside the dsor repository, the two tests that compare the schema copies have no
-original to compare with, so they are skipped: `127 passed | 2 skipped`.
+original to compare with, so they are skipped: `131 passed | 2 skipped`.
 
 ## Break it
 
@@ -295,14 +297,14 @@ if (risk && typeof risk === "object" && risk.level === undefined) risk.level = "
 Run `pnpm test`. These are the lines that matter:
 
 ```text
-     × DSOR-OPR-02b: a command with no risk level is refused, not given one 4ms
-     × DSOR-OPR-02b: a query with no risk level is refused, not given one 0ms
+     × DSOR-OPR-02b: a command with no risk level is refused, not given one 5ms
+     × DSOR-OPR-02b: a query with no risk level is refused, not given one 1ms
  FAIL  test/contract.test.ts > C6: nothing is filled in for the four fields the rule names > DSOR-OPR-02b: a command with no risk level is refused, not given one
 AssertionError: expected '' to match '/risk must have required property \'l…'
-      Tests  2 failed | 127 passed (129)
+      Tests  2 failed | 131 passed (133)
 ```
 
-Two tests in 129 see it. The test that removes the whole `risk` still passes, because
+Two tests in 133 see it. The test that removes the whole `risk` still passes, because
 the guess only runs when `risk` is there. Delete the two lines, and `pnpm check` is
 green again.
 
@@ -463,10 +465,6 @@ Left open, on purpose. The next step starts from this list:
   start-up, code can still write `contract.risk.level = "low"`. DSOR-OPR-02b is about
   the registry while it loads. Freezing is a second idea. It belongs with the first
   step whose code reads a contract.
-- **A field written twice in one file.** `JSON.parse` keeps the last one, with no
-  error. `{ "risk": { "level": "critical" }, "risk": { "level": "low" } }` loads as
-  `low`. This is a downside of decision 4. Catching it needs a different JSON reader,
-  which is a second idea.
 - **The values inside the shipped contracts are not tested.** Changing
   `invoice.issue`'s risk from `medium` to `high` passes every test. What a value means
   is tested by the step that uses it: permissions, risk rules.
@@ -510,6 +508,16 @@ Also fixed then: the program's test waits up to 30 seconds, as step 04 found it 
 a busy machine. A read returns a copy of the stored invoice (fixed in step 01). And
 every comment that points into a README names step 03.
 
+Fixed later the same day, from step 06's review: **a field written twice in one file.**
+`JSON.parse` keeps the last one, with no error, so
+`{ "risk": { "level": "critical" }, "risk": { "level": "low" } }` loaded as `low`. This
+step had left it open, because catching it seemed to need a different JSON reader. It
+needs only a short scan of the text that `JSON.parse` has already accepted:
+`keysWrittenTwice()` in `src/json.ts`. A contract that writes a key twice is now
+refused, with every other problem, the way two contracts with one id are (decision 7).
+Four tests prove it: a key written twice at the top, inside another object, and once
+through a `\u` escape, and a value that only repeats its key's name, which is accepted.
+
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
@@ -518,10 +526,10 @@ every comment that points into a README names step 03.
 | DSOR-OPR-02a | The registry rejects a contract that omits a mandatory field | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 28 tests: 23 in `test/contract.test.ts` (C3, C4), and 5 in `test/registry.test.ts` (C5) |
 | DSOR-OPR-02b | The registry never fills in a default for risk level, execution semantics, effect, or idempotency | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 8 tests: 5 in `test/contract.test.ts` (C6), and 3 in `test/registry.test.ts` (C7) |
 
-Nine more tests carry no rule id. They prove this tutorial's own choices: two
-contracts with one id (decision 7), how start-up reads and sorts the folder, the
-program itself and its refusal to start, an input `invoice.get` refuses, and the length
-of a refusal.
+Thirteen more tests carry no rule id. They prove this tutorial's own choices: two
+contracts with one id, and a key written twice in one contract (decision 7), how
+start-up reads and sorts the folder, the program itself and its refusal to start, an
+input `invoice.get` refuses, and the length of a refusal.
 
 The two schema files in `schemas/` are copies of the specification's. Inside the dsor
 repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every

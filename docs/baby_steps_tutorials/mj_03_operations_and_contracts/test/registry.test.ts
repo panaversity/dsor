@@ -148,6 +148,39 @@ describe("C7: a loaded contract is exactly what was written", () => {
     expect(message).toMatch('"invoice.get" has two contracts: a.json and b.json');
     expect(message).toMatch("b.json: must have required property 'risk'");
   });
+
+  // No rule id: JSON.parse keeps the last of two values for one key, and says nothing.
+  // Keeping one would be a guess, as with two contracts for one id (step 03's README,
+  // decision 7). Found by step 06's review, and fixed from step 03 on. JSON.stringify
+  // never writes a key twice, so each text is changed by hand.
+  it.each([
+    ["at the top", '"risk":', '"risk":{"level":"high"},"risk":', "risk"],
+    [
+      "inside another object",
+      '"permission":',
+      '"permission":"invoice:issue","permission":',
+      "permission",
+    ],
+    [
+      "once plainly and once with a \\u escape",
+      '"risk":',
+      '"risk":{"level":"high"},"\\u0072isk":',
+      "risk",
+    ],
+  ])(
+    "a key written twice, %s, is refused, not one of its values picked",
+    (_where, from, to, key) => {
+      const text = JSON.stringify(contract("invoice.get")).replace(from, to);
+      expect(refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}))).toMatch(
+        `invoice.get.json: "${key}" is written twice in one object`,
+      );
+    },
+  );
+
+  it("a value that repeats its own key's name is not a key written twice", () => {
+    const text = JSON.stringify({ ...contract("invoice.get"), input: { schema: "schema" } });
+    expect(refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}))).toBe("");
+  });
 });
 
 // No rule id: this is about the refusal's message, as in steps 01 and 02. The name comes

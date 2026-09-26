@@ -325,20 +325,20 @@ pnpm test -t "invoice.void"
 
 ```text
  Test Files  1 passed | 10 skipped (11)
-      Tests  3 passed | 380 skipped (383)
+      Tests  3 passed | 385 skipped (388)
 ```
 
 All three callers are denied `invoice.void`. Nobody wrote a rule against it.
 
-`pnpm check` runs the type check, then 383 tests:
+`pnpm check` runs the type check, then 388 tests:
 
 ```text
  Test Files  11 passed (11)
-      Tests  383 passed (383)
+      Tests  388 passed (388)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `380 passed | 3 skipped`.
+original to compare with, so they are skipped: `385 passed | 3 skipped`.
 
 ## Break it
 
@@ -372,7 +372,7 @@ AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal
 -   "code": "AUTHORIZATION_DENIED",
     "correlation": {
       "agent_id": "accounts-payable-fte",
-      "request_id": "req_96da2795-afc6-49d2-aac3-cc4d28215db0",
+      "request_id": "req_a5397fa5-9bc0-44c6-9f78-01f2b4663a8e",
     },
 -   "message": "\"vendor.get\" needs vendor:read, which the caller does not hold",
 -   "retry": "never",
@@ -381,7 +381,7 @@ AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal
 +   },
   }
 …
-      Tests  11 failed | 372 passed (383)
+      Tests  11 failed | 377 passed (388)
 ```
 
 `vendor.get` is a new operation with code, added after the check was written. Nobody
@@ -598,15 +598,12 @@ spot in the repository's guard: a break that deleted the `// copied from` line a
 loosened the pattern passed `pnpm guard`. After the step, the map placed the two rules
 in steps 27 and 29. The guard gained a check, `pattern-origin`: every pattern that a
 step's `src/` gives a name must say where it comes from, so deleting the line now
-fails.
+fails. And a key written twice in a JSON file is now refused, where `JSON.parse` kept
+the last value without a word: in a contract from step 03 on, and a role in
+`roles.json` here, which the review had left open.
 
 ### Left open
 
-- **A role named twice in `roles.json`.** `JSON.parse` keeps the last one, so a second
-  `ap_agent` line could widen the agent to `invoice:issue`, and start-up would not see
-  it. Step 03 left the same flaw open for a contract that names one field twice. Both
-  are best fixed once, in the earliest step. From step 16, each role is one row in
-  DSoR's own store.
 - **The agent's stand-in role** (decision 5): a permission that no person signed for,
   and T3 for reads. Step 18 should remove it.
 - **A person's token in the agent's hands.** An agent that holds user_123's token is
@@ -630,7 +627,7 @@ fails.
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-AUT-01a | Role-based access control, with permissions in the form `<resource>:<action>` | [§15 Authorization](../../../specs/dsor/02-security.md#15-authorization) | 47 tests in `test/permissions.test.ts` (C1 41, C2 6) |
+| DSOR-AUT-01a | Role-based access control, with permissions in the form `<resource>:<action>` | [§15 Authorization](../../../specs/dsor/02-security.md#15-authorization) | 48 tests in `test/permissions.test.ts` (C1 42, C2 6) |
 | DSOR-AUT-01b | Any operation for which no permission is granted is denied | [§15](../../../specs/dsor/02-security.md#15-authorization) | 19 tests in `test/permissions.test.ts` (C3 5, C4 8, C5 3, C6 3) |
 
 13 more new tests carry no rule id. They prove this tutorial's own choices:
