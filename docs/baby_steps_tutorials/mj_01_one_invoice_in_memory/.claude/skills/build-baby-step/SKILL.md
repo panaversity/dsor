@@ -1,8 +1,8 @@
 ---
 name: build-baby-step
-description: Builds one numbered step of the DSoR baby-steps tutorial. Use when asked to build, plan, continue, fix, or review a baby step or tutorial step ("plan step 07", "build this step"), or when a learner wants to build a step themselves ("learner mode"). Covers the one-new-idea rule, tests titled by rule id and written first, the NEW IN STEP marker, performing the break-it exercise for real, the learner-shaped README, and proving the step runs by itself.
+description: Builds one numbered step of the DSoR baby-steps tutorial. Use when asked to build, plan, continue, fix, or review a baby step or tutorial step ("plan step 07", "build this step"), or when a learner wants to build a step themselves ("learner mode"). Covers the one-new-idea rule, the design written before any code, tests titled by rule id and written first, the NEW IN STEP marker, performing the break-it exercise for real, the learner-shaped README, and proving the step runs by itself.
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Building a baby step
@@ -56,6 +56,11 @@ say why in one line under "Think it through".
 
 ## 3 · Red first, titled by rule id
 
+If the README already holds "The design, before any code", check it first against every
+rule sentence it relies on, and against the real schemas. When they say it is wrong,
+stop and tell the human. The design changes in the README first, and "Think it
+through" says why.
+
 Write the new tests before the new code. Title each with the rule it proves:
 
 ```ts
@@ -65,6 +70,9 @@ it("DSOR-EXE-02: a denied command is recorded before the response", …)
 Test the refusal as carefully as the success. Run the tests and show the human the new
 ones failing, for the right reason. Tests that need a database are named
 `*.db.test.ts` and run against a real PostgreSQL (a Neon branch), never a mock.
+
+A test that expects "yes" passes before any code exists, because nothing says no yet.
+It proves something only beside the "no" code it guards, so write both.
 
 ## 4 · The smallest change that turns them green
 
@@ -78,6 +86,10 @@ Remove the previous step's `NEW IN STEP` markers, so a reader searching for
 "NEW IN STEP" finds only this step's lesson. When a file passes about 150 lines, the
 step is too big or the file wants splitting in a step of its own.
 
+A comment that points into a README names the step: `(step 07's README, decision 3)`,
+even for this step's own README. A bare `(README, decision 3)` is right only in the
+folder that wrote it, and the next step's copy breaks it.
+
 ## 5 · Break it, for real
 
 Every step has a "Break it" exercise. **Perform it yourself**: sabotage the new piece,
@@ -86,17 +98,21 @@ confirm `pnpm check` is green. Never write expected output from imagination.
 
 ## 6 · The step's README
 
-Step 00's headings, plus "Think it through", which step 00 does not have. In this order:
+Step 00's headings, plus "The design, before any code" and "Think it through", which
+step 00 does not have. In this order:
 
 `# Step NN · Title` → **New in this step** (one line) → In plain words → Why it matters
-(a concrete failure from the running story) → What changed since step MM (a short file
-list, and `git diff --no-index` commands for the two folders' `src` and `test`; a
-whole-folder diff buries the lesson under `node_modules`) → Run it → Break it (with real
-output) → Build it yourself with Claude Code (the learner prompt for this step) → Check
-yourself (3 to 5 questions, answers inside `<details>`) → Think it through (what the
-hostile review found and fixed, and what was left open on purpose; the next step starts
-from this list) → The rules this step meets (a table: rule, what it says, a relative
-link to its spec section, the tests that prove it) → **Next:**.
+(a concrete failure from the running story) → The design, before any code (in learner
+mode: the rules split into claims, the decisions the specification leaves to the step,
+each ending with its *Downside:*, the tests by claim, and the breaks with the learner's
+predictions) → What changed since step MM (a short file list, and `git diff --no-index`
+commands for the two folders' `src` and `test`; a whole-folder diff buries the lesson
+under `node_modules`) → Run it → Break it (with real output) → Build it yourself with
+Claude Code (the learner prompt for this step) → Check yourself (3 to 5 questions,
+answers inside `<details>`) → Think it through (what the hostile review found and fixed,
+and what was left open on purpose; the next step starts from this list) → The rules
+this step meets (a table: rule, what it says, a relative link to its spec section, the
+tests that prove it) → **Next:**.
 
 Write for a student whose second language may be English: short sentences, one idea
 each, every term defined where it first appears, no "simply" and no "just".
@@ -121,15 +137,19 @@ in the repository, otherwise
 The reviewer lists every analogy and flags each one that is not on that skill's
 established list. It also breaks the code on purpose, one small change at a time: it
 deletes a `^`, a type check, or a guard, or makes a function ignore its argument. It
-reports every change that leaves all tests green. Fix what it finds or record it under
-"Think it through".
+reports every change that leaves all tests green. It makes those breaks in a copy
+outside the repository, never in the step folder. It also attacks the step with the
+threats in §10.2 of the specification that concern this step's idea, with inputs of its
+own. Fix what it finds or record it under "Think it through".
 
 Finish by telling the human exactly what to do next, because these are outside this
-folder and are theirs to do: add this step's rows to `rules-met.md` beside the steps; in
-author mode, turn the step's name into a link in the map and update its status line;
-update `docs/status.md` in the repository, where a learner copy is listed as a learner
-build and never as the step itself; run `pnpm guard` at the repository root; commit on
-a branch and open a pull request with one step in it.
+folder and are theirs to do: add this step's rows to `rules-met.md` beside the steps (a
+rule keeps the row of the step where it first landed); in author mode, turn the step's
+name into a link in the map and update its status line; update `docs/status.md` in the
+repository, where a learner copy is listed as a learner build and never as the step
+itself; record any question the specification leaves open in
+`research/open-questions.md`; run `pnpm guard` and `pnpm check` at the repository root;
+commit on a branch and open a pull request with one step in it.
 
 ## Learner mode
 
@@ -139,9 +159,15 @@ The learner is here to understand, not to receive a folder.
 - **Teach before code.** After section 1, ask the learner to read the linked spec
   section, then teach the idea and quiz them. Write the README's "In plain words" and
   "Why it matters" before the first test.
+- **Design before code.** Then write "The design, before any code" with the learner:
+  split each rule into claims, list the decisions the specification leaves to the step
+  and the downside of each, name the tests by claim, and record the learner's prediction
+  for each break. Section 3 checks this design against the specification before the
+  first test.
 - **Explain before each file**, in two or three plain sentences, and wait for "go".
-- **Ask before you tell.** Before running a test, ask what they expect. Before the
-  break-it exercise, ask them to predict the failure.
+- **Ask before you tell.** Before running a test, ask what they expect, even which new
+  tests will pass before any code exists. Before the break-it exercise, ask them to
+  predict the failure.
 - **Let them type** when they want to: "Do you want to write this test yourself? I
   will review it."
 - **Do not open the finished official step** until the learner asks to compare. Then
