@@ -89,4 +89,53 @@ for a human. An agent may gather evidence; it does not settle these alone.
     the schema tie all 32 codes? Two rows also carry a condition the schema cannot see:
     `DEPENDENCY_TIMEOUT` is `safe_same_key` only for queries and for commands that
     provably did not run, and `INTERNAL_ERROR` is `never` "for commands".
-
+21. **Which caller does `principal_id` name, and which does `agent_id`?** DSOR-COR-01a
+    carries both ids through connectors, audit, and events, and the correlation schema
+    lists both. Nothing says what either one holds. The audit record already names the
+    subject and the actor chain in its `identity` block. Its example sets only
+    `agent_id`, even though the subject is `user_123`. §36 also sets `dsor.principal_id`
+    in every database transaction, and does not say whose id it is. Step 05's learner
+    build names an agent in `agent_id` and anyone else in `principal_id`, and records
+    that as its own choice. Is `principal_id` the subject, and `agent_id` the agent in
+    the actor chain? Which one does §36 set?
+22. **What may a caller's own `request_id` hold?** §32 lets a caller send a `request_id`,
+    and DSOR-COR-01a carries it into connectors, audit, and events. The schema asks only
+    for a string. So a line break, a control character, a megabyte of text, an id in the
+    form DSoR makes, or another caller's id all travel on unchanged. Step 05's learner
+    build accepts 1 to 128 characters and refuses anything else with
+    `VALIDATION_FAILED`, as its own decision, and never checks for repeats. It even
+    echoes the caller's own text to a caller with no login. Should the specification
+    bound the form of the correlation ids a caller sends, and say what DSoR does with a
+    bad one? Must a request id be unique for a principal? The same goes for `task_id`,
+    `trace_id`, and `session_id`.
+23. **What does a membership's `scopes` hold?** §12 gives each tenant membership `roles`
+    and `scopes`, and nothing else in the specification mentions membership scopes. The
+    security context has `tokenScopes`, and DSOR-DEL-01b and DSOR-DEL-02 use token
+    scopes. DSOR-IDN-04a accepts "role and scope assertions" only from an authoritative
+    issuer. Step 05's learner build stores roles and leaves scopes out. Are membership
+    scopes the scope assertions of DSOR-IDN-04a? How do they combine with token scopes
+    in the intersection that DSOR-DEL-02 computes? Or should the field go?
+24. **How does DSoR find an identifier inside the arguments?** DSOR-SRC-02b refuses a
+    tenant, principal, or delegation id "inside operation arguments" that disagrees with
+    the security context. An operation contract names its input schema, but marks no
+    field as such an identifier. `bind` shows where a resource URI sits, and a URI
+    carries its tenant. Nothing shows where a principal or a delegation id sits. Step
+    05's learner build checks a list of field names: `principal`, `subject`, `user`, and
+    six more. It misses other spellings, such as `principalId` or a nested
+    `invoice.principal`. It also refuses an operation that uses one of those names for
+    other data, such as the `subject` of an email. Should a contract mark the input
+    fields that carry a principal, tenant, or delegation id? Then DSOR-SRC-02b could be
+    checked exactly, and the injection suite of DSOR-SRC-01b could be built from the
+    same marks.
+25. **In which identity mode does an agent call at L1?** §0.2 calls L1 "a supervised
+    trainee". §13.2 has three modes, and `direct` is for "a human or application, for
+    itself", so it does not fit an agent. The rules that settle an agent's mode are all
+    L2: DSOR-DEL-03a and DSOR-DEL-03b ask for a verifiable actor chain in
+    `on_behalf_of`, and DSOR-DEL-07 asks for a delegation in `unattended`. But
+    DSOR-IDN-02a, that an agent logs in with its own credentials, is L1. And the
+    security context, which requires an identity mode, is an Appendix A artifact. So an
+    L1 deployment can receive an agent's call with no rule that says which mode it is
+    in, or what proves the person the agent works for. Step 05's learner build meets
+    exactly this case: the agent logs in as itself, has no mode, and reads INV-1008
+    just as `cfo_100` does. Must an agent at L1 call `on_behalf_of`? If so, should
+    DSOR-DEL-03a be L1? Or does serving an agent need L2?

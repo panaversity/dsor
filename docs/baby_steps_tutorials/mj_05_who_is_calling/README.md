@@ -619,6 +619,9 @@ about payments, a reader might take it for money. After the step, steps 03 to 05
 - **`src/registry.ts` has 158 lines.** The build skill asks for about 150. `call()` now
   holds the start of the checklist that step 07 moves into a function of its own.
 
+The five questions this step raised for the specification are open questions 21 to 25
+in [`research/open-questions.md`](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26).
+
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |

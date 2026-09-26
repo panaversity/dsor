@@ -42,6 +42,11 @@ contract. Step 03 found this in review and left it open. The question for the sp
 should "required" here mean "present and not empty", and must each named operation
 exist?
 
+Steps 04 and 05 recorded their questions in
+[`research/open-questions.md`](../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)
+instead: 19 and 20 from step 04, and 21 to 25 from step 05. Each one rests on a
+sentence of the specification, so it belongs with the specification's open questions.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -103,6 +108,28 @@ reviewer for a mutation sweep too.
   repository is there, and is skipped outside it. CI runs every step's tests, so a copy
   that drifts fails CI. A `pnpm guard` check for copied files, which we had planned, is
   now optional.
+- **Check the design against the rule sentences, not only the schemas** (step 05).
+  Decisions 6 and 7 each made sense alone. Together, they let a caller with no login
+  get `VALIDATION_FAILED`, an answer before DSoR knew who was calling. DSOR-IDN-01
+  forbids that. The check came before the first test, so no code had to change.
+- **"Yes" tests pass before any code.** In step 05's red run, the test that the agent's
+  own id is accepted passed with no code at all, because nothing said no yet. A "no"
+  test passes only once the code that says no exists. Predicting the red run showed it.
+- **Which refusal wins is part of the design.** When a call breaks two rules, the order
+  of the checks decides what the evidence says. Step 05's review found a bad request id
+  hiding an attempt to act as the CFO.
+- **Some breaks change nothing a caller can see.** Step 05's sweep made 85 breaks, and
+  15 passed. Four of them changed nothing observable, such as a cast that changes
+  nothing. Write those down as such, and answer the rest with tests.
+- **Name the step in every README reference**, even the step's own: "(step 05's README,
+  decision 7)". A bare "(README, decision 7)" is right only in the folder that wrote it,
+  and every copy into a later step broke it.
+- **A decision's cost is its "Downside".** It was "Price", and in a story about
+  payments a reader might take a price for money.
+- **A friction item for the skill.** The `build-baby-step` skill does not yet ask for
+  three things steps 04 and 05 now do: name the step in every reference, label a
+  decision's cost "Downside", and have the review try the §10.2 threats with inputs of
+  its own. Step 06 starts with them only if the skill says so.
 
 ## Bugs found in earlier builds
 
@@ -124,6 +151,15 @@ Step 04's review found these on 2026-09-26:
   - The name-order test cannot see a missing `.sort()` on macOS, which reads a folder in
     name order anyway. On Linux it might.
 
+Step 05 found two more on 2026-09-26:
+
+- **Comments pointed at the wrong README** (from `mj_04`). Comments copied from step 03
+  said "(README, decision N)", and in step 04's folder that meant step 04's decisions.
+  Fixed in `mj_04`, then carried into `mj_05`: every such comment now names its step.
+- **"This step" in `uri.ts`** (from `mj_02`). The comment says "this step fixes one form
+  for every tenant id". Step 02 made that choice, but in every later copy "this step"
+  reads as the later step. Not fixed yet.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
@@ -131,6 +167,11 @@ Step 04's review found these on 2026-09-26:
   packages, on two operating systems. Deferred until it matters.
 - **Our map and the other learner's map differ at step 03.** That is fine. Both of us
   are learning.
+- **What the agent may do before step 18.** From step 06, permissions decide what a
+  caller may do. The agent's authority comes from a delegation, and delegations arrive
+  in step 18. So steps 06 to 17 must give the agent some authority of its own, or refuse
+  it everything. Step 06's design has to choose. Open question 25 asks the
+  specification the same thing.
 - **Where DSOR-OPR-03a is taught.** The rule says an agent must never get a general
   tool, like `execute_sql` or "call any API". The specification's §7 and step 03's
   story both lead with it. No step in the map names it yet.
