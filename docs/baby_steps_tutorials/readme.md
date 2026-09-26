@@ -452,9 +452,12 @@ query's success cannot yet, because no result-envelope outcome fits a query
 Turn every caller into a *principal*: a person, an agent, or an app. For now a fake
 login header is enough. The important rule starts here: DSoR decides who you are from
 the login, never from the arguments.
-**Spec:** [§12](../../specs/dsor/02-security.md#12-identity-and-principals) ·
-DSOR-IDN-01, DSOR-SRC-02a.
-**Done when:** putting `"principal": "cfo_100"` inside the arguments changes nothing.
+**Spec:** [§11](../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary),
+[§12](../../specs/dsor/02-security.md#12-identity-and-principals) · DSOR-IDN-01,
+DSOR-SRC-02a, and DSOR-SRC-02b for a principal (steps 10 and 18 add tenant and
+delegation ids).
+**Done when:** putting `"principal": "cfo_100"` inside the arguments does not change who
+is calling, and the call is refused with `AUTHORIZATION_DENIED`.
 
 ### 06 · `06_permissions_deny_by_default`
 

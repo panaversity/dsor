@@ -21,3 +21,6 @@ Until an official step exists, its row may point at a learner build, marked
 | DSOR-ERR-01a | [04 · Result and error envelopes](mj_04_result_and_error_envelopes/README.md) (learner build) | [`test/envelope.test.ts`](mj_04_result_and_error_envelopes/test/envelope.test.ts) |
 | DSOR-COR-01b | [04 · Result and error envelopes](mj_04_result_and_error_envelopes/README.md) (learner build) | [`test/call.test.ts`](mj_04_result_and_error_envelopes/test/call.test.ts) |
 | DSOR-SCH-01 | [04 · Result and error envelopes](mj_04_result_and_error_envelopes/README.md) (learner build), error envelopes only; a query's answer breaks it | [`test/envelope.test.ts`](mj_04_result_and_error_envelopes/test/envelope.test.ts) |
+| DSOR-IDN-01 | [05 · Who is calling](mj_05_who_is_calling/README.md) (learner build) | [`test/who-is-calling.test.ts`](mj_05_who_is_calling/test/who-is-calling.test.ts) |
+| DSOR-SRC-02a | [05 · Who is calling](mj_05_who_is_calling/README.md) (learner build), who is calling only; the rest of the security context is not built yet | [`test/who-is-calling.test.ts`](mj_05_who_is_calling/test/who-is-calling.test.ts) |
+| DSOR-SRC-02b | [05 · Who is calling](mj_05_who_is_calling/README.md) (learner build), a principal only; tenant and delegation ids come in steps 10 and 18 | [`test/who-is-calling.test.ts`](mj_05_who_is_calling/test/who-is-calling.test.ts) |
