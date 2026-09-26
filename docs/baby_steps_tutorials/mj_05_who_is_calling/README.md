@@ -40,11 +40,12 @@ investigator needs to see. Ignoring the words quietly would hide the attempt.
 would say `user_123` did the work. Nobody could tell what the person did from what the
 agent did.
 
-**A request id is a label, not a lock.** A caller may send its own request id so it can
-find the call later. It must never use that id to stop a payment happening twice. A
-retry after a timeout is a new call, so it gets a new request id. If an agent treated
+**A request id labels a call. It stops nothing from happening twice.** A caller may
+send its own request id so it can find the call later. It must never use that id to
+stop a payment happening twice. A retry after a timeout is a new call, so it gets a new
+request id. If an agent treated
 the request id as "the same payment", DSoR would see a new request and could pay
-VENDOR-44 twice. The lock against doing something twice is a different id, the
+VENDOR-44 twice. What stops the same work happening twice is a different id, the
 **idempotency key**, which arrives in step 20.
 
 | | Request id (§32) | Idempotency key (§22, step 20) |
