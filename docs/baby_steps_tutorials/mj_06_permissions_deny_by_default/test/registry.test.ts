@@ -17,6 +17,8 @@ import {
 } from "./helpers.ts";
 
 // Every call carries the agent's login token (step 05's README, decision 1).
+// NEW IN STEP 06: every registry is built with the role table too (step 06's README,
+// decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers, shippedRoles);

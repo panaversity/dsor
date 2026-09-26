@@ -91,13 +91,19 @@ export function permissionsOf(caller: Principal, roles: Roles): ReadonlySet<stri
 
 /** Refuses the call unless the caller holds the very permission the contract names. */
 export function checkPermission(caller: Principal, contract: Contract, roles: Roles): void {
+  const name = JSON.stringify(contract.id);
+  const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;
   // The schema makes every contract name one at start-up. If one ever did not, nobody could
   // call it: when the answer is missing, the answer is no.
-  const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;
+  if (typeof needed !== "string") {
+    throw new Refusal("AUTHORIZATION_DENIED", `${name} names no permission, so nobody may call it`);
+  }
   // Only the same text grants it. No wildcard, no "issue grants read", and the ".propose"
   // form does not stand in for the full one (step 06's README, decisions 2 and 3).
-  if (typeof needed !== "string" || !permissionsOf(caller, roles).has(needed)) {
-    const why = `needs ${String(needed)}, which the caller does not hold`;
-    throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(contract.id)} ${why}`);
+  if (!permissionsOf(caller, roles).has(needed)) {
+    throw new Refusal(
+      "AUTHORIZATION_DENIED",
+      `${name} needs ${needed}, which the caller does not hold`,
+    );
   }
 }

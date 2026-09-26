@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { handlers } from "../src/operations.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { whoIsCalling, type Principal } from "../src/principals.ts";
-import { buildRegistry, call, type Handler, type Registry } from "../src/registry.ts";
+import {
+  buildRegistry,
+  call,
+  type Contract,
+  type Handler,
+  type Registry,
+} from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
@@ -76,6 +82,15 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     const noCfo = rolesFile({ ap_agent: ["invoice:read"], ap_supervisor: ["invoice:read"] });
     expect(refusal(() => buildRegistry(shipped, handlers, noCfo))).toMatch(
       'roles.json: cfo_100 holds the role "CFO", which the table does not have',
+    );
+  });
+
+  // Found by the review: the test above names a person, so a check that skipped agents
+  // passed it. The agent's role is looked up too.
+  it("DSOR-AUT-01a: an agent holding a role that is not in the table stops start-up too", () => {
+    const noAgentRole = rolesFile({ ap_supervisor: ["invoice:read"], CFO: ["invoice:read"] });
+    expect(refusal(() => buildRegistry(shipped, handlers, noAgentRole))).toMatch(
+      'roles.json: accounts-payable-fte holds the role "ap_agent", which the table does not have',
     );
   });
 
@@ -176,6 +191,23 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     };
     expect([...permissionsOf(twoCompanies, registry.roles)]).toEqual(["invoice:read"]);
   });
+
+  // Found by the review: every principal in the story holds one role, so code that read
+  // only the first role, or only the last, passed every test.
+  it("DSOR-AUT-01a: a caller with two roles holds what each of them grants", () => {
+    const cfoApproves = { ...STARTING_ROLES, CFO: ["invoice:read", "payment:approve"] };
+    const { roles } = checkRoles(rolesFile(cfoApproves), []);
+    const twoRoles: Principal = {
+      id: "user_123",
+      type: "human",
+      memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }],
+    };
+    expect([...permissionsOf(twoRoles, roles)].sort()).toEqual([
+      "invoice:issue",
+      "invoice:read",
+      "payment:approve",
+    ]);
+  });
 });
 
 describe("C3: a call whose permission the caller does not hold is refused", () => {
@@ -268,10 +300,42 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
       expect(spy).not.toHaveBeenCalled();
     },
   );
+
+  // Found by the review: the schema refuses such a contract at start-up, so only a
+  // registry built by hand can hold one. No test held the code to its promise that
+  // nobody may call it.
+  it.each([
+    ["an empty authorization", { authorization: {} }],
+    ["no authorization at all", {}],
+  ])(
+    "DSOR-AUT-01b: a contract with %s, in a registry built by hand, is denied to everyone",
+    (_why, part) => {
+      const spy = vi.fn<Handler>(() => ({ id: "INV-1008" }));
+      const bare = { ...without(contract("invoice.get"), "authorization"), ...part };
+      const handMade: Registry = {
+        contracts: new Map([["invoice.get", bare as Contract]]),
+        handlers: new Map([["invoice.get", spy]]),
+        roles: registry.roles,
+      };
+      expect(call(handMade, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+        code: "AUTHORIZATION_DENIED",
+        message: '"invoice.get" names no permission, so nobody may call it',
+        retry: "never",
+        correlation: correlationFor(THE_SUPERVISOR),
+      });
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("C5: who is calling, then the contract, then the permission, then 'is it built'", () => {
-  it("DSOR-AUT-01b: user_123, who holds invoice:issue, hears that invoice.issue is not built yet", () => {
+  // Found by the review: this test first checked only user_123's answer, which a step
+  // with no permission check gives too. The pair shows the order: one operation, two
+  // callers, two answers.
+  it("DSOR-AUT-01b: a reader is denied invoice.issue, and user_123, who may issue, hears it is not built yet", () => {
+    expect(call(registry, CFO, "invoice.issue", {})).toStrictEqual(
+      denied("invoice.issue", "invoice:issue", THE_CFO),
+    );
     expect(call(registry, SUPERVISOR, "invoice.issue", {})).toStrictEqual({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',

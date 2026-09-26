@@ -141,7 +141,7 @@ export function registryWith(handler: Handler): Registry {
   );
 }
 
-/** The shipped operations, their code, and the role table, as start-up builds them. */
+/** NEW IN STEP 06: the shipped operations, their code, and the role table, as start-up builds them. */
 export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles);
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
@@ -165,7 +165,7 @@ export const REQUEST_ID: RegExp =
 export const UNEXPECTED = "DSoR hit an unexpected error";
 
 // invoice.issue with code. A command must be refused before its code runs (step 04's
-// README, decision 1).
+// README, decision 1). NEW IN STEP 06: built with the role table too.
 const issueHasCode = buildRegistry(
   shipped,
   { ...handlers, "invoice.issue": () => "issued" },

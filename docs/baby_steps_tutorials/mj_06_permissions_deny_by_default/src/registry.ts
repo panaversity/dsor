@@ -155,7 +155,7 @@ export function call(
     if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
     // A command's success needs a result envelope, and that needs a
     // proposal (step 22). So a command is refused before its code runs (step 04's
-    // README, decision 1).
+    // README, decision 1). NEW IN STEP 06: it reads the contract found above.
     if (contract["kind"] !== "query") {
       const why = "is a command, and commands are not built yet";
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} ${why}`);
