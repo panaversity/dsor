@@ -124,15 +124,20 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 - **C1:** start-up is refused for a role granting `Invoice:Read`, `invoice:*`,
   `invoice`, or an empty string, and for a principal naming a role not in the table.
+  It is refused too for a table that is not JSON, and for a role whose permissions are
+  not a list. The program itself exits with code 1 and names the problem. A contract
+  that needs `Invoice:Read` is refused as well, by step 03's schema check.
 - **C2:** each principal's permissions, worked out from its roles, are exactly the
-  table's.
+  table's. Only the roles in `org_456` count.
 - **C3:** `cfo_100` and `accounts-payable-fte` are each denied `invoice.issue`. The
-  refusal is `AUTHORIZATION_DENIED` with retry `never`.
+  refusal is `AUTHORIZATION_DENIED` with retry `never`. Holding `invoice:read` does not
+  grant an operation that needs `invoice:read_all`.
 - **C4:** with `invoice.void` added, all three callers are denied it.
 - **C5:** `user_123`, who holds `invoice:issue`, hears "not built yet". A reader hears
   `AUTHORIZATION_DENIED`. A caller holding only `invoice:issue.propose` is denied.
 - **C6:** `{ "permissions": ["invoice:issue"] }` and `{ "roles": ["ap_supervisor"] }` in
-  the input change nothing.
+  the input change nothing. Neither does a list of permissions in the request envelope,
+  beside the token.
 
 ### Breaks we will try, and what we expect
 
@@ -141,7 +146,8 @@ Run against the finished step. The learner's predictions were recorded before an
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
 | Q1 | "Is it built" is checked before the permission | C5 | survives |
-| Q2 | A permission matches when the one needed starts with it, `startsWith` instead of equality | C5, the `.propose` test | survives |
+| Q2a | A held permission counts when it starts with the one needed: `held.startsWith(needed)` | C5, the `.propose` test | survives |
+| Q2b | A held permission counts when the one needed starts with it: `needed.startsWith(held)` | C3, the `invoice:read_all` test | survives |
 | Q3 | A role missing from the table is skipped instead of stopping start-up | C1 | survives |
 | Q4 | A list of permissions in the input is added to what the caller holds | C6 | survives |
 
@@ -206,7 +212,19 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+### Found before the first test
+
+- **Q2 described one break and expected another's test to catch it.** Q2 first said "a
+  permission matches when the one needed starts with it", which is
+  `needed.startsWith(held)`. The `.propose` test cannot catch that break:
+  `invoice:issue` does not start with `invoice:issue.propose`, so the caller is still
+  denied. That test catches only the other direction. So Q2 is now two breaks, Q2a and
+  Q2b, and C3 gained a test for decision 2: holding `invoice:read` does not grant an
+  operation that needs `invoice:read_all`. The learner's prediction, "survives", was
+  made before the split. It stands for both.
+
+_The rest is written after the review, with the result of every break in the table
+above._
 
 ## The rules this step meets
 
