@@ -104,6 +104,26 @@ reviewer for a mutation sweep too.
   that drifts fails CI. A `pnpm guard` check for copied files, which we had planned, is
   now optional.
 
+## Bugs found in earlier builds
+
+A later step's review can find a bug that an earlier build has. The fix belongs in the
+earliest build that has it. Then it is carried forward by hand, one build at a time.
+Step 04's review found these on 2026-09-26:
+
+- **A query returns the stored record itself** (from `mj_01`). `getInvoice` returns the
+  object in the `invoices` list, and from step 04 `call` hands it to the caller as
+  `data`. A caller that sets `answer.data.open_amount.value = "0.00"` changes INV-1008
+  for every later caller. A read can write. The fix: return a copy, or freeze the stored
+  invoices. Freezing was left for later in step 01, and again in step 03.
+- **Three weak tests in `mj_03`.** Each one lets a break pass:
+  - No test runs the program with a broken contract. A refused start-up that exits
+    with 0 passes.
+  - No test has a contract file that holds `null`. Without the `continue` after the
+    schema's problems, start-up would crash with a `TypeError` instead of naming every
+    problem.
+  - The name-order test cannot see a missing `.sort()` on macOS, which reads a folder in
+    name order anyway. On Linux it might.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

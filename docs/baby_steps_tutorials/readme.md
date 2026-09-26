@@ -439,10 +439,13 @@ DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b.
 ### 04 · `04_result_and_error_envelopes`
 
 Every answer gets the same outer shape. Every error gets a code and says whether a
-retry is safe.
-**Spec:** [§28](../../specs/dsor/03-execution.md#28-result-and-error-envelopes) ·
-DSOR-ERR-01a, DSOR-SCH-01.
-**Done when:** every response in the tests validates against its schema.
+retry is safe. Every answer carries a `request_id` that DSoR made.
+**Spec:** [§28](../../specs/dsor/03-execution.md#28-result-and-error-envelopes),
+[§32](../../specs/dsor/03-execution.md#32-correlation) · DSOR-ERR-01a, DSOR-SCH-01,
+DSOR-COR-01b.
+**Done when:** every error response in the tests validates against its schema. A
+query's success cannot yet, because no result-envelope outcome fits a query
+([open question 19](../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)).
 
 ### 05 · `05_who_is_calling`
 

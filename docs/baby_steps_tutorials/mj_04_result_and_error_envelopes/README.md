@@ -112,8 +112,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    and again into the test. *Price:* both copies come from the same prose. If §28
    changes a retry class, no test fails until someone types the change. If §28 adds or
    removes a code, the schema changes too, and the tests that compare with it fail. The
-   rule's sentence says only "a retry class", not "the table's": a question for the
-   specification.
+   rule's sentence says only "a retry class", not "the table's". That is raised as
+   [open question 20](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26).
 3. **A query's success is `{ data, correlation }`.** Both names are the ones
    `result-envelope.schema.json` already uses, and `correlation` follows the
    specification's own definition. There is no `outcome`, because none fits (finding
@@ -570,7 +570,8 @@ The next step starts from this list.
 - **Where does a query's answer get its outcome?** Appendix A says the result envelope
   carries query results. DSOR-FRS-01a says every query result states `observed_at` and
   its freshness. The schema has no outcome for a query, and no field for either. This
-  question for the specification is still to be raised.
+  is raised as
+  [open question 19](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26).
 - **A live object can make `call` throw, or choose a refusal's code.** A getter in the
   input can throw its own `Refusal`. A `Proxy` can make `instanceof` throw. A caller
   outside the program sends JSON, which carries neither. Code that can pass a live
@@ -595,7 +596,8 @@ The next step starts from this list.
 - **A caller's own text appears in a refusal's message,** up to 60 characters. It can
   read "retry: safe_same_key". The `retry` field is what counts.
 
-Found in earlier steps, and reported to be fixed there:
+Found in earlier steps. They are recorded in [`mj_notes.md`](../mj_notes.md), to be
+fixed in the earliest build that has them:
 
 - **A query returns the stored record itself** (steps 01 and 03). A caller that changes
   `answer.data.status` changes INV-1008 for every later caller.

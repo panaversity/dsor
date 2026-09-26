@@ -69,3 +69,24 @@ for a human. An agent may gather evidence; it does not settle these alone.
     has tenant, user, and agent scopes of its own. The cross-tenant test suite for the
     stack has to cover both, through the adapter.
 
+## Found by the baby steps (added 2026-09-26)
+
+19. **What does a query's answer look like?** Appendix A says `result-envelope` carries
+    "command and query results", so DSOR-SCH-01 covers a query's answer. But a result
+    envelope must name an outcome, and none fits a read. `COMMITTED`, `READY`, and
+    `PENDING_APPROVAL` need a proposal and a payload hash. `VALIDATED` passes with only a
+    `decision`, but it answers a `validate_only` dry run. DSOR-FRS-01a also asks every
+    query result to state `observed_at`, the resource version, the connector, and the
+    freshness delivered, and the closed schema has no field for any of them. Step 04's
+    learner build answers a query with `{ data, correlation }` and records that this
+    breaks DSOR-SCH-01. Does the result envelope need an outcome for a read, or does a
+    query's answer need a schema of its own?
+20. **Is a code's retry class the one in the §28 table?** DSOR-ERR-01a asks for "a code
+    from this table ... a retry class". The error-envelope schema ties a class to a code
+    for only three codes: `OUTCOME_UNKNOWN`, `RESOURCE_HELD`, and `BATCH_PARTIAL`. So
+    `AUTHORIZATION_DENIED` with `safe_same_key`, "denied, try again at once", passes the
+    schema. Should the rule say "the retry class the table gives that code", and should
+    the schema tie all 32 codes? Two rows also carry a condition the schema cannot see:
+    `DEPENDENCY_TIMEOUT` is `safe_same_key` only for queries and for commands that
+    provably did not run, and `INTERNAL_ERROR` is `never` "for commands".
+
