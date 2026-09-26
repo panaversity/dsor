@@ -1,10 +1,12 @@
 // What call answers, by claim (C4, C6, C7 in step 04's README).
 import { describe, expect, it, vi } from "vitest";
 import type { Answer, ErrorEnvelope } from "../src/envelope.ts";
+import type { Invoice } from "../src/invoice.ts";
 import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
 import {
   AGENT,
+  CFO,
   REFUSALS,
   REQUEST_ID,
   THE_AGENT,
@@ -80,6 +82,17 @@ describe("C6: a query's success is { data, correlation }", () => {
         status: "issued",
       },
       correlation: correlationFor(THE_AGENT),
+    });
+  });
+
+  // No rule id: a read never writes. Found by step 04's review: a caller that changed the
+  // data of its answer changed INV-1008 for every caller after it.
+  it("changing an answer's data does not change the stored invoice", () => {
+    const answer = call(registry, AGENT, "invoice.get", { id: "INV-1008" }) as { data: Invoice };
+    answer.data.status = "paid";
+    answer.data.open_amount.value = "0.00";
+    expect(call(registry, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+      data: { status: "issued", open_amount: { value: "31400.00", currency: "USD" } },
     });
   });
 

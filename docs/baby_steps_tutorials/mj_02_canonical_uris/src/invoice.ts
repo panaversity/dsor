@@ -24,11 +24,14 @@ export const invoices: Invoice[] = [
   },
 ];
 
-/** Finds one invoice by id, or returns `undefined` when there is none. */
+/** Finds one invoice by id and returns a copy of it, or `undefined` when there is none. */
 export function getInvoice(list: Invoice[], id: string): Invoice | undefined {
   // The list is passed in, so this stays a pure function. In step 09 it will move into
   // a database.
-  return list.find((invoice) => invoice.id === id);
+  const found = list.find((invoice) => invoice.id === id);
+  // A copy, so a caller that changes what it was given cannot change the stored invoice.
+  // A read never writes. Found by step 04's review, and fixed from step 01 on.
+  return found === undefined ? undefined : structuredClone(found);
 }
 
 // NEW IN STEP 02: every invoice has its canonical URI (DSOR-RID-01a). This step knows

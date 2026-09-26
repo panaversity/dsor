@@ -33,4 +33,17 @@ describe("getInvoice", () => {
   it("returns undefined for an id that does not exist", () => {
     expect(getInvoice(invoices, "INV-9999")).toBeUndefined();
   });
+
+  // No rule id: a read never changes what is stored. Found by step 04's review: a caller
+  // that changed an invoice it had read changed INV-1008 for everyone after it.
+  it("changing a found invoice does not change the stored one", () => {
+    const found = getInvoice(invoices, "INV-1008");
+    if (found === undefined) throw new Error("INV-1008 is missing");
+    found.status = "paid";
+    found.open_amount.value = "0.00";
+    expect(getInvoice(invoices, "INV-1008")).toMatchObject({
+      status: "issued",
+      open_amount: { value: "31400.00", currency: "USD" },
+    });
+  });
 });
