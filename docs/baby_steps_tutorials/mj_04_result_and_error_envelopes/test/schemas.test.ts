@@ -19,7 +19,7 @@ describe("the schema copies", () => {
     },
   );
 
-  // NEW IN STEP 04: the error envelope's schema is a copy too (README, decision 6).
+  // NEW IN STEP 04: the error envelope's schema is a copy too (step 04's README, decision 6).
   it.skipIf(!existsSync(ORIGINALS))(
     "DSOR-ERR-01a: schemas/error-envelope.schema.json equals the specification's own",
     () => {

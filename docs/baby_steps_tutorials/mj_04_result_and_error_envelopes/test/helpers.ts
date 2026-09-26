@@ -100,18 +100,19 @@ export function refusedWith(code: ErrorCode): Answer {
   });
 }
 
-// "req_" and a random UUID (README, decision 4).
+// "req_" and a random UUID (step 04's README, decision 4).
 export const REQUEST_ID: RegExp =
   /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // The one message a bug's envelope carries, typed out again rather than imported from src.
 export const UNEXPECTED = "DSoR hit an unexpected error";
 
-// invoice.issue with code. A command must be refused before its code runs (decision 1).
+// invoice.issue with code. A command must be refused before its code runs (step 04's
+// README, decision 1).
 const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": () => "issued" });
 
-// Every refusal this step can give: its code and its message (README, decision 7). Each
-// one is a function, so each test makes its own call.
+// Every refusal this step can give: its code and its message (step 04's README, decision
+// 7). Each one is a function, so each test makes its own call.
 export const REFUSALS: [string, () => Answer, ErrorCode, string][] = [
   [
     "an operation with no contract",

@@ -139,7 +139,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
     );
   });
 
-  // No rule id: refusing both is this tutorial's decision 7. Keeping one would be a guess.
+  // No rule id: refusing both is step 03's decision 7. Keeping one would be a guess.
   it("two contracts with one id are refused, not one picked", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source({ ...contract("invoice.get"), risk: { level: "high" } }, "b.json");
