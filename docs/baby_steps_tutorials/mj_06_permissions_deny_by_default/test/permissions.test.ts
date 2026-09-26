@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handlers } from "../src/operations.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
-import { whoIsCalling, type Principal } from "../src/principals.ts";
+import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
 import {
   buildRegistry,
   call,
@@ -13,6 +13,7 @@ import {
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
+  BAD_REQUEST_ID,
   CFO,
   STARTING_ROLES,
   SUPERVISOR,
@@ -22,6 +23,7 @@ import {
   contract,
   correlationFor,
   notGranted,
+  notTheCaller,
   refusal,
   registry,
   rolesFile,
@@ -50,6 +52,11 @@ function denied(name: string, permission: string, caller: Caller): Record<string
   };
 }
 
+/** A made-up person, for roles and companies that the story's principals do not have. */
+function person(memberships: Membership[]): Principal {
+  return { id: "user_777", type: "human", memberships };
+}
+
 describe("C1: every permission is <resource>:<action>, checked at start-up", () => {
   it.each([
     ["capital letters", "Invoice:Read"],
@@ -59,6 +66,18 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     ["a space in front", " invoice:read"],
     ["a space after it", "invoice:read "],
     ["a suffix other than .propose", "invoice:issue.approve"],
+    // Found by the review: a one-character change to the pattern let each of these in,
+    // and every test still passed.
+    ["a capital first letter", "Invoice:read"],
+    ["a capital letter inside the resource", "inVoice:read"],
+    ["a capital letter inside the action", "invoice:reAd"],
+    ["a digit first", "1nvoice:read"],
+    ["a dot where the colon goes", "invoice.read"],
+    ["a star inside the action", "invoice:r*"],
+    ["-propose instead of .propose", "invoice:issue-propose"],
+    [".propose twice", "invoice:issue.propose.propose"],
+    ["a hyphen", "purchase-order:release"],
+    ["a line break", "invoice:read\nx"],
   ])("DSOR-AUT-01a: a role granting a permission with %s stops start-up", (_why, bad) => {
     const table = rolesFile({ ...STARTING_ROLES, CFO: ["invoice:read", bad] });
     expect(refusal(() => buildRegistry(shipped, handlers, table))).toMatch(
@@ -69,11 +88,28 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   // A "yes" test pins what the specification's pattern allows, so a stricter check fails.
   it.each([
     ["the .propose form", "payment:execute.propose"],
-    ["an underscore", "purchase_order:release"],
-    ["a digit", "form_1099:file"],
+    ["an underscore in the resource", "purchase_order:release"],
+    ["a digit in the resource", "form_1099:file"],
+    // Found by the review: a pattern that refused these passed every test.
+    ["an underscore in the action", "invoice:read_all"],
+    ["a digit in the action", "form:form_1099"],
+    ["one letter on each side", "x:y"],
   ])("DSOR-AUT-01a: a role may grant a permission with %s", (_why, good) => {
     const table = rolesFile({ ...STARTING_ROLES, CFO: ["invoice:read", good] });
     expect(refusal(() => buildRegistry(shipped, handlers, table))).toBe("");
+  });
+
+  // Found by the review: every bad permission was last in its list, so code that checked
+  // only the last one, or stopped at the first, passed.
+  it("DSOR-AUT-01a: every bad permission is named, wherever it sits in the list", () => {
+    const table = rolesFile({
+      ...STARTING_ROLES,
+      CFO: ["invoice:*", "Invoice:Read", "invoice:read"],
+    });
+    expect(checkRoles(table, logins.values()).problems).toEqual([
+      'roles.json: the role "CFO" grants "invoice:*", which is not <resource>:<action>',
+      'roles.json: the role "CFO" grants "Invoice:Read", which is not <resource>:<action>',
+    ]);
   });
 
   // Step 06's decision 4: a role that is not in the table is a typo. It is found before
@@ -94,15 +130,27 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     );
   });
 
-  // A table kept in a plain object would find a role under this name (step 03).
-  it("DSOR-AUT-01a: a principal holding the role toString stops start-up too", () => {
-    const odd: Principal = {
-      id: "user_999",
-      type: "human",
-      memberships: [{ tenant_id: "org_456", roles: ["toString"] }],
-    };
+  // A table kept in a plain object would find a role named toString (step 03). Found by
+  // the review: a lookup that ignored capitals let cfo in.
+  it.each([
+    ["a name every JavaScript object has", "toString"],
+    ["the right name in the wrong case", "cfo"],
+  ])("DSOR-AUT-01a: a principal holding %s as a role stops start-up too", (_why, role) => {
+    const odd = person([{ tenant_id: "org_456", roles: [role] }]);
     expect(checkRoles(rolesFile(STARTING_ROLES), [odd]).problems).toEqual([
-      'roles.json: user_999 holds the role "toString", which the table does not have',
+      `roles.json: user_777 holds the role ${JSON.stringify(role)}, which the table does not have`,
+    ]);
+  });
+
+  // Found by the review: code that looked only at the first membership, or only at the
+  // one in org_456, missed a typo in another company.
+  it("DSOR-AUT-01a: a role held in another company must be in the table too", () => {
+    const odd = person([
+      { tenant_id: "org_456", roles: ["CFO"] },
+      { tenant_id: "org_789", roles: ["auditr"] },
+    ]);
+    expect(checkRoles(rolesFile(STARTING_ROLES), [odd]).problems).toEqual([
+      'roles.json: user_777 holds the role "auditr", which the table does not have',
     ]);
   });
 
@@ -123,13 +171,23 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     );
   });
 
-  // A text is not a list, even though JavaScript can loop over its letters.
-  it("DSOR-AUT-01a: a role whose permissions are not a list stops start-up", () => {
-    const table = rolesFile({ ...STARTING_ROLES, CFO: "invoice:read" });
-    expect(refusal(() => buildRegistry(shipped, handlers, table))).toMatch(
-      'roles.json: the role "CFO" must grant a list of permissions',
-    );
-  });
+  // A text is not a list, even though JavaScript can loop over its letters. Found by the
+  // review: without the `continue`, a text was named once for each letter, null crashed
+  // start-up, and the role was named "not in the table" as well. One problem, once.
+  it.each([
+    ["a text", "invoice:read"],
+    ["null", null],
+    ["a number", 42],
+    ["an object", { read: "invoice:read" }],
+  ])(
+    "DSOR-AUT-01a: a role whose permissions are %s is named once, as not a list",
+    (_why, grants) => {
+      const table = rolesFile({ ...STARTING_ROLES, CFO: grants });
+      expect(checkRoles(table, logins.values()).problems).toEqual([
+        'roles.json: the role "CFO" must grant a list of permissions',
+      ]);
+    },
+  );
 
   // A pattern test turns what it is given into text, and ["invoice:read"] becomes
   // "invoice:read".
@@ -179,17 +237,31 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   });
 
   // No rule id: only the roles in org_456 count, the one company of this step (step 06's
-  // README, decision 1). Step 10 picks the company of each call.
-  it("only the roles held in org_456 count", () => {
-    const twoCompanies: Principal = {
-      id: "user_777",
-      type: "human",
-      memberships: [
+  // README, decision 1). Step 10 picks the company of each call. Found by the review:
+  // with org_456 always last, code that read only the last membership passed, and so did
+  // code that let org_4567 count as org_456.
+  const COMPANIES: [string, Membership[], string[]][] = [
+    [
+      "another company listed first",
+      [
         { tenant_id: "org_789", roles: ["ap_supervisor"] },
         { tenant_id: "org_456", roles: ["CFO"] },
       ],
-    };
-    expect([...permissionsOf(twoCompanies, registry.roles)]).toEqual(["invoice:read"]);
+      ["invoice:read"],
+    ],
+    [
+      "another company listed last",
+      [
+        { tenant_id: "org_456", roles: ["CFO"] },
+        { tenant_id: "org_789", roles: ["ap_supervisor"] },
+      ],
+      ["invoice:read"],
+    ],
+    ["a company whose id starts with org_456", [{ tenant_id: "org_4567", roles: ["CFO"] }], []],
+    ["org_456 in capital letters", [{ tenant_id: "ORG_456", roles: ["CFO"] }], []],
+  ];
+  it.each(COMPANIES)("only the roles held in org_456 count: %s", (_why, memberships, held) => {
+    expect([...permissionsOf(person(memberships), registry.roles)]).toEqual(held);
   });
 
   // Found by the review: every principal in the story holds one role, so code that read
@@ -197,16 +269,30 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   it("DSOR-AUT-01a: a caller with two roles holds what each of them grants", () => {
     const cfoApproves = { ...STARTING_ROLES, CFO: ["invoice:read", "payment:approve"] };
     const { roles } = checkRoles(rolesFile(cfoApproves), []);
-    const twoRoles: Principal = {
-      id: "user_123",
-      type: "human",
-      memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }],
-    };
+    const twoRoles = person([{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }]);
     expect([...permissionsOf(twoRoles, roles)].sort()).toEqual([
       "invoice:issue",
       "invoice:read",
       "payment:approve",
     ]);
+  });
+
+  // Found by the review: code that gave a missing role every permission in the table
+  // passed. Start-up refuses such a role for the principals it knows, so this caller is
+  // made up.
+  it("DSOR-AUT-01a: a role that the table does not have grants nothing", () => {
+    const auditor = person([{ tenant_id: "org_456", roles: ["auditor"] }]);
+    expect([...permissionsOf(auditor, registry.roles)]).toEqual([]);
+  });
+
+  // No rule id. Found by the review: one table shared by every registry passed, because
+  // the tests happened to build their registries in a harmless order.
+  it("building a second registry does not change what the first one grants", () => {
+    const first = buildRegistry(shipped, handlers, shippedRoles);
+    buildRegistry(shipped, handlers, rolesFile({ ...STARTING_ROLES, CFO: [] }));
+    expect(call(first, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+      data: { id: "INV-1008" },
+    });
   });
 });
 
@@ -369,6 +455,30 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
       denied("invoice.issue", "invoice:issue", THE_CFO),
     );
   });
+
+  // No rule id: step 05's checks come before the permission (step 06's README, C5).
+  // Found by the review: the permission check could move ahead of them, and every test
+  // passed.
+  it.each([
+    ["a bad request id", { ...AGENT, request_id: "" }, {}, "VALIDATION_FAILED", BAD_REQUEST_ID],
+    [
+      "cfo_100 named in its arguments",
+      AGENT,
+      { principal: "cfo_100" },
+      "AUTHORIZATION_DENIED",
+      notTheCaller("principal"),
+    ],
+  ])(
+    "the agent that sends %s to invoice.issue hears about that, not about its permission",
+    (_why, request, input, code, message) => {
+      expect(call(registry, request, "invoice.issue", input)).toStrictEqual({
+        code,
+        message,
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+    },
+  );
 });
 
 describe("C6: permissions never come from the caller", () => {

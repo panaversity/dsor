@@ -5,8 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readRoles } from "../src/permissions.ts";
 import { contractFiles, readContracts } from "../src/registry.ts";
 import { STARTING_ROLES, contract, notGranted, shipped, without } from "./helpers.ts";
+
+const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
+const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
 
 // No rule id: how start-up finds the contract files.
 describe("reading the contracts folder", () => {
@@ -33,6 +37,20 @@ describe("reading the contracts folder", () => {
 
   it("the shipped folder holds the two contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual(["invoice.get.json", "invoice.issue.json"]);
+  });
+});
+
+// NEW IN STEP 06. No rule id: how start-up reads the role table. Found by the review:
+// code that named every table "roles.json", or by its whole path, passed every test.
+describe("reading the role table", () => {
+  it("names the table by its own file name, so a problem points at the right file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dsor-roles-"));
+    try {
+      writeFileSync(join(dir, "staff-roles.json"), "{}");
+      expect(readRoles(join(dir, "staff-roles.json")).file).toBe("staff-roles.json");
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
   });
 });
 
@@ -110,6 +128,41 @@ describe("the program", () => {
         const run = spawnSync(process.execPath, [main, contracts, roles], { encoding: "utf8" });
         expect(run.status).toBe(1);
         expect(run.stderr).toMatch(`roles.json: the role "CFO" grants "invoice:*"`);
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
+  // NEW IN STEP 06. Found by the review: a program that looked for roles.json in the
+  // folder it was started from passed every test, because the tests start it from here.
+  it("finds its own role table, whatever folder it is started from", { timeout: 30_000 }, () => {
+    const dir = mkdtempSync(join(tmpdir(), "dsor-elsewhere-"));
+    try {
+      const run = spawnSync(process.execPath, [MAIN], { cwd: dir, encoding: "utf8" });
+      expect(run.status).toBe(0);
+      expect(run.stdout).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  // NEW IN STEP 06. Found by the review: a role table read outside the start-up checks
+  // still stopped the program, but with a stack trace instead of the problem.
+  it(
+    "refuses to start without its role table: it names the file and prints no stack trace",
+    {
+      timeout: 30_000,
+    },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-roles-"));
+      try {
+        const missing = join(dir, "roles.json");
+        const run = spawnSync(process.execPath, [MAIN, CONTRACTS, missing], { encoding: "utf8" });
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch(missing);
+        expect(run.stderr).not.toMatch(/^\s+at /m);
         expect(run.stdout).not.toMatch("operations:");
       } finally {
         rmSync(dir, { recursive: true });
