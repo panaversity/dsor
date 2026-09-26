@@ -1,4 +1,4 @@
-// NEW IN STEP 04: what call answers, by claim (C4, C6, C7 in the README).
+// What call answers, by step 04's claims (C4, C6, C7 in step 04's README).
 import { describe, expect, it, vi } from "vitest";
 import type { Answer, ErrorEnvelope } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";

@@ -8,7 +8,7 @@ export const handlers: Record<string, Handler> = {
   "invoice.get": (input) => {
     // The input comes from outside the program, so it has no types yet.
     const id = (input as { id?: unknown } | null)?.id;
-    // NEW IN STEP 04: each refusal names its code from the §28 table, and call does the
+    // Each refusal names its code from the §28 table, and call does the
     // rest (README, decision 5).
     if (typeof id !== "string") {
       throw new Refusal("VALIDATION_FAILED", "invoice.get needs { id: string }");
@@ -17,7 +17,7 @@ export const handlers: Record<string, Handler> = {
     if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
     return invoice;
   },
-  // NEW IN STEP 04: invoice.issue has a contract but no code yet. Its success needs a
+  // invoice.issue has a contract but no code yet. Its success needs a
   // proposal, and proposals are step 22. Until then, call refuses every command before
   // its code runs (README, decision 1).
 };

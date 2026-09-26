@@ -20,20 +20,20 @@ try {
 }
 console.log("operations:", [...registry.contracts.keys()]);
 
-// NEW IN STEP 04: the answer is an envelope. A success carries the invoice as its data,
+// The answer is an envelope. A success carries the invoice as its data,
 // and the request id DSoR made for this call.
 const answer = call(registry, "invoice.get", { id: "INV-1008" });
 console.log(answer);
 
 // The invoice's permanent address, and the address read back.
-// NEW IN STEP 04: the invoice is the answer's data. A refusal has no data.
+// The invoice is the answer's data. A refusal has no data.
 if ("data" in answer) {
   const uri = invoiceUri(answer.data as Invoice);
   console.log(uri);
   console.log(parseUri(uri));
 }
 
-// NEW IN STEP 04: a refusal comes back as an error envelope, never as a throw. Each one
+// A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
 console.log(call(registry, "invoice.get", { id: "INV-9999" }));
 // invoice.issue has a contract but no code yet, so the call is refused.

@@ -103,10 +103,10 @@ export function buildRegistry(
 
 /** Runs an operation by its name. It answers with an envelope, and never throws. */
 export function call(registry: Registry, name: string, input: unknown): Answer {
-  // NEW IN STEP 04: DSoR makes the request id for every call, because no caller can send
-  // one yet (DSOR-COR-01b, README decision 4). Nothing in the input is read for it.
+  // DSoR makes the request id for every call, because no caller can send one yet
+  // (DSOR-COR-01b, step 04's README, decision 4). Nothing in the input is read for it.
   const correlation = { request_id: `req_${randomUUID()}` };
-  // NEW IN STEP 04: every refusal is thrown as a Refusal, which names its code. The catch
+  // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (README, C7).
   try {
     if (!registry.contracts.has(name)) {
@@ -114,13 +114,13 @@ export function call(registry: Registry, name: string, input: unknown): Answer {
     }
     const handler = registry.handlers.get(name);
     if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
-    // NEW IN STEP 04: a command's success needs a result envelope, and that needs a
+    // A command's success needs a result envelope, and that needs a
     // proposal (step 22). So a command is refused before its code runs (README, decision 1).
     if (registry.contracts.get(name)?.["kind"] !== "query") {
       const why = "is a command, and commands are not built yet";
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} ${why}`);
     }
-    // NEW IN STEP 04: a query's answer is { data, correlation } (README, decision 3).
+    // A query's answer is { data, correlation } (step 04's README, decision 3).
     return { data: handler(input), correlation };
   } catch (thrown) {
     return toEnvelope(thrown, correlation);
@@ -135,7 +135,7 @@ function explain(error: ErrorObject): string {
 }
 
 // The refused input may be anything, even something huge. Show a short piece of it.
-// NEW IN STEP 04: exported, so a handler's refusal can show a piece of the input too.
+// Exported, so a handler's refusal can show a piece of the input too.
 export function preview(input: unknown): string {
   return typeof input === "string" ? JSON.stringify(input.slice(0, 60)) : typeof input;
 }

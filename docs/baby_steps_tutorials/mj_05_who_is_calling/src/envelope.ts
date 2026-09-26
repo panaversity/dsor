@@ -1,4 +1,4 @@
-// NEW IN STEP 04: every answer from call has one outer shape, an envelope.
+// Every answer from call has one outer shape, an envelope.
 // DSOR-ERR-01a in specs/dsor/03-execution.md, section 28.
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -135,7 +135,7 @@ export function toEnvelope(thrown: unknown, correlation: Correlation): ErrorEnve
   // The retry class comes from the table, never from the code that refused.
   const { code, message } = thrown;
   const envelope = { code, message, retry: RETRY[code], correlation };
-  // NEW IN STEP 04: DSOR-SCH-01. An envelope that fails its schema never leaves call. The
+  // DSOR-SCH-01. An envelope that fails its schema never leaves call. The
   // fixed INTERNAL_ERROR envelope goes out in its place (README, decision 8).
   return passesSchema(envelope) ? envelope : unexpected(correlation);
 }

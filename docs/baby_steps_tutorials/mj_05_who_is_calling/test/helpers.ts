@@ -55,7 +55,7 @@ export function without(data: Record<string, unknown>, field: string): Record<st
   return copy;
 }
 
-// NEW IN STEP 04: the tests' own check for error envelopes. It is built here from the
+// The tests' own check for error envelopes. It is built here from the
 // schema file, not imported from src, so a broken check in src cannot pass its own work.
 type EnvelopeSchema = { properties: { code: { anyOf: [{ enum: string[] }, unknown] } } };
 const SCHEMAS = new URL("../schemas/", import.meta.url);

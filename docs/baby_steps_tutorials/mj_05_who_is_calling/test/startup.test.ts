@@ -29,7 +29,7 @@ describe("reading the contracts folder", () => {
 // No rule id: the program itself. Found by the review: nothing ran src/main.ts, so a
 // start-up that skipped the registry passed every test.
 describe("the program", () => {
-  // NEW IN STEP 04: every answer the program prints is an envelope. The test waits up to
+  // Every answer the program prints is an envelope. The test waits up to
   // 30 seconds. Found live 2026-09-26: on a busy machine, starting node took longer than
   // vitest's 5-second default, and the test failed with no bug in the code.
   it(

@@ -9,7 +9,7 @@ import { contract, refusal, shipped, shippedWith, source, without } from "./help
 describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers);
 
-  // NEW IN STEP 04: the invoice comes back as the envelope's data.
+  // The invoice comes back as the envelope's data.
   it("DSOR-OPR-01: invoice.get runs by its name", () => {
     expect(call(registry, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
@@ -18,7 +18,7 @@ describe("C1: nothing can be called without a contract", () => {
 
   // Found by the review: with one invoice, code that ignored the caller's input and
   // always read INV-1008 passed the test above.
-  // NEW IN STEP 04: INV-9999 is refused with a code, not answered with undefined.
+  // INV-9999 is refused with a code, not answered with undefined.
   it("DSOR-OPR-01: invoice.get passes the caller's input to its code", () => {
     expect(call(registry, "invoice.get", { id: "INV-9999" })).toMatchObject({
       code: "RESOURCE_NOT_FOUND",
@@ -26,14 +26,14 @@ describe("C1: nothing can be called without a contract", () => {
   });
 
   // No rule id: checking an operation's input is not step 03's rule.
-  // NEW IN STEP 04: the refusal is an envelope, not a thrown TypeError.
+  // The refusal is an envelope, not a thrown TypeError.
   it("invoice.get without an id is refused", () => {
     expect(call(registry, "invoice.get", {})).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   // "toString" and "constructor" are on every JavaScript object. A registry that looks
   // names up in a plain object would find code for them.
-  // NEW IN STEP 04: the refusal is an envelope, not a throw.
+  // The refusal is an envelope, not a throw.
   it.each([["invoice.delete"], ["toString"], ["constructor"]])(
     "DSOR-OPR-01: an operation with no contract is refused: %s",
     (name) => {
@@ -57,14 +57,14 @@ describe("C1: nothing can be called without a contract", () => {
   it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", () => {
     const spy = vi.fn<Handler>(() => "deleted");
     const handMade = { contracts: new Map(), handlers: new Map([["invoice.delete", spy]]) };
-    // NEW IN STEP 04: the refusal is an envelope, not a throw.
+    // The refusal is an envelope, not a throw.
     expect(call(handMade, "invoice.delete", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
     expect(spy).not.toHaveBeenCalled();
   });
 
-  // NEW IN STEP 04: the refusal is an envelope, not a throw.
+  // The refusal is an envelope, not a throw.
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
     expect(call(registry, "invoice.issue", {})).toMatchObject({
@@ -162,7 +162,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
 // No rule id: this is about the refusal's message, as in steps 01 and 02. The name comes
 // from the caller, so it may be anything, even something huge.
 describe("a refusal of a huge name", () => {
-  // NEW IN STEP 04: the message is in the envelope.
+  // The message is in the envelope.
   it("shows only a short piece of it", () => {
     const registry = buildRegistry(shipped, handlers);
     const huge = "invoice." + "a".repeat(100_000);

@@ -1,4 +1,4 @@
-// NEW IN STEP 04: what an error envelope holds, by claim (C1, C2, C3, C5 in the README).
+// What an error envelope holds, by step 04's claims (C1, C2, C3, C5 in step 04's README).
 import { describe, expect, it } from "vitest";
 import { RETRY, Refusal, type ErrorCode, type RetryClass } from "../src/envelope.ts";
 import { REFUSALS, REQUEST_ID, SCHEMA_CODES, refusedWith, run, schemaProblems } from "./helpers.ts";
