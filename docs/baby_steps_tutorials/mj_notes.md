@@ -126,10 +126,11 @@ reviewer for a mutation sweep too.
   and every copy into a later step broke it.
 - **A decision's cost is its "Downside".** It was "Price", and in a story about
   payments a reader might take a price for money.
-- **A friction item for the skill.** The `build-baby-step` skill does not yet ask for
-  three things steps 04 and 05 now do: name the step in every reference, label a
+- **A friction item for the skill, now closed.** The `build-baby-step` skill did not ask
+  for three things steps 04 and 05 do: name the step in every reference, label a
   decision's cost "Downside", and have the review try the §10.2 threats with inputs of
-  its own. Step 06 starts with them only if the skill says so.
+  its own. Since version 2.2.0 (2026-09-26) it asks for them, and for the design written
+  before any code. Every build from `mj_01` to `mj_06` carries that copy.
 
 ## Bugs found in earlier builds
 
@@ -141,7 +142,9 @@ Step 04's review found these on 2026-09-26:
   object in the `invoices` list, and from step 04 `call` hands it to the caller as
   `data`. A caller that sets `answer.data.open_amount.value = "0.00"` changes INV-1008
   for every later caller. A read can write. The fix: return a copy, or freeze the stored
-  invoices. Freezing was left for later in step 01, and again in step 03.
+  invoices. Freezing was left for later in step 01, and again in step 03. **Fixed on
+  2026-09-26:** `getInvoice` returns a copy, with a test, in `mj_01` and every build
+  after it. From `mj_04`, a second test changes an answer's data and reads again.
 - **Three weak tests in `mj_03`.** Each one lets a break pass:
   - No test runs the program with a broken contract. A refused start-up that exits
     with 0 passes.
@@ -151,6 +154,12 @@ Step 04's review found these on 2026-09-26:
   - The name-order test cannot see a missing `.sort()` on macOS, which reads a folder in
     name order anyway. On Linux it might.
 
+  **Fixed on 2026-09-26**, in `mj_03` and every build after it. The program takes
+  another folder of contracts on its command line, and a test starts it with a broken
+  one. A test sends `null` beside another broken file. The sort moved into
+  `contractFiles()`, and a test hands it names out of order. Each break was put back in
+  a copy and was caught.
+
 Step 05 found two more on 2026-09-26:
 
 - **Comments pointed at the wrong README** (from `mj_04`). Comments copied from step 03
@@ -158,7 +167,8 @@ Step 05 found two more on 2026-09-26:
   Fixed in `mj_04`, then carried into `mj_05`: every such comment now names its step.
 - **"This step" in `uri.ts`** (from `mj_02`). The comment says "this step fixes one form
   for every tenant id". Step 02 made that choice, but in every later copy "this step"
-  reads as the later step. Not fixed yet.
+  reads as the later step. **Fixed on 2026-09-26:** it says "step 02", in `mj_02` and
+  every build after it.
 
 ## Still unknown
 
