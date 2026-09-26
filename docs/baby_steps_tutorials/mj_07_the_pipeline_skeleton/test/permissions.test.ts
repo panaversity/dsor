@@ -401,7 +401,10 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         authorization: { permission: "vendor:read" },
       };
       // NEW IN STEP 07: vendor.get's input schema, so start-up accepts the new contract.
-      const vendorInput = inputsWith("VendorGetRequest.schema.json", '{ "type": "object" }');
+      const vendorInput = inputsWith(
+        "VendorGetRequest.schema.json",
+        '{ "type": "object", "additionalProperties": false }',
+      );
       const answer = call(withOperation(vendorGet, spy, vendorInput), request, "vendor.get", {
         id: "VENDOR-44",
       });

@@ -52,9 +52,10 @@ describe("C1: every call runs the lines of the checklist in §21's order", () =>
   });
 
   // No rule id: DSOR-EXE-01a is about commands. §21 says queries pass lines 1 to 6 too.
-  it("invoice.get, a query, runs lines ①, ⑤, and ⑥, in that order", () => {
+  // Found by the review: a query's code runs at line ⑨, and was not numbered.
+  it("invoice.get, a query, runs lines ①, ⑤, ⑥, and ⑨, in that order", () => {
     const { answer, lines } = linesRun(registry, AGENT, "invoice.get", { id: "INV-1008" });
-    expect(lines).toStrictEqual([1, 5, 6]);
+    expect(lines).toStrictEqual([1, 5, 6, 9]);
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
   });
 
@@ -173,11 +174,14 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
 
   // Line ⑥ checks only the URI's shape, as the specification's resourceUri does. Step 02's
   // stricter tenant rule applies where the URI is read (step 07's README, decision 2).
+  // Found by the review: what comes after line ⑥ for another company's URI is step 10's
+  // to decide, so this test asserts only that line ⑥ lets it through.
   it("invoice.issue lets a URI with the right shape pass line ⑥, whatever its tenant", () => {
-    const answer = call(registry, SUPERVISOR, "invoice.issue", {
+    const { answer, lines } = linesRun(registry, SUPERVISOR, "invoice.issue", {
       invoice: "dsor://acme/invoice/INV-1008",
     });
-    expect(answer).toMatchObject({ message: '"invoice.issue" is not built yet' });
+    expect(lines).toStrictEqual([1, 5, 6]);
+    expect(answer).not.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   // Start-up never allows it, so only a registry built by hand can have an operation with
@@ -214,18 +218,118 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
     expect(input).toStrictEqual({ id: "INV-1008" });
   });
+
+  // Found by the review: ajv's useDefaults changes the input, and no test saw it.
+  it("a default in an input schema is never filled in", () => {
+    const withDefault = inputsWith(
+      "InvoiceGetRequest.schema.json",
+      JSON.stringify({
+        type: "object",
+        properties: { id: { type: "string" }, note: { type: "string", default: "filled in" } },
+        required: ["id"],
+        additionalProperties: false,
+      }),
+    );
+    const spy = vi.fn<Handler>(() => "ran");
+    const registry = buildRegistry(
+      shipped,
+      { ...handlers, "invoice.get": spy },
+      shippedRoles,
+      withDefault,
+    );
+    call(registry, AGENT, "invoice.get", { id: "INV-1008" });
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
+  });
+
+  // Found by the review: the check read the id once and the code read it again. A getter
+  // can answer differently each time (step 07's README, decision 9).
+  it("the code gets the very value line ⑥ checked, even from a getter that changes", () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    let reads = 0;
+    const input = {
+      get id(): string {
+        reads += 1;
+        return reads === 1 ? "INV-1008" : "INV-9999";
+      },
+    };
+    call(registryWithGet(spy), AGENT, "invoice.get", input);
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
+  });
+
+  it("an input that JSON cannot copy is refused with VALIDATION_FAILED", () => {
+    const loop: Record<string, unknown> = { id: "INV-1008" };
+    loop["self"] = loop;
+    expect(call(registry, AGENT, "invoice.get", loop)).toStrictEqual({
+      code: "VALIDATION_FAILED",
+      message: notValid("invoice.get", "it cannot be copied as JSON"),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+  });
 });
 
-describe("C4: start-up is refused for a contract whose input schema is missing or broken", () => {
+describe("C4: start-up is refused for an input schema that is missing, broken, or not strict", () => {
   it("the shipped contracts and input schemas start", () => {
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, shippedInputs))).toBe("");
   });
 
-  it("an input schema file that is missing stops start-up, and is named", () => {
+  // Found by the review: the whole message, so a false second problem is seen too.
+  it("an input schema file that is missing stops start-up, and is the one problem named", () => {
     const missing = inputsWith("InvoiceGetRequest.schema.json", undefined);
-    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, missing))).toMatch(
-      "invoice.get: its input schema InvoiceGetRequest has no file inputs/InvoiceGetRequest.schema.json",
+    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, missing))).toBe(
+      "the registry refused to start:\n" +
+        "  invoice.get: its input schema InvoiceGetRequest has no file inputs/InvoiceGetRequest.schema.json",
     );
+  });
+
+  // Found by the review: a typo, or a schema that forgets the rule, let every field through.
+  it.each([
+    ["an object schema that does not refuse unlisted fields", '{ "type": "object" }'],
+    ["true, which allows anything", "true"],
+    ["a schema with no type", '{ "additionalProperties": false }'],
+    [
+      "additionalProperty, a typo",
+      '{ "type": "object", "properties": { "id": { "type": "string" } }, "additionalProperty": false }',
+    ],
+  ])("%s stops start-up", (_why, text) => {
+    const loose = inputsWith("InvoiceGetRequest.schema.json", text);
+    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, loose))).toMatch(
+      'inputs/InvoiceGetRequest.schema.json: must refuse fields it does not list: its top level needs "type": "object" and "additionalProperties": false',
+    );
+  });
+
+  it("a keyword ajv does not know, such as the typo minLenght, stops start-up", () => {
+    const text = JSON.stringify({
+      type: "object",
+      properties: { id: { type: "string", minLenght: 1 } },
+      required: ["id"],
+      additionalProperties: false,
+    });
+    const typo = inputsWith("InvoiceGetRequest.schema.json", text);
+    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, typo))).toMatch(
+      'inputs/InvoiceGetRequest.schema.json: not a valid JSON Schema: strict mode: unknown keyword: "minLenght"',
+    );
+  });
+
+  // A file with a misspelled name would otherwise sit there, unused, and nobody would know.
+  it("an input schema file that no contract names stops start-up", () => {
+    const extra = inputsWith(
+      "InvoiceListRequest.schema.json",
+      '{ "type": "object", "additionalProperties": false }',
+    );
+    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, extra))).toMatch(
+      "inputs/InvoiceListRequest.schema.json: no contract names this input schema",
+    );
+  });
+
+  // Found by the review: two contracts that share a broken schema had it named twice.
+  it("a broken input schema that two contracts share is named once", () => {
+    const twin = { ...contract("invoice.get"), id: "invoice.get_twin" };
+    const sources = [...shipped, source(twin, "invoice.get_twin.json")];
+    const withTwin = { ...handlers, "invoice.get_twin": handlers["invoice.get"]! };
+    const broken = inputsWith("InvoiceGetRequest.schema.json", "{ type: object");
+    const message = refusal(() => buildRegistry(sources, withTwin, shippedRoles, broken));
+    expect(message.split("inputs/InvoiceGetRequest.schema.json: not valid JSON")).toHaveLength(2);
   });
 
   it("an input schema that is not a valid JSON Schema stops start-up", () => {

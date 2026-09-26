@@ -117,6 +117,28 @@ describe("the program", () => {
     },
   );
 
+  // NEW IN STEP 07. Found by the review: the role table's lesson, for the inputs folder.
+  it(
+    "refuses to start without its inputs folder: it names the folder and prints no stack trace",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-inputs-"));
+      try {
+        const missing = join(dir, "inputs");
+        const roles = fileURLToPath(new URL("../roles.json", import.meta.url));
+        const run = spawnSync(process.execPath, [MAIN, CONTRACTS, roles, missing], {
+          encoding: "utf8",
+        });
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch(missing);
+        expect(run.stderr).not.toMatch(/^\s+at /m);
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
   // NEW IN STEP 07: start-up checks that every contract's input schema has a file.
   it(
     "refuses to start when a contract's input schema has no file: it names it and exits with code 1",

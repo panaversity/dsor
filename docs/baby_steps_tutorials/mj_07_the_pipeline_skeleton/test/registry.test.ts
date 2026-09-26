@@ -10,7 +10,6 @@ import {
   GOOD_ISSUE,
   SUPERVISOR,
   contract,
-  inputsWith,
   refusal,
   shipped,
   shippedRoles,
@@ -231,7 +230,10 @@ describe("C7: a loaded contract is exactly what was written", () => {
   it("a value that repeats its own key's name is not a key written twice", () => {
     const text = JSON.stringify({ ...contract("invoice.get"), input: { schema: "schema" } });
     // NEW IN STEP 07: the input schema that contract names must have a file too.
-    const inputs = inputsWith("schema.schema.json", '{ "type": "object" }');
+    // It is the only contract, so it is given the only input schema.
+    const inputs = [
+      { file: "schema.schema.json", text: '{ "type": "object", "additionalProperties": false }' },
+    ];
     expect(
       refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}, shippedRoles, inputs)),
     ).toBe("");
