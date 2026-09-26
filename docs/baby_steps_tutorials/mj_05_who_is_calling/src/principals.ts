@@ -1,5 +1,6 @@
 // NEW IN STEP 05: who is calling. DSoR finds the caller from the login token and its own
-// table, never from the arguments. DSOR-IDN-01 in specs/dsor/02-security.md, section 12.
+// table, never from the arguments. DSOR-IDN-01 in specs/dsor/02-security.md, section 12,
+// and DSOR-SRC-02a in section 11.
 import { Refusal } from "./envelope.ts";
 import type { RequestEnvelope } from "./request.ts";
 
@@ -39,4 +40,10 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
     throw new Refusal("AUTHENTICATION_REQUIRED", message);
   }
   return caller;
+}
+
+/** The ids that name the caller in an answer's correlation (README, decision 9). */
+export function callerIds(caller: Principal): { agent_id: string } | { principal_id: string } {
+  // The specification's examples put an agent in agent_id. Anyone else goes in principal_id.
+  return caller.type === "agent" ? { agent_id: caller.id } : { principal_id: caller.id };
 }

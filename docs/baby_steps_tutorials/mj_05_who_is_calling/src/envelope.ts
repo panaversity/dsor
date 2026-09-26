@@ -47,8 +47,9 @@ export type ErrorCode =
   | "UNSUPPORTED_CAPABILITY"
   | "INTERNAL_ERROR";
 
-/** The ids that tie an answer to one request. This step makes only the request_id. */
-export type Correlation = { request_id: string };
+// NEW IN STEP 05: an answer also names its caller, once DSoR knows it (README, decision 9).
+/** The ids that tie an answer to one request, and to its caller. */
+export type Correlation = { request_id: string; agent_id?: string; principal_id?: string };
 
 /** A refusal, as the caller receives it. */
 export type ErrorEnvelope = {

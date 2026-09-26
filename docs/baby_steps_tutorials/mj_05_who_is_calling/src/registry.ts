@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
-import { Refusal, toEnvelope, type Answer } from "./envelope.ts";
-import { whoIsCalling } from "./principals.ts";
+import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
+import { callerIds, whoIsCalling } from "./principals.ts";
 import type { RequestEnvelope } from "./request.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
@@ -113,12 +113,14 @@ export function call(
 ): Answer {
   // DSoR makes the request id for every call, because no caller can send one yet
   // (DSOR-COR-01b, step 04's README, decision 4). Nothing in the input is read for it.
-  const correlation = { request_id: `req_${randomUUID()}` };
+  let correlation: Correlation = { request_id: `req_${randomUUID()}` };
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (README, C7).
   try {
-    // NEW IN STEP 05: who is calling comes before anything else (DSOR-IDN-01).
-    whoIsCalling(request);
+    // NEW IN STEP 05: who is calling comes before anything else (DSOR-IDN-01), from the
+    // token and DSoR's own table only (DSOR-SRC-02a). From here, every answer names it.
+    const caller = whoIsCalling(request);
+    correlation = { ...correlation, ...callerIds(caller) };
     if (!registry.contracts.has(name)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }
