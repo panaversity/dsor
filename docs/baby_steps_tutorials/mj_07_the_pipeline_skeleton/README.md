@@ -186,12 +186,12 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 Run against the finished step. The learner's predictions were recorded before any code.
 
-| # | The break | Expected to be caught by | Learner's prediction |
-| --- | --- | --- | --- |
-| R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives |
-| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives |
-| R3 | An input schema allows fields it does not list | C3 | survives |
-| R4 | A contract whose input schema file is missing loads, and its input is never checked | C4 | survives |
+| # | The break | Expected to be caught by | Learner's prediction | What happened |
+| --- | --- | --- | --- | --- |
+| R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives | Caught: 16 tests fail |
+| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 427 pass. Written as `line(2, …)`, it is caught by 6 tests, because the order test sees a line ② |
+| R3 | An input schema allows fields it does not list | C3 | survives | Caught: 16 tests fail for `InvoiceGetRequest`, 1 for `InvoiceIssueRequest` |
+| R4 | A contract whose input schema file is missing loads, and its input is never checked | C4 | survives | Caught: 4 tests fail |
 
 R2 is different from every break so far. It changes no answer to any call, so no test
 can catch it, even in principle. That is why decision 1 forbids it, instead of trusting
@@ -214,19 +214,259 @@ an input's extra fields.
 
 ## What changed since step 06
 
-_To be written when the code exists._
+```text
+inputs/                        NEW: one input schema per operation (decision 2)
+src/pipeline.ts                NEW: call(), moved here from registry.ts. It is now the
+                               checklist: line ①, ours "which operation?", comments for
+                               ② to ④, line ⑤, line ⑥, ours "is it built?", and
+                               comments for ⑦ to ⑰. Each built line runs through
+                               line(n, check), which tells an optional observer its number
+src/inputs.ts                  NEW: readInputs() and checkInputs() find and compile each
+                               contract's input schema at start-up. checkInput() is
+                               line ⑥
+src/registry.ts                changed: buildRegistry() takes the input schemas, and
+                               names their problems with the others. call() moved out
+src/operations.ts              changed: invoice.get's code no longer checks its input.
+                               Line ⑥ has done it (outcome 2)
+src/main.ts                    changed: shows user_123 refused at line ⑥ for an id where
+                               invoice.issue needs a URI
+test/pipeline.test.ts          NEW: the checklist, by claim (C1 to C5)
+test/helpers.ts                changed: the shipped input schemas, a good and a bad
+                               input for invoice.issue, and line ⑥'s message. Calls that
+                               expect "not built yet" send a good input
+test/who-is-calling.test.ts,   changed: a principal that agrees with the login, and an
+test/permissions.test.ts       empty list of permissions, are now refused at line ⑥
+                               (decision 3)
+test/registry.test.ts,         changed: calls send inputs that pass line ⑥, and
+test/call.test.ts,             contracts made up by a test get an input schema.
+test/startup.test.ts           The program refuses to start when an input schema has
+                               no file
+src/, test/                    step 06's NEW IN STEP markers are now plain comments
+```
+
+There is no new dependency. Line ⑥ uses ajv, which step 03 added to check contracts.
+
+Every new region is marked `NEW IN STEP 07`. To see the whole diff, run this from
+`docs/baby_steps_tutorials`. `inputs/` is new, beside `contracts/`:
+
+```bash
+git diff --no-index mj_06_permissions_deny_by_default/src mj_07_the_pipeline_skeleton/src
+git diff --no-index mj_06_permissions_deny_by_default/test mj_07_the_pipeline_skeleton/test
+```
+
+Three choices in the code are worth a look:
+
+- **A line and its number are one statement.** `line(5, () => checkPermission(…))`
+  tells the observer "5", then runs the check. Moving the check moves the number with
+  it, so the order test sees what really ran.
+- **A line not built yet is a comment, and says which step builds it.** Read `call()`
+  beside §21's diagram. Every number from ① to ⑰ is there, in order. Only ①, ⑤, and ⑥
+  run code.
+- **Checking never changes the input.** `checkInputs()` creates ajv with
+  `removeAdditional: false`, `coerceTypes: false`, and `useDefaults: false`. With
+  `removeAdditional` on, `as_user` would be quietly deleted, and the call would go on.
+  Refused is the only safe answer.
 
 ## Run it
 
-_To be written when the code exists._
+From the root of the dsor repository:
+
+```bash
+cd docs/baby_steps_tutorials/mj_07_the_pipeline_skeleton
+pnpm install
+pnpm start
+```
+
+```text
+$ node src/main.ts
+operations: [ 'invoice.get', 'invoice.issue' ]
+{
+  data: {
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    amount: { value: '31400.00', currency: 'USD' },
+    open_amount: { value: '31400.00', currency: 'USD' },
+    status: 'issued'
+  },
+  correlation: {
+    request_id: 'req_31a3730c-2b7f-4b31-ba36-3760ddc8f64d',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+dsor://org_456/invoice/INV-1008
+{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
+{
+  code: 'RESOURCE_NOT_FOUND',
+  message: 'no invoice "INV-9999"',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_256503b9-69c5-432a-b34f-db143513a04e',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'AUTHORIZATION_DENIED',
+  message: '"invoice.issue" needs invoice:issue, which the caller does not hold',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_5690733b-3785-4081-b027-6e40d9c5f34d',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'AUTHENTICATION_REQUIRED',
+  message: 'log in first: the call has no login token that DSoR gave',
+  retry: 'never',
+  correlation: { request_id: 'req_de037088-1bff-4d48-bd79-69c54b2acd73' }
+}
+{
+  code: 'AUTHORIZATION_DENIED',
+  message: 'the arguments name someone other than the caller, in principal',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_3e5e1c92-659e-4ec1-9e96-03f4646b2dae',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{ request_id: 'ap-desk-7', principal_id: 'user_123' }
+{
+  code: 'UNSUPPORTED_CAPABILITY',
+  message: '"invoice.issue" is not built yet',
+  retry: 'never',
+  correlation: { request_id: 'ap-desk-7', principal_id: 'user_123' }
+}
+{
+  code: 'VALIDATION_FAILED',
+  message: 'the input of "invoice.issue" is not valid: /invoice must match pattern "^dsor://[A-Za-z0-9_\\-]+/[a-z][a-z0-9_]*/[A-Za-z0-9_.\\-]+$"',
+  retry: 'never',
+  correlation: { request_id: 'ap-desk-7', principal_id: 'user_123' }
+}
+```
+
+Look at the last two answers. user_123 may issue, so both calls pass line ⑤. The first
+sends a canonical URI, passes line ⑥, and hears "not built yet". The second sends
+`INV-1008`, an id and not a URI, and line ⑥ refuses it. Your request ids will be
+different.
+
+The success signal from the design is the order test. Run it on its own:
+
+```bash
+pnpm test -t "in §21's order"
+```
+
+```text
+ Test Files  1 passed | 11 skipped (12)
+      Tests  3 passed | 424 skipped (427)
+```
+
+`pnpm check` runs the type check, then 427 tests:
+
+```text
+ Test Files  12 passed (12)
+      Tests  427 passed (427)
+```
+
+Outside the dsor repository, the three tests that compare the schema copies have no
+original to compare with, so they are skipped: `424 passed | 3 skipped`.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+**Check the input before the permission.** This is R1 from the design. In
+`src/pipeline.ts`, find lines ⑤ and ⑥:
+
+```ts
+    line(5, () => checkPermission(caller, contract, registry.roles));
+    …
+    line(6, () => checkInput(name, registry.inputs, input));
+```
+
+Swap the two statements, so the input is checked first. Run `pnpm start`. The output
+is the same, apart from the request ids. The agent is still denied `invoice.issue`,
+because the input it sent was good.
+
+Run `pnpm test`. These are the lines that matter, and "…" marks what is left out:
+
+```text
+…
+ FAIL  test/pipeline.test.ts > C2: when two lines would refuse, the earlier one answers > DSOR-EXE-01a: cfo_100, who may not issue, with a bad input: ⑤ answers before ⑥
+AssertionError: expected { code: 'VALIDATION_FAILED', …(3) } to strictly equal { code: 'AUTHORIZATION_DENIED', …(3) }
+
+- Expected
++ Received
+
+  {
+-   "code": "AUTHORIZATION_DENIED",
++   "code": "VALIDATION_FAILED",
+    "correlation": {
+      "principal_id": "cfo_100",
+      "request_id": "req_ca7458e8-91c0-4da7-b4e6-3ac02f72c6f3",
+    },
+-   "message": "\"invoice.issue\" needs invoice:issue, which the caller does not hold",
++   "message": "the input of \"invoice.issue\" is not valid: /invoice must match pattern \"^dsor://[A-Za-z0-9_\\-]+/[a-z][a-z0-9_]*/[A-Za-z0-9_.\\-]+$\"",
+    "retry": "never",
+  }
+…
+      Tests  16 failed | 411 passed (427)
+```
+
+`cfo_100` may not issue. Still, the answer now tells the CFO what a valid
+`invoice.issue` input looks like, down to the pattern. Try again with a URI, and the
+answer changes to "denied". One refusal at a time, a caller who may not issue learns
+the shape of the input. The order test fails too: it expected `[1, 5, 6]` and saw
+`[1, 6, 5]`. Ten older tests fail as well. They send `invoice.issue` an input that is
+not valid, from a caller who may not issue, and expect "denied". They had passed only
+because line ⑤ answered first. Put
+the two lines back, and `pnpm check` is green again.
+
+**Now try R2.** Add a function `checkTenant()` that does nothing, and call it where the
+comment for line ② is. Run `pnpm test`: all 427 pass. No test can see a check that
+changes no answer. Only a reader can, which is why decision 1 forbids it.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built. Each row is one commit or more:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Copy | Copy your step 06. Change the name and the description in `package.json` |
+| 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the intent and the outcome, the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
+| 3 | Check the design | Read §7 and §21 again, DSOR-SRC-02b, and `resourceUri` in `common.schema.json`. Fix the design where they say it is wrong |
+| 4 | Make room | Move `call()` into `src/pipeline.ts`, with no change in behavior. `registry.ts` had passed 150 lines |
+| 5 | Red | Write the tests, one group per claim. Predict which pass before any code, then watch every one fail for the right reason |
+| 6 | Green | The checklist and line ⑥. One commit: both rules live in the same function |
+| 7 | Break it | Run every predicted break. Compare the results with your predictions |
+| 8 | Review | A reviewer who has not seen your conversation attacks the step. Fix what it finds |
+
+Move 3 changed C5's test and decision 3, and pinned decisions 4, 6, and 8. In the red
+run, 43 tests fail. 8 of the 37 new tests pass before any code. Each of those says
+"yes", and sits beside a "no" test that fails. All of this is under "Think it through".
+
+Build your own step 07 from a copy of your step 06. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_06_permissions_deny_by_default my_07_the_pipeline_skeleton
+cd my_07_the_pipeline_skeleton
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 07. Design first: the intent and
+the outcome, then the rules split into claims, and I predict which breaks survive. Then
+check the design against §7, §21, DSOR-SRC-02b, and resourceUri in common.schema.json.
+Three questions to settle with me: where do the checks that already exist sit among
+§21's numbers? How does a test see the order the lines ran in? What is refused when an
+input carries a field its operation does not name?
+```
+
+When `pnpm check` is green in your folder, and once the official step 07 exists:
+
+```text
+Now compare this folder with ../07_the_pipeline_skeleton. Explain every difference, and
+tell me which ones matter and why.
+```
 
 ## Check yourself
 
@@ -280,7 +520,7 @@ What checking the design against the specification changed, before the first tes
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-EXE-01a | Commands pass through the pipeline steps in the order given | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | _to be counted_ |
-| DSOR-OPR-04a | Every interface invokes the same DSoR pipeline | [§7 Operations and the operation contract](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | _to be counted_ |
+| DSOR-EXE-01a | Commands pass through the pipeline steps in the order given | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 5 tests in `test/pipeline.test.ts`, C1 and C2 |
+| DSOR-OPR-04a | Every interface invokes the same DSoR pipeline | [§7 Operations and the operation contract](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 6 tests in `test/pipeline.test.ts`, C5. Today there is one interface, `call` |
 
 **Next:** step 08, write the decision first.
