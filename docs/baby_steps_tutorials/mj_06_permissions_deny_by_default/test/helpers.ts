@@ -78,28 +78,28 @@ export function schemaProblems(envelope: unknown): string[] {
 /** The codes the error envelope's schema lists: the §28 table's codes. */
 export const SCHEMA_CODES: string[] = envelopeSchema.properties.code.anyOf[0].enum;
 
-// NEW IN STEP 05: the login tokens DSoR gave, typed out again from step 05's decision 3
+// The login tokens DSoR gave, typed out again from step 05's decision 3
 // rather than imported from src, so a mistake in src is not copied into the tests.
 export const AGENT: RequestEnvelope = { token: "tok_7f3a" };
 export const SUPERVISOR: RequestEnvelope = { token: "tok_2c91" };
 export const CFO: RequestEnvelope = { token: "tok_d4e8" };
 
-// NEW IN STEP 05: who an answer names as its caller (step 05's README, decision 9). An
+// Who an answer names as its caller (step 05's README, decision 9). An
 // answer given before DSoR knows who is calling names nobody.
 export type Caller = { agent_id?: string; principal_id?: string };
 export const THE_AGENT: Caller = { agent_id: "accounts-payable-fte" };
 export const NOBODY: Caller = {};
 
-/** NEW IN STEP 05: an answer's correlation: a request id DSoR made, and the caller. */
+/** An answer's correlation: a request id DSoR made, and the caller. */
 export function correlationFor(caller: Caller): Record<string, unknown> {
   return { request_id: expect.stringMatching(REQUEST_ID), ...caller };
 }
 
-// NEW IN STEP 05: the messages of this step's refusals, typed out rather than imported.
+// The messages of step 05's refusals, typed out rather than imported.
 export const LOG_IN_FIRST = "log in first: the call has no login token that DSoR gave";
 export const BAD_REQUEST_ID = "a request_id must be text of 1 to 128 characters";
 
-/** NEW IN STEP 05: the message when the arguments name someone else in this place. */
+/** The message when the arguments name someone else in this place. */
 export function notTheCaller(place: string): string {
   return `the arguments name someone other than the caller, in ${place}`;
 }
@@ -118,7 +118,7 @@ export const registry: Registry = buildRegistry(shipped, handlers);
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
 export function run(handler: Handler): Answer {
-  // NEW IN STEP 05: as the agent, with its login token.
+  // As the agent, with its login token.
   return call(registryWith(handler), AGENT, "test.run", {});
 }
 
@@ -142,8 +142,8 @@ const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": () =
 
 // Every refusal this step can give: its code and its message (step 04's README, decision
 // 7). Each one is a function, so each test makes its own call.
-// NEW IN STEP 05: each also says who the answer names as its caller (step 05's README,
-// decision 9). The first three are this step's refusals.
+// Each also says who the answer names as its caller (step 05's README,
+// decision 9). The first three are step 05's refusals.
 export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   [
     "a call with no login",

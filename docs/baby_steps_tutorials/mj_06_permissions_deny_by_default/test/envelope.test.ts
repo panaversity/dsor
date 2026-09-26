@@ -22,7 +22,7 @@ describe("C1: every refusal is an error envelope that passes the real schema", (
         code,
         message,
         retry: "never",
-        // NEW IN STEP 05: the answer names its caller, once DSoR knows it (step 05's decision 9).
+        // The answer names its caller, once DSoR knows it (step 05's decision 9).
         correlation: correlationFor(caller),
       });
       expect(schemaProblems(envelope)).toEqual([]);

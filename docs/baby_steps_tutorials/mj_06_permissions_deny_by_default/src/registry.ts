@@ -112,23 +112,23 @@ export function buildRegistry(
 /** Runs an operation by its name. It answers with an envelope, and never throws. */
 export function call(
   registry: Registry,
-  // NEW IN STEP 05: the request envelope, beside the arguments (step 05's README, decision 1).
+  // The request envelope, beside the arguments (step 05's README, decision 1).
   request: RequestEnvelope,
   name: string,
   input: unknown,
 ): Answer {
-  // NEW IN STEP 05: the caller's own request id labels every answer, when DSoR can use it.
+  // The caller's own request id labels every answer, when DSoR can use it.
   // Otherwise DSoR makes one (DSOR-COR-01b), and a bad one is refused below (step 05's
   // README, decisions 6 and 7). Nothing in the input is read for it.
   let correlation: Correlation = { request_id: usableRequestId(request) ?? `req_${randomUUID()}` };
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
   try {
-    // NEW IN STEP 05: who is calling is found before anything is checked (DSOR-IDN-01),
+    // Who is calling is found before anything is checked (DSOR-IDN-01),
     // from the token and DSoR's own table only (DSOR-SRC-02a). From here, answers name it.
     const caller = whoIsCalling(request);
     correlation = { ...correlation, ...callerIds(caller) };
-    // NEW IN STEP 05: then what the caller sent is checked: first any principal the
+    // Then what the caller sent is checked: first any principal the
     // arguments name (DSOR-SRC-02b), then the request id (step 05's README, decisions 6 and 7).
     checkNamedPrincipals(input, caller);
     checkRequestId(request);

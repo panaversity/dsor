@@ -1,4 +1,4 @@
-// NEW IN STEP 05: who is calling. DSoR finds the caller from the login token and its own
+// Who is calling. DSoR finds the caller from the login token and its own
 // table, never from the arguments. DSOR-IDN-01 in specs/dsor/02-security.md, section 12,
 // and DSOR-SRC-02a and DSOR-SRC-02b in section 11.
 import { Refusal } from "./envelope.ts";

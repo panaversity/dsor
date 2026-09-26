@@ -1,4 +1,4 @@
-// NEW IN STEP 05: the request envelope travels beside a call's arguments, never inside
+// The request envelope travels beside a call's arguments, never inside
 // them. It carries the login token that says who is calling, and an optional request id
 // that labels the call. DSOR-SRC-02a in specs/dsor/02-security.md, section 11, and
 // DSOR-COR-01b in specs/dsor/03-execution.md, section 32.

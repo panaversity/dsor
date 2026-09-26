@@ -47,7 +47,7 @@ export type ErrorCode =
   | "UNSUPPORTED_CAPABILITY"
   | "INTERNAL_ERROR";
 
-// NEW IN STEP 05: an answer also names its caller, once known (step 05's README, decision 9).
+// An answer also names its caller, once known (step 05's README, decision 9).
 /** The ids that tie an answer to one request, and to its caller. */
 export type Correlation = { request_id: string; agent_id?: string; principal_id?: string };
 

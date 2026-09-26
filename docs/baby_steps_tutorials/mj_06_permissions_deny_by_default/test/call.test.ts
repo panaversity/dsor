@@ -18,7 +18,7 @@ import {
   shipped,
 } from "./helpers.ts";
 
-// NEW IN STEP 05: every call carries the agent's login token, and every answer names the
+// Every call carries the agent's login token, and every answer names the
 // agent (step 05's README, decisions 1 and 9).
 
 // A request id with the right form, so code that used any well-formed id it found in the

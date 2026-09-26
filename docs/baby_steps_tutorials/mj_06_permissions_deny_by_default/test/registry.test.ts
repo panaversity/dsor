@@ -6,7 +6,7 @@ import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
 import { AGENT, contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
 
-// NEW IN STEP 05: every call carries the agent's login token (step 05's README, decision 1).
+// Every call carries the agent's login token (step 05's README, decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers);
