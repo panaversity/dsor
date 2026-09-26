@@ -7,9 +7,9 @@ import type { Answer, ErrorCode } from "../src/envelope.ts";
 import { Refusal } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
+import { call } from "../src/pipeline.ts";
 import {
   buildRegistry,
-  call,
   readContracts,
   type ContractSource,
   type Handler,

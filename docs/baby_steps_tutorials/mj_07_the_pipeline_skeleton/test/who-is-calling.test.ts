@@ -1,7 +1,8 @@
 // Who is calling, by claim (C1 to C6 in step 05's README).
 import { describe, expect, it, vi } from "vitest";
 import { callerIds, logins, whoIsCalling, type PrincipalType } from "../src/principals.ts";
-import { call, type Handler } from "../src/registry.ts";
+import { call } from "../src/pipeline.ts";
+import type { Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,

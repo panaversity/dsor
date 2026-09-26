@@ -3,13 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { handlers } from "../src/operations.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
-import {
-  buildRegistry,
-  call,
-  type Contract,
-  type Handler,
-  type Registry,
-} from "../src/registry.ts";
+import { call } from "../src/pipeline.ts";
+import { buildRegistry, type Contract, type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { Answer, ErrorEnvelope } from "../src/envelope.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { handlers } from "../src/operations.ts";
-import { buildRegistry, call, type Handler } from "../src/registry.ts";
+import { call } from "../src/pipeline.ts";
+import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
   AGENT,
   CFO,

@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
-import { buildRegistry, call, readContracts, type Registry } from "./registry.ts";
+import { call } from "./pipeline.ts";
+import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { parseUri } from "./uri.ts";
 
