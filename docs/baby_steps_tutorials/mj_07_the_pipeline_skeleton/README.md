@@ -98,7 +98,7 @@ order, and compares them with §21's numbers. Swap any two lines, and it fails.
 | DSOR-EXE-01a | **C2.** When two lines would refuse, the earlier one answers | The table below |
 | (our decision) | **C3.** Line ⑥ checks the input against the operation's input schema, and a field the schema does not list is refused | `as_user`, and a `principal` that agrees with the login, are refused with `VALIDATION_FAILED` |
 | (our decision) | **C4.** Start-up is refused for a contract whose input schema is missing or broken | Step 03's lesson: loud, and early |
-| DSOR-OPR-04a | **C5.** The code behind an operation is reached only through the checklist | No other path runs it |
+| DSOR-OPR-04a | **C5.** The code behind an operation is reached only through the checklist | Code that records each time it runs never runs on a call that a line refuses, and `main.ts` reaches operations only through `call` |
 | (our decision) | **C6.** A line not built yet is a numbered comment that names its step. No code pretends to check | Read beside §21 |
 
 DSOR-EXE-01a says that **commands** pass through the steps in the order given. So C1
@@ -129,7 +129,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    `invoice` field points at the specification's own `resourceUri` definition in the
    copied `common.schema.json`, by its URN, so no pattern is copied a second time. The
    `invoice.issue` contract already says `"bind": { "invoice": "input.invoice" }`.
-   Every input schema refuses a field it does not list. The specification's
+   Start-up reads every file in `inputs/`, the way it reads `contracts/`, and looks each
+   contract's input schema up among those files. It never builds a path from the text
+   of a contract. Every input schema refuses a field it does not list. The specification's
    `resourceUri` accepts any tenant of the right shape, `acme` too. Step 02's stricter
    rule, `org_` and digits, still applies wherever the URI is read with `parseUri`, so
    line ⑥ checks the shape only. *Downside:* the specification
@@ -137,20 +139,31 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    the question goes to `research/open-questions.md`.
 3. **A principal named in the arguments is now refused at line ⑥ even when it agrees
    with the login,** because no input schema lists it. One that disagrees is still
-   refused earlier, at line ①, with `AUTHORIZATION_DENIED` (DSOR-SRC-02b). This closes
-   step 05's gap: `as_user` is refused too. *Downside:* it changes step 05's "accepted
+   refused earlier, at line ①, with `AUTHORIZATION_DENIED` (DSOR-SRC-02b). This narrows
+   step 05's gap: `as_user: "cfo_100"` is no longer accepted. *Downside:* it is refused
+   as a bad input, with `VALIDATION_FAILED`, and not as a principal who disagrees with
+   the login. DSOR-SRC-02b names `AUTHORIZATION_DENIED` for that, but DSoR cannot tell
+   that a field it does not know names a principal. It also changes step 05's "accepted
    and not used". "Think it through" records the change.
-4. **"Which operation?" sits between ① and ⑤.** §21 does not list it, but ⑤ needs the
-   contract to know which permission applies. *Downside:* a line of ours inside §21's
-   numbering. The function marks it as ours.
+4. **"Which operation?" comes right after ①,** before the comment for ②. §21 does not
+   list it, but ⑤ needs the contract to know which permission applies, and ③ and ④ will
+   likely need it too: a permission slip covers operations, and a breaker can stop one
+   operation. *Downside:* a line of ours inside §21's numbering, and ②'s comment sits
+   after it. The function marks it as ours.
 5. **"Is it built?" comes after ⑥,** where §21 goes on to ⑦. *Downside:* also ours. It
    goes away when commands are built.
 6. **The order test sees the lines through an observer:** an optional function the
-   checklist calls with each line's number as it runs it. *Downside:* production code
-   carries a hook that only tests use. Spying on the functions of a module would be
-   harder to read.
+   checklist tells each line's number as it runs it. Each line is written as one call,
+   `line(5, () => checkPermission(…))`, so a check cannot move without its number.
+   *Downside:* production code carries a hook that only tests use. Spying on the
+   functions of a module would be harder to read.
 7. **Line ⑥'s other half, "compute payload hash", waits for approvals in step 29.**
    Line ⑥'s comment says so.
+8. **The request id is still checked in line ①,** as part of "build the request
+   security context". So `cfo_100` with a bad request id hears `VALIDATION_FAILED`
+   before line ⑤. *Downside:* one `VALIDATION_FAILED` comes before "may you?". It is
+   about the envelope beside the arguments, so it tells the caller nothing about what
+   an operation's input looks like.
 
 ### The tests, by claim
 
@@ -163,7 +176,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   inputs pass.
 - **C4:** start-up is refused when an input schema file is missing, and when one is not
   valid JSON Schema.
-- **C5:** the only exported way to run an operation is `call`.
+- **C5:** for every refused call in C2 and C3, the operation's code never runs. The
+  rest is a reading check: `main.ts` reaches operations only through `call`. In one
+  program, any code can reach a function. The rule is about doors, and today there is
+  one door. Steps 42 and 46 add the second and third.
 - **C6:** a reading check, done by the review, beside §21's diagram.
 
 ### Breaks we will try, and what we expect
@@ -190,6 +206,9 @@ an input's extra fields.
 - **Should an operation's input name a record by its canonical URI?** `invoice.get`
   still takes `{ id }`. `invoice.issue` already takes a URI. DSOR-RID-03 says the same URI
   identifies a resource across every interface.
+- **Should an unknown field that names a principal be refused as a denied principal?**
+  DSOR-SRC-02b wants `AUTHORIZATION_DENIED`. DSoR cannot recognise every spelling, so
+  `as_user` gets `VALIDATION_FAILED` (decision 3).
 - **The lines of later steps,** each in its numbered place: ② step 10, ③ step 18, ④ step
   25, ⑦ step 20, ⑪ step 08.
 
@@ -241,7 +260,21 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+_The review's findings, and the result of every break in the table above, are written
+after the review._
+
+What checking the design against the specification changed, before the first test:
+
+- **C5's test changed.** The plan said "the only exported way to run an operation is
+  `call`". That was already false: `operations.ts` exports the code, and the registry
+  keeps it in a map anyone can read. The test now proves what DSOR-OPR-04a is about: a
+  call that the checklist refuses never reaches the code.
+- **Decision 3 overclaimed.** It said `as_user` closes step 05's gap. It narrows it:
+  `as_user` is refused, but with `VALIDATION_FAILED`, not the `AUTHORIZATION_DENIED`
+  that DSOR-SRC-02b names.
+- **Decision 4 got a place,** right after ①, and **decision 6 got a shape,**
+  `line(n, check)`, so a check and its number cannot be separated.
+- **Decision 8 is new.** It says where the request id check sits.
 
 ## The rules this step meets
 
