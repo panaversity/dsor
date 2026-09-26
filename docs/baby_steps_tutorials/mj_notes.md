@@ -185,6 +185,14 @@ Step 06 found two more on 2026-09-26:
   gives a name must say where it comes from, `// copied from …` or
   `// not copied: <why>`. `TENANT_ID` (from `mj_02`) gained the note in every build.
 
+Step 07 found one more on 2026-09-26:
+
+- **`call` could throw** (from `mj_05`). It read the caller's request id before its
+  `try`, so a request envelope whose `request_id` could not be read made `call` throw,
+  although it promises an envelope every time. JSON cannot carry such an envelope, but
+  code in the same program can. **Fixed on 2026-09-26:** the request id is read inside
+  the `try`, and a test sends that envelope, in `mj_05` and every build after it.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

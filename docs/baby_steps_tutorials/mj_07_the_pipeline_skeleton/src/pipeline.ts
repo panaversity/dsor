@@ -26,10 +26,8 @@ export function call(
   input: unknown,
   observe: Observer = () => {},
 ): Answer {
-  // The caller's own request id labels every answer, when DSoR can use it.
-  // Otherwise DSoR makes one (DSOR-COR-01b), and a bad one is refused below (step 05's
-  // README, decisions 6 and 7). Nothing in the input is read for it.
-  let correlation: Correlation = { request_id: usableRequestId(request) ?? `req_${randomUUID()}` };
+  // DSoR makes a request id first, so every answer carries one (DSOR-COR-01b).
+  let correlation: Correlation = { request_id: `req_${randomUUID()}` };
 
   // Runs one line, and first tells the observer its number. The number and the check are
   // one statement, so neither can move without the other.
@@ -46,6 +44,11 @@ export function call(
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
     const caller = line(1, () => {
+      // The caller's own request id labels every answer, when DSoR can use it (step 05's
+      // README, decisions 6 and 7). It is read inside the try, so an envelope whose
+      // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
+      // and fixed from step 05 on.
+      correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
       const found = whoIsCalling(request);
       correlation = { ...correlation, ...callerIds(found) };
       checkNamedPrincipals(input, found);

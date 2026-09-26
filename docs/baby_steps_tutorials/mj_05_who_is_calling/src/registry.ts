@@ -124,13 +124,17 @@ export function call(
   name: string,
   input: unknown,
 ): Answer {
-  // NEW IN STEP 05: the caller's own request id labels every answer, when DSoR can use it.
-  // Otherwise DSoR makes one (DSOR-COR-01b), and a bad one is refused below (step 05's
-  // README, decisions 6 and 7). Nothing in the input is read for it.
-  let correlation: Correlation = { request_id: usableRequestId(request) ?? `req_${randomUUID()}` };
+  // DSoR makes a request id first, so every answer carries one (DSOR-COR-01b).
+  let correlation: Correlation = { request_id: `req_${randomUUID()}` };
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
   try {
+    // NEW IN STEP 05: the caller's own request id labels every answer, when DSoR can use it,
+    // and a bad one is refused below (step 05's README, decisions 6 and 7). Nothing in the
+    // input is read for it. It is read inside the try, so an envelope whose request_id
+    // cannot be read gets an answer, not a throw. Found by step 07's review, and fixed from
+    // step 05 on.
+    correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
     // NEW IN STEP 05: who is calling is found before anything is checked (DSOR-IDN-01),
     // from the token and DSoR's own table only (DSOR-SRC-02a). From here, answers name it.
     const caller = whoIsCalling(request);

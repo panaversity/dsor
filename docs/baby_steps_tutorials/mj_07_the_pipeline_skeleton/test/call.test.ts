@@ -126,6 +126,25 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
     expect(ask).not.toThrow();
   });
 
+  // Not JSON, but code in the same program can send it. Found by step 07's review, and
+  // fixed from step 05 on: the request id was read before the try, so call threw.
+  it("a request envelope whose request_id cannot be read comes back as a value", () => {
+    const request = {
+      token: "tok_7f3a",
+      get request_id(): unknown {
+        throw new Error("unreadable");
+      },
+    };
+    let answer: unknown;
+    expect(
+      () => (answer = call(registry, request, "invoice.get", { id: "INV-1008" })),
+    ).not.toThrow();
+    expect(answer).toMatchObject({
+      code: "INTERNAL_ERROR",
+      correlation: { request_id: expect.stringMatching(REQUEST_ID) },
+    });
+  });
+
   it.each([
     ["null", null],
     ["a number", 1008],

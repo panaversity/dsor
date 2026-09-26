@@ -336,15 +336,15 @@ the CFO is still named as the agent. user_123 chose the request id `ap-desk-7`, 
 came back. Your other request ids will be different. DSoR makes a new one for every
 call that does not send one.
 
-`pnpm check` runs the type check, then 306 tests:
+`pnpm check` runs the type check, then 307 tests:
 
 ```text
  Test Files  10 passed (10)
-      Tests  306 passed (306)
+      Tests  307 passed (307)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `303 passed | 3 skipped`.
+original to compare with, so they are skipped: `304 passed | 3 skipped`.
 
 ## Break it
 
@@ -405,7 +405,7 @@ AssertionError: expected { Object (data, correlation) } to strictly equal { code
 -   "retry": "never",
 +   "data": {
 …
-      Tests  9 failed | 297 passed (306)
+      Tests  9 failed | 298 passed (307)
 ```
 
 The worst of the nine is the C1 test: with no login at all, a caller that wrote
