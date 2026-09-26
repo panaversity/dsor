@@ -88,29 +88,29 @@ A schema can say "if this, then that". The contract schema says: if `kind` is
 
 ### Decisions the specification leaves to us
 
-Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
+Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 1. **This step is one idea: contracts, checked at start-up, and calls by name.**
    `invoice.issue` gets its contract, because a real command contract is needed to test
    C4. It does not change any invoice yet. Changing an invoice raises a new question at
    once: what if the invoice is already issued? The caller needs an answer it can act
    on. That answer is an **error envelope**, a fixed shape for a refusal, and it is
-   step 04. *Price:* this step differs from the map of all steps (`../readme.md`),
+   step 04. *Downside:* this step differs from the map of all steps (`../readme.md`),
    which has `invoice.issue` change the invoice here. Asking to run `invoice.issue` is
    refused, with a message that says the operation is not built yet.
-2. **One broken contract stops the whole program.** *Price:* one typo stops
+2. **One broken contract stops the whole program.** *Downside:* one typo stops
    everything. So the refusal must name every problem at once. Otherwise the author
    fixes one, restarts, and meets the next.
 3. **The two schema files are copied into this step.** The step must run outside the
    repository, so it cannot read `packages/spec`. `schemas/operation-contract.schema.json`
    and `schemas/common.schema.json` are byte-for-byte copies, because the first one
-   points into the second. *Price:* two copies of one file. So a test compares each copy
+   points into the second. *Downside:* two copies of one file. So a test compares each copy
    with the original in `../../../packages/spec/schemas/` when that folder is there.
    Outside the repository it is not there, and the test is skipped. Inside it, CI, the
    checks that run on every pull request, runs `pnpm check` in every step. So a copy
    that drifts fails CI.
 4. **Contracts are JSON files in `contracts/`.** A contract is data. It is checked the
-   way anything from outside the program is checked. *Price:* start-up reads files from
+   way anything from outside the program is checked. *Downside:* start-up reads files from
    disk.
 5. **The validator is ajv 8.20.0, the version the repository already pins.** A
    **validator** is a library that checks a document against a JSON Schema. The
@@ -124,19 +124,19 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    But it prints six warnings at every start-up (its `strictTypes` check). Both
    checked 2026-09-25. The repository
    also installs ajv-formats, which checks values such as dates. This step does not: no
-   field of a contract has a `format`. *Price:* ajv checks the schema file itself less
+   field of a contract has a `format`. *Downside:* ajv checks the schema file itself less
    strictly. The test in decision 3 keeps that file equal to the original.
 6. **The registry is handed each file's text, not an object.** It parses and checks the
    text itself, so no code outside `buildRegistry` sees a contract before it is
    checked.
 7. **Two contracts with the same id stop start-up.** Keeping one of them would be a
-   guess about which one the author meant. *Price:* none found yet.
+   guess about which one the author meant. *Downside:* none found yet.
 8. **`invoice.issue` is `atomic`.** It changes one invoice, all at once or not at all.
    `non_compensatable` would need `in_flight` and an approver permission, and
    `compensatable` would point to `invoice.cancel`, which has no contract. The
    permission `invoice:read` is a name the specification uses. `invoice:issue` has the
    same `<resource>:<action>` form, like the specification's `payment:execute`.
-   *Price:* the semantics are chosen before the command does anything.
+   *Downside:* the semantics are chosen before the command does anything.
 
 ### The tests, by claim
 
@@ -463,7 +463,7 @@ Left open, on purpose. The next step starts from this list:
   step whose code reads a contract.
 - **A field written twice in one file.** `JSON.parse` keeps the last one, with no
   error. `{ "risk": { "level": "critical" }, "risk": { "level": "low" } }` loads as
-  `low`. This is a price of decision 4. Catching it needs a different JSON reader,
+  `low`. This is a downside of decision 4. Catching it needs a different JSON reader,
   which is a second idea.
 - **The values inside the shipped contracts are not tested.** Changing
   `invoice.issue`'s risk from `medium` to `high` passes every test. What a value means

@@ -78,19 +78,19 @@ changed and why.
 
 ### Decisions the specification leaves to us
 
-Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
+Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 1. **The request envelope is a separate argument.** `call(registry, request, name,
    input)`, where `request` is `{ token?, request_id? }`. The arguments stay in `input`.
    The request id comes along because it travels in the same envelope, and no step in
-   the map plans it: step 04 makes one, and step 40 passes the ids on. *Price:* every
+   the map plans it: step 04 makes one, and step 40 passes the ids on. *Downside:* every
    call in every test changes shape.
 2. **Tokens are opaque.** A token such as `tok_7f3a` means nothing until DSoR looks it
    up in its own table. Why not use the principal's id as the token? An id is not a
    secret. Every answer names its caller, so anyone who saw one answer to the CFO could
    type `cfo_100`. Real tokens may carry an id, as §37's `"sub": "user_123"` does. They
    are signed, so nobody but the login service that made them can make one. This
-   tutorial's tokens are not signed, so they name nobody. *Price:* the table of tokens is
+   tutorial's tokens are not signed, so they name nobody. *Downside:* the table of tokens is
    fake. Real tokens, signed and checked, arrive in steps 43 and 44.
 3. **DSoR's own table of principals.** `accounts-payable-fte` has the type `agent`.
    `user_123` and `cfo_100` have the type `human`, the specification's word for a
@@ -99,26 +99,26 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    they hold (§12). `CFO` is the specification's own role name. `ap_supervisor` is this
    tutorial's name, from §0.4's "Accounts Payable supervisor". The agent has no role.
    Its authority will come from a **delegation**, a permission slip from a person, which
-   arrives in step 18. The roles are unused until step 06. *Price:* §12's membership
+   arrives in step 18. The roles are unused until step 06. *Downside:* §12's membership
    also holds **scopes**, which §12 lists but never explains. This step leaves them out
    (see "Left open").
 4. **A list of field names finds a principal in the arguments.** At the top of the
    input: `principal`, `principal_id`, `subject`, `actor`, `actor_chain`, `agent_id`,
    and `user`. Inside an input's `correlation`: `principal_id` and `agent_id`. Anything
-   in those places except the caller's own id is refused, even a list. *Price:* a new
+   in those places except the caller's own id is refused, even a list. *Downside:* a new
    spelling, such as `as_user`, is not found. And an operation that uses one of these
    names for other data is refused. Step 07 puts the checks in one function, in a fixed
    order, like a pilot's checklist. One of them asks "is the input valid?", and that is
    where this gap can close.
 5. **Only the principal part of DSOR-SRC-02b is built here.** The rule also covers a
    tenant id and a delegation id in the arguments. Tenants arrive in step 10, and
-   delegations in step 18. *Price:* the rule is met in part, and "The rules this step
+   delegations in step 18. *Downside:* the rule is met in part, and "The rules this step
    meets" says which part.
 6. **A request id from the caller is checked before it is used.** It must be text, not
    empty, and at most 128 characters, counted the way JavaScript counts them: an emoji
    counts as two. Otherwise the call is refused with `VALIDATION_FAILED`, and the
    refusal carries an id DSoR made. The call never goes ahead under a new id: a caller
-   that searched the records for its own id would find nothing. *Price:* a caller whose
+   that searched the records for its own id would find nothing. *Downside:* a caller whose
    own ids are longer must shorten them.
 7. **The order of the checks.** First the request id is read, only to label the answer.
    A usable one is used. An unusable one is swapped for an id DSoR makes. Then DSoR
@@ -128,7 +128,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    comes last, as in step 04. So the only answer DSoR gives before it knows who is
    calling is `AUTHENTICATION_REQUIRED` (DSOR-IDN-01), and a usable request id labels
    even that refusal. An attempt to act as someone else is refused as one, even when
-   the request id is bad too (DSOR-SRC-02b). *Price:* a caller with no login that sent
+   the request id is bad too (DSOR-SRC-02b). *Downside:* a caller with no login that sent
    a bad request id sees DSoR's id on its refusal, not its own.
 8. **No identity mode yet.** The specification builds a **security context** for each
    request: what DSoR knows about it, such as who is calling, for whom, and in which
@@ -136,7 +136,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    human or application, for itself". An agent working alone is `unattended`, and that
    needs a delegation (decision 3). So in this step `accounts-payable-fte` has no mode
    that fits. An agent's login proves who it is, not what it may do. In the
-   specification, its authority comes from a person, through a delegation. *Price:* a
+   specification, its authority comes from a person, through a delegation. *Downside:* a
    real gap. Nothing checks what a caller may do yet, so the agent reads INV-1008
    exactly as `cfo_100` does. Permissions arrive in step 06, and delegations in step 18.
    The security context is not built yet, and nothing stores or sends it until step 08,
@@ -144,7 +144,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 9. **An answer names its caller in `correlation`, once DSoR knows who it is.** An
    agent's id goes in `agent_id`, as in the specification's examples. Anyone else's goes
    in `principal_id`. A refusal given before the principal is found names nobody. The
-   specification lists both fields but never says which caller goes in which. *Price:*
+   specification lists both fields but never says which caller goes in which. *Downside:*
    its examples show only an agent calling, so the field for anyone else is this
    tutorial's choice.
 
@@ -599,9 +599,10 @@ copy stays right.
 The analogies, checked against the house style's list: "permission slip" and "a pilot's
 checklist" are on it. The review flagged two words. "Request envelope" is the
 specification's own term, but a real envelope holds its letter inside, and this one
-travels beside the arguments. The README keeps the term and says what it is. "Price",
-used in every decision, might be read as money in a story about a payment. Steps 03 and
-04 use the same word, so a change belongs to all the steps at once.
+travels beside the arguments. The README keeps the term and says what it is. The
+review also flagged "Price", the word each decision used for what it costs. In a story
+about payments, a reader might take it for money. After the step, steps 03 to 05 say
+"Downside" instead.
 
 ### Left open
 

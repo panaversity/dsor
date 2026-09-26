@@ -100,16 +100,16 @@ Two findings, checked with ajv on 2026-09-25 against the specification's own sch
 
 ### Decisions the specification leaves to us
 
-Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
+Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 1. **This step is error envelopes, plus a small shape for a query's success.**
    `invoice.issue` stays unbuilt, and `call` refuses every command before its code
-   runs, so no command can answer in a query's shape. *Price:* `invoice.issue` moves
+   runs, so no command can answer in a query's shape. *Downside:* `invoice.issue` moves
    again. Its success needs a proposal, and proposals are step 22.
 2. **The §28 table is typed into code twice.** DSOR-ERR-01a names the table, so each
    code's retry class is the table's, and C3's tests carry the rule's id. The schema
    checks only three of them (finding 1). Our method is to type the table into `src`,
-   and again into the test. *Price:* both copies come from the same prose. If §28
+   and again into the test. *Downside:* both copies come from the same prose. If §28
    changes a retry class, no test fails until someone types the change. If §28 adds or
    removes a code, the schema changes too, and the tests that compare with it fail. The
    rule's sentence says only "a retry class", not "the table's". That is raised as
@@ -117,7 +117,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 3. **A query's success is `{ data, correlation }`.** Both names are the ones
    `result-envelope.schema.json` already uses, and `correlation` follows the
    specification's own definition. There is no `outcome`, because none fits (finding
-   2). *Price:* a query's answer does not meet DSOR-SCH-01, and this README says so.
+   2). *Downside:* a query's answer does not meet DSOR-SCH-01, and this README says so.
    Once commands succeed, there are two shapes of success. When the specification gives
    a query an outcome, this shape becomes a result envelope.
 4. **DSoR makes the `request_id` for every call, because no caller can send one yet.**
@@ -127,7 +127,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    and its input. There is no place for correlation identifiers. A `request_id` written
    inside the input is not one, because the input holds the operation's arguments. The
    form is this tutorial's decision: `req_` and a random UUID, a 36-character id made
-   from random numbers. *Price:* a caller cannot send its own ids to match its own logs.
+   from random numbers. *Downside:* a caller cannot send its own ids to match its own logs.
    That needs a way to reach DSoR from outside, the REST API of step 42. Until then, a
    caller can record the `request_id` that comes back in every answer.
 5. **A refusal names its code, and `call` does the rest.** The code behind an operation,
@@ -141,7 +141,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    becomes `INTERNAL_ERROR`. Our checks threw a `TypeError` for bad input in step 03.
    JavaScript throws the same class for a bug, such as reading `.id` of `undefined`. So
    `call` cannot sort errors by their class. `money()` and `parseUri()` keep throwing a
-   `TypeError`. They know nothing about envelopes. *Price:* a handler that gives a
+   `TypeError`. They know nothing about envelopes. *Downside:* a handler that gives a
    caller's input to `money()` or `parseUri()` must catch the `TypeError` and throw a
    `Refusal` itself.
 6. **`error-envelope.schema.json` is copied in, as step 03 copied its schemas.** The
