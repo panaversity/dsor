@@ -23,7 +23,7 @@ try {
 console.log("operations:", [...registry.contracts.keys()]);
 
 // NEW IN STEP 05: every call carries a request envelope beside its arguments. This one
-// holds the login token DSoR gave the agent (README, decision 2).
+// holds the login token DSoR gave the agent (step 05's README, decision 2).
 const AGENT: RequestEnvelope = { token: "tok_7f3a" };
 
 // The answer is an envelope. A success carries the invoice as its data,

@@ -10,7 +10,7 @@ import { Refusal } from "./envelope.ts";
  */
 export type RequestEnvelope = { token?: unknown; request_id?: unknown };
 
-/** The request id the caller sent, when DSoR can use it (README, decision 6). */
+/** The request id the caller sent, when DSoR can use it (step 05's README, decision 6). */
 export function usableRequestId(request: RequestEnvelope): string | undefined {
   // The envelope comes from outside the program, so it may even be null.
   const sent = request?.request_id;

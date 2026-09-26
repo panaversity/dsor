@@ -591,6 +591,11 @@ Four of the 15 breaks changed nothing a caller can see, so no test of what `call
 answers can catch them: a type cast that changes nothing, a `?.` that an earlier check
 makes unneeded, a change only to a type, and printing more in `main.ts`.
 
+Fixed after the step, in step 04 first and then here: comments copied from steps 03 and
+04 said "(README, decision N)". In this folder, that pointed at this step's decisions,
+not theirs. Every such comment now names its step, this step's own too, so the next
+copy stays right.
+
 The analogies, checked against the house style's list: "permission slip" and "a pilot's
 checklist" are on it. The review flagged two words. "Request envelope" is the
 specification's own term, but a real envelope holds its letter inside, and this one
@@ -612,9 +617,6 @@ used in every decision, might be read as money in a story about a payment. Steps
   such as `principalId` or `on_behalf_of`, are not found (decision 4).
 - **`src/registry.ts` has 158 lines.** The build skill asks for about 150. `call()` now
   holds the start of the checklist that step 07 moves into a function of its own.
-- **Comments from steps 03 and 04 point at the wrong README.** A comment such as
-  "(README, decision 6)" means step 04's decision 6, but a reader of this folder finds
-  this step's decision 6. The fix belongs in step 04 first, and then in each later step.
 
 ## The rules this step meets
 

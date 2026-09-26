@@ -1,4 +1,4 @@
-// What call answers, by step 04's claims (C4, C6, C7 in step 04's README).
+// What call answers, by claim (C4, C6, C7 in step 04's README).
 import { describe, expect, it, vi } from "vitest";
 import type { Answer, ErrorEnvelope } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
@@ -17,7 +17,7 @@ import {
 } from "./helpers.ts";
 
 // NEW IN STEP 05: every call carries the agent's login token, and every answer names the
-// agent (README, decisions 1 and 9).
+// agent (step 05's README, decisions 1 and 9).
 
 // A request id with the right form, so code that used any well-formed id it found in the
 // input would fail too.
@@ -53,7 +53,7 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
   });
 
   // No rule id: the rule lets DSoR use a request id that a caller sends. That the input is
-  // not the place to send one is this tutorial's decision 4. Found by the review: an id
+  // not the place to send one is step 04's decision 4. Found by the review: an id
   // in a correlation object inside the input was used, and every test passed.
   it.each([
     ["at the top of the input", { id: "INV-1008", request_id: MINE }],
@@ -68,7 +68,7 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
   });
 });
 
-// No rule id: this shape is the tutorial's decision 3, and it does not meet DSOR-SCH-01.
+// No rule id: this shape is step 04's decision 3, and it does not meet DSOR-SCH-01.
 describe("C6: a query's success is { data, correlation }", () => {
   it("invoice.get for INV-1008 answers with the invoice as its data", () => {
     expect(call(registry, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
@@ -84,8 +84,8 @@ describe("C6: a query's success is { data, correlation }", () => {
   });
 
   // A command's success needs a result envelope, and that needs a proposal (step 22). So
-  // call refuses a command before its code runs (README, decision 1). Found by the review:
-  // a command with code answered in the query's shape.
+  // call refuses a command before its code runs (step 04's README, decision 1). Found by
+  // the review: a command with code answered in the query's shape.
   it("a command's code never runs, even when the command has code", () => {
     const spy = vi.fn<Handler>(() => "issued");
     const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": spy });
@@ -97,7 +97,7 @@ describe("C6: a query's success is { data, correlation }", () => {
 });
 
 // No rule id: C7 is the tutorial's own claim. A caller outside the program sends JSON, so
-// C7 covers what JSON can carry (README, "Left open").
+// C7 covers what JSON can carry (step 04's README, "Left open").
 describe("C7: nothing a caller can send as JSON makes call throw", () => {
   it.each(REFUSALS)("%s comes back as a value, not a throw", (_why, ask) => {
     expect(ask).not.toThrow();
@@ -122,7 +122,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
   // bug that threw undefined made call throw.
   const BUGS: [string, Handler][] = [
     // Our checks threw a TypeError for bad input in step 03. JavaScript throws the same
-    // class for this bug, so the class cannot tell them apart (README, decision 5).
+    // class for this bug, so the class cannot tell them apart (step 04's README, decision 5).
     [
       "a TypeError, from reading .id of undefined",
       (input) => (input as { invoice: { id: string } }).invoice.id,

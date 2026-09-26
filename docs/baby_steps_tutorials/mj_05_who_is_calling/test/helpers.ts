@@ -78,14 +78,14 @@ export function schemaProblems(envelope: unknown): string[] {
 /** The codes the error envelope's schema lists: the §28 table's codes. */
 export const SCHEMA_CODES: string[] = envelopeSchema.properties.code.anyOf[0].enum;
 
-// NEW IN STEP 05: the login tokens DSoR gave, typed out again from README decision 3
+// NEW IN STEP 05: the login tokens DSoR gave, typed out again from step 05's decision 3
 // rather than imported from src, so a mistake in src is not copied into the tests.
 export const AGENT: RequestEnvelope = { token: "tok_7f3a" };
 export const SUPERVISOR: RequestEnvelope = { token: "tok_2c91" };
 export const CFO: RequestEnvelope = { token: "tok_d4e8" };
 
-// NEW IN STEP 05: who an answer names as its caller (README, decision 9). An answer given
-// before DSoR knows who is calling names nobody.
+// NEW IN STEP 05: who an answer names as its caller (step 05's README, decision 9). An
+// answer given before DSoR knows who is calling names nobody.
 export type Caller = { agent_id?: string; principal_id?: string };
 export const THE_AGENT: Caller = { agent_id: "accounts-payable-fte" };
 export const NOBODY: Caller = {};
@@ -129,20 +129,21 @@ export function refusedWith(code: ErrorCode): Answer {
   });
 }
 
-// "req_" and a random UUID (README, decision 4).
+// "req_" and a random UUID (step 04's README, decision 4).
 export const REQUEST_ID: RegExp =
   /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // The one message a bug's envelope carries, typed out again rather than imported from src.
 export const UNEXPECTED = "DSoR hit an unexpected error";
 
-// invoice.issue with code. A command must be refused before its code runs (decision 1).
+// invoice.issue with code. A command must be refused before its code runs (step 04's
+// README, decision 1).
 const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": () => "issued" });
 
 // Every refusal this step can give: its code and its message (step 04's README, decision
 // 7). Each one is a function, so each test makes its own call.
-// NEW IN STEP 05: each also says who the answer names as its caller (README, decision 9).
-// The first three are this step's refusals.
+// NEW IN STEP 05: each also says who the answer names as its caller (step 05's README,
+// decision 9). The first three are this step's refusals.
 export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   [
     "a call with no login",

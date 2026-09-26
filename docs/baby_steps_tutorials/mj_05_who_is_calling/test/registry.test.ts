@@ -6,7 +6,7 @@ import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
 import { AGENT, contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
 
-// NEW IN STEP 05: every call carries the agent's login token (README, decision 1).
+// NEW IN STEP 05: every call carries the agent's login token (step 05's README, decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers);
@@ -141,7 +141,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
     );
   });
 
-  // No rule id: refusing both is this tutorial's decision 7. Keeping one would be a guess.
+  // No rule id: refusing both is step 03's decision 7. Keeping one would be a guess.
   it("two contracts with one id are refused, not one picked", () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source({ ...contract("invoice.get"), risk: { level: "high" } }, "b.json");

@@ -1,4 +1,4 @@
-// What an error envelope holds, by step 04's claims (C1, C2, C3, C5 in step 04's README).
+// What an error envelope holds, by claim (C1, C2, C3, C5 in step 04's README).
 import { describe, expect, it } from "vitest";
 import { RETRY, Refusal, type ErrorCode, type RetryClass } from "../src/envelope.ts";
 import {
@@ -22,7 +22,7 @@ describe("C1: every refusal is an error envelope that passes the real schema", (
         code,
         message,
         retry: "never",
-        // NEW IN STEP 05: the answer names its caller, once DSoR knows it (decision 9).
+        // NEW IN STEP 05: the answer names its caller, once DSoR knows it (step 05's decision 9).
         correlation: correlationFor(caller),
       });
       expect(schemaProblems(envelope)).toEqual([]);

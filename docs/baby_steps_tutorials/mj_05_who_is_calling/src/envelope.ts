@@ -47,7 +47,7 @@ export type ErrorCode =
   | "UNSUPPORTED_CAPABILITY"
   | "INTERNAL_ERROR";
 
-// NEW IN STEP 05: an answer also names its caller, once DSoR knows it (README, decision 9).
+// NEW IN STEP 05: an answer also names its caller, once known (step 05's README, decision 9).
 /** The ids that tie an answer to one request, and to its caller. */
 export type Correlation = { request_id: string; agent_id?: string; principal_id?: string };
 
@@ -59,15 +59,15 @@ export type ErrorEnvelope = {
   correlation: Correlation;
 };
 
-/** A query's answer. This shape is the tutorial's decision 3, not the specification's. */
+/** A query's answer. This shape is step 04's decision 3, not the specification's. */
 export type Success = { data: unknown; correlation: Correlation };
 
 /** Everything call can return. */
 export type Answer = Success | ErrorEnvelope;
 
 // The §28 table, typed out from the prose: every code, and the retry class the table
-// gives it. The guard cannot watch prose, so a test types the table out again (README,
-// decision 2). TypeScript refuses this table if a code is missing from it.
+// gives it. The guard cannot watch prose, so a test types the table out again (step 04's
+// README, decision 2). TypeScript refuses this table if a code is missing from it.
 export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {
   AUTHENTICATION_REQUIRED: "never", // log in again
   AUTHORIZATION_DENIED: "never",
@@ -102,7 +102,7 @@ export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {
   DEPENDENCY_TIMEOUT: "safe_same_key",
   UNSUPPORTED_CAPABILITY: "never",
   // The table says "never for commands", and nothing about queries. This tutorial
-  // chooses never for queries too (README, decision 8).
+  // chooses never for queries too (step 04's README, decision 8).
   INTERNAL_ERROR: "never",
 };
 
@@ -116,7 +116,7 @@ export class Refusal extends Error {
   }
 }
 
-// The specification's own schema, copied byte for byte (README, decision 6). strict is
+// The specification's own schema, copied byte for byte (step 04's README, decision 6). strict is
 // off for the reason registry.ts gives. The options that change data while checking it
 // stay off, as they are by default, so the check can never repair what it checks.
 const SCHEMAS = new URL("../schemas/", import.meta.url);
@@ -131,19 +131,19 @@ const passesSchema = ajv.compile(loadSchema("error-envelope.schema.json"));
 export function toEnvelope(thrown: unknown, correlation: Correlation): ErrorEnvelope {
   // Anything that is not a Refusal is a bug, even a TypeError. Our checks threw TypeError
   // for bad input in step 03, and JavaScript throws it for bugs, so the class cannot tell
-  // them apart (decision 5).
+  // them apart (step 04's README, decision 5).
   if (!(thrown instanceof Refusal)) return unexpected(correlation);
   // The retry class comes from the table, never from the code that refused.
   const { code, message } = thrown;
   const envelope = { code, message, retry: RETRY[code], correlation };
   // DSOR-SCH-01. An envelope that fails its schema never leaves call. The
-  // fixed INTERNAL_ERROR envelope goes out in its place (README, decision 8).
+  // fixed INTERNAL_ERROR envelope goes out in its place (step 04's README, decision 8).
   return passesSchema(envelope) ? envelope : unexpected(correlation);
 }
 
 // The error envelope for a bug. It is built from fixed parts, so it passes the schema,
 // and the tests check that it does. Its message is fixed: a bug's own message can name
-// internal details, so it never reaches the caller (README, decision 8).
+// internal details, so it never reaches the caller (step 04's README, decision 8).
 function unexpected(correlation: Correlation): ErrorEnvelope {
   const message = "DSoR hit an unexpected error";
   return { code: "INTERNAL_ERROR", message, retry: RETRY.INTERNAL_ERROR, correlation };

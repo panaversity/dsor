@@ -1,4 +1,4 @@
-// NEW IN STEP 05: who is calling, by claim (C1 to C6 in the README).
+// NEW IN STEP 05: who is calling, by claim (C1 to C6 in step 05's README).
 import { describe, expect, it, vi } from "vitest";
 import { callerIds, logins, whoIsCalling, type PrincipalType } from "../src/principals.ts";
 import { call, type Handler } from "../src/registry.ts";
@@ -38,7 +38,7 @@ describe("C1: the principal is found first", () => {
   );
 
   // Found when the design was checked against the specification: the design first checked
-  // the request id before the login (README, "Think it through").
+  // the request id before the login (step 05's README, "Think it through").
   it.each([
     ["a request id DSoR cannot use", { request_id: "" }, { id: "INV-1008" }],
     ["cfo_100 named in the arguments", {}, { id: "INV-1008", principal: "cfo_100" }],
@@ -115,7 +115,7 @@ describe("C3: every principal has a type and at least one tenant membership", ()
     },
   );
 
-  // No rule id: the story's three principals are this tutorial's decision 3.
+  // No rule id: the story's three principals are step 05's decision 3.
   it("the table holds the story's three principals, each with its own token", () => {
     const inOrg456 = (roles: string[]) => [{ tenant_id: "org_456", roles }];
     expect(Object.fromEntries(logins)).toStrictEqual({
@@ -165,7 +165,7 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
     });
   });
 
-  // No rule id: which field names the caller is this tutorial's decision 9. Found by the
+  // No rule id: which field names the caller is step 05's decision 9. Found by the
   // review: the table holds no application and no system, so a check for "human" passed.
   const NAMED_IN: [PrincipalType, string][] = [
     ["agent", "agent_id"],
@@ -178,7 +178,7 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
   });
 });
 
-// The places that README decision 4 lists. Each test builds its own input, with one name
+// The places that step 05's decision 4 lists. Each test builds its own input, with one name
 // in one place.
 const PLACES = [
   "principal",
@@ -280,7 +280,7 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     });
   });
 
-  // No rule id: checking the arguments before the operation's name is decision 7's order.
+  // No rule id: checking the arguments before the operation's name is step 05's decision 7.
   it("a principal named in the arguments is refused even for an operation that does not exist", () => {
     expect(call(registry, AGENT, "invoice.delete", { principal: "cfo_100" })).toMatchObject({
       code: "AUTHORIZATION_DENIED",
@@ -291,7 +291,7 @@ describe("C5: a principal named in the arguments must be the caller", () => {
 describe("C6: the caller's request id is used, and with none DSoR makes one", () => {
   // No rule id on these two. Found by the review: DSOR-COR-01b covers only a call that
   // sends no request id, and step 04's tests prove that. Using the caller's own id is
-  // what §32 describes, and this tutorial's decisions 6 and 7.
+  // what §32 describes, and step 05's decisions 6 and 7.
   it("the caller's request id comes back in correlation", () => {
     const request = { ...AGENT, request_id: "ap-run-0926-001" };
     expect(call(registry, request, "invoice.get", { id: "INV-1008" }).correlation).toStrictEqual({
@@ -305,7 +305,7 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     expect(answer).toStrictEqual({ ...NO_LOGIN, correlation: { request_id: "ap-run-0926-001" } });
   });
 
-  // No rule id: the limits are this tutorial's decision 6.
+  // No rule id: the limits are step 05's decision 6.
   it.each([
     ["one character", "r"],
     ["128 characters", "r".repeat(128)],
@@ -317,7 +317,7 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     expect(answer.correlation.request_id).toBe(id);
   });
 
-  // No rule id: refusing a request id DSoR cannot use is this tutorial's decision 6. The
+  // No rule id: refusing a request id DSoR cannot use is step 05's decision 6. The
   // refusal carries an id that DSoR made.
   it.each([
     ["a number", 7],
@@ -337,8 +337,8 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     });
   });
 
-  // No rule id: decisions 6 and 7. Found by the review: every test of a bad request id
-  // used invoice.get, and none looked at whether the operation's code ran.
+  // No rule id: step 05's decisions 6 and 7. Found by the review: every test of a bad
+  // request id used invoice.get, and none looked at whether the operation's code ran.
   it("a bad request id is refused before the operation's code runs", () => {
     const spy = vi.fn<Handler>(() => "ran");
     const answer = call(registryWith(spy), { ...AGENT, request_id: "" }, "test.run", {});

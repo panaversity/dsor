@@ -18,9 +18,9 @@ function principal(id: string, type: PrincipalType, roles: string[]): Principal 
   return { id, type, memberships: [{ tenant_id: "org_456", roles }] };
 }
 
-// DSoR's own table: each login token it gave, and to whom (README, decision 3). A token
-// names nobody until it is looked up here (decision 2). §12 writes tenantId. This
-// tutorial spells every field the way the schemas do.
+// DSoR's own table: each login token it gave, and to whom (step 05's README, decision 3).
+// A token names nobody until it is looked up here (step 05's decision 2). §12 writes tenantId.
+// This tutorial spells every field the way the schemas do.
 export const logins: ReadonlyMap<string, Principal> = new Map([
   ["tok_7f3a", principal("accounts-payable-fte", "agent", [])],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
@@ -42,13 +42,13 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
   return caller;
 }
 
-/** The ids that name the caller in an answer's correlation (README, decision 9). */
+/** The ids that name the caller in an answer's correlation (step 05's README, decision 9). */
 export function callerIds(caller: Principal): { agent_id: string } | { principal_id: string } {
   // The specification's examples put an agent in agent_id. Anyone else goes in principal_id.
   return caller.type === "agent" ? { agent_id: caller.id } : { principal_id: caller.id };
 }
 
-// The places where the arguments may name a principal (README, decision 4). A new
+// The places where the arguments may name a principal (step 05's README, decision 4). A new
 // spelling, such as as_user, is not caught. That is the decision's price.
 const AT_THE_TOP = [
   "principal",
