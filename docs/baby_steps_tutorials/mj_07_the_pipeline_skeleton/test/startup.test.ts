@@ -40,7 +40,7 @@ describe("reading the contracts folder", () => {
   });
 });
 
-// NEW IN STEP 06. No rule id: how start-up reads the role table. Found by the review:
+// No rule id: how start-up reads the role table. Found by the review:
 // code that named every table "roles.json", or by its whole path, passed every test.
 describe("reading the role table", () => {
   it("names the table by its own file name, so a problem points at the right file", () => {
@@ -79,7 +79,7 @@ describe("the program", () => {
       expect(output).toMatch("dsor://org_456/invoice/INV-1008");
       expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
       expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
-      // NEW IN STEP 06: the agent may not issue. user_123 may, and hears "not built yet".
+      // The agent may not issue. user_123 may, and hears "not built yet".
       expect(output).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
       // NEW IN STEP 07: user_123 sends a bad input, and line ⑥ refuses it.
@@ -138,7 +138,7 @@ describe("the program", () => {
     },
   );
 
-  // NEW IN STEP 06: start-up checks the role table too (step 06's README, decision 1). The
+  // Start-up checks the role table too (step 06's README, decision 1). The
   // shipped contracts are named first, because the role table comes after them.
   it(
     "refuses to start with a broken role table: it names the problem and exits with code 1",
@@ -160,7 +160,7 @@ describe("the program", () => {
     },
   );
 
-  // NEW IN STEP 06. Found by the review: a program that looked for roles.json in the
+  // Found by the review: a program that looked for roles.json in the
   // folder it was started from passed every test, because the tests start it from here.
   it("finds its own role table, whatever folder it is started from", { timeout: 30_000 }, () => {
     const dir = mkdtempSync(join(tmpdir(), "dsor-elsewhere-"));
@@ -173,7 +173,7 @@ describe("the program", () => {
     }
   });
 
-  // NEW IN STEP 06. Found by the review: a role table read outside the start-up checks
+  // Found by the review: a role table read outside the start-up checks
   // still stopped the program, but with a stack trace instead of the problem.
   it(
     "refuses to start without its role table: it names the file and prints no stack trace",

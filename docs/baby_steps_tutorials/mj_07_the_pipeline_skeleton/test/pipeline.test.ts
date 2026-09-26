@@ -95,7 +95,9 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
     const { answer, lines } = linesRun(registry, SUPERVISOR, "invoice.issue", BAD_ISSUE);
     expect(answer).toStrictEqual({
       code: "VALIDATION_FAILED",
-      message: expect.stringMatching(/^the input of "invoice.issue" is not valid: \/invoice must match pattern/),
+      message: expect.stringMatching(
+        /^the input of "invoice.issue" is not valid: \/invoice must match pattern/,
+      ),
       retry: "never",
       correlation: correlationFor(THE_SUPERVISOR),
     });
@@ -178,6 +180,23 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     expect(answer).toMatchObject({ message: '"invoice.issue" is not built yet' });
   });
 
+  // Start-up never allows it, so only a registry built by hand can have an operation with
+  // no check for its input. When the check is missing, the answer is no.
+  it("an operation with no input check, in a registry built by hand, refuses every input", () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const handMade: Registry = {
+      ...registryWithGet(spy),
+      inputs: new Map(),
+    };
+    expect(call(handMade, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+      code: "VALIDATION_FAILED",
+      message: notValid("invoice.get", "it has no input schema"),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   // A field's name comes from the caller, so it may be anything, even something huge.
   it("a refusal shows only a short piece of a field's name", () => {
     const huge = "x".repeat(10_000);
@@ -225,7 +244,8 @@ describe("C4: start-up is refused for a contract whose input schema is missing o
 
   // Step 03's lesson: JSON.parse keeps the second of two values, and says nothing.
   it("an input schema with a key written twice stops start-up", () => {
-    const text = '{ "type": "object", "additionalProperties": false, "additionalProperties": true }';
+    const text =
+      '{ "type": "object", "additionalProperties": false, "additionalProperties": true }';
     const twice = inputsWith("InvoiceGetRequest.schema.json", text);
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, twice))).toMatch(
       'inputs/InvoiceGetRequest.schema.json: "additionalProperties" is written twice in one object',
@@ -267,7 +287,11 @@ describe("C5: the code behind an operation is reached only through the checklist
     ["no login, and a bad input", {}, { id: 1008 }],
     ["a bad input", AGENT, { id: 1008 }],
     ["as_user in the input", AGENT, { id: "INV-1008", as_user: "cfo_100" }],
-    ["the agent's own id in principal", AGENT, { id: "INV-1008", principal: "accounts-payable-fte" }],
+    [
+      "the agent's own id in principal",
+      AGENT,
+      { id: "INV-1008", principal: "accounts-payable-fte" },
+    ],
   ])("DSOR-OPR-04a: %s never reaches invoice.get's code", (_why, request, input) => {
     const spy = vi.fn<Handler>(() => "ran");
     expect(call(registryWithGet(spy), request, "invoice.get", input)).toHaveProperty("code");

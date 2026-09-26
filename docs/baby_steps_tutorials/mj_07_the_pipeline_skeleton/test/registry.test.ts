@@ -7,8 +7,10 @@ import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
   AGENT,
+  GOOD_ISSUE,
   SUPERVISOR,
   contract,
+  inputsWith,
   refusal,
   shipped,
   shippedRoles,
@@ -18,7 +20,7 @@ import {
 } from "./helpers.ts";
 
 // Every call carries the agent's login token (step 05's README, decision 1).
-// NEW IN STEP 06: every registry is built with the role table too (step 06's README,
+// Every registry is built with the role table too (step 06's README,
 // decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
@@ -71,11 +73,13 @@ describe("C1: nothing can be called without a contract", () => {
   // still never run.
   it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", () => {
     const spy = vi.fn<Handler>(() => "deleted");
-    // NEW IN STEP 06: a registry holds a role table too. This one grants nothing.
+    // A registry holds a role table too. This one grants nothing.
     const handMade = {
       contracts: new Map(),
       handlers: new Map([["invoice.delete", spy]]),
       roles: new Map(),
+      // NEW IN STEP 07: a registry holds the check for each input too. This one has none.
+      inputs: new Map(),
     };
     // The refusal is an envelope, not a throw.
     expect(call(handMade, AGENT, "invoice.delete", {})).toMatchObject({
@@ -84,11 +88,12 @@ describe("C1: nothing can be called without a contract", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  // The refusal is an envelope, not a throw. NEW IN STEP 06: user_123 calls, because only a
+  // The refusal is an envelope, not a throw. User_123 calls, because only a
   // caller who holds invoice:issue gets as far as "not built yet" (step 06's README, C5).
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
-    expect(call(registry, SUPERVISOR, "invoice.issue", {})).toMatchObject({
+    // NEW IN STEP 07: a good input, so line ⑥ is not what refuses the call.
+    expect(call(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
     });
@@ -225,8 +230,10 @@ describe("C7: a loaded contract is exactly what was written", () => {
 
   it("a value that repeats its own key's name is not a key written twice", () => {
     const text = JSON.stringify({ ...contract("invoice.get"), input: { schema: "schema" } });
+    // NEW IN STEP 07: the input schema that contract names must have a file too.
+    const inputs = inputsWith("schema.schema.json", '{ "type": "object" }');
     expect(
-      refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}, shippedRoles)),
+      refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}, shippedRoles, inputs)),
     ).toBe("");
   });
 });

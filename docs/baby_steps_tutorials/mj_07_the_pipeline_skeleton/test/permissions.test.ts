@@ -1,10 +1,16 @@
-// NEW IN STEP 06: what a caller may do, by claim (C1 to C6 in step 06's README).
+// What a caller may do, by claim (C1 to C6 in step 06's README).
 import { describe, expect, it, vi } from "vitest";
 import { handlers } from "../src/operations.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
 import { call } from "../src/pipeline.ts";
-import { buildRegistry, type Contract, type Handler, type Registry } from "../src/registry.ts";
+import {
+  buildRegistry,
+  type Contract,
+  type ContractSource,
+  type Handler,
+  type Registry,
+} from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
@@ -18,12 +24,14 @@ import {
   THE_SUPERVISOR,
   contract,
   correlationFor,
+  inputsWith,
   notGranted,
   notTheCaller,
   refusal,
   registry,
   rolesFile,
   shipped,
+  shippedInputs,
   shippedRoles,
   shippedWith,
   source,
@@ -32,10 +40,15 @@ import {
 } from "./helpers.ts";
 
 /** The shipped operations plus one more, whose contract and code the test writes. */
-function withOperation(extra: Record<string, unknown>, code?: Handler): Registry {
+function withOperation(
+  extra: Record<string, unknown>,
+  code?: Handler,
+  // NEW IN STEP 07: a new operation may need an input schema of its own.
+  inputs: ContractSource[] = shippedInputs,
+): Registry {
   const id = extra["id"] as string;
   const withCode = code === undefined ? handlers : { ...handlers, [id]: code };
-  return buildRegistry([...shipped, source(extra, `${id}.json`)], withCode, shippedRoles);
+  return buildRegistry([...shipped, source(extra, `${id}.json`)], withCode, shippedRoles, inputs);
 }
 
 /** The whole refusal, when the caller does not hold the permission a call needs. */
@@ -387,7 +400,9 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         output: { schema: "Vendor" },
         authorization: { permission: "vendor:read" },
       };
-      const answer = call(withOperation(vendorGet, spy), request, "vendor.get", {
+      // NEW IN STEP 07: vendor.get's input schema, so start-up accepts the new contract.
+      const vendorInput = inputsWith("VendorGetRequest.schema.json", '{ "type": "object" }');
+      const answer = call(withOperation(vendorGet, spy, vendorInput), request, "vendor.get", {
         id: "VENDOR-44",
       });
       expect(answer).toStrictEqual(denied("vendor.get", "vendor:read", caller));
@@ -410,6 +425,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         contracts: new Map([["invoice.get", bare as Contract]]),
         handlers: new Map([["invoice.get", spy]]),
         roles: registry.roles,
+        // NEW IN STEP 07: the shipped check for each operation's input.
+        inputs: registry.inputs,
       };
       expect(call(handMade, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toStrictEqual({
         code: "AUTHORIZATION_DENIED",

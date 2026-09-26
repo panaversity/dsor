@@ -1,4 +1,4 @@
-// NEW IN STEP 06: what a caller may do comes from its roles, and anything not granted is
+// What a caller may do comes from its roles, and anything not granted is
 // refused. DSOR-AUT-01a and DSOR-AUT-01b in specs/dsor/02-security.md, section 15.
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";

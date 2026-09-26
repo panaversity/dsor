@@ -6,13 +6,12 @@ import { preview, type Handler } from "./registry.ts";
 
 export const handlers: Record<string, Handler> = {
   "invoice.get": (input) => {
-    // The input comes from outside the program, so it has no types yet.
-    const id = (input as { id?: unknown } | null)?.id;
+    // NEW IN STEP 07: line ⑥ of the checklist has checked the input against
+    // InvoiceGetRequest, so it is { id: string } and nothing else. The code no longer
+    // checks it in its own way (step 07's README, outcome 2).
+    const { id } = input as { id: string };
     // Each refusal names its code from the §28 table, and call does the
     // rest (step 04's README, decision 5).
-    if (typeof id !== "string") {
-      throw new Refusal("VALIDATION_FAILED", "invoice.get needs { id: string }");
-    }
     const invoice = getInvoice(invoices, id);
     if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
     return invoice;

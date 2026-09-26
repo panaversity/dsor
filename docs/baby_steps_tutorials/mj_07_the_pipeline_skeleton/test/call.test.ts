@@ -102,7 +102,7 @@ describe("C6: a query's success is { data, correlation }", () => {
 
   // A command's success needs a result envelope, and that needs a proposal (step 22). So
   // call refuses a command before its code runs (step 04's README, decision 1). Found by
-  // the review: a command with code answered in the query's shape. NEW IN STEP 06: user_123
+  // the review: a command with code answered in the query's shape. User_123
   // calls, who holds invoice:issue, so the permission check is not what refuses the call.
   it("a command's code never runs, even when the command has code", () => {
     const spy = vi.fn<Handler>(() => "issued");
@@ -135,7 +135,8 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
   ])("invoice.get with %s as its input is refused with VALIDATION_FAILED", (_why, input) => {
     expect(call(registry, AGENT, "invoice.get", input)).toMatchObject({
       code: "VALIDATION_FAILED",
-      message: "invoice.get needs { id: string }",
+      // NEW IN STEP 07: line ⑥ refuses the input, and says what is wrong with it.
+      message: expect.stringMatching(/^the input of "invoice.get" is not valid: /),
       retry: "never",
     });
   });

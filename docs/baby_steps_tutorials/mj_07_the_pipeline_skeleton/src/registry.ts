@@ -2,7 +2,9 @@
 // DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b in specs/dsor/01-model.md, section 7.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
+import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { keysWrittenTwice } from "./json.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { logins } from "./principals.ts";
@@ -20,9 +22,14 @@ export type Handler = (input: unknown) => unknown;
 export type Registry = {
   contracts: ReadonlyMap<string, Contract>;
   handlers: ReadonlyMap<string, Handler>;
-  // NEW IN STEP 06: what each role grants (step 06's README, decision 1).
+  // What each role grants (step 06's README, decision 1).
   roles: Roles;
+  // NEW IN STEP 07: the check for each operation's input (step 07's README, decision 2).
+  inputs: InputChecks;
 };
+
+// NEW IN STEP 07: this step's own input schemas, found beside the contracts folder.
+const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
 const SCHEMAS = new URL("../schemas/", import.meta.url);
@@ -63,8 +70,11 @@ export function contractFiles(names: string[]): string[] {
 export function buildRegistry(
   sources: ContractSource[],
   handlers: Record<string, Handler>,
-  // NEW IN STEP 06: the role table, checked with the contracts (step 06's README, decision 1).
+  // The role table, checked with the contracts (step 06's README, decision 1).
   roleSource: RoleSource,
+  // NEW IN STEP 07: the input schemas. This step's own, unless a test gives others. They
+  // are read here, inside start-up's checks, so a missing folder is named, not a crash.
+  inputSources: InputSource[] = readInputs(INPUTS),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -112,15 +122,20 @@ export function buildRegistry(
     code.set(name, handler);
   }
 
-  // NEW IN STEP 06: the role table, and every role in DSoR's table of logins, are checked
-  // too. Their problems are named with the contracts' problems (DSOR-AUT-01a).
+  // The role table, and every role in DSoR's table of logins, are checked too. Their
+  // problems are named with the contracts' problems (DSOR-AUT-01a).
   const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
   problems.push(...roleProblems);
+
+  // NEW IN STEP 07: every contract's input schema must have a file, and compile. A contract
+  // with no check for its input would let anything through line ⑥.
+  const { inputs, problems: inputProblems } = checkInputs(contracts.values(), inputSources);
+  problems.push(...inputProblems);
 
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles };
+  return { contracts, handlers: code, roles, inputs };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

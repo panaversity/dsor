@@ -1,5 +1,5 @@
 // What the specification's schema refuses, by step 03's claims (C1 to C7 in step 03's
-// README). NEW IN STEP 06: every registry here is built with the role table too (step
+// README). Every registry here is built with the role table too (step
 // 06's README, decision 1).
 import { describe, expect, it } from "vitest";
 import { handlers } from "../src/operations.ts";
