@@ -1,7 +1,14 @@
 // What an error envelope holds, by step 04's claims (C1, C2, C3, C5 in step 04's README).
 import { describe, expect, it } from "vitest";
 import { RETRY, Refusal, type ErrorCode, type RetryClass } from "../src/envelope.ts";
-import { REFUSALS, REQUEST_ID, SCHEMA_CODES, refusedWith, run, schemaProblems } from "./helpers.ts";
+import {
+  REFUSALS,
+  SCHEMA_CODES,
+  correlationFor,
+  refusedWith,
+  run,
+  schemaProblems,
+} from "./helpers.ts";
 
 describe("C1: every refusal is an error envelope that passes the real schema", () => {
   // The whole envelope is compared, so no field the schema allows can slip in. Found by
@@ -9,13 +16,14 @@ describe("C1: every refusal is an error envelope that passes the real schema", (
   // says `never`, passed every test.
   it.each(REFUSALS)(
     "DSOR-ERR-01a: %s is refused with an envelope that passes the schema",
-    (_why, ask, code, message) => {
+    (_why, ask, code, message, caller) => {
       const envelope = ask();
       expect(envelope).toStrictEqual({
         code,
         message,
         retry: "never",
-        correlation: { request_id: expect.stringMatching(REQUEST_ID) },
+        // NEW IN STEP 05: the answer names its caller, once DSoR knows it (decision 9).
+        correlation: correlationFor(caller),
       });
       expect(schemaProblems(envelope)).toEqual([]);
     },

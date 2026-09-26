@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
 import { buildRegistry, call, readContracts, type Registry } from "./registry.ts";
+import type { RequestEnvelope } from "./request.ts";
 import { parseUri } from "./uri.ts";
 
 // Start-up checks every contract first. If one is broken, the program stops here and
@@ -20,9 +21,13 @@ try {
 }
 console.log("operations:", [...registry.contracts.keys()]);
 
+// NEW IN STEP 05: every call carries a request envelope beside its arguments. This one
+// holds the login token DSoR gave the agent (README, decision 2).
+const AGENT: RequestEnvelope = { token: "tok_7f3a" };
+
 // The answer is an envelope. A success carries the invoice as its data,
 // and the request id DSoR made for this call.
-const answer = call(registry, "invoice.get", { id: "INV-1008" });
+const answer = call(registry, AGENT, "invoice.get", { id: "INV-1008" });
 console.log(answer);
 
 // The invoice's permanent address, and the address read back.
@@ -35,6 +40,6 @@ if ("data" in answer) {
 
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
-console.log(call(registry, "invoice.get", { id: "INV-9999" }));
+console.log(call(registry, AGENT, "invoice.get", { id: "INV-9999" }));
 // invoice.issue has a contract but no code yet, so the call is refused.
-console.log(call(registry, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
+console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));

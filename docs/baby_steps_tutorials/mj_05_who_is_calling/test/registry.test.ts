@@ -4,14 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
-import { contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
+import { AGENT, contract, refusal, shipped, shippedWith, source, without } from "./helpers.ts";
+
+// NEW IN STEP 05: every call carries the agent's login token (README, decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers);
 
   // The invoice comes back as the envelope's data.
   it("DSOR-OPR-01: invoice.get runs by its name", () => {
-    expect(call(registry, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(call(registry, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -20,7 +22,7 @@ describe("C1: nothing can be called without a contract", () => {
   // always read INV-1008 passed the test above.
   // INV-9999 is refused with a code, not answered with undefined.
   it("DSOR-OPR-01: invoice.get passes the caller's input to its code", () => {
-    expect(call(registry, "invoice.get", { id: "INV-9999" })).toMatchObject({
+    expect(call(registry, AGENT, "invoice.get", { id: "INV-9999" })).toMatchObject({
       code: "RESOURCE_NOT_FOUND",
     });
   });
@@ -28,7 +30,7 @@ describe("C1: nothing can be called without a contract", () => {
   // No rule id: checking an operation's input is not step 03's rule.
   // The refusal is an envelope, not a thrown TypeError.
   it("invoice.get without an id is refused", () => {
-    expect(call(registry, "invoice.get", {})).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(call(registry, AGENT, "invoice.get", {})).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
   // "toString" and "constructor" are on every JavaScript object. A registry that looks
@@ -37,7 +39,7 @@ describe("C1: nothing can be called without a contract", () => {
   it.each([["invoice.delete"], ["toString"], ["constructor"]])(
     "DSOR-OPR-01: an operation with no contract is refused: %s",
     (name) => {
-      expect(call(registry, name, {})).toMatchObject({
+      expect(call(registry, AGENT, name, {})).toMatchObject({
         code: "UNSUPPORTED_CAPABILITY",
         message: `no operation named "${name}"`,
       });
@@ -58,7 +60,7 @@ describe("C1: nothing can be called without a contract", () => {
     const spy = vi.fn<Handler>(() => "deleted");
     const handMade = { contracts: new Map(), handlers: new Map([["invoice.delete", spy]]) };
     // The refusal is an envelope, not a throw.
-    expect(call(handMade, "invoice.delete", {})).toMatchObject({
+    expect(call(handMade, AGENT, "invoice.delete", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
     expect(spy).not.toHaveBeenCalled();
@@ -67,7 +69,7 @@ describe("C1: nothing can be called without a contract", () => {
   // The refusal is an envelope, not a throw.
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
-    expect(call(registry, "invoice.issue", {})).toMatchObject({
+    expect(call(registry, AGENT, "invoice.issue", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
     });
@@ -166,7 +168,7 @@ describe("a refusal of a huge name", () => {
   it("shows only a short piece of it", () => {
     const registry = buildRegistry(shipped, handlers);
     const huge = "invoice." + "a".repeat(100_000);
-    const { message } = call(registry, huge, {}) as ErrorEnvelope;
+    const { message } = call(registry, AGENT, huge, {}) as ErrorEnvelope;
     expect(message).toMatch("no operation named");
     expect(message.length).toBeLessThan(200);
   });

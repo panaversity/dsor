@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer } from "./envelope.ts";
+import type { RequestEnvelope } from "./request.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -102,7 +103,14 @@ export function buildRegistry(
 }
 
 /** Runs an operation by its name. It answers with an envelope, and never throws. */
-export function call(registry: Registry, name: string, input: unknown): Answer {
+export function call(
+  registry: Registry,
+  // NEW IN STEP 05: the request envelope travels beside the arguments (README, decision 1).
+  // Nothing reads it yet.
+  _request: RequestEnvelope,
+  name: string,
+  input: unknown,
+): Answer {
   // DSoR makes the request id for every call, because no caller can send one yet
   // (DSOR-COR-01b, step 04's README, decision 4). Nothing in the input is read for it.
   const correlation = { request_id: `req_${randomUUID()}` };

@@ -45,11 +45,19 @@ describe("the program", () => {
       // success envelope could go unprinted. "data: {" is only in the success.
       expect(output).toMatch("data: {");
       expect(output).toMatch("id: 'INV-1008'");
-      expect(output).toMatch("correlation: { request_id: 'req_");
+      // NEW IN STEP 05: the correlation also names the caller, so it may not fit on one line.
+      expect(output).toMatch(/request_id: 'req_/);
+      expect(output).toMatch("agent_id: 'accounts-payable-fte'");
       expect(output).toMatch("dsor://org_456/invoice/INV-1008");
       expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
       expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
+      // NEW IN STEP 05: a call with no login and a call that names the CFO are refused. The
+      // CFO is never named as the caller. A person's own request id comes back with its id.
+      expect(output).toMatch("code: 'AUTHENTICATION_REQUIRED'");
+      expect(output).toMatch("code: 'AUTHORIZATION_DENIED'");
+      expect(output).not.toMatch("principal_id: 'cfo_100'");
+      expect(output).toMatch("{ request_id: 'ap-desk-7', principal_id: 'user_123' }");
     },
   );
 });

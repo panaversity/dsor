@@ -4,14 +4,20 @@ import type { Answer, ErrorEnvelope } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
 import { buildRegistry, call, type Handler } from "../src/registry.ts";
 import {
+  AGENT,
   REFUSALS,
   REQUEST_ID,
+  THE_AGENT,
   UNEXPECTED,
+  correlationFor,
   refusedWith,
   registry,
   run,
   shipped,
 } from "./helpers.ts";
+
+// NEW IN STEP 05: every call carries the agent's login token, and every answer names the
+// agent (README, decisions 1 and 9).
 
 // A request id with the right form, so code that used any well-formed id it found in the
 // input would fail too.
@@ -19,14 +25,14 @@ const MINE = "req_00000000-0000-4000-8000-000000000000";
 
 describe("C4: every answer carries a request_id that DSoR made", () => {
   it("DSOR-COR-01b: a success carries a request_id that DSoR made", () => {
-    const answer = call(registry, "invoice.get", { id: "INV-1008" });
+    const answer = call(registry, AGENT, "invoice.get", { id: "INV-1008" });
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
   });
 
   // Found by a run: before INV-9999 was refused, it came back as { data: undefined } with
   // a request id, and a test that looked only at the id passed. So the code comes first.
   it("DSOR-COR-01b: a refusal carries a request_id that DSoR made", () => {
-    const answer = call(registry, "invoice.get", { id: "INV-9999" });
+    const answer = call(registry, AGENT, "invoice.get", { id: "INV-9999" });
     expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
   });
@@ -34,7 +40,7 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
   // Found by the review: a fixed request id on a refusal, on a bug, or on the envelope
   // sent in place of a broken one passed every test. Only successes were called twice.
   const EVERY_ANSWER: [string, () => Answer][] = [
-    ["a success", () => call(registry, "invoice.get", { id: "INV-1008" })],
+    ["a success", () => call(registry, AGENT, "invoice.get", { id: "INV-1008" })],
     ...REFUSALS.map(([why, ask]): [string, () => Answer] => [why, ask]),
     ["an envelope that fails the schema, so INTERNAL_ERROR", () => refusedWith("BATCH_PARTIAL")],
   ];
@@ -56,7 +62,7 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
       { id: "INV-1008", correlation: { request_id: MINE } },
     ],
   ])("a request_id %s is not used", (_where, input) => {
-    const answer = call(registry, "invoice.get", input);
+    const answer = call(registry, AGENT, "invoice.get", input);
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
     expect(answer.correlation.request_id).not.toBe(MINE);
   });
@@ -65,7 +71,7 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
 // No rule id: this shape is the tutorial's decision 3, and it does not meet DSOR-SCH-01.
 describe("C6: a query's success is { data, correlation }", () => {
   it("invoice.get for INV-1008 answers with the invoice as its data", () => {
-    expect(call(registry, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(call(registry, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
       data: {
         id: "INV-1008",
         vendor_id: "VENDOR-44",
@@ -73,7 +79,7 @@ describe("C6: a query's success is { data, correlation }", () => {
         open_amount: { value: "31400.00", currency: "USD" },
         status: "issued",
       },
-      correlation: { request_id: expect.stringMatching(REQUEST_ID) },
+      correlation: correlationFor(THE_AGENT),
     });
   });
 
@@ -83,7 +89,7 @@ describe("C6: a query's success is { data, correlation }", () => {
   it("a command's code never runs, even when the command has code", () => {
     const spy = vi.fn<Handler>(() => "issued");
     const issueHasCode = buildRegistry(shipped, { ...handlers, "invoice.issue": spy });
-    expect(call(issueHasCode, "invoice.issue", {})).toMatchObject({
+    expect(call(issueHasCode, AGENT, "invoice.issue", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
     expect(spy).not.toHaveBeenCalled();
@@ -104,7 +110,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
     ["an id that is a number", { id: 1008 }],
     ["a list", ["INV-1008"]],
   ])("invoice.get with %s as its input is refused with VALIDATION_FAILED", (_why, input) => {
-    expect(call(registry, "invoice.get", input)).toMatchObject({
+    expect(call(registry, AGENT, "invoice.get", input)).toMatchObject({
       code: "VALIDATION_FAILED",
       message: "invoice.get needs { id: string }",
       retry: "never",
@@ -160,7 +166,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
         code: "INTERNAL_ERROR",
         message: UNEXPECTED,
         retry: "never",
-        correlation: { request_id: expect.stringMatching(REQUEST_ID) },
+        correlation: correlationFor(THE_AGENT),
       });
       expect(JSON.stringify(envelope)).not.toContain("10.0.0.12");
     },
@@ -172,7 +178,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
 describe("a refusal of a huge id", () => {
   it("shows only a short piece of it", () => {
     const huge = "INV-" + "9".repeat(100_000);
-    const { message } = call(registry, "invoice.get", { id: huge }) as ErrorEnvelope;
+    const { message } = call(registry, AGENT, "invoice.get", { id: huge }) as ErrorEnvelope;
     expect(message).toMatch("no invoice");
     expect(message.length).toBeLessThan(200);
   });
