@@ -137,11 +137,11 @@ pnpm start
 }
 ```
 
-`pnpm check` runs the type check, then 29 tests:
+`pnpm check` runs the type check, then 30 tests:
 
 ```text
  Test Files  2 passed (2)
-      Tests  29 passed (29)
+      Tests  30 passed (30)
 ```
 
 ## Break it
@@ -156,7 +156,7 @@ so that only the pattern check is left. Run both commands (output shortened):
 $ pnpm test
  FAIL  test/money.test.ts > money > DSOR-MON-01: a number is refused, even one that slipped past the types
 AssertionError: expected function to throw an error, but it didn't
-      Tests  1 failed | 28 passed (29)
+      Tests  1 failed | 29 passed (30)
 
 $ pnpm typecheck
 $ tsc --noEmit
@@ -177,7 +177,7 @@ src/invoice.ts(20,5): error TS2322: Type 'number' is not assignable to type 'Mon
 $ pnpm test
  × DSOR-MON-01: INV-1008 holds its amounts as money, not as numbers
  × DSOR-MON-01: every amount in the invoice list passes money()
-      Tests  2 failed | 27 passed (29)
+      Tests  2 failed | 28 passed (30)
 ```
 
 Two separate checks catch this mistake. The compiler catches it before the code runs.
@@ -281,6 +281,13 @@ checks the message stays short. A promise in a comment needs a test that keeps i
 that the tools work, not part of DSoR, so step 01 replaces it. Steps are cumulative, so
 removing earlier code is the exception, and every removal gets a line here.
 
+**Fixed after the step, on 2026-09-26:** a read could change the stored invoice.
+`getInvoice` handed back the object in the list itself, so a caller that set its
+`status` to `"paid"` changed INV-1008 for everyone after it. From step 04, `call` hands
+that object to a caller, and the gap became a real hole. Now `getInvoice` returns a
+copy, and a test changes a found invoice and reads the stored one again. The fix is
+here, where the cause is, and every later step carries it.
+
 **Left open, on purpose.** Each of these needs a new idea, so it waits:
 
 - A type that only `money()` can create, so a hand-written `Money` does not compile.
@@ -289,7 +296,8 @@ removing earlier code is the exception, and every removal gets a line here.
 - A value with 100,000 digits is accepted. A later step must set a length limit.
 - `money()` throws a plain `TypeError`. When a caller outside the program can see an
   error, it must become an error envelope (step 04).
-- Invoices can still be changed after they are made. Locking them is for a later step.
+- Code inside the program can still change the stored invoices. A read returns a copy
+  now, but locking the list itself is for a later step.
 
 ## The rules this step meets
 

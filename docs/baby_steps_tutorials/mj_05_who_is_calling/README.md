@@ -336,15 +336,15 @@ the CFO is still named as the agent. user_123 chose the request id `ap-desk-7`, 
 came back. Your other request ids will be different. DSoR makes a new one for every
 call that does not send one.
 
-`pnpm check` runs the type check, then 297 tests:
+`pnpm check` runs the type check, then 302 tests:
 
 ```text
  Test Files  10 passed (10)
-      Tests  297 passed (297)
+      Tests  302 passed (302)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `294 passed | 3 skipped`.
+original to compare with, so they are skipped: `299 passed | 3 skipped`.
 
 ## Break it
 
@@ -376,7 +376,7 @@ CFO as the caller:
     status: 'issued'
   },
   correlation: {
-    request_id: 'req_64589a17-0d5b-42b1-a037-75962821efc3',
+    request_id: 'req_833a45fb-033e-42ec-b573-1e760fb4b605',
     principal_id: 'cfo_100'
   }
 }
@@ -399,13 +399,13 @@ AssertionError: expected { Object (data, correlation) } to strictly equal { code
     "correlation": {
 -     "agent_id": "accounts-payable-fte",
 +     "principal_id": "cfo_100",
-      "request_id": "req_3c5a6489-3231-4d65-bad5-65cca3755710",
+      "request_id": "req_6be208e1-9144-4bd2-b494-99b39a4d69cc",
     },
 -   "message": "the arguments name someone other than the caller, in principal",
 -   "retry": "never",
 +   "data": {
 …
-      Tests  9 failed | 288 passed (297)
+      Tests  9 failed | 293 passed (302)
 ```
 
 The worst of the nine is the C1 test: with no login at all, a caller that wrote
@@ -596,6 +596,12 @@ Fixed after the step, in step 04 first and then here: comments copied from steps
 not theirs. Every such comment now names its step, this step's own too, so the next
 copy stays right.
 
+Also fixed after the step, on 2026-09-26, each in the earliest build that needed it. A
+read returns a copy of the stored invoice (step 01), so the agent can no longer mark
+INV-1008 paid by changing its answer: a test here shows the CFO still reads it as
+issued. And step 03's three weak tests now fail when their code breaks: a refused
+start-up that reports success, a contract file that holds `null`, and a missing sort.
+
 The analogies, checked against the house style's list: "permission slip" and "a pilot's
 checklist" are on it. The review flagged two words. "Request envelope" is the
 specification's own term, but a real envelope holds its letter inside, and this one
@@ -616,7 +622,7 @@ about payments, a reader might take it for money. After the step, steps 03 to 05
   43 and 44.
 - **Other spellings.** A name deeper in the input, such as `invoice.principal`, and names
   such as `principalId` or `on_behalf_of`, are not found (decision 4).
-- **`src/registry.ts` has 158 lines.** The build skill asks for about 150. `call()` now
+- **`src/registry.ts` has 165 lines.** The build skill asks for about 150. `call()` now
   holds the start of the checklist that step 07 moves into a function of its own.
 
 The five questions this step raised for the specification are open questions 21 to 25

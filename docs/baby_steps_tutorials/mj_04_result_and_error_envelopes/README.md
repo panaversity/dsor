@@ -314,15 +314,15 @@ dsor://org_456/invoice/INV-1008
 
 Your request ids will be different. DSoR makes a new one for every call.
 
-`pnpm check` runs the type check, then 203 tests:
+`pnpm check` runs the type check, then 208 tests:
 
 ```text
  Test Files  9 passed (9)
-      Tests  203 passed (203)
+      Tests  208 passed (208)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `200 passed | 3 skipped`.
+original to compare with, so they are skipped: `205 passed | 3 skipped`.
 
 ## Break it
 
@@ -345,7 +345,7 @@ AssertionError: expected { code: 'INTERNAL_ERROR', …(3) } to match object { co
 +   "code": "INTERNAL_ERROR",
 +   "retry": "never",
   }
-      Tests  1 failed | 202 passed (203)
+      Tests  1 failed | 207 passed (208)
 ```
 
 Two things stopped it. The schema ties `OUTCOME_UNKNOWN` to `after_reconciliation`, so
@@ -375,7 +375,7 @@ AssertionError: expected { code: 'AUTHORIZATION_DENIED', …(3) } to match objec
 -   "retry": "never",
 +   "retry": "safe_same_key",
   }
-      Tests  2 failed | 201 passed (203)
+      Tests  2 failed | 206 passed (208)
 ```
 
 This envelope passed the schema and left `call`. It told the agent "denied, try again
@@ -402,8 +402,8 @@ The tests were written all at once, so they turn green one rule at a time. After
 first green commit, 63 tests still fail. After the second, 3 fail. After the third,
 none do. Move 3 found three mistakes in the design. Move 5 found a test that passed for
 the wrong reason. Move 7 found 20 breaks that passed `pnpm check`. 15 of them now fail a
-test, 2 are left open, and 3 belong to step 03. All of this is under "Think it
-through".
+test, 2 are left open, and 3 belonged to step 03, where they were fixed later. All of
+this is under "Think it through".
 
 Build your own step 04 from a copy of your step 03. From `docs/baby_steps_tutorials`:
 
@@ -596,14 +596,20 @@ The next step starts from this list.
 - **A caller's own text appears in a refusal's message,** up to 60 characters. It can
   read "retry: safe_same_key". The `retry` field is what counts.
 
-Found in earlier steps. They are recorded in [`mj_notes.md`](../mj_notes.md), to be
-fixed in the earliest build that has them:
+### Fixed after the step
 
-- **A query returns the stored record itself** (steps 01 and 03). A caller that changes
-  `answer.data.status` changes INV-1008 for every later caller.
-- **Three tests in step 03 are weak.** A refused start-up that exits with 0 passes. A
-  contract file that holds `null` would crash start-up if a `continue` were deleted. On
-  macOS the folder is read in name order anyway, so a missing sort goes unseen.
+This step's review also found two bugs in earlier builds, and recorded them in
+[`mj_notes.md`](../mj_notes.md). On 2026-09-26 both were fixed in the earliest build
+that had them, and carried here, with one more fix:
+
+- **A read could change the stored invoice** (fixed in step 01). `call` hands the found
+  invoice to the caller as `data`, and it was the stored object itself. A caller that
+  changed it changed INV-1008 for everyone after it. `getInvoice` now returns a copy,
+  and a test here changes an answer's data and reads INV-1008 again.
+- **Step 03's three weak tests** now fail when their code breaks: a refused start-up
+  that reports success, a contract file that holds `null`, and a missing sort.
+- **Every comment that points into a README names its step.** Four comments copied
+  from step 03 had pointed at this README's decisions.
 
 ## The rules this step meets
 

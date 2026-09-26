@@ -192,10 +192,12 @@ contracts/invoice.get.json     NEW: the contract for the query invoice.get
 contracts/invoice.issue.json   NEW: the contract for the command invoice.issue
 schemas/*.schema.json          NEW: byte-for-byte copies of the specification's
                                operation-contract and common schemas
-src/registry.ts                NEW: readContracts(), buildRegistry(), and call()
+src/registry.ts                NEW: readContracts(), contractFiles(), buildRegistry(),
+                               and call()
 src/operations.ts              NEW: the code behind each operation, by name
 src/main.ts                    changed: builds the registry first, then reads INV-1008
-                               through invoice.get
+                               through invoice.get. Another folder of contracts can be
+                               named on the command line
 test/contract.test.ts          NEW: what the schema refuses (C2, C3, C4, C6)
 test/registry.test.ts          NEW: the registry and calls by name (C1, C5, C7)
 test/startup.test.ts           NEW: reading the contracts folder, and the program itself
@@ -254,15 +256,15 @@ dsor://org_456/invoice/INV-1008
 refused: "invoice.issue" is not built yet
 ```
 
-`pnpm check` runs the type check, then 125 tests:
+`pnpm check` runs the type check, then 129 tests:
 
 ```text
  Test Files  7 passed (7)
-      Tests  125 passed (125)
+      Tests  129 passed (129)
 ```
 
 Outside the dsor repository, the two tests that compare the schema copies have no
-original to compare with, so they are skipped: `123 passed | 2 skipped`.
+original to compare with, so they are skipped: `127 passed | 2 skipped`.
 
 ## Break it
 
@@ -297,10 +299,10 @@ Run `pnpm test`. These are the lines that matter:
      × DSOR-OPR-02b: a query with no risk level is refused, not given one 0ms
  FAIL  test/contract.test.ts > C6: nothing is filled in for the four fields the rule names > DSOR-OPR-02b: a command with no risk level is refused, not given one
 AssertionError: expected '' to match '/risk must have required property \'l…'
-      Tests  2 failed | 123 passed (125)
+      Tests  2 failed | 127 passed (129)
 ```
 
-Two tests in 125 see it. The test that removes the whole `risk` still passes, because
+Two tests in 129 see it. The test that removes the whole `risk` still passes, because
 the guess only runs when `risk` is there. Delete the two lines, and `pnpm check` is
 green again.
 
@@ -490,17 +492,36 @@ Found while checking the design against the schema, before any code:
 - The specification's rule against a general tool, DSOR-OPR-03a, has no step in the
   map of all steps yet.
 
+Fixed after the step, on 2026-09-26. Step 04's review found three weak tests here: each
+let a break pass every test. They were fixed in this build first, then in each later one:
+
+- **A refused start-up could report success.** No test started the program with a
+  broken contract, so a start-up that ended with exit code 0 passed. The program can
+  now be given another folder of contracts on its command line. A test starts it with
+  a broken one: it must name the problem, exit with code 1, and not crash.
+- **A file that holds `null` crashed start-up.** Without the `continue` after a
+  contract's problems, it threw a `TypeError`, and the other problems went unnamed. A
+  test now sends `null` beside another broken file.
+- **macOS hid a missing sort.** A Mac lists a folder by name anyway, so the folder test
+  passed without the sort. The sort now lives in `contractFiles()`, and a test hands it
+  names out of order.
+
+Also fixed then: the program's test waits up to 30 seconds, as step 04 found it must on
+a busy machine. A read returns a copy of the stored invoice (fixed in step 01). And
+every comment that points into a README names step 03.
+
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
 | DSOR-OPR-01 | Every operation has a contract that validates against `operation-contract.schema.json` | [§7 Operations and the operation contract](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract), and [`operation-contract.schema.json`](../../../packages/spec/schemas/operation-contract.schema.json) | 12 tests: 8 in `test/registry.test.ts` (C1), 2 in `test/contract.test.ts` (C2), and 2 in `test/schemas.test.ts` (the copies) |
-| DSOR-OPR-02a | The registry rejects a contract that omits a mandatory field | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 27 tests: 23 in `test/contract.test.ts` (C3, C4), and 4 in `test/registry.test.ts` (C5) |
+| DSOR-OPR-02a | The registry rejects a contract that omits a mandatory field | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 28 tests: 23 in `test/contract.test.ts` (C3, C4), and 5 in `test/registry.test.ts` (C5) |
 | DSOR-OPR-02b | The registry never fills in a default for risk level, execution semantics, effect, or idempotency | [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) | 8 tests: 5 in `test/contract.test.ts` (C6), and 3 in `test/registry.test.ts` (C7) |
 
-Seven more tests carry no rule id. They prove this tutorial's own choices: two
-contracts with one id (decision 7), how start-up reads the folder, the program itself,
-an input `invoice.get` refuses, and the length of a refusal.
+Nine more tests carry no rule id. They prove this tutorial's own choices: two
+contracts with one id (decision 7), how start-up reads and sorts the folder, the
+program itself and its refusal to start, an input `invoice.get` refuses, and the length
+of a refusal.
 
 The two schema files in `schemas/` are copies of the specification's. Inside the dsor
 repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every

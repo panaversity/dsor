@@ -128,11 +128,11 @@ dsor://org_456/invoice/INV-1008
 { tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
 ```
 
-`pnpm check` runs the type check, then 71 tests:
+`pnpm check` runs the type check, then 72 tests:
 
 ```text
  Test Files  3 passed (3)
-      Tests  71 passed (71)
+      Tests  72 passed (72)
 ```
 
 ## Break it
@@ -165,7 +165,7 @@ $ tsc --noEmit
 AssertionError: expected function to throw an error, but it didn't
  ❯ test/uri.test.ts:123:65
  Test Files  1 failed | 2 passed (3)
-      Tests  18 failed | 53 passed (71)
+      Tests  18 failed | 54 passed (72)
 ```
 
 This time the compiler prints nothing. The code is correct TypeScript, and the
@@ -323,6 +323,12 @@ message stays short. A promise in a comment needs a test that keeps it.
 
 **Removed from step 01:** nothing. Its `NEW IN STEP 01` markers are now plain comments,
 so a search for "NEW IN STEP" finds only this step's lesson.
+
+**Fixed after the step, on 2026-09-26:** two fixes, each made in the earliest step that
+needed it. A read now returns a copy of the stored invoice, so a caller cannot change
+INV-1008 through what it read (fixed in step 01). And the comment in `src/uri.ts` about
+the form of a tenant id says "step 02" where it said "this step", so it stays true in
+every later copy.
 
 **Open questions.** Each needs a new idea, so it waits:
 
