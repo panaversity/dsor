@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
-import { callerIds, whoIsCalling } from "./principals.ts";
+import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import type { RequestEnvelope } from "./request.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
@@ -121,6 +121,8 @@ export function call(
     // token and DSoR's own table only (DSOR-SRC-02a). From here, every answer names it.
     const caller = whoIsCalling(request);
     correlation = { ...correlation, ...callerIds(caller) };
+    // NEW IN STEP 05: a principal named in the arguments must be the caller (DSOR-SRC-02b).
+    checkNamedPrincipals(input, caller);
     if (!registry.contracts.has(name)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }

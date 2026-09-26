@@ -46,3 +46,6 @@ console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/in
 
 // NEW IN STEP 05: a call with no login token is refused before DSoR reads anything else.
 console.log(call(registry, {}, "invoice.get", { id: "INV-1008" }));
+// NEW IN STEP 05: the agent names the CFO in its arguments. DSoR still knows it is the
+// agent, from its token, and refuses the call.
+console.log(call(registry, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }));

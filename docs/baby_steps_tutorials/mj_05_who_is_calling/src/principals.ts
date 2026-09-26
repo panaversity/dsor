@@ -1,6 +1,6 @@
 // NEW IN STEP 05: who is calling. DSoR finds the caller from the login token and its own
 // table, never from the arguments. DSOR-IDN-01 in specs/dsor/02-security.md, section 12,
-// and DSOR-SRC-02a in section 11.
+// and DSOR-SRC-02a and DSOR-SRC-02b in section 11.
 import { Refusal } from "./envelope.ts";
 import type { RequestEnvelope } from "./request.ts";
 
@@ -46,4 +46,30 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
 export function callerIds(caller: Principal): { agent_id: string } | { principal_id: string } {
   // The specification's examples put an agent in agent_id. Anyone else goes in principal_id.
   return caller.type === "agent" ? { agent_id: caller.id } : { principal_id: caller.id };
+}
+
+// The places where the arguments may name a principal (README, decision 4). A new
+// spelling, such as as_user, is not caught. That is the decision's price.
+const AT_THE_TOP = ["principal", "principal_id", "subject", "actor"];
+const IN_CORRELATION = ["principal_id", "agent_id"];
+
+/** Refuses the call when its arguments name anyone but the caller (DSOR-SRC-02b). */
+export function checkNamedPrincipals(input: unknown, caller: Principal): void {
+  // The input comes from outside the program, so it has no types yet.
+  const top = input as { [field: string]: unknown } | null | undefined;
+  const correlationInInput = top?.["correlation"] as { [field: string]: unknown } | undefined;
+  for (const field of AT_THE_TOP) refuseUnlessCaller(top?.[field], field, caller);
+  for (const field of IN_CORRELATION) {
+    refuseUnlessCaller(correlationInInput?.[field], `correlation.${field}`, caller);
+  }
+}
+
+// Anything there but the caller's own id is refused: another name, a name nobody has, or
+// a list or an object that holds one. DSoR never looks the name up, so the refusal cannot
+// tell the caller who exists.
+function refuseUnlessCaller(named: unknown, place: string, caller: Principal): void {
+  if (named !== undefined && named !== caller.id) {
+    const message = `the arguments name someone other than the caller, in ${place}`;
+    throw new Refusal("AUTHORIZATION_DENIED", message);
+  }
 }
