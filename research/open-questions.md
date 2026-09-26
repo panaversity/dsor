@@ -159,3 +159,28 @@ for a human. An agent may gather evidence; it does not settle these alone.
     06's learner build grants a permission only for the very same text (its decision
     2). Is that DSoR's rule, or each deployment's choice? If one permission may imply
     another, where is that written down, so that someone can review it?
+28. **Where is an operation's input schema defined?** Every contract names one, such as
+    `PaymentExecutionRequest` in §7, and line 6 of §21 validates the input. But neither
+    Appendix A nor the schemas package defines any input schema, and nothing says where
+    one lives, how a contract's name finds it, or whether it must close its top level
+    with `additionalProperties: false`, as every Appendix A schema does. Step 07's
+    learner build keeps its own, `InvoiceGetRequest` and `InvoiceIssueRequest`, in a
+    folder beside the contracts. Its start-up refuses an input schema that lets unlisted
+    fields through, and one that no contract names. Should the specification say where
+    input schemas live, and require them to be closed?
+29. **Which code does an unknown field that names a principal get?** DSOR-SRC-02b asks
+    for `TENANT_MISMATCH` or `AUTHORIZATION_DENIED` when a principal id in the arguments
+    disagrees with the security context. Step 07's learner build refuses every field its
+    input schema does not list, at line 6. So `as_user: "cfo_100"` is refused, but with
+    `VALIDATION_FAILED`. DSoR cannot tell that a field it does not know names a
+    principal. This is question 24 seen from the other side. Is a closed input schema
+    enough to meet DSOR-SRC-02b, whatever the code? Or must a contract mark the fields
+    that carry a principal, so that each one gets the rule's own code?
+30. **At which line of the pipeline does DSOR-SRC-02b's tenant check run?** A canonical
+    URI in the arguments carries its tenant, as in `dsor://org_999/invoice/INV-1008`.
+    Line 6 of §21 checks only the URI's shape, as `resourceUri` does, so the URI passes.
+    Line 2 resolves the tenant, but runs before the input is validated. Line 9 reads the
+    bound state, and `bind` shows where the URI sits. Step 07's learner build answers
+    user_123 with "not built yet" for that URI, and leaves the check to step 10. Should
+    §21 say which line compares a tenant inside the arguments with the resolved tenant,
+    so that no interface can skip it?
