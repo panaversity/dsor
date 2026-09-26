@@ -155,14 +155,15 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
 ### Breaks we will try, and what we expect
 
 Run against the finished step. The learner's predictions were recorded before any code.
+Each break was made in `src`, run with `pnpm test`, and undone from a backup copy.
 
-| # | The break | Expected to be caught by | Learner's prediction |
-| --- | --- | --- | --- |
-| P1 | The operation's name is read before the token | C1, anonymous `invoice.delete` | caught, by that test |
-| P2 | When the arguments name a principal, it is used instead of the token's | C4, C5 | survives |
-| P3 | A principal in the arguments that disagrees is quietly ignored | C5 | caught |
-| P4 | A token DSoR does not know, but that equals a principal's id, is accepted as that principal | C2, the token `"cfo_100"` | survives |
-| P5 | A call with no token runs as a built-in anonymous caller | C2 | survives |
+| # | The break | Expected to be caught by | Learner's prediction | Result |
+| --- | --- | --- | --- | --- |
+| P1 | The operation's name is read before the token | C1, anonymous `invoice.delete` | caught, by that test | Caught by 3: that test, C5's test of the order, and the refusal table's row for an unknown operation, which no longer names the agent |
+| P2 | When the arguments name a principal, it is used instead of the token's | C4, C5 | survives | Caught by 8: C5 4, C1 1, C4 1, the refusal table 1, the program 1 |
+| P3 | A principal in the arguments that disagrees is quietly ignored | C5 | caught | Caught by 19: C5 17, the refusal table 1, the program 1 |
+| P4 | A token DSoR does not know, but that equals a principal's id, is accepted as that principal | C2, the token `"cfo_100"` | survives | Caught by 1: C2's test of that token |
+| P5 | A call with no token runs as a built-in anonymous caller | C2 | survives | Caught by 11: C1 6, C2 2, C6 1, the refusal table 1, the program 1 |
 
 The review of this step also attacks it with the threats in
 [§10.2](../../../specs/dsor/02-security.md#102-threats-and-mitigations) that concern who
@@ -185,19 +186,243 @@ forged token).
 
 ## What changed since step 04
 
-_To be written when the code exists._
+```text
+src/principals.ts              NEW: DSoR's own table of principals and the login
+                               tokens it gave them. whoIsCalling() finds the caller,
+                               callerIds() names it in an answer, and
+                               checkNamedPrincipals() refuses a name in the arguments
+                               that is not the caller
+src/request.ts                 NEW: the request envelope, and the checks on a request
+                               id the caller sends
+src/registry.ts                changed: call() takes the request envelope, finds the
+                               caller first, names it in every answer, then checks the
+                               request id and the arguments
+src/envelope.ts                changed: a correlation can name the caller
+src/main.ts                    changed: calls as the agent, and shows a call with no
+                               login, the agent naming the CFO, and user_123's own
+                               request id
+test/who-is-calling.test.ts    NEW: who is calling (C1 to C6)
+test/helpers.ts                changed: the three tokens, who each answer names, and
+                               this step's three refusals in the table of refusals
+test/call.test.ts,             changed: every call carries the agent's token, and every
+test/envelope.test.ts,         answer names the agent
+test/registry.test.ts
+test/startup.test.ts           changed: the program shows who is calling
+src/, test/                    step 04's NEW IN STEP markers are now plain comments
+```
+
+There is no new dependency.
+
+Every new region is marked `NEW IN STEP 05`. To see the whole diff, run this from
+`docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_04_result_and_error_envelopes/src mj_05_who_is_calling/src
+git diff --no-index mj_04_result_and_error_envelopes/test mj_05_who_is_calling/test
+```
+
+Three choices in the code are worth a look:
+
+- **`call()` asks who is calling before anything else.** Then it adds the caller's id to
+  the correlation. So a refusal that comes later still says who asked. From step 08,
+  that is what gets written down.
+- **The table is a `Map`, and only text is looked up.** A plain object would find
+  something under `"toString"`. It would also turn the list `["tok_7f3a"]` into the text
+  `"tok_7f3a"`, and find the agent.
+- **The check on the arguments never looks a name up.** It only compares the name with
+  the caller's id. So `cfo_100` and a name that nobody has get the same refusal, and the
+  refusal tells the caller nothing about who exists.
 
 ## Run it
 
-_To be written when the code exists._
+From the root of the dsor repository:
+
+```bash
+cd docs/baby_steps_tutorials/mj_05_who_is_calling
+pnpm install
+pnpm start
+```
+
+```text
+$ node src/main.ts
+operations: [ 'invoice.get', 'invoice.issue' ]
+{
+  data: {
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    amount: { value: '31400.00', currency: 'USD' },
+    open_amount: { value: '31400.00', currency: 'USD' },
+    status: 'issued'
+  },
+  correlation: {
+    request_id: 'req_9e155bcf-3855-4db0-bf23-0d3b7ad5a93e',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+dsor://org_456/invoice/INV-1008
+{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }
+{
+  code: 'RESOURCE_NOT_FOUND',
+  message: 'no invoice "INV-9999"',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_a89ae4d5-65d2-49b8-9ad3-d0250f2e41bb',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'UNSUPPORTED_CAPABILITY',
+  message: '"invoice.issue" is not built yet',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_f3912366-fc6f-4277-a9cf-9df6a0dd6b22',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'AUTHENTICATION_REQUIRED',
+  message: 'log in first: the call has no login token that DSoR gave',
+  retry: 'never',
+  correlation: { request_id: 'req_5b916144-f3cd-49df-b123-20a2ac307b67' }
+}
+{
+  code: 'AUTHORIZATION_DENIED',
+  message: 'the arguments name someone other than the caller, in principal',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_dcbba045-3371-412f-ba87-5cdf79d3ef32',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{ request_id: 'ap-desk-7', principal_id: 'user_123' }
+```
+
+Read the last three answers. The call with no login names nobody. The agent that named
+the CFO is still named as the agent. user_123 chose the request id `ap-desk-7`, and it
+came back. Your other request ids will be different. DSoR makes a new one for every
+call that does not send one.
+
+`pnpm check` runs the type check, then 269 tests:
+
+```text
+ Test Files  10 passed (10)
+      Tests  269 passed (269)
+```
+
+Outside the dsor repository, the three tests that compare the schema copies have no
+original to compare with, so they are skipped: `266 passed | 3 skipped`.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+**Believe the arguments.** This is the system from "Why it matters". In
+`src/registry.ts`, find the line that asks who is calling:
+
+```ts
+    const caller = whoIsCalling(request);
+```
+
+Replace it with two lines that believe a name in the arguments first:
+
+```ts
+    const named = (input as { principal?: unknown } | null)?.principal;
+    const caller = [...logins.values()].find((p) => p.id === named) ?? whoIsCalling(request);
+```
+
+Add `logins` to the import from `./principals.ts`. Run `pnpm start`. The agent sent its
+own token and `"principal": "cfo_100"`. The answer is now a success, and it names the
+CFO as the caller:
+
+```text
+{
+  data: {
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    amount: { value: '31400.00', currency: 'USD' },
+    open_amount: { value: '31400.00', currency: 'USD' },
+    status: 'issued'
+  },
+  correlation: {
+    request_id: 'req_29cbf8d8-80ea-45c9-8f06-1750104877ee',
+    principal_id: 'cfo_100'
+  }
+}
+```
+
+Every record made from this answer would say the CFO read the invoice. Run `pnpm test`.
+These are the lines that matter:
+
+```text
+ FAIL  test/who-is-calling.test.ts > C1: the principal is found first > DSOR-IDN-01: with no login, cfo_100 named in the arguments still gets AUTHENTICATION_REQUIRED
+ FAIL  test/who-is-calling.test.ts > C5: a principal named in the arguments must be the caller > DSOR-SRC-02b: cfo_100 in principal, sent with the agent's token, is refused with AUTHORIZATION_DENIED
+AssertionError: expected { Object (data, correlation) } to strictly equal { code: 'AUTHORIZATION_DENIED', …(3) }
+
+- Expected
++ Received
+
+  {
+-   "code": "AUTHORIZATION_DENIED",
+    "correlation": {
+-     "agent_id": "accounts-payable-fte",
++     "principal_id": "cfo_100",
+      "request_id": "req_8c089e68-7ed0-4367-802e-31caf3d3cba7",
+    },
+-   "message": "the arguments name someone other than the caller, in principal",
+-   "retry": "never",
++   "data": {
+      Tests  8 failed | 261 passed (269)
+```
+
+The worst of the eight is the first: with no login at all, a caller that wrote
+`cfo_100` in its arguments became the CFO. Look at what did not fail: the tests for
+the other five places, such as `subject`. This break believes only `principal`, so the
+check still compares the other places with the caller, and the caller is still the
+agent. Put the line back, take `logins` out of the import, and `pnpm check` is green
+again.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built. Each row is one commit or more:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Copy | Copy your step 04. Change the name and the description in `package.json` |
+| 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code": the rules split into claims, the decisions the spec leaves to you, and the breaks you predict |
+| 3 | Check the design | Read §11, §12, §13.2, and §32 again before any code. Fix the design where they say it is wrong |
+| 4 | Red | Write the tests, one group per claim. Watch every one fail for the right reason, and predict which pass anyway |
+| 5 | Green | One commit per rule: DSOR-IDN-01, then DSOR-SRC-02a, then DSOR-SRC-02b, then DSOR-COR-01b |
+| 6 | Break it | Run every predicted break. Compare the results with your predictions |
+| 7 | Review | A reviewer who has not seen your conversation attacks the step. Fix what it finds |
+
+The tests were written all at once, so they turn green one rule at a time. In the red
+run, 67 tests fail. After the first green commit, 50 still fail. After the second, 28.
+After the third, 10. After the fourth, none. Move 3 changed the design twice, and move
+4 showed seven tests passing before any code. Both are under "Think it through".
+
+Build your own step 05 from a copy of your step 04. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_04_result_and_error_envelopes my_05_who_is_calling
+cd my_05_who_is_calling
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 05. Design first: before any
+code, we split the rules into claims and I predict which breaks survive. Then check the
+design against §11, §12, §13.2, and §32. Three questions to settle with me: where do
+the login and the request id travel? What happens when the arguments name someone
+else? Can DSoR answer anything before it knows who is calling?
+```
+
+When `pnpm check` is green in your folder, and once the official step 05 exists:
+
+```text
+Now compare this folder with ../05_who_is_calling. Explain every difference, and tell
+me which ones matter and why.
+```
 
 ## Check yourself
 
@@ -255,9 +480,29 @@ above._
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-IDN-01 | Every caller becomes a principal with a type and tenant memberships, before any other processing | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | _to be counted_ |
-| DSOR-SRC-02a | The security context comes only from the authenticated request envelope and DSoR's own store | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | _to be counted_ |
-| DSOR-SRC-02b | A tenant, principal, or delegation id in the arguments that disagrees with the security context is refused | [§11](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | _to be counted_, for a principal only |
-| DSOR-COR-01b | DSoR makes a `request_id` when the caller sends none | [§32 Correlation](../../../specs/dsor/03-execution.md#32-correlation) | _to be counted_, now with a caller's id too |
+| DSOR-IDN-01 | Every caller becomes a principal with a type and tenant memberships, before any other processing | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | 15 tests in `test/who-is-calling.test.ts` (C1 6, C2 8, C3 1) |
+| DSOR-COR-01b | DSoR makes a `request_id` when the caller sends none | [§32 Correlation](../../../specs/dsor/03-execution.md#32-correlation) | 15 tests: 13 in `test/call.test.ts` (step 04's C4), and 2 in `test/who-is-calling.test.ts` (C6), which use the caller's own id |
+
+**Partly met: DSOR-SRC-02a.** The security context comes only from the authenticated
+request envelope and DSoR's own store
+([§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary)).
+Here it holds for the one part of the security context that is built: who is calling.
+9 tests in `test/who-is-calling.test.ts` (C4) prove it. The rest of the security
+context is not built yet (decision 8).
+
+**Partly met: DSOR-SRC-02b.** A tenant, principal, or delegation id in the arguments
+that disagrees with the security context is refused
+([§11](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary)).
+Here it holds for a principal, in the places decision 4 lists. 23 tests in
+`test/who-is-calling.test.ts` (C5) prove it. A tenant id arrives in step 10, and a
+delegation id in step 18.
+
+8 more new tests carry no rule id. They prove this tutorial's own choices: the story's
+three principals (decision 3), the limits on a request id (decision 6), and the order
+of the checks (decision 7).
+
+The schema files in `schemas/` are copies of the specification's. Inside the dsor
+repository, `test/schemas.test.ts` fails if a copy drifts, and `pnpm guard` checks every
+rule id and every link on this page.
 
 **Next:** step 06, permissions, denied by default.
