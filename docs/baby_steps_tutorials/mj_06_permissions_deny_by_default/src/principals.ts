@@ -7,7 +7,8 @@ import type { RequestEnvelope } from "./request.ts";
 /** The four kinds of caller that §12 lists. */
 export type PrincipalType = "human" | "agent" | "application" | "system";
 
-/** A company the principal belongs to, and its roles there. Unused until step 06. */
+// NEW IN STEP 06: the roles say what the principal may do there (step 06's README, decision 1).
+/** A company the principal belongs to, and its roles there. */
 export type Membership = { tenant_id: string; roles: string[] };
 
 /** Who is calling. */
@@ -22,7 +23,9 @@ function principal(id: string, type: PrincipalType, roles: string[]): Principal 
 // A token names nobody until it is looked up here (step 05's decision 2). §12 writes tenantId.
 // This tutorial spells every field the way the schemas do.
 export const logins: ReadonlyMap<string, Principal> = new Map([
-  ["tok_7f3a", principal("accounts-payable-fte", "agent", [])],
+  // NEW IN STEP 06: the agent holds one role of its own, ap_agent. It may read, and nothing
+  // more, until a person's permission slip arrives in step 18 (step 06's README, decision 5).
+  ["tok_7f3a", principal("accounts-payable-fte", "agent", ["ap_agent"])],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
 ]);

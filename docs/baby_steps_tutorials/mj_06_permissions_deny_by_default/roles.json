@@ -1,1 +1,5 @@
-{}
+{
+  "ap_agent": ["invoice:read"],
+  "ap_supervisor": ["invoice:read", "invoice:issue"],
+  "CFO": ["invoice:read"]
+}

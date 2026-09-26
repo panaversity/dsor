@@ -10,20 +10,79 @@ export type RoleSource = { file: string; text: string };
 /** What each role grants: a role's name, and its permissions. */
 export type Roles = ReadonlyMap<string, ReadonlySet<string>>;
 
+// A resource, ":", and an action, each lowercase letters, digits, and "_", starting with a
+// letter. ".propose" may follow. The pattern is the specification's own. Inside the dsor
+// repository, `pnpm guard` checks that it still matches:
+// copied from packages/spec/schemas/common.schema.json#/$defs/permission/pattern
+const PERMISSION = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*(\.propose)?$/;
+
+// The one company this step knows. Step 10 picks the company of each call.
+const COMPANY = "org_456";
+
 /** Reads the role table from a file. */
 export function readRoles(path: string): RoleSource {
   return { file: basename(path), text: readFileSync(path, "utf8") };
 }
 
-/** Checks the role table and every role a principal holds. Nothing is checked yet. */
+/** Checks the role table and every role a principal holds, and names every problem. */
 export function checkRoles(
-  _source: RoleSource,
-  _principals: Iterable<Principal>,
+  source: RoleSource,
+  principals: Iterable<Principal>,
 ): { roles: Roles; problems: string[] } {
-  return { roles: new Map(), problems: [] };
+  const { file, text } = source;
+  const roles = new Map<string, ReadonlySet<string>>();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { roles, problems: [`${file}: not valid JSON`] };
+  }
+  // A list and null are objects in JavaScript too. Neither one names a role.
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    const problem = `${file}: must be an object that gives each role a list of permissions`;
+    return { roles, problems: [problem] };
+  }
+
+  const problems: string[] = [];
+  for (const [role, grants] of Object.entries(data)) {
+    // A text is not a list, even though JavaScript can loop over its letters.
+    if (!Array.isArray(grants)) {
+      problems.push(`${file}: the role ${JSON.stringify(role)} must grant a list of permissions`);
+      continue;
+    }
+    for (const permission of grants) {
+      // The type comes first: a pattern test turns ["invoice:read"] into "invoice:read".
+      if (typeof permission !== "string" || !PERMISSION.test(permission)) {
+        const what = `grants ${JSON.stringify(permission)}, which is not <resource>:<action>`;
+        problems.push(`${file}: the role ${JSON.stringify(role)} ${what}`);
+      }
+    }
+    roles.set(role, new Set<string>(grants));
+  }
+
+  // A role that no line of the table names is a typo. It stops start-up, before any caller
+  // arrives (step 06's README, decision 4). A role named with a problem is not named twice.
+  const named = new Set(Object.keys(data));
+  for (const { id, memberships } of principals) {
+    for (const role of memberships.flatMap((membership) => membership.roles)) {
+      if (!named.has(role)) {
+        problems.push(
+          `${file}: ${id} holds the role ${JSON.stringify(role)}, which the table does not have`,
+        );
+      }
+    }
+  }
+  return { roles, problems };
 }
 
-/** The permissions a caller holds. None, until the code exists. */
-export function permissionsOf(_caller: Principal, _roles: Roles): ReadonlySet<string> {
-  return new Set();
+/** The permissions a caller holds: what its roles in org_456 grant, and nothing else. */
+export function permissionsOf(caller: Principal, roles: Roles): ReadonlySet<string> {
+  const held = new Set<string>();
+  for (const { tenant_id, roles: names } of caller.memberships) {
+    // Roles count only in the company of the call (step 06's README, decision 1).
+    if (tenant_id !== COMPANY) continue;
+    // A role missing from the table grants nothing. Start-up refuses such a table anyway.
+    for (const name of names) for (const permission of roles.get(name) ?? []) held.add(permission);
+  }
+  return held;
 }

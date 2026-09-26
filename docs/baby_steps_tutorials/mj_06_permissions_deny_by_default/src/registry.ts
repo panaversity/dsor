@@ -5,8 +5,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
-import type { RoleSource, Roles } from "./permissions.ts";
-import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
+import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
+import { callerIds, checkNamedPrincipals, logins, whoIsCalling } from "./principals.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
@@ -65,8 +65,8 @@ export function contractFiles(names: string[]): string[] {
 export function buildRegistry(
   sources: ContractSource[],
   handlers: Record<string, Handler>,
-  // NEW IN STEP 06: the role table, checked with the contracts. Nothing reads it yet.
-  _roles: RoleSource,
+  // NEW IN STEP 06: the role table, checked with the contracts (step 06's README, decision 1).
+  roleSource: RoleSource,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -108,10 +108,15 @@ export function buildRegistry(
     code.set(name, handler);
   }
 
+  // NEW IN STEP 06: the role table, and every role in DSoR's table of logins, are checked
+  // too. Their problems are named with the contracts' problems (DSOR-AUT-01a).
+  const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
+  problems.push(...roleProblems);
+
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles: new Map() };
+  return { contracts, handlers: code, roles };
 }
 
 /** Runs an operation by its name. It answers with an envelope, and never throws. */
