@@ -1,6 +1,6 @@
 // NEW IN STEP 05: who is calling, by claim (C1 to C6 in the README).
 import { describe, expect, it, vi } from "vitest";
-import { logins } from "../src/principals.ts";
+import { callerIds, logins, whoIsCalling, type PrincipalType } from "../src/principals.ts";
 import { call, type Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
@@ -67,6 +67,8 @@ describe("C2: a call with no login DSoR knows is refused", () => {
     // A table kept in a plain object would find something under this name (step 03).
     ["a name every JavaScript object has", { token: "toString" }],
     ["a real token with a space after it", { token: "tok_7f3a " }],
+    // Found by the review: a lookup that ignored capitals let this one in.
+    ["a real token in capital letters", { token: "TOK_7F3A" }],
     // A plain object turns a list into text, and ["tok_7f3a"] becomes "tok_7f3a".
     ["a list that holds a real token", { token: ["tok_7f3a"] }],
     ["an envelope that is null", null],
@@ -78,6 +80,12 @@ describe("C2: a call with no login DSoR knows is refused", () => {
       expect(answer).toStrictEqual(NO_LOGIN);
     },
   );
+
+  // Found by the review: no test put a login token in the arguments.
+  it("DSOR-IDN-01: a login token inside the arguments is not a login", () => {
+    const input = { id: "INV-1008", token: "tok_d4e8" };
+    expect(call(registry, {}, "invoice.get", input)).toStrictEqual(NO_LOGIN);
+  });
 });
 
 describe("C3: every principal has a type and at least one tenant membership", () => {
@@ -92,6 +100,20 @@ describe("C3: every principal has a type and at least one tenant membership", ()
       for (const { tenant_id } of principal.memberships) expect(tenant_id).toMatch(/^org_[0-9]+$/);
     }
   });
+
+  // Found by the review: the test above checks the table, not what a call finds in it.
+  const FOUND: [string, string, string, string[]][] = [
+    ["tok_7f3a", "accounts-payable-fte", "agent", []],
+    ["tok_2c91", "user_123", "human", ["ap_supervisor"]],
+    ["tok_d4e8", "cfo_100", "human", ["CFO"]],
+  ];
+  it.each(FOUND)(
+    "DSOR-IDN-01: the token %s finds %s, with a type and a membership",
+    (token, id, type, roles) => {
+      const memberships = [{ tenant_id: "org_456", roles }];
+      expect(whoIsCalling({ token })).toStrictEqual({ id, type, memberships });
+    },
+  );
 
   // No rule id: the story's three principals are this tutorial's decision 3.
   it("the table holds the story's three principals, each with its own token", () => {
@@ -127,8 +149,32 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
       { id: "INV-1008", correlation: { principal_id: "cfo_100" } },
     ],
     ["the text cfo_100 as the whole input", "cfo_100"],
+    // Found by the review: no test put a login token in the arguments.
+    ["the CFO's login token", { id: "INV-1008", token: "tok_d4e8" }],
   ])("DSOR-SRC-02a: with %s in the arguments, the answer names the agent", (_why, input) => {
     expect(call(registry, AGENT, "invoice.get", input).correlation).toStrictEqual(AS_AGENT);
+  });
+
+  // Found by the review: no test sent the envelope a field besides the token and the
+  // request id. Only the token says who is calling.
+  it("DSOR-SRC-02a: a principal written in the envelope, beside the token, is never used", () => {
+    const request = { ...AGENT, principal: "cfo_100" } as RequestEnvelope;
+    expect(call(registry, request, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+      data: expect.objectContaining({ id: "INV-1008" }),
+      correlation: AS_AGENT,
+    });
+  });
+
+  // No rule id: which field names the caller is this tutorial's decision 9. Found by the
+  // review: the table holds no application and no system, so a check for "human" passed.
+  const NAMED_IN: [PrincipalType, string][] = [
+    ["agent", "agent_id"],
+    ["human", "principal_id"],
+    ["application", "principal_id"],
+    ["system", "principal_id"],
+  ];
+  it.each(NAMED_IN)("a caller of type %s is named in %s", (type, field) => {
+    expect(callerIds({ id: "x_1", type, memberships: [] })).toStrictEqual({ [field]: "x_1" });
   });
 });
 
@@ -139,6 +185,9 @@ const PLACES = [
   "principal_id",
   "subject",
   "actor",
+  "actor_chain",
+  "agent_id",
+  "user",
   "correlation.principal_id",
   "correlation.agent_id",
 ];
@@ -174,10 +223,14 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     },
   );
 
+  // Anything there but the caller's own id is refused. Found by the review: null, and a
+  // list that held the agent's own id, were never sent.
   it.each([
-    ["a list", ["cfo_100"]],
-    ["an object", { id: "cfo_100" }],
-  ])("DSOR-SRC-02b: cfo_100 inside %s is refused too", (_why, name) => {
+    ["cfo_100 inside a list", ["cfo_100"]],
+    ["cfo_100 inside an object", { id: "cfo_100" }],
+    ["the agent's own id inside a list", ["accounts-payable-fte"]],
+    ["null", null],
+  ])("DSOR-SRC-02b: %s, in principal, is refused too", (_why, name) => {
     expect(call(registry, AGENT, "invoice.get", naming("principal", name))).toMatchObject({
       code: "AUTHORIZATION_DENIED",
     });
@@ -201,7 +254,7 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     );
   });
 
-  it("DSOR-SRC-02b: a person who names itself is accepted", () => {
+  it("DSOR-SRC-02b: a person who names themselves is accepted", () => {
     expect(call(registry, CFO, "invoice.get", naming("principal_id", "cfo_100"))).toMatchObject({
       data: { id: "INV-1008" },
     });
@@ -215,6 +268,18 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  // Found by the review: with the request id checked first, a bad request id hid the
+  // attempt to act as the CFO behind VALIDATION_FAILED.
+  it("DSOR-SRC-02b: a principal named in the arguments is refused even with a bad request id", () => {
+    const request = { ...AGENT, request_id: "" };
+    expect(call(registry, request, "invoice.get", naming("principal", "cfo_100"))).toStrictEqual({
+      code: "AUTHORIZATION_DENIED",
+      message: notTheCaller("principal"),
+      retry: "never",
+      correlation: AS_AGENT,
+    });
+  });
+
   // No rule id: checking the arguments before the operation's name is decision 7's order.
   it("a principal named in the arguments is refused even for an operation that does not exist", () => {
     expect(call(registry, AGENT, "invoice.delete", { principal: "cfo_100" })).toMatchObject({
@@ -224,7 +289,10 @@ describe("C5: a principal named in the arguments must be the caller", () => {
 });
 
 describe("C6: the caller's request id is used, and with none DSoR makes one", () => {
-  it("DSOR-COR-01b: the caller's request id comes back in correlation", () => {
+  // No rule id on these two. Found by the review: DSOR-COR-01b covers only a call that
+  // sends no request id, and step 04's tests prove that. Using the caller's own id is
+  // what §32 describes, and this tutorial's decisions 6 and 7.
+  it("the caller's request id comes back in correlation", () => {
     const request = { ...AGENT, request_id: "ap-run-0926-001" };
     expect(call(registry, request, "invoice.get", { id: "INV-1008" }).correlation).toStrictEqual({
       request_id: "ap-run-0926-001",
@@ -232,7 +300,7 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     });
   });
 
-  it("DSOR-COR-01b: the caller's request id labels even a refusal for a missing login", () => {
+  it("the caller's request id labels even a refusal for a missing login", () => {
     const answer = call(registry, { request_id: "ap-run-0926-001" }, "invoice.get", {});
     expect(answer).toStrictEqual({ ...NO_LOGIN, correlation: { request_id: "ap-run-0926-001" } });
   });
@@ -241,7 +309,10 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
   it.each([
     ["one character", "r"],
     ["128 characters", "r".repeat(128)],
-  ])("a request id of %s is used", (_why, id) => {
+    // Found by the review: code that trimmed the id changed what came back.
+    ["spaces around it", " ap-run-7 "],
+    ["64 emoji, which JavaScript counts as 128", "😀".repeat(64)],
+  ])("a request id of %s is used, exactly as sent", (_why, id) => {
     const answer = call(registry, { ...AGENT, request_id: id }, "invoice.get", { id: "INV-1008" });
     expect(answer.correlation.request_id).toBe(id);
   });
@@ -253,6 +324,8 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     ["null", null],
     ["empty", ""],
     ["129 characters", "r".repeat(129)],
+    // Found by the review: code that counted emoji as one each let this one in.
+    ["65 emoji, which JavaScript counts as 130", "😀".repeat(65)],
   ])("a request id that is %s is refused with VALIDATION_FAILED", (_why, request_id) => {
     expect(
       call(registry, { ...AGENT, request_id }, "invoice.get", { id: "INV-1008" }),
@@ -262,5 +335,19 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
       retry: "never",
       correlation: AS_AGENT,
     });
+  });
+
+  // No rule id: decisions 6 and 7. Found by the review: every test of a bad request id
+  // used invoice.get, and none looked at whether the operation's code ran.
+  it("a bad request id is refused before the operation's code runs", () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const answer = call(registryWith(spy), { ...AGENT, request_id: "" }, "test.run", {});
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a bad request id is refused before the operation's name is read", () => {
+    const answer = call(registry, { ...AGENT, request_id: "" }, "invoice.delete", {});
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 });

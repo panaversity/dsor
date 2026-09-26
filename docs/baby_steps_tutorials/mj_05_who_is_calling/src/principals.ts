@@ -50,7 +50,15 @@ export function callerIds(caller: Principal): { agent_id: string } | { principal
 
 // The places where the arguments may name a principal (README, decision 4). A new
 // spelling, such as as_user, is not caught. That is the decision's price.
-const AT_THE_TOP = ["principal", "principal_id", "subject", "actor"];
+const AT_THE_TOP = [
+  "principal",
+  "principal_id",
+  "subject",
+  "actor",
+  "actor_chain",
+  "agent_id",
+  "user",
+];
 const IN_CORRELATION = ["principal_id", "agent_id"];
 
 /** Refuses the call when its arguments name anyone but the caller (DSOR-SRC-02b). */

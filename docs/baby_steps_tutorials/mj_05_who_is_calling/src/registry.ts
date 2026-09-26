@@ -118,14 +118,14 @@ export function call(
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (README, C7).
   try {
-    // NEW IN STEP 05: who is calling comes before anything else (DSOR-IDN-01), from the
-    // token and DSoR's own table only (DSOR-SRC-02a). From here, every answer names it.
+    // NEW IN STEP 05: who is calling is found before anything is checked (DSOR-IDN-01),
+    // from the token and DSoR's own table only (DSOR-SRC-02a). From here, answers name it.
     const caller = whoIsCalling(request);
     correlation = { ...correlation, ...callerIds(caller) };
-    // NEW IN STEP 05: then what the caller sent is checked: the request id (README,
-    // decision 6), and any principal the arguments name (DSOR-SRC-02b).
-    checkRequestId(request);
+    // NEW IN STEP 05: then what the caller sent is checked: first any principal the
+    // arguments name (DSOR-SRC-02b), then the request id (README, decisions 6 and 7).
     checkNamedPrincipals(input, caller);
+    checkRequestId(request);
     if (!registry.contracts.has(name)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }

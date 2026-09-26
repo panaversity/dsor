@@ -1,7 +1,8 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
-// The program checks every contract, then calls operations by name. Every answer it
-// prints is an envelope: one success, then two refusals.
+// The program checks every contract, then calls operations by name. NEW IN STEP 05: it
+// prints one success and four refusals, each an envelope, and last the correlation of a
+// call by user_123.
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import { handlers } from "./operations.ts";
@@ -44,7 +45,7 @@ console.log(call(registry, AGENT, "invoice.get", { id: "INV-9999" }));
 // invoice.issue has a contract but no code yet, so the call is refused.
 console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
-// NEW IN STEP 05: a call with no login token is refused before DSoR reads anything else.
+// NEW IN STEP 05: a call with no login token is refused before DSoR checks anything else.
 console.log(call(registry, {}, "invoice.get", { id: "INV-1008" }));
 // NEW IN STEP 05: the agent names the CFO in its arguments. DSoR still knows it is the
 // agent, from its token, and refuses the call.
