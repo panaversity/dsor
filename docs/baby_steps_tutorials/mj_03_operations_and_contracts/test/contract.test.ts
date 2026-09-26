@@ -1,4 +1,4 @@
-// NEW IN STEP 03: what the specification's schema refuses, by claim (see the README).
+// NEW IN STEP 03: what the specification's schema refuses, by claim (see step 03's README).
 import { describe, expect, it } from "vitest";
 import { handlers } from "../src/operations.ts";
 import { buildRegistry } from "../src/registry.ts";

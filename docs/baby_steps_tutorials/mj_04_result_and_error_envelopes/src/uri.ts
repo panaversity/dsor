@@ -14,7 +14,7 @@ const RESOURCE_URI = /^dsor:\/\/[A-Za-z0-9_\-]+\/[a-z][a-z0-9_]*\/[A-Za-z0-9_.\-
 const SCHEME = "dsor://";
 
 // DSOR-RID-01b. The schema's pattern above accepts "acme" as a tenant,
-// because a name and an id are both letters. So this step fixes one form for every
+// because a name and an id are both letters. So step 02 fixes one form for every
 // tenant id: "org_" and digits, like org_456. The names people use, like acme, do not
 // have that form, so they are refused. (A name made to look like "org_457" would pass.
 // The pattern checks the form of the text, not where it came from.) This is stricter

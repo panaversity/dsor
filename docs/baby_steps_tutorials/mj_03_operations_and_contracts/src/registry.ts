@@ -19,7 +19,7 @@ export type Registry = {
   handlers: ReadonlyMap<string, Handler>;
 };
 
-// The specification's own schemas, copied byte for byte (README, decision 3).
+// The specification's own schemas, copied byte for byte (step 03's README, decision 3).
 const SCHEMAS = new URL("../schemas/", import.meta.url);
 function loadSchema(file: string): object {
   return JSON.parse(readFileSync(new URL(file, SCHEMAS), "utf8")) as object;
@@ -29,7 +29,7 @@ function loadSchema(file: string): object {
 // allErrors: name every problem, not only the first. The next three are off by default.
 // They are written here because each one changes the contract while checking it, and
 // DSOR-OPR-02b says the contract is kept as it was written. strict is off because strict
-// mode refuses to read the specification's schema (README, decision 5).
+// mode refuses to read the specification's schema (step 03's README, decision 5).
 const ajv = new Ajv2020({
   allErrors: true,
   useDefaults: false,
@@ -54,7 +54,8 @@ export function buildRegistry(
   sources: ContractSource[],
   handlers: Record<string, Handler>,
 ): Registry {
-  // Every problem is collected first, and the refusal names them all (README, decision 2).
+  // Every problem is collected first, and the refusal names them all (step 03's
+  // README, decision 2).
   const problems: string[] = [];
   const contracts = new Map<string, Contract>();
   // Which file first wrote each id, broken files too. So two files with one id are named
