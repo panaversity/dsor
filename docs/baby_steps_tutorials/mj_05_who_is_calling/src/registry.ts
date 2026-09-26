@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import { Refusal, toEnvelope, type Answer } from "./envelope.ts";
+import { whoIsCalling } from "./principals.ts";
 import type { RequestEnvelope } from "./request.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
@@ -106,8 +107,7 @@ export function buildRegistry(
 export function call(
   registry: Registry,
   // NEW IN STEP 05: the request envelope travels beside the arguments (README, decision 1).
-  // Nothing reads it yet.
-  _request: RequestEnvelope,
+  request: RequestEnvelope,
   name: string,
   input: unknown,
 ): Answer {
@@ -117,6 +117,8 @@ export function call(
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (README, C7).
   try {
+    // NEW IN STEP 05: who is calling comes before anything else (DSOR-IDN-01).
+    whoIsCalling(request);
     if (!registry.contracts.has(name)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }

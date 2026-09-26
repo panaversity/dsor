@@ -43,3 +43,6 @@ if ("data" in answer) {
 console.log(call(registry, AGENT, "invoice.get", { id: "INV-9999" }));
 // invoice.issue has a contract but no code yet, so the call is refused.
 console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
+
+// NEW IN STEP 05: a call with no login token is refused before DSoR reads anything else.
+console.log(call(registry, {}, "invoice.get", { id: "INV-1008" }));
