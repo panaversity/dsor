@@ -62,13 +62,14 @@ caller, so the caller can write anything there.
 
 This section was written before the first test, in a learner session. Every sentence of
 the specification it relies on was read on 2026-09-26: §11, §12, §13.2, §22, §28, and
-§32. If the code finds the plan wrong, the plan changes here first.
+§32. If the code finds the plan wrong, the plan changes here first. It changed once
+already, before the first test. "Think it through" says what changed and why.
 
 ### What each rule really says
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-IDN-01 | **C1.** The principal is found first, before the operation's name is read | An anonymous call to `invoice.delete` gets `AUTHENTICATION_REQUIRED`, not `UNSUPPORTED_CAPABILITY` |
+| DSOR-IDN-01 | **C1.** The principal is found first. The only answer DSoR gives before that is `AUTHENTICATION_REQUIRED` | An anonymous call to `invoice.delete` gets `AUTHENTICATION_REQUIRED`, not `UNSUPPORTED_CAPABILITY`. With a bad request id, it still gets `AUTHENTICATION_REQUIRED`, not `VALIDATION_FAILED` |
 | DSOR-IDN-01 | **C2.** A call with no token, or a token DSoR does not know, is refused | `AUTHENTICATION_REQUIRED`, retry `never` |
 | DSOR-IDN-01 | **C3.** Every principal has a type and at least one tenant membership | Each entry of the table is checked |
 | DSOR-SRC-02a | **C4.** Who is calling comes only from the token and DSoR's own table | Every answer's `correlation` names the caller: `agent_id` for an agent, `principal_id` for a person. It never changes with the arguments |
@@ -86,9 +87,14 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    up. A token that was the principal's own id would teach that a caller names itself,
    which is the thing §11 forbids. *Price:* the table of tokens is fake. Real tokens,
    signed and checked, arrive in steps 43 and 44.
-3. **DSoR's own table of principals.** `accounts-payable-fte` (agent), `user_123`
-   (person), and `cfo_100` (person), each a member of `org_456`, each with the token
-   DSoR gave it. Their roles are stored, and unused until step 06.
+3. **DSoR's own table of principals.** `accounts-payable-fte` has the type `agent`.
+   `user_123` and `cfo_100` have the type `human`, the specification's word for a
+   person. Each is a member of `org_456`, and each has the token DSoR gave it. A
+   membership holds the tenant and the principal's **roles** there, its jobs, as in §12.
+   `CFO` is the specification's own role name. `ap_supervisor` is this tutorial's name,
+   from §0.4's "Accounts Payable supervisor". The agent has no role: its authority will
+   come from a delegation. The roles are unused until step 06. *Price:* §12's
+   membership also holds scopes, and this step leaves them out (see "Left open").
 4. **A list of field names catches a principal in the arguments.** `principal`,
    `principal_id`, `subject`, and `actor` at the top of the input, and `principal_id`
    and `agent_id` inside an input's `correlation`, are compared with the token's
@@ -100,11 +106,17 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    meets" says which part.
 6. **A request id from the caller is checked before it is used.** It must be text, not
    empty, and at most 128 characters. Otherwise the call is refused with
-   `VALIDATION_FAILED`. It is never replaced quietly: a caller that searched the records
-   for its own id would find nothing. *Price:* a caller with a long trace id must
-   shorten it.
-7. **The request id is read before the token is checked.** So even a refusal for a
-   missing login carries the caller's request id, and the caller can find it.
+   `VALIDATION_FAILED`, and the refusal carries an id DSoR made. The call never goes
+   ahead under a new id: a caller that searched the records for its own id would find
+   nothing. *Price:* a caller with a long trace id must shorten it.
+7. **The order of the checks.** First the request id is read, only to label the answer.
+   A usable one is used. An unusable one is swapped for an id DSoR makes. Then the token
+   finds the principal, or the call is refused with `AUTHENTICATION_REQUIRED`. Then an
+   unusable request id is refused (decision 6), and then a principal named in the
+   arguments (decision 4). The operation's name comes last, as in step 04. So the only
+   answer DSoR gives before it knows who is calling is `AUTHENTICATION_REQUIRED`
+   (DSOR-IDN-01), and a usable request id labels even that refusal. *Price:* a caller
+   with no login that sent a bad request id sees DSoR's id on its refusal, not its own.
 8. **No identity mode yet.** The specification's per-request security context needs an
    **identity mode**, the way the call is made. `direct` is for "a human or application,
    for itself". An agent working alone is `unattended`, and that needs a permission slip
@@ -113,22 +125,32 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a price.
    agent's login proves who it is, not what it may do. Its authority always comes from a
    person. *Price:* the security context is not built yet. It is not stored or sent
    anywhere until step 08, so DSOR-SCH-01 does not apply to it yet.
+9. **Every answer names its caller in `correlation`.** An agent's id goes in `agent_id`,
+   as in the specification's examples. Anyone else's goes in `principal_id`. A refusal
+   given before the principal is found names nobody. The specification lists both
+   fields but never says which caller goes in which. *Price:* its examples show only an
+   agent calling, so the field for a person is this tutorial's choice.
 
 ### The tests, by claim
 
 - **C1:** an anonymous call to `invoice.delete`, to `invoice.issue`, and to `invoice.get`
-  all get `AUTHENTICATION_REQUIRED`.
+  all get `AUTHENTICATION_REQUIRED`. So does an anonymous call with a bad request id.
 - **C2:** no token, an empty token, a token DSoR never gave, a token that is a
-  principal's id (`"cfo_100"`), and a token that is not text. All are refused.
+  principal's id (`"cfo_100"`), a name every JavaScript object has (`"toString"`), a
+  real token with a space after it, and a token that is not text. All are refused, with
+  one message, so a refusal never tells a caller which principals exist.
 - **C3:** every principal in the table has a type from the specification's list and at
-  least one membership.
+  least one membership that names a tenant.
 - **C4:** each of the three tokens produces its own principal in `correlation`. The same
   call with different arguments names the same caller.
 - **C5:** each field name in decision 4, carrying `cfo_100` while the token is the
-  agent's, is refused. The same field carrying the agent's own id is accepted.
+  agent's, is refused, and the refusal names the agent as the caller. A name that is
+  nobody's is refused the same way. The same field carrying the agent's own id is
+  accepted.
 - **C6:** a request id in the envelope comes back in `correlation`. With none, DSoR
-  makes one, and two calls get two. A bad request id (not text, empty, 129 characters)
-  is refused. A request id inside the arguments is never used.
+  makes one, and two calls get two. A request id of 128 characters is used. A bad one
+  (not text, empty, 129 characters) is refused, and the refusal carries an id DSoR
+  made. A request id inside the arguments is never used.
 
 ### Breaks we will try, and what we expect
 
@@ -157,6 +179,9 @@ forged token).
 - **An agent must log in with its own credentials, never a person's** (DSOR-IDN-02a).
   The table gives each principal its own token, but nothing yet proves which kind of
   login a token came from. Real logins arrive in steps 43 and 44.
+- **A membership's scopes.** §12 gives each membership roles and scopes. The
+  specification never says what a membership's scopes hold, so this step leaves them
+  out.
 
 ## What changed since step 04
 
@@ -208,7 +233,23 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+### Found before the first test
+
+A check of the design against the specification, in the build session, changed two
+things:
+
+- **The request id was checked before the login.** The design first read and checked
+  the request id before the token. So a caller with no login and a bad request id got
+  `VALIDATION_FAILED`, an answer given before DSoR knew who was calling. DSOR-IDN-01
+  says the principal comes before any other processing. The request id is still read
+  first, but only to label the answer. It is refused after the principal is found
+  (decision 7).
+- **The roles got names.** The design stored roles but named none. §12 puts roles in
+  every membership, and the specification names one role, `CFO`. So `cfo_100` holds
+  `CFO`, `user_123` holds `ap_supervisor`, and the agent holds none (decision 3).
+
+_The rest is written after the review, with the result of every break in the table
+above._
 
 ## The rules this step meets
 
