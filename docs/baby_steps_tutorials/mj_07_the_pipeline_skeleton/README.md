@@ -210,9 +210,9 @@ Run against the finished step. The learner's predictions were recorded before an
 
 | # | The break | Expected to be caught by | Learner's prediction | What happened |
 | --- | --- | --- | --- | --- |
-| R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives | Caught: 16 tests fail |
-| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 427 pass. Written as `line(2, …)`, it is caught by 6 tests, because the order test sees a line ② |
-| R3 | An input schema allows fields it does not list | C3, and C4 after the review | survives | Caught: 16 tests fail for `InvoiceGetRequest`, 1 for `InvoiceIssueRequest` |
+| R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives | Caught: 20 tests fail |
+| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 439 pass. Written as `line(2, …)`, it is caught by 7 tests, because the order tests see a line ② |
+| R3 | An input schema allows fields it does not list | C3, and C4 after the review | survives | Caught at start-up: the program refuses to start and names the file. 8 of the 12 test files cannot load, because their shared helpers build the shipped registry |
 | R4 | A contract whose input schema file is missing loads, and its input is never checked | C4 | survives | Caught: 4 tests fail |
 
 R2 is different from every break so far. It changes no answer to any call, so no test
@@ -247,15 +247,17 @@ src/pipeline.ts                NEW: call(), moved here from registry.ts. It is n
                                ② to ④, line ⑤, line ⑥, ours "is it built?", and
                                comments for ⑦ to ⑰. Each built line runs through
                                line(n, check), which tells an optional observer its number
-src/inputs.ts                  NEW: readInputs() and checkInputs() find and compile each
-                               contract's input schema at start-up. checkInput() is
-                               line ⑥
+src/inputs.ts                  NEW: readInputs() and checkInputs() find, check, and
+                               compile each contract's input schema at start-up.
+                               checkInput() is line ⑥: it checks a JSON copy of the
+                               input, and returns the copy
 src/registry.ts                changed: buildRegistry() takes the input schemas, and
                                names their problems with the others. call() moved out
 src/operations.ts              changed: invoice.get's code no longer checks its input.
                                Line ⑥ has done it (outcome 2)
 src/main.ts                    changed: shows user_123 refused at line ⑥ for an id where
-                               invoice.issue needs a URI
+                               invoice.issue needs a URI. A fourth argument names another
+                               folder of input schemas, so a test can start without one
 test/pipeline.test.ts          NEW: the checklist, by claim (C1 to C5)
 test/helpers.ts                changed: the shipped input schemas, a good and a bad
                                input for invoice.issue, and line ⑥'s message. Calls that
@@ -264,9 +266,11 @@ test/who-is-calling.test.ts,   changed: a principal that agrees with the login, 
 test/permissions.test.ts       empty list of permissions, are now refused at line ⑥
                                (decision 3)
 test/registry.test.ts,         changed: calls send inputs that pass line ⑥, and
-test/call.test.ts,             contracts made up by a test get an input schema.
-test/startup.test.ts           The program refuses to start when an input schema has
-                               no file
+test/call.test.ts,             contracts made up by a test get an input schema. The
+test/contract.test.ts,         program refuses to start when an input schema has no
+test/startup.test.ts           file, and when the inputs folder is missing
+src/pipeline.ts,               fixed from step 05 on: the caller's request id is read
+test/call.test.ts              inside the try, so call never throws
 src/, test/                    step 06's NEW IN STEP markers are now plain comments
 ```
 
@@ -280,18 +284,21 @@ git diff --no-index mj_06_permissions_deny_by_default/src mj_07_the_pipeline_ske
 git diff --no-index mj_06_permissions_deny_by_default/test mj_07_the_pipeline_skeleton/test
 ```
 
-Three choices in the code are worth a look:
+Four choices in the code are worth a look:
 
 - **A line and its number are one statement.** `line(5, () => checkPermission(…))`
   tells the observer "5", then runs the check. Moving the check moves the number with
   it, so the order test sees what really ran.
 - **A line not built yet is a comment, and says which step builds it.** Read `call()`
-  beside §21's diagram. Every number from ① to ⑰ is there, in order. Only ①, ⑤, and ⑥
-  run code.
+  beside §21's diagram. Every number from ① to ⑰ is there, in order. Only ①, ⑤, ⑥,
+  and ⑨ run code.
 - **Checking never changes the input.** `checkInputs()` creates ajv with
   `removeAdditional: false`, `coerceTypes: false`, and `useDefaults: false`. With
   `removeAdditional` on, `as_user` would be quietly deleted, and the call would go on.
   Refused is the only safe answer.
+- **The code gets the copy that was checked.** `checkInput()` copies the input through
+  JSON text, checks the copy, and returns it. Line ⑨ hands that copy to the code. So an
+  input cannot show one id to the check and another to the code (decision 9).
 
 ## Run it
 
@@ -382,18 +389,18 @@ pnpm test -t "in §21's order"
 
 ```text
  Test Files  1 passed | 11 skipped (12)
-      Tests  3 passed | 424 skipped (427)
+      Tests  3 passed | 436 skipped (439)
 ```
 
-`pnpm check` runs the type check, then 427 tests:
+`pnpm check` runs the type check, then 439 tests:
 
 ```text
  Test Files  12 passed (12)
-      Tests  427 passed (427)
+      Tests  439 passed (439)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `424 passed | 3 skipped`.
+original to compare with, so they are skipped: `436 passed | 3 skipped`.
 
 ## Break it
 
@@ -432,20 +439,22 @@ AssertionError: expected { code: 'VALIDATION_FAILED', …(3) } to strictly equal
     "retry": "never",
   }
 …
-      Tests  16 failed | 411 passed (427)
+      Tests  20 failed | 419 passed (439)
 ```
 
 `cfo_100` may not issue. Still, the answer now tells the CFO what a valid
 `invoice.issue` input looks like, down to the pattern. Try again with a URI, and the
 answer changes to "denied". One refusal at a time, a caller who may not issue learns
-the shape of the input. The order test fails too: it expected `[1, 5, 6]` and saw
-`[1, 6, 5]`. Ten older tests fail as well. They send `invoice.issue` an input that is
-not valid, from a caller who may not issue, and expect "denied". They had passed only
-because line ⑤ answered first. Put
-the two lines back, and `pnpm check` is green again.
+the shape of the input. Seven tests of this step fail: both order tests, four of the
+five C2 tests, and the `acme` test. The order test for `invoice.issue` expected
+`[1, 5, 6]` and saw `[1, 6, 5]`. Thirteen older tests fail as well, all written in step
+06. Each expects
+"denied" from a caller who may not run the operation, and sends an input that line ⑥
+refuses. They had passed only because line ⑤ answered first. Put the two lines back,
+and `pnpm check` is green again.
 
 **Now try R2.** Add a function `checkTenant()` that does nothing, and call it where the
-comment for line ② is. Run `pnpm test`: all 427 pass. No test can see a check that
+comment for line ② is. Run `pnpm test`: all 439 pass. No test can see a check that
 changes no answer. Only a reader can, which is why decision 1 forbids it.
 
 ## Build it yourself with Claude Code
@@ -461,11 +470,15 @@ This is how the step was built. Each row is one commit or more:
 | 5 | Red | Write the tests, one group per claim. Predict which pass before any code, then watch every one fail for the right reason |
 | 6 | Green | The checklist and line ⑥. One commit: both rules live in the same function |
 | 7 | Break it | Run every predicted break. Compare the results with your predictions |
-| 8 | Review | A reviewer who has not seen your conversation attacks the step. Fix what it finds |
+| 8 | Review | A reviewer who has not seen your conversation attacks the step |
+| 9 | Fix the review | Change the design first, then red tests, then the code. Run every break again |
 
 Move 3 changed C5's test and decision 3, and pinned decisions 4, 6, and 8. In the red
-run, 43 tests fail. 8 of the 37 new tests pass before any code. Each of those says
-"yes", and sits beside a "no" test that fails. All of this is under "Think it through".
+run, 43 tests fail. 8 of the 37 new tests pass before any code. Six of them say "yes",
+beside a "no" test that fails. The other two are C5 calls that steps 05 and 06 already
+refuse. Move 9 changed decisions 2 and 6, added decision 9, and numbered line ⑨. Its red
+run had 10 failing tests, and 11 tests were added. One more test came with a fix to
+step 05, carried into 06 and 07. All of this is under "Think it through".
 
 Build your own step 07 from a copy of your step 06. From `docs/baby_steps_tutorials`:
 
@@ -526,9 +539,6 @@ tell me which ones matter and why.
 
 ## Think it through
 
-_The review's findings, and the result of every break in the table above, are written
-after the review._
-
 What checking the design against the specification changed, before the first test:
 
 - **C5's test changed.** The plan said "the only exported way to run an operation is
@@ -541,6 +551,49 @@ What checking the design against the specification changed, before the first tes
 - **Decision 4 got a place,** right after ①, and **decision 6 got a shape,**
   `line(n, check)`, so a check and its number cannot be separated.
 - **Decision 8 is new.** It says where the request id check sits.
+
+What the hostile review found, and what was fixed:
+
+- **An input schema could let any field through.** A typo, `"additionalProperty":
+  false`, loaded without a word, and then `as_user` reached the code. Only the two
+  shipped files made decision 2 true. **Fixed:** start-up refuses an input schema whose
+  top level is not `"type": "object"` with `"additionalProperties": false`, and ajv's
+  strict mode refuses a keyword it does not know. R3 is now caught at start-up.
+- **Line ⑥ checked one value, and the code read another.** An input with a getter
+  showed `INV-1008` to the check and `INV-9999` to the code. **Fixed:** decision 9.
+- **A query's code ran at line ⑨, with no number.** §21 says queries pass lines 1 to 6
+  and 9. **Fixed:** `line(9, …)`, and the order test for `invoice.get` expects
+  `[1, 5, 6, 9]`.
+- **The `acme` test pinned a wrong answer for later.** It expected "not built yet" for
+  a URI of another company, which step 10 must turn into `TENANT_MISMATCH`. **Fixed:**
+  it asserts only that line ⑥ lets the URI through. "Left open" names step 10.
+- **Three breaks left every test green:** `useDefaults: true`, a shared broken schema
+  named twice, and a false second problem after a missing file. Two gaps had no test at
+  all: a file in `inputs/` that no contract names, and a missing `inputs/` folder.
+  **Fixed:** a test for each, and start-up now refuses the unused file. Each break was
+  put back after the fix, and each one was caught.
+- **`call` could throw** when the request envelope's `request_id` could not be read. The
+  bug came from step 05. **Fixed** in step 05, and carried into steps 06 and 07.
+- **Sentences that claimed too much.** "Swap any two lines", "only ①, ⑤, and ⑥ run
+  code", the count of older tests that fail in "Break it", and "each of those says
+  yes". "Door" was an analogy not on the established list: it is now "interface",
+  defined where it first appears. The fail-closed analogy was written backwards. URN,
+  payload hash, breaker, and request security context are now defined.
+
+Left open on purpose:
+
+- **DSOR-OPR-04a has one interface to test today.** A second interface that ran the
+  code directly would fail no test. Three of the six OPR-04a tests already passed in the
+  red run, before this step's code. The rule gets a real test when step 42 adds a second interface.
+- **Line ① holds three checks in one `line(1, …)`.** The observer sees line ① start.
+  Moving `checkNamedPrincipals` out of it, to the same place, changes nothing that a
+  test can see (decision 6).
+- **One test was not written red first.** "An operation with no input check… refuses
+  every input" was added with the code, because nothing had tested that branch.
+- **`registry.ts` and `inputs.ts` import each other.** It works, because neither uses
+  the other while it loads. It is still one more thing for a reader to hold.
+- **`envelope.ts` is 150 lines, and `inputs.ts` 148.** The next line in either one is a
+  reason to split it.
 
 ## The rules this step meets
 
