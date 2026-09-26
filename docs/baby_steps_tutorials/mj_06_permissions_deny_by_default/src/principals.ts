@@ -23,8 +23,9 @@ function principal(id: string, type: PrincipalType, roles: string[]): Principal 
 // A token names nobody until it is looked up here (step 05's decision 2). §12 writes tenantId.
 // This tutorial spells every field the way the schemas do.
 export const logins: ReadonlyMap<string, Principal> = new Map([
-  // NEW IN STEP 06: the agent holds one role of its own, ap_agent. It may read, and nothing
-  // more, until a person's permission slip arrives in step 18 (step 06's README, decision 5).
+  // NEW IN STEP 06: the agent holds a stand-in role of its own, ap_agent. It may read, and
+  // nothing more. Step 18 should replace it with a person's permission slip (step 06's
+  // README, decision 5).
   ["tok_7f3a", principal("accounts-payable-fte", "agent", ["ap_agent"])],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],

@@ -13,19 +13,23 @@ needs: `invoice.get` needs `invoice:read`, and `invoice.issue` needs `invoice:is
 
 A **role** is a named set of permissions, such as `ap_supervisor`. A principal holds
 roles in each company it belongs to, and it holds the permissions of those roles, and
-nothing else. DSoR keeps both tables itself: which roles each principal has, and which
-permissions each role grants.
+nothing else. In this tutorial, DSoR keeps both tables itself: which roles each
+principal has, and which permissions each role grants. A real deployment may also read
+a principal's roles from the company directory, or from a trusted login token (§12.1).
 
 When a call arrives, DSoR compares the permission the contract needs with the
-permissions the caller holds. If they match exactly, the call goes on. If not, it is
-refused with `AUTHORIZATION_DENIED`. There is no third answer, and no "allowed because
-nobody said no".
+permissions the caller holds. The permission check has two answers. If the caller holds
+the permission, the call goes on. If not, it is refused with `AUTHORIZATION_DENIED`.
+There is no "allowed because nobody said no". In this tutorial, "holds" means the very
+same text (decision 2).
 
-Think of office **keycards**. The login token from step 05 is the card. Each operation
-is a door. Security decides which doors each card opens. A door installed tomorrow opens
-for no card until security programs it. The analogy stops at the card itself: a real
-keycard carries its own access, but here the card only says who you are. What it opens
-is decided every time, in DSoR's own tables.
+Think of office **keycards**. The login token from step 05 is the card, and each
+operation is a door. The card holds only a number. Each time you touch a door, it asks
+the security desk's list which access groups the card belongs to, and whether one of
+them opens this door. An access group is a role. A door installed tomorrow is in no
+group's list, so it opens for no card until security adds it. The analogy stops at the
+door. Once a door opens, it does not care what you do in the room. DSoR checks every
+call, and later steps check more about each one, such as the amount.
 
 ## Why it matters
 
@@ -33,14 +37,14 @@ is decided every time, in DSoR's own tables.
 `payment.execute`. Suppose DSoR allowed any operation it had not been told to refuse.
 `accounts-payable-fte` was set up only to read invoices, but on the day the new
 operation appears it could pay VENDOR-44 31,400.00 USD. Nobody refused it, because
-nobody thought to. Refusing everything that was not granted is like an electric door
-that stays locked when the power fails: when something is missing or unknown, the answer
-is no.
+nobody thought to. Refusing everything that was not granted is called **deny by
+default**. The new operation is safe on its first day, although nobody thought of it.
 
-**A near miss counts as a miss.** Permissions are compared whole. `invoice:issue` does
-not grant `invoice:read`, `invoice:*` is not a permission, and
-`invoice:issue.propose` does not grant `invoice:issue`. Every "almost the same" rule
-would be one more way to grant something by accident.
+**Almost the same is not the same.** `invoice:*` is not a permission: the
+specification's pattern refuses it. `invoice:issue.propose` does not grant
+`invoice:issue` (§7.3). And in this tutorial, permissions are compared whole, so
+`invoice:issue` does not grant `invoice:read` either (decision 2). Every "almost the
+same" rule would be one more way to grant something by accident.
 
 **Common mistake:** checking permissions only for operations someone thought were
 dangerous, and letting the rest through. The dangerous operation is the one added after
@@ -57,8 +61,10 @@ the specification it relies on was read on 2026-09-26: §7.3 (the `.propose` suf
 Written first, before the rules were split into claims.
 
 **Intent.** Step 05 knows who is calling. Step 06 decides what they may do, and the
-default answer is no. The principle is **fail closed**: the electric door that stays
-locked when the power fails.
+default answer is no. The principle is **deny by default**: what nobody granted is
+refused. When something is missing or broken, such as a role the table does not have or
+a contract that names no permission, the answer is no as well: the electric door that
+stays locked when the power fails.
 
 **Outcome.** What a caller sees when this step is done:
 
@@ -72,13 +78,13 @@ locked when the power fails.
    `invoice:issue` is denied `invoice.issue`. A caller who holds it hears "not built
    yet".
 
-**Not the outcome of this step.** Approvals, and "the strictest rule wins" (DSOR-AUT-02a
-to 02c, step 27). What `.propose` allows (step 23). Which company a call works in
+**Not the outcome of this step.** "The strictest rule wins" (DSOR-AUT-02b, step 27).
+Approvals (step 29). What `.propose` allows (step 23). Which company a call works in
 (step 10). An agent's permission slip and its limits (step 18).
 
 **The success signal.** Add a new contract, `invoice.void`, whose permission nobody
 holds, and change nothing else. Every caller is denied. The new operation was never
-refused by anyone. It was simply never granted.
+refused by anyone. Nobody ever granted it.
 
 ### What each rule really says
 
@@ -88,7 +94,7 @@ refused by anyone. It was simply never granted.
 | DSOR-AUT-01a | **C2.** A caller holds the permissions of its roles, and only those | Each principal's permissions, worked out from its roles |
 | DSOR-AUT-01b | **C3.** A call whose permission the caller does not hold is refused | `AUTHORIZATION_DENIED`, retry `never` |
 | DSOR-AUT-01b | **C4.** An operation nobody was granted is denied to everyone | The success signal, `invoice.void` |
-| DSOR-AUT-01b | **C5.** The order is: who is calling, then the contract, then the permission, then "is it built" | A reader is denied `invoice.issue`. A holder of `invoice:issue` hears "not built yet" |
+| DSOR-AUT-01b | **C5.** The order is: who is calling, then what the caller sent (step 05), then the contract, then the permission, then "is it built" | A reader is denied `invoice.issue`. A holder of `invoice:issue` hears "not built yet" |
 | DSOR-AUT-01b | **C6.** Permissions never come from the caller | A list of permissions in the input changes nothing |
 
 ### Decisions the specification leaves to us
@@ -103,22 +109,31 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    `invoice:issue` does not imply `invoice:read`. *Downside:* a role lists every
    permission it grants, in full. Nothing is implied, so nothing is granted by accident.
 3. **`invoice:issue.propose` does not grant `invoice:issue`.** §7.3 says a principal
-   holding only the `.propose` form may run the command in `propose_only` mode only,
-   and that mode arrives in step 23. Until then, holding only `.propose` means denied.
+   holding only the `.propose` form may run the command in `propose_only` mode only. In
+   that mode, DSoR prepares the command, and a person releases it later. The mode
+   arrives in step 23. Until then, holding only `.propose` means denied. *Downside:*
+   until step 23, a caller who holds only the `.propose` form cannot even prepare work.
 4. **A principal naming a role that is not in the table stops start-up.** That is a
    typo, and a typo should be found before any caller arrives, not denied quietly at
-   2 a.m.
-5. **The agent holds one role of its own, `ap_agent`, which grants `invoice:read` and
-   nothing else.** §13 warns that without a delegation "the agent would need broad
-   permissions of its own". DSOR-DEL-01a asks for a delegation only for a command that
-   changes something. So the agent may read with a narrow role of its own, and every
-   command waits for its permission slip in step 18. *Downside:* the agent holds a
-   permission that no person signed for. It is the smallest one there is, and step 14
-   needs it: that step hides sensitive fields from an agent that reads an invoice.
+   2 a.m. *Downside:* one wrong role name stops the program for every caller, not only
+   for the principal who holds it.
+5. **The agent holds a stand-in role of its own, `ap_agent`, which grants
+   `invoice:read` and nothing else.** The specification gives an agent no way to act on
+   its own authority. §13.2 has no `direct` mode for an agent, and DSOR-DEL-07 accepts
+   an agent that calls alone only under a permission slip, reads included. Both are L2
+   rules, and permission slips arrive in step 18. At L1, no rule says how an agent calls
+   ([open question 25](../../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)).
+   This tutorial needs agent reads before step 18: step 14 hides sensitive fields from
+   an agent that reads an invoice. So the agent gets the smallest role there is, and
+   every command still waits for its permission slip. This tutorial expects step 18 to
+   remove the role. *Downside:* the agent holds a permission that no person signed for.
+   And anyone who can ask the agent can read what it reads. If the CFO role granted
+   nothing, `cfo_100` would be denied INV-1008, and could still get it by asking the
+   agent (threat T3, left open).
 6. **The starting roles.** `accounts-payable-fte`: `ap_agent`, which grants
    `invoice:read`. `user_123`: `ap_supervisor`, which grants `invoice:read` and
    `invoice:issue`. `cfo_100`: `CFO`, which grants `invoice:read`. *Downside:* these are
-   not real policy. They are just enough to test both sides of every claim.
+   not real policy. They are enough to test both sides of every claim, and no more.
 
 ### The tests, by claim
 
@@ -153,14 +168,15 @@ Run against the finished step. The learner's predictions were recorded before an
 
 The review also attacks the step with two threats from
 [§10.2](../../../specs/dsor/02-security.md#102-threats-and-mitigations): T2, an agent
-reaching past its task, which is this step's whole purpose, and T3, an agent used to
+reaching past its task, which this step answers for roles, and T3, an agent used to
 reach authority its caller lacks, which waits for delegations in step 18.
 
 The keycard analogy is new. The review checks that it fits and does not mislead.
 
 ### Left open, and not this step's idea
 
-- **Approvals, and the strictest answer winning** (DSOR-AUT-02a to 02c): step 27.
+- **The strictest answer winning** (DSOR-AUT-02b): step 27. **Approvals:** step 29.
+  DSOR-AUT-02a and DSOR-AUT-02c are in no step of the map yet.
 - **What `.propose` allows** (`propose_only` mode): step 23.
 - **An agent's authority from a person's permission slip**, and its limits: step 18.
 - **Roles in more than one company:** step 10.
@@ -342,6 +358,7 @@ agent is still denied `invoice.issue`. Nothing looks wrong.
 Run `pnpm test`. These are the lines that matter, and "…" marks what is left out:
 
 ```text
+…
  FAIL  test/permissions.test.ts > C4: an operation nobody was granted is denied to everyone > DSOR-AUT-01b: accounts-payable-fte is denied vendor.get, new code no role grants, and the code never runs
 AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal { code: 'AUTHORIZATION_DENIED', …(3) }
 
@@ -433,17 +450,19 @@ difference, and tell me which ones matter and why.
 
 1. Nobody holds `payment:execute`. An operation is refused unless a role grants its
    permission, so a new operation is refused to everyone until someone grants it.
-2. Only if a role grants `invoice:read` too. Permissions are compared whole, and one
-   never implies another. Here `ap_supervisor` grants both, so yes, but not because of
-   `invoice:issue`.
-3. The `.propose` form allows only `propose_only` mode, which arrives in step 23. It is
-   a different permission, and only an exact match grants one.
+2. Only if a role grants `invoice:read` too. In this tutorial, permissions are compared
+   whole, and one never implies another (decision 2). Here `ap_supervisor` grants both,
+   so yes, but not because of `invoice:issue`.
+3. The `.propose` form allows only `propose_only` mode, which arrives in step 23 (§7.3).
+   It is a different permission, and in this tutorial only the very same text grants
+   one (decision 2).
 4. Otherwise every caller hears "not built yet", and a test that a reader "cannot
    issue" passes even with no permission check at all. The test would prove nothing.
-5. The agent needs to read invoices before delegations arrive in step 18, and a
-   delegation is required only for a command that changes something (DSOR-DEL-01a). So
-   the agent gets the smallest permission there is, `invoice:read`, and nothing that
-   changes anything.
+5. It is a stand-in. The agent must read invoices before permission slips arrive in
+   step 18: step 14 hides sensitive fields from an agent that reads one. The
+   specification's ways for an agent to call are L2 rules, and at L1 none applies (open
+   question 25). So this tutorial gives the agent the smallest permission there is,
+   `invoice:read`, and nothing that changes anything. Step 18 should take it away.
 
 </details>
 
