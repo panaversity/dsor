@@ -217,3 +217,24 @@ describe("the program", () => {
     },
   );
 });
+
+// NEW IN STEP 08: the program itself shows the lesson: one record for each of its eight
+// calls, the refusals too, and no answer when the log cannot take a record.
+describe("the program's log", () => {
+  it("DSOR-EXE-02: prints one record for each of its eight calls", { timeout: 30_000 }, () => {
+    const run = spawnSync(process.execPath, [MAIN], { encoding: "utf8" });
+    expect(run.status).toBe(0);
+    const lines = run.stdout.split("\n").filter((l) => /^\d+ \S+ (ALLOW|DENY) \S+$/.test(l));
+    expect(lines).toStrictEqual([
+      "1 invoice.get@1 ALLOW ok",
+      "2 invoice.get@1 ALLOW RESOURCE_NOT_FOUND",
+      "3 invoice.issue@1 DENY AUTHORIZATION_DENIED",
+      "4 invoice.get@1 DENY AUTHENTICATION_REQUIRED",
+      "5 invoice.get@1 DENY AUTHORIZATION_DENIED",
+      "6 invoice.get@1 ALLOW ok",
+      "7 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY",
+      "8 invoice.issue@1 DENY VALIDATION_FAILED",
+    ]);
+    expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
+  });
+});

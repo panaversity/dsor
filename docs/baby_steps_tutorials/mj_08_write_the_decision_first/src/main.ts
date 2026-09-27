@@ -1,12 +1,12 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
 // The program checks every contract, and the role table, then calls operations by name.
-// It prints one success and five refusals, each an envelope, and the correlation of a call
-// by user_123. Start-up checks each operation's input schema too, and a
-// sixth refusal shows line ⑥ of the checklist refusing a bad input.
+// It prints one success and six refusals, each an envelope, and the correlation of a call
+// by user_123. NEW IN STEP 08: then it prints the log, one record for every call, and shows
+// that a log which cannot take a record turns a "yes" into a refusal.
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
-import { createLog } from "./log.ts";
+import { createLog, type DecisionLog } from "./log.ts";
 import { handlers } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
 import { call } from "./pipeline.ts";
@@ -86,3 +86,21 @@ console.log(
 // user_123 sends an id where invoice.issue needs a canonical URI. Line ⑥
 // refuses it, before DSoR asks whether invoice.issue is built.
 console.log(call(registry, log, USER_123, "invoice.issue", { invoice: "INV-1008" }));
+
+// NEW IN STEP 08: every call above left one record in the log before its answer was
+// returned, the refusals too. The first record in full, then one line for each record.
+const records = log.records();
+console.log(records[0]);
+for (const { sequence, operation, authorization, result } of records) {
+  console.log(sequence, operation ?? "(no contract)", authorization, result);
+}
+
+// NEW IN STEP 08: a log that cannot take a record. This call would succeed, but with no
+// record there is no answer (DSOR-EXE-03b).
+const full: DecisionLog = {
+  add: () => {
+    throw new Error("disk full");
+  },
+  records: () => [],
+};
+console.log(call(registry, full, AGENT, "invoice.get", { id: "INV-1008" }));
