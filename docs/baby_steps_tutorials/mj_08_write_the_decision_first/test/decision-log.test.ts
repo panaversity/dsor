@@ -282,7 +282,7 @@ describe("C5: the log only grows", () => {
     expect(fresh.records()[0]!.authorization).toBe("DENY");
   });
 
-  it("the log has two doors, and no way to change or remove a record", () => {
+  it("the log has two functions, and no way to change or remove a record", () => {
     expect(Object.keys(createLog()).sort()).toStrictEqual(["add", "records"]);
   });
 });

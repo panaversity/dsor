@@ -146,7 +146,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    *Downside:* the record does not validate against `audit-record.schema.json`, and
    finding 2 above says which fields are missing and why. A `DENY` is not every "no" a
    caller hears: "no invoice INV-9999" is `ALLOW` with the result `RESOURCE_NOT_FOUND`.
-6. **The log is a small module with two doors: add a record, and read a copy of all
+6. **The log is a small module with two functions: add a record, and read a copy of all
    records.** Nothing else touches it. *Downside:* a test that needs a broken log must
    be able to swap in one that refuses to write, so the log is passed to `call`, the
    way the registry is.
@@ -172,9 +172,9 @@ Run against the finished step. The learner's predictions were recorded before an
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
 | S1 | The log line is moved to the end of the `try`, where the answer is ready, so a throw skips it | C1's refusals, and C2 | caught easily |
-| S2 | The record is written in a `finally` block, §21's common mistake | only a test where the whole program stops, which step 09 makes possible | to predict |
-| S3 | A refusal is not recorded, only a success | C1 | to predict |
-| S4 | When the log cannot write, the answer is given anyway | C4 | to predict |
+| S2 | The record is written in a `finally` block, §21's common mistake | only a test where the whole program stops, which step 09 makes possible | survives |
+| S3 | A refusal is not recorded, only a success | C1 | caught by many |
+| S4 | When the log cannot write, the answer is given anyway | C4 | caught by C4 |
 
 S2 is the break §21 warns about. In this step it may survive every test. A `finally`
 block runs even when an error is thrown, and a log in memory is lost when the program
@@ -196,19 +196,232 @@ The review also attacks the step with the §10.2 threat that is this step's reas
 
 ## What changed since step 07
 
-_To be written when the code exists._
+```text
+src/log.ts                  NEW: the decision log. createLog() gives a log with two
+                            functions, add and records. The list of records is out of
+                            reach of everything else. decisionOf() says what a record
+                            holds about one answer (decision 5)
+src/pipeline.ts             changed: call() takes the log as its second argument. The
+                            try now only works out the answer. Line ⑪, after the
+                            catch, writes the record, and then call returns the answer.
+                            A log that throws turns any answer into
+                            EVIDENCE_STORE_UNAVAILABLE
+src/main.ts                 changed: prints the log, one line per record, and calls
+                            through a log that cannot write
+test/decision-log.test.ts   NEW: the log, by claim (C1 to C5)
+test/pipeline.test.ts       changed: every call now ends at line ⑪
+test/startup.test.ts        changed: the program prints one record for each call
+test/helpers.ts, and every  changed: each call passes a log. This part of the diff is
+test that calls call()      mechanical, and was its own commit
+src/, test/                 step 07's NEW IN STEP markers are now plain comments
+```
+
+There is no new dependency. The record's id comes from `randomUUID()`, which Node
+already has, and which step 04 used for request ids.
+
+Every new region is marked `NEW IN STEP 08`. To see the whole diff, run this from
+`docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_07_the_pipeline_skeleton/src mj_08_write_the_decision_first/src
+git diff --no-index mj_07_the_pipeline_skeleton/test mj_08_write_the_decision_first/test
+```
+
+Three choices in the code are worth a look:
+
+- **The `try` only works out the answer.** In step 07, `call` returned from inside the
+  `try` and from inside the `catch`. Now both only set `answer`. Line ⑪ comes after the
+  `catch`, so a throw anywhere in lines ① to ⑩ ends in the `catch` and still reaches ⑪.
+- **Line ⑪ has a `try` of its own.** Whatever the log throws, and even a bug while
+  building the record, becomes `EVIDENCE_STORE_UNAVAILABLE`. What the log threw never
+  reaches the caller: in a real store, that message can name a server or a path.
+- **The log copies twice.** `add` stores a copy of the decision, and `records` hands
+  out a copy of the list. A record shares its `correlation` with the answer the caller
+  gets, so without the first copy, a caller could change the log by changing the
+  answer it was given.
 
 ## Run it
 
-_To be written when the code exists._
+From the root of the dsor repository:
+
+```bash
+cd docs/baby_steps_tutorials/mj_08_write_the_decision_first
+pnpm install
+pnpm start
+```
+
+The program makes the same eight calls as step 07 and prints the same answers. Then
+it prints the log. "…" marks what is left out, and the ids change on every run:
+
+```text
+$ node src/main.ts
+operations: [ 'invoice.get', 'invoice.issue' ]
+…
+{
+  record_id: 'aud_1713a96d-1e9a-4301-80f3-9deffeaffc30',
+  sequence: 1,
+  at: '2026-09-27T03:58:14.377Z',
+  kind: 'decision',
+  operation: 'invoice.get@1',
+  authorization: 'ALLOW',
+  result: 'ok',
+  correlation: {
+    request_id: 'req_facdb2bd-eb86-4dfe-8ea5-ec9935687cc4',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+1 invoice.get@1 ALLOW ok
+2 invoice.get@1 ALLOW RESOURCE_NOT_FOUND
+3 invoice.issue@1 DENY AUTHORIZATION_DENIED
+4 invoice.get@1 DENY AUTHENTICATION_REQUIRED
+5 invoice.get@1 DENY AUTHORIZATION_DENIED
+6 invoice.get@1 ALLOW ok
+7 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY
+8 invoice.issue@1 DENY VALIDATION_FAILED
+{
+  code: 'EVIDENCE_STORE_UNAVAILABLE',
+  message: 'DSoR could not record its decision, so it refuses the call',
+  retry: 'safe_same_key',
+  correlation: {
+    request_id: 'req_82f5a23d-7398-4c36-9716-9be68ff04f21',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+```
+
+Eight calls, eight records, and six of them are refusals. Record 2 is `ALLOW`: the
+agent may read invoices, so DSoR let the call reach its code, and the code found no
+`INV-9999`. The last answer is the same call as record 1, through a log that cannot
+write. The invoice was found, and the caller still does not get it.
+
+```bash
+pnpm check
+```
+
+```text
+      Tests  469 passed (469)
+```
+
+Outside the dsor repository, the three tests that compare the schema copies have no
+original to compare with, so they are skipped: `466 passed | 3 skipped`.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+**Move the log line to where the answer is ready.** This is S1, and the break-it
+exercise from the map of all steps. In `src/pipeline.ts`, cut the whole block of line
+⑪, from its comment to the end of its `catch`. Then put one line back, at the end of
+the `try`, just after the answer is built:
+
+```ts
+    answer = { data, correlation };
+    line(11, () => log.add(decisionOf(answer, contract, reachedCode)));
+  } catch (thrown) {
+```
+
+It looks harmless. A success is still recorded, and the answer is ready when it is.
+Run `pnpm start`, and look at the log:
+
+```text
+1 invoice.get@1 ALLOW ok
+2 invoice.get@1 ALLOW ok
+{
+  code: 'INTERNAL_ERROR',
+  message: 'DSoR hit an unexpected error',
+  retry: 'never',
+  …
+}
+```
+
+Eight calls, and two records. Every refusal is thrown, the throw jumps to the `catch`,
+and the `catch` skips the log line. The six "no" answers reached their callers and
+vanished from the evidence. The full log gives a different answer too: its throw is
+now caught as a bug, so the caller hears `INTERNAL_ERROR`, with the retry class
+`never`, instead of `EVIDENCE_STORE_UNAVAILABLE`.
+
+Run `pnpm test`. This is the test for the success signal, with "…" for what is left
+out:
+
+```text
+ FAIL  test/decision-log.test.ts > C2: a failure between the decision and the answer still leaves a record > DSOR-EXE-02: the code throws after line ⑤ said yes, and the call is still recorded
+AssertionError: expected [] to strictly equal [ { …(9) } ]
+
+- Expected
++ Received
+
+- [
+-   {
+-     "at": Any<String>,
+-     "authorization": "ALLOW",
+…
+-     "result": "INTERNAL_ERROR",
+-     "sequence": 1,
+-   },
+- ]
++ []
+…
+      Tests  28 failed | 441 passed (469)
+```
+
+Line ⑤ said yes, and then the code threw. The caller heard `INTERNAL_ERROR`, and the
+log is empty. Put line ⑪ back, and `pnpm check` is green again.
+
+**Now try S2, §21's common mistake.** Put the line ⑪ block inside a `finally` after
+the `catch`, and return the answer from the `try` and from the `catch`. Run
+`pnpm test`: all 469 pass. In one call that runs from start to end, a `finally` runs
+before the answer reaches the caller, so no test here can see a difference. The
+difference is a program that stops in the middle. Then the `finally` never runs, and
+the answer may already be gone. A log in memory is lost in that case anyway, so there
+is nothing yet to test. Step 09 writes to a database, and can stop the program between
+the decision and the answer.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built. Each row is one commit or more:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Copy | Copy your step 07. Change the name and the description in `package.json` |
+| 2 | Design first | Write "In plain words", "Why it matters", and "The design, before any code" |
+| 3 | Check the design | Read §21, §28, §29, and `audit-record.schema.json` again. Fix the design where they say it is wrong |
+| 4 | Make room | Pass a log to `call`, not used yet. Every call site changes, so this is its own commit |
+| 5 | Red | Write the tests, one group per claim. Predict which pass before any code |
+| 6 | Green | The log, then line ⑪ (DSOR-EXE-02), then the broken log (DSOR-EXE-03b). One commit each |
+| 7 | Break it | Run every predicted break. Compare the results with your predictions |
+| 8 | Review | A reviewer who has not seen your conversation attacks the step |
+| 9 | Fix the review | Change the design first, then red tests, then the code. Run every break again |
+
+Move 3 changed C2, C3, and decision 5 (see "Think it through"). In the red run, 2 of
+the 29 new tests passed before any code, and all 8 changed order tests failed. The
+learner predicted about 5 would pass, expecting the C4 tests to pass because they say
+"no". They failed: nothing said "no" yet. With the log built and line ⑪ in place, only
+the 5 C4 tests failed, as the learner predicted, and `call` threw
+`disk full at /var/dsor/log` at the caller.
+
+Build your own step 08 from a copy of your step 07. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_07_the_pipeline_skeleton my_08_write_the_decision_first
+cd my_08_write_the_decision_first
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 08. Design first, and check it
+against §21, §29, and audit-record.schema.json before any test. Three questions to
+settle with me: in a call that never waits, what can fail between the decision and the
+answer? Is a bug a denial? Which fields of the audit record can this step fill without
+inventing them?
+```
+
+When `pnpm check` is green in your folder, and once the official step 08 exists:
+
+```text
+Now compare this folder with ../08_write_the_decision_first. Explain every difference,
+and tell me which ones matter and why.
+```
 
 ## Check yourself
 
@@ -266,7 +479,7 @@ above._
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-EXE-02 | The decision is durably recorded before the response is returned | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | _to be counted_, before the response only: not durable until step 09 |
+| DSOR-EXE-02 | The decision is durably recorded before the response is returned | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 16 tests in `test/decision-log.test.ts`, C1 and C2, and 1 in `test/startup.test.ts`. Before the response only: not durable until step 09 |
 
 Not met, and why: DSOR-AUD-01, whose record needs a chain of fingerprints (step 39) and
 an identity mode for the agent (step 18). DSOR-EXE-03b is an L2 rule this step builds

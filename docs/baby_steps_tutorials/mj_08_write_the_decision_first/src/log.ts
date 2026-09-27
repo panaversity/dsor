@@ -20,7 +20,7 @@ export type Decision = {
 /** One record in the log: a decision, with its id, its place in the log, and its time. */
 export type DecisionRecord = Decision & { record_id: string; sequence: number; at: string };
 
-/** The log has two doors: add a decision, and read a copy of every record. */
+/** The log has two functions: add a decision, and read a copy of every record. */
 export type DecisionLog = {
   add: (decision: Decision) => void;
   records: () => DecisionRecord[];
@@ -28,8 +28,8 @@ export type DecisionLog = {
 
 /** A new, empty log, held in memory. */
 export function createLog(): DecisionLog {
-  // Only the two doors below can reach this list, so nothing else can change or remove a
-  // record (step 08's README, decision 6).
+  // Only the two functions below can reach this list, so nothing else can change or
+  // remove a record (step 08's README, decision 6).
   const kept: DecisionRecord[] = [];
   return {
     add: (decision) => {
