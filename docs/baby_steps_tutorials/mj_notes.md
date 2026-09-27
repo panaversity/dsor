@@ -193,6 +193,21 @@ Step 07 found one more on 2026-09-26:
   code in the same program can. **Fixed on 2026-09-26:** the request id is read inside
   the `try`, and a test sends that envelope, in `mj_05` and every build after it.
 
+Step 08 found one more on 2026-09-27:
+
+- **`toEnvelope` could throw** (from `mj_04`). A thrown value can run code of its own
+  when DSoR looks at it: a Proxy that throws when asked "is this a Refusal?", or a
+  Refusal whose `code` throws when read. `toEnvelope` then threw, so `call` threw with
+  the value's own message. From step 08 it also meant line ⑪ never ran, and nothing was
+  recorded. Step 04's promise covered what JSON can carry, and code in the same program
+  can throw more. **Fixed on 2026-09-27:** the whole of `toEnvelope` sits in a `try`, and
+  anything thrown while it looks becomes the fixed `INTERNAL_ERROR` envelope, in
+  `mj_04` and every build after it. Two rows in each build's table of bugs failed before
+  the fix. Step 08 had first guarded it in its own `pipeline.ts`; that guard went once
+  the root was fixed.
+- **`envelope.ts` passed 150 lines** with that fix: 156 in `mj_04`, 157 from `mj_05`.
+  Step 07 named 150 as the point to split it. The next change to it should split it.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

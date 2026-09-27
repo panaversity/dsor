@@ -55,7 +55,8 @@ schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.m
 | 05 · who is calling | Planned. A learner build, `mj_05_who_is_calling`, tests DSOR-IDN-01, DSOR-SRC-02a for who is calling only, and DSOR-SRC-02b for a principal only; it is not the official step |
 | 06 · permissions, denied by default | Planned. A learner build, `mj_06_permissions_deny_by_default`, tests DSOR-AUT-01a and DSOR-AUT-01b; it is not the official step |
 | 07 · the pipeline skeleton | Planned. A learner build, `mj_07_the_pipeline_skeleton`, tests DSOR-EXE-01a for lines ①, ⑤, ⑥, and ⑨, and DSOR-OPR-04a for its one interface, `call`; it is not the official step |
-| 08 to 51 | Planned |
+| 08 · write the decision first | Planned. A learner build, `mj_08_write_the_decision_first`, tests DSOR-EXE-02 before the response only (its log is in memory, so not durable), and DSOR-EXE-03b, an L2 rule, for the caller's half only; it is not the official step |
+| 09 to 51 | Planned |
 
 ## Learning-path stages
 

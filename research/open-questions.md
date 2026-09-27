@@ -184,3 +184,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
     user_123 with "not built yet" for that URI, and leaves the check to step 10. Should
     §21 say which line compares a tenant inside the arguments with the resolved tenant,
     so that no interface can skip it?
+31. **What does the record say when the store saved it, and the reply was lost?**
+    DSOR-EXE-03b sends `EVIDENCE_STORE_UNAVAILABLE` when the control-plane store cannot
+    accept the decision record. A database can accept the record and then lose the reply
+    that says so: the connection drops after the commit. DSoR then believes the write
+    failed. The caller hears `EVIDENCE_STORE_UNAVAILABLE`, while the log holds a record
+    that says `ALLOW` with the result `ok`. Step 08's learner build keeps its log in
+    memory, where this cannot happen, and leaves it to step 09. Must the decision record
+    say what the caller heard, so a second record is needed when the write's outcome is
+    unknown? Or is a decision record that DSoR could not confirm treated like an intent
+    record with no outcome (DSOR-EXE-04b), and reconciled later?
