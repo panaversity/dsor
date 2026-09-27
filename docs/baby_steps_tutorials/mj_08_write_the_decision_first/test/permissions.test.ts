@@ -44,7 +44,7 @@ import {
 function withOperation(
   extra: Record<string, unknown>,
   code?: Handler,
-  // NEW IN STEP 07: a new operation may need an input schema of its own.
+  // A new operation may need an input schema of its own.
   inputs: ContractSource[] = shippedInputs,
 ): Registry {
   const id = extra["id"] as string;
@@ -402,7 +402,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         output: { schema: "Vendor" },
         authorization: { permission: "vendor:read" },
       };
-      // NEW IN STEP 07: vendor.get's input schema, so start-up accepts the new contract.
+      // vendor.get's input schema, so start-up accepts the new contract.
       const vendorInput = inputsWith(
         "VendorGetRequest.schema.json",
         '{ "type": "object", "additionalProperties": false }',
@@ -430,7 +430,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         contracts: new Map([["invoice.get", bare as Contract]]),
         handlers: new Map([["invoice.get", spy]]),
         roles: registry.roles,
-        // NEW IN STEP 07: the shipped check for each operation's input.
+        // The shipped check for each operation's input.
         inputs: registry.inputs,
       };
       expect(call(handMade, log, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toStrictEqual({
@@ -452,7 +452,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
     expect(call(registry, log, CFO, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", THE_CFO),
     );
-    // NEW IN STEP 07: a good input, so the call also passes line ⑥.
+    // A good input, so the call also passes line ⑥.
     expect(call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toStrictEqual({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
@@ -533,7 +533,7 @@ describe("C6: permissions never come from the caller", () => {
 
   // No rule id: DSOR-AUT-01b is about what is denied. "Changes nothing" works the other
   // way too: an empty list takes nothing away.
-  // NEW IN STEP 07: line ⑥ now refuses the list itself, since invoice.get's input schema
+  // Line ⑥ now refuses the list itself, since invoice.get's input schema
   // does not name it. It is refused as a bad input, and not as a denied permission.
   it("an empty list of permissions in the input is refused as a bad input", () => {
     const input = { id: "INV-1008", permissions: [] };

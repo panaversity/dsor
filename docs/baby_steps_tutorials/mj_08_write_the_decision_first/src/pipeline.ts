@@ -9,14 +9,14 @@ import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
-// NEW IN STEP 07: the observer is told each line's number as it runs, and only a test
+// The observer is told each line's number as it runs, and only a test
 // listens (step 07's README, decision 6).
 /** Hears the number of each line of the checklist, as the line runs. */
 export type Observer = (line: number) => void;
 
 /**
  * Runs an operation by its name. It answers with an envelope, and never throws.
- * NEW IN STEP 07: every call runs one checklist, numbered as §21 numbers it. A line that
+ * Every call runs one checklist, numbered as §21 numbers it. A line that
  * is not built yet is a comment that names its step, and never a check that says "fine".
  */
 export function call(

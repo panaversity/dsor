@@ -2,7 +2,7 @@
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
 // The program checks every contract, and the role table, then calls operations by name.
 // It prints one success and five refusals, each an envelope, and the correlation of a call
-// by user_123. NEW IN STEP 07: start-up checks each operation's input schema too, and a
+// by user_123. Start-up checks each operation's input schema too, and a
 // sixth refusal shows line ⑥ of the checklist refusing a bad input.
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
@@ -23,7 +23,7 @@ const CONTRACTS = process.argv[2] ?? fileURLToPath(new URL("../contracts", impor
 // Start-up checks the role table too (step 06's README, decision 1). A role table can be
 // named after the contracts folder, so a test can start with a broken one.
 const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.meta.url));
-// NEW IN STEP 07: start-up checks the input schemas too. A folder of them can be named after
+// Start-up checks the input schemas too. A folder of them can be named after
 // the role table, so a test can start without one. With none named, the step's own is read.
 const INPUTS: string | undefined = process.argv[4];
 let registry: Registry;
@@ -63,7 +63,7 @@ if ("data" in answer) {
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
 console.log(call(registry, log, AGENT, "invoice.get", { id: "INV-9999" }));
-// The agent's role grants invoice:read and not invoice:issue. NEW IN STEP 07: so this call
+// The agent's role grants invoice:read and not invoice:issue. So this call
 // is denied at line ⑤, before DSoR looks at the input or asks whether it is built.
 console.log(
   call(registry, log, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
@@ -78,11 +78,11 @@ console.log(call(registry, log, AGENT, "invoice.get", { id: "INV-1008", principa
 // id of their own. The answer carries that id, and names user_123 as the caller.
 const USER_123: RequestEnvelope = { token: "tok_2c91", request_id: "ap-desk-7" };
 console.log(call(registry, log, USER_123, "invoice.get", { id: "INV-1008" }).correlation);
-// user_123 holds invoice:issue. NEW IN STEP 07: so the same call passes lines ①, ⑤, and ⑥.
+// user_123 holds invoice:issue. So the same call passes lines ①, ⑤, and ⑥.
 // It is refused after them: invoice.issue has a contract but no code yet.
 console.log(
   call(registry, log, USER_123, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
 );
-// NEW IN STEP 07: user_123 sends an id where invoice.issue needs a canonical URI. Line ⑥
+// user_123 sends an id where invoice.issue needs a canonical URI. Line ⑥
 // refuses it, before DSoR asks whether invoice.issue is built.
 console.log(call(registry, log, USER_123, "invoice.issue", { invoice: "INV-1008" }));

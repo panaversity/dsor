@@ -1,4 +1,4 @@
-// NEW IN STEP 07: the checklist every call goes through, by claim (C1 to C5 in step 07's
+// The checklist every call goes through, by claim (C1 to C5 in step 07's
 // README). C6 is a reading check, done beside §21's diagram.
 import { describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";

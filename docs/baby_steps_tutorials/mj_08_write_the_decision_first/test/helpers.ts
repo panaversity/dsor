@@ -27,22 +27,22 @@ export const shipped: ContractSource[] = readContracts(CONTRACTS);
 const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
 export const shippedRoles: RoleSource = readRoles(ROLES);
 
-// NEW IN STEP 07: the input schemas this step ships, read from disk the way start-up reads
+// The input schemas this step ships, read from disk the way start-up reads
 // them (step 07's README, decision 2).
 const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
 export const shippedInputs: ContractSource[] = readContracts(INPUTS);
 
-/** NEW IN STEP 07: the shipped input schemas, with one file's text replaced, or removed. */
+/** The shipped input schemas, with one file's text replaced, or removed. */
 export function inputsWith(file: string, text: string | undefined): ContractSource[] {
   const others = shippedInputs.filter((s) => s.file !== file);
   return text === undefined ? others : [...others, { file, text }];
 }
 
-// NEW IN STEP 07: an input for invoice.issue that passes line ⑥, and one that does not.
+// An input for invoice.issue that passes line ⑥, and one that does not.
 export const GOOD_ISSUE = { invoice: "dsor://org_456/invoice/INV-1008" };
 export const BAD_ISSUE = { invoice: "INV-1008" };
 
-/** NEW IN STEP 07: the message when line ⑥ refuses an input. */
+/** The message when line ⑥ refuses an input. */
 export function notValid(name: string, problem: string): string {
   return `the input of "${name}" is not valid: ${problem}`;
 }
@@ -171,7 +171,7 @@ export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles)
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
 export function run(handler: Handler): Answer {
   // As the agent, with its login token.
-  // NEW IN STEP 07: test.run takes invoice.get's input, and line ⑥ now checks it.
+  // test.run takes invoice.get's input, and line ⑥ now checks it.
   return call(registryWith(handler), log, AGENT, "test.run", { id: "INV-1008" });
 }
 
@@ -242,7 +242,7 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   // permission check and hear that invoice.issue is not built yet (step 06's README, C5).
   [
     "invoice.issue, which has no code yet",
-    // NEW IN STEP 07: a good input, so the call also passes line ⑥.
+    // A good input, so the call also passes line ⑥.
     () => call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
     "UNSUPPORTED_CAPABILITY",
     '"invoice.issue" is not built yet',
@@ -256,7 +256,7 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
     THE_SUPERVISOR,
   ],
   [
-    // NEW IN STEP 07: refused by line ⑥, the input schema, and no longer by invoice.get's code.
+    // Refused by line ⑥, the input schema, and no longer by invoice.get's code.
     "invoice.get without an id",
     () => call(registry, log, AGENT, "invoice.get", {}),
     "VALIDATION_FAILED",

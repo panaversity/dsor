@@ -242,7 +242,7 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     });
   });
 
-  // NEW IN STEP 07: step 05 accepted these, and never used the name. Line ⑥ now refuses
+  // Step 05 accepted these, and never used the name. Line ⑥ now refuses
   // them, because invoice.get's input schema lists only id (step 07's README, decision 3).
   it.each(PLACES)("the agent's own id in %s is refused as a bad input", (place) => {
     expect(
@@ -262,7 +262,7 @@ describe("C5: a principal named in the arguments must be the caller", () => {
     });
   });
 
-  // NEW IN STEP 07: refused at line ⑥, as the agent is (step 07's README, decision 3).
+  // Refused at line ⑥, as the agent is (step 07's README, decision 3).
   it("a person who names themselves is refused as a bad input", () => {
     expect(
       call(registry, log, CFO, "invoice.get", naming("principal_id", "cfo_100")),

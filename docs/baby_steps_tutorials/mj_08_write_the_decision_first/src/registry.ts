@@ -23,7 +23,7 @@ export type Registry = {
   handlers: ReadonlyMap<string, Handler>;
   // What each role grants (step 06's README, decision 1).
   roles: Roles;
-  // NEW IN STEP 07: the check for each operation's input (step 07's README, decision 2).
+  // The check for each operation's input (step 07's README, decision 2).
   inputs: InputChecks;
 };
 
@@ -68,7 +68,7 @@ export function buildRegistry(
   handlers: Record<string, Handler>,
   // The role table, checked with the contracts (step 06's README, decision 1).
   roleSource: RoleSource,
-  // NEW IN STEP 07: the input schemas. This step's own, unless the caller gives others.
+  // The input schemas. This step's own, unless the caller gives others.
   inputSources: InputSource[] = readInputs(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
@@ -122,7 +122,7 @@ export function buildRegistry(
   const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
   problems.push(...roleProblems);
 
-  // NEW IN STEP 07: every contract's input schema must have a file, and compile. A contract
+  // Every contract's input schema must have a file, and compile. A contract
   // with no check for its input would let anything through line ⑥.
   const { inputs, problems: inputProblems } = checkInputs(contracts.values(), inputSources);
   problems.push(...inputProblems);

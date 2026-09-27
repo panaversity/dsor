@@ -82,7 +82,7 @@ describe("the program", () => {
       // The agent may not issue. user_123 may, and hears "not built yet".
       expect(output).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
-      // NEW IN STEP 07: user_123 sends a bad input, and line ⑥ refuses it.
+      // user_123 sends a bad input, and line ⑥ refuses it.
       expect(output).toMatch(
         `message: 'the input of "invoice.issue" is not valid: /invoice must match pattern`,
       );
@@ -117,7 +117,7 @@ describe("the program", () => {
     },
   );
 
-  // NEW IN STEP 07. Found by the review: the role table's lesson, for the inputs folder.
+  // Found by the review: the role table's lesson, for the inputs folder.
   it(
     "refuses to start without its inputs folder: it names the folder and prints no stack trace",
     { timeout: 30_000 },
@@ -139,7 +139,7 @@ describe("the program", () => {
     },
   );
 
-  // NEW IN STEP 07: start-up checks that every contract's input schema has a file.
+  // Start-up checks that every contract's input schema has a file.
   it(
     "refuses to start when a contract's input schema has no file: it names it and exits with code 1",
     { timeout: 30_000 },

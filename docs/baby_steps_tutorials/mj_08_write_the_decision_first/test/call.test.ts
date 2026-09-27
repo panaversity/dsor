@@ -114,7 +114,7 @@ describe("C6: a query's success is { data, correlation }", () => {
       { ...handlers, "invoice.issue": spy },
       shippedRoles,
     );
-    // NEW IN STEP 07: a good input, so line ⑥ is not what refuses the call either.
+    // A good input, so line ⑥ is not what refuses the call either.
     expect(call(issueHasCode, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
@@ -157,7 +157,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
   ])("invoice.get with %s as its input is refused with VALIDATION_FAILED", (_why, input) => {
     expect(call(registry, log, AGENT, "invoice.get", input)).toMatchObject({
       code: "VALIDATION_FAILED",
-      // NEW IN STEP 07: line ⑥ refuses the input, and says what is wrong with it.
+      // Line ⑥ refuses the input, and says what is wrong with it.
       message: expect.stringMatching(/^the input of "invoice.get" is not valid: /),
       retry: "never",
     });

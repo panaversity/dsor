@@ -1,4 +1,4 @@
-// NEW IN STEP 07: line ⑥ of the checklist, "is the input valid?". Each operation's input
+// Line ⑥ of the checklist, "is the input valid?". Each operation's input
 // schema says exactly which fields its input may have (step 07's README, decision 2).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

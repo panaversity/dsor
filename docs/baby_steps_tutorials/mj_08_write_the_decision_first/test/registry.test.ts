@@ -80,7 +80,7 @@ describe("C1: nothing can be called without a contract", () => {
       contracts: new Map(),
       handlers: new Map([["invoice.delete", spy]]),
       roles: new Map(),
-      // NEW IN STEP 07: a registry holds the check for each input too. This one has none.
+      // A registry holds the check for each input too. This one has none.
       inputs: new Map(),
     };
     // The refusal is an envelope, not a throw.
@@ -94,7 +94,7 @@ describe("C1: nothing can be called without a contract", () => {
   // caller who holds invoice:issue gets as far as "not built yet" (step 06's README, C5).
   it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
-    // NEW IN STEP 07: a good input, so line ⑥ is not what refuses the call.
+    // A good input, so line ⑥ is not what refuses the call.
     expect(call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
@@ -232,7 +232,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
 
   it("a value that repeats its own key's name is not a key written twice", () => {
     const text = JSON.stringify({ ...contract("invoice.get"), input: { schema: "schema" } });
-    // NEW IN STEP 07: the input schema that contract names must have a file too.
+    // The input schema that contract names must have a file too.
     // It is the only contract, so it is given the only input schema.
     const inputs = [
       { file: "schema.schema.json", text: '{ "type": "object", "additionalProperties": false }' },

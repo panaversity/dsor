@@ -6,7 +6,7 @@ import { preview, type Handler } from "./registry.ts";
 
 export const handlers: Record<string, Handler> = {
   "invoice.get": (input) => {
-    // NEW IN STEP 07: line ⑥ of the checklist has checked the input against
+    // Line ⑥ of the checklist has checked the input against
     // InvoiceGetRequest, so it is { id: string } and nothing else. The code no longer
     // checks it in its own way (step 07's README, outcome 2).
     const { id } = input as { id: string };

@@ -70,7 +70,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
   it("DSOR-OPR-02a: a query without the 6 command fields is accepted", () => {
     const query = contract("invoice.get");
     for (const field of COMMAND_ONLY) expect(query).not.toHaveProperty(field);
-    // NEW IN STEP 07: only the input schema this one contract names, or start-up refuses
+    // Only the input schema this one contract names, or start-up refuses
     // the other as unused.
     const inputs = inputsWith("InvoiceIssueRequest.schema.json", undefined);
     expect(
@@ -133,7 +133,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
       ...contract("invoice.issue"),
       execution: { semantics: "compensatable", compensated_by: ["invoice.cancel"] },
     };
-    // NEW IN STEP 07: only the input schema these contracts name, or start-up refuses the
+    // Only the input schema these contracts name, or start-up refuses the
     // other as unused.
     const inputs = inputsWith("InvoiceGetRequest.schema.json", undefined);
     for (const good of [neverUndone, undoable]) {
