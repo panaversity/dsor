@@ -11,7 +11,9 @@ called, what they asked for, whether the answer was yes or no, why, and which ca
 was.
 
 The important word is **before**. The record is written first, and only then is the
-answer returned. So nothing reaches a caller that the log does not already hold.
+answer returned. So no answer reaches a caller unless the log already holds it. There is
+one exception: when the log itself is broken, the caller hears that, and nothing can be
+written down (decision 4).
 
 Think of the clerk from [Start here](../../learn/start-here.md), who keeps a logbook of
 everything they do. A good clerk writes the entry in the logbook before turning to the
@@ -35,12 +37,14 @@ evidence goes, was never given.
 
 **Common mistake:** §21 names it: "Writing the audit record at the end, inside a
 `finally` block. It is too late, and it misses the crash case completely." A `finally`
-block runs even when an error is thrown, so it looks safe. It is not safe when the whole
-program stops.
+block runs even when an error is thrown, so it looks safe. But in a server, the answer
+can be sent to the caller inside the `try`, before the `finally` starts. If the program
+stops at that moment, the caller has the answer and the log has nothing.
 
 ## The design, before any code
 
-This section was written before the first test, in a learner session. Every sentence of
+This section was written before the first test, by the learner with Claude Code, before
+any code existed. Every sentence of
 the specification it relies on was read on 2026-09-27: §21 (DSOR-EXE-02, DSOR-EXE-03b),
 §28 (the retry class of `EVIDENCE_STORE_UNAVAILABLE`), and §29 (DSOR-AUD-01, the
 paragraph on rejections at steps 1 and 2, and `audit-record.schema.json`). If the code
@@ -55,7 +59,8 @@ hears the answer, including every "no". The analogy is the clerk's logbook.
 
 **Outcome.** What is true when this step is done:
 
-1. Every call adds one record to the log, whether the answer was yes or no.
+1. Every call adds one record to the log, whether the answer was yes or no. The one
+   exception is outcome 4, when the log itself cannot take the record.
 2. The record is added before the answer leaves `call`.
 3. Each record says who called, what they asked for, yes or no, why for a no, and the
    request id.
@@ -64,11 +69,13 @@ hears the answer, including every "no". The analogy is the clerk's logbook.
 5. The log only grows. Nothing in the program changes or removes a record.
 
 **Not the outcome of this step.** A log that survives the program stopping (step 09). A
-chain of fingerprints that shows if an old record was changed (step 39). The full
-decision bundle, and what the agent says about itself (step 33). An identity mode for
-the agent (step 18).
+hash chain that shows if an old record was changed (step 39): each record carries a
+hash of the record before it, and a hash is a short code worked out from a record's
+content, which changes when the content changes. The decision bundle, the complete file
+for one decision, and what the agent says about itself (step 33). An identity mode for
+the agent (step 18): whether it acts for a person who is present, or on its own.
 
-**The success signal.** Make something fail after DSoR has decided and before the
+**The success signal**, a test that fails if this step's code is deleted: make something fail after DSoR has decided and before the
 answer is returned: line ⑤ says yes, and then the operation's code throws. The
 decision's record is still in the log. Then move the log line to the point where the
 answer is ready, run the same test, and the record vanishes from the log. This is the
@@ -83,10 +90,10 @@ Checked on 2026-09-27:
    response is returned". A list in memory is not durable. This step meets the second
    half, **before the response**. Durable arrives with the database in step 09.
 2. **DSOR-AUD-01 asks for a record that validates against `audit-record.schema.json`.**
-   That schema requires a chain of fingerprints (`chain`, `sequence`, `previous_hash`,
+   That schema requires a hash chain (`chain`, `sequence`, `previous_hash`,
    `record_hash`), which is step 39, and an `identity` with a `mode`. The agent has no
    identity mode until its permission slip in step 18 (step 05's README, decision 8).
-   Filling those fields now would mean inventing fingerprints and a mode. So this step
+   Filling those fields now would mean inventing hashes and a mode. So this step
    does not meet DSOR-AUD-01, and says so. It uses the schema's own field names
    wherever it honestly can.
 3. **DSOR-AUD-01 covers command decisions.** A refusal of `invoice.issue` is a command
@@ -97,11 +104,11 @@ Checked on 2026-09-27:
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-EXE-02 | **C1.** Every answer `call` gives has a record in the log | One test for each kind of answer: a success, each refusal from steps 04 to 07, and a bug |
+| DSOR-EXE-02 | **C1.** Every answer `call` gives has a record in the log, except the refusal for a broken log (C4) | One test for each kind of answer: a success, each refusal from steps 04 to 07, and a bug |
 | DSOR-EXE-02 | **C2.** A failure between the decision and the answer still leaves a record | Line ⑤ says yes, the code throws at line ⑨, and the record is in the log |
 | DSOR-EXE-02 | **C3.** The record holds the outcome and, for a refusal, its reason | `authorization` is `ALLOW` once the call reached its code, else `DENY`. `result` is `ok` or the code the caller heard. `reason` is the refusal's message |
 | DSOR-EXE-03b, pulled forward | **C4.** If the log cannot take the record, the answer is `EVIDENCE_STORE_UNAVAILABLE` | A log that refuses to write, and a call that would have succeeded |
-| (our decision) | **C5.** The log only grows | Reading the log gives a copy. Nothing can change or remove a record |
+| (our decision) | **C5.** The log only grows | Reading the log gives a copy. Nothing outside the log can change or remove a record, and its two functions cannot be replaced |
 
 §21 lists the decisions a record must hold: "outcome, controls evaluated, and the reason
 for any `DENY`". There are no controls until step 27, so "controls evaluated" is empty
@@ -126,10 +133,13 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    of calls with no login fills the log. When the log becomes a database in step 09,
    this is worth deciding again.
 4. **If the log cannot take the record, the call is refused with
-   `EVIDENCE_STORE_UNAVAILABLE`.** That is DSOR-EXE-03b, an L2 rule, brought in early:
-   no record, no action. §28 gives it the retry class `safe_same_key`, which is true
-   here: nothing was done. *Downside:* that refusal itself cannot be recorded, because
-   the log is the thing that failed. The README says so.
+   `EVIDENCE_STORE_UNAVAILABLE`.** That is DSOR-EXE-03b, brought in early. It is an L2
+   rule: level 2, for agents that act on their own, one level above the L1 core. No
+   record, no answer. §28 gives it the retry class `safe_same_key`: the caller may send
+   the same request again. That is true here. For a query, the read at line ⑨ has
+   already happened, but its answer is never given, so trying again changes nothing.
+   *Downside:* that refusal itself cannot be recorded, because the log is the thing
+   that failed.
 5. **A record uses the audit record's own field names where it honestly can:**
    `record_id`, `sequence` (its place in the log), `at`, `kind` (`"decision"`),
    `operation`, `authorization`, `result`, `reason`, and `correlation`. Who called is in
@@ -144,7 +154,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
      `RESOURCE_NOT_FOUND`. `reason` is that refusal's message.
    - There is no `tenant`. Finding the tenant is line ②, which step 10 builds.
    *Downside:* the record does not validate against `audit-record.schema.json`, and
-   finding 2 above says which fields are missing and why. A `DENY` is not every "no" a
+   point 2 of the list above says which fields are missing and why. A `DENY` is not every "no" a
    caller hears: "no invoice INV-9999" is `ALLOW` with the result `RESOURCE_NOT_FOUND`.
 6. **The log is a small module with two functions: add a record, and read a copy of all
    records.** Nothing else touches it. *Downside:* a test that needs a broken log must
@@ -181,8 +191,9 @@ block runs even when an error is thrown, and a log in memory is lost when the pr
 stops anyway, so there is nothing yet to catch it. Step 09 can: stop the program between
 the decision and the answer, start it again, and look in the database.
 
-The review also attacks the step with the §10.2 threat that is this step's reason: T12,
-"audit tampering, loss of evidence on crash, audit flooding".
+The review also attacks the step with the threat that is this step's reason. §10.2 of
+the specification lists threats, and this one is T12: "audit tampering, loss of evidence
+on crash, audit flooding".
 
 ### Left open, and not this step's idea
 
@@ -191,7 +202,7 @@ The review also attacks the step with the §10.2 threat that is this step's reas
   (DSOR-AUD-02a): step 09.
 - **Counting refusals with no login, instead of one record each:** step 09, with a real
   store to fill.
-- **A chain of fingerprints over the log:** step 39.
+- **A hash chain over the log:** step 39.
 - **The record's tenant:** step 10, when line ② finds it.
 
 ## What changed since step 07
@@ -205,7 +216,8 @@ src/pipeline.ts             changed: call() takes the log as its second argument
                             try now only works out the answer. Line ⑪, after the
                             catch, writes the record, and then call returns the answer.
                             A log that throws turns any answer into
-                            EVIDENCE_STORE_UNAVAILABLE
+                            EVIDENCE_STORE_UNAVAILABLE. The catch cannot throw either,
+                            so nothing skips line ⑪
 src/main.ts                 changed: prints the log, one line per record, and calls
                             through a log that cannot write
 test/decision-log.test.ts   NEW: the log, by claim (C1 to C5)
@@ -299,18 +311,19 @@ pnpm check
 ```
 
 ```text
-      Tests  469 passed (469)
+      Tests  475 passed (475)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `466 passed | 3 skipped`.
+original to compare with, so they are skipped: `472 passed | 3 skipped`.
 
 ## Break it
 
 **Move the log line to where the answer is ready.** This is S1, and the break-it
 exercise from the map of all steps. In `src/pipeline.ts`, cut the whole block of line
 ⑪, from its comment to the end of its `catch`. Then put one line back, at the end of
-the `try`, just after the answer is built:
+the `try`, right after the answer is built. `contract` is the operation's contract,
+found earlier in the same `try`:
 
 ```ts
     answer = { data, correlation };
@@ -359,7 +372,7 @@ AssertionError: expected [] to strictly equal [ { …(9) } ]
 - ]
 + []
 …
-      Tests  28 failed | 441 passed (469)
+      Tests  31 failed | 444 passed (475)
 ```
 
 Line ⑤ said yes, and then the code threw. The caller heard `INTERNAL_ERROR`, and the
@@ -367,12 +380,13 @@ log is empty. Put line ⑪ back, and `pnpm check` is green again.
 
 **Now try S2, §21's common mistake.** Put the line ⑪ block inside a `finally` after
 the `catch`, and return the answer from the `try` and from the `catch`. Run
-`pnpm test`: all 469 pass. In one call that runs from start to end, a `finally` runs
-before the answer reaches the caller, so no test here can see a difference. The
-difference is a program that stops in the middle. Then the `finally` never runs, and
-the answer may already be gone. A log in memory is lost in that case anyway, so there
-is nothing yet to test. Step 09 writes to a database, and can stop the program between
-the decision and the answer.
+`pnpm test`: all 475 pass. Here, returning is how the answer leaves, and a `finally`
+runs before the returned answer reaches the caller. So no test in this step can see a
+difference. The difference appears when the answer leaves another way: a server writes
+it to the network inside the `try`, and the `finally` comes after. If the program stops
+between the two, the caller has the answer and the log has nothing. A log in memory is
+lost when the program stops anyway, so there is nothing yet to test. Step 09 writes to a
+database, and can stop the program between the decision and the answer.
 
 ## Build it yourself with Claude Code
 
@@ -395,7 +409,9 @@ the 29 new tests passed before any code, and all 8 changed order tests failed. T
 learner predicted about 5 would pass, expecting the C4 tests to pass because they say
 "no". They failed: nothing said "no" yet. With the log built and line ⑪ in place, only
 the 5 C4 tests failed, as the learner predicted, and `call` threw
-`disk full at /var/dsor/log` at the caller.
+`disk full at /var/dsor/log` at the caller. Move 9 fixed two holes the review found and
+closed five gaps in the tests: 475 tests in the end. All of it is under "Think it
+through".
 
 Build your own step 08 from a copy of your step 07. From `docs/baby_steps_tutorials`:
 
@@ -442,11 +458,12 @@ and tell me which ones matter and why.
    acted on a decision that, as far as the evidence goes, was never made.
 3. `EVIDENCE_STORE_UNAVAILABLE`. With no record, there is no action: a decision nobody
    can prove was made is what this step exists to prevent.
-4. The whole program stopping. A `finally` block runs when an error is thrown, but not
-   when the process dies. A record written before the answer is already safe when that
-   happens, once the log is durable.
+4. The program stopping after the answer has left and before the `finally` has run. In
+   a server, the answer can be sent inside the `try`. If the process dies then, the
+   `finally` never runs, and the caller has an answer the log never saw. A record
+   written before the answer is already safe when that happens, once the log is durable.
 5. DSOR-AUD-01 asks for a record that validates against `audit-record.schema.json`. That
-   needs a chain of fingerprints (step 39) and an identity mode for every caller, which
+   needs a hash chain (step 39) and an identity mode for every caller, which
    the agent does not have until step 18. Filling them now would mean inventing them.
 
 </details>
@@ -464,25 +481,92 @@ any test was written. Three parts were changed, with the learner, on 2026-09-27:
    tell C2 from C1. Now the failure comes between the decision and the answer: line ⑤
    says yes, and the code throws at line ⑨. "After ⑪" becomes testable in step 09,
    where writing to the database is something `call` waits for.
-2. **A bug is not a denial.** C3 said every refusal is `DENY` with its code as the
-   reason. But "no invoice INV-9999" and a bug happen after DSoR allowed the call. Now
+2. **A failure after DSoR said yes is not a denial.** C3 said every refusal is `DENY`
+   with its code as the reason. But "no invoice INV-9999", and a bug in the code, happen
+   after DSoR allowed the call. Now
    `authorization` says whether the call reached its code, and `result` says what the
    caller heard. The reason is the refusal's message, so a refusal for an operation
    with no contract still names what was asked for.
 3. **No tenant yet.** Decision 5 took `org_456` from the caller at line ①. Finding the
    tenant is line ②, step 10's work, so the record leaves it out.
 
-_The rest is written after the review, with the result of every break in the table
-above._
+### What the hostile review found, and what was fixed
+
+Two reviewers who had not seen the build attacked it. One checked the rules against the
+code and tried T12 with inputs of its own. The other made 62 small breaks, one at a
+time, in a copy outside the repository.
+
+- **A value that throws when DSoR looks at it made `call` throw.** The reviewer's
+  request had a `token` that throws a Proxy. A Proxy is an object that runs code of its
+  own whenever it is inspected. `toEnvelope` asks "is this a Refusal?", the Proxy threw
+  again, the throw escaped `call`, and line ⑪ never ran. Nothing was recorded, and the
+  caller saw the Proxy's own message. **Fixed:** the `catch` guards making the
+  envelope. If that throws, the answer is the fixed `INTERNAL_ERROR` envelope, and line
+  ⑪ records it. The gap is step 04's: its promise that `call` never throws covers
+  what JSON can carry, and a Proxy is not JSON. Steps 04 to 07 still have it.
+- **The log's `add` could be replaced.** `log.add = () => {}` made every call answer
+  with nothing recorded. **Fixed:** the log is frozen, and a test tries it.
+- **Five breaks left every test green.** A copy of each record that shared its
+  `correlation` passed, because the test matched the request id to `/^req_[0-9a-f]/`,
+  and `req_forged` matches that too. A log that took the time once, when it was
+  created, passed. Building the record outside line ⑪'s `try` passed: "even a bug
+  there" was only a comment. Setting `reachedCode`, the flag that says the call reached its code, before line ⑨'s
+  observer passed. A
+  broken log whose line ⑪ was never heard passed. **Fixed:** a test for each. Each
+  break was run again, and each one is now caught. Seven more breaks changed nothing a
+  caller can see, such as the order of a record's fields.
+- **Sentences that claimed too much.** "Nothing reaches a caller that the log does not
+  already hold" forgot the broken log. "Nothing was done" forgot that a query's read
+  has already happened. The reason a `finally` is too late was wrong: the danger is an
+  answer sent inside the `try`, before the `finally` runs. "Chain of fingerprints" was
+  a new analogy, and is now a hash chain, defined. The success signal, the decision
+  bundle, identity mode, L2, and T12 are now defined where they first appear.
+
+### The breaks, run for real
+
+| # | The break | Learner's prediction | Real result |
+| --- | --- | --- | --- |
+| S1 | The log line at the end of the `try` | caught easily | caught by 31 tests |
+| S2 | Line ⑪ in a `finally` block | survives | survives: all 475 pass |
+| S3 | Only a success is recorded | caught by many | caught by 27 tests |
+| S4 | A broken log, and the answer given anyway | caught by C4 | caught by 7 tests: C4, and the program's log |
+
+All four predictions were right. In the red run, the learner predicted about 5 of the
+29 new tests would pass before any code, and 2 did.
+
+### Left open on purpose
+
+- **S2 survives, as designed.** Only a program that stops between the answer leaving
+  and the record being written can show it. Step 09 can.
+- **A store that writes the record and then fails.** The record says `ALLOW ok`, and
+  the caller hears `EVIDENCE_STORE_UNAVAILABLE`. The log in memory cannot do this. A
+  database can: it saves the record, and the reply that says so is lost. Step 09.
+- **The first half of DSOR-EXE-03b has no test.** "DSoR MUST NOT execute" is about
+  commands, and no command runs yet. For a query, the read at line ⑨ has already
+  happened when the log fails. What is withheld is the answer. The test comes when a
+  command first runs.
+- **The observer runs inside line ⑪'s `try`.** An observer that throws at line ⑪
+  turns a healthy log into `EVIDENCE_STORE_UNAVAILABLE`. Only tests pass an observer.
+- **Whoever passes the log to `call` chooses where the evidence goes.** A log that
+  writes nothing, passed in, would record nothing. Here only `main.ts` and the tests
+  call `call`. The agent never holds the log: it will reach DSoR only through an
+  interface that DSoR builds, from step 42.
+- **A record holds text the caller chose.** The `request_id` is stored as sent, any 1
+  to 128 characters, so two records can share one. Only `record_id` is unique. A
+  refusal's `reason` can hold up to 60 characters of the operation name the caller
+  sent. Each record is small, but the log has no limit (decision 3).
+- **Five tests were not written red first.** The five that close the review's
+  surviving breaks passed at once, because they guard against breaks that were not in
+  the code. Each was shown to fail with its break in place.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-EXE-02 | The decision is durably recorded before the response is returned | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 16 tests in `test/decision-log.test.ts`, C1 and C2, and 1 in `test/startup.test.ts`. Before the response only: not durable until step 09 |
+| DSOR-EXE-02 | The decision is durably recorded before the response is returned | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 19 tests in `test/decision-log.test.ts`, C1 and C2, and 1 in `test/startup.test.ts`. Before the response only: not durable until step 09 |
+| DSOR-EXE-03b | If the store cannot accept the decision record, DSoR does not execute, and the caller receives `EVIDENCE_STORE_UNAVAILABLE` | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 5 tests in `test/decision-log.test.ts`, C4. An L2 rule built early. The caller's half only: no command runs yet |
 
-Not met, and why: DSOR-AUD-01, whose record needs a chain of fingerprints (step 39) and
-an identity mode for the agent (step 18). DSOR-EXE-03b is an L2 rule this step builds
-early; its row waits for the review.
+Not met, and why: DSOR-AUD-01, whose record needs a hash chain (step 39) and an identity
+mode for the agent (step 18).
 
 **Next:** step 09, PostgreSQL on Neon.
