@@ -3,10 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput } from "./inputs.ts";
-import type { DecisionLog } from "./log.ts";
+import type { Decision, DecisionLog } from "./log.ts";
 import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
-import { preview, type Registry } from "./registry.ts";
+import { preview, type Contract, type Registry } from "./registry.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
 // NEW IN STEP 07: the observer is told each line's number as it runs, and only a test
@@ -22,7 +22,7 @@ export type Observer = (line: number) => void;
 export function call(
   registry: Registry,
   // NEW IN STEP 08: the log every decision is written to (step 08's README, decision 6).
-  _log: DecisionLog,
+  log: DecisionLog,
   // The request envelope, beside the arguments (step 05's README, decision 1).
   request: RequestEnvelope,
   name: string,
@@ -39,8 +39,14 @@ export function call(
     return check();
   }
 
+  // NEW IN STEP 08: set once DSoR's checks let the call reach its code at line ⑨. From
+  // then on, its record says ALLOW (step 08's README, decision 5).
+  let reachedCode = false;
+
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
+  // NEW IN STEP 08: the try only works out the answer. It is returned after line ⑪.
+  let answer: Answer;
   try {
     // ① Authenticate; build the request security context. Who is calling comes from the
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
@@ -96,18 +102,50 @@ export function call(
     // ⑧ Create the proposal, or load it. Commands only. Not built yet: step 22.
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
     //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
-    const data = line(9, () => handler(checked));
+    const data = line(9, () => {
+      reachedCode = true;
+      return handler(checked);
+    });
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
-    // ⑪ Record the decision, including every refusal. Not built yet: step 08.
-    // ⑫ Stop here when an approval is missing, or the mode is propose_only or
-    //   validate_only. Not built yet: steps 23 and 29.
-    // ⑬ to ⑰ Write the intent record, execute, finalize, commit, and seal the evidence.
-    //   Commands only. Not built yet: steps 21, 24, 33, 34, 36, 37, and 40.
 
     // A query's answer is { data, correlation } (step 04's README, decision 3).
-    return { data, correlation };
+    answer = { data, correlation };
   } catch (thrown) {
-    return toEnvelope(thrown, correlation);
+    answer = toEnvelope(thrown, correlation);
   }
+
+  // ⑪ Record the decision, including every refusal (DSOR-EXE-02). NEW IN STEP 08: every
+  //   answer comes through here before it leaves: a success, every refusal, and a bug. A
+  //   throw anywhere above cannot skip it (step 08's README, C2).
+  const decision = decisionOf(answer, registry.contracts.get(name), reachedCode);
+  line(11, () => log.add(decision));
+
+  // ⑫ Stop here when an approval is missing, or the mode is propose_only or
+  //   validate_only. Not built yet: steps 23 and 29.
+  // ⑬ to ⑰ Write the intent record, execute, finalize, commit, and seal the evidence.
+  //   Commands only. Not built yet: steps 21, 24, 33, 34, 36, 37, and 40.
+  return answer;
+}
+
+// NEW IN STEP 08: what the record says about an answer (step 08's README, decision 5).
+function decisionOf(
+  answer: Answer,
+  contract: Contract | undefined,
+  reachedCode: boolean,
+): Decision {
+  const refused = "code" in answer;
+  return {
+    kind: "decision",
+    // A name with no contract has no version, so the record names no operation. The
+    // refusal's message, in reason, says what was asked for.
+    ...(contract === undefined
+      ? {}
+      : { operation: `${contract.id}@${String(contract["version"])}` }),
+    authorization: reachedCode ? "ALLOW" : "DENY",
+    // What the caller heard: "ok", or the code, and its message as the reason.
+    result: refused ? answer.code : "ok",
+    ...(refused ? { reason: answer.message } : {}),
+    correlation: answer.correlation,
+  };
 }
