@@ -20,6 +20,7 @@ import {
   contract,
   correlationFor,
   inputsWith,
+  log,
   notGranted,
   notValid,
   refusal,
@@ -40,7 +41,7 @@ function linesRun(
   input: unknown,
 ): { answer: Answer; lines: number[] } {
   const lines: number[] = [];
-  const answer = call(on, request, name, input, (line) => lines.push(line));
+  const answer = call(on, log, request, name, input, (line) => lines.push(line));
   return { answer, lines };
 }
 
@@ -61,7 +62,7 @@ describe("C1: every call runs the lines of the checklist in §21's order", () =>
 
   // The observer is optional. Without it, the answer is the same.
   it("a call with no observer gets the same answer", () => {
-    expect(call(registry, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -151,7 +152,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       'must NOT have additional properties: "principal"',
     ],
   ])("invoice.get refuses %s with VALIDATION_FAILED", (_why, input, problem) => {
-    expect(call(registry, AGENT, "invoice.get", input)).toStrictEqual({
+    expect(call(registry, log, AGENT, "invoice.get", input)).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", problem),
       retry: "never",
@@ -167,7 +168,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     ["no invoice", {}],
     ["a good URI, and a field the schema does not list", { ...GOOD_ISSUE, amount: "0.00" }],
   ])("invoice.issue refuses %s with VALIDATION_FAILED", (_why, input) => {
-    expect(call(registry, SUPERVISOR, "invoice.issue", input)).toMatchObject({
+    expect(call(registry, log, SUPERVISOR, "invoice.issue", input)).toMatchObject({
       code: "VALIDATION_FAILED",
     });
   });
@@ -192,7 +193,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       ...registryWithGet(spy),
       inputs: new Map(),
     };
-    expect(call(handMade, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(call(handMade, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", "it has no input schema"),
       retry: "never",
@@ -204,7 +205,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
   // A field's name comes from the caller, so it may be anything, even something huge.
   it("a refusal shows only a short piece of a field's name", () => {
     const huge = "x".repeat(10_000);
-    const answer = call(registry, AGENT, "invoice.get", { id: "INV-1008", [huge]: 1 });
+    const answer = call(registry, log, AGENT, "invoice.get", { id: "INV-1008", [huge]: 1 });
     expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
     expect(JSON.stringify(answer).length).toBeLessThan(500);
   });
@@ -214,7 +215,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
   it("checking the input leaves it exactly as it was sent", () => {
     const spy = vi.fn<Handler>(() => "ran");
     const input = { id: "INV-1008" };
-    call(registryWithGet(spy), AGENT, "invoice.get", input);
+    call(registryWithGet(spy), log, AGENT, "invoice.get", input);
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
     expect(input).toStrictEqual({ id: "INV-1008" });
   });
@@ -237,7 +238,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       shippedRoles,
       withDefault,
     );
-    call(registry, AGENT, "invoice.get", { id: "INV-1008" });
+    call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
   });
 
@@ -252,14 +253,14 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
         return reads === 1 ? "INV-1008" : "INV-9999";
       },
     };
-    call(registryWithGet(spy), AGENT, "invoice.get", input);
+    call(registryWithGet(spy), log, AGENT, "invoice.get", input);
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
   });
 
   it("an input that JSON cannot copy is refused with VALIDATION_FAILED", () => {
     const loop: Record<string, unknown> = { id: "INV-1008" };
     loop["self"] = loop;
-    expect(call(registry, AGENT, "invoice.get", loop)).toStrictEqual({
+    expect(call(registry, log, AGENT, "invoice.get", loop)).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", "it cannot be copied as JSON"),
       retry: "never",
@@ -398,7 +399,7 @@ describe("C5: the code behind an operation is reached only through the checklist
     ],
   ])("DSOR-OPR-04a: %s never reaches invoice.get's code", (_why, request, input) => {
     const spy = vi.fn<Handler>(() => "ran");
-    expect(call(registryWithGet(spy), request, "invoice.get", input)).toHaveProperty("code");
+    expect(call(registryWithGet(spy), log, request, "invoice.get", input)).toHaveProperty("code");
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -409,7 +410,7 @@ describe("C5: the code behind an operation is reached only through the checklist
       { ...handlers, "invoice.get": spy },
       rolesFile({ ...STARTING_ROLES, CFO: [] }),
     );
-    expect(call(grantsNothing, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(call(grantsNothing, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
       code: "AUTHORIZATION_DENIED",
     });
     expect(spy).not.toHaveBeenCalled();
@@ -417,9 +418,11 @@ describe("C5: the code behind an operation is reached only through the checklist
 
   it("DSOR-OPR-04a: a call that passes every line reaches the code, once", () => {
     const spy = vi.fn<Handler>(() => "ran");
-    expect(call(registryWithGet(spy), AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
-      data: "ran",
-    });
+    expect(call(registryWithGet(spy), log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject(
+      {
+        data: "ran",
+      },
+    );
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });

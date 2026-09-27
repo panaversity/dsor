@@ -25,6 +25,7 @@ import {
   contract,
   correlationFor,
   inputsWith,
+  log,
   notGranted,
   notTheCaller,
   refusal,
@@ -35,8 +36,8 @@ import {
   shippedRoles,
   shippedWith,
   source,
-  without,
   type Caller,
+  without,
 } from "./helpers.ts";
 
 /** The shipped operations plus one more, whose contract and code the test writes. */
@@ -311,7 +312,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   it("building a second registry does not change what the first one grants", () => {
     const first = buildRegistry(shipped, handlers, shippedRoles);
     buildRegistry(shipped, handlers, rolesFile({ ...STARTING_ROLES, CFO: [] }));
-    expect(call(first, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(call(first, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -322,7 +323,7 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
     ["cfo_100", CFO, THE_CFO],
     ["accounts-payable-fte", AGENT, THE_AGENT],
   ])("DSOR-AUT-01b: %s, who may read, is denied invoice.issue", (_who, request, caller) => {
-    expect(call(registry, request, "invoice.issue", {})).toStrictEqual(
+    expect(call(registry, log, request, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", caller),
     );
   });
@@ -330,7 +331,7 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
   // The other half of the map's "done when": a caller without invoice:read cannot read.
   it("DSOR-AUT-01b: cfo_100 is denied invoice.get when the CFO role grants nothing", () => {
     const grantsNothing = rolesFile({ ...STARTING_ROLES, CFO: [] });
-    const answer = call(buildRegistry(shipped, handlers, grantsNothing), CFO, "invoice.get", {
+    const answer = call(buildRegistry(shipped, handlers, grantsNothing), log, CFO, "invoice.get", {
       id: "INV-1008",
     });
     expect(answer).toStrictEqual(denied("invoice.get", "invoice:read", THE_CFO));
@@ -344,6 +345,7 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
     expect(
       call(
         withOperation(list, () => []),
+        log,
         AGENT,
         "invoice.list",
         {},
@@ -358,10 +360,10 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       authorization: { permission: "invoice:issue" },
     };
     const changed = buildRegistry(shippedWith(needsIssue), handlers, shippedRoles);
-    expect(call(changed, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual(
+    expect(call(changed, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual(
       denied("invoice.get", "invoice:issue", THE_AGENT),
     );
-    expect(call(changed, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(call(changed, log, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -382,7 +384,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
     "DSOR-AUT-01b: %s is denied invoice.void, which no role grants",
     (_who, request, caller) => {
       const input = { invoice: "dsor://org_456/invoice/INV-1008" };
-      expect(call(withVoid, request, "invoice.void", input)).toStrictEqual(
+      expect(call(withVoid, log, request, "invoice.void", input)).toStrictEqual(
         denied("invoice.void", "invoice:void", caller),
       );
     },
@@ -405,7 +407,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         "VendorGetRequest.schema.json",
         '{ "type": "object", "additionalProperties": false }',
       );
-      const answer = call(withOperation(vendorGet, spy, vendorInput), request, "vendor.get", {
+      const answer = call(withOperation(vendorGet, spy, vendorInput), log, request, "vendor.get", {
         id: "VENDOR-44",
       });
       expect(answer).toStrictEqual(denied("vendor.get", "vendor:read", caller));
@@ -431,7 +433,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         // NEW IN STEP 07: the shipped check for each operation's input.
         inputs: registry.inputs,
       };
-      expect(call(handMade, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+      expect(call(handMade, log, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toStrictEqual({
         code: "AUTHORIZATION_DENIED",
         message: '"invoice.get" names no permission, so nobody may call it',
         retry: "never",
@@ -447,11 +449,11 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
   // with no permission check gives too. The pair shows the order: one operation, two
   // callers, two answers.
   it("DSOR-AUT-01b: a reader is denied invoice.issue, and user_123, who may issue, hears it is not built yet", () => {
-    expect(call(registry, CFO, "invoice.issue", {})).toStrictEqual(
+    expect(call(registry, log, CFO, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", THE_CFO),
     );
     // NEW IN STEP 07: a good input, so the call also passes line ⑥.
-    expect(call(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toStrictEqual({
+    expect(call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toStrictEqual({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
       retry: "never",
@@ -465,6 +467,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
     const issueHasCode = { ...handlers, "invoice.issue": () => "issued" };
     const answer = call(
       buildRegistry(shipped, issueHasCode, shippedRoles),
+      log,
       CFO,
       "invoice.issue",
       {},
@@ -480,7 +483,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
       CFO: ["invoice:read", "invoice:issue.propose"],
     });
     const proposing = buildRegistry(shipped, handlers, proposeOnly);
-    expect(call(proposing, CFO, "invoice.issue", {})).toStrictEqual(
+    expect(call(proposing, log, CFO, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", THE_CFO),
     );
   });
@@ -500,7 +503,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
   ])(
     "the agent that sends %s to invoice.issue hears about that, not about its permission",
     (_why, request, input, code, message) => {
-      expect(call(registry, request, "invoice.issue", input)).toStrictEqual({
+      expect(call(registry, log, request, "invoice.issue", input)).toStrictEqual({
         code,
         message,
         retry: "never",
@@ -516,14 +519,14 @@ describe("C6: permissions never come from the caller", () => {
     ["a list of roles", { roles: ["ap_supervisor"] }],
   ])("DSOR-AUT-01b: %s in the input grants the agent nothing", (_why, claim) => {
     const input = { invoice: "dsor://org_456/invoice/INV-1008", ...claim };
-    expect(call(registry, AGENT, "invoice.issue", input)).toStrictEqual(
+    expect(call(registry, log, AGENT, "invoice.issue", input)).toStrictEqual(
       denied("invoice.issue", "invoice:issue", THE_AGENT),
     );
   });
 
   it("DSOR-AUT-01b: permissions and roles in the envelope, beside the token, grant nothing", () => {
     const request = { ...AGENT, permissions: ["invoice:issue"], roles: ["ap_supervisor"] };
-    expect(call(registry, request as RequestEnvelope, "invoice.issue", {})).toStrictEqual(
+    expect(call(registry, log, request as RequestEnvelope, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", THE_AGENT),
     );
   });
@@ -534,7 +537,7 @@ describe("C6: permissions never come from the caller", () => {
   // does not name it. It is refused as a bad input, and not as a denied permission.
   it("an empty list of permissions in the input is refused as a bad input", () => {
     const input = { id: "INV-1008", permissions: [] };
-    expect(call(registry, AGENT, "invoice.get", input)).toMatchObject({
+    expect(call(registry, log, AGENT, "invoice.get", input)).toMatchObject({
       code: "VALIDATION_FAILED",
     });
   });

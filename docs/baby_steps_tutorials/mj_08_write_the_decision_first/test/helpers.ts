@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { expect } from "vitest";
 import type { Answer, ErrorCode } from "../src/envelope.ts";
+import { createLog, type DecisionLog } from "../src/log.ts";
 import { Refusal } from "../src/envelope.ts";
 import { handlers } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
@@ -161,6 +162,9 @@ export function registryWith(handler: Handler): Registry {
   );
 }
 
+/** NEW IN STEP 08: a log for the tests that do not read it. Each test that reads one makes its own. */
+export const log: DecisionLog = createLog();
+
 /** The shipped operations, their code, and the role table, as start-up builds them. */
 export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles);
 
@@ -168,7 +172,7 @@ export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles)
 export function run(handler: Handler): Answer {
   // As the agent, with its login token.
   // NEW IN STEP 07: test.run takes invoice.get's input, and line ⑥ now checks it.
-  return call(registryWith(handler), AGENT, "test.run", { id: "INV-1008" });
+  return call(registryWith(handler), log, AGENT, "test.run", { id: "INV-1008" });
 }
 
 /** Calls "test.run", whose code refuses with this code. */
@@ -200,28 +204,28 @@ const issueHasCode = buildRegistry(
 export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   [
     "a call with no login",
-    () => call(registry, {}, "invoice.get", { id: "INV-1008" }),
+    () => call(registry, log, {}, "invoice.get", { id: "INV-1008" }),
     "AUTHENTICATION_REQUIRED",
     LOG_IN_FIRST,
     NOBODY,
   ],
   [
     "a request id that is empty",
-    () => call(registry, { ...AGENT, request_id: "" }, "invoice.get", { id: "INV-1008" }),
+    () => call(registry, log, { ...AGENT, request_id: "" }, "invoice.get", { id: "INV-1008" }),
     "VALIDATION_FAILED",
     BAD_REQUEST_ID,
     THE_AGENT,
   ],
   [
     "the agent naming cfo_100 in its arguments",
-    () => call(registry, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }),
+    () => call(registry, log, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }),
     "AUTHORIZATION_DENIED",
     notTheCaller("principal"),
     THE_AGENT,
   ],
   [
     "an operation with no contract",
-    () => call(registry, AGENT, "invoice.delete", {}),
+    () => call(registry, log, AGENT, "invoice.delete", {}),
     "UNSUPPORTED_CAPABILITY",
     'no operation named "invoice.delete"',
     THE_AGENT,
@@ -229,7 +233,7 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   // The agent's one role grants invoice:read, and not invoice:issue.
   [
     "the agent calling invoice.issue, which no role of its grants",
-    () => call(registry, AGENT, "invoice.issue", {}),
+    () => call(registry, log, AGENT, "invoice.issue", {}),
     "AUTHORIZATION_DENIED",
     notGranted("invoice.issue", "invoice:issue"),
     THE_AGENT,
@@ -239,14 +243,14 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   [
     "invoice.issue, which has no code yet",
     // NEW IN STEP 07: a good input, so the call also passes line ⑥.
-    () => call(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
+    () => call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
     "UNSUPPORTED_CAPABILITY",
     '"invoice.issue" is not built yet',
     THE_SUPERVISOR,
   ],
   [
     "invoice.issue given code, because it is a command",
-    () => call(issueHasCode, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
+    () => call(issueHasCode, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
     "UNSUPPORTED_CAPABILITY",
     '"invoice.issue" is a command, and commands are not built yet',
     THE_SUPERVISOR,
@@ -254,14 +258,14 @@ export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
   [
     // NEW IN STEP 07: refused by line ⑥, the input schema, and no longer by invoice.get's code.
     "invoice.get without an id",
-    () => call(registry, AGENT, "invoice.get", {}),
+    () => call(registry, log, AGENT, "invoice.get", {}),
     "VALIDATION_FAILED",
     notValid("invoice.get", "must have required property 'id'"),
     THE_AGENT,
   ],
   [
     "invoice.get for INV-9999",
-    () => call(registry, AGENT, "invoice.get", { id: "INV-9999" }),
+    () => call(registry, log, AGENT, "invoice.get", { id: "INV-9999" }),
     "RESOURCE_NOT_FOUND",
     'no invoice "INV-9999"',
     THE_AGENT,

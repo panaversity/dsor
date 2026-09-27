@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput } from "./inputs.ts";
+import type { DecisionLog } from "./log.ts";
 import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
@@ -20,6 +21,8 @@ export type Observer = (line: number) => void;
  */
 export function call(
   registry: Registry,
+  // NEW IN STEP 08: the log every decision is written to (step 08's README, decision 6).
+  _log: DecisionLog,
   // The request envelope, beside the arguments (step 05's README, decision 1).
   request: RequestEnvelope,
   name: string,

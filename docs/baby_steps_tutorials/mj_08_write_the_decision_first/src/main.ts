@@ -6,6 +6,7 @@
 // sixth refusal shows line ⑥ of the checklist refusing a bad input.
 import { fileURLToPath } from "node:url";
 import { invoiceUri, type Invoice } from "./invoice.ts";
+import { createLog } from "./log.ts";
 import { handlers } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
 import { call } from "./pipeline.ts";
@@ -39,13 +40,16 @@ try {
 }
 console.log("operations:", [...registry.contracts.keys()]);
 
+// NEW IN STEP 08: the log every decision is written to. It lives in memory until step 09.
+const log = createLog();
+
 // Every call carries a request envelope beside its arguments. This one
 // holds the login token DSoR gave the agent (step 05's README, decision 2).
 const AGENT: RequestEnvelope = { token: "tok_7f3a" };
 
 // The answer is an envelope. A success carries the invoice as its data,
 // and the request id DSoR made for this call.
-const answer = call(registry, AGENT, "invoice.get", { id: "INV-1008" });
+const answer = call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
 console.log(answer);
 
 // The invoice's permanent address, and the address read back.
@@ -58,25 +62,27 @@ if ("data" in answer) {
 
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
-console.log(call(registry, AGENT, "invoice.get", { id: "INV-9999" }));
+console.log(call(registry, log, AGENT, "invoice.get", { id: "INV-9999" }));
 // The agent's role grants invoice:read and not invoice:issue. NEW IN STEP 07: so this call
 // is denied at line ⑤, before DSoR looks at the input or asks whether it is built.
-console.log(call(registry, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
+console.log(
+  call(registry, log, AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
+);
 
 // A call with no login token is refused before DSoR checks anything else.
-console.log(call(registry, {}, "invoice.get", { id: "INV-1008" }));
+console.log(call(registry, log, {}, "invoice.get", { id: "INV-1008" }));
 // The agent names the CFO in its arguments. DSoR still knows it is the
 // agent, from its token, and refuses the call.
-console.log(call(registry, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }));
+console.log(call(registry, log, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }));
 // user_123 logs in with their own token, and labels the call with a request
 // id of their own. The answer carries that id, and names user_123 as the caller.
 const USER_123: RequestEnvelope = { token: "tok_2c91", request_id: "ap-desk-7" };
-console.log(call(registry, USER_123, "invoice.get", { id: "INV-1008" }).correlation);
+console.log(call(registry, log, USER_123, "invoice.get", { id: "INV-1008" }).correlation);
 // user_123 holds invoice:issue. NEW IN STEP 07: so the same call passes lines ①, ⑤, and ⑥.
 // It is refused after them: invoice.issue has a contract but no code yet.
 console.log(
-  call(registry, USER_123, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
+  call(registry, log, USER_123, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }),
 );
 // NEW IN STEP 07: user_123 sends an id where invoice.issue needs a canonical URI. Line ⑥
 // refuses it, before DSoR asks whether invoice.issue is built.
-console.log(call(registry, USER_123, "invoice.issue", { invoice: "INV-1008" }));
+console.log(call(registry, log, USER_123, "invoice.issue", { invoice: "INV-1008" }));
