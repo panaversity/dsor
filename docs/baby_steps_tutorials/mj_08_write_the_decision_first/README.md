@@ -216,8 +216,10 @@ src/pipeline.ts             changed: call() takes the log as its second argument
                             try now only works out the answer. Line ⑪, after the
                             catch, writes the record, and then call returns the answer.
                             A log that throws turns any answer into
-                            EVIDENCE_STORE_UNAVAILABLE. The catch cannot throw either,
-                            so nothing skips line ⑪
+                            EVIDENCE_STORE_UNAVAILABLE
+src/envelope.ts,            fixed from step 04 on: toEnvelope never throws, so no throw
+test/call.test.ts           in lines ① to ⑩ can skip line ⑪. Two rows in the table of
+                            bugs throw values that throw again when inspected
 src/main.ts                 changed: prints the log, one line per record, and calls
                             through a log that cannot write
 test/decision-log.test.ts   NEW: the log, by claim (C1 to C5)
@@ -311,11 +313,11 @@ pnpm check
 ```
 
 ```text
-      Tests  475 passed (475)
+      Tests  477 passed (477)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `472 passed | 3 skipped`.
+original to compare with, so they are skipped: `474 passed | 3 skipped`.
 
 ## Break it
 
@@ -372,7 +374,7 @@ AssertionError: expected [] to strictly equal [ { …(9) } ]
 - ]
 + []
 …
-      Tests  31 failed | 444 passed (475)
+      Tests  31 failed | 446 passed (477)
 ```
 
 Line ⑤ said yes, and then the code threw. The caller heard `INTERNAL_ERROR`, and the
@@ -380,7 +382,7 @@ log is empty. Put line ⑪ back, and `pnpm check` is green again.
 
 **Now try S2, §21's common mistake.** Put the line ⑪ block inside a `finally` after
 the `catch`, and return the answer from the `try` and from the `catch`. Run
-`pnpm test`: all 475 pass. Here, returning is how the answer leaves, and a `finally`
+`pnpm test`: all 477 pass. Here, returning is how the answer leaves, and a `finally`
 runs before the returned answer reaches the caller. So no test in this step can see a
 difference. The difference appears when the answer leaves another way: a server writes
 it to the network inside the `try`, and the `finally` comes after. If the program stops
@@ -410,7 +412,8 @@ learner predicted about 5 would pass, expecting the C4 tests to pass because the
 "no". They failed: nothing said "no" yet. With the log built and line ⑪ in place, only
 the 5 C4 tests failed, as the learner predicted, and `call` threw
 `disk full at /var/dsor/log` at the caller. Move 9 fixed two holes the review found and
-closed five gaps in the tests: 475 tests in the end. All of it is under "Think it
+closed five gaps in the tests. Its first fix then moved into step 04's `toEnvelope`,
+and was carried into every build after it: 477 tests in the end. All of it is under "Think it
 through".
 
 Build your own step 08 from a copy of your step 07. From `docs/baby_steps_tutorials`:
@@ -500,10 +503,12 @@ time, in a copy outside the repository.
   request had a `token` that throws a Proxy. A Proxy is an object that runs code of its
   own whenever it is inspected. `toEnvelope` asks "is this a Refusal?", the Proxy threw
   again, the throw escaped `call`, and line ⑪ never ran. Nothing was recorded, and the
-  caller saw the Proxy's own message. **Fixed:** the `catch` guards making the
-  envelope. If that throws, the answer is the fixed `INTERNAL_ERROR` envelope, and line
-  ⑪ records it. The gap is step 04's: its promise that `call` never throws covers
-  what JSON can carry, and a Proxy is not JSON. Steps 04 to 07 still have it.
+  caller saw the Proxy's own message. The gap was step 04's: its promise that `call`
+  never throws covered what JSON can carry, and a Proxy is not JSON. **Fixed in step
+  04, and carried into every build after it:** `toEnvelope` turns anything that throws
+  while it looks at a thrown value into the fixed `INTERNAL_ERROR` envelope. Line ⑪
+  records that answer. Each build gained two tests, and they failed in steps 04 to 07
+  before the fix.
 - **The log's `add` could be replaced.** `log.add = () => {}` made every call answer
   with nothing recorded. **Fixed:** the log is frozen, and a test tries it.
 - **Five breaks left every test green.** A copy of each record that shared its
@@ -527,7 +532,7 @@ time, in a copy outside the repository.
 | # | The break | Learner's prediction | Real result |
 | --- | --- | --- | --- |
 | S1 | The log line at the end of the `try` | caught easily | caught by 31 tests |
-| S2 | Line ⑪ in a `finally` block | survives | survives: all 475 pass |
+| S2 | Line ⑪ in a `finally` block | survives | survives: all 477 pass |
 | S3 | Only a success is recorded | caught by many | caught by 27 tests |
 | S4 | A broken log, and the answer given anyway | caught by C4 | caught by 7 tests: C4, and the program's log |
 

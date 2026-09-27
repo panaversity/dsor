@@ -196,7 +196,7 @@ describe("C2: a failure between the decision and the answer still leaves a recor
 
   // Found by the review: a thrown value that throws again when DSoR asks what it is. It
   // made the catch itself throw, so call threw and line ⑪ never ran (step 08's README,
-  // Think it through). The bug is step 04's: its promise covers what JSON can carry.
+  // Think it through). The bug was step 04's, and is fixed in toEnvelope from step 04 on.
   it("DSOR-EXE-02: a throw that throws again when inspected is still answered and recorded", () => {
     const hostile = new Proxy(
       {},

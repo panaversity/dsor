@@ -1,6 +1,6 @@
 // What call answers, by claim (C4, C6, C7 in step 04's README).
 import { describe, expect, it, vi } from "vitest";
-import type { Answer, ErrorEnvelope } from "../src/envelope.ts";
+import { Refusal, type Answer, type ErrorEnvelope } from "../src/envelope.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { handlers } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
@@ -198,6 +198,32 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
       "null",
       () => {
         throw null;
+      },
+    ],
+    // Found by step 08's review: values that run code of their own when DSoR looks at them.
+    // The first throws when asked "is this a Refusal?", the second when its code is read.
+    // Each one made call throw.
+    [
+      "a Proxy that throws when asked what it is",
+      () => {
+        throw new Proxy(
+          {},
+          {
+            getPrototypeOf: () => {
+              throw new Error("ledger at 10.0.0.12:5432 did not answer");
+            },
+          },
+        );
+      },
+    ],
+    [
+      "a Refusal whose code throws when it is read",
+      () => {
+        throw new Proxy(new Refusal("CONFLICT", "refused"), {
+          get: () => {
+            throw new Error("ledger at 10.0.0.12:5432 did not answer");
+          },
+        });
       },
     ],
   ];

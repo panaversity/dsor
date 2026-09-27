@@ -211,7 +211,7 @@ Run against the finished step. The learner's predictions were recorded before an
 | # | The break | Expected to be caught by | Learner's prediction | What happened |
 | --- | --- | --- | --- | --- |
 | R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives | Caught: 20 tests fail |
-| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 439 pass. Written as `line(2, …)`, it is caught by 7 tests, because the order tests see a line ② |
+| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 441 pass. Written as `line(2, …)`, it is caught by 7 tests, because the order tests see a line ② |
 | R3 | An input schema allows fields it does not list | C3, and C4 after the review | survives | Caught at start-up: the program refuses to start and names the file. 8 of the 12 test files cannot load, because their shared helpers build the shipped registry |
 | R4 | A contract whose input schema file is missing loads, and its input is never checked | C4 | survives | Caught: 4 tests fail |
 
@@ -389,18 +389,18 @@ pnpm test -t "in §21's order"
 
 ```text
  Test Files  1 passed | 11 skipped (12)
-      Tests  3 passed | 436 skipped (439)
+      Tests  3 passed | 438 skipped (441)
 ```
 
-`pnpm check` runs the type check, then 439 tests:
+`pnpm check` runs the type check, then 441 tests:
 
 ```text
  Test Files  12 passed (12)
-      Tests  439 passed (439)
+      Tests  441 passed (441)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `436 passed | 3 skipped`.
+original to compare with, so they are skipped: `438 passed | 3 skipped`.
 
 ## Break it
 
@@ -439,7 +439,7 @@ AssertionError: expected { code: 'VALIDATION_FAILED', …(3) } to strictly equal
     "retry": "never",
   }
 …
-      Tests  20 failed | 419 passed (439)
+      Tests  20 failed | 421 passed (441)
 ```
 
 `cfo_100` may not issue. Still, the answer now tells the CFO what a valid
@@ -454,7 +454,7 @@ refuses. They had passed only because line ⑤ answered first. Put the two lines
 and `pnpm check` is green again.
 
 **Now try R2.** Add a function `checkTenant()` that does nothing, and call it where the
-comment for line ② is. Run `pnpm test`: all 439 pass. No test can see a check that
+comment for line ② is. Run `pnpm test`: all 441 pass. No test can see a check that
 changes no answer. Only a reader can, which is why decision 1 forbids it.
 
 ## Build it yourself with Claude Code

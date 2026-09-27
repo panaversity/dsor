@@ -314,15 +314,15 @@ dsor://org_456/invoice/INV-1008
 
 Your request ids will be different. DSoR makes a new one for every call.
 
-`pnpm check` runs the type check, then 212 tests:
+`pnpm check` runs the type check, then 214 tests:
 
 ```text
  Test Files  9 passed (9)
-      Tests  212 passed (212)
+      Tests  214 passed (214)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `209 passed | 3 skipped`.
+original to compare with, so they are skipped: `211 passed | 3 skipped`.
 
 ## Break it
 
@@ -345,7 +345,7 @@ AssertionError: expected { code: 'INTERNAL_ERROR', …(3) } to match object { co
 +   "code": "INTERNAL_ERROR",
 +   "retry": "never",
   }
-      Tests  1 failed | 211 passed (212)
+      Tests  1 failed | 213 passed (214)
 ```
 
 Two things stopped it. The schema ties `OUTCOME_UNKNOWN` to `after_reconciliation`, so
@@ -375,7 +375,7 @@ AssertionError: expected { code: 'AUTHORIZATION_DENIED', …(3) } to match objec
 -   "retry": "never",
 +   "retry": "safe_same_key",
   }
-      Tests  2 failed | 210 passed (212)
+      Tests  2 failed | 212 passed (214)
 ```
 
 This envelope passed the schema and left `call`. It told the agent "denied, try again

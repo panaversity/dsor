@@ -112,14 +112,9 @@ export function call(
     // A query's answer is { data, correlation } (step 04's README, decision 3).
     answer = { data, correlation };
   } catch (thrown) {
-    // NEW IN STEP 08: making the envelope must not throw either, or line ⑪ is skipped. A
-    // value that throws when DSoR asks what it is gets a bug's envelope. Found by step 08's
-    // review; the gap is step 04's, whose promise covers what JSON can carry.
-    try {
-      answer = toEnvelope(thrown, correlation);
-    } catch {
-      answer = toEnvelope(undefined, correlation);
-    }
+    // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
+    // review, and fixed in toEnvelope from step 04 on.
+    answer = toEnvelope(thrown, correlation);
   }
 
   // ⑪ Record the decision, including every refusal (DSOR-EXE-02). NEW IN STEP 08: every

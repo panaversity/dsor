@@ -129,16 +129,23 @@ const passesSchema = ajv.compile(loadSchema("error-envelope.schema.json"));
 
 /** Turns whatever was thrown into an error envelope that passes its schema. */
 export function toEnvelope(thrown: unknown, correlation: Correlation): ErrorEnvelope {
-  // Anything that is not a Refusal is a bug, even a TypeError. Our checks threw TypeError
-  // for bad input in step 03, and JavaScript throws it for bugs, so the class cannot tell
-  // them apart (step 04's README, decision 5).
-  if (!(thrown instanceof Refusal)) return unexpected(correlation);
-  // The retry class comes from the table, never from the code that refused.
-  const { code, message } = thrown;
-  const envelope = { code, message, retry: RETRY[code], correlation };
-  // DSOR-SCH-01. An envelope that fails its schema never leaves call. The
-  // fixed INTERNAL_ERROR envelope goes out in its place (step 04's README, decision 8).
-  return passesSchema(envelope) ? envelope : unexpected(correlation);
+  // A thrown value can run code of its own whenever DSoR looks at it, as a Proxy does,
+  // and that code can throw. Then it is a bug too, and gets the same envelope. Found by
+  // step 08's review, and fixed from step 04 on.
+  try {
+    // Anything that is not a Refusal is a bug, even a TypeError. Our checks threw TypeError
+    // for bad input in step 03, and JavaScript throws it for bugs, so the class cannot tell
+    // them apart (step 04's README, decision 5).
+    if (!(thrown instanceof Refusal)) return unexpected(correlation);
+    // The retry class comes from the table, never from the code that refused.
+    const { code, message } = thrown;
+    const envelope = { code, message, retry: RETRY[code], correlation };
+    // DSOR-SCH-01. An envelope that fails its schema never leaves call. The
+    // fixed INTERNAL_ERROR envelope goes out in its place (step 04's README, decision 8).
+    return passesSchema(envelope) ? envelope : unexpected(correlation);
+  } catch {
+    return unexpected(correlation);
+  }
 }
 
 // The error envelope for a bug. It is built from fixed parts, so it passes the schema,

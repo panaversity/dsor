@@ -325,20 +325,20 @@ pnpm test -t "invoice.void"
 
 ```text
  Test Files  1 passed | 10 skipped (11)
-      Tests  3 passed | 386 skipped (389)
+      Tests  3 passed | 388 skipped (391)
 ```
 
 All three callers are denied `invoice.void`. Nobody wrote a rule against it.
 
-`pnpm check` runs the type check, then 389 tests:
+`pnpm check` runs the type check, then 391 tests:
 
 ```text
  Test Files  11 passed (11)
-      Tests  389 passed (389)
+      Tests  391 passed (391)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `386 passed | 3 skipped`.
+original to compare with, so they are skipped: `388 passed | 3 skipped`.
 
 ## Break it
 
@@ -381,7 +381,7 @@ AssertionError: expected { data: { id: 'VENDOR-44' }, …(1) } to strictly equal
 +   },
   }
 …
-      Tests  11 failed | 378 passed (389)
+      Tests  11 failed | 380 passed (391)
 ```
 
 `vendor.get` is a new operation with code, added after the check was written. Nobody
