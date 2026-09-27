@@ -31,8 +31,10 @@ export function createLog(): DecisionLog {
   // Only the two functions below can reach this list, so nothing else can change or
   // remove a record (step 08's README, decision 6).
   const kept: DecisionRecord[] = [];
-  return {
-    add: (decision) => {
+  // Frozen, so nobody who holds the log can replace add with a function that writes
+  // nothing. Found by step 08's review.
+  return Object.freeze({
+    add: (decision: Decision): void => {
       // A copy, so a caller that changes its decision, or the answer that shares its
       // correlation, cannot change the record afterwards.
       const record_id = `aud_${randomUUID()}`;
@@ -40,8 +42,8 @@ export function createLog(): DecisionLog {
       kept.push({ record_id, sequence: kept.length + 1, at, ...structuredClone(decision) });
     },
     // A copy too, so a reader cannot change what it read.
-    records: () => structuredClone(kept),
-  };
+    records: (): DecisionRecord[] => structuredClone(kept),
+  });
 }
 
 // NEW IN STEP 08: what the record says about an answer (step 08's README, decision 5).
