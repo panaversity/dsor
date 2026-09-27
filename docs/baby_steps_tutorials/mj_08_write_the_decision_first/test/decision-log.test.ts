@@ -1,9 +1,10 @@
 // NEW IN STEP 08: every decision is written down before the answer leaves, by claim (C1
 // to C5 in step 08's README).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Refusal, type Answer, type ErrorCode } from "../src/envelope.ts";
 import { createLog, type Decision, type DecisionLog } from "../src/log.ts";
 import { call } from "../src/pipeline.ts";
+import type { Registry } from "../src/registry.ts";
 import {
   AGENT,
   NOBODY,
@@ -125,6 +126,27 @@ describe("C1: every answer call gives has a record in the log", () => {
   });
 });
 
+// Found by the review: a log that worked out the time once, when it was created, passed.
+describe("C1: each record has the time it was written", () => {
+  it("DSOR-EXE-02: two calls five seconds apart get two different times", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-27T09:00:00.000Z"));
+      const fresh = createLog();
+      vi.setSystemTime(new Date("2026-09-27T09:00:01.000Z"));
+      call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+      vi.setSystemTime(new Date("2026-09-27T09:00:06.000Z"));
+      call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+      expect(fresh.records().map((r) => r.at)).toStrictEqual([
+        "2026-09-27T09:00:01.000Z",
+        "2026-09-27T09:00:06.000Z",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("C2: a failure between the decision and the answer still leaves a record", () => {
   // Line ⑤ says yes. Then the operation's code throws at line ⑨, before the answer is ready.
   it("DSOR-EXE-02: the code throws after line ⑤ said yes, and the call is still recorded", () => {
@@ -159,6 +181,49 @@ describe("C2: a failure between the decision and the answer still leaves a recor
     expect(records).toMatchObject([
       { operation: "invoice.get@1", authorization: "DENY", result: "INTERNAL_ERROR" },
     ]);
+  });
+
+  // Found by the review: the observer hears 9 before the code runs. A throw there means
+  // the code never ran, so the record says DENY.
+  it("DSOR-EXE-02: a failure at line ⑨, before the code runs, is recorded as DENY", () => {
+    const { records } = recorded((l) =>
+      call(registry, l, AGENT, "invoice.get", { id: "INV-1008" }, (line) => {
+        if (line === 9) throw new Error("crashed before the code");
+      }),
+    );
+    expect(records).toMatchObject([{ authorization: "DENY", result: "INTERNAL_ERROR" }]);
+  });
+
+  // Found by the review: a thrown value that throws again when DSoR asks what it is. It
+  // made the catch itself throw, so call threw and line ⑪ never ran (step 08's README,
+  // Think it through). The bug is step 04's: its promise covers what JSON can carry.
+  it("DSOR-EXE-02: a throw that throws again when inspected is still answered and recorded", () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf: () => {
+          throw new Error("secret /var/dsor/keys");
+        },
+      },
+    );
+    const request = {
+      get token(): string {
+        throw hostile;
+      },
+    };
+    const { answer, records } = recorded((l) =>
+      call(registry, l, request, "invoice.get", { id: "INV-1008" }),
+    );
+    expect(answer).toStrictEqual({
+      code: "INTERNAL_ERROR",
+      message: UNEXPECTED,
+      retry: "never",
+      correlation: correlationFor(NOBODY),
+    });
+    expect(records).toMatchObject([
+      { operation: "invoice.get@1", authorization: "DENY", result: "INTERNAL_ERROR" },
+    ]);
+    expect(JSON.stringify(records)).not.toContain("secret");
   });
 
   // A refusal whose code is not in the §28 table fails the schema, and the caller hears
@@ -214,6 +279,35 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
     });
   });
 
+  // Found by the review: a bug while building the record was covered by a comment only.
+  // Here the contract's version cannot be turned into text.
+  it("DSOR-EXE-03b: a bug while building the record is refused the same", () => {
+    const badVersion = {
+      ...registry.contracts.get("invoice.get")!,
+      version: {
+        toString: (): string => {
+          throw new Error("no version");
+        },
+      },
+    };
+    const handMade: Registry = {
+      ...registry,
+      contracts: new Map([...registry.contracts, ["invoice.get", badVersion]]),
+    };
+    const fresh = createLog();
+    expect(call(handMade, fresh, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+      code: "EVIDENCE_STORE_UNAVAILABLE",
+    });
+    expect(fresh.records()).toStrictEqual([]);
+  });
+
+  // Found by the review: with a broken log, line ⑪ still runs, and the observer hears it.
+  it("a call through a broken log still reaches line ⑪", () => {
+    const lines: number[] = [];
+    call(registry, brokenLog, AGENT, "invoice.get", { id: "INV-1008" }, (n) => lines.push(n));
+    expect(lines).toStrictEqual([1, 5, 6, 9, 11]);
+  });
+
   it("the refusal passes the error envelope's schema", () => {
     const answer = call(registry, brokenLog, AGENT, "invoice.get", { id: "INV-1008" });
     expect(schemaProblems(answer)).toStrictEqual([]);
@@ -246,18 +340,17 @@ describe("C5: the log only grows", () => {
     expect(b!.record_id).not.toBe(a!.record_id);
   });
 
+  // Found by the review: the test matched the request id to /^req_[0-9a-f]/, and
+  // "req_forged" matches that too. Now it compares the exact id.
   it("changing a record read from the log does not change the log", () => {
     const fresh = createLog();
-    call(registry, fresh, {}, "invoice.get", { id: "INV-1008" });
+    const { correlation } = call(registry, fresh, {}, "invoice.get", { id: "INV-1008" });
     const read = fresh.records();
     read[0]!.result = "ok";
     read[0]!.correlation.request_id = "req_forged";
     read.pop();
     expect(fresh.records()).toMatchObject([
-      {
-        result: "AUTHENTICATION_REQUIRED",
-        correlation: { request_id: expect.stringMatching(/^req_[0-9a-f]/) },
-      },
+      { result: "AUTHENTICATION_REQUIRED", correlation: { request_id: correlation.request_id } },
     ]);
   });
 
@@ -280,6 +373,17 @@ describe("C5: the log only grows", () => {
     fresh.add(decision);
     decision.authorization = "ALLOW";
     expect(fresh.records()[0]!.authorization).toBe("DENY");
+  });
+
+  // Found by the review: anyone holding the log could replace add with a function that
+  // writes nothing, and every call would still answer.
+  it("the log's two functions cannot be replaced", () => {
+    const fresh = createLog();
+    expect(() => {
+      (fresh as { add: unknown }).add = () => {};
+    }).toThrow(TypeError);
+    call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+    expect(fresh.records()).toHaveLength(1);
   });
 
   it("the log has two functions, and no way to change or remove a record", () => {
