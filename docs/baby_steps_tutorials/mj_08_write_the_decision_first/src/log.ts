@@ -2,7 +2,8 @@
 // before the answer leaves. DSOR-EXE-02 in specs/dsor/03-execution.md, section 21.
 // It lives in memory, so it is lost when the program stops. Step 09 moves it into a database.
 import { randomUUID } from "node:crypto";
-import type { Correlation } from "./envelope.ts";
+import type { Answer, Correlation } from "./envelope.ts";
+import type { Contract } from "./registry.ts";
 
 // The audit record's own field names, where this step can fill them honestly (step 08's
 // README, decision 5).
@@ -40,5 +41,28 @@ export function createLog(): DecisionLog {
     },
     // A copy too, so a reader cannot change what it read.
     records: () => structuredClone(kept),
+  };
+}
+
+// NEW IN STEP 08: what the record says about an answer (step 08's README, decision 5).
+/** What the record says about an answer. */
+export function decisionOf(
+  answer: Answer,
+  contract: Contract | undefined,
+  reachedCode: boolean,
+): Decision {
+  const refused = "code" in answer;
+  return {
+    kind: "decision",
+    // A name with no contract has no version, so the record names no operation. The
+    // refusal's message, in reason, says what was asked for.
+    ...(contract === undefined
+      ? {}
+      : { operation: `${contract.id}@${String(contract["version"])}` }),
+    authorization: reachedCode ? "ALLOW" : "DENY",
+    // What the caller heard: "ok", or the code, and its message as the reason.
+    result: refused ? answer.code : "ok",
+    ...(refused ? { reason: answer.message } : {}),
+    correlation: answer.correlation,
   };
 }

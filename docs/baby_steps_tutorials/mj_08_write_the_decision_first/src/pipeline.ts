@@ -3,10 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput } from "./inputs.ts";
-import type { Decision, DecisionLog } from "./log.ts";
+import { decisionOf, type DecisionLog } from "./log.ts";
 import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
-import { preview, type Contract, type Registry } from "./registry.ts";
+import { preview, type Registry } from "./registry.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
 // NEW IN STEP 07: the observer is told each line's number as it runs, and only a test
@@ -118,34 +118,21 @@ export function call(
   // ⑪ Record the decision, including every refusal (DSOR-EXE-02). NEW IN STEP 08: every
   //   answer comes through here before it leaves: a success, every refusal, and a bug. A
   //   throw anywhere above cannot skip it (step 08's README, C2).
-  const decision = decisionOf(answer, registry.contracts.get(name), reachedCode);
-  line(11, () => log.add(decision));
+  // Building the record is inside the try too, so even a bug there gives no answer.
+  try {
+    line(11, () => log.add(decisionOf(answer, registry.contracts.get(name), reachedCode)));
+  } catch {
+    // DSOR-EXE-03b, an L2 rule built early: with no record, there is no answer, not even a
+    // "yes". Whatever the log threw stays inside: it can name paths and servers. This
+    // refusal cannot be recorded, because the log is what failed (step 08's README,
+    // decision 4).
+    const message = "DSoR could not record its decision, so it refuses the call";
+    return toEnvelope(new Refusal("EVIDENCE_STORE_UNAVAILABLE", message), answer.correlation);
+  }
 
   // ⑫ Stop here when an approval is missing, or the mode is propose_only or
   //   validate_only. Not built yet: steps 23 and 29.
   // ⑬ to ⑰ Write the intent record, execute, finalize, commit, and seal the evidence.
   //   Commands only. Not built yet: steps 21, 24, 33, 34, 36, 37, and 40.
   return answer;
-}
-
-// NEW IN STEP 08: what the record says about an answer (step 08's README, decision 5).
-function decisionOf(
-  answer: Answer,
-  contract: Contract | undefined,
-  reachedCode: boolean,
-): Decision {
-  const refused = "code" in answer;
-  return {
-    kind: "decision",
-    // A name with no contract has no version, so the record names no operation. The
-    // refusal's message, in reason, says what was asked for.
-    ...(contract === undefined
-      ? {}
-      : { operation: `${contract.id}@${String(contract["version"])}` }),
-    authorization: reachedCode ? "ALLOW" : "DENY",
-    // What the caller heard: "ok", or the code, and its message as the reason.
-    result: refused ? answer.code : "ok",
-    ...(refused ? { reason: answer.message } : {}),
-    correlation: answer.correlation,
-  };
 }
