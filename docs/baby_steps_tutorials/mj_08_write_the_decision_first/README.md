@@ -69,9 +69,11 @@ decision bundle, and what the agent says about itself (step 33). An identity mod
 the agent (step 18).
 
 **The success signal.** Make something fail after DSoR has decided and before the
-answer is returned. The decision's record is still in the log. Then move the log line
-after that point, run the same test, and the refusal vanishes from the log. This is the
-break-it exercise from the map of all steps.
+answer is returned: line ⑤ says yes, and then the operation's code throws. The
+decision's record is still in the log. Then move the log line to the point where the
+answer is ready, run the same test, and the record vanishes from the log. This is the
+break-it exercise from the map of all steps. (Changed before the first test: see
+"Think it through".)
 
 ### What the specification asks, and what this step can honestly give
 
@@ -96,8 +98,8 @@ Checked on 2026-09-27:
 | Rule | Claim | How we know |
 | --- | --- | --- |
 | DSOR-EXE-02 | **C1.** Every answer `call` gives has a record in the log | One test for each kind of answer: a success, each refusal from steps 04 to 07, and a bug |
-| DSOR-EXE-02 | **C2.** The record is written before the answer leaves `call` | A failure after the decision and before the answer leaves the record in the log |
-| DSOR-EXE-02 | **C3.** The record holds the outcome and, for a refusal, its reason | `authorization` is `DENY` and `reason` holds the refusal's code |
+| DSOR-EXE-02 | **C2.** A failure between the decision and the answer still leaves a record | Line ⑤ says yes, the code throws at line ⑨, and the record is in the log |
+| DSOR-EXE-02 | **C3.** The record holds the outcome and, for a refusal, its reason | `authorization` is `ALLOW` once the call reached its code, else `DENY`. `result` is `ok` or the code the caller heard. `reason` is the refusal's message |
 | DSOR-EXE-03b, pulled forward | **C4.** If the log cannot take the record, the answer is `EVIDENCE_STORE_UNAVAILABLE` | A log that refuses to write, and a call that would have succeeded |
 | (our decision) | **C5.** The log only grows | Reading the log gives a copy. Nothing can change or remove a record |
 
@@ -129,12 +131,21 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    here: nothing was done. *Downside:* that refusal itself cannot be recorded, because
    the log is the thing that failed. The README says so.
 5. **A record uses the audit record's own field names where it honestly can:**
-   `record_id`, `sequence` (its place in the log), `at`, `tenant` (`org_456` once the
-   caller is known, and left out before), `kind` (`"decision"`), `operation` (such as
-   `invoice.get@1`), `authorization` (`ALLOW` or `DENY`), `result`, `reason`, and
-   `correlation`. Who called is in `correlation`, as step 05 already puts it there.
+   `record_id`, `sequence` (its place in the log), `at`, `kind` (`"decision"`),
+   `operation`, `authorization`, `result`, `reason`, and `correlation`. Who called is in
+   `correlation`, as step 05 already puts it there.
+   - `operation` is the contract's id and version, such as `invoice.get@1`. A name with
+     no contract has no version, so `operation` is left out, and the refusal's message
+     in `reason` names what was asked for.
+   - `authorization` is `ALLOW` once DSoR's checks let the call reach its code at line
+     ⑨, and `DENY` for a refusal before that. The specification's own example does the
+     same: a payment that ran is `ALLOW`, and what happened is in `result`.
+   - `result` is `ok` for a success, and otherwise the code the caller heard, such as
+     `RESOURCE_NOT_FOUND`. `reason` is that refusal's message.
+   - There is no `tenant`. Finding the tenant is line ②, which step 10 builds.
    *Downside:* the record does not validate against `audit-record.schema.json`, and
-   finding 2 above says which fields are missing and why.
+   finding 2 above says which fields are missing and why. A `DENY` is not every "no" a
+   caller hears: "no invoice INV-9999" is `ALLOW` with the result `RESOURCE_NOT_FOUND`.
 6. **The log is a small module with two doors: add a record, and read a copy of all
    records.** Nothing else touches it. *Downside:* a test that needs a broken log must
    be able to swap in one that refuses to write, so the log is passed to `call`, the
@@ -144,10 +155,11 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 - **C1:** one record for each kind of answer, with the right `authorization`, `result`,
   and `reason`.
-- **C2:** a test makes a line after ⑪ fail. The decision's record is in the log. With
-  the log line moved after that failure, the same test fails.
-- **C3:** a refusal's record holds its code as the reason. A success's record holds
-  `ALLOW`.
+- **C2:** line ⑤ says yes, and then the operation's code throws at line ⑨. The record
+  of that call is in the log, `ALLOW` with the result `INTERNAL_ERROR`. With the log
+  line moved to where the answer is ready, the same test fails.
+- **C3:** a refusal before line ⑨ is `DENY`, with its code as the result and its
+  message as the reason. A success is `ALLOW` with the result `ok`, and no reason.
 - **C4:** a log that refuses to write turns a call that would succeed into
   `EVIDENCE_STORE_UNAVAILABLE`, and the invoice is never returned.
 - **C5:** changing a record read from the log does not change the log. Two calls give
@@ -159,7 +171,7 @@ Run against the finished step. The learner's predictions were recorded before an
 
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
-| S1 | The log line is moved after the answer is returned | C1, every test that reads the log | caught easily |
+| S1 | The log line is moved to the end of the `try`, where the answer is ready, so a throw skips it | C1's refusals, and C2 | caught easily |
 | S2 | The record is written in a `finally` block, §21's common mistake | only a test where the whole program stops, which step 09 makes possible | to predict |
 | S3 | A refusal is not recorded, only a success | C1 | to predict |
 | S4 | When the log cannot write, the answer is given anyway | C4 | to predict |
@@ -180,6 +192,7 @@ The review also attacks the step with the §10.2 threat that is this step's reas
 - **Counting refusals with no login, instead of one record each:** step 09, with a real
   store to fill.
 - **A chain of fingerprints over the log:** step 39.
+- **The record's tenant:** step 10, when line ② finds it.
 
 ## What changed since step 07
 
@@ -227,7 +240,27 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+### Changed before the first test
+
+The design above was checked against §21, §29, and `audit-record.schema.json` before
+any test was written. Three parts were changed, with the learner, on 2026-09-27:
+
+1. **C2 had no line to fail.** It said: make a line after ⑪ fail. But lines ⑫ to ⑰ are
+   only comments, and `call` runs from start to end without waiting for anything. No
+   code runs between writing the record and returning the answer, so no test could
+   tell C2 from C1. Now the failure comes between the decision and the answer: line ⑤
+   says yes, and the code throws at line ⑨. "After ⑪" becomes testable in step 09,
+   where writing to the database is something `call` waits for.
+2. **A bug is not a denial.** C3 said every refusal is `DENY` with its code as the
+   reason. But "no invoice INV-9999" and a bug happen after DSoR allowed the call. Now
+   `authorization` says whether the call reached its code, and `result` says what the
+   caller heard. The reason is the refusal's message, so a refusal for an operation
+   with no contract still names what was asked for.
+3. **No tenant yet.** Decision 5 took `org_456` from the caller at line ①. Finding the
+   tenant is line ②, step 10's work, so the record leaves it out.
+
+_The rest is written after the review, with the result of every break in the table
+above._
 
 ## The rules this step meets
 
