@@ -2,10 +2,10 @@
 // README). Every registry here is built with the role table too (step
 // 06's README, decision 1).
 import { describe, expect, it } from "vitest";
-import { handlers } from "../src/operations.ts";
 import { buildRegistry } from "../src/registry.ts";
 import {
   contract,
+  handlers,
   inputsWith,
   refusal,
   shipped,
@@ -16,12 +16,12 @@ import {
 } from "./helpers.ts";
 
 describe("C2: a contract passes the specification's own schema", () => {
-  it("DSOR-OPR-01: both shipped contracts pass", () => {
+  it("DSOR-OPR-01: both shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     expect([...registry.contracts.keys()].sort()).toEqual(["invoice.get", "invoice.issue"]);
   });
 
-  it("DSOR-OPR-01: a risk level the schema does not list is refused", () => {
+  it("DSOR-OPR-01: a risk level the schema does not list is refused", async () => {
     const bad = { ...contract("invoice.get"), risk: { level: "extreme" } };
     expect(refusal(() => buildRegistry(shippedWith(bad), handlers, shippedRoles))).toMatch(
       /\/risk\/level/,
@@ -51,7 +51,7 @@ const COMMAND_ONLY = [
 ];
 
 describe("C3: a field every contract needs, left out, is refused", () => {
-  it.each(ALWAYS_REQUIRED)("DSOR-OPR-02a: a contract without %s is refused", (field) => {
+  it.each(ALWAYS_REQUIRED)("DSOR-OPR-02a: a contract without %s is refused", async (field) => {
     const bad = without(contract("invoice.issue"), field);
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       `must have required property '${field}'`,
@@ -60,14 +60,14 @@ describe("C3: a field every contract needs, left out, is refused", () => {
 });
 
 describe("C4: a command needs 6 more fields, and a query does not", () => {
-  it.each(COMMAND_ONLY)("DSOR-OPR-02a: a command without %s is refused", (field) => {
+  it.each(COMMAND_ONLY)("DSOR-OPR-02a: a command without %s is refused", async (field) => {
     const bad = without(contract("invoice.issue"), field);
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       `must have required property '${field}'`,
     );
   });
 
-  it("DSOR-OPR-02a: a query without the 6 command fields is accepted", () => {
+  it("DSOR-OPR-02a: a query without the 6 command fields is accepted", async () => {
     const query = contract("invoice.get");
     for (const field of COMMAND_ONLY) expect(query).not.toHaveProperty(field);
     // Only the input schema this one contract names, or start-up refuses
@@ -78,7 +78,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     ).toBe(true);
   });
 
-  it("DSOR-OPR-02a: a query whose effect is not read is refused", () => {
+  it("DSOR-OPR-02a: a query whose effect is not read is refused", async () => {
     const bad = { ...contract("invoice.get"), effect: "mutating" };
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(/\/effect/);
   });
@@ -88,7 +88,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
   const APPROVER = { permission: "invoice:issue", approve_permission: "invoice:approve" };
   const IN_FLIGHT = { exclusive_over: ["invoice"] };
 
-  it("DSOR-OPR-02a: a command that can never be undone, without in_flight, is refused", () => {
+  it("DSOR-OPR-02a: a command that can never be undone, without in_flight, is refused", async () => {
     const bad = {
       ...contract("invoice.issue"),
       execution: { semantics: "non_compensatable" },
@@ -99,7 +99,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     );
   });
 
-  it("DSOR-OPR-02a: a command that can never be undone, without an approver, is refused", () => {
+  it("DSOR-OPR-02a: a command that can never be undone, without an approver, is refused", async () => {
     const bad = {
       ...contract("invoice.issue"),
       execution: { semantics: "non_compensatable" },
@@ -112,7 +112,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
 
   it.each([["compensatable"], ["saga"]])(
     "DSOR-OPR-02a: a %s command without compensated_by is refused",
-    (semantics) => {
+    async (semantics) => {
       const bad = { ...contract("invoice.issue"), execution: { semantics } };
       expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
         "/execution must have required property 'compensated_by'",
@@ -122,7 +122,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
 
   // The same contracts with the missing field put back are accepted. So the refusals
   // above are for that field, not for something else.
-  it("DSOR-OPR-02a: the same commands, with those fields, are accepted", () => {
+  it("DSOR-OPR-02a: the same commands, with those fields, are accepted", async () => {
     const neverUndone = {
       ...contract("invoice.issue"),
       execution: { semantics: "non_compensatable" },
@@ -155,20 +155,23 @@ describe("C6: nothing is filled in for the four fields the rule names", () => {
       "/execution must have required property 'semantics'",
     ],
     ["idempotency", { idempotency: {} }, "/idempotency must have required property 'required'"],
-  ])("DSOR-OPR-02b: a command with no %s is refused, not given one", (_why, change, problem) => {
-    const bad = { ...contract("invoice.issue"), ...change };
-    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(problem);
-  });
+  ])(
+    "DSOR-OPR-02b: a command with no %s is refused, not given one",
+    async (_why, change, problem) => {
+      const bad = { ...contract("invoice.issue"), ...change };
+      expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(problem);
+    },
+  );
 
   // Found by the review: a guess made only for queries passed every test above.
-  it("DSOR-OPR-02b: a query with no risk level is refused, not given one", () => {
+  it("DSOR-OPR-02b: a query with no risk level is refused, not given one", async () => {
     const bad = { ...contract("invoice.get"), risk: {} };
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       "/risk must have required property 'level'",
     );
   });
 
-  it("DSOR-OPR-02b: a contract with no effect is refused, not given one", () => {
+  it("DSOR-OPR-02b: a contract with no effect is refused, not given one", async () => {
     const bad = without(contract("invoice.get"), "effect");
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       "must have required property 'effect'",

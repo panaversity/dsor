@@ -15,12 +15,22 @@ export function usableRequestId(request: RequestEnvelope): string | undefined {
   // The envelope comes from outside the program, so it may even be null.
   const sent = request?.request_id;
   // Text of 1 to 128 characters. JavaScript's length counts an emoji as two.
-  return typeof sent === "string" && sent.length >= 1 && sent.length <= 128 ? sent : undefined;
+  if (typeof sent !== "string" || sent.length < 1 || sent.length > 128) return undefined;
+  // NEW IN STEP 09: text Postgres can keep. jsonb refuses the NUL character and half of an
+  // emoji, so such an id made the record fail and left no evidence of the call. Found by
+  // step 09's review (step 09's README, decision 16).
+  return sent.isWellFormed() && !CONTROL.test(sent) ? sent : undefined;
 }
+
+// Control characters: NUL, a new line, a tab, and the rest of Unicode's "Cc" group.
+// not copied: the specification sets no pattern for a request id; this is the tutorial's
+// own rule (step 09's README, decision 16).
+const CONTROL = /\p{Cc}/u;
 
 /** Refuses a request id that DSoR cannot use. A call that sends none is fine. */
 export function checkRequestId(request: RequestEnvelope): void {
   if (request?.request_id !== undefined && usableRequestId(request) === undefined) {
-    throw new Refusal("VALIDATION_FAILED", "a request_id must be text of 1 to 128 characters");
+    const rule = "text of 1 to 128 characters, well-formed, with no control characters";
+    throw new Refusal("VALIDATION_FAILED", `a request_id must be ${rule}`);
   }
 }

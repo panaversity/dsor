@@ -19,16 +19,18 @@ export type Observer = (line: number) => void;
  * Every call runs one checklist, numbered as §21 numbers it. A line that
  * is not built yet is a comment that names its step, and never a check that says "fine".
  */
-export function call(
+// NEW IN STEP 09: call is async. It waits for the database at lines ⑨ and ⑪, and answers
+// only after the record is committed (step 09's README, decision 9).
+export async function call(
   registry: Registry,
-  // NEW IN STEP 08: the log every decision is written to (step 08's README, decision 6).
+  // The log every decision is written to (step 08's README, decision 6).
   log: DecisionLog,
   // The request envelope, beside the arguments (step 05's README, decision 1).
   request: RequestEnvelope,
   name: string,
   input: unknown,
   observe: Observer = () => {},
-): Answer {
+): Promise<Answer> {
   // DSoR makes a request id first, so every answer carries one (DSOR-COR-01b).
   let correlation: Correlation = { request_id: `req_${randomUUID()}` };
 
@@ -39,13 +41,13 @@ export function call(
     return check();
   }
 
-  // NEW IN STEP 08: set once DSoR's checks let the call reach its code at line ⑨. From
-  // then on, its record says ALLOW (step 08's README, decision 5).
+  // Set once DSoR's checks let the call reach its code at line ⑨. From then on, its
+  // record says ALLOW (step 08's README, decision 5).
   let reachedCode = false;
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
-  // NEW IN STEP 08: the try only works out the answer. It is returned after line ⑪.
+  // The try only works out the answer. It is returned after line ⑪.
   let answer: Answer;
   try {
     // ① Authenticate; build the request security context. Who is calling comes from the
@@ -102,7 +104,9 @@ export function call(
     // ⑧ Create the proposal, or load it. Commands only. Not built yet: step 22.
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
     //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
-    const data = line(9, () => {
+    // NEW IN STEP 09: the code may read the database, so call waits for it. A refusal it
+    // throws while waiting is caught below, like any other.
+    const data = await line(9, () => {
       reachedCode = true;
       return handler(checked);
     });
@@ -117,12 +121,14 @@ export function call(
     answer = toEnvelope(thrown, correlation);
   }
 
-  // ⑪ Record the decision, including every refusal (DSOR-EXE-02). NEW IN STEP 08: every
-  //   answer comes through here before it leaves: a success, every refusal, and a bug. A
-  //   throw anywhere above cannot skip it (step 08's README, C2).
+  // ⑪ Record the decision, including every refusal (DSOR-EXE-02). Every answer comes
+  //   through here before it leaves: a success, every refusal, and a bug. A throw anywhere
+  //   above cannot skip it (step 08's README, C2).
   // Building the record is inside the try too, so even a bug there gives no answer.
+  // NEW IN STEP 09: await. The answer waits until the database has committed the record,
+  // and a database that refuses it lands in the catch (step 09's README, C2 and C4).
   try {
-    line(11, () => log.add(decisionOf(answer, registry.contracts.get(name), reachedCode)));
+    await line(11, () => log.add(decisionOf(answer, registry.contracts.get(name), reachedCode)));
   } catch {
     // DSOR-EXE-03b, an L2 rule built early: with no record, there is no answer, not even a
     // "yes". Whatever the log threw stays inside: it can name paths and servers. This

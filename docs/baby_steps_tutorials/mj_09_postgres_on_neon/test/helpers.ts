@@ -6,7 +6,8 @@ import { expect } from "vitest";
 import type { Answer, ErrorCode } from "../src/envelope.ts";
 import { createLog, type DecisionLog } from "../src/log.ts";
 import { Refusal } from "../src/envelope.ts";
-import { handlers } from "../src/operations.ts";
+import { memoryInvoices } from "../src/invoice.ts";
+import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import {
@@ -139,7 +140,9 @@ export function correlationFor(caller: Caller): Record<string, unknown> {
 
 // The messages of step 05's refusals, typed out rather than imported.
 export const LOG_IN_FIRST = "log in first: the call has no login token that DSoR gave";
-export const BAD_REQUEST_ID = "a request_id must be text of 1 to 128 characters";
+// NEW IN STEP 09: well-formed, with no control characters (step 09's README, decision 16).
+export const BAD_REQUEST_ID =
+  "a request_id must be text of 1 to 128 characters, well-formed, with no control characters";
 
 /** The message when the arguments name someone else in this place. */
 export function notTheCaller(place: string): string {
@@ -162,21 +165,25 @@ export function registryWith(handler: Handler): Registry {
   );
 }
 
-/** NEW IN STEP 08: a log for the tests that do not read it. Each test that reads one makes its own. */
+/** A log for the tests that do not read it. Each test that reads one makes its own. */
 export const log: DecisionLog = createLog();
+
+// NEW IN STEP 09: the shipped operations, reading the invoices in memory, so the unit tests
+// need no database (step 09's README, decision 12).
+export const handlers: Record<string, Handler> = handlersFor(memoryInvoices());
 
 /** The shipped operations, their code, and the role table, as start-up builds them. */
 export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles);
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
-export function run(handler: Handler): Answer {
+export function run(handler: Handler): Promise<Answer> {
   // As the agent, with its login token.
   // test.run takes invoice.get's input, and line ⑥ now checks it.
   return call(registryWith(handler), log, AGENT, "test.run", { id: "INV-1008" });
 }
 
 /** Calls "test.run", whose code refuses with this code. */
-export function refusedWith(code: ErrorCode): Answer {
+export function refusedWith(code: ErrorCode): Promise<Answer> {
   return run(() => {
     throw new Refusal(code, "refused on purpose");
   });
@@ -201,7 +208,7 @@ const issueHasCode = buildRegistry(
 // 7). Each one is a function, so each test makes its own call.
 // Each also says who the answer names as its caller (step 05's README,
 // decision 9). The first three are step 05's refusals.
-export const REFUSALS: [string, () => Answer, ErrorCode, string, Caller][] = [
+export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller][] = [
   [
     "a call with no login",
     () => call(registry, log, {}, "invoice.get", { id: "INV-1008" }),

@@ -2,7 +2,6 @@
 // README). From step 04, call answers with an envelope instead of throwing.
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
-import { handlers } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
@@ -10,6 +9,7 @@ import {
   GOOD_ISSUE,
   SUPERVISOR,
   contract,
+  handlers,
   log,
   refusal,
   shipped,
@@ -27,8 +27,8 @@ describe("C1: nothing can be called without a contract", () => {
   const registry = buildRegistry(shipped, handlers, shippedRoles);
 
   // The invoice comes back as the envelope's data.
-  it("DSOR-OPR-01: invoice.get runs by its name", () => {
-    expect(call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+  it("DSOR-OPR-01: invoice.get runs by its name", async () => {
+    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -36,16 +36,16 @@ describe("C1: nothing can be called without a contract", () => {
   // Found by the review: with one invoice, code that ignored the caller's input and
   // always read INV-1008 passed the test above.
   // INV-9999 is refused with a code, not answered with undefined.
-  it("DSOR-OPR-01: invoice.get passes the caller's input to its code", () => {
-    expect(call(registry, log, AGENT, "invoice.get", { id: "INV-9999" })).toMatchObject({
+  it("DSOR-OPR-01: invoice.get passes the caller's input to its code", async () => {
+    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-9999" })).toMatchObject({
       code: "RESOURCE_NOT_FOUND",
     });
   });
 
   // No rule id: checking an operation's input is not step 03's rule.
   // The refusal is an envelope, not a thrown TypeError.
-  it("invoice.get without an id is refused", () => {
-    expect(call(registry, log, AGENT, "invoice.get", {})).toMatchObject({
+  it("invoice.get without an id is refused", async () => {
+    expect(await call(registry, log, AGENT, "invoice.get", {})).toMatchObject({
       code: "VALIDATION_FAILED",
     });
   });
@@ -55,15 +55,15 @@ describe("C1: nothing can be called without a contract", () => {
   // The refusal is an envelope, not a throw.
   it.each([["invoice.delete"], ["toString"], ["constructor"]])(
     "DSOR-OPR-01: an operation with no contract is refused: %s",
-    (name) => {
-      expect(call(registry, log, AGENT, name, {})).toMatchObject({
+    async (name) => {
+      expect(await call(registry, log, AGENT, name, {})).toMatchObject({
         code: "UNSUPPORTED_CAPABILITY",
         message: `no operation named "${name}"`,
       });
     },
   );
 
-  it("DSOR-OPR-01: code for an operation with no contract stops start-up", () => {
+  it("DSOR-OPR-01: code for an operation with no contract stops start-up", async () => {
     const withExtra = { ...handlers, "invoice.delete": () => "deleted" };
     expect(refusal(() => buildRegistry(shipped, withExtra, shippedRoles))).toMatch(
       /invoice\.delete has code but no contract/,
@@ -73,7 +73,7 @@ describe("C1: nothing can be called without a contract", () => {
   // Found by the review: the test above sees a refusal only by its words. Here the code
   // table holds a name with no contract, which buildRegistry never allows. The code must
   // still never run.
-  it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", () => {
+  it("DSOR-OPR-01: code with no contract is never run, even in a registry built by hand", async () => {
     const spy = vi.fn<Handler>(() => "deleted");
     // A registry holds a role table too. This one grants nothing.
     const handMade = {
@@ -84,7 +84,7 @@ describe("C1: nothing can be called without a contract", () => {
       inputs: new Map(),
     };
     // The refusal is an envelope, not a throw.
-    expect(call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
+    expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
     });
     expect(spy).not.toHaveBeenCalled();
@@ -92,10 +92,10 @@ describe("C1: nothing can be called without a contract", () => {
 
   // The refusal is an envelope, not a throw. user_123 calls, because only a
   // caller who holds invoice:issue gets as far as "not built yet" (step 06's README, C5).
-  it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", () => {
+  it("DSOR-OPR-01: invoice.issue has a contract and no code yet, so a call is refused", async () => {
     expect(registry.contracts.has("invoice.issue")).toBe(true);
     // A good input, so line ⑥ is not what refuses the call.
-    expect(call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
+    expect(await call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
     });
@@ -103,7 +103,7 @@ describe("C1: nothing can be called without a contract", () => {
 });
 
 describe("C5: the refusal happens at start-up, and names every problem", () => {
-  it("DSOR-OPR-02a: a broken contract is rejected, and with it the whole registry", () => {
+  it("DSOR-OPR-02a: a broken contract is rejected, and with it the whole registry", async () => {
     const bad = without(contract("invoice.get"), "risk");
     const message = refusal(() => buildRegistry(shippedWith(bad), handlers, shippedRoles));
     expect(message).toMatch("invoice.get.json: must have required property 'risk'");
@@ -112,7 +112,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
     expect(message).not.toMatch("has code but no contract");
   });
 
-  it("DSOR-OPR-02a: a contract with two problems gets both named", () => {
+  it("DSOR-OPR-02a: a contract with two problems gets both named", async () => {
     const bad = without(without(contract("invoice.issue"), "risk"), "audit");
     const message = refusal(() =>
       buildRegistry([source(bad, "invoice.issue.json")], {}, shippedRoles),
@@ -122,7 +122,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
     expect(message).toMatch("must have required property 'audit'");
   });
 
-  it("DSOR-OPR-02a: problems in two files, and code with no contract, are named together", () => {
+  it("DSOR-OPR-02a: problems in two files, and code with no contract, are named together", async () => {
     const noRisk = without(contract("invoice.get"), "risk");
     const noAudit = without(contract("invoice.issue"), "audit");
     const message = refusal(() =>
@@ -138,7 +138,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
     expect(message).toMatch("invoice.delete has code but no contract");
   });
 
-  it("DSOR-OPR-02a: a file that is not JSON is named with the others", () => {
+  it("DSOR-OPR-02a: a file that is not JSON is named with the others", async () => {
     const broken = { file: "broken.json", text: '{ "id": "invoice.get",' };
     const noRisk = without(contract("invoice.issue"), "risk");
     const message = refusal(() => buildRegistry([broken, source(noRisk)], {}, shippedRoles));
@@ -148,7 +148,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
 
   // Found by step 04's review: without the `continue` after a contract's problems, a file
   // that holds null crashed start-up with a TypeError, and the other problem went unnamed.
-  it("DSOR-OPR-02a: a file that holds null is named with the others", () => {
+  it("DSOR-OPR-02a: a file that holds null is named with the others", async () => {
     const noRisk = without(contract("invoice.issue"), "risk");
     const message = refusal(() =>
       buildRegistry([source(noRisk), source(null, "null.json")], {}, shippedRoles),
@@ -159,7 +159,7 @@ describe("C5: the refusal happens at start-up, and names every problem", () => {
 });
 
 describe("C7: a loaded contract is exactly what was written", () => {
-  it("DSOR-OPR-02b: each loaded contract equals its file", () => {
+  it("DSOR-OPR-02b: each loaded contract equals its file", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // An empty list would make the loop below prove nothing.
     expect(shipped).toHaveLength(2);
@@ -169,14 +169,14 @@ describe("C7: a loaded contract is exactly what was written", () => {
     }
   });
 
-  it('DSOR-OPR-02b: version "1", text instead of a number, is refused', () => {
+  it('DSOR-OPR-02b: version "1", text instead of a number, is refused', async () => {
     const bad = { ...contract("invoice.get"), version: "1" };
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       /\/version must be integer/,
     );
   });
 
-  it("DSOR-OPR-02b: an unknown extra field is refused, not deleted", () => {
+  it("DSOR-OPR-02b: an unknown extra field is refused, not deleted", async () => {
     const bad = { ...contract("invoice.get"), owner: "user_123" };
     expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
       'must NOT have additional properties: "owner"',
@@ -184,7 +184,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
   });
 
   // No rule id: refusing both is step 03's decision 7. Keeping one would be a guess.
-  it("two contracts with one id are refused, not one picked", () => {
+  it("two contracts with one id are refused, not one picked", async () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source({ ...contract("invoice.get"), risk: { level: "high" } }, "b.json");
     expect(refusal(() => buildRegistry([a, b], {}, shippedRoles))).toMatch(
@@ -194,7 +194,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
 
   // Found by the review: when the second file was also broken, only its schema problem
   // was named. The two files were found only after a fix and a restart.
-  it("two contracts with one id are named even when one is broken", () => {
+  it("two contracts with one id are named even when one is broken", async () => {
     const a = source(contract("invoice.get"), "a.json");
     const b = source(without(contract("invoice.get"), "risk"), "b.json");
     const message = refusal(() => buildRegistry([a, b], {}, shippedRoles));
@@ -222,7 +222,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
     ],
   ])(
     "a key written twice, %s, is refused, not one of its values picked",
-    (_where, from, to, key) => {
+    async (_where, from, to, key) => {
       const text = JSON.stringify(contract("invoice.get")).replace(from, to);
       expect(
         refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}, shippedRoles)),
@@ -230,7 +230,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
     },
   );
 
-  it("a value that repeats its own key's name is not a key written twice", () => {
+  it("a value that repeats its own key's name is not a key written twice", async () => {
     const text = JSON.stringify({ ...contract("invoice.get"), input: { schema: "schema" } });
     // The input schema that contract names must have a file too.
     // It is the only contract, so it is given the only input schema.
@@ -247,10 +247,10 @@ describe("C7: a loaded contract is exactly what was written", () => {
 // from the caller, so it may be anything, even something huge.
 describe("a refusal of a huge name", () => {
   // The message is in the envelope.
-  it("shows only a short piece of it", () => {
+  it("shows only a short piece of it", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     const huge = "invoice." + "a".repeat(100_000);
-    const { message } = call(registry, log, AGENT, huge, {}) as ErrorEnvelope;
+    const { message } = (await call(registry, log, AGENT, huge, {})) as ErrorEnvelope;
     expect(message).toMatch("no operation named");
     expect(message.length).toBeLessThan(200);
   });

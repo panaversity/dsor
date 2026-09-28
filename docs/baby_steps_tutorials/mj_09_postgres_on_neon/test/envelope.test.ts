@@ -16,8 +16,8 @@ describe("C1: every refusal is an error envelope that passes the real schema", (
   // says `never`, passed every test.
   it.each(REFUSALS)(
     "DSOR-ERR-01a: %s is refused with an envelope that passes the schema",
-    (_why, ask, code, message, caller) => {
-      const envelope = ask();
+    async (_why, ask, code, message, caller) => {
+      const envelope = await ask();
       expect(envelope).toStrictEqual({
         code,
         message,
@@ -33,7 +33,7 @@ describe("C1: every refusal is an error envelope that passes the real schema", (
 describe("C2: the code is one from the §28 table", () => {
   // No rule id: this checks the specification's schema, not this step's code (found by the
   // review). C5 sends a made-up code through call.
-  it("an envelope with a made-up code is refused by the schema", () => {
+  it("an envelope with a made-up code is refused by the schema", async () => {
     const madeUp = {
       code: "NOT_FOUND",
       message: "no invoice",
@@ -45,7 +45,7 @@ describe("C2: the code is one from the §28 table", () => {
     expect(schemaProblems({ ...madeUp, code: "RESOURCE_NOT_FOUND" })).toEqual([]);
   });
 
-  it("DSOR-ERR-01a: the table in src lists exactly the schema's 32 codes", () => {
+  it("DSOR-ERR-01a: the table in src lists exactly the schema's 32 codes", async () => {
     expect(SCHEMA_CODES).toHaveLength(32);
     expect(Object.keys(RETRY).sort()).toEqual([...SCHEMA_CODES].sort());
   });
@@ -90,7 +90,7 @@ const TABLE: [ErrorCode, RetryClass][] = [
 
 describe("C3: every code carries the retry class the §28 table gives it", () => {
   // No rule id: this checks the test itself. A missing row would leave a code untested.
-  it("the test's copy of the table has one row for each of the schema's codes", () => {
+  it("the test's copy of the table has one row for each of the schema's codes", async () => {
     expect(TABLE.map(([code]) => code).sort()).toEqual([...SCHEMA_CODES].sort());
   });
 
@@ -98,24 +98,24 @@ describe("C3: every code carries the retry class the §28 table gives it", () =>
   // cannot build, so its envelope is C5's test.
   it.each(TABLE.filter(([code]) => code !== "BATCH_PARTIAL"))(
     "DSOR-ERR-01a: %s is refused with retry class %s",
-    (code, retry) => {
-      const envelope = refusedWith(code);
+    async (code, retry) => {
+      const envelope = await refusedWith(code);
       expect(envelope).toMatchObject({ code, retry });
       expect(schemaProblems(envelope)).toEqual([]);
     },
   );
 
-  it("DSOR-ERR-01a: BATCH_PARTIAL has retry class per_item in the table", () => {
+  it("DSOR-ERR-01a: BATCH_PARTIAL has retry class per_item in the table", async () => {
     expect(RETRY.BATCH_PARTIAL).toBe("per_item");
   });
 
   // Found by the review: code that let a Refusal carry its own retry class passed every
   // test. A handler names the code. Only the table gives the retry class.
-  it("DSOR-ERR-01a: a Refusal that carries its own retry class still gets the table's", () => {
+  it("DSOR-ERR-01a: a Refusal that carries its own retry class still gets the table's", async () => {
     const refusal = Object.assign(new Refusal("AUTHORIZATION_DENIED", "denied"), {
       retry: "safe_same_key",
     });
-    const envelope = run(() => {
+    const envelope = await run(() => {
       throw refusal;
     });
     expect(envelope).toMatchObject({ code: "AUTHORIZATION_DENIED", retry: "never" });
@@ -127,9 +127,9 @@ describe("C5: an error envelope is checked against the schema before it leaves c
     ["BATCH_PARTIAL, without the items the schema requires", "BATCH_PARTIAL"],
     ["a code the table does not list", "NOT_A_CODE"],
     ["an extension code this step has not documented", "X_MY_CODE"],
-  ])("DSOR-SCH-01: %s never leaves call, and INTERNAL_ERROR does", (_why, code) => {
+  ])("DSOR-SCH-01: %s never leaves call, and INTERNAL_ERROR does", async (_why, code) => {
     // The cast lets the test throw a code that the types would refuse.
-    const envelope = refusedWith(code as ErrorCode);
+    const envelope = await refusedWith(code as ErrorCode);
     expect(envelope).toMatchObject({ code: "INTERNAL_ERROR", retry: "never" });
     expect(schemaProblems(envelope)).toEqual([]);
   });

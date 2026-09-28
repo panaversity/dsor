@@ -1,5 +1,6 @@
-// One kind of business record, held in memory. No database yet.
-// The field names are the ones in specs/dsor/01-model.md, section 6.
+// One kind of business record. The field names are the ones in specs/dsor/01-model.md,
+// section 6. The program reads invoices from the table app.invoices (postgres.ts); the
+// unit tests read them from memory (memoryInvoices below).
 import { money, type Money } from "./money.ts";
 import { formatUri } from "./uri.ts";
 
@@ -26,12 +27,21 @@ export const invoices: Invoice[] = [
 
 /** Finds one invoice by id and returns a copy of it, or `undefined` when there is none. */
 export function getInvoice(list: Invoice[], id: string): Invoice | undefined {
-  // The list is passed in, so this stays a pure function. In step 09 it will move into
-  // a database.
+  // The list is passed in, so this stays a pure function.
   const found = list.find((invoice) => invoice.id === id);
   // A copy, so a caller that changes what it was given cannot change the stored invoice.
   // A read never writes. Found by step 04's review, and fixed from step 01 on.
   return found === undefined ? undefined : structuredClone(found);
+}
+
+// NEW IN STEP 09: where invoices come from, in memory or in the database (step 09's
+// README, decision 12). One function, so the operations never know which.
+/** Finds one invoice by id: a copy of it, or `undefined` when there is none. */
+export type InvoiceStore = { get: (id: string) => Promise<Invoice | undefined> };
+
+/** The invoices above, held in memory, for the unit tests. */
+export function memoryInvoices(): InvoiceStore {
+  return { get: async (id) => getInvoice(invoices, id) };
 }
 
 // Every invoice has its canonical URI (DSOR-RID-01a). This step knows

@@ -2,7 +2,6 @@
 // README). C6 is a reading check, done beside §21's diagram.
 import { describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
-import { handlers } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
@@ -19,6 +18,7 @@ import {
   THE_SUPERVISOR,
   contract,
   correlationFor,
+  handlers,
   inputsWith,
   log,
   notGranted,
@@ -34,37 +34,37 @@ import {
 } from "./helpers.ts";
 
 /** Calls an operation and records the numbers of the checklist's lines that ran, in order. */
-function linesRun(
+async function linesRun(
   on: Registry,
   request: RequestEnvelope,
   name: string,
   input: unknown,
-): { answer: Answer; lines: number[] } {
+): Promise<{ answer: Answer; lines: number[] }> {
   const lines: number[] = [];
-  const answer = call(on, log, request, name, input, (line) => lines.push(line));
+  const answer = await call(on, log, request, name, input, (line) => lines.push(line));
   return { answer, lines };
 }
 
 describe("C1: every call runs the lines of the checklist in §21's order", () => {
   // NEW IN STEP 08: every call now ends at line ⑪, where its decision is recorded, the
   // refusals too (step 08's README, decision 1).
-  it("DSOR-EXE-01a: invoice.issue, a command, runs lines ①, ⑤, ⑥, and ⑪, in that order", () => {
-    expect(linesRun(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE).lines).toStrictEqual([
-      1, 5, 6, 11,
-    ]);
+  it("DSOR-EXE-01a: invoice.issue, a command, runs lines ①, ⑤, ⑥, and ⑪, in that order", async () => {
+    expect((await linesRun(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).lines).toStrictEqual(
+      [1, 5, 6, 11],
+    );
   });
 
   // No rule id: DSOR-EXE-01a is about commands. §21 says queries pass lines 1 to 6 too.
   // Found by the review: a query's code runs at line ⑨, and was not numbered.
-  it("invoice.get, a query, runs lines ①, ⑤, ⑥, ⑨, and ⑪, in that order", () => {
-    const { answer, lines } = linesRun(registry, AGENT, "invoice.get", { id: "INV-1008" });
+  it("invoice.get, a query, runs lines ①, ⑤, ⑥, ⑨, and ⑪, in that order", async () => {
+    const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", { id: "INV-1008" });
     expect(lines).toStrictEqual([1, 5, 6, 9, 11]);
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
   });
 
   // The observer is optional. Without it, the answer is the same.
-  it("a call with no observer gets the same answer", () => {
-    expect(call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+  it("a call with no observer gets the same answer", async () => {
+    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -74,8 +74,8 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
   // The four rows of the table in step 07's README. Each row is one line further down the
   // checklist than the row before it. NEW IN STEP 08: after the line that refuses, only
   // line ⑪ runs, and records the refusal.
-  it("DSOR-EXE-01a: no login and a bad input: ① answers, and only ⑪ runs after it", () => {
-    const { answer, lines } = linesRun(registry, {}, "invoice.issue", BAD_ISSUE);
+  it("DSOR-EXE-01a: no login and a bad input: ① answers, and only ⑪ runs after it", async () => {
+    const { answer, lines } = await linesRun(registry, {}, "invoice.issue", BAD_ISSUE);
     expect(answer).toStrictEqual({
       code: "AUTHENTICATION_REQUIRED",
       message: LOG_IN_FIRST,
@@ -85,8 +85,8 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
     expect(lines).toStrictEqual([1, 11]);
   });
 
-  it("DSOR-EXE-01a: cfo_100, who may not issue, with a bad input: ⑤ answers before ⑥", () => {
-    const { answer, lines } = linesRun(registry, CFO, "invoice.issue", BAD_ISSUE);
+  it("DSOR-EXE-01a: cfo_100, who may not issue, with a bad input: ⑤ answers before ⑥", async () => {
+    const { answer, lines } = await linesRun(registry, CFO, "invoice.issue", BAD_ISSUE);
     expect(answer).toStrictEqual({
       code: "AUTHORIZATION_DENIED",
       message: notGranted("invoice.issue", "invoice:issue"),
@@ -96,8 +96,8 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
     expect(lines).toStrictEqual([1, 5, 11]);
   });
 
-  it("DSOR-EXE-01a: user_123, who may issue, with a bad input: ⑥ answers before 'is it built?'", () => {
-    const { answer, lines } = linesRun(registry, SUPERVISOR, "invoice.issue", BAD_ISSUE);
+  it("DSOR-EXE-01a: user_123, who may issue, with a bad input: ⑥ answers before 'is it built?'", async () => {
+    const { answer, lines } = await linesRun(registry, SUPERVISOR, "invoice.issue", BAD_ISSUE);
     expect(answer).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: expect.stringMatching(
@@ -109,8 +109,8 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
     expect(lines).toStrictEqual([1, 5, 6, 11]);
   });
 
-  it("DSOR-EXE-01a: user_123 with a good input passes every line, and hears 'not built yet'", () => {
-    const { answer, lines } = linesRun(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE);
+  it("DSOR-EXE-01a: user_123 with a good input passes every line, and hears 'not built yet'", async () => {
+    const { answer, lines } = await linesRun(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE);
     expect(answer).toStrictEqual({
       code: "UNSUPPORTED_CAPABILITY",
       message: '"invoice.issue" is not built yet',
@@ -121,13 +121,13 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
   });
 
   // No rule id: the same order for a query. Here the CFO role grants nothing at all.
-  it("a query: cfo_100, who may not read, with a bad input, is denied, not told the input is bad", () => {
+  it("a query: cfo_100, who may not read, with a bad input, is denied, not told the input is bad", async () => {
     const grantsNothing = buildRegistry(
       shipped,
       handlers,
       rolesFile({ ...STARTING_ROLES, CFO: [] }),
     );
-    const { answer, lines } = linesRun(grantsNothing, CFO, "invoice.get", { id: 1008 });
+    const { answer, lines } = await linesRun(grantsNothing, CFO, "invoice.get", { id: 1008 });
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
     expect(lines).toStrictEqual([1, 5, 11]);
   });
@@ -154,8 +154,8 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       { id: "INV-1008", principal: "accounts-payable-fte" },
       'must NOT have additional properties: "principal"',
     ],
-  ])("invoice.get refuses %s with VALIDATION_FAILED", (_why, input, problem) => {
-    expect(call(registry, log, AGENT, "invoice.get", input)).toStrictEqual({
+  ])("invoice.get refuses %s with VALIDATION_FAILED", async (_why, input, problem) => {
+    expect(await call(registry, log, AGENT, "invoice.get", input)).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", problem),
       retry: "never",
@@ -170,8 +170,8 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     ["a number", { invoice: 1008 }],
     ["no invoice", {}],
     ["a good URI, and a field the schema does not list", { ...GOOD_ISSUE, amount: "0.00" }],
-  ])("invoice.issue refuses %s with VALIDATION_FAILED", (_why, input) => {
-    expect(call(registry, log, SUPERVISOR, "invoice.issue", input)).toMatchObject({
+  ])("invoice.issue refuses %s with VALIDATION_FAILED", async (_why, input) => {
+    expect(await call(registry, log, SUPERVISOR, "invoice.issue", input)).toMatchObject({
       code: "VALIDATION_FAILED",
     });
   });
@@ -180,8 +180,8 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
   // stricter tenant rule applies where the URI is read (step 07's README, decision 2).
   // Found by the review: what comes after line ⑥ for another company's URI is step 10's
   // to decide, so this test asserts only that line ⑥ lets it through.
-  it("invoice.issue lets a URI with the right shape pass line ⑥, whatever its tenant", () => {
-    const { answer, lines } = linesRun(registry, SUPERVISOR, "invoice.issue", {
+  it("invoice.issue lets a URI with the right shape pass line ⑥, whatever its tenant", async () => {
+    const { answer, lines } = await linesRun(registry, SUPERVISOR, "invoice.issue", {
       invoice: "dsor://acme/invoice/INV-1008",
     });
     expect(lines).toStrictEqual([1, 5, 6, 11]);
@@ -190,13 +190,13 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
 
   // Start-up never allows it, so only a registry built by hand can have an operation with
   // no check for its input. When the check is missing, the answer is no.
-  it("an operation with no input check, in a registry built by hand, refuses every input", () => {
+  it("an operation with no input check, in a registry built by hand, refuses every input", async () => {
     const spy = vi.fn<Handler>(() => "ran");
     const handMade: Registry = {
       ...registryWithGet(spy),
       inputs: new Map(),
     };
-    expect(call(handMade, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(await call(handMade, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", "it has no input schema"),
       retry: "never",
@@ -206,25 +206,25 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
   });
 
   // A field's name comes from the caller, so it may be anything, even something huge.
-  it("a refusal shows only a short piece of a field's name", () => {
+  it("a refusal shows only a short piece of a field's name", async () => {
     const huge = "x".repeat(10_000);
-    const answer = call(registry, log, AGENT, "invoice.get", { id: "INV-1008", [huge]: 1 });
+    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008", [huge]: 1 });
     expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
     expect(JSON.stringify(answer).length).toBeLessThan(500);
   });
 
   // Checking must never change what the caller sent: no default filled in, no text turned
   // into a number, no field quietly deleted.
-  it("checking the input leaves it exactly as it was sent", () => {
+  it("checking the input leaves it exactly as it was sent", async () => {
     const spy = vi.fn<Handler>(() => "ran");
     const input = { id: "INV-1008" };
-    call(registryWithGet(spy), log, AGENT, "invoice.get", input);
+    await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
     expect(input).toStrictEqual({ id: "INV-1008" });
   });
 
   // Found by the review: ajv's useDefaults changes the input, and no test saw it.
-  it("a default in an input schema is never filled in", () => {
+  it("a default in an input schema is never filled in", async () => {
     const withDefault = inputsWith(
       "InvoiceGetRequest.schema.json",
       JSON.stringify({
@@ -241,13 +241,13 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       shippedRoles,
       withDefault,
     );
-    call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
+    await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
   });
 
   // Found by the review: the check read the id once and the code read it again. A getter
   // can answer differently each time (step 07's README, decision 9).
-  it("the code gets the very value line ⑥ checked, even from a getter that changes", () => {
+  it("the code gets the very value line ⑥ checked, even from a getter that changes", async () => {
     const spy = vi.fn<Handler>(() => "ran");
     let reads = 0;
     const input = {
@@ -256,14 +256,14 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
         return reads === 1 ? "INV-1008" : "INV-9999";
       },
     };
-    call(registryWithGet(spy), log, AGENT, "invoice.get", input);
+    await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
   });
 
-  it("an input that JSON cannot copy is refused with VALIDATION_FAILED", () => {
+  it("an input that JSON cannot copy is refused with VALIDATION_FAILED", async () => {
     const loop: Record<string, unknown> = { id: "INV-1008" };
     loop["self"] = loop;
-    expect(call(registry, log, AGENT, "invoice.get", loop)).toStrictEqual({
+    expect(await call(registry, log, AGENT, "invoice.get", loop)).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", "it cannot be copied as JSON"),
       retry: "never",
@@ -273,12 +273,12 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
 });
 
 describe("C4: start-up is refused for an input schema that is missing, broken, or not strict", () => {
-  it("the shipped contracts and input schemas start", () => {
+  it("the shipped contracts and input schemas start", async () => {
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, shippedInputs))).toBe("");
   });
 
   // Found by the review: the whole message, so a false second problem is seen too.
-  it("an input schema file that is missing stops start-up, and is the one problem named", () => {
+  it("an input schema file that is missing stops start-up, and is the one problem named", async () => {
     const missing = inputsWith("InvoiceGetRequest.schema.json", undefined);
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, missing))).toBe(
       "the registry refused to start:\n" +
@@ -295,14 +295,14 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
       "additionalProperty, a typo",
       '{ "type": "object", "properties": { "id": { "type": "string" } }, "additionalProperty": false }',
     ],
-  ])("%s stops start-up", (_why, text) => {
+  ])("%s stops start-up", async (_why, text) => {
     const loose = inputsWith("InvoiceGetRequest.schema.json", text);
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, loose))).toMatch(
       'inputs/InvoiceGetRequest.schema.json: must refuse fields it does not list: its top level needs "type": "object" and "additionalProperties": false',
     );
   });
 
-  it("a keyword ajv does not know, such as the typo minLenght, stops start-up", () => {
+  it("a keyword ajv does not know, such as the typo minLenght, stops start-up", async () => {
     const text = JSON.stringify({
       type: "object",
       properties: { id: { type: "string", minLenght: 1 } },
@@ -316,7 +316,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
   });
 
   // A file with a misspelled name would otherwise sit there, unused, and nobody would know.
-  it("an input schema file that no contract names stops start-up", () => {
+  it("an input schema file that no contract names stops start-up", async () => {
     const extra = inputsWith(
       "InvoiceListRequest.schema.json",
       '{ "type": "object", "additionalProperties": false }',
@@ -327,7 +327,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
   });
 
   // Found by the review: two contracts that share a broken schema had it named twice.
-  it("a broken input schema that two contracts share is named once", () => {
+  it("a broken input schema that two contracts share is named once", async () => {
     const twin = { ...contract("invoice.get"), id: "invoice.get_twin" };
     const sources = [...shipped, source(twin, "invoice.get_twin.json")];
     const withTwin = { ...handlers, "invoice.get_twin": handlers["invoice.get"]! };
@@ -336,14 +336,14 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
     expect(message.split("inputs/InvoiceGetRequest.schema.json: not valid JSON")).toHaveLength(2);
   });
 
-  it("an input schema that is not a valid JSON Schema stops start-up", () => {
+  it("an input schema that is not a valid JSON Schema stops start-up", async () => {
     const broken = inputsWith("InvoiceGetRequest.schema.json", '{ "type": "invoice" }');
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, broken))).toMatch(
       "inputs/InvoiceGetRequest.schema.json: not a valid JSON Schema",
     );
   });
 
-  it("an input schema file that is not JSON stops start-up", () => {
+  it("an input schema file that is not JSON stops start-up", async () => {
     const broken = inputsWith("InvoiceGetRequest.schema.json", "{ type: object");
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, broken))).toMatch(
       "inputs/InvoiceGetRequest.schema.json: not valid JSON",
@@ -351,7 +351,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
   });
 
   // Step 03's lesson: JSON.parse keeps the second of two values, and says nothing.
-  it("an input schema with a key written twice stops start-up", () => {
+  it("an input schema with a key written twice stops start-up", async () => {
     const text =
       '{ "type": "object", "additionalProperties": false, "additionalProperties": true }';
     const twice = inputsWith("InvoiceGetRequest.schema.json", text);
@@ -360,7 +360,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
     );
   });
 
-  it("a contract that names an input schema with no file stops start-up, with the others", () => {
+  it("a contract that names an input schema with no file stops start-up, with the others", async () => {
     const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceListRequest" } };
     const message = refusal(() =>
       buildRegistry(
@@ -375,7 +375,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
   });
 
   // Two contracts may share one input schema. It is read once.
-  it("two contracts with one input schema start", () => {
+  it("two contracts with one input schema start", async () => {
     const twin = { ...contract("invoice.get"), id: "invoice.get_twin" };
     const sources = [...shipped, source(twin, "invoice.get_twin.json")];
     const withTwin = { ...handlers, "invoice.get_twin": handlers["invoice.get"]! };
@@ -400,32 +400,34 @@ describe("C5: the code behind an operation is reached only through the checklist
       AGENT,
       { id: "INV-1008", principal: "accounts-payable-fte" },
     ],
-  ])("DSOR-OPR-04a: %s never reaches invoice.get's code", (_why, request, input) => {
+  ])("DSOR-OPR-04a: %s never reaches invoice.get's code", async (_why, request, input) => {
     const spy = vi.fn<Handler>(() => "ran");
-    expect(call(registryWithGet(spy), log, request, "invoice.get", input)).toHaveProperty("code");
+    expect(await call(registryWithGet(spy), log, request, "invoice.get", input)).toHaveProperty(
+      "code",
+    );
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("DSOR-OPR-04a: a caller who may not read never reaches invoice.get's code", () => {
+  it("DSOR-OPR-04a: a caller who may not read never reaches invoice.get's code", async () => {
     const spy = vi.fn<Handler>(() => "ran");
     const grantsNothing = buildRegistry(
       shipped,
       { ...handlers, "invoice.get": spy },
       rolesFile({ ...STARTING_ROLES, CFO: [] }),
     );
-    expect(call(grantsNothing, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(await call(grantsNothing, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
       code: "AUTHORIZATION_DENIED",
     });
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("DSOR-OPR-04a: a call that passes every line reaches the code, once", () => {
+  it("DSOR-OPR-04a: a call that passes every line reaches the code, once", async () => {
     const spy = vi.fn<Handler>(() => "ran");
-    expect(call(registryWithGet(spy), log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject(
-      {
-        data: "ran",
-      },
-    );
+    expect(
+      await call(registryWithGet(spy), log, AGENT, "invoice.get", { id: "INV-1008" }),
+    ).toMatchObject({
+      data: "ran",
+    });
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });

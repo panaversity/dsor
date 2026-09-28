@@ -1,5 +1,5 @@
 // Start-up. How the contract files are found, and the program itself.
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { readRoles } from "../src/permissions.ts";
 import { contractFiles, readContracts } from "../src/registry.ts";
-import { STARTING_ROLES, contract, notGranted, shipped, without } from "./helpers.ts";
+import { STARTING_ROLES, contract, shipped, without } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
@@ -57,44 +57,6 @@ describe("reading the role table", () => {
 // No rule id: the program itself. Found by the review: nothing ran src/main.ts, so a
 // start-up that skipped the registry passed every test.
 describe("the program", () => {
-  // Every answer the program prints is an envelope. The test waits up to
-  // 30 seconds. Found live 2026-09-26: on a busy machine, starting node took longer than
-  // vitest's 5-second default, and the test failed with no bug in the code.
-  it(
-    "starts, reads INV-1008 through invoice.get, and prints every answer as an envelope",
-    {
-      timeout: 30_000,
-    },
-    () => {
-      const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
-      const output = execFileSync(process.execPath, [main], { encoding: "utf8" });
-      expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue' ]");
-      // Found by the review: "id: 'INV-1008'" also matches the address read back, so the
-      // success envelope could go unprinted. "data: {" is only in the success.
-      expect(output).toMatch("data: {");
-      expect(output).toMatch("id: 'INV-1008'");
-      // The correlation also names the caller, so it may not fit on one line.
-      expect(output).toMatch(/request_id: 'req_/);
-      expect(output).toMatch("agent_id: 'accounts-payable-fte'");
-      expect(output).toMatch("dsor://org_456/invoice/INV-1008");
-      expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
-      expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
-      // The agent may not issue. user_123 may, and hears "not built yet".
-      expect(output).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
-      expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
-      // user_123 sends a bad input, and line ⑥ refuses it.
-      expect(output).toMatch(
-        `message: 'the input of "invoice.issue" is not valid: /invoice must match pattern`,
-      );
-      // A call with no login and a call that names the CFO are refused. The
-      // CFO is never named as the caller. A person's own request id comes back with its id.
-      expect(output).toMatch("code: 'AUTHENTICATION_REQUIRED'");
-      expect(output).toMatch("code: 'AUTHORIZATION_DENIED'");
-      expect(output).not.toMatch("principal_id: 'cfo_100'");
-      expect(output).toMatch("{ request_id: 'ap-desk-7', principal_id: 'user_123' }");
-    },
-  );
-
   // Found by step 04's review: no test started the program with a broken contract, so a
   // refused start-up that ended with exit code 0, "success", passed every test.
   it(
@@ -182,19 +144,6 @@ describe("the program", () => {
     },
   );
 
-  // Found by the review: a program that looked for roles.json in the
-  // folder it was started from passed every test, because the tests start it from here.
-  it("finds its own role table, whatever folder it is started from", { timeout: 30_000 }, () => {
-    const dir = mkdtempSync(join(tmpdir(), "dsor-elsewhere-"));
-    try {
-      const run = spawnSync(process.execPath, [MAIN], { cwd: dir, encoding: "utf8" });
-      expect(run.status).toBe(0);
-      expect(run.stdout).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
-  });
-
   // Found by the review: a role table read outside the start-up checks
   // still stopped the program, but with a stack trace instead of the problem.
   it(
@@ -216,25 +165,24 @@ describe("the program", () => {
       }
     },
   );
-});
 
-// NEW IN STEP 08: the program itself shows the lesson: one record for each of its eight
-// calls, the refusals too, and no answer when the log cannot take a record.
-describe("the program's log", () => {
-  it("DSOR-EXE-02: prints one record for each of its eight calls", { timeout: 30_000 }, () => {
-    const run = spawnSync(process.execPath, [MAIN], { encoding: "utf8" });
-    expect(run.status).toBe(0);
-    const lines = run.stdout.split("\n").filter((l) => /^\d+ \S+ (ALLOW|DENY) \S+$/.test(l));
-    expect(lines).toStrictEqual([
-      "1 invoice.get@1 ALLOW ok",
-      "2 invoice.get@1 ALLOW RESOURCE_NOT_FOUND",
-      "3 invoice.issue@1 DENY AUTHORIZATION_DENIED",
-      "4 invoice.get@1 DENY AUTHENTICATION_REQUIRED",
-      "5 invoice.get@1 DENY AUTHORIZATION_DENIED",
-      "6 invoice.get@1 ALLOW ok",
-      "7 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY",
-      "8 invoice.issue@1 DENY VALIDATION_FAILED",
-    ]);
-    expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
-  });
+  // NEW IN STEP 09: the program needs the database now, and it never falls back to a log
+  // in memory (step 09's README, decision 15). The empty variable is kept: .env does not
+  // override a variable that is already set, even to "".
+  it(
+    "refuses to start without DSOR_DB_URL: it names the variable, after the start-up checks",
+    { timeout: 30_000 },
+    () => {
+      const run = spawnSync(process.execPath, [MAIN], {
+        encoding: "utf8",
+        env: { ...process.env, DSOR_DB_URL: "" },
+      });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toMatch("DSOR_DB_URL is not set");
+      expect(run.stderr).not.toMatch(/^\s+at /m);
+      // The contracts were checked first, so a broken contract is named even with no database.
+      expect(run.stdout).toMatch("operations:");
+      expect(run.stdout).not.toMatch("data: {");
+    },
+  );
 });
