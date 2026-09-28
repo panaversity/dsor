@@ -12,6 +12,13 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 
+// NEW IN STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
+// `approver` grants invoice:read and payment:approve, and not invoice:issue — so they ask as
+// the agent, which holds it. Nothing about what they test has changed. A new gate in front of
+// the program changing which caller a test needs is exactly what it looks like when permissions
+// start working.
+const ISSUER = { loggedInAs: "accounts-payable-fte" } as const;
+
 describe("who you are comes from the login, never from the arguments", () => {
   // cfo_100 is the person who approves large payments. If a caller could claim to be her
   // by writing it down, every approval rule in DSoR would be worth nothing.
@@ -200,18 +207,18 @@ describe("who you are comes from the login, never from the arguments", () => {
     const circular: Record<string, unknown> = { invoice: INV_1009 };
     circular["itself"] = circular;
 
-    const answer = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", circular);
+    const answer = callOperation(ISSUER, "invoice.issue", circular);
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
     }
 
     expect(answer.envelope.code).toBe("VALIDATION_FAILED");
-    expect(answer.askedBy).toBe("cfo_100");
-    expect(answer.envelope.correlation.principal_id).toBe("cfo_100");
+    expect(answer.askedBy).toBe("accounts-payable-fte");
+    expect(answer.envelope.correlation.principal_id).toBe("accounts-payable-fte");
 
     // And INV-1009 is still a draft, so nothing happened.
-    const after = callOperation({ loggedInAs: "cfo_100" }, "invoice.get", { invoice: INV_1009 });
+    const after = callOperation(ISSUER, "invoice.get", { invoice: INV_1009 });
 
     if (after.kind !== "data") {
       throw new Error("INV-1009 should still be readable");
@@ -238,14 +245,14 @@ describe("who you are comes from the login, never from the arguments", () => {
       },
     };
 
-    const answer = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", args);
+    const answer = callOperation(ISSUER, "invoice.issue", args);
 
     if (answer.kind !== "result") {
       throw new Error(`expected a result, got ${answer.kind}`);
     }
 
-    expect(answer.askedBy).toBe("cfo_100");
-    expect(answer.envelope.correlation.principal_id).toBe("cfo_100");
+    expect(answer.askedBy).toBe("accounts-payable-fte");
+    expect(answer.envelope.correlation.principal_id).toBe("accounts-payable-fte");
     expect(reads).toBe(1);
 
     const honest = createHash("sha256")
