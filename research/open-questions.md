@@ -107,7 +107,12 @@ for a human. An agent may gather evidence; it does not settle these alone.
     echoes the caller's own text to a caller with no login. Should the specification
     bound the form of the correlation ids a caller sends, and say what DSoR does with a
     bad one? Must a request id be unique for a principal? The same goes for `task_id`,
-    `trace_id`, and `session_id`.
+    `trace_id`, and `session_id`. Step 09's learner build found a cost of saying nothing:
+    PostgreSQL's `jsonb` refuses the NUL character and half of an emoji. An id holding
+    one made the decision record fail, so the call was refused as
+    `EVIDENCE_STORE_UNAVAILABLE` and left no record at all, from a store that was
+    healthy. The build now also refuses an id that is not well-formed text or holds a
+    control character, and records that refusal.
 23. **What does a membership's `scopes` hold?** §12 gives each tenant membership `roles`
     and `scopes`, and nothing else in the specification mentions membership scopes. The
     security context has `tokenScopes`, and DSOR-DEL-01b and DSOR-DEL-02 use token
@@ -194,3 +199,28 @@ for a human. An agent may gather evidence; it does not settle these alone.
     say what the caller heard, so a second record is needed when the write's outcome is
     unknown? Or is a decision record that DSoR could not confirm treated like an intent
     record with no outcome (DSOR-EXE-04b), and reconciled later?
+32. **What does a failed read at line 9 answer, and what does its record say?** Step 09's
+    learner build reads INV-1008 from PostgreSQL at line 9. When the database is down,
+    the caller hears `INTERNAL_ERROR`, retry `never`, and the record says `ALLOW`,
+    because DSoR's checks let the call reach its code. §28 has `CONNECTOR_UNAVAILABLE`,
+    which says the source is down and invites a retry. Must a read that fails at line 9
+    answer `CONNECTOR_UNAVAILABLE`? And should the record tell "allowed, and answered"
+    apart from "allowed, but the read failed"?
+33. **What does "durably" mean in DSOR-EXE-02?** Step 09's learner build answers only
+    after PostgreSQL has committed the record, and proves that the record survives when
+    every connection is closed and new ones are opened. That is a restart, not a crash.
+    §47 asks for fault injection. The rule does not say whether "durably" means
+    committed on one server, flushed to its disk, or copied to a second machine. Neon,
+    for example, confirms a commit only once its storage has the change. Should §21 or
+    §30 say what durable means, and should §47 name the test: kill the process right
+    after the answer, and find the record?
+34. **Where may the migration role's credential live?** §36 separates `dsor_migration`,
+    which owns the tables, from `dsor_runtime`, which the program runs as. It does not
+    say where the migration credential is kept. Step 09's learner build keeps both
+    connection strings in one `.env` file. Its first version loaded the whole file into
+    the running program, so an attacker who controlled the program held the owner's key
+    and could rewrite the log. The build now loads only the runtime string, but anyone
+    who can read `.env` still holds both. DSOR-CNR-02 keeps connector credentials away
+    from the agent and the model. Should a rule keep the migration credential out of the
+    runtime's reach too, for example in a separate store that only the migration job can
+    read?
