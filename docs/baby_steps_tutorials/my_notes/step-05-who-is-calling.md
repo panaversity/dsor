@@ -100,8 +100,8 @@ decoration.
 
 | Here | Becomes |
 | --- | --- |
-| a login is a name, with no password, no token, no session | step 43, a real identity provider |
-| three people in a frozen array in the source | step 43 |
+| a login is a name, with no password, no token, no session | step 43 for people, step 44 for agents |
+| three people in a frozen array in the source | step 43, a real identity provider |
 | a principal built inside the program, no `security-context` document validated | unsettled — see [open question 2](open-questions.md) |
 | `AUTHENTICATION_REQUIRED` is the only identity refusal | step 06 adds `AUTHORIZATION_DENIED` |
 | both "no login" and "unknown name" answer the same code, deliberately | stays — telling them apart tells an attacker which names exist |

@@ -26,10 +26,11 @@ import { findPerson, type Principal } from "./people.ts";
  * session. Nothing here authenticates, so `accounts-payable-fte` can simply send
  * `{ loggedInAs: "cfo_100" }` and be recorded as the CFO. One field stops a caller
  * *declaring* two identities; the rule is about one *borrowing* an identity that is not
- * theirs. Step 43.
+ * theirs. Step 44, where an agent gets its own OAuth client and its own key.
  *
  * Nothing here is authentication. A real login proves who you are; this only says who you
- * claim to be, and the claim is believed. Step 43 makes it real. What this step does hold
+ * claim to be, and the claim is believed. Step 43 makes it real for people and step 44 for
+ * agents. What this step does hold
  * is the other half of DSOR-SRC-02a: whatever the arguments say is ignored.
  */
 export interface Login {

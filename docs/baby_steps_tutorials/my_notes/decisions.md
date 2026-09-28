@@ -405,7 +405,7 @@ typechecks, so the real protection is "nothing reads the extra field" — which 
 a check can be deleted. The sentence claimed the strong form.
 
 The map says the same thing plainly, and was not read closely enough: it assigns step 05
-`DSOR-IDN-01, DSOR-SRC-02a` and nothing else, and it assigns `DSOR-IDN-02a` to step 43, the
+`DSOR-IDN-01, DSOR-SRC-02a` and nothing else, and it assigns `DSOR-IDN-02a` to step 44, the
 identity-binding step.
 **Cost:** the step loses its second claimed rule and keeps one. That is the honest count, and
 it makes step 05 the first step here whose README claims a single rule.

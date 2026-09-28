@@ -16,7 +16,7 @@ callOperation({ loggedInAs: "user_123" }, "invoice.get", { invoice: "…" })
 ```
 
 Anyone can write `cfo_100` there and the program will believe them. Real logins arrive in
-step 43.
+steps 43 and 44 — step 43 for people, step 44 for agents.
 
 So the rule this step meets, `DSOR-SRC-02a`, has two halves, and only one of them is real
 here:
@@ -24,7 +24,7 @@ here:
 | Half of the rule | This step |
 | --- | --- |
 | who you are comes from **beside** the request, not from the arguments | **real**, and tested |
-| what it comes from is **authenticated** | pretend until step 43 |
+| what it comes from is **authenticated** | pretend until steps 43 and 44 |
 
 The rule's own words are "the authenticated request envelope". This step has no envelope
 around a request — the login is simply the first argument to the call. What it does have is
@@ -331,7 +331,8 @@ general directions are in the
    supervisor" — because there is nowhere to write the second one. It does **not** stop a
    caller borrowing a single identity that is not theirs: the agent can put `cfo_100` in the
    one field, and nothing here can tell. That is `DSOR-IDN-02a`, and this step does not meet
-   it; only real credentials can, in step 43. This page claimed the opposite until a review
+   it; only real credentials can, and for an agent those arrive in step 44. This page claimed
+   the opposite until a review
    caught it, and the lesson is worth more than the claim was: ask which *clause* of a rule
    your code satisfies, not whether it is about the same subject.
 3. Because "there is no such person here" tells a stranger which names do exist, one guess
@@ -345,7 +346,8 @@ general directions are in the
    says the caller is normalised "before any other processing", and that is the strongest
    ordering sentence in the specification.
 6. No. The login is believed without proof — no password, no token. What is real is that the
-   arguments cannot override it. Real authentication is step 43, and this README says so at
+   arguments cannot override it. Real authentication is steps 43 and 44, and this README says
+   so at
    the top rather than at the bottom.
 
 </details>
@@ -368,7 +370,7 @@ and can be called with no login at all — the map shuts that door in step 42. A
 **`DSOR-SRC-02a` is met in one half only**, as the section at the top of this page says.
 Nothing is derived from the arguments, and both the query **and** the command are tested with
 a caller who plants `principal` in them. Nothing is *authenticated* — the login is believed.
-Step 43.
+Step 43 for people, step 44 for agents.
 
 That is one rule met and one met in half, which is what the
 [map](../readme.md) gives this step. An earlier version of this page also claimed
@@ -378,7 +380,7 @@ Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-IDN-02a` | An agent must authenticate with its own credentials, never a human's session. **Nothing here authenticates anything**, so any caller can present any name: `accounts-payable-fte` can send `{ loggedInAs: "cfo_100" }` and every answer and every envelope will say the CFO asked — which is the exact failure §12 describes. The one-field `Login` stops a caller *declaring* two identities at once, and that is worth having, but the rule is about *borrowing* one. Step 43. |
+| `DSOR-IDN-02a` | An agent must authenticate with its own credentials, never a human's session. **Nothing here authenticates anything**, so any caller can present any name: `accounts-payable-fte` can send `{ loggedInAs: "cfo_100" }` and every answer and every envelope will say the CFO asked — which is the exact failure §12 describes. The one-field `Login` stops a caller *declaring* two identities at once, and that is worth having, but the rule is about *borrowing* one. Step 44, `44_an_oauth_server_for_agents`, where the agent gets its own OAuth client and proves itself with a private key. |
 | `DSOR-SRC-02b` | A tenant, principal, or delegation identifier in the arguments that **disagrees** with the security context must cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`. This step *ignores* such an argument, which is not the same as refusing it. Ignoring is the right first lesson; the refusal needs authorization and more than one company, steps 06 and 10. |
 | `DSOR-IDN-02b` | Audit must record the subject and every actor. There is no audit log until step 08. |
 | `DSOR-IDN-03a`, `03b` | Exactly one active tenant per request, and no operation across tenants. The company is checked against one hard-coded value, not resolved from the caller's memberships. Steps 10 and 11. |
