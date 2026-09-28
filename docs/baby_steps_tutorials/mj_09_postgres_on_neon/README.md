@@ -254,8 +254,17 @@ Decisions 16 and 17 were added after the hostile review, which found each gap li
     stopped here. One database test starts the program with exactly that string, and
     expects the refusal, so deleting the check turns it red. It is the only test that
     touches the owner's key, and it never logs in as the owner itself. Found by a second
-    review: with the check deleted, every test stayed green. *Downside:* one more query
-    at start-up, and the database tests need `DSOR_MIGRATION_URL` too.
+    review: with the check deleted, every test stayed green. The test reads the owner's
+    key into a variable of its own, never into the test process's environment, so no
+    program it starts later inherits it. *Downside:* one more query at start-up, and the
+    database tests need `DSOR_MIGRATION_URL` too.
+18. **A test about a secret removes the secret before it checks anything.** When a
+    check fails, vitest prints both sides, so `expect(output).not.toContain(secret)`
+    would print the secret exactly when it leaked, into a terminal or a CI log. So every
+    test that reads a program's output first replaces each connection string, and each
+    password alone, with a label such as `<owner URL>`. Then it asserts on what is left.
+    Found by a third review. *Downside:* a failing test shows where a secret was, not
+    what it was.
 
 ### The tests, by claim
 
@@ -444,6 +453,7 @@ always rolled back, so a break that opens the lock still cannot change a record.
 | R4 | the invoice id pasted into the SQL | (the review's) | before the fix: **nothing**. After: C6's test with `INV-9999' OR '1'='1` |
 | R5 | the start-up check deleted from `main.ts` | (the second review's) | before: **nothing**, all 527 tests green. After: the start-up test, because the program ran as the owner and exited 0 |
 | R6 | line ⑪ without `await`, then a crash (T5 against the crash test) | (the second review's) | the crash test: the caller heard "ok", and the table held no record |
+| R7 | `main.ts` prints its own `DSOR_DB_URL` | (the third review's) | the start-up test, and its failure shows `oops, printed <owner URL>`: the label, never the key |
 
 **T1.** The owner hands out UPDATE:
 
@@ -683,6 +693,14 @@ back after.
     Break T5 turns it red: the caller heard "ok", and no record existed.
 11. **Nothing noticed if the start-up check was deleted.** Now a database test starts
     the program with the owner's string and expects it to refuse (decision 17).
+
+**Found by a third review, and fixed:**
+
+12. **The test that guards the owner's key printed it when it failed.** vitest shows
+    both sides of a failed check, so `not.toContain(owner)` would have put the key in
+    the log at the very moment it leaked. Now the output is redacted first (decision
+    18), and the key is read into the test's own variable, not into the environment
+    that later programs inherit.
 
 **Left open on purpose:**
 

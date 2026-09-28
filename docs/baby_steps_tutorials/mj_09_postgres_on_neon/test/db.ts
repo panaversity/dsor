@@ -88,5 +88,21 @@ export const PRIVILEGES_HELD = `
   UNION ALL SELECT * FROM on_sequences UNION ALL SELECT * FROM on_schemas
   ORDER BY object`;
 
+/**
+ * The text with each secret replaced by its label: the whole connection string, then its
+ * password alone, as written and as decoded. Assert on this, never on the raw output, so
+ * a failing check cannot print a secret (step 09's README, decision 18).
+ */
+export function redact(text: string, secrets: Record<string, string>): string {
+  let out = text;
+  for (const [label, url] of Object.entries(secrets)) {
+    const password = new URL(url).password;
+    for (const secret of [url, password, decodeURIComponent(password)]) {
+      if (secret !== "") out = out.split(secret).join(label);
+    }
+  }
+  return out;
+}
+
 /** The code Postgres gives when a user lacks a privilege: "insufficient_privilege". */
 export const NO_PRIVILEGE = { code: "42501" };

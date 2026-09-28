@@ -1,15 +1,32 @@
 // NEW IN STEP 09: the program's full runs, moved here from startup.test.ts, because the
 // program now needs the database (step 09's README, decision 15).
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
+import { RUNTIME_URL, redact } from "./db.ts";
 import { notGranted } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
+
+type Run = { status: number | null; stdout: string; stderr: string };
+
+/**
+ * Starts the program and gives back its output with every secret replaced by a label, so
+ * a failing check can never print a secret (step 09's README, decision 18).
+ */
+function start(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd?: string,
+  secrets: Record<string, string> = {},
+): Run {
+  const run = spawnSync(process.execPath, [MAIN], { encoding: "utf8", env, cwd });
+  const all = { ...secrets, "<runtime URL>": RUNTIME_URL };
+  return { status: run.status, stdout: redact(run.stdout, all), stderr: redact(run.stderr, all) };
+}
 
 // No rule id: the program itself. Found by step 07's review: nothing ran src/main.ts, so
 // a start-up that skipped the registry passed every test.
@@ -20,7 +37,10 @@ describe("the program", () => {
     "starts, reads INV-1008 through invoice.get, and prints every answer as an envelope",
     { timeout: 60_000 },
     () => {
-      const output = execFileSync(process.execPath, [MAIN], { encoding: "utf8" });
+      const run = start();
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+      const output = run.stdout;
       expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue' ]");
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.
@@ -58,7 +78,7 @@ describe("the program", () => {
       try {
         // Without DSOR_DB_URL from this process, so the program must find .env itself.
         const { DSOR_DB_URL: _, ...env } = process.env;
-        const run = spawnSync(process.execPath, [MAIN], { cwd: dir, encoding: "utf8", env });
+        const run = start(env, dir);
         expect(run.stderr).toBe("");
         expect(run.status).toBe(0);
         expect(run.stdout).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
@@ -74,7 +94,7 @@ describe("the program's log", () => {
     "DSOR-EXE-02: prints one record for each of its eight calls, in order",
     { timeout: 60_000 },
     () => {
-      const run = spawnSync(process.execPath, [MAIN], { encoding: "utf8" });
+      const run = start();
       expect(run.status).toBe(0);
       const lines = run.stdout.split("\n").filter((l) => /^\d+ \S+ (ALLOW|DENY) \S+$/.test(l));
       // The database numbers the records across every run, so the numbers are not 1 to 8
@@ -106,11 +126,13 @@ describe("the program's start-up check", () => {
     "DSOR-AUD-04a: refuses to run as the owner, names why, and makes no call",
     { timeout: 60_000 },
     () => {
-      loadDotEnv(["DSOR_MIGRATION_URL"]);
-      const owner = requireEnv("DSOR_MIGRATION_URL");
-      const run = spawnSync(process.execPath, [MAIN], {
-        encoding: "utf8",
-        env: { ...process.env, DSOR_DB_URL: owner },
+      // Into a variable of this test's own, never into process.env, so no program started
+      // later inherits the owner's key. Found by the third review.
+      const found: NodeJS.ProcessEnv = { DSOR_MIGRATION_URL: process.env["DSOR_MIGRATION_URL"] };
+      loadDotEnv(["DSOR_MIGRATION_URL"], undefined, found);
+      const owner = requireEnv("DSOR_MIGRATION_URL", found);
+      const run = start({ ...process.env, DSOR_DB_URL: owner }, undefined, {
+        "<owner URL>": owner,
       });
       expect(run.status).toBe(1);
       expect(run.stderr).toMatch("DSOR_DB_URL must log in as dsor_runtime. Refused:");
@@ -119,7 +141,7 @@ describe("the program's start-up check", () => {
       // No call was made, so nothing was answered.
       expect(run.stdout).not.toMatch("data: {");
       // The refusal names the problems, never the secret.
-      expect(run.stdout + run.stderr).not.toContain(owner);
+      expect(run.stdout + run.stderr).not.toContain("<owner URL>");
     },
   );
 });

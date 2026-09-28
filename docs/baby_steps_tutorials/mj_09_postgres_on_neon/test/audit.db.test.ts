@@ -14,6 +14,7 @@ import {
   dbRegistry,
   newPool,
   requestId,
+  redact,
   rowsFor,
   tryThenRollBack,
 } from "./db.ts";
@@ -233,7 +234,7 @@ describe("C3, by fault injection: the record survives a crash straight after the
         });
         expect(child.signal).toBe("SIGKILL");
         // The caller heard "yes"...
-        expect(JSON.parse(child.stdout)).toMatchObject({
+        expect(JSON.parse(redact(child.stdout, { "<runtime URL>": RUNTIME_URL }))).toMatchObject({
           data: { id: "INV-1008" },
           correlation: { request_id: id },
         });
