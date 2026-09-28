@@ -578,3 +578,70 @@ step 08 builds, where the operator can read it and the caller cannot.
 error. Real, and the README says so.
 **Rejected:** naming the permission. Kinder while learning, and it answers questions for
 people who should not be asking them.
+
+## 36 · A role is looked up with `Object.hasOwn`, not with a plain index (2026-09-29)
+
+**Decided by:** a hostile review finding, reproduced by hand before the change.
+**What:** `permissionsOf` returns `NOTHING` unless `Object.hasOwn(ROLES, principal.role)`, rather
+than relying on `ROLES[principal.role] ?? NOTHING`.
+**Why:** the plain version walks the **prototype chain**, so `?? NOTHING` only fires when the
+chain also misses — and twelve role names never miss. A principal with `role: "toString"` got
+`Object.prototype.toString`, a function, and `holds` then called `.includes` on it and threw a
+raw `TypeError` at the caller instead of answering no. Worse, anything written to
+`Object.prototype` became a role granting whatever it liked: with
+`Object.prototype.attacker_role = ["payment:execute"]`, `holds` said **true** to a permission no
+role in the table grants, `checkPermissions` had never validated it, and `Object.keys(ROLES)` did
+not show it.
+
+The doc comment above the function claimed "a role nobody defined grants **nothing**" and ruled
+out throwing as "the wrong shape". Both halves were false for those twelve names, in the doc
+comment of the function the step is named after.
+
+Not reachable through `callOperation` today — `principal.role` is only ever written by the frozen
+cast in `people.ts` — and the reviewers said so themselves and downgraded it. It matters because
+steps 18 and 19 feed roles from an external source, and because a false written guarantee is its
+own defect.
+**Cost:** one branch, and a comment longer than the code explaining why the obvious version is
+wrong. Worth it: the obvious version is what a reader would write.
+**Rejected:** `Object.create(null)` for the table, or a `Map`. Both fix it and both are better
+engineering. `Object.hasOwn` was chosen because it is **the same fix, with the same call, that
+`login.ts` already uses eighty lines away** — so the two guards now read as one idea rather than
+two tricks.
+
+## 37 · Everything a caller sends is read through one helper that cannot throw (2026-09-29)
+
+**Decided by:** a hostile review finding.
+**What:** `ownString(from, key)` in `login.ts` — the only way a caller-supplied property is read.
+It returns `undefined` for `null`, a non-object, a name the object merely inherits, a non-string
+value, **and a getter that throws**. And in `operations.ts` the argument copy moved inside the
+`try` that was already there.
+**Why:** `src/operations.ts` says nothing throws at a caller any more. Two things did.
+`{ get loggedInAs() { throw new Error("boom") } }` came back as `Error: boom` rather than
+`AUTHENTICATION_REQUIRED`, and the same trick in the arguments escaped because
+`Object.freeze({ ...args })` — which runs every getter — sat one line above the `try`. A stack
+trace is not an envelope a caller can act on, and it is the exact shape `DSOR-ERR-01a` exists to
+prevent.
+**Cost:** a helper with four conditions where there was one inline check, in the first lines a
+learner reads. The comment lists all four with the input that motivates each, so it reads as a
+list of real attacks rather than defensive noise.
+**Rejected:** wrapping `callOperation`'s whole body in a `try`. It would catch these and also
+swallow genuine bugs in the operation, turning a crash that should be fixed into a
+`VALIDATION_FAILED` blamed on the caller.
+
+## 38 · A piece that can be tested alone gets attacked before anything depends on it (2026-09-29)
+
+**What:** the rebuild put the roles table and `holds` in piece 1 with **no gate at all**, so
+nothing refused anybody and the file knew nothing about operations. The gate came in piece 2.
+**Why:** this was done for teaching and turned out to matter for correctness. The first build
+wrote the table, the lookup, the gate and the start-up check together, and shipped three defects.
+The rebuild found all three — because in piece 1 `holds` was the only thing to attack, so it got
+attacked properly: odd role names, prototype keys, prefixes, freezing. In the first build those
+same questions competed for attention with an operation pipeline.
+
+The rebuild ended at 130 tests against 126, and the extra four are not padding: they are the four
+holes. So "build the smallest testable piece first" is not only easier to follow — it changes
+what you think to attack.
+**Cost:** five commits and five rounds of breaking instead of one. On a step this size, an
+afternoon.
+**Rejected:** nothing. This is a note about method, kept because the evidence for it is unusually
+clean: the same step, the same author, built both ways, two days apart.

@@ -210,3 +210,31 @@ only a child process could close that — but it moves the mistake from "delete 
 
 Where this applies: any flag that means "something happened". Prefer a count, a hash, or the
 result itself over `true`.
+
+## 13 · A fix belongs everywhere its shape lives
+
+In step 05, `login.ts` gained `Object.hasOwn` with a comment explaining it: *a name the object
+merely inherits is a name nobody in this program chose.* A test was written for it, titled "a name
+inherited from a prototype is not a login".
+
+One day later, step 06 looked up roles with `ROLES[principal.role] ?? NOTHING` — the same bug, in
+the same file tree, with the fix already written eighty lines away. A role named `toString`
+returned a function; `Object.prototype` pollution granted a permission no role in the table had.
+A hostile review found it; my own mutation sweep could not, because the sweep mutates guards that
+*exist* and this was a guard that did not.
+
+The pattern is not "inherited properties". It is **the same question asked about a different
+noun**:
+
+| Step | The noun | The question |
+| --- | --- | --- |
+| 05 | a login's name | is this key the object's own? |
+| 06 | a role's name | is this key the object's own? |
+| 05 | `findPerson` | is this a whole match or a prefix? |
+| 06 | `holds` | is this a whole match or a prefix? |
+
+Both rows repeated, and the second one repeated *after* it had been written down as a lesson.
+
+What to do: when a guard is added, ask what kind of thing it protects, then list every other place
+that kind of thing arrives, and check each. It takes a minute, and it is the only one of these
+three methods — tests, mutation sweep, sideways check — that finds a guard that was never written.

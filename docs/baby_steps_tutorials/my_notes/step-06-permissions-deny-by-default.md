@@ -1,21 +1,15 @@
 # Step 06 · Permissions, denied by default
 
-Folder: `my_06_permissions_deny_by_default`. Built 2026-09-28. Copy of
-`my_05_who_is_calling` plus one new idea: **anything nobody granted is refused.**
+Folder: `my_06_permissions_deny_by_default`. Built 2026-09-28, deleted, and rebuilt 2026-09-29 a
+piece at a time with the learner. Copy of `my_05_who_is_calling` plus one new idea: **anything
+nobody granted is refused.**
 
-Decisions [33 to 35](decisions.md).
-
-> **Status, 2026-09-29: the folder was deleted and is being rebuilt.** It was built in one
-> pass and then explained, which is the wrong way round for a learner copy — the point of these
-> is to be built a piece at a time with the reasoning out loud. The design below is unchanged,
-> because decisions 33 to 35 were the learner's and still stand, and the findings below were
-> real. Everything written here in the present tense describes the first build, not a folder
-> that exists right now. Tests: 126 in that first build.
+Decisions [33 to 37](decisions.md). Tests: 130.
 
 ## What it does
 
-Each principal carries a **role**. A table says what each role may do, as permission strings
-in the specification's `<resource>:<action>` form. Each operation's contract already says which
+Each principal carries a **role**. A table says what each role may do, as permission strings in
+the specification's `<resource>:<action>` form. Each operation's contract already says which
 permission it needs. Before an operation runs, the caller's role is checked against the
 contract's permission, and a caller who does not hold it gets `AUTHORIZATION_DENIED`, retry
 `never`.
@@ -28,64 +22,61 @@ contract's permission, and a caller who does not hold it gets `AUTHORIZATION_DEN
 
 ## Why the step exists
 
-Step 05 stopped a caller pretending to be somebody else and then let whoever they were do
+Step 05 stopped a caller pretending to be somebody else, and then let whoever they were do
 anything at all. Everything the later steps add — approvals, limits, segregation of duties,
 delegation — is a refinement of "may you", so without this step there is nothing to refine.
 
+## Built twice, on purpose
+
+The first build was finished in one pass and explained afterwards. The learner deleted it: a
+learner copy that arrives finished teaches nothing, because the reasoning is the product. The
+rebuild went in five pieces, each committed on its own and each verified by breaking it:
+
+| Piece | Tests | What it added |
+| --- | --- | --- |
+| 1 | 112 | the roles table and `holds`, with no gate — the data and the question, testable alone |
+| 2 | 120 | the gate, placed before the arguments are read |
+| 3 | 126 | the start-up check that turns a typo in the table into a stop |
+| 4 | 130 | what a hostile review found |
+| 5 | 130 | the README, with every break re-run |
+
+The rebuild ended up **better**, not merely slower: 130 tests against 126, and three real defects
+found that the first build shipped. The reason is not that the second attempt was more careful —
+it is that piece 1 was testable on its own, so `holds` was attacked before anything depended on
+it. See [decision 38](decisions.md).
+
 ## The part that was already written down
 
-Nothing here invents where the answer comes from. `authorization.permission` has been sitting
-in both contracts since step 03, read by nothing:
+Nothing here invents where the answer comes from. `authorization.permission` has been sitting in
+both contracts since step 03, read by nothing:
 
 ```json
 "authorization": { "permission": "invoice:issue" }
 ```
 
-That is worth noticing as a property of the design rather than a convenience. The permission
-belongs to the *operation*, in its spec sheet, so it can be read without reading code and two
-callers cannot disagree about it. The step's only job was to finally look at it.
+That is a property of the design, not a convenience. The permission belongs to the *operation*,
+in its spec sheet, so it can be read without reading code and two callers cannot disagree about
+it.
 
-## What the sweep found
+## What the review found that every sweep missed
 
-Seventeen mutation runs. Fifteen were valid: fourteen killed, one exposed a guard that did
-nothing, and one survives only under a deliberate act.
+`pnpm check` was green at 126 and every guard had been mutated one at a time. Four independent
+reviewers, each in its own copy, then a refuting reviewer per dimension: **ten findings
+confirmed, three refuted.** Every one was reproduced by hand before anything changed.
 
-| Mutation | Outcome |
+Three were real defects:
+
+| Defect | Why the sweep missed it |
 | --- | --- |
-| delete the may-you gate | killed — 4 tests, and `cfo_100` issued the invoice |
-| `holds` always true | killed — 8 tests |
-| `holds` matches by prefix | killed — and it is step 05's `findPerson` bug again, in a new file |
-| an unknown role inherits the supervisor's grants | killed |
-| the CFO's role changed to `ap_supervisor` | killed — 6 tests, from one word in a table |
-| the roles table handed out unfrozen | killed |
-| the refusal names the missing permission | killed |
-| the load-time table check removed, count left wrong | killed |
-| the load-time table check removed, **correct count hardcoded** | survives — [lesson 12](lessons.md) |
-| an empty permission held by everyone | survived, and the guard was **deleted** — see below |
+| `permissionsOf` walked the prototype chain, so a role named `toString` returned a **function** and `holds` threw; `Object.prototype` pollution granted anything | the sweep mutates guards that exist. `Object.hasOwn` was a guard that did not exist. [Decision 36](decisions.md) |
+| **Nothing pinned where the gate's permission came from.** Reading a `permission` out of the caller's arguments let `cfo_100` issue the invoice with all 126 tests green | step 05's rule was tested for *identity* and never for *authorization*. No mutation of existing code reveals a missing rule |
+| a login or an argument whose property is a **throwing getter** reached the caller as `Error: boom`, where `src/operations.ts` promises an envelope | nothing in the suite passed an object that throws when read. [Decision 37](decisions.md) |
 
-Two more of my mutations were invalid rather than survivors, which is
-[lesson 11](lessons.md): one stopped the file loading, and one moved the gate somewhere that
-changed nothing observable.
-
-## The guard that did nothing
-
-`holds` began with an explicit refusal of the empty permission:
-
-```ts
-if (permission === "") {
-  return false;
-}
-```
-
-Deleting it broke no test. Not a test gap — `includes("")` is already `false`, and the table
-check refuses a role that grants an empty string, so no role can ever hold one. The line was
-decoration, and decoration inside a security check is worse than nothing: it reads as though
-the protection lives there when it lives in two other places. It was deleted and the reason
-written where it was.
-
-The **test** stayed, and earned its place: the prefix mutation makes `holds(anyone, "")` return
-true, because every string starts with nothing. So the test catches something real; the `if`
-never did.
+Two were guards with no test behind them: the shared empty list for an unknown role, and the
+denial's freeze. Two were tests that proved less than they looked — the unknown-role test picked
+five names that all avoided the only failing class, and "a denial says who was denied" compared
+against the literal `"cfo_100"` instead of the login's own name. That last one is
+[lesson 10](lessons.md), written by me, repeated by me, four days later.
 
 ## Limits written down
 
@@ -95,21 +86,25 @@ never did.
 | one role each | a real system gives several |
 | two answers, yes and no | step 22 adds `REQUIRE_APPROVAL` (`DSOR-AUT-02a`) |
 | one permission per operation, so nothing can conflict | step 14 adds controls, and the strictest wins (`DSOR-AUT-02b`) |
-| the creator of a payment could also approve it | step 20, segregation of duties (`DSOR-SOD-01`) — break 3 shows the hole |
+| whoever creates a payment could also approve it | step 20, segregation of duties (`DSOR-SOD-01`) — break 3 shows the hole |
+| deleting the start-up check and hardcoding its count still passes | only a child process could close it; written in the code |
 
 ## What the order buys
 
-Authority is settled before the arguments are read: who are you → does this operation exist →
-may you → are the arguments valid. The reason is in a test. If the address were parsed first,
-`cfo_100` could tell `RESOURCE_NOT_FOUND` from `AUTHORIZATION_DENIED` and count invoices she
-has no permission to see. Checked first, all six of those attempts are the same refusal.
+Who are you → does this operation exist → **may you** → are the arguments valid.
+
+The reason is in a test. If the address were parsed first, `cfo_100` could tell
+`RESOURCE_NOT_FOUND` from `AUTHORIZATION_DENIED` and count invoices she has no permission to see.
+Checked first, all seven attempts return one identical refusal, and the test asserts the set of
+*messages* has size one so the wording cannot be compared either.
 
 That is the mechanism `DSOR-ERR-01b` needs, and the rule is still not claimed: it is about a
-caller who may not *read*, and all three roles hold `invoice:read`, so there is nobody to test
-it with. Claiming it would need a role without that permission.
+caller who may not *read*, and all three roles hold `invoice:read`, so there is nobody to test it
+with.
 
 ## What is claimed
 
-`DSOR-AUT-01a` and `DSOR-AUT-01b`, both fully. Step 05's `DSOR-IDN-01` and the "not from the
-arguments" half of `DSOR-SRC-02a` still hold. Seven nearby rules are listed as not claimed,
-each with the step that brings it.
+`DSOR-AUT-01a` and `DSOR-AUT-01b`, both fully. Step 05's `DSOR-IDN-01` still holds, and the "not
+from the arguments" half of `DSOR-SRC-02a` is now **extended**: who you are never came from the
+arguments, and neither does what you may do. Seven nearby rules are listed as not claimed, each
+with the step that brings it.
