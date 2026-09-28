@@ -37,7 +37,7 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_03_operations_and_contracts` | 53 | done |
 | `my_04_result_and_error_envelopes` | 79 | done |
 | `my_05_who_is_calling` | 107 | done |
-| `my_06_permissions_deny_by_default` | 126 | done |
+| `my_06_permissions_deny_by_default` | — | **being rebuilt** with the learner, one piece at a time |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.

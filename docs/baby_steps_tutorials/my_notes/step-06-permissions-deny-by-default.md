@@ -3,7 +3,14 @@
 Folder: `my_06_permissions_deny_by_default`. Built 2026-09-28. Copy of
 `my_05_who_is_calling` plus one new idea: **anything nobody granted is refused.**
 
-Decisions [33 to 35](decisions.md). Tests: 126.
+Decisions [33 to 35](decisions.md).
+
+> **Status, 2026-09-29: the folder was deleted and is being rebuilt.** It was built in one
+> pass and then explained, which is the wrong way round for a learner copy — the point of these
+> is to be built a piece at a time with the reasoning out loud. The design below is unchanged,
+> because decisions 33 to 35 were the learner's and still stand, and the findings below were
+> real. Everything written here in the present tense describes the first build, not a folder
+> that exists right now. Tests: 126 in that first build.
 
 ## What it does
 
