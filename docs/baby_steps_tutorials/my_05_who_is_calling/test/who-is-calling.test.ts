@@ -89,6 +89,39 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(answer.askedBy).toBe("user_123");
   });
 
+  // A caller-supplied object that throws when it is read. src/operations.ts promises that every
+  // refusal comes back as an envelope, and a hostile review found two places where it did not:
+  // the login, and the arguments. A stack trace is not an envelope a caller can act on.
+  it("DSOR-ERR-01a: an object that throws when read is refused, not thrown at", () => {
+    const throwingLogin = {
+      get loggedInAs(): string {
+        throw new Error("boom");
+      },
+    };
+
+    const one = callOperation(throwingLogin as never, "invoice.get", { invoice: INV_1008 });
+
+    if (one.kind !== "error") {
+      throw new Error(`expected a refusal, got ${one.kind}`);
+    }
+
+    expect(one.envelope.code).toBe("AUTHENTICATION_REQUIRED");
+
+    const throwingArgs = {
+      get invoice(): string {
+        throw new Error("boom");
+      },
+    };
+
+    const two = callOperation(SUPERVISOR, "invoice.issue", throwingArgs);
+
+    if (two.kind !== "error") {
+      throw new Error(`expected a refusal, got ${two.kind}`);
+    }
+
+    expect(two.envelope.code).toBe("VALIDATION_FAILED");
+  });
+
   it("DSOR-IDN-01: with nobody logged in, nothing happens at all", () => {
     const answer = callOperation(undefined, "invoice.get", { invoice: INV_1008 });
 

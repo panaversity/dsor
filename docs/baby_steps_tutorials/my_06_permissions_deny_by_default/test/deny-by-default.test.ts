@@ -113,33 +113,6 @@ describe("anything not granted is refused", () => {
     }).toThrow(TypeError);
   });
 
-  // A caller-supplied object that throws when it is read. `src/operations.ts` says nothing
-  // throws at a caller any more, and a hostile review showed two places where it did: the login
-  // and the arguments. A stack trace is not an envelope.
-  it("DSOR-ERR-01a: an object that throws when read is refused, not thrown at", () => {
-    const throwingLogin = {
-      get loggedInAs(): string {
-        throw new Error("boom");
-      },
-    };
-
-    const one = callOperation(throwingLogin as never, "invoice.get", { invoice: INV_1008 });
-
-    expect(one.kind).toBe("error");
-    expect(refusalFrom(one).code).toBe("AUTHENTICATION_REQUIRED");
-
-    const throwingArgs = {
-      get invoice(): string {
-        throw new Error("boom");
-      },
-    };
-
-    const two = callOperation(SUPERVISOR, "invoice.issue", throwingArgs);
-
-    expect(two.kind).toBe("error");
-    expect(refusalFrom(two).code).toBe("VALIDATION_FAILED");
-  });
-
   // Why the gate goes *before* the arguments are read.
   //
   // If the address were read first, cfo_100 could ask about INV-1009 and INV-9999 and compare
