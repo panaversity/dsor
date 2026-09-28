@@ -1,6 +1,6 @@
 # Lessons
 
-The mistakes that repeated across steps 01 to 04, and what catches each one. Kept
+The mistakes that repeated across steps 01 to 05, and what catches each one. Kept
 separately from [decisions.md](decisions.md) because these are not choices — they are
 things that went wrong more than once.
 
@@ -115,3 +115,46 @@ readability, leftovers, cross-references — finished every time and found 38 an
 respectively.
 
 What works: one job per pass, named explicitly, with instructions to stay inside it.
+
+## 9 · Narrow reviewers must not sabotage the same folder at once
+
+Lesson 8 is still right — five narrow passes finish where one wide pass stalls. What step 05
+added is the other half of it: several of those passes **break the code on purpose** to see
+whether a test goes red, and running them together in one folder means each one is measuring
+a folder the others are also editing.
+
+What it actually caused, in step 05:
+
+- One pass reported failure counts that were contaminated until it re-ran the breaks in an
+  isolated copy. Its final numbers are right *because* it noticed and re-ran; had it not
+  noticed, wrong counts would have gone into the README as verified output.
+- Another pass snapshotted `src/login.ts` as a backup **while a different pass's sabotage was
+  applied**, so the backup held code with the unknown-name refusal removed. Restoring from
+  that file would have silently deleted a guard and turned three tests red, and it would have
+  looked like a restore rather than a change.
+
+What to do instead: give each sabotaging pass its own copy of the folder, or run the
+sabotaging passes one at a time and only the read-only passes in parallel. Either way, never
+trust a backup file another agent left behind, and check `git status` and `pnpm check` before
+believing any count that came out of a shared folder.
+
+## 10 · Mutating one guard at a time cannot find a test that expects a constant
+
+[Lesson 2](#2--passing-tests-prove-nothing-until-you-break-the-code) says break each guard in
+turn. Step 05 found the limit of that method.
+
+The caller's name is attached in twenty-two places. Each one was mutated separately and every
+one was caught, so the guarantee was recorded as proven. A hostile review then replaced **all
+of them at once** with the literal `"cfo_100"` — and all 100 tests passed. The test that
+guarded attribution walked twelve call shapes with a single login, `cfo_100`, and asserted the
+name was `"cfo_100"`. So the suite could never tell "carries the caller's name" from "carries
+that one string", and `user_123`'s refusal could be stamped with the CFO's id.
+
+One-at-a-time mutation cannot find this, because each single site still disagrees with the
+others and something goes red. Only replacing every site with the same constant makes the code
+self-consistent and wrong.
+
+What catches it: when a test asserts a value, ask where the expected value came from. If it is
+a literal that appears in the input as well, the test cannot distinguish the two. Vary the
+input — here, three different logins — and assert against the **input**, not a constant. Then
+mutate the whole family of sites together as well as one at a time.

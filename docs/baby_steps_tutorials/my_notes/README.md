@@ -21,6 +21,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-02-canonical-uris.md](step-02-canonical-uris.md) | One permanent address per record |
 | [step-03-operations-and-contracts.md](step-03-operations-and-contracts.md) | Named operations, spec sheets, a registry |
 | [step-04-result-and-error-envelopes.md](step-04-result-and-error-envelopes.md) | Codes and retry classes |
+| [step-05-who-is-calling.md](step-05-who-is-calling.md) | A caller, and a refusal when there is none |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
@@ -34,11 +35,13 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_02_canonical_uris` | 24 | done |
 | `my_03_operations_and_contracts` | 53 | done |
 | `my_04_result_and_error_envelopes` | 79 | done |
+| `my_05_who_is_calling` | 107 | done |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.
 
-Next is step 05, `who_is_calling`.
+Next is step 06, `permissions_denied_by_default` — but [open question 2](open-questions.md)
+should be put to the learner first, because step 06 wants the principal's shape settled.
 
 ## How we work
 

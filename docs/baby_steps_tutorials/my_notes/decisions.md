@@ -272,3 +272,222 @@ was the value's two **quantifiers** and the currency pattern in every direction 
 **Rejected:** nothing — this is a correction, recorded because the wrong version was
 published in these notes before it was caught.
 
+## 21 · No login, no answer (2026-09-28)
+
+**Decided by:** the learner, asked in plain terms and given the alternative.
+**What:** a call with no logged-in caller is refused with `AUTHENTICATION_REQUIRED`, retry
+`never`.
+**Why:** `DSOR-IDN-01` turns every caller into a principal "before any other processing" —
+with nobody logged in there is no principal, so the request has not really started. And the
+step exists to teach that you cannot claim to be someone you are not; if a call with no
+login at all still worked, anyone wanting to skip the checks would simply not log in.
+`AUTHENTICATION_REQUIRED` has sat unused in step 04's table since it was written, and
+`never` is the right class: trying again without logging in cannot help.
+**Cost:** every existing call has to start passing a login — about eighteen places in the
+tests. Mechanical, but real.
+**Rejected:** letting an anonymous caller through as a guest. Cheaper today, and it is
+exactly the hole the step exists to close.
+
+## 22 · The login can be switched between people (2026-09-28)
+
+**Decided by:** the learner.
+**What:** a small directory of the story's people — `user_123`, `cfo_100`,
+`accounts-payable-fte` — and a login that can name any of them.
+**Why:** it costs almost nothing now and it is what makes step 06 possible. Deny-by-default
+is only demonstrable with two callers: one allowed to do a thing and one refused. With a
+single fixed person there is no contrast to show.
+**Cost:** a directory of principals is a small store this step has to hold, and `DSOR-IDN-01`
+wants memberships on each one, so it is slightly more than a name.
+**Rejected:** one fixed caller, which is less to build and leaves step 06 with nothing to
+contrast.
+
+## 23 · An agent logs in as itself, and the login holds exactly one name (2026-09-28)
+
+**Decided by:** the learner — "agent should have it's own credential and identity".
+**What:** an agent is an ordinary entry in the people list with `type: "agent"`, and logs in
+the same way a person does. The login carries **one** field, who you are. There is no second
+field for "and I am acting for someone else".
+**Why:** `DSOR-IDN-02a` says an agent MUST authenticate with its own credentials, never a
+human's session. With one field there is nowhere to put a borrowed identity, so the rule is
+honoured by the shape of the code rather than by a check that could be removed. It also
+matches the wire schema, which forces `actor_chain` to be empty for a `direct` login.
+**Cost:** an agent acting *for* a person — `on_behalf_of`, the running example's normal case
+— cannot be built here at all. That needs a delegation record, which is step 18.
+**Rejected:** adding a second field in order to refuse it. That would make the rule a check
+rather than a property, and a check can be deleted. It would also invent a login shape the
+specification does not have.
+
+> **Corrected 2026-09-28 — see [decision 27](#27--dsor-idn-02a-was-an-overclaim-and-the-shape-argument-was-wrong-2026-09-28).**
+> The decision to keep one field stands. The claim that it *honours* `DSOR-IDN-02a` does not.
+
+
+## 24 · The caller's name travels in its own parameter, never the request-id slot (2026-09-28)
+
+**Decided by:** me, after writing the bug and catching it in the same hour.
+**What:** `refusal(code, message, requestId?, principalId?)` — a fourth parameter — and a
+small `correlationFor(requestId, principalId)` that builds the correlation object. The
+`principal_id` key is left out entirely when there is no caller, rather than set to a
+placeholder.
+**Why:** the first version passed `askedBy` as the third argument, which was `requestId`.
+It typechecked, every test passed, and the caller's name was being filed as the request
+id. Two different identifiers in one positional slot is a bug waiting for whoever writes
+the next call site, so the slot was split. Leaving the key out when nobody is logged in is
+the honest shape: an absent caller is absent, and `"(nobody)"` inside an audit field would
+read like a principal named "(nobody)".
+**Cost:** a four-parameter function, which is one more than is comfortable, and every call
+site has to pass `undefined` for the request id to reach the fourth. Step 07's pipeline
+will likely replace all of it with one context object.
+**Rejected:** passing an object instead of positional parameters, now. It is the better
+shape and it is what step 07 will need, but changing the signature of a function step 04
+introduced would have made this step about refactoring rather than about identity.
+
+## 25 · Where the caller's name is read from is documented in the code, because no test can prove it (2026-09-28)
+
+**Decided by:** me, after a mutation survived and the probe showed why.
+**What:** `askedBy` is read from `who.principal.id` — the principal the directory lookup
+returned — and never from `login.loggedInAs`, the text the caller typed. A five-line
+comment above it says why. There is no test for it.
+**Why:** the mutation sweep changed it to read the typed text instead, and all 100 tests
+still passed. That looked like a test gap, so it was probed: with the lookup matching on
+`===`, the two strings are always identical, so no input can tell them apart. It is an
+*equivalent mutant* — unkillable, not untested. Making the lookup case-insensitive for one
+throwaway run made them diverge at once: the real code answered `cfo_100` while the mutant
+answered `CFO_100`, the caller's own typing echoed back as their identity. So the
+difference is real but only becomes observable the day the lookup gains any leniency — a
+case fold, a trim, an alias. A comment is the only thing that survives to that day.
+**Cost:** a guard with no test, which normally means decoration. Recorded here so it is not
+mistaken for one.
+**Rejected:** writing a test that asserts the source of the string by inspection, for
+example spying on `findPerson`. It would pass whether or not the code was right, because
+both versions call the lookup; only what is *done with the result* differs.
+
+## 26 · Step 05 keeps identity internal — the wire document waits, and this needs the learner's answer (2026-09-28)
+
+**Decided by:** me, provisionally, and flagged rather than settled.
+**What:** the step builds a principal *inside* the program. It does not build or validate
+the specification's `security-context` document, the schema for what an authenticated
+caller looks like when it arrives over a wire.
+**Why:** one new idea per step. "Who is calling, and refuse when nobody is" is the idea;
+"and here is the schema that shape must satisfy at the boundary" is a second one, and it is
+the one that drags in the `actor_chain`, the authentication method and the delegation
+reference — none of which exist yet. Steps 01 to 04 each validated their artefact against a
+real normative schema, so leaving this one unvalidated is a genuine break in the pattern,
+which is why it is written down instead of quietly skipped.
+**Cost:** the step's `Login` and `Principal` types are this program's own invention, not the
+specification's. If the learner later wants the schema, the shapes will have to move to
+match it, and the notes for steps 01 to 04 all say that copying a schema early is what
+stopped exactly that kind of drift.
+**Rejected, for now:** building both in one step. Also rejected: inventing a shape that
+merely resembles the schema without validating against it, which is the worst of the three —
+it would look like conformance and be nothing of the kind.
+**Still open:** whether step 05 should be reopened to add the document, or step 06 should
+carry it. The learner has not been asked yet in plain terms. Recorded in
+[open-questions.md](open-questions.md).
+
+## 27 · `DSOR-IDN-02a` was an overclaim, and the shape argument was wrong (2026-09-28)
+
+**Decided by:** two hostile review passes, independently, and the tutorial map agreeing with
+both.
+**What:** `DSOR-IDN-02a` moves out of the rules step 05 meets and into the rules it does not
+claim. [Decision 23](#23--an-agent-logs-in-as-itself-and-the-login-holds-exactly-one-name-2026-09-28)
+keeps its decision — the login holds one field — and loses its justification.
+**Why:** the rule is *"an agent MUST authenticate with its own credentials, never a human's
+session."* Nothing in step 05 authenticates anything. So `accounts-payable-fte` can send
+`{ loggedInAs: "cfo_100" }` and every answer, and the envelope inside it, records `cfo_100` —
+which is exactly the failure §12 describes: *"the log would say the supervisor did
+everything."* One field stops a caller **declaring** two identities. It does nothing to stop
+one **borrowing** a single identity that is not theirs, and borrowing is the half the rule is
+about.
+
+The "honoured by the shape" argument was also weaker than it was written down as. A fresh
+object literal with an extra field is a compile error, but the same object through a variable
+typechecks, so the real protection is "nothing reads the extra field" — which is a check, and
+a check can be deleted. The sentence claimed the strong form.
+
+The map says the same thing plainly, and was not read closely enough: it assigns step 05
+`DSOR-IDN-01, DSOR-SRC-02a` and nothing else, and it assigns `DSOR-IDN-02a` to step 43, the
+identity-binding step.
+**Cost:** the step loses its second claimed rule and keeps one. That is the honest count, and
+it makes step 05 the first step here whose README claims a single rule.
+**Rejected:** keeping the claim with a hedge such as "honoured in spirit". A rule is met or it
+is not; a hedge in a conformance table is the thing critical rule 4 exists to stop.
+
+**How this got past me.** I wrote the claim while designing the type, believed it because the
+type really does forbid something, and never asked whether the thing it forbids is the thing
+the rule forbids. That is [lesson 6](lessons.md) — claiming a rule without its condition —
+recurring for the second time, and this time in a step's central sentence rather than in a
+footnote. The check that would have caught it costs one minute: read the rule's own sentence
+last, after the code is written, and ask which clause the code satisfies.
+
+## 28 · The caller's arguments are copied once, and refused if they cannot be written down (2026-09-28)
+
+**Decided by:** me, on a review finding that came with a working demonstration.
+**What:** `callOperation` does `Object.freeze({ ...args })` before anything reads the
+arguments, and everything below uses that copy. If the copy cannot be `JSON.stringify`-ed,
+the call is refused with `VALIDATION_FAILED` before the operation runs.
+**Why:** two holes, one cause — the arguments belong to the caller and were being used after
+the fact.
+
+The first: a property can be a *getter*, so reading it twice can give two answers. The
+arguments were read once to decide which invoice to issue and again to fingerprint the
+receipt, so a caller could have INV-1009 issued while the receipt fingerprinted a request for
+an invoice that does not exist. The review demonstrated it: the hash matched the decoy, and
+nothing threw. Evidence that describes a different request than the one performed is worse
+than no evidence, because it looks like evidence.
+
+The second: an argument that cannot be hashed at all — a circular object, a `BigInt` — let
+the invoice be issued and *then* threw on the way out. A side effect with no envelope, no
+error code, and no record of who caused it. Refusing first is the first small shape of
+`DSOR-EXE-03a`, "the intent record is written before the side effect".
+**Cost:** one copy per call, and a `try` around a `JSON.stringify` whose result is thrown
+away, which looks odd until the comment beside it is read.
+**Rejected:** hashing the payload before the store is touched and keeping the single read.
+It fixes the second hole and not the first, and it leaves "read the caller's object twice"
+in the code for a later step to trip over.
+
+## 29 · Every answer is frozen, not only the envelope inside it (2026-09-28)
+
+**Decided by:** me, on a review finding.
+**What:** every `OperationAnswer` is `Object.freeze`-d before it leaves `callOperation`.
+**Why:** `OperationAnswer` was the one `readonly` type in this step with no freeze beside it.
+The envelope inside it was frozen, and its correlation, and the invoice — but not the wrapper
+carrying `askedBy`, which is this step's entire record of who asked. A caller could rewrite it
+on the object they were handed. This is exactly the trap [step 01](step-01-one-invoice-in-memory.md)
+exists to teach, in the step's own new type, written by someone who had just finished teaching
+it. That is worth recording more than the fix is.
+**Cost:** none worth counting.
+**Rejected:** freezing inside each handler. Nine sites to remember instead of one, and the
+next step adds more.
+
+## 30 · A login is checked as data, not trusted as a type (2026-09-28)
+
+**Decided by:** me, on a review finding.
+**What:** `principalFrom` refuses unless the login has its **own** `loggedInAs` property and
+that property is a string. Previously it only checked `login === undefined`.
+**Why:** `Login` is a TypeScript type and types are erased before Node runs, so at run time
+`null` arrived and the function threw `TypeError: Cannot read properties of null` — from the
+function whose entire job is to refuse, in a file whose header says nothing throws at a caller
+any more. `Object.hasOwn` is the second half: a name the object merely *inherits* is a name
+nobody in this program chose, and without it an empty object with a polluted prototype logs in
+as whoever the prototype names.
+**Cost:** a condition with two clauses where there was one, in the first lines a learner
+reads.
+**Rejected:** trusting the type because "the compiler checks the callers". It checks the
+callers inside this folder. Step 06 onwards puts real input in front of this function, and a
+guarantee that depends on every future caller being well-typed is not a guarantee.
+
+## 31 · The attribution test walks three callers, because one caller cannot tell a name from a constant (2026-09-28)
+
+**Decided by:** a review finding that beat my own mutation sweep.
+**What:** the test that walks every answer shape logs in as `user_123`, `cfo_100` and
+`accounts-payable-fte` in turn, and asserts the recorded name equals **the login's own name**
+rather than a literal.
+**Why:** my sweep mutated each of the attribution sites one at a time and every one was
+caught, so I recorded the guarantee as proven. The review mutated them **all at once**, to the
+constant `"cfo_100"` — the single login the test used — and all 100 tests passed. The suite
+could not tell "carries the caller's name" from "carries that one string", so `user_123`'s
+refusal could be stamped with the CFO's id with the step fully green.
+**Cost:** the walk runs three times, which is 36 calls instead of 12. Milliseconds.
+**Rejected:** nothing. This is a correction to how the sweep is run, not a choice between
+options: **mutating one site at a time cannot find a test whose expected value is a constant.**
+Added to [lessons.md](lessons.md).
