@@ -466,7 +466,7 @@ Rules in §7 this step does **not** claim:
 | `DSOR-OPR-03a` | Forbids a generic execution tool on an *agent interface*. There is no agent interface until step 46, when each operation becomes an MCP tool. `execute_sql` being unreachable here is the right shape, not the rule. |
 | `DSOR-OPR-04a`, `04b` | Say every interface invokes the same pipeline and none does its own authorization. There is no pipeline until step 07 and no interface until 42. |
 | `DSOR-OPR-05`, `06` | The three invocation modes, `execute` / `propose_only` / `validate_only`. Step 23. |
-| `DSOR-QRY-01` | A server-side page limit on every query. There is no query returning a list until step 13. |
+| `DSOR-QRY-01` | A server-side maximum page size **and** maximum result size on every query, **whether or not the client asks for a limit** — the last clause is the point: a limit a caller can decline is not a limit. There is no query returning a list until step 13. |
 
 `invoice.issue` is declared and not carried out, so nothing about a state change is
 claimed here at all. Its handler, and the error envelope its refusals need, are step 04.

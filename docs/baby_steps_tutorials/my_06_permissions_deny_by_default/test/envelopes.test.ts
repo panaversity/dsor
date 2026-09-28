@@ -1,4 +1,4 @@
-// every answer has one outer shape, and every error carries a code
+// Every answer has one outer shape, and every error carries a code
 // and a retry class.
 //
 // The schema proves the shape. It does not prove the meaning: a CONFLICT with

@@ -1,4 +1,4 @@
-// every answer gets the same outer shape.
+// Every answer gets the same outer shape.
 //
 // Until now a refusal was a thrown TypeError with a sentence in it. A caller could read
 // the sentence and could not act on it: nothing told them whether trying again might

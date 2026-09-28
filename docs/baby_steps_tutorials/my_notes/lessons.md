@@ -238,3 +238,28 @@ Both rows repeated, and the second one repeated *after* it had been written down
 What to do: when a guard is added, ask what kind of thing it protects, then list every other place
 that kind of thing arrives, and check each. It takes a minute, and it is the only one of these
 three methods — tests, mutation sweep, sideways check — that finds a guard that was never written.
+
+## 14 · A safety net you have never tested is not a safety net
+
+For four steps I wrote, and told the learner, that `pnpm guard` would catch a rule id that does
+not exist. It never could. The guard strips inline code spans before it looks for identifiers, and
+the tutorial writes every id in backticks — so of the 171 distinct ids across six steps and these
+notes, the check had seen **none**.
+
+It cost something real: `DSOR-SOD-01`, which is not a rule, was cited in four files including the
+promises table the next session is told to act on. Two wrong step numbers travelled the same way.
+
+The tell was available the whole time and nobody looked for it. It takes one probe:
+
+```text
+`DSOR-FAKE-99`  in backticks  ->  guard passes
+ DSOR-FAKE-99   bare          ->  error: known-id ... which the spec does not define
+```
+
+So: **before relying on a check, make it fail once.** Not read its source, not trust its name —
+feed it the thing it is supposed to catch and watch it complain. This is the same discipline as
+breaking a guard to see a test go red ([lesson 2](#2--passing-tests-prove-nothing-until-you-break-the-code)),
+applied to the tools instead of the code, and it had never occurred to me to apply it there.
+
+The general shape: every claim of the form "X protects us from Y" is a testable claim. If it has
+not been tested, it is a hope.

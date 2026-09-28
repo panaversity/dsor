@@ -132,7 +132,7 @@ my_05_who_is_calling/
   src/people.ts            NEW  the three principals, with their type and company
   src/login.ts             NEW  a login becomes a principal, or is refused
   test/login.test.ts       NEW  15 tests: who exists, and what a login may be
-  test/who-is-calling.test.ts NEW 13 tests: the arguments are ignored
+  test/who-is-calling.test.ts NEW 14 tests: the arguments are ignored
   src/operations.ts    CHANGED  callOperation takes a login, first; answers say who asked
   src/envelopes.ts     CHANGED  correlation carries principal_id once a caller exists
   src/main.ts          CHANGED  every line shows who asked
@@ -176,7 +176,7 @@ logged in, no contract  user_123              UNSUPPORTED_CAPABILITY   retry: ne
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 107 tests pass
+pnpm check                 # typecheck, then test. 111 tests pass
 ```
 
 Read those lines carefully, because two things are happening.
@@ -200,6 +200,22 @@ here"* would tell a stranger which names **do** exist, one guess at a time.
 The specification has a rule about that shape, `DSOR-ERR-01b`, and this step cannot state it
 properly yet — it turns on whether the caller is *authorized*, and nothing is authorized
 until step 06. So this is the habit, arriving before the rule that needs it.
+
+### Three things, where the rule says one
+
+The tutorial's rule is one new idea per step, and this step has three. It is worth knowing why,
+because the honest answer is not "they belong together".
+
+The idea is **who is calling**. The other two — the arguments are copied once, and a request
+whose arguments cannot be written down is refused before anything happens — came from a hostile
+review *after* this step looked finished. Both are about handling the caller's arguments, not
+about identity, and the second is an early instalment of `DSOR-EXE-03a`, which is step 08's own
+rule.
+
+They stay here rather than waiting for step 08 for one reason: they close holes that are open in
+step 04, and shipping a step with a known crash-after-commit in it to keep a rule about step
+boundaries tidy is the wrong trade. Step 04's own header now names the hole and says this step
+closes it.
 
 ### The arguments are copied once, and an answer cannot be edited
 
@@ -233,7 +249,7 @@ Four breaks. Change the code back after each. Every number below was produced by
      × DSOR-SRC-02a: a principal named in the arguments is ignored
      × DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well
 AssertionError: expected 'cfo_100' to be 'user_123' // Object.is equality
-      Tests  2 failed | 105 passed (107)
+      Tests  2 failed | 109 passed (111)
 ```
 
 This is the break the step exists for, and it is the map's own "done when". Notice how small
@@ -252,11 +268,12 @@ refusing when there is no login. Run `pnpm test`:
      × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
      × DSOR-IDN-01: with nobody logged in, nothing happens at all
      × DSOR-IDN-01: the login is checked before the operation or the arguments
+     × DSOR-ERR-01a: an object that throws when read is refused, not thrown at
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  8 failed | 99 passed (107)
+      Tests  9 failed | 102 passed (111)
 ```
 
-Eight. A default caller is not one bug: it takes out the refusal, its retry class, the
+Nine. A default caller is not one bug: it takes out the refusal, its retry class, the
 ordering, the attribution of a refused call, and every check on what a login may be. This is
 the version of the bug that looks most reasonable while you are writing it, and it is the one
 with the widest blast radius.
@@ -269,7 +286,7 @@ it up in the people list. Run `pnpm test`:
      × DSOR-IDN-01: each refusal says in words which refusal it is
      × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  4 failed | 103 passed (107)
+      Tests  4 failed | 107 passed (111)
 ```
 
 **4. Check the login after the operation.** Move the "no such operation" lookup and refusal so
@@ -278,7 +295,7 @@ they come *before* the login check. Run `pnpm test`:
 ```text
      × DSOR-IDN-01: the login is checked before the operation or the arguments
      × every answer says who asked, and so does the envelope inside it
-      Tests  2 failed | 105 passed (107)
+      Tests  2 failed | 109 passed (111)
 ```
 
 Nothing is insecure yet — the caller is still checked. But an unknown caller now learns which
@@ -382,7 +399,7 @@ Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-IDN-02a` | An agent must authenticate with its own credentials, never a human's session. **Nothing here authenticates anything**, so any caller can present any name: `accounts-payable-fte` can send `{ loggedInAs: "cfo_100" }` and every answer and every envelope will say the CFO asked — which is the exact failure §12 describes. The one-field `Login` stops a caller *declaring* two identities at once, and that is worth having, but the rule is about *borrowing* one. Step 44, `44_an_oauth_server_for_agents`, where the agent gets its own OAuth client and proves itself with a private key. |
+| `DSOR-IDN-02a` | An agent must authenticate with its own credentials. Nothing here authenticates anything — see below. Step 44. |
 | `DSOR-SRC-02b` | A tenant, principal, or delegation identifier in the arguments that **disagrees** with the security context must cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`. This step *ignores* such an argument, which is not the same as refusing it. Ignoring is the right first lesson; the refusal needs authorization and more than one company, steps 06 and 10. |
 | `DSOR-IDN-02b` | Audit must record the subject and every actor. There is no audit log until step 08. |
 | `DSOR-IDN-03a`, `03b` | Exactly one active tenant per request, and no operation across tenants. The company is checked against one hard-coded value, not resolved from the caller's memberships. Steps 10 and 11. |
@@ -392,6 +409,21 @@ Rules nearby this step does **not** claim:
 | `DSOR-COR-01a` | The identifiers must propagate through connectors, audit, and events. `request_id` and `principal_id` are on every envelope, which is the groundwork, but there are no connectors, no audit and no events to carry them to. |
 | `DSOR-AUT-01a`, `01b` | Role-based access control in the `<resource>:<action>` form, and deny by default. Nothing checks what a caller may do. Step 06, and it is the whole of the next step. |
 | `DSOR-ERR-01b` | An error must not reveal a resource the caller is not authorized to read. The habit is here for *identities* — both login refusals are deliberately identical so a stranger learns no names. It is **not** here for resources: `RESOURCE_NOT_FOUND` names the invoice it could not find. Nobody is unauthorized yet, so nothing leaks yet; the rule needs step 06. |
+
+### Why `DSOR-IDN-02a` is not claimed, although the login has one field
+
+Nothing in this step authenticates anything, so any caller can present any name.
+`accounts-payable-fte` can send `{ loggedInAs: "cfo_100" }` and every answer, and every envelope
+inside it, will say the CFO asked — which is the exact failure §12 describes: *"the log would say
+the supervisor did everything."*
+
+The one-field `Login` stops a caller **declaring** two identities at once, and that is worth
+having. The rule is about one **borrowing** an identity that is not theirs, and a shape cannot
+prevent that; only credentials can. An earlier version of this page claimed the rule on the
+strength of the shape, which is the mistake of reading a rule's subject and not its clause.
+
+Step 44, `44_an_oauth_server_for_agents`, is where the agent gets its own OAuth client and proves
+itself with a private key.
 
 **Next:** step 06, permissions denied by default — the first refusal that is about
 *authority* rather than about the shape of your data.

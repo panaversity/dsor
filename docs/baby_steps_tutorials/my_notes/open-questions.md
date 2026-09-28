@@ -109,3 +109,25 @@ Two ways to close it, and the second is not the learner's to make alone:
    prose may show example or illustrative ids that are meant not to resolve. Changing it needs a
    check of what breaks in `specs/dsor/` first, and it belongs in a pull request of its own
    rather than inside a step.
+
+## 5 · The one company's id lives in the invoice module (found 2026-09-29)
+
+**Affects:** steps 03 to 06 now, step 10 when it arrives. Low, and not urgent.
+
+`TENANT` is exported from `src/invoice.ts`, because step 03 was the first step that needed it and
+the invoice module was where it already was. By step 05 that means the *identity* module imports
+the one company's id from the *invoice* module, which is the wrong way round: who you belong to
+does not depend on what an invoice is.
+
+Nothing is broken by it. It is a shape that will cost a little extra when step 10 makes more than
+one company possible — a file that should have been replaced becomes two files to unpick.
+
+Two options, and neither needs deciding today:
+
+1. **Leave it** and let step 10 do the unpicking, with this note as the warning.
+2. **Move `TENANT` to a `src/tenant.ts` of its own**, repeated forward through steps 03 to 06.
+   Four folders touched for a change nothing tests, which is exactly the kind of edit that
+   introduces a mistake while fixing a smell.
+
+The house rule that applies is decision 38: the smallest testable piece first. This is not a
+piece, and not testable — so it waits for the step that has a reason to touch it.

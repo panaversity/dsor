@@ -317,7 +317,7 @@ Three rules in §5 are not met yet and are not claimed:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-RID-02a` | Needs a mapping from a canonical id to a system's own id. There is no connector until step 34. |
+| `DSOR-RID-02a` | Needs a **durable** mapping from a canonical id to a system's own reference (`connector_id`, `native_id`) **that survives the connector being re-synchronised** — the hard part, because a re-sync is exactly when a remote system hands back new native ids. There is no connector until step 34. |
 | `DSOR-RID-02b` | Nothing reassigns ids, because nothing creates them. Invoices are a fixed list. |
 | `DSOR-RID-03` | Says the same address is used across every interface, in audit, events and approvals. There is one interface and no audit log yet. |
 

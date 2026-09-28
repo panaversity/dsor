@@ -3,6 +3,19 @@
 **New in this step:** every refusal comes back with a code and says whether trying again
 could ever help, instead of being a thrown error with a sentence in it.
 
+## Read this first: one envelope is finished, the other is a shape
+
+The **error** envelope in this step is the real thing. Every code comes from §28, every retry
+class is looked up from the code rather than supplied by a caller, and every envelope is
+validated against the specification's own schema before anyone sees it. Most of this step's tests
+are about it.
+
+The **result** envelope is the right shape with two placeholders inside, and the step is open
+about both. `proposal` is an address with no proposal record behind it, because proposals arrive
+in step 22. `payload_hash` is a fingerprint over ordinary `JSON.stringify`, so it depends on key
+order; canonical JSON, where key order is settled, is step 29. `semantics` is *not* a
+placeholder — it is read from the operation's contract.
+
 ## In plain words
 
 Until now, when something was refused your code threw an error:
@@ -114,7 +127,8 @@ This is the same lesson as `money()` in step 01 and `parseUri` in step 02, one l
 ```text
 my_04_result_and_error_envelopes/
   src/envelopes.ts          NEW  the two builders, the §28 table, request ids
-  test/envelopes.test.ts    NEW  twenty-two tests: the table, the shapes, the refusals
+  test/envelopes.test.ts    NEW  22 tests: the table, the shapes, the refusals
+  test/invoice.test.ts  CHANGED  three tests for issueInvoice, the state change this step adds
   src/schemas/*.json        NEW  result-envelope and error-envelope, copied byte for byte
   src/invoice.ts        CHANGED  a new issueInvoice, which reports an outcome instead of throwing
   src/operations.ts     CHANGED  every refusal is an envelope; invoice.issue has a handler
@@ -124,6 +138,11 @@ my_04_result_and_error_envelopes/
   test/registry.test.ts CHANGED  step 03's NEW IN STEP markers removed
   package.json          CHANGED  name, description, and ajv-formats
 ```
+
+One thing *disappeared*: `invoice.issue` came off the waiting list, so `NOT_YET_IMPLEMENTED` is
+now an empty set. It stays, with the two tests that guard it, because the next operation given a
+contract before it is carried out will need it — and because those tests are what stop a stale
+note surviving inside it. An empty container with a test on it is not dead code.
 
 ```bash
 cd docs/baby_steps_tutorials
@@ -175,7 +194,7 @@ UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an opera
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 79 tests pass
+pnpm check                 # typecheck, then test. 82 tests pass
 ```
 
 ### Why two lines say "(no envelope)"
@@ -249,7 +268,7 @@ Five breaks. Change the code back after each.
 `pnpm test`:
 
 ```text
-      Tests  9 failed | 70 passed (79)
+      Tests  9 failed | 73 passed (82)
 ```
 
 Every refusal in the step is now wrong, and note *what is not wrong*: every envelope
@@ -261,10 +280,11 @@ never had an opinion.
 ```text
      × DSOR-ERR-01a: a refusal carries a retry class and a request id
      × DSOR-ERR-01a: the retry class comes from the code, not from the caller
+     × DSOR-ERR-01a: every row of the table is the retry class §28 gives that code
      × the schema pins three codes' retry classes, and only three
      × DSOR-ERR-01a: the table cannot be edited at run time
      × DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT
-      Tests  6 failed | 73 passed (79)
+      Tests  6 failed | 76 passed (82)
 ```
 
 This is the break worth sitting with. You have just told every caller that re-issuing an
@@ -274,7 +294,7 @@ thing standing between that and a caller in a loop.
 **3. Drop a code from the table.** Delete the `RATE_LIMITED` line. Run `pnpm test`:
 
 ```text
-      Tests  4 failed | 75 passed (79)
+      Tests  4 failed | 78 passed (82)
 ```
 
 One of those four is the test that reads the schema's own list of 32 codes; another is the
@@ -285,7 +305,7 @@ cannot fall behind the specification without something going red.
 that runs before the envelope is returned. Run `pnpm test`:
 
 ```text
-      Tests  1 failed | 78 passed (79)
+      Tests  1 failed | 81 passed (82)
 ```
 
 That check is why a `BATCH_PARTIAL` cannot be built in this step: the schema requires an
@@ -296,13 +316,13 @@ Without the check, a half-built envelope would be handed to the caller.
 re-issue refusal from `CONFLICT` to `RESOURCE_NOT_FOUND`. Run `pnpm test`:
 
 ```text
-      Tests  2 failed | 77 passed (79)
+      Tests  2 failed | 80 passed (82)
 ```
 
 The envelope is perfectly valid. The retry class is correct for the code. And the answer
 is a lie: the invoice exists. Nothing but a test knows the difference.
 
-Change everything back and run `pnpm check` to see 79 tests pass.
+Change everything back and run `pnpm check` to see 82 tests pass.
 
 ## Build it yourself with Claude Code
 
@@ -334,7 +354,8 @@ general directions are in the
 1. Why is a thrown `TypeError` not good enough for a caller?
 2. `CONFLICT` with `retry: "safe_same_key"` passes the specification's own schema. So what
    stops it happening?
-3. The schema *does* pin one code's retry class. Which, and why that one?
+3. The schema *does* pin three codes' retry classes. Which three, and which of them is the
+   dangerous one to get wrong?
 4. `invoice.get` succeeds and gets no envelope. Is that a bug in this step?
 5. `payload_hash` is a sha256 of the arguments. Why is the README careful to call it a
    placeholder?
@@ -349,10 +370,15 @@ general directions are in the
 2. Nothing in the schema. The table in `src/envelopes.ts` and the tests over it are the
    only thing. That is the step's lesson: the schema proves the shape of an answer, and
    only code can prove its meaning.
-3. `OUTCOME_UNKNOWN`, which must be `after_reconciliation`. It is the one case where
-   nobody knows whether the side effect happened, so a retry-safe class would invite a
-   duplicate payment — the failure `DSOR-UNK-01b` exists to prevent. It arrives properly
-   in step 37.
+3. Three: `OUTCOME_UNKNOWN` and `RESOURCE_HELD` must both be `after_reconciliation`, and
+   `BATCH_PARTIAL` must be `per_item`. The test named "the schema pins three codes' retry
+   classes, and only three" checks each one.
+
+   The dangerous one is `OUTCOME_UNKNOWN`. It is the case where nobody knows whether the side
+   effect happened, so a retry-safe class would invite a duplicate payment — the failure
+   `DSOR-UNK-01b` exists to prevent. It arrives properly in step 37. `BATCH_PARTIAL` is pinned
+   for the opposite reason: there every item's outcome *is* known, which is why retrying per
+   item is the only sensible instruction.
 4. No, it is a gap in the specification, stated plainly. `result-envelope.schema.json` has
    no `outcome` value meaning "here is your data": three demand proposal machinery and the
    fourth means a dry run. Borrowing one would put something untrue in every read.
@@ -401,7 +427,7 @@ Nearby rules this step does **not** claim. Three are §28 and §32; the others l
 | `DSOR-UNK-01b` | Nothing in this step can produce an unknown outcome, because nothing can fail halfway. A test shows the schema pins that code's retry class, and carries no rule id, because showing what the schema does is not meeting the rule. Step 37. |
 | `DSOR-COR-01a` | All seven correlation ids propagated through connectors, audit and events. Only `request_id` exists here. Step 40. |
 | `DSOR-FRS-01a` | A query result must carry when it was read, the resource version, the connector, and the freshness mode — how recent the data had to be. `result-envelope.schema.json` has no field for any of them, and this step puts no read in an envelope at all. Step 15. |
-| `DSOR-CLS-03` | A read result must carry its classification — how sensitive the data is. The schema has a `classification` field, but it is optional and no branch of the schema ever requires it, so it could not enforce this even if a read were enveloped. Step 14. |
+| `DSOR-CLS-03` | A read result must carry its classification — and specifically **the highest classification among the fields it contains**, which is the whole difficulty of the rule: you cannot label a record without looking at every field in it. The schema has an optional `classification` field and no branch ever requires it, so it could not enforce this even if a read were enveloped. Step 14. |
 
 **Next:** step 05, who is calling — every request starts carrying a caller, and the
 handler signature stops being `(args)`.

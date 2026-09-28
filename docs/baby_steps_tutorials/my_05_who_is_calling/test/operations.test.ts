@@ -1,4 +1,4 @@
-// nobody calls getInvoice directly any more.
+// Nobody calls getInvoice directly any more.
 //
 // A caller names an operation and passes arguments. The operation is looked up in the
 // registry, so an operation with no contract cannot be called at all.

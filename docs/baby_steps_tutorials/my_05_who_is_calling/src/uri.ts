@@ -1,4 +1,4 @@
-// every record gets one permanent address.
+// Every record gets one permanent address.
 //
 //     dsor://org_456/invoice/INV-1008
 //     ^^^^   ^^^^^^^ ^^^^^^^ ^^^^^^^^

@@ -129,7 +129,7 @@ function.
 my_06_permissions_deny_by_default/
   src/permissions.ts           NEW  the roles, the shape check, and may-you
   test/permissions.test.ts     NEW  12 tests: the table on its own
-  test/deny-by-default.test.ts NEW  11 tests: cfo_100 can read and cannot issue
+  test/deny-by-default.test.ts NEW  10 tests: cfo_100 can read and cannot issue
   src/people.ts            CHANGED  every principal carries a role
   src/operations.ts        CHANGED  the may-you gate, after the lookup and before the arguments
   src/login.ts             CHANGED  every caller-supplied read goes through one helper
@@ -161,7 +161,7 @@ diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
 cd docs/baby_steps_tutorials/my_06_permissions_deny_by_default
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 130 tests pass
+pnpm check                 # typecheck, then test. 133 tests pass
 ```
 
 ```text
@@ -206,7 +206,7 @@ Five breaks. Change the code back after each. Every number below was produced by
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
      × DSOR-AUT-01b: the supervisor may issue, and does
 AssertionError: expected 'INV-1009 is issued, and only a draft …' to contain 'cfo_100'
-      Tests  5 failed | 125 passed (130)
+      Tests  5 failed | 128 passed (133)
 ```
 
 Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The last
@@ -215,7 +215,7 @@ test then failed because the draft she was never allowed to touch had already be
 **2. Say yes to everything.** Make `holds` return `true`. Run `pnpm test`:
 
 ```text
-      Tests  9 failed | 121 passed (130)
+      Tests  9 failed | 124 passed (133)
 ```
 
 Nine. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
@@ -228,7 +228,7 @@ because "just allow it while I debug" is a real thing people type.
 ```text
      × DSOR-AUT-01b: a principal holds what their role grants, and nothing else
      × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
-      Tests  7 failed | 123 passed (130)
+      Tests  7 failed | 126 passed (133)
 ```
 
 No code was touched. One word in a table, and the separation between approving a payment and
@@ -241,7 +241,7 @@ it is `DSOR-SOD-01a`, in step 30.
 ```text
      × DSOR-AUT-01b: a permission is matched whole, never by prefix
 AssertionError: "invoice:i": expected true to be false // Object.is equality
-      Tests  1 failed | 129 passed (130)
+      Tests  1 failed | 132 passed (133)
 ```
 
 **A prefix is not a match.** Asking for `invoice:i` succeeds, because `invoice:issue` starts with
@@ -258,7 +258,7 @@ yourself.
 ```text
      × DSOR-AUT-01b: a role nobody granted anything holds nothing
 AssertionError: "toString": expected [Function toString] to deeply equal []
-      Tests  1 failed | 129 passed (130)
+      Tests  1 failed | 132 passed (133)
 ```
 
 This one was a real bug in this step, found by a hostile review rather than by me. `ROLES[role]`

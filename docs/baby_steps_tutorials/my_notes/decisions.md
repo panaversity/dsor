@@ -645,3 +645,61 @@ what you think to attack.
 afternoon.
 **Rejected:** nothing. This is a note about method, kept because the evidence for it is unusually
 clean: the same step, the same author, built both ways, two days apart.
+
+## 39 · Step 04's false claim was narrowed, not fixed by adding a guard (2026-09-29)
+
+**Decided by:** me, on an audit finding.
+**What:** step 04's header said *"nothing here throws at a caller any more"*. It now says every
+refusal this step knows about comes back as an envelope, names the hole that is left, and says
+step 05 closes it.
+**Why:** the hole is real — `success()` hashes the caller's arguments *after* the invoice has been
+issued, so an unhashable argument lets the change happen and then throws. Two ways to make the
+sentence true: fix the code, or fix the sentence.
+
+Fixing the code in step 04 would mean adding the argument copy and the serializability check
+there, which is a third idea for a step an audit had just flagged for having two — and it would
+take away step 05's reason to exist for those guards. Fixing the sentence costs a paragraph and
+leaves the progression legible: step 04 introduces envelopes, and the hole in them is the thing
+step 05 closes.
+**Cost:** a step in the tutorial ships with a known crash-after-commit in it. That is only
+acceptable because it is *named*, in the file where a reader meets it, with the step that fixes it.
+An unnamed one would not be.
+**Rejected:** adding the guard to step 04. Also rejected: leaving the sentence, which is critical
+rule 4 — never claim what the code does not do.
+
+## 40 · The tutorial's rule ids are checked by hand (2026-09-29)
+
+**Decided by:** forced by a discovery, and the alternative needs a decision that is not the
+learner's alone.
+**What:** after any edit that adds or changes a `DSOR-` id in a step or in these notes, the id is
+looked up in `requirements.json` by hand. The notes' README says so where it used to claim the
+guard did it.
+**Why:** `pnpm guard` strips inline code spans before hunting for identifiers. The specification's
+prose writes ids bare, so the check works there. The tutorial writes every id in backticks, so the
+check has never seen one of ours — proven by probe, and it had already let `DSOR-SOD-01` through,
+which is not a rule.
+**Cost:** a manual step that will be forgotten. Mitigated only by the warning sitting in the
+directory's README rather than in a commit message nobody re-reads.
+**Rejected, for now:** extending `scripts/guard-spec.mjs` to look inside backticks. It is the
+right fix and it is repository infrastructure, not tutorial content: the code spans are stripped
+for a reason, and the spec's own prose may show illustrative ids that are meant not to resolve.
+It belongs in a pull request that checks what breaks in `specs/dsor/` first.
+See [open question 4](open-questions.md).
+
+## 41 · Step 05 keeps three ideas, and says so on the page (2026-09-29)
+
+**Decided by:** me, on an audit finding I agree with and am not acting on.
+**What:** step 05 carries its one idea — who is calling — plus two guards that are about argument
+handling: the arguments are copied once, and a request whose arguments cannot be written down is
+refused first. A new section in its README says this plainly, under the heading "Three things,
+where the rule says one".
+**Why:** the audit is right that they do not belong to identity, and the second is explicitly an
+early instalment of step 08's own rule. The reason they stay is that they close holes that are
+**open in step 04**, and both were found by a hostile review after the step looked finished.
+Moving them to step 08 means thirteen steps in which a caller can crash a command that already
+succeeded. Keeping a rule about step boundaries tidy is not worth that.
+**Cost:** the one-idea rule is broken in a visible place, which weakens it everywhere else. Naming
+it in the step is the only thing that stops that being a quiet precedent.
+**Rejected:** a step 05b for the two guards. It is the tidiest answer and it renumbers nothing,
+but it splits identity from the fix to the bug identity exposed, and a learner meeting 05b would
+have to hold both halves anyway.
