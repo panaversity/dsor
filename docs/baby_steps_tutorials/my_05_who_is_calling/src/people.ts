@@ -41,9 +41,10 @@ const person = (id: string, type: PrincipalType): Principal =>
 // The cast of the running example, and nobody else. A real deployment reads its people
 // from an identity provider, which is step 43.
 //
-// The agent is an entry of its own with its own identity. DSOR-IDN-02a says an agent
-// MUST authenticate with its own credentials, never a human's session — so it logs in as
-// itself, exactly as the two people do.
+// The agent is an entry of its own, with an identity of its own, and it logs in as itself
+// exactly as the two people do. That is the *shape* DSOR-IDN-02a asks for — an agent with
+// credentials of its own rather than a borrowed session — but it is not the rule, which is
+// about authenticating with them. Nothing here authenticates anything. Step 44.
 const people: readonly Principal[] = Object.freeze([
   person("user_123", "human"),
   person("cfo_100", "human"),
