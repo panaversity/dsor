@@ -251,7 +251,11 @@ Decisions 16 and 17 were added after the hostile review, which found each gap li
     superuser, without `BYPASSRLS`, not a member of `pg_write_all_data`, the owner of no
     table, and unable to change `dsor.audit`. If any answer is wrong, it names the
     problem and stops. A student who pastes the owner's string into `DSOR_DB_URL` is
-    stopped here. *Downside:* one more query at start-up.
+    stopped here. One database test starts the program with exactly that string, and
+    expects the refusal, so deleting the check turns it red. It is the only test that
+    touches the owner's key, and it never logs in as the owner itself. Found by a second
+    review: with the check deleted, every test stayed green. *Downside:* one more query
+    at start-up, and the database tests need `DSOR_MIGRATION_URL` too.
 
 ### The tests, by claim
 
@@ -438,6 +442,8 @@ always rolled back, so a break that opens the lock still cannot change a record.
 | R2 | `GRANT UPDATE ON SEQUENCE dsor.audit_sequence_seq` | (the review's) | before the fix: **nothing**. After: the list of privileges |
 | R3 | `GRANT CREATE ON SCHEMA dsor` | (the review's) | before the fix: **nothing**. After: the list of privileges |
 | R4 | the invoice id pasted into the SQL | (the review's) | before the fix: **nothing**. After: C6's test with `INV-9999' OR '1'='1` |
+| R5 | the start-up check deleted from `main.ts` | (the second review's) | before: **nothing**, all 527 tests green. After: the start-up test, because the program ran as the owner and exited 0 |
+| R6 | line ⑪ without `await`, then a crash (T5 against the crash test) | (the second review's) | the crash test: the caller heard "ok", and the table held no record |
 
 **T1.** The owner hands out UPDATE:
 
@@ -675,6 +681,8 @@ back after.
 10. **C3 proved a restart, not a crash.** It closed the pools politely. Now a child
     program answers and kills itself with `SIGKILL`, and the test finds the record.
     Break T5 turns it red: the caller heard "ok", and no record existed.
+11. **Nothing noticed if the start-up check was deleted.** Now a database test starts
+    the program with the owner's string and expects it to refuse (decision 17).
 
 **Left open on purpose:**
 

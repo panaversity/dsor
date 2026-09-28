@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { loadDotEnv, requireEnv } from "../src/postgres.ts";
 import { notGranted } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
@@ -92,6 +93,33 @@ describe("the program's log", () => {
         "invoice.issue@1 DENY VALIDATION_FAILED",
       ]);
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
+    },
+  );
+});
+
+// NEW IN STEP 09: the program refuses to run as a login that could change the log (step
+// 09's README, decision 17). Found by the second review: with the check deleted from
+// main.ts, every test stayed green. This is the only test that touches the owner's key,
+// and it only hands it to the program; the test never logs in as the owner.
+describe("the program's start-up check", () => {
+  it(
+    "DSOR-AUD-04a: refuses to run as the owner, names why, and makes no call",
+    { timeout: 60_000 },
+    () => {
+      loadDotEnv(["DSOR_MIGRATION_URL"]);
+      const owner = requireEnv("DSOR_MIGRATION_URL");
+      const run = spawnSync(process.execPath, [MAIN], {
+        encoding: "utf8",
+        env: { ...process.env, DSOR_DB_URL: owner },
+      });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toMatch("DSOR_DB_URL must log in as dsor_runtime. Refused:");
+      expect(run.stderr).toMatch("not dsor_runtime");
+      expect(run.stderr).toMatch("can change or remove records in dsor.audit");
+      // No call was made, so nothing was answered.
+      expect(run.stdout).not.toMatch("data: {");
+      // The refusal names the problems, never the secret.
+      expect(run.stdout + run.stderr).not.toContain(owner);
     },
   );
 });
