@@ -1,161 +1,156 @@
-# Step 05 · Who is calling
+# Step 06 · Permissions, denied by default
 
-**New in this step:** every call says who is asking, and who you are comes from the login —
-never from the arguments.
+**New in this step:** every call is checked against what the caller may do, and anything nobody
+granted is refused.
 
-## Read this first: the login is pretend
+## Read this first: the roles are in the source
 
-This step does **not** build real security, and it is worth knowing that before you read
-any code.
+The roles and their permissions are written in `src/permissions.ts`, in the program itself. A
+real deployment reads them from a role source — a directory or an identity provider — and
+`DSOR-IDN-04a` requires exactly that. Steps 18 and 19 build it.
 
-A real login proves who you are. It checks a password, or a token, or a certificate. This
-one does none of that. You hand it a name and it believes you:
-
-```ts
-callOperation({ loggedInAs: "user_123" }, "invoice.get", { invoice: "…" })
-```
-
-Anyone can write `cfo_100` there and the program will believe them. Real logins arrive in
-steps 43 and 44 — step 43 for people, step 44 for agents.
-
-So the rule this step meets, `DSOR-SRC-02a`, has two halves, and only one of them is real
-here:
-
-| Half of the rule | This step |
-| --- | --- |
-| who you are comes from **beside** the request, not from the arguments | **real**, and tested |
-| what it comes from is **authenticated** | pretend until steps 43 and 44 |
-
-The rule's own words are "the authenticated request envelope". This step has no envelope
-around a request — the login is simply the first argument to the call. What it does have is
-the separation the rule is about: who you are travels beside the request, and the arguments
-are never asked.
-
-The half that *is* real is the half worth learning first, and it is the half that most
-often goes wrong in real systems.
+So nothing here stops somebody editing that file to grant themselves a permission. What this
+step does build is the part that matters first and goes wrong most often: the answer to *may
+you* comes from the operation's own contract and from a role table, never from the caller and
+never from the arguments — and the answer is **no** unless somebody said yes.
 
 ## In plain words
 
-Until now your code answered anybody. Look at how it was called in step 04:
+Step 05 answered *who are you*. This step answers *may you do this*.
 
-```ts
-callOperation("invoice.issue", { invoice: "dsor://org_456/invoice/INV-1009" })
-```
+A **permission** is a short string in two parts: `<resource>:<action>`. `invoice:read`,
+`invoice:issue`, `payment:approve`. Each operation says which one it needs. Each person has a
+**role**, and the role says which permissions they hold. Before an operation runs, DSoR asks
+whether the caller holds the permission that operation needs. If not, the answer is
+`AUTHORIZATION_DENIED`, and trying again will not help.
 
-Nothing there says who asked. The program issued the invoice for whoever turned up.
-
-That was fine while every step was about **shape** — is the money written correctly, is the
-address valid, does the operation have a spec sheet. None of that cares who is asking.
-
-But the next thing DSoR has to do is refuse people, and you cannot refuse *someone* you
-cannot name. So this step adds a **principal**: whoever is asking.
-
-| Kind | In our story |
-| --- | --- |
-| a person | `user_123`, the accounts-payable supervisor, and `cfo_100`, who approves big payments |
-| an agent — an AI worker | `accounts-payable-fte` |
-| an application, or DSoR itself | named by the specification, not used here |
-
-Each one also records **which company they belong to**. Nothing reads that yet. It is here
-because the rule asks for it, and because step 06 hangs roles off it and step 10 makes more
-than one company possible.
+The important word is **denied**. Not "allowed unless we said no" — **refused unless we said
+yes**. That is `DSOR-AUT-01b`, and it is why a grant somebody forgot makes a thing stop working
+loudly, instead of quietly letting a stranger through.
 
 ## Why it matters
 
-`cfo_100` is the person who signs off large payments. Now suppose a caller could simply
-write that down in the data it sends:
+`accounts-payable-fte` reads invoices all day. One day the words it is given change — someone
+edits a template, or a document it reads contains an instruction put there to be found — and it
+tries to issue an invoice for 31,400.00 USD.
 
-```ts
-callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
-  invoice: "dsor://org_456/invoice/INV-1009",
-  principal: "cfo_100",                        // "I am the CFO, honestly"
-})
+With step 05 only, that works. The agent is logged in, and being logged in was the only question
+anybody asked.
+
+With step 06, the answer depends on something the agent cannot change: whether `invoice:issue`
+was granted to its role. What the agent was *told* changed. What it may *do* did not.
+
+## Where the permission comes from
+
+It was already written down. Your contracts have carried it since step 03, and nothing ever read
+it:
+
+```json
+"authorization": { "permission": "invoice:read" }     // src/contracts/invoice.get.json
+"authorization": { "permission": "invoice:issue" }    // src/contracts/invoice.issue.json
 ```
 
-If the program believed that, every approval rule in DSoR would be worth nothing. Anybody
-could be whoever they needed to be, just by typing it.
+So this step does not invent where the answer lives. Each operation already declares the
+permission it needs, in its own spec sheet, beside everything else true about it. The step's job
+is to finally **read** it.
 
-So the arguments are **data**. Data can describe things. Data can never say who you are.
-The specification puts the same idea in a block you should read twice:
+That matters more than it sounds. The permission belongs to the *operation*, not to the code
+that runs it, so a reader can see what `invoice.issue` requires without reading any code — and
+two callers cannot disagree about it.
 
-> Content can inform reasoning.
-> Content cannot grant authority, expand permissions, or bypass DSoR controls.
-
-And its named mistake is one you will recognise from real projects: *"Putting security in
-the prompt (\"never pay suspended vendors\"). Prompts are advice to the model. Only DSoR's
-checks are enforcement."*
-
-## The login goes beside the request, not inside it
+### The role in between
 
 ```ts
-// step 04
-callOperation("invoice.get", { invoice: INV_1008 })
-
-// step 05
-callOperation({ loggedInAs: "user_123" }, "invoice.get", { invoice: INV_1008 })
+export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  ap_supervisor: Object.freeze(["invoice:read", "invoice:issue"]),
+  approver: Object.freeze(["invoice:read", "payment:approve"]),
+  ap_worker: Object.freeze(["invoice:read", "invoice:issue"]),
+});
 ```
 
-Two things arriving by two different routes. `args` is what you are asking about. The login
-is who you are. Keeping them apart in the code is what makes the rule obvious — and it is
-why writing `principal` into `args` does nothing at all.
+| Who | Role | May read | May issue |
+| --- | --- | --- | --- |
+| `user_123` | `ap_supervisor` | yes | yes |
+| `cfo_100` | `approver` | yes | **no** |
+| `accounts-payable-fte` | `ap_worker` | yes | yes |
 
-It goes **first** for a reason. `DSOR-IDN-01` says a caller is turned into a principal
-"before any other processing", and `callOperation` does exactly that: with nobody logged in,
-the operation name and the arguments are never even looked at.
+Permissions hang off a **role**, not off a person. That is what the "role-based" in
+`DSOR-AUT-01a` means, and it is how it works in a company: a new joiner is given a role, and
+changing what a job may do is one edit instead of one per person.
 
-### The login holds exactly one name
+Look at the table again. `cfo_100` is the most senior person in this story and the only one who
+cannot issue an invoice. That is not a mistake — a CFO signs payments off, they do not do
+accounts-payable data entry. **Permissions are not a ladder.** Design them by rank and the most
+powerful account in the company becomes the one most worth stealing.
 
-```ts
-export interface Login {
-  readonly loggedInAs: string;
-}
-```
+### A typo fails closed, and that is the danger
 
-One field, on purpose. There is nowhere to say "I am logged in as this person **and** acting
-as that agent".
+Write `INVOICE:READ` in a role and it matches nothing. The role silently grants less than you
+meant, and the first sign of trouble is a person who cannot do their job for reasons nobody can
+find. Failing closed is the *right* direction — silence is not.
 
-That is `DSOR-IDN-02a`: an agent must authenticate with its own credentials, never a human's
-session. Here it is honoured by the *shape* of the type rather than by a check somebody
-could delete later. `accounts-payable-fte` is an ordinary entry in the people list and logs
-in as itself, exactly as the two humans do.
-
-An agent acting **for** a person is a real thing in DSoR — it is the running example's normal
-case. It needs a permission slip, called a delegation, and that is step 18. This step cannot
-build it, and the specification's own schema agrees: in its `unattended` mode a delegation is
-required and the authority must come from a role source, and neither exists yet.
-
-## What changed since step 04
+So the table is checked when the program loads, against the pattern in the specification's own
+`common.schema.json`. A typo stops the program instead of taking a permission away:
 
 ```text
-my_05_who_is_calling/
-  src/people.ts            NEW  the three principals, with their type and company
-  src/login.ts             NEW  a login becomes a principal, or is refused
-  test/login.test.ts       NEW  15 tests: who exists, and what a login may be
-  test/who-is-calling.test.ts NEW 13 tests: the arguments are ignored
-  src/operations.ts    CHANGED  callOperation takes a login, first; answers say who asked
-  src/envelopes.ts     CHANGED  correlation carries principal_id once a caller exists
-  src/main.ts          CHANGED  every line shows who asked
-  test/operations.test.ts CHANGED every call passes a login
-  src/invoice.ts       CHANGED  nothing but a dropped step 04 comment marker
-  test/envelopes.test.ts CHANGED a marker, and one note that principal_id is filled now
-  package.json         CHANGED  name and description only
+TypeError: ap_worker grants "INVOICE:READ", which is not <resource>:<action>
 ```
 
-The last three are in the list because `diff -rq` shows them to a reader and a list that
-leaves them out looks like something is hidden. Two of them are comments only.
+The pattern is read out of the schema file rather than copied into the code, so the two cannot
+drift. Writing `/^[a-z]+:[a-z]+$/` by hand would be shorter and wrong: it refuses
+`payment:execute.propose`, which the specification allows.
+
+## The order grew a third question
+
+```text
+step 05:  who are you?  ->  does this operation exist?  ->  are the arguments valid?
+step 06:  who are you?  ->  does this operation exist?  ->  MAY YOU?  ->  are the arguments valid?
+```
+
+Authority is settled **before** the arguments are read, and that is deliberate. If the address
+were read first, `cfo_100` could learn from the error code whether `INV-9999` exists: ask about
+two invoices, compare `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED`, and she has a way to
+count records she has no permission to see. Because the permission is checked first, every one of
+those attempts is the same refusal — the same *words*, which a test pins — and she learns
+nothing.
+
+Step 07 turns this order into a written checklist instead of leaving it as the shape of one
+function.
+
+## What changed since step 05
+
+```text
+my_06_permissions_deny_by_default/
+  src/permissions.ts           NEW  the roles, the shape check, and may-you
+  test/permissions.test.ts     NEW  12 tests: the table on its own
+  test/deny-by-default.test.ts NEW  11 tests: cfo_100 can read and cannot issue
+  src/people.ts            CHANGED  every principal carries a role
+  src/operations.ts        CHANGED  the may-you gate, after the lookup and before the arguments
+  src/login.ts             CHANGED  every caller-supplied read goes through one helper
+  src/main.ts              CHANGED  the CFO reads an invoice, then is refused when she issues it
+  test/who-is-calling.test.ts CHANGED two tests issued as cfo_100 and now ask as the agent
+  package.json             CHANGED  name and description only
+```
+
+That last test change is worth a moment. Two of its tests issued an invoice as `cfo_100`. She
+may not any more, so they ask as the agent instead. Nothing about what they test changed. **A new
+gate in front of the program changing which caller a test needs is exactly what it looks like
+when permissions start working.** If adding permissions had broken nothing, nothing was being
+checked.
+
+To see every difference yourself:
 
 ```bash
-cd docs/baby_steps_tutorials
-diff -rq --exclude=node_modules --exclude=pnpm-lock.yaml \
-  my_04_result_and_error_envelopes my_05_who_is_calling
+diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
+  ../my_05_who_is_calling ../my_06_permissions_deny_by_default
 ```
 
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_05_who_is_calling
 pnpm install
 pnpm start
+pnpm check                 # typecheck, then test. 130 tests pass
 ```
 
 ```text
@@ -166,230 +161,227 @@ accounts-payable-fte  (no envelope)            dsor://org_456/invoice/INV-1008  
 
 user_123              (no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
 
+cfo_100               (no envelope)            dsor://org_456/invoice/INV-1009  2500.00 USD  draft
+cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
 accounts-payable-fte  COMMITTED                dsor://org_456/invoice/INV-1009  issued
 
 not logged in           (nobody)              AUTHENTICATION_REQUIRED  retry: never                nobody is logged in
 nobody by that name     (nobody)              AUTHENTICATION_REQUIRED  retry: never                "nobody" is not someone this program knows
 logged in, bad address  user_123              VALIDATION_FAILED        retry: never                not a canonical URI: "INV-1008"
 logged in, no contract  user_123              UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an operation: this program has no contract for it
+denied, real invoice    cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
+denied, no such invoice cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
 ```
 
-```bash
-pnpm check                 # typecheck, then test. 107 tests pass
-```
+Read the middle of that. `cfo_100` reads INV-1009 and is told it is a 2,500.00 USD draft. She
+asks to issue it and is refused. Then the agent issues **the same invoice, one line later**, and
+it works. Nothing about the invoice changed between those two lines. The only difference is who
+asked.
 
-Read those lines carefully, because two things are happening.
-
-**Lines one and two** are the same read by two different callers. Switching is a different
-login and nothing else.
-
-**Line three** is the same read again — and its arguments contained `principal: "cfo_100"`.
-The answer still says `user_123`. The claim was read and thrown away. That is the step done.
-
-**The last four** show the order. The first two never got as far as the address or the
-operation name: with nobody logged in, there is nothing to process yet. The second two
-were logged in, so their real problem was found.
-
-### Why both refusals say the same thing
-
-"Nobody is logged in" and "nobody by that name" both come back as
-`AUTHENTICATION_REQUIRED`. That is deliberate. A refusal saying *"there is no such person
-here"* would tell a stranger which names **do** exist, one guess at a time.
-
-The specification has a rule about that shape, `DSOR-ERR-01b`, and this step cannot state it
-properly yet — it turns on whether the caller is *authorized*, and nothing is authorized
-until step 06. So this is the habit, arriving before the rule that needs it.
-
-### The arguments are copied once, and an answer cannot be edited
-
-Two small things guard the answer itself, and both come from a review that attacked this step.
-
-The arguments belong to the caller, so `callOperation` **copies them once** and never looks at
-the original again. A caller can define `invoice` as a *getter* — a property that runs code
-every time it is read — and answer differently on the second read. The arguments used to be
-read twice: once to decide which invoice to issue, and again to fingerprint the receipt. So a
-caller could have INV-1009 issued while the receipt fingerprinted a request for a different
-invoice entirely. One copy makes both reads the same read.
-
-If the copy cannot be written down at all — a circular object, a `BigInt` — the call is
-refused with `VALIDATION_FAILED` before anything happens. It used to issue the invoice and
-*then* throw while hashing, which is the worst possible order: the change happened, and the
-caller got a stack trace instead of an envelope, with nothing recording who did it. Writing it
-down before doing it is a rule of its own, `DSOR-EXE-03a`, and step 08 builds the real version.
-
-And the answer is frozen. `readonly` is a TypeScript word that is **erased before Node runs** —
-step 01's lesson — so without `Object.freeze` a caller could overwrite `askedBy` on the answer
-they were handed, which is this step's whole record of who asked.
+And the last two lines are the same refusal twice: once for an invoice that exists, once for
+`INV-9999`, which does not. A caller who may not act learns nothing about what is there.
 
 ## Break it
 
-Four breaks. Change the code back after each. Every number below was produced by running it.
+Five breaks. Change the code back after each. Every number below was produced by running it.
 
-**1. Read the principal from the arguments.** In `src/operations.ts`, take the name from
-`args["principal"]` when it is there, instead of from the login. Run `pnpm test`:
-
-```text
-     × DSOR-SRC-02a: a principal named in the arguments is ignored
-     × DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well
-AssertionError: expected 'cfo_100' to be 'user_123' // Object.is equality
-      Tests  2 failed | 105 passed (107)
-```
-
-This is the break the step exists for, and it is the map's own "done when". Notice how small
-the change is — one line with a ternary, and it looks helpful. Notice also that it takes
-**two** tests down, not one: the query and the command are asked the same question, because a
-hole in one of them is a hole.
-
-**2. Let a missing login through.** In `src/login.ts`, default to `user_123` instead of
-refusing when there is no login. Run `pnpm test`:
+**1. Delete the may-you gate.** In `src/operations.ts`, remove the `holds(...)` block. Run
+`pnpm test`:
 
 ```text
-     × DSOR-IDN-01: nobody logged in is refused, and a retry cannot help
-     × DSOR-IDN-01: each refusal says in words which refusal it is
-     × DSOR-IDN-01: a login that is not a login is refused, never thrown at
-     × DSOR-IDN-01: a name inherited from a prototype is not a login
-     × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
-     × DSOR-IDN-01: with nobody logged in, nothing happens at all
-     × DSOR-IDN-01: the login is checked before the operation or the arguments
-     × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  8 failed | 99 passed (107)
+     × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
+     × DSOR-AUT-01b: the refusal does not say which permission was missing
+     × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
+     × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
+     × DSOR-AUT-01b: the supervisor may issue, and does
+AssertionError: expected 'INV-1009 is issued, and only a draft …' to contain 'cfo_100'
+      Tests  5 failed | 125 passed (130)
 ```
 
-Eight. A default caller is not one bug: it takes out the refusal, its retry class, the
-ordering, the attribution of a refused call, and every check on what a login may be. This is
-the version of the bug that looks most reasonable while you are writing it, and it is the one
-with the widest blast radius.
+Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The last
+test then failed because the draft she was never allowed to touch had already been used up.
 
-**3. Believe any name.** In `src/login.ts`, invent a principal for any name instead of looking
-it up in the people list. Run `pnpm test`:
+**2. Say yes to everything.** Make `holds` return `true`. Run `pnpm test`:
 
 ```text
-     × DSOR-IDN-01: a name nobody has is refused the same way
-     × DSOR-IDN-01: each refusal says in words which refusal it is
-     × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
-     × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  4 failed | 103 passed (107)
+      Tests  9 failed | 121 passed (130)
 ```
 
-**4. Check the login after the operation.** Move the "no such operation" lookup and refusal so
-they come *before* the login check. Run `pnpm test`:
+Nine. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
+prefix now counts as a match, an empty permission is held by everybody. Remember this break,
+because "just allow it while I debug" is a real thing people type.
+
+**3. Give the CFO the supervisor's role.** One word in `src/people.ts`, `approver` to
+`ap_supervisor`. Run `pnpm test`:
 
 ```text
-     × DSOR-IDN-01: the login is checked before the operation or the arguments
-     × every answer says who asked, and so does the envelope inside it
-      Tests  2 failed | 105 passed (107)
+     × DSOR-AUT-01b: a principal holds what their role grants, and nothing else
+     × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
+      Tests  7 failed | 123 passed (130)
 ```
 
-Nothing is insecure yet — the caller is still checked. But an unknown caller now learns which
-operations exist before being turned away, and "before any other processing" is no longer
-true. The second failure is the tell: up there the caller has not been resolved yet, so the
-refusal has no name to put in, and a logged-in caller's mistyped operation is recorded as
-having come from nobody. Order is a guarantee, and it is testable.
+No code was touched. One word in a table, and the separation between approving a payment and
+creating one is gone. That separation has a name in a real company — segregation of duties — and
+it is `DSOR-SOD-01`, in step 20.
+
+**4. Match by prefix instead of by whole string.** In `holds`, use
+`granted.some((g) => g.startsWith(permission))`. Run `pnpm test`:
+
+```text
+     × DSOR-AUT-01b: a permission is matched whole, never by prefix
+AssertionError: "invoice:i": expected true to be false // Object.is equality
+      Tests  1 failed | 129 passed (130)
+```
+
+This is step 05's bug in different clothes. There, a prefix match in `findPerson` let
+`cfo_100_evil` log in as `cfo_100`. Here, asking for `invoice:i` succeeds — and asking for `""`
+succeeds, because every string starts with nothing. **A prefix is not a match.** Twice now, in
+two files.
+
+**5. Drop `Object.hasOwn` from the role lookup.** In `permissionsOf`, go back to plain
+`return ROLES[principal.role] ?? NOTHING`. Run `pnpm test`:
+
+```text
+     × DSOR-AUT-01b: a role nobody granted anything holds nothing
+AssertionError: "toString": expected [Function toString] to deeply equal []
+      Tests  1 failed | 129 passed (130)
+```
+
+This one was a real bug in this step, found by a hostile review rather than by me. `ROLES[role]`
+on a plain object **walks the prototype chain**, so a role named `toString` finds a function on
+`Object.prototype`, `?? NOTHING` never fires, and `holds` calls `.includes` on a function and
+throws at the caller instead of answering no. Anything written to `Object.prototype` becomes a
+role granting whatever it likes — one the start-up check never validated and `Object.keys(ROLES)`
+never shows.
+
+The fix already existed one file away. `src/login.ts` uses `Object.hasOwn` for exactly this
+reason, added in step 05 because *a name the object merely inherits is a name nobody in this
+program chose*. The lesson was applied to identity and not to authorization, a day apart. Look
+for the shape of a bug in the other places that shape can live.
 
 ## Build it yourself with Claude Code
 
-This folder is a learner copy — the `my_` prefix. The official `05_who_is_calling` is still
-listed as planned in the [map](../readme.md), so there is nothing to compare against yet.
+This folder is a learner copy — the `my_` prefix. Start from your finished step 05 and ask for
+one thing at a time:
 
-```bash
-cd docs/baby_steps_tutorials
-cp -r my_04_result_and_error_envelopes my_05_who_is_calling
-cd my_05_who_is_calling
-rm -rf node_modules && pnpm install
-claude
-```
+> I have finished step 05, where every request has a caller. Now I want step 06 of the DSoR baby
+> steps: permissions, denied by default. Read the map's entry for step 06, §15 of the
+> specification, and the sentences for `DSOR-AUT-01a` and `DSOR-AUT-01b` in the requirement
+> registry. Then look at `src/contracts/invoice.issue.json` and tell me where the permission an
+> operation needs is **already** written down. Do not write code yet — explain what you found,
+> and ask me who should be allowed to do what.
 
-Then paste one line:
+Then, once you agree on the table:
 
-```text
-Use the build-baby-step skill in learner mode. We are building step 05, who_is_calling.
-```
+> Write the failing tests first, titled with the rule ids, and show me them failing. The one that
+> matters is the map's "done when": a caller with `invoice:read` can read and cannot issue. Then
+> make them pass with the smallest change, and put the may-you check **before** the arguments are
+> read — I want to see for myself why that order matters.
 
-Ask for a plan before any code, and ask to see the new tests fail before they pass. The
-general directions are in the
-[tutorial overview](../readme.md#build-the-steps-with-claude-code).
+And when it is green, ask for the part that finds real bugs:
+
+> Now attack it. Try to make `holds` say yes for something nobody granted, try to reach an
+> invoice without passing the gate, and try to make a denied caller learn something about data
+> they may not touch. Mutate every guard one at a time **and whole families at once**. Show me
+> real output for anything you find.
 
 ## Check yourself
 
-1. Why is it not enough to read the caller's name out of the arguments?
-2. The login has exactly one field. What does that shape stop, and what does it **not**
-   stop?
-3. `principalFrom(undefined)` and `principalFrom({ loggedInAs: "nobody" })` return the same
-   code. Why not say which one went wrong?
-4. Nothing in this step reads `memberships`. Why is it there?
-5. With nobody logged in, asking for `execute_sql` gives `AUTHENTICATION_REQUIRED` rather
-   than `UNSUPPORTED_CAPABILITY`. Is that the right answer?
-6. Is this step secure?
+1. Where does the permission an operation needs come from? Why not from the code that runs it?
+2. `cfo_100` is the most senior person in the story and cannot issue an invoice. Is that a bug?
+3. Why is the may-you check before the arguments are read, and not after?
+4. A role grants `INVOICE:READ` by mistake. What happens, and why is the program stopped rather
+   than left running?
+5. Why does the refusal not tell the caller which permission they were missing?
+6. `ROLES` is a plain object and `principal.role` is a string. What is wrong with
+   `ROLES[principal.role] ?? NOTHING`?
+7. Is this step secure?
 
 <details>
 <summary>Answers</summary>
 
-1. Because the arguments are written by the caller. Anyone could put `cfo_100` there and be
-   the person who approves large payments. Data describes things; it can never say who you
-   are.
-2. It stops a caller **declaring two identities at once** — "I am the agent, acting as the
-   supervisor" — because there is nowhere to write the second one. It does **not** stop a
-   caller borrowing a single identity that is not theirs: the agent can put `cfo_100` in the
-   one field, and nothing here can tell. That is `DSOR-IDN-02a`, and this step does not meet
-   it; only real credentials can, and for an agent those arrive in step 44. This page claimed
-   the opposite until a review
-   caught it, and the lesson is worth more than the claim was: ask which *clause* of a rule
-   your code satisfies, not whether it is about the same subject.
-3. Because "there is no such person here" tells a stranger which names do exist, one guess
-   at a time. The specification has a rule about that, `DSOR-ERR-01b`, which this step cannot
-   state properly because it needs permissions — step 06.
-4. Because `DSOR-IDN-01` asks for it by name: a principal with a type **and tenant
-   memberships**. Step 06 hangs roles off it and step 10 makes more than one company
-   possible. Adding it later would mean changing every principal in the program.
-5. Yes. A caller who is not identified has not really made a request yet, so there is nothing
-   to answer — and telling them which operations exist would be answering. `DSOR-IDN-01`
-   says the caller is normalised "before any other processing", and that is the strongest
-   ordering sentence in the specification.
-6. No. The login is believed without proof — no password, no token. What is real is that the
-   arguments cannot override it. Real authentication is steps 43 and 44, and this README says
-   so at
-   the top rather than at the bottom.
+1. From the operation's own contract, `authorization.permission` — there since step 03. Putting
+   it in the contract means a reader can see what `invoice.issue` requires without reading code,
+   and two pieces of code cannot disagree about it. If the running code decided, the answer would
+   live in as many places as there are callers.
+2. No. A CFO approves payments; they do not do accounts-payable data entry. Permissions describe
+   a job, not a rank. If seniority decided them, the most powerful account in the company would
+   be the one most worth stealing.
+3. So that being refused tells you nothing about the data. If the address were read first,
+   `cfo_100` could compare `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED` and count invoices
+   she has no permission to see. Order is part of the guarantee, and it is testable — moving the
+   gate below the address parse turns tests red.
+4. `INVOICE:READ` matches nothing, so the role silently grants less than its author meant. That
+   fails *closed*, which is the safe direction, but silently — nobody notices until a person
+   cannot do their job. The table is checked against the specification's own pattern when the
+   program loads, so the typo stops the program instead.
+5. Because a refusal that names what you lacked is a map of the permission model. Ask for twenty
+   operations and the refusals draw it for you. The detail belongs in the audit record, which
+   step 08 builds, where an operator can read it and a caller cannot.
+6. It walks the **prototype chain**. A role named `toString`, `constructor` or `valueOf` finds an
+   inherited member of `Object.prototype`, so `?? NOTHING` never fires and you get a function
+   back instead of a list. `holds` then calls `.includes` on it and throws. Worse, anything
+   written to `Object.prototype` becomes a role that grants whatever it likes. `Object.hasOwn`
+   first is the fix — the same one `src/login.ts` already used for inherited *names*.
+7. No. The roles live in the source, not in a role source, so `DSOR-IDN-04a` is not met — steps
+   18 and 19. Nothing is authenticated either, so a caller can still claim to be anyone; step 43
+   for people and 44 for agents. And nothing yet stops the person who creates a payment from
+   approving it — step 20. What *is* real: the answer to may-you cannot be reached from the
+   arguments, and anything ungranted is refused.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-IDN-01 · L1]** DSoR MUST normalize every caller into a principal with a type and
-  tenant memberships before any other processing.
-  ([§12](../../../specs/dsor/02-security.md#12-identity-and-principals))
-- **[DSOR-SRC-02a · L1]** DSoR MUST derive the security context only from the authenticated
-  request envelope and its own control-plane store.
-  ([§11](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary))
+- **[DSOR-AUT-01a · L1]** DSoR MUST support role-based access control using the
+  `<resource>:<action>` permission format.
+  ([§15](../../../specs/dsor/02-security.md#15-authorization))
+- **[DSOR-AUT-01b · L1]** DSoR MUST deny any operation for which no permission is granted.
+  ([§15](../../../specs/dsor/02-security.md#15-authorization))
 
-`DSOR-IDN-01` is met for every call through `callOperation`: the caller becomes a principal,
-with a type and a company, before the operation name or the arguments are looked at, and a
-test proves the order. Two honest edges. `getInvoice` and `issueInvoice` are still exported
-and can be called with no login at all — the map shuts that door in step 42. And a principal's
-`memberships` exist but are never read; the company is compared against one hard-coded value.
+`DSOR-AUT-01a` is met, both halves: permissions hang off roles, and every permission string is
+checked against the pattern in `common.schema.json` — the specification's own file — when the
+program loads.
 
-**`DSOR-SRC-02a` is met in one half only**, as the section at the top of this page says.
-Nothing is derived from the arguments, and both the query **and** the command are tested with
-a caller who plants `principal` in them. Nothing is *authenticated* — the login is believed.
-Step 43 for people, step 44 for agents.
+`DSOR-AUT-01b` is met: a permission that was never granted is refused, a role nobody defined
+holds nothing (including one named after a member of `Object.prototype`), and a permission is
+matched whole rather than by prefix.
 
-That is one rule met and one met in half, which is what the
-[map](../readme.md) gives this step. An earlier version of this page also claimed
-`DSOR-IDN-02a`; a hostile review showed it was not met, and the row below says why.
+Step 05's two claims still hold: `DSOR-IDN-01`, and the "not from the arguments" half of
+`DSOR-SRC-02a` — which this step extends. Who you are never came from the arguments, and now
+neither does what you may do.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-IDN-02a` | An agent must authenticate with its own credentials, never a human's session. **Nothing here authenticates anything**, so any caller can present any name: `accounts-payable-fte` can send `{ loggedInAs: "cfo_100" }` and every answer and every envelope will say the CFO asked — which is the exact failure §12 describes. The one-field `Login` stops a caller *declaring* two identities at once, and that is worth having, but the rule is about *borrowing* one. Step 44, `44_an_oauth_server_for_agents`, where the agent gets its own OAuth client and proves itself with a private key. |
-| `DSOR-SRC-02b` | A tenant, principal, or delegation identifier in the arguments that **disagrees** with the security context must cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`. This step *ignores* such an argument, which is not the same as refusing it. Ignoring is the right first lesson; the refusal needs authorization and more than one company, steps 06 and 10. |
-| `DSOR-IDN-02b` | Audit must record the subject and every actor. There is no audit log until step 08. |
-| `DSOR-IDN-03a`, `03b` | Exactly one active tenant per request, and no operation across tenants. The company is checked against one hard-coded value, not resolved from the caller's memberships. Steps 10 and 11. |
-| `DSOR-IDN-04a`, `04b` | Roles and scopes may only come from an authoritative source. There are no roles yet — step 06 — and no role source, which is steps 18 and 19. |
-| `DSOR-IDN-05`, `06`, `07` | All need a role source and a delegation. Steps 18 and 19. |
-| `DSOR-SRC-01a`, `01b` | Content in arguments or retrieved data must not change the principal, and an injection test suite must exist. Two of the things that rule protects — the principal and the tenant — are tested here with planted arguments. The rest of the list, and the suite, need content that is *read from somewhere*: a document, a memory, a connector payload. None of those exists yet. |
-| `DSOR-COR-01a` | The identifiers must propagate through connectors, audit, and events. `request_id` and `principal_id` are on every envelope, which is the groundwork, but there are no connectors, no audit and no events to carry them to. |
-| `DSOR-AUT-01a`, `01b` | Role-based access control in the `<resource>:<action>` form, and deny by default. Nothing checks what a caller may do. Step 06, and it is the whole of the next step. |
-| `DSOR-ERR-01b` | An error must not reveal a resource the caller is not authorized to read. The habit is here for *identities* — both login refusals are deliberately identical so a stranger learns no names. It is **not** here for resources: `RESOURCE_NOT_FOUND` names the invoice it could not find. Nobody is unauthorized yet, so nothing leaks yet; the rule needs step 06. |
+| `DSOR-AUT-02a` | Authorization must support `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. There are two answers here, yes and no. `REQUIRE_APPROVAL` needs a proposal for the approval to attach to — step 22. |
+| `DSOR-AUT-02b`, `02c` | When several rules apply the strictest wins, and every `REQUIRE_*` must be satisfied. One permission is checked, so nothing can conflict yet. Controls arrive in step 14. |
+| `DSOR-IDN-04a`, `04b` | Roles and scopes may only come from an authoritative source. These roles are in the source code. Steps 18 and 19. |
+| `DSOR-SOD-01` | Segregation of duties: whoever creates a payment must not approve it. Break 3 shows the hole this rule fills, and the rule needs approvals — step 20. |
+| `DSOR-ERR-01b` | An error must not reveal a resource the caller is not authorized to read. The **mechanism** is here and tested: authority is settled before the data is touched, so a denial reveals nothing. The rule is about a caller who may not *read*, and all three roles hold `invoice:read`, so there is no such caller to test with. It needs a role without it. |
+| `DSOR-IDN-02a` | An agent must authenticate with its own credentials. Nothing here authenticates anything. Step 44. |
+| `DSOR-SRC-02b` | A principal or tenant in the arguments that *disagrees* with the security context must be an error, not merely ignored. Still ignored. Steps 10 and 11. |
 
-**Next:** step 06, permissions denied by default — the first refusal that is about
-*authority* rather than about the shape of your data.
+## What a review found after this looked finished
+
+`pnpm check` was green at 126 tests and every guard had been broken on purpose. Four independent
+reviewers then attacked it, and found three real defects:
+
+- `permissionsOf` walked the prototype chain — break 5 above.
+- **Nothing pinned where the gate's permission came from.** Making it read a `permission` written
+  into the caller's arguments let `cfo_100` issue the invoice with all 126 tests still green.
+  That is step 05's rule, and it needed its own test for authorization.
+- Reading a caller's object could throw where an envelope was promised: a login whose
+  `loggedInAs` is a getter that throws came back as `Error: boom`, not
+  `AUTHENTICATION_REQUIRED`.
+
+Two more were guards with no test behind them, and two were tests that proved less than they
+looked — including one comparing against the literal `"cfo_100"` rather than the login's own
+name, which cannot tell a real answer from that one string.
+
+The reason this is in the README rather than quietly fixed: **a green suite and a completed
+mutation sweep were not enough**, and that is worth knowing before you trust your own.
+
+**Next:** step 07, the pipeline skeleton — the three questions this step left as the shape of one
+function become a written checklist that later steps add lines to and never reorder.
