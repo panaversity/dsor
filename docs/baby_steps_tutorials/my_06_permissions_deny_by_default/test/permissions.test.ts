@@ -38,7 +38,7 @@ function person(id: string): Principal {
 }
 
 describe("permissions", () => {
-  // NEW IN PIECE 3. The shape of a permission is read out of common.schema.json rather than
+  // The shape of a permission is read out of common.schema.json rather than
   // written again in the code, so the two cannot drift apart. `.propose` is the tell: only the
   // specification's own pattern allows that suffix, so a pattern accepting it is the real one
   // and not somebody's guess at it.

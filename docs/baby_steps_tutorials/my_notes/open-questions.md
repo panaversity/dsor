@@ -82,3 +82,30 @@ delegation id.
 not lost — it travels with the document to step 42, where question 2 sends it. Worth keeping
 because it is a rare thing: a schema that refuses to let a step pretend it has built something
 it has not.
+
+## 4 · `pnpm guard` does not check rule ids written in backticks (found 2026-09-29)
+
+**Affects:** every step and these notes. Settle before step 07.
+
+The guard strips inline code spans before hunting for `DSOR-` identifiers. The specification's
+own prose writes ids bare, so the check works there. The tutorial writes **every** id in
+backticks, so the check has never seen one of ours.
+
+Proven by probe: adding `` `DSOR-FAKE-99` `` to a notes file leaves the guard green; the same
+text without backticks produces
+`error: known-id — … mentions DSOR-FAKE-99, which the spec does not define`.
+
+It had already let something through. `DSOR-SOD-01` does not exist — the registry has
+`DSOR-SOD-01a` and `DSOR-SOD-01b` — and it was cited in four tutorial files, including the
+notes' own promises table. Fixed, and every id in all six steps plus these notes was then
+checked by hand: 171 distinct, all real.
+
+Two ways to close it, and the second is not the learner's to make alone:
+
+1. **Check by hand after every edit**, as now, and keep the warning in this directory's README
+   so nobody trusts the guard for this again. Costs nothing, relies on someone remembering.
+2. **Extend `scripts/guard-spec.mjs`** to look inside backticks. This is repository
+   infrastructure outside the tutorial, and the code spans are stripped for a reason — the spec
+   prose may show example or illustrative ids that are meant not to resolve. Changing it needs a
+   check of what breaks in `specs/dsor/` first, and it belongs in a pull request of its own
+   rather than inside a step.

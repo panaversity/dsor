@@ -29,7 +29,8 @@ export interface Principal {
    * Which companies this principal belongs to.
    *
    * DSOR-IDN-01 asks for memberships by name, so they are here from the start even though
-   * nothing reads them yet. Step 06 hangs roles off them and step 10 makes more than one
+   * nothing reads them yet. Step 06 gives each principal a role beside them, and step 10 makes
+   * more than one
    * company possible.
    */
   readonly memberships: readonly Membership[];

@@ -291,7 +291,7 @@ describe("request ids", () => {
   });
 
   it("nothing else is filled in, because nothing else is known yet", () => {
-    // tenant_id waits for step 10, agent_id and principal_id for step 05, and
+    // tenant_id waits for step 10, principal_id for step 05, agent_id for step 18, and
     // propagation through connectors and audit for step 40.
     expect(Object.keys(refusal("CONFLICT", "x").correlation)).toEqual(["request_id"]);
   });

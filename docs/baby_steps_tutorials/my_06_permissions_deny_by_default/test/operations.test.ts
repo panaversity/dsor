@@ -33,7 +33,7 @@ function refusalFrom(answer: ReturnType<typeof callOperation>) {
   return answer.envelope;
 }
 
-// NEW IN STEP 05: every call needs a login now. user_123 is the accounts-payable
+// Every call needs a login. user_123 is the accounts-payable
 // supervisor, and until step 06 nothing checks what she may do — only that she exists.
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 const INV_1008 = "dsor://org_456/invoice/INV-1008";

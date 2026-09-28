@@ -1,4 +1,4 @@
-// NEW IN STEP 05: the test the whole step exists for.
+// The test step 05 existed for: who you are comes from the login, never from the arguments.
 //
 // The map's "done when" for this step reads: putting `"principal": "cfo_100"` inside the
 // arguments changes nothing.

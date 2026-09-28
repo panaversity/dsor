@@ -1,4 +1,4 @@
-// NEW IN STEP 05: who is calling.
+// Who is calling, and what a login may be.
 //
 // A login says who you are. These tests say what a login is allowed to be, and what
 // happens when there is not one. Nothing here is about what you may DO — that is step 06.

@@ -85,8 +85,8 @@ against the literal `"cfo_100"` instead of the login's own name. That last one i
 | roles are in the source, like the people | steps 18 and 19, a role source (`DSOR-IDN-04a`) |
 | one role each | a real system gives several |
 | two answers, yes and no | step 22 adds `REQUIRE_APPROVAL` (`DSOR-AUT-02a`) |
-| one permission per operation, so nothing can conflict | step 14 adds controls, and the strictest wins (`DSOR-AUT-02b`) |
-| whoever creates a payment could also approve it | step 20, segregation of duties (`DSOR-SOD-01`) — break 3 shows the hole |
+| one permission per operation, so nothing can conflict | step 27 adds controls in CEL, and the strictest wins (`DSOR-AUT-02b`) |
+| whoever creates a payment could also approve it | step 30, segregation of duties (`DSOR-SOD-01a`) — break 3 shows the hole |
 | deleting the start-up check and hardcoding its count still passes | only a child process could close it; written in the code |
 
 ## What the order buys

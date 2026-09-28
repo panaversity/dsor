@@ -11,7 +11,8 @@
 // Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
 
 import { refusal, success, type ErrorEnvelope, type ResultEnvelope } from "./envelopes.ts";
-// NEW IN STEP 05: every call now says who is asking.
+// Every call says who is asking, and NEW IN STEP 06 every call is checked against what that
+// caller may do.
 import { principalFrom, type Login } from "./login.ts";
 import { getInvoice, issueInvoice, TENANT, type Invoice } from "./invoice.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
@@ -266,7 +267,7 @@ export function callOperation(
   id: string,
   args: Readonly<Record<string, unknown>>,
 ): OperationAnswer {
-  // NEW IN STEP 05, and it is first on purpose. DSOR-IDN-01 says a caller is normalized
+  // The login is read first, on purpose. DSOR-IDN-01 says a caller is normalized
   // into a principal "before any other processing", so an unknown operation and a broken
   // address both come second: with nobody logged in, neither is even looked at.
   //

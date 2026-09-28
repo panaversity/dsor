@@ -48,7 +48,7 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
  */
 const NOTHING: readonly string[] = Object.freeze([]);
 
-// NEW IN PIECE 3. The shape of a permission, read out of the specification's own schema
+// NEW IN STEP 06. The shape of a permission, read out of the specification's own schema
 // instead of written again here. `common.schema.json` is the same file the contracts are
 // validated against, so the two cannot drift: change the schema and this follows. Writing
 // `/^[a-z]+:[a-z]+$/` by hand would have been shorter and wrong — it refuses

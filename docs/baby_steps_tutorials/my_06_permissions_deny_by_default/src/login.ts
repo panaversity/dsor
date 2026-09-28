@@ -1,4 +1,4 @@
-// NEW IN STEP 05: the login, and the one rule this step exists for.
+// The login: who is asking, and the rule that who you are never comes from the arguments.
 //
 //   Who you are comes from the login. Never from the arguments.
 //

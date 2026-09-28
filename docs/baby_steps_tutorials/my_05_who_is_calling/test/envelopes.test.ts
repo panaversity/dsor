@@ -291,8 +291,8 @@ describe("request ids", () => {
   });
 
   it("nothing else is filled in, because nothing else is known yet", () => {
-    // tenant_id waits for step 10 and agent_id for step 06. principal_id is filled in now
-    // that a caller exists, and
+    // tenant_id waits for step 10 and agent_id for step 18 — it needs a delegation before an
+    // agent id means anything. principal_id is filled in now that a caller exists, and
     // propagation through connectors and audit for step 40.
     expect(Object.keys(refusal("CONFLICT", "x").correlation)).toEqual(["request_id"]);
   });

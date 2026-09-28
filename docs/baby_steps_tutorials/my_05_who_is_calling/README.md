@@ -57,7 +57,8 @@ cannot name. So this step adds a **principal**: whoever is asking.
 | an application, or DSoR itself | named by the specification, not used here |
 
 Each one also records **which company they belong to**. Nothing reads that yet. It is here
-because the rule asks for it, and because step 06 hangs roles off it and step 10 makes more
+because the rule asks for it, and because step 06 gives each principal a role beside it and
+step 10 makes more
 than one company possible.
 
 ## Why it matters
@@ -339,7 +340,8 @@ general directions are in the
    at a time. The specification has a rule about that, `DSOR-ERR-01b`, which this step cannot
    state properly because it needs permissions — step 06.
 4. Because `DSOR-IDN-01` asks for it by name: a principal with a type **and tenant
-   memberships**. Step 06 hangs roles off it and step 10 makes more than one company
+   memberships**. Step 06 gives each principal a role beside them, and step 10 makes more than
+   one company
    possible. Adding it later would mean changing every principal in the program.
 5. Yes. A caller who is not identified has not really made a request yet, so there is nothing
    to answer — and telling them which operations exist would be answering. `DSOR-IDN-01`

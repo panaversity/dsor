@@ -78,6 +78,12 @@ Permissions hang off a **role**, not off a person. That is what the "role-based"
 `DSOR-AUT-01a` means, and it is how it works in a company: a new joiner is given a role, and
 changing what a job may do is one edit instead of one per person.
 
+Be honest about what this small table shows, though. Three people, three roles, and two of those
+roles grant the same two permissions — so the saving is invisible here and you have to take it on
+trust. It becomes real the moment there are five people in accounts payable: five `ap_worker`s,
+and one line to change when the job changes. The shape is right before it is useful, which is the
+only time you can still choose it cheaply.
+
 Look at the table again. `cfo_100` is the most senior person in this story and the only one who
 cannot issue an invoice. That is not a mistake — a CFO signs payments off, they do not do
 accounts-payable data entry. **Permissions are not a ladder.** Design them by rank and the most
@@ -130,6 +136,9 @@ my_06_permissions_deny_by_default/
   src/main.ts              CHANGED  the CFO reads an invoice, then is refused when she issues it
   test/who-is-calling.test.ts CHANGED two tests issued as cfo_100 and now ask as the agent
   package.json             CHANGED  name and description only
+  src/envelopes.ts         CHANGED  step 05's NEW IN STEP markers removed, nothing else
+  test/login.test.ts       CHANGED  the same
+  test/operations.test.ts  CHANGED  the same
 ```
 
 That last test change is worth a moment. Two of its tests issued an invoice as `cfo_100`. She
@@ -141,13 +150,15 @@ checked.
 To see every difference yourself:
 
 ```bash
+cd docs/baby_steps_tutorials
 diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
-  ../my_05_who_is_calling ../my_06_permissions_deny_by_default
+  my_05_who_is_calling my_06_permissions_deny_by_default
 ```
 
 ## Run it
 
 ```bash
+cd docs/baby_steps_tutorials/my_06_permissions_deny_by_default
 pnpm install
 pnpm start
 pnpm check                 # typecheck, then test. 130 tests pass
@@ -222,7 +233,7 @@ because "just allow it while I debug" is a real thing people type.
 
 No code was touched. One word in a table, and the separation between approving a payment and
 creating one is gone. That separation has a name in a real company — segregation of duties — and
-it is `DSOR-SOD-01`, in step 20.
+it is `DSOR-SOD-01a`, in step 30.
 
 **4. Match by prefix instead of by whole string.** In `holds`, use
 `granted.some((g) => g.startsWith(permission))`. Run `pnpm test`:
@@ -233,10 +244,13 @@ AssertionError: "invoice:i": expected true to be false // Object.is equality
       Tests  1 failed | 129 passed (130)
 ```
 
-This is step 05's bug in different clothes. There, a prefix match in `findPerson` let
-`cfo_100_evil` log in as `cfo_100`. Here, asking for `invoice:i` succeeds — and asking for `""`
-succeeds, because every string starts with nothing. **A prefix is not a match.** Twice now, in
-two files.
+**A prefix is not a match.** Asking for `invoice:i` succeeds, because `invoice:issue` starts with
+it — and asking for `""` succeeds, because every string starts with nothing.
+
+The same mistake is waiting in step 05's `findPerson`, which matches a caller's name. Change its
+`===` to `startsWith` and `cfo_100_evil` logs in as `cfo_100`. Step 05's own tests catch that, so
+you can try it there too; its README does not list it as a break, which is why it is worth doing
+yourself.
 
 **5. Drop `Object.hasOwn` from the role lookup.** In `permissionsOf`, go back to plain
 `return ROLES[principal.role] ?? NOTHING`. Run `pnpm test`:
@@ -261,8 +275,19 @@ for the shape of a bug in the other places that shape can live.
 
 ## Build it yourself with Claude Code
 
-This folder is a learner copy — the `my_` prefix. Start from your finished step 05 and ask for
-one thing at a time:
+This folder is a learner copy — the `my_` prefix. The official `06_permissions_deny_by_default`
+is still listed as planned in the [map](../readme.md), so there is nothing to compare against
+yet.
+
+```bash
+cd docs/baby_steps_tutorials
+cp -r my_05_who_is_calling my_06_permissions_deny_by_default
+cd my_06_permissions_deny_by_default
+rm -rf node_modules && pnpm install
+claude
+```
+
+Then ask for one thing at a time:
 
 > I have finished step 05, where every request has a caller. Now I want step 06 of the DSoR baby
 > steps: permissions, denied by default. Read the map's entry for step 06, §15 of the
@@ -326,7 +351,7 @@ And when it is green, ask for the part that finds real bugs:
 7. No. The roles live in the source, not in a role source, so `DSOR-IDN-04a` is not met — steps
    18 and 19. Nothing is authenticated either, so a caller can still claim to be anyone; step 43
    for people and 44 for agents. And nothing yet stops the person who creates a payment from
-   approving it — step 20. What *is* real: the answer to may-you cannot be reached from the
+   approving it — step 30. What *is* real: the answer to may-you cannot be reached from the
    arguments, and anything ungranted is refused.
 
 </details>
@@ -356,10 +381,10 @@ Rules nearby this step does **not** claim:
 | Rule | Why not |
 | --- | --- |
 | `DSOR-AUT-02a` | Authorization must support `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. There are two answers here, yes and no. `REQUIRE_APPROVAL` needs a proposal for the approval to attach to — step 22. |
-| `DSOR-AUT-02b`, `02c` | When several rules apply the strictest wins, and every `REQUIRE_*` must be satisfied. One permission is checked, so nothing can conflict yet. Controls arrive in step 14. |
+| `DSOR-AUT-02b`, `02c` | When several rules apply the strictest wins, and every `REQUIRE_*` must be satisfied. One permission is checked, so nothing can conflict yet. Controls in CEL arrive in step 27. |
 | `DSOR-IDN-04a`, `04b` | Roles and scopes may only come from an authoritative source. These roles are in the source code. Steps 18 and 19. |
-| `DSOR-SOD-01` | Segregation of duties: whoever creates a payment must not approve it. Break 3 shows the hole this rule fills, and the rule needs approvals — step 20. |
-| `DSOR-ERR-01b` | An error must not reveal a resource the caller is not authorized to read. The **mechanism** is here and tested: authority is settled before the data is touched, so a denial reveals nothing. The rule is about a caller who may not *read*, and all three roles hold `invoice:read`, so there is no such caller to test with. It needs a role without it. |
+| `DSOR-SOD-01a` | Segregation of duties: whoever creates a payment must not approve it. Break 3 shows the hole this rule fills, and the rule needs approvals — step 30. |
+| `DSOR-ERR-01b` | An error must not reveal a resource the caller is not authorized to read. The mechanism is here; the rule is not claimed — see below. |
 | `DSOR-IDN-02a` | An agent must authenticate with its own credentials. Nothing here authenticates anything. Step 44. |
 | `DSOR-SRC-02b` | A principal or tenant in the arguments that *disagrees* with the security context must be an error, not merely ignored. Still ignored. Steps 10 and 11. |
 
@@ -383,5 +408,18 @@ name, which cannot tell a real answer from that one string.
 The reason this is in the README rather than quietly fixed: **a green suite and a completed
 mutation sweep were not enough**, and that is worth knowing before you trust your own.
 
-**Next:** step 07, the pipeline skeleton — the three questions this step left as the shape of one
-function become a written checklist that later steps add lines to and never reorder.
+### Why `DSOR-ERR-01b` is not claimed, although the mechanism is here
+
+The machinery the rule needs is built and tested: authority is settled before any data is
+touched, so a denial reveals nothing about what exists. That is the "being refused for authority
+tells the caller nothing about the data" test, and moving the gate below the address parse turns
+it red.
+
+The rule itself is about a caller who may not **read** a resource. All three roles here hold
+`invoice:read`, so there is no such caller in this step to test it with. Claiming it would mean
+claiming a guarantee nothing exercises. It needs a role without `invoice:read` — and the reason
+not to invent one just to claim a rule is that a cast member who exists only to satisfy a
+conformance table is how a test suite starts describing a program nobody has.
+
+**Next:** step 07, the pipeline skeleton — the four ordered checks this step left as the shape of
+one function become a written checklist that later steps add lines to and never reorder.

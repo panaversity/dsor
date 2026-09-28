@@ -80,7 +80,7 @@ export const CODE_RETRY: Readonly<Record<string, Retry>> = Object.freeze({
   INTERNAL_ERROR: "never",
 });
 
-/** Who a request belongs to. NEW IN STEP 05: `principal_id`, once there is a caller. */
+/** Who a request belongs to. `principal_id` is filled once there is a caller. */
 export interface Correlation {
   readonly request_id: string;
   readonly principal_id?: string;
@@ -173,7 +173,7 @@ let proposalCount = 0;
 /**
  * Builds the correlation block.
  *
- * NEW IN STEP 05: `principal_id` is filled in once a caller exists. `request_id` stays
+ * `principal_id` is filled in once a caller exists. `request_id` stays
  * required — that is the schema's own floor. The other five ids wait for their steps:
  * `tenant_id` for 10, `agent_id` for 18, and the rest for 40.
  */

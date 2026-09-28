@@ -236,7 +236,8 @@ expects. A real deployment would use something unguessable, because a counter te
 who sees one id how many requests came before it and what the next one will be.
 
 `correlation` holds seven ids in all, and nothing else in it is filled in — a test asserts
-exactly that. `tenant_id` waits for step 10, `agent_id` and `principal_id` for step 05, and
+exactly that. `tenant_id` waits for step 10, `principal_id` for step 05, `agent_id` for step 18
+(it needs a delegation before an agent id means anything), and
 carrying all seven through connectors, audit and events for step 40.
 
 ## Break it
