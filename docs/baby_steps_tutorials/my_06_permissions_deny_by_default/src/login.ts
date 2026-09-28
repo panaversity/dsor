@@ -15,6 +15,33 @@ import { refusal, type ErrorEnvelope } from "./envelopes.ts";
 import { findPerson, type Principal } from "./people.ts";
 
 /**
+ * The object's **own** `key`, when it is a string. `undefined` for everything else.
+ *
+ * Everything a caller sends is read through here, because every one of these is a real thing a
+ * caller can send and none of them may throw:
+ *
+ * - `null`, a number, a string — `Login` is a TypeScript type and types are erased before Node
+ *   runs, so what actually arrives is whatever the caller sent.
+ * - a name the object only **inherits**, which is a name nobody in this program chose.
+ * - a property that is a *getter* and throws when it is read. A hostile review found that one:
+ *   `{ get loggedInAs() { throw new Error("boom") } }` used to come out of here as an exception
+ *   rather than a refusal, and a stack trace is not an envelope a caller can act on.
+ */
+function ownString(from: unknown, key: string): string | undefined {
+  if (from === null || typeof from !== "object" || !Object.hasOwn(from, key)) {
+    return undefined;
+  }
+
+  try {
+    const value = (from as Record<string, unknown>)[key];
+
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * A pretend login.
  *
  * One field, on purpose. There is nowhere to say "I am logged in as this person and also
@@ -55,11 +82,13 @@ export function principalFrom(
   //
   // `Object.hasOwn` is the second half. A name the object merely *inherits* is a name
   // nobody in this program chose, and an empty object would otherwise arrive carrying one.
-  if (typeof login?.loggedInAs !== "string" || !Object.hasOwn(login, "loggedInAs")) {
+  const claimed = ownString(login, "loggedInAs");
+
+  if (claimed === undefined) {
     return { refused: refusal("AUTHENTICATION_REQUIRED", "nobody is logged in") };
   }
 
-  const principal = findPerson(login.loggedInAs);
+  const principal = findPerson(claimed);
 
   // Deliberately the same refusal for "no login" and "no such person". Saying "that name
   // does not exist here" would tell a stranger which names do, which is the shape
@@ -68,7 +97,7 @@ export function principalFrom(
     return {
       refused: refusal(
         "AUTHENTICATION_REQUIRED",
-        `${JSON.stringify(login.loggedInAs)} is not someone this program knows`,
+        `${JSON.stringify(claimed)} is not someone this program knows`,
       ),
     };
   }

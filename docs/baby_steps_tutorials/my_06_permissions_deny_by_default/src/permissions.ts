@@ -122,8 +122,8 @@ export const PERMISSIONS_CHECKED: number = checkPermissions(ROLES);
 /**
  * Everything this principal's role grants.
  *
- * A role nobody defined grants **nothing**. That single `?? NOTHING` is deny-by-default, and
- * it is worth knowing what the two tempting alternatives would cost:
+ * A role nobody defined grants **nothing**. That is deny-by-default, and it is worth knowing
+ * what the two tempting alternatives would cost:
  *
  * - Throwing on an unknown role puts a caller in control of whether the program runs, and it
  *   is the wrong shape anyway: a missing grant is not a crash, it is a no. Loudness belongs in
@@ -133,6 +133,21 @@ export const PERMISSIONS_CHECKED: number = checkPermissions(ROLES);
  *   do.
  */
 export function permissionsOf(principal: Principal): readonly string[] {
+  // `Object.hasOwn` first, and it is not belt-and-braces. A plain `ROLES[role] ?? NOTHING`
+  // walks the **prototype chain**, so a role named `toString` or `constructor` finds a function
+  // on Object.prototype, `?? NOTHING` never fires, and `holds` then calls `.includes` on a
+  // function and throws a raw TypeError at the caller instead of answering no. Worse, anything
+  // written to Object.prototype becomes a role that grants whatever it likes — one that
+  // checkPermissions never validated and that `Object.keys(ROLES)` never shows.
+  //
+  // login.ts:58 already guards against exactly this, with exactly this call, because "a name the
+  // object merely inherits is a name nobody in this program chose". That lesson was applied to
+  // identity in step 05 and missed here until a hostile review found it. Same bug, same file
+  // tree, one day apart.
+  if (!Object.hasOwn(ROLES, principal.role)) {
+    return NOTHING;
+  }
+
   return ROLES[principal.role] ?? NOTHING;
 }
 

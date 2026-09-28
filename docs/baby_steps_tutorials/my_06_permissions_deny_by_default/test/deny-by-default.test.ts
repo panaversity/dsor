@@ -62,11 +62,82 @@ describe("anything not granted is refused", () => {
     expect(envelope.message).not.toMatch(/permission|granted|role|invoice:/);
   });
 
+  // Asserting against CFO.loggedInAs, not the literal "cfo_100". A hostile review pointed out
+  // that a test whose expected value is a constant cannot tell the caller's real id from that
+  // one string — the same trap step 05's attribution test fell into.
   it("DSOR-AUT-01b: a denial says who was denied", () => {
     const answer = callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
 
-    expect(answer.askedBy).toBe("cfo_100");
-    expect(refusalFrom(answer).correlation.principal_id).toBe("cfo_100");
+    expect(answer.askedBy).toBe(CFO.loggedInAs);
+    expect(refusalFrom(answer).correlation.principal_id).toBe(CFO.loggedInAs);
+  });
+
+  // Step 05's rule, applied to authorization. Who you are never comes from the arguments, and
+  // neither does *what you may do*. A hostile review proved this was untested: making the gate
+  // believe a `permission` written into the arguments let cfo_100 issue the invoice, with all
+  // 126 tests still green.
+  it("DSOR-SRC-02a: the permission comes from the contract, never from the arguments", () => {
+    const planted = [
+      { permission: "invoice:read" },
+      { permission: "" },
+      { authorization: { permission: "invoice:read" } },
+      { needed: "invoice:read", required_permission: "invoice:read" },
+    ] as const;
+
+    for (const extra of planted) {
+      const envelope = refusalFrom(
+        callOperation(CFO, "invoice.issue", { invoice: INV_1009, ...extra }),
+      );
+
+      expect(envelope.code, JSON.stringify(extra)).toBe("AUTHORIZATION_DENIED");
+    }
+
+    // And it still is not issued.
+    const after = callOperation(CFO, "invoice.get", { invoice: INV_1009 });
+
+    if (after.kind !== "data") {
+      throw new Error("INV-1009 should still be readable");
+    }
+
+    expect(after.invoice.status).toBe("draft");
+  });
+
+  // The denial is a new return site, and every answer in this program is frozen because
+  // `readonly` is erased before Node runs. No test covered this one.
+  it("a denial cannot be edited after it is handed out", () => {
+    const answer = callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+
+    expect(Object.isFrozen(answer)).toBe(true);
+    expect(() => {
+      (answer as { askedBy: string }).askedBy = "user_123";
+    }).toThrow(TypeError);
+  });
+
+  // A caller-supplied object that throws when it is read. `src/operations.ts` says nothing
+  // throws at a caller any more, and a hostile review showed two places where it did: the login
+  // and the arguments. A stack trace is not an envelope.
+  it("DSOR-ERR-01a: an object that throws when read is refused, not thrown at", () => {
+    const throwingLogin = {
+      get loggedInAs(): string {
+        throw new Error("boom");
+      },
+    };
+
+    const one = callOperation(throwingLogin as never, "invoice.get", { invoice: INV_1008 });
+
+    expect(one.kind).toBe("error");
+    expect(refusalFrom(one).code).toBe("AUTHENTICATION_REQUIRED");
+
+    const throwingArgs = {
+      get invoice(): string {
+        throw new Error("boom");
+      },
+    };
+
+    const two = callOperation(SUPERVISOR, "invoice.issue", throwingArgs);
+
+    expect(two.kind).toBe("error");
+    expect(refusalFrom(two).code).toBe("VALIDATION_FAILED");
   });
 
   // Why the gate goes *before* the arguments are read.
@@ -98,10 +169,14 @@ describe("anything not granted is refused", () => {
       seen.add(envelope.message);
     }
 
-    // Not even a missing argument is examined.
-    expect(refusalFrom(callOperation(CFO, "invoice.issue", {})).code).toBe("AUTHORIZATION_DENIED");
+    // Not even a missing argument is examined — and its message joins the set, so a message
+    // that varied with the arguments could not hide here either.
+    const noArgument = refusalFrom(callOperation(CFO, "invoice.issue", {}));
 
-    // One message for all six, so the words cannot be compared either.
+    expect(noArgument.code).toBe("AUTHORIZATION_DENIED");
+    seen.add(noArgument.message);
+
+    // One message for all seven, so the words cannot be compared either.
     expect(seen.size).toBe(1);
   });
 

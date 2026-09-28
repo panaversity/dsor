@@ -123,7 +123,30 @@ describe("permissions", () => {
   // an error to be reported and worked around, and it is certainly not a reason to let someone
   // through. If we never said yes, the answer is no.
   it("DSOR-AUT-01b: a role nobody granted anything holds nothing", () => {
-    for (const role of ["", "admin", "ap_supervisorr", "AP_SUPERVISOR", "root"]) {
+    for (const role of [
+      "",
+      "admin",
+      "ap_supervisorr",
+      "AP_SUPERVISOR",
+      "root",
+      // Every name above is one this program simply never heard of. These are different, and a
+      // hostile review found that the first version of this test missed all of them: they are
+      // names JavaScript puts on *every* object, so a plain `ROLES[role]` lookup finds them on
+      // the prototype and hands back a function. `holds` then called `.includes` on a function
+      // and threw a raw TypeError at the caller instead of answering no.
+      //
+      // This is the same bug login.ts already guards against with Object.hasOwn, one file away:
+      // "a name the object merely inherits is a name nobody in this program chose". The lesson
+      // was applied to identity in step 05 and not to authorization here.
+      "toString",
+      "constructor",
+      "__proto__",
+      "valueOf",
+      "hasOwnProperty",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "toLocaleString",
+    ]) {
       expect(permissionsOf(madeUp(role)), JSON.stringify(role)).toEqual([]);
 
       // Not even reading, which is the one that feels harmless.
@@ -164,6 +187,21 @@ describe("permissions", () => {
       expect(Object.keys(ROLES), who.id).toContain(who.role);
       expect(permissionsOf(who).length, who.id).toBeGreaterThan(0);
     }
+  });
+
+  // The empty list handed out for an unknown role is shared, so if it could be grown, one
+  // caller would be granting a permission to *every* unknown role at once. No test killed the
+  // freeze on it until a hostile review pointed that out.
+  it("DSOR-AUT-01b: the empty list an unknown role gets cannot be grown", () => {
+    const none = permissionsOf(madeUp("nobody-defined-this"));
+
+    expect(none).toEqual([]);
+    expect(Object.isFrozen(none)).toBe(true);
+    expect(() => (none as string[]).push("payment:execute")).toThrow(TypeError);
+
+    // And it is still empty for the next caller who asks.
+    expect(permissionsOf(madeUp("another-unknown-role"))).toEqual([]);
+    expect(holds(madeUp("another-unknown-role"), "payment:execute")).toBe(false);
   });
 
   // `readonly` is erased before Node runs — step 01's lesson. A caller who could push onto a

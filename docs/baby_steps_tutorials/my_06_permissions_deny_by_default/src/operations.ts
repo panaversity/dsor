@@ -339,14 +339,19 @@ export function callOperation(
   // invoice to act on, and again to fingerprint the receipt. A caller could make those two
   // reads disagree, so the receipt described a request that never happened. One copy makes
   // them the same read — `{ ...args }` runs every getter exactly once.
-  const given: Readonly<Record<string, unknown>> = Object.freeze({ ...args });
 
   // And if the copy cannot be written down, nothing runs at all. The receipt is a hash of
   // the arguments, so an unhashable argument — a circular object, a BigInt — used to let the
   // change happen and *then* throw on the way out: a side effect with no envelope, no code,
   // and no record of who caused it. This is the first small shape of DSOR-EXE-03a, write it
   // down before you do it. Step 08 builds the real intent record.
+  let given: Readonly<Record<string, unknown>>;
+
   try {
+    // The copy is **inside** the try, not above it. `{ ...args }` runs every getter, and a
+    // getter can throw — a hostile review sent `{ get invoice() { throw } }` and the exception
+    // reached the caller instead of an envelope.
+    given = Object.freeze({ ...args });
     JSON.stringify(given);
   } catch {
     return Object.freeze({
