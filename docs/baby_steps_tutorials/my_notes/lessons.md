@@ -1,6 +1,6 @@
 # Lessons
 
-The mistakes that repeated across steps 01 to 05, and what catches each one. Kept
+The mistakes that repeated across steps 01 to 06, and what catches each one. Kept
 separately from [decisions.md](decisions.md) because these are not choices — they are
 things that went wrong more than once.
 
@@ -158,3 +158,55 @@ What catches it: when a test asserts a value, ask where the expected value came 
 a literal that appears in the input as well, the test cannot distinguish the two. Vary the
 input — here, three different logins — and assert against the **input**, not a constant. Then
 mutate the whole family of sites together as well as one at a time.
+
+## 11 · Check the mutation before you believe the survivor
+
+Step 06's first sweep ran thirteen mutations and reported four survivors. Two of the four were
+**my mistakes, not test gaps**:
+
+- One cut the wrong lines out of `permissions.ts`, so the file no longer loaded. The run
+  reported `74 passed (74)` — a *smaller total* than the real 126, because two whole files
+  failed to import. A shrinking total is the tell, and "all passed" on a broken file reads
+  exactly like a survivor.
+- One claimed to move the may-you check after the arguments and moved it somewhere that
+  changed nothing observable, because the argument that mattered is parsed inside the handler,
+  further down. Redone properly, the test killed it at once.
+
+So a survivor is a claim about two things: the test, **and** the mutation. Before believing it,
+check that the mutation compiled, that the test total did not shrink, and that the mutated code
+really does the wrong thing — run it and look at the output, not the diff.
+
+Combined with [lesson 10](#10--mutating-one-guard-at-a-time-cannot-find-a-test-that-expects-a-constant),
+the sweep now has three failure modes of its own: too narrow (one site at a time), too weak (a
+mutation that changes nothing), and broken (a mutation that does not load).
+
+## 12 · A sentinel that says `true` proves nothing
+
+Step 04 marked "this check ran at start-up" with a boolean:
+
+```ts
+export const WIRING_CHECKED: boolean = ((): boolean => {
+  assertPaired(registry, handlers);
+
+  return true;
+})();
+```
+
+Step 06 copied the idea for its role table, and a mutation found the hole: delete the call,
+keep `return true`, and every test stays green. The sentinel says the check ran; all it really
+proves is that somebody wrote `true`.
+
+The fix is to make the sentinel carry a value that can only come from doing the work. The
+checker now returns how many permissions it looked at, and the constant holds that number:
+
+```ts
+export const PERMISSIONS_CHECKED: number = checkPermissions(ROLES);
+```
+
+A test compares it with the table's real total, so deleting the call and leaving a plausible
+number behind fails. It is not a proof — hardcoding today's correct answer still passes, and
+only a child process could close that — but it moves the mistake from "delete a line" to
+"delete a line, work out the right number, and keep it right as the table changes".
+
+Where this applies: any flag that means "something happened". Prefer a count, a hash, or the
+result itself over `true`.

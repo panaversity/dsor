@@ -532,3 +532,49 @@ the internal principal as the normalized form. The three identity modes are the 
 opportunity that [open question 3](open-questions.md) describes: `direct` forces `actor_chain`
 empty, and `unattended` requires a `delegation` and a role source, so the schema itself refuses
 to let an early step fake the running example's usual case.
+
+## 33 · Permissions hang off a role, not off a person (2026-09-28)
+
+**Decided by:** the learner, given both options in plain words.
+**What:** a principal carries a **role name**. A separate table says what each role may do.
+`user_123` is an `ap_supervisor`; `ap_supervisor` holds `invoice:read` and `invoice:issue`.
+**Why:** the rule is `DSOR-AUT-01a`, *"role-based access control using the
+`<resource>:<action>` permission format"* — role-based is in its name, so a list of strings
+hanging off each person would not let the step claim it. After [decision 27](#27--dsor-idn-02a-was-an-overclaim-and-the-shape-argument-was-wrong-2026-09-28)
+that matters more than usual. It is also how the thing works in real life: a new joiner is
+given a role, not twenty strings, and a role's grants are changed in one place.
+**Cost:** one more small table, and one more hop to follow when reading the code.
+**Rejected:** permissions directly on the person. Fewer moving parts and one less idea, but it
+cannot honestly claim the rule.
+
+## 34 · The CFO may not issue invoices (2026-09-28)
+
+**Decided by:** the learner.
+**What:** `user_123` (`ap_supervisor`) and `accounts-payable-fte` (`ap_worker`) may read and
+issue. `cfo_100` (`approver`) may read invoices and approve payments, and may **not** issue
+them.
+**Why:** it is what actually happens in a company — a CFO signs off on payments, they do not
+do accounts-payable data entry. It teaches the thing beginners get wrong about permissions,
+which is that they are not a ladder: more senior does not mean more of them. And it gives the
+step the exact demonstration the map asks for — "a caller with `invoice:read` can read and
+cannot issue" — using a person already in the story instead of inventing a read-only extra.
+**Cost:** the agent keeps `invoice:issue`, so this step cannot tell the "a changed prompt
+cannot do more than it was granted" story with the agent as the victim. Step 18's delegation
+limits are where that lands.
+**Rejected:** making the agent the read-only one. It tells the prompt-injection story more
+directly, and it leaves the agent unable to do the work it exists for in every later step.
+
+## 35 · A refusal does not name the permission that was missing (2026-09-28)
+
+**Decided by:** the learner.
+**What:** `AUTHORIZATION_DENIED` says that the caller may not call the operation. It does not
+say `invoice:issue was not granted`.
+**Why:** the same reason step 05's two login refusals are word for word identical
+([decision 21](#21--no-login-no-answer-2026-09-28)). A message that names the missing
+permission is a map for whoever is probing: ask for twenty operations and the refusals tell
+you the shape of the whole permission model. The detail belongs in the audit record, which
+step 08 builds, where the operator can read it and the caller cannot.
+**Cost:** a developer debugging a role has to look at the roles table instead of reading the
+error. Real, and the README says so.
+**Rejected:** naming the permission. Kinder while learning, and it answers questions for
+people who should not be asking them.

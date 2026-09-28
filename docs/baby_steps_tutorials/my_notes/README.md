@@ -22,6 +22,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-03-operations-and-contracts.md](step-03-operations-and-contracts.md) | Named operations, spec sheets, a registry |
 | [step-04-result-and-error-envelopes.md](step-04-result-and-error-envelopes.md) | Codes and retry classes |
 | [step-05-who-is-calling.md](step-05-who-is-calling.md) | A caller, and a refusal when there is none |
+| [step-06-permissions-deny-by-default.md](step-06-permissions-deny-by-default.md) | Roles, and anything ungranted refused |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
@@ -36,12 +37,13 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_03_operations_and_contracts` | 53 | done |
 | `my_04_result_and_error_envelopes` | 79 | done |
 | `my_05_who_is_calling` | 107 | done |
+| `my_06_permissions_deny_by_default` | 126 | done |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.
 
-Next is step 06, `permissions_denied_by_default` — but [open question 2](open-questions.md)
-should be put to the learner first, because step 06 wants the principal's shape settled.
+Next is step 07, `the_pipeline_skeleton`: the three questions step 06 left as the shape of one
+function become a written checklist that later steps add lines to and never reorder.
 
 ## Promises made to later steps
 
@@ -50,10 +52,14 @@ they are listed here where the next session will see them.
 
 | Step | What it owes | Decided in |
 | --- | --- | --- |
-| 06 | `AUTHORIZATION_DENIED`, and the first refusal that is about authority rather than the shape of the data | step 05's README |
+| ~~06~~ | ~~`AUTHORIZATION_DENIED`~~ — paid, 2026-09-28 | step 05's README |
 | 08 | The audit log. `DSOR-AUD-01` cannot be claimed there as the map describes it — its schema requires the §30 hash chain, which the map does not schedule until step 39 | [open question 1](open-questions.md) |
 | 10 | Resolve the company from the caller's `memberships`, which step 05 created and never reads, instead of comparing against one hard-coded value | [decision 22](decisions.md) |
+| 14 | Controls, so that more than one rule can apply to a request and the strictest wins (`DSOR-AUT-02b`, `02c`) | step 06's README |
 | 18 | The delegation, so an agent can act *for* a person — the running example's normal case, which no step before it can build | [decision 23](decisions.md) |
+| 18, 19 | A **role source**. Step 06's roles are in the source code, so `DSOR-IDN-04a` is not met | step 06's README |
+| 20 | Segregation of duties (`DSOR-SOD-01`). Step 06's break 3 shows the hole: one word in a table lets the person who approves a payment also create it | step 06's README |
+| 22 | `REQUIRE_APPROVAL`, the third authorization outcome (`DSOR-AUT-02a`). Step 06 has only yes and no | step 06's README |
 | 42 | Copy and validate `security-context.schema.json`: the shape identity arrives in, `direct` mode, with the three modes as the lesson | [decision 32](decisions.md) |
 | 44 | `DSOR-IDN-02a` — an agent authenticating with its own credentials. Step 05 does not meet it, whatever an earlier version of its README said | [decision 27](decisions.md) |
 
