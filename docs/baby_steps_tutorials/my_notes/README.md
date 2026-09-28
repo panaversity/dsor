@@ -16,6 +16,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | --- | --- |
 | [decisions.md](decisions.md) | Every decision, numbered, with its reason, its cost, and the alternative that was rejected |
 | [lessons.md](lessons.md) | The mistakes that repeated, and what catches each one |
+| [open-questions.md](open-questions.md) | Found by reading ahead; needs settling before the step it affects |
 | [step-01-one-invoice-in-memory.md](step-01-one-invoice-in-memory.md) | Money as text and a currency |
 | [step-02-canonical-uris.md](step-02-canonical-uris.md) | One permanent address per record |
 | [step-03-operations-and-contracts.md](step-03-operations-and-contracts.md) | Named operations, spec sheets, a registry |
