@@ -4,7 +4,7 @@
 // shows why a rule exists does not. The difference matters, and both kinds are here.
 
 import { describe, expect, it } from "vitest";
-import { getInvoice } from "../src/invoice.ts";
+import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { parseUri } from "../src/uri.ts";
 
@@ -156,5 +156,71 @@ describe("an invoice's address", () => {
         id: invoice.id,
       });
     }
+  });
+});
+
+// NEW IN STEP 04: the store can change for the first time, so the store is tested for the
+// first time.
+//
+// Step 01 gave the frozen list two tests of its own. Step 04 is the step that made it
+// *writable* — `readonly Invoice[]` became `Invoice[]`, and `issueInvoice` writes to it — and
+// it shipped without one. Every assertion about issuing went through callOperation, which
+// tests the envelope around the change and not the change.
+//
+// These have no rule id. `DSOR-SCH-01` is about the envelope, not the store; what happens in
+// here is ordinary correctness, and the specification's rules about a real store — a
+// transaction, a precondition checked against current state — arrive with the database in
+// step 09.
+describe("issueInvoice", () => {
+  it("an id nobody holds is not_found, and nothing is invented for it", () => {
+    expect(issueInvoice("INV-9999")).toEqual({ kind: "not_found" });
+    expect(getInvoice("INV-9999")).toBeUndefined();
+  });
+
+  it("an invoice that is already issued reports not_draft, and says what it is instead", () => {
+    expect(issueInvoice("INV-1008")).toEqual({ kind: "not_draft", status: "issued" });
+
+    // And it is untouched: the failed attempt did not half-apply.
+    const after = getInvoice("INV-1008");
+
+    if (after === undefined) {
+      throw new Error("INV-1008 should still be there");
+    }
+
+    expect(after.status).toBe("issued");
+    expect(after.amount.value).toBe("31400.00");
+  });
+
+  // Last, because it uses up the only draft. This is the test the step most needed: it proves
+  // the invoice is **replaced rather than edited**, which is the claim src/invoice.ts makes
+  // about why every Invoice can stay frozen while the list changes.
+  it("a draft is issued once, and the copy handed out earlier never changes", () => {
+    const before = getInvoice("INV-1009");
+
+    if (before === undefined) {
+      throw new Error("INV-1009 is missing from the list of invoices");
+    }
+
+    expect(before.status).toBe("draft");
+    expect(Object.isFrozen(before)).toBe(true);
+
+    const outcome = issueInvoice("INV-1009");
+
+    if (outcome.kind !== "issued") {
+      throw new Error(`expected issued, got ${outcome.kind}`);
+    }
+
+    expect(outcome.invoice.status).toBe("issued");
+    expect(outcome.invoice.id).toBe("INV-1009");
+    expect(getInvoice("INV-1009")?.status).toBe("issued");
+
+    // The reference taken before the change still says draft. A record that is never edited in
+    // place is a record you can hold on to without it changing under you — and a caller who
+    // read it a moment ago is not silently looking at something else.
+    expect(before.status).toBe("draft");
+    expect(outcome.invoice).not.toBe(before);
+
+    // A second attempt is refused by the state, not by a key or a lock.
+    expect(issueInvoice("INV-1009")).toEqual({ kind: "not_draft", status: "issued" });
   });
 });

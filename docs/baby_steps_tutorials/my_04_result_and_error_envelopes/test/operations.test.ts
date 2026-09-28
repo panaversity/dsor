@@ -12,7 +12,13 @@ import {
   WIRING_CHECKED,
 } from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
-import { refusal, resetProposalIds, resetRequestIds, validateEnvelope } from "../src/envelopes.ts";
+import {
+  refusal,
+  resetProposalIds,
+  resetRequestIds,
+  success,
+  validateEnvelope,
+} from "../src/envelopes.ts";
 
 /** A stand-in handler table with both operations, for assertPaired tests. */
 function handlersForBoth() {
@@ -210,6 +216,14 @@ describe("callOperation", () => {
       expect(first.envelope.outcome).toBe("COMMITTED");
       expect(first.envelope.semantics).toBe("atomic");
       expect(first.envelope.proposal).toBe("dsor://org_456/proposal/prop_0001");
+
+      // The semantics on the envelope is the one the contract declares. This assertion lives
+      // here rather than in a test of its own because there is one draft invoice, so this is
+      // the only place a result envelope exists to read.
+      const declared = loadRegistry(contractsFromDisk()).get("invoice.issue")?.execution?.semantics;
+
+      expect(declared).toBe("atomic");
+      expect(first.envelope.semantics).toBe(declared);
       expect((first.envelope.data as { status: string }).status).toBe("issued");
 
       // Again. Nothing is thrown; the refusal is an envelope a caller can act on, and
@@ -245,24 +259,29 @@ describe("callOperation", () => {
       expect(refusalFrom(callOperation("invoice.issue", {})).code).toBe("VALIDATION_FAILED");
     });
 
-    // The envelope's semantics must come from the contract, not from a constant in the
-    // handler. Reading it back out of the registry is what ties the two together.
-    it("DSOR-SCH-01: the result's semantics is the one the contract declares", () => {
-      const contract = loadRegistry(contractsFromDisk()).get("invoice.issue");
+    // What this step can and cannot prove about `semantics`, stated plainly.
+    //
+    // An earlier version of this test guarded its only assertion with
+    // `if (answer.kind === "result")`, and by the time it ran the one draft invoice had
+    // already been issued by the test above — so the assertion never executed and the test
+    // passed for no reason. The assertion now lives in that test instead, where a result
+    // envelope really exists.
+    //
+    // What remains unprovable here: the handler reads `contract.execution?.semantics`, and
+    // this step has exactly one command, whose contract declares `"atomic"`. Replacing that
+    // read with the literal `"atomic"` is therefore indistinguishable — an equivalent mutant
+    // given this data, not a test gap. A second command declaring something else would
+    // separate them. Until then, `success()` at least provably carries whatever it is handed:
+    it("DSOR-SCH-01: the result envelope carries the semantics it is given, whatever it is", () => {
+      resetRequestIds();
+      resetProposalIds();
 
-      if (contract === undefined) {
-        throw new Error("invoice.issue has no contract");
+      for (const semantics of ["atomic", "best_effort"]) {
+        const envelope = success({ data: { ok: true }, semantics, payload: {} });
+
+        expect(envelope.semantics).toBe(semantics);
+        expect(validateEnvelope("result", envelope)).toBe(true);
       }
-
-      const answer = callOperation("invoice.issue", { invoice: INV_1009 });
-
-      // INV-1009 may already be issued by an earlier test in this file, so accept either
-      // shape and only assert the thing under test when there is a result to read.
-      if (answer.kind === "result") {
-        expect(answer.envelope.semantics).toBe(contract.execution?.semantics);
-      }
-
-      expect(contract.execution?.semantics).toBe("atomic");
     });
 
     it("DSOR-ERR-01a: issuing an invoice we do not hold is RESOURCE_NOT_FOUND", () => {

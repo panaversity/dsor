@@ -1,8 +1,16 @@
 // A caller names an operation instead of calling a function.
 //
-// NEW IN STEP 04: nothing here throws at a caller any more. Every refusal comes back as
-// an error envelope with a code from §28 and a retry class, so a caller can act on the
-// answer instead of reading a sentence. And invoice.issue — the command split out of
+// NEW IN STEP 04: every refusal this step knows about comes back as an error envelope with a
+// code from §28 and a retry class, so a caller can act on the answer instead of reading a
+// sentence.
+//
+// Not *nothing* throws, and an earlier version of this comment claimed that. One hole is left
+// on purpose, because closing it needs an idea this step does not have: the arguments belong to
+// the caller, and `success()` hashes them **after** the invoice has been issued. An argument
+// that cannot be turned into JSON — a circular object, a BigInt — therefore lets the change
+// happen and then throws on the way out, so the caller gets a crash for a command that
+// succeeded. Step 05 closes it, by copying the arguments once and refusing a request that
+// cannot be written down before anything runs. And invoice.issue — the command split out of
 // step 03 — is carried out here, because a command is what makes an envelope worth
 // having: "this invoice is already issued" needs a code, and a read's refusals are too
 // thin to show why.

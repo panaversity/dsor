@@ -110,7 +110,10 @@ describe("the operation registry", () => {
     );
   });
 
-  it("DSOR-OPR-02a: a query whose effect is not read is refused", () => {
+  // DSOR-OPR-01, not 02a. 02a is about a contract that *omits a mandatory field*; this
+  // document has every field and one of them disagrees with another, which is the schema
+  // validation OPR-01 requires.
+  it("DSOR-OPR-01: a query whose effect is not read is refused", () => {
     const broken = contractCopy("invoice.get");
     broken["effect"] = "mutating";
 
@@ -180,7 +183,7 @@ describe("the operation registry", () => {
 });
 
 describe("validateContract", () => {
-  it("DSOR-OPR-02a: a document that is not an object at all is refused", () => {
+  it("DSOR-OPR-01: a document that is not an object at all is refused", () => {
     expect(() => validateContract("invoice.get", "a-string.json")).toThrow(TypeError);
     expect(() => validateContract(null, "null.json")).toThrow(TypeError);
   });
@@ -188,7 +191,9 @@ describe("validateContract", () => {
   // The schema says a contract may not carry fields it does not know about, so a
   // friendly "description" has to go under `extensions` with a reverse-DNS key
   // (DSOR-SCH-02). Worth meeting once, because the urge to add one is strong.
-  it("DSOR-OPR-02a: a helpful extra field is refused, and extensions is the way in", () => {
+  // DSOR-SCH-02 is the rule about added fields belonging under `extensions`. This shows the
+  // half that is enforced here: a bare extra field is refused.
+  it("DSOR-SCH-02: a helpful extra field is refused, and extensions is the way in", () => {
     const extra = contractCopy("invoice.get");
     extra["description"] = "Reads one invoice";
 

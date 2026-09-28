@@ -5,9 +5,14 @@ specification — money is an amount *and* a currency, and the amount is written
 
 ## In plain words
 
-An invoice is the first thing DSoR knows about. This step adds a type that says what an
-invoice is, two invoices held in a plain array, and one function that finds an invoice
-by its id. "In memory" means the array lives in the running program and disappears when
+An invoice is the first thing DSoR knows about. This step adds a type that says what an invoice
+is, two invoices held in a plain array, and one function that finds an invoice by its id.
+
+The two invoices are worth knowing by name, because every later step uses them. **INV-1008** is
+31,400.00 USD and already `issued` — it is the one from the running story, the payment that will
+need a CFO's approval in step 24. **INV-1009** is 2,500.00 USD and still a `draft`, and being a
+draft is what makes it useful: from step 04 onward it is the invoice that gets *issued*, so it is
+where every command in the tutorial does its work. "In memory" means the array lives in the running program and disappears when
 the program stops. There is no database until step 09.
 
 The amount is the part to look at. It is not the number `31400`. It is
@@ -49,6 +54,11 @@ my_01_one_invoice_in_memory/
   src/main.ts        CHANGED now reads INV-1008 and prints it
   package.json       CHANGED name and description only
 ```
+
+`src/greet.ts` and its two tests stay exactly as step 00 left them. They are not part of the DSoR
+story — they are the "does this project run at all" check every step inherits — but they are real
+tests, so they are inside every count from this step's 13 onward, and the program still opens by
+greeting the agent. Nothing later removes them.
 
 Everything else is step 00, byte for byte. To see that for yourself:
 
@@ -127,12 +137,17 @@ and its formatting; it does not run its tests. Your step is run by you. You use 
 convention here so the habit is already yours when you write a test that does get
 counted.
 
-Three of the eleven new tests carry no rule id. Two of them test `getInvoice` — that it
-searches the list, and that it returns `undefined` for a missing invoice — and no rule
-in §9 governs either. The third is the float test. It does not touch this step's code at
-all, so it would still pass if `src/` were deleted: it shows the fact about computers
-that the rule exists to guard against. That is motivation, not proof, and a title
-claiming otherwise would misdescribe what the test checks.
+**Four** of the eleven new tests carry no rule id. Two test `getInvoice` — that it searches the
+list, and that it returns `undefined` for a missing invoice — and no rule in §9 governs either.
+The third is the float test: it does not touch this step's code at all, so it would still pass if
+`src/` were deleted, because it shows the fact about computers that the rule exists to guard
+against. That is motivation, not proof, and a title claiming otherwise would misdescribe what the
+test checks.
+
+The fourth is the recorded gap — the test that `money()` accepts `ZZZ`, which is not a currency
+anyone issues. It carries no id for the opposite reason to the float test: it documents something
+this step does **not** do. A rule id on it would read as conformance when it is a note about a
+hole. It is counted as a test above and as "one recorded gap" in the file list.
 
 ### Why `getInvoice` makes the compiler complain
 

@@ -194,7 +194,11 @@ describe("the error envelope", () => {
     ).toBe(false);
   });
 
-  it("DSOR-SCH-02: a field the schema does not know is refused", () => {
+  // No rule id. DSOR-SCH-02 is about *where* an implementation puts fields it adds — under
+  // `extensions`, keyed by a reverse-DNS namespace — and this test only shows that the closed
+  // schema refuses a bare one. That is the first half of the rule and not the rule, and nothing
+  // here adds a field under `extensions` to prove the other half.
+  it("a field the schema does not know is refused", () => {
     expect(
       validateEnvelope("error", {
         code: "CONFLICT",
@@ -250,7 +254,10 @@ describe("the result envelope", () => {
     );
   });
 
-  it("DSOR-ERR-01a: a result envelope cannot be edited either", () => {
+  // DSOR-SCH-01, not DSOR-ERR-01a. This one is about a *result* envelope, and ERR-01a is a rule
+  // about errors. Coverage is counted from these titles, so a wrong id inflates the rule it
+  // names and leaves the right one looking thinner than it is.
+  it("DSOR-SCH-01: a result envelope cannot be edited either", () => {
     const envelope = success({ data: {}, semantics: "atomic", payload: {} });
 
     expect(Object.isFrozen(envelope)).toBe(true);
