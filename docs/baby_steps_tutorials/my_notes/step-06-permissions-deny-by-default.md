@@ -4,7 +4,7 @@ Folder: `my_06_permissions_deny_by_default`. Built 2026-09-28, deleted, and rebu
 piece at a time with the learner. Copy of `my_05_who_is_calling` plus one new idea: **anything
 nobody granted is refused.**
 
-Decisions [33 to 37](decisions.md). Tests: 130.
+Decisions [33 to 38](decisions.md). Tests: 133.
 
 ## What it does
 
@@ -40,8 +40,9 @@ rebuild went in five pieces, each committed on its own and each verified by brea
 | 4 | 130 | what a hostile review found |
 | 5 | 130 | the README, with every break re-run |
 
-The rebuild ended up **better**, not merely slower: 130 tests against 126, and three real defects
-found that the first build shipped. The reason is not that the second attempt was more careful —
+The rebuild ended up **better**, not merely slower: 130 tests against the first build's 126 at the
+same point, and three real defects found that the first build shipped. (It stands at 133 now — an
+[audit of all six steps](arc-audit.md) added three more afterwards.) The reason is not that the second attempt was more careful —
 it is that piece 1 was testable on its own, so `holds` was attacked before anything depended on
 it. See [decision 38](decisions.md).
 

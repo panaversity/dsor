@@ -17,6 +17,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [decisions.md](decisions.md) | Every decision, numbered, with its reason, its cost, and the alternative that was rejected |
 | [lessons.md](lessons.md) | The mistakes that repeated, and what catches each one |
 | [open-questions.md](open-questions.md) | Found by reading ahead; needs settling before the step it affects |
+| [arc-audit.md](arc-audit.md) | What three independent readers found across all six steps at once, and what each method can and cannot catch |
 | [step-01-one-invoice-in-memory.md](step-01-one-invoice-in-memory.md) | Money as text and a currency |
 | [step-02-canonical-uris.md](step-02-canonical-uris.md) | One permanent address per record |
 | [step-03-operations-and-contracts.md](step-03-operations-and-contracts.md) | Named operations, spec sheets, a registry |
@@ -63,6 +64,14 @@ they are listed here where the next session will see them.
 | 42 | Copy and validate `security-context.schema.json`: the shape identity arrives in, `direct` mode, with the three modes as the lesson | [decision 32](decisions.md) |
 | 44 | `DSOR-IDN-02a` — an agent authenticating with its own credentials. Step 05 does not meet it, whatever an earlier version of its README said | [decision 27](decisions.md) |
 
+## How we work, in one more line than before
+
+Three methods were in use through step 06, and an audit of all six steps at once added a fourth.
+None of them finds what another finds — the table at the end of [arc-audit.md](arc-audit.md) says
+which is blind to what. The short version: tests find what you thought of, mutation finds guards no
+test protects, a hostile reviewer finds real bugs in one step's new code, and only reading the
+whole arc finds a stale number, a broken promise, or a safety net that never worked.
+
 ## How we work
 
 Settled over steps 01 to 04. Each line is here because skipping it cost something.
@@ -102,6 +111,12 @@ these notes was checked by hand afterwards: 171 distinct ids, all real. Until th
 extended, a new id here has to be looked up in
 [`requirements.json`](../../../packages/spec/requirements.json) by hand. See
 [open question 4](open-questions.md).
+
+**Two ids in this directory are deliberately not real**, and a hand-check will flag them every
+time: `DSOR-FAKE-99`, the probe that proved the gap, and `DSOR-SOD-01`, quoted as the example of
+an id that does not exist. They are the reason the guard strips code spans in the first place —
+prose about a bad identifier has to be able to name it — which is also the reason extending the
+guard is not a one-line change.
 
 [`docs/status.md`](../../status.md) is the only authority on what the repository has
 built. These notes describe learner copies, which are not part of that.

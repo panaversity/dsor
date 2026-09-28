@@ -1,6 +1,6 @@
 # Step 04 · Result and error envelopes
 
-Folder: [`my_04_result_and_error_envelopes`](../my_04_result_and_error_envelopes/README.md) · 79 tests
+Folder: [`my_04_result_and_error_envelopes`](../my_04_result_and_error_envelopes/README.md) · 82 tests
 Spec: [§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) · `DSOR-ERR-01a`, `DSOR-SCH-01`, `DSOR-COR-01b`
 Commits: `6cda512` → `16c177f` (7)
 
@@ -100,9 +100,17 @@ borrowing a value that would state something untrue.
 ## What the sweeps found
 
 Two mutation sweeps, nine then eleven unprotected guards. The largest: **22 of the 32 rows**
-of the retry table were reached by no test, and mutating all 22 at once left all 76 tests
-green. One test now pins every row; verified by mutating all 32 individually — 32 killed, 0
+of the retry table were reached by no test, and mutating all 22 at once left all 76 tests of the
+day green. One test now pins every row; verified by mutating all 32 individually — 32 killed, 0
 survived.
+
+A later audit of all six steps found two more, and both were about what this step *did not* test
+rather than what it tested wrong. It is the step that made the invoice list writable and added
+`issueInvoice`, and it shipped with `test/invoice.test.ts` byte-identical to step 03's — every
+assertion about issuing went through `callOperation`, which tests the envelope around the change
+and not the change. Three store-level tests closed that. And the `semantics` test could never
+reach its assertion, so hardcoding the value passed all 79. See
+[the arc audit](arc-audit.md).
 
 Six further gaps belong to steps 01 and 02 and were reported rather than patched, by
 [decision 17](decisions.md#17--defects-from-an-earlier-step-are-reported-not-patched-forward-2026-09-25).
