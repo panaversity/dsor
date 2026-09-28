@@ -43,6 +43,20 @@ copy of the step before plus one new idea.
 Next is step 06, `permissions_denied_by_default` — but [open question 2](open-questions.md)
 should be put to the learner first, because step 06 wants the principal's shape settled.
 
+## Promises made to later steps
+
+Things a later step must do, decided earlier. A closed question is easy to stop reading, so
+they are listed here where the next session will see them.
+
+| Step | What it owes | Decided in |
+| --- | --- | --- |
+| 06 | `AUTHORIZATION_DENIED`, and the first refusal that is about authority rather than the shape of the data | step 05's README |
+| 08 | The audit log. `DSOR-AUD-01` cannot be claimed there as the map describes it — its schema requires the §30 hash chain, which the map does not schedule until step 39 | [open question 1](open-questions.md) |
+| 10 | Resolve the company from the caller's `memberships`, which step 05 created and never reads, instead of comparing against one hard-coded value | [decision 22](decisions.md) |
+| 18 | The delegation, so an agent can act *for* a person — the running example's normal case, which no step before it can build | [decision 23](decisions.md) |
+| 42 | Copy and validate `security-context.schema.json`: the shape identity arrives in, `direct` mode, with the three modes as the lesson | [decision 32](decisions.md) |
+| 44 | `DSOR-IDN-02a` — an agent authenticating with its own credentials. Step 05 does not meet it, whatever an earlier version of its README said | [decision 27](decisions.md) |
+
 ## How we work
 
 Settled over steps 01 to 04. Each line is here because skipping it cost something.

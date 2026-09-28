@@ -44,15 +44,22 @@ a house precedent: keep both, validate the wire artifact, and say in the README 
 is the interface and which is internal. Discovering it at step 43 with a real identity
 provider attached would cost much more.
 
-**Status after building step 05 (2026-09-28): still open, and now overdue.** The step was
-built with an internal principal only — no `security-context` document is constructed or
-validated ([decision 26](decisions.md)). So the house precedent named above was *not*
-followed: steps 01 to 04 each validated their artifact against a copied normative schema,
-and this step validates no identity artifact at all. What is still to settle, in plain
-terms: should step 05 be reopened to build and validate that document, or should step 06
-carry it? The learner has not been asked, and the question should be put before step 06
-starts, because step 06 decides whether a caller *may* act and will want the principal's
-shape settled first.
+**Closed 2026-09-28: the document is built at step 42.** See
+[decision 32](decisions.md). Step 05 stands as built and step 06 is not asked to carry it
+either.
+
+The question assumed the answer was "05 or 06". It was neither. Searching the map for
+`security-context`, `identity_mode`, `actor_chain` and `subject_type` returns **nothing**
+across all 52 steps, and `DSOR-SCH-01` is named at exactly one step — 04. **No step owns
+this document.** The gap is in the map, not in step 05, which matched what the map asked of
+it.
+
+Step 42, `42_a_rest_api`, is the right home because it is the first step where a caller is
+genuinely outside the program. `DSOR-SCH-01` requires validation *"wherever it crosses an
+interface"*, and until there is an HTTP server the login crosses nothing. Step 05's
+`Principal` is also not an invention: it matches §12's own interface. The wire schema is a
+second artifact for the same idea at a boundary, which is what this question proposed keeping
+all along.
 
 ## 3 · Step 05 cannot build the running example's normal case (found 2026-09-25)
 
@@ -70,7 +77,8 @@ That refusal is worth showing rather than apologising for. A step built on `dire
 a test asserting the other two modes cannot be constructed is more honest than a fake
 delegation id.
 
-**Status after building step 05 (2026-09-28): unused.** The step was built on an internal
-principal with no `identity_mode` at all, so none of the three modes is exercised and the
-teaching opportunity described above was not taken. It is still available to whichever step
-builds the wire document. Tied to question 2.
+**Moved to step 42 on 2026-09-28.** Step 05 was built on an internal principal with no
+`identity_mode` at all, so none of the three modes is exercised. The teaching opportunity is
+not lost — it travels with the document to step 42, where question 2 sends it. Worth keeping
+because it is a rare thing: a schema that refuses to let a step pretend it has built something
+it has not.

@@ -491,3 +491,44 @@ refusal could be stamped with the CFO's id with the step fully green.
 **Rejected:** nothing. This is a correction to how the sweep is run, not a choice between
 options: **mutating one site at a time cannot find a test whose expected value is a constant.**
 Added to [lessons.md](lessons.md).
+
+## 32 · The `security-context` document is built at step 42, not 05 or 06 (2026-09-28)
+
+**Decided by:** the learner, on my recommendation, closing
+[open question 2](open-questions.md).
+**What:** step 05 stands as built. Step 06 is not asked to carry the wire document either.
+The specification's `security-context.schema.json` is copied and validated at **step 42**,
+`42_a_rest_api`, where an HTTP server first puts a caller outside the program.
+**Why:** three reasons, in order of weight.
+
+1. **There is no wire to cross yet.** `DSOR-SCH-01` says an artifact must validate *"wherever
+   it crosses an interface or is stored as evidence."* In step 05 the login is an argument
+   handed to a function inside one program. Nothing crosses. Step 42 is the first step where a
+   caller is genuinely outside, and that is the first moment the document has a job.
+2. **Step 05's shape is not homemade.** Its `Principal` matches the interface in
+   [§12](../../../specs/dsor/02-security.md#12-identity-and-principals), `memberships`
+   included. The wire schema is a *second* artifact describing the same idea at a boundary —
+   snake_case, `subject` and `subject_type`, no memberships. Keeping both and saying which is
+   which is what open question 2 proposed in the first place.
+3. **One new idea per step.** Step 06 is permissions. Adding "and here is the shape identity
+   arrives in" makes it two.
+
+**What the check actually found, and it is not what the question assumed.** The question was
+framed as "which step owns this, 05 or 06?" Searching the map for `security-context`,
+`identity_mode`, `actor_chain` and `subject_type` returns **nothing**, across all 52 steps, and
+`DSOR-SCH-01` is named at exactly one step — 04. So no step owns it. This is a **gap in the
+map**, not a defect in step 05, and step 05 matches what the map asked of it exactly.
+**Cost:** 37 steps are built on the internal shape before the wire shape appears. That is the
+risk [decision 26](#26--step-05-keeps-identity-internal--the-wire-document-waits-and-this-needs-the-learners-answer-2026-09-28)
+named, and it is accepted rather than dismissed: the two shapes describe the same idea, so step
+42 will be writing a translation, not a rewrite.
+**Rejected:** reopening step 05, which makes it a two-idea step and validates an artifact that
+crosses nothing. Also rejected: putting it in step 06, for the same reason plus displacing the
+step's own idea.
+
+**To do at step 42.** Copy `packages/spec/schemas/security-context.schema.json` into the step,
+build a `direct`-mode document from the authenticated caller, validate it with ajv, and keep
+the internal principal as the normalized form. The three identity modes are the teaching
+opportunity that [open question 3](open-questions.md) describes: `direct` forces `actor_chain`
+empty, and `unattended` requires a `delegation` and a role source, so the schema itself refuses
+to let an early step fake the running example's usual case.
