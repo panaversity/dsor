@@ -268,7 +268,11 @@ Decisions 16 and 17 were added after the hostile review, which found each gap li
   `result`. A refusal too: a denied `invoice.issue`, and a not-found `invoice.get`. A
   request id with a NUL character is refused, and its refusal is recorded.
 - **C3:** after all of the program's pools are closed and new ones opened, the record
-  from C2 is still there.
+  from C2 is still there. That is a restart. For a crash, a child program calls
+  `invoice.get`, writes the answer, and kills itself with `SIGKILL` at once, with no
+  clean-up. Then the test looks for the record. This is fault injection, the way §47
+  asks crash guarantees to be proved. Added after a second review found that closing
+  pools politely proves a restart, not a crash.
 - **C4:** a call whose log cannot write, because its pool is closed or its password is
   wrong, answers `EVIDENCE_STORE_UNAVAILABLE`, and no invoice is returned.
 - **C5:** the record of C2 is a row of `dsor.audit`.
@@ -527,6 +531,19 @@ owner ran: GRANT UPDATE (reason) ON dsor.audit TO dsor_runtime
 Before the fix, all 20 database tests stayed green, and the reviewer, as `dsor_runtime`,
 could turn 123 refusals into `ALLOW` (in a transaction that was rolled back).
 
+**T5 against a crash.** Added after a second review. A child program answers, then
+kills itself with `SIGKILL`. With line ⑪'s `await` removed, the caller heard "ok", and
+the table held nothing:
+
+```text
+     × DSOR-EXE-02: a program killed with SIGKILL the moment it answers has left its record 3577ms
+AssertionError: expected [] to match object [ { authorization: 'ALLOW', …(1) } ]
+```
+
+As built, the same test finds the record every time. The reviewer's own run: 5 of 5
+records as built, 0 of 5 with the break. An agent told "yes" five times, and no
+evidence that any of it happened.
+
 **T7.** `money(String(Number(row.amount_value)), …)`:
 
 ```text
@@ -653,14 +670,17 @@ back after.
 9. The prose: the letterbox's key was on the wrong side, and several words were used
    before they were defined.
 
+**Found by a second review, and fixed:**
+
+10. **C3 proved a restart, not a crash.** It closed the pools politely. Now a child
+    program answers and kills itself with `SIGKILL`, and the test finds the record.
+    Break T5 turns it red: the caller heard "ok", and no record existed.
+
 **Left open on purpose:**
 
 - **A database failure while reading an invoice** (at line ⑨) becomes
   `INTERNAL_ERROR`, recorded as `ALLOW`. §28's `CONNECTOR_UNAVAILABLE` fits better. It
   belongs with connectors, later.
-- **C3 closes the pools politely.** That shows the record survives a restart, not a
-  crash. A child process killed with `SIGKILL` right after `call` returns would prove
-  "durably" by fault injection (§47).
 - **`main.ts` picks its own records by request id and `slice`.** A second program
   running at the same moment could confuse it. It is a printout, not a guarantee.
 - **`pool.on("error", () => {})`** drops a lost connection with no trace. Logging

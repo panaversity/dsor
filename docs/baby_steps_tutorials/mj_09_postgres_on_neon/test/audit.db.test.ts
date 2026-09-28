@@ -1,5 +1,7 @@
 // NEW IN STEP 09: the letterbox. The log is a table, dsor_runtime can drop a record in and
 // read it, and can never change or remove one. By claim, C1 to C5 in step 09's README.
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool, runtimeRoleProblems } from "../src/postgres.ts";
@@ -211,6 +213,37 @@ describe("C3: the record survives a restart", () => {
       await after.end();
     }
   });
+});
+
+// NEW IN STEP 09: a crash, not a restart. Found by the second review: closing pools
+// politely proves only that a record survives a restart (step 09's README, C3).
+describe("C3, by fault injection: the record survives a crash straight after the answer", () => {
+  const CRASH = fileURLToPath(new URL("crash-after-answer.ts", import.meta.url));
+
+  it(
+    "DSOR-EXE-02: a program killed with SIGKILL the moment it answers has left its record",
+    { timeout: 120_000 },
+    async () => {
+      // Three times, because a missing await loses a race, and a race can be won once.
+      for (let run = 1; run <= 3; run++) {
+        const id = requestId("c3-crash");
+        const child = spawnSync(process.execPath, [CRASH, id], {
+          encoding: "utf8",
+          timeout: 60_000,
+        });
+        expect(child.signal).toBe("SIGKILL");
+        // The caller heard "yes"...
+        expect(JSON.parse(child.stdout)).toMatchObject({
+          data: { id: "INV-1008" },
+          correlation: { request_id: id },
+        });
+        // ...so the record must already be in the database.
+        expect(await rowsFor(observer, id)).toMatchObject([
+          { authorization: "ALLOW", result: "ok" },
+        ]);
+      }
+    },
+  );
 });
 
 describe("C4: if the database cannot take the record, the caller hears EVIDENCE_STORE_UNAVAILABLE", () => {
