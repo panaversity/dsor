@@ -15,6 +15,7 @@
 // `<resource>:<action>` permission format.
 // Rule DSOR-AUT-01b: DSoR MUST deny any operation for which no permission is granted.
 
+import { readFileSync } from "node:fs";
 import type { Principal } from "./people.ts";
 
 /**
@@ -46,6 +47,77 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
  * unfrozen empty array handed out here would be an invitation.
  */
 const NOTHING: readonly string[] = Object.freeze([]);
+
+// NEW IN PIECE 3. The shape of a permission, read out of the specification's own schema
+// instead of written again here. `common.schema.json` is the same file the contracts are
+// validated against, so the two cannot drift: change the schema and this follows. Writing
+// `/^[a-z]+:[a-z]+$/` by hand would have been shorter and wrong — it refuses
+// `payment:execute.propose`, which the specification allows.
+const pattern = new RegExp(
+  (
+    JSON.parse(readFileSync(new URL("./schemas/common.schema.json", import.meta.url), "utf8")) as {
+      $defs: { permission: { pattern: string } };
+    }
+  ).$defs.permission.pattern,
+);
+
+/** The shape every permission must have, from `common.schema.json`. */
+export function permissionPattern(): RegExp {
+  return pattern;
+}
+
+/**
+ * Refuses a role table that is not well formed, and returns how many permissions it checked.
+ *
+ * This exists because of a failure that is **safe and silent**, which is the worst combination
+ * to debug. Write `INVOICE:READ` in a role and it matches nothing, so the role grants less than
+ * its author meant. Nobody is let in who should not be — the direction is right — but nobody
+ * finds out either, until a person cannot do their job and the reason is a capital letter in a
+ * file they have never opened. Checking the table when the program starts turns that silence
+ * into a stop.
+ *
+ * An empty grant list is refused for the same reason: it is almost always a half-finished edit,
+ * and deny-by-default would turn it into an outage nobody could explain.
+ *
+ * It takes the table as an argument rather than reading the one above, so a test can hand it a
+ * rotten one — and so it can run at start-up instead of on the first request.
+ */
+export function checkPermissions(roles: Readonly<Record<string, readonly string[]>>): number {
+  let checked = 0;
+
+  for (const [role, granted] of Object.entries(roles)) {
+    if (granted.length === 0) {
+      throw new TypeError(`${role} grants nothing: a role with no permissions is never useful`);
+    }
+
+    for (const permission of granted) {
+      if (!pattern.test(permission)) {
+        throw new TypeError(
+          `${role} grants ${JSON.stringify(permission)}, which is not <resource>:<action>`,
+        );
+      }
+
+      checked += 1;
+    }
+  }
+
+  return checked;
+}
+
+// Start-up, not first request. A bad table stops the program before any caller gets a turn.
+//
+// This holds **how many** permissions were checked, not `true`. An earlier version of this step
+// used a boolean, and a mutation test found the hole at once: delete the call, leave `return
+// true` behind, and every test stayed green. The flag said the check had run; all it proved was
+// that somebody had written `true`. A count has to come from walking the table.
+//
+// What is still not provable from inside this process: replacing the call with the literal `6`
+// — today's correct answer — would also pass. No test can watch a line at module scope run,
+// because by the time a test imports this file it already has. A child process importing a
+// deliberately bad table would close that, and costs more machinery than it teaches here. The
+// count is not a proof; it moves the mistake from "delete a line" to "delete a line, work out
+// the right number, and keep it right as the table changes".
+export const PERMISSIONS_CHECKED: number = checkPermissions(ROLES);
 
 /**
  * Everything this principal's role grants.
