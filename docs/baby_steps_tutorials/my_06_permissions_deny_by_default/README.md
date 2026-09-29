@@ -227,7 +227,12 @@ because "just allow it while I debug" is a real thing people type.
 
 ```text
      × DSOR-AUT-01b: a principal holds what their role grants, and nothing else
+     × the table of roles cannot be edited after it is handed out
      × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
+     × DSOR-AUT-01b: the refusal does not say which permission was missing
+     × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
+     × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
+     × DSOR-AUT-01b: the supervisor may issue, and does
       Tests  7 failed | 139 passed (146)
 ```
 

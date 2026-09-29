@@ -244,9 +244,9 @@ refusing when there is no login. Run `pnpm test`:
      × DSOR-IDN-01: a login that is not a login is refused, never thrown at
      × DSOR-IDN-01: a name inherited from a prototype is not a login
      × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
+     × DSOR-ERR-01a: an object that throws when read is refused, not thrown at
      × DSOR-IDN-01: with nobody logged in, nothing happens at all
      × DSOR-IDN-01: the login is checked before the operation or the arguments
-     × DSOR-ERR-01a: an object that throws when read is refused, not thrown at
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
       Tests  9 failed | 115 passed (124)
 ```

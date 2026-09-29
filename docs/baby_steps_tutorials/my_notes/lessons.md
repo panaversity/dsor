@@ -295,3 +295,39 @@ what it cost that nothing else did:
 So the lesson compounds: **write down the shape of a bug, and then go looking for that shape
 everywhere, including in the code you wrote before you knew.** Lesson 13 said a fix belongs
 everywhere its shape lives. This says the same about a *test*.
+
+## 16 · "Read the caller's data once" is a rule about every function the data reaches
+
+Step 05's review found a *getter* in the arguments that answered differently on a second read, so a
+receipt could describe a request that never happened. The fix was to copy the arguments once, in
+`callOperation`, and the comment beside it says exactly that.
+
+Step 07's review found the same bug again, past that guard. `success()` — the function that builds
+a result envelope — called `JSON.stringify` on the arguments a **second** time to compute the
+payload hash, *after* the invoice had been issued. An object whose `toJSON` throws on its second
+call committed the change and then threw at the caller:
+
+```text
+toJSON calls: 2   ->  THREW at the caller, INV-1009 already issued
+toJSON calls: 1   ->  result                (after the fix)
+```
+
+The guard did not help because the second read was not of the *arguments*. It was of the copy, one
+layer down, by a function nobody thought of as reading anything — it was thought of as *building an
+envelope*.
+
+So the rule is not "copy the arguments at the door". It is: **follow the value.** For every piece of
+caller-supplied data, list every function it reaches, and ask each one whether it reads it again.
+`JSON.stringify`, template interpolation, a logger, a hash, an equality check — each is a read, and
+each can see something different from the last one.
+
+Three appearances now, of the shape "the same caller-supplied value, read twice":
+
+| Where | The second reader | What it cost |
+| --- | --- | --- |
+| step 05 | the receipt's hash, in `success()` | a receipt for a request that never happened |
+| step 07 | `success()` again, via `toJSON` | a commit, then a crash, with no evidence |
+| step 02 | `formatUri`'s round-trip compare | an address minted from a value that changed |
+
+The one method that finds it is following the value through every call, and no amount of mutating
+the guard would have.

@@ -858,3 +858,50 @@ stages exist twice, so the day one changes they disagree.
 **Cost:** the walker needs a condition in it, so a reader cannot see a query's whole path as one
 block. The test that lists which stages a query runs is what answers that instead.
 **Rejected:** a query pipeline and a command pipeline side by side.
+
+## 49 · The arguments are written down once, and the fingerprint comes from that text (2026-09-29)
+
+**Decided by:** a hostile review of step 07, which found the bug in step 04.
+**What:** `success()` takes a `payloadHash` instead of a `payload`, and never touches the caller's
+object. A `payloadHash(text)` helper hashes text that was already written. In step 07 the
+fingerprint lives in the pipeline context, filled by the stage at §21.6.
+**Why:** `success()` used to `JSON.stringify` the caller's arguments a **second** time, to compute
+the hash — after the invoice had been issued. An object whose `toJSON` throws on its second call
+therefore committed the change and *then* threw at the caller: no envelope, no code, nothing
+recording it.
+
+This is the third time this shape has appeared, and the second time in the same family. Step 05's
+review found a *getter* that answered differently on a second read; the guard added for it copies
+the arguments once. That guard did not help here, because the second read was not of the arguments —
+it was of the copy, one layer down, by a function nobody thought of as reading anything.
+**Cost:** `success()` no longer takes the thing it fingerprints, which reads as indirection until
+the comment beside it is read. Four steps had to be changed.
+**Rejected:** hashing inside the existing guard and passing the object along anyway. It fixes this
+instance and leaves "a function may stringify the caller's object" true, which is the property that
+keeps producing the bug.
+**The lesson, which is in [lesson 16](lessons.md):** "read the caller's data once" is not a rule
+about one function. It is a rule about every function the data reaches, and the only way to know is
+to follow the value.
+
+## 50 · A checklist's order is checked as a sequence, not as a set of names (2026-09-29)
+
+**Decided by:** a hostile review of step 07, which permuted the real stages.
+**What:** `REQUIRED` in `src/pipeline.ts` is an ordered sequence, and `assertPipeline` requires the
+named stages to appear in that relative order. A §21 number must also be a number §21 has.
+**Why:** it was a set of names plus a rule that numbers never descend — and `resolve the operation`
+carries `null` by design, so it was exempt from a rule about numbers. A reviewer permuted the four
+real stages: **four of the twenty-four orderings passed**, including `resolve the operation` before
+`authenticate`, which answers an unauthenticated caller `UNSUPPORTED_CAPABILITY` and tells a
+stranger which operations exist. Measured before the change and after: 4 of 24, then 1 of 24.
+
+`assertPipeline`'s own docstring had said it refuses "a stage in the wrong place", and `makeDoor`'s
+said a door whose order cannot be trusted should not exist. Both were false, and both were written
+before the check that would have made them true.
+**Cost:** the check now knows the names of the four stages, so a step that renames one has to
+update two places. That is the right coupling: renaming a stage *is* a change to the checklist.
+**Rejected:** tying each stage's `at` to its name in a table. It would also catch a renumbered
+stage, and it makes the §21 numbers a second source of truth for the order, which is the thing the
+name sequence already is.
+**What it still cannot do:** see what a stage *does*. A stage called `authorize` that asks nothing
+passes. That is now a test rather than a comment — the door that does it lets `cfo_100` issue an
+invoice.

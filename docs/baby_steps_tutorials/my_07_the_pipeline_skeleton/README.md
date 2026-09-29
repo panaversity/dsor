@@ -1,167 +1,154 @@
-# Step 06 · Permissions, denied by default
+# Step 07 · The pipeline skeleton
 
-**New in this step:** every call is checked against what the caller may do, and anything nobody
-granted is refused.
+**New in this step:** the order of the checks stops being the order some lines sit in, and becomes
+a list.
 
-## Read this first: the roles are in the source
+## Read this first: nothing new is checked
 
-The roles and their permissions are written in `src/permissions.ts`, in the program itself. A
-real deployment reads them from a role source — a directory or an identity provider — and
-`DSOR-IDN-04a` requires exactly that. Steps 18 and 19 build it.
+This is the only step so far that adds no check and refuses nothing it did not refuse before. Run
+`pnpm start` and the output is **byte-identical** to step 06's. All of step 06's tests pass
+unchanged.
 
-So nothing here stops somebody editing that file to grant themselves a permission. What this
-step does build is the part that matters first and goes wrong most often: the answer to *may
-you* comes from the operation's own contract and from a role table, never from the caller and
-never from the arguments — and the answer is **no** unless somebody said yes.
+That is not a small step. It is the difference between a program that happens to be right and one
+that says what right is.
 
 ## In plain words
 
-Step 05 answered *who are you*. This step answers *may you do this*.
+Your program already asks four questions, in this order:
 
-A **permission** is a short string in two parts: `<resource>:<action>`. `invoice:read`,
-`invoice:issue`, `payment:approve`. Each operation says which one it needs. Each person has a
-**role**, and the role says which permissions they hold. Before an operation runs, DSoR asks
-whether the caller holds the permission that operation needs. If not, the answer is
-`AUTHORIZATION_DENIED`, and trying again will not help.
+```text
+who are you?  →  does this operation exist?  →  may you?  →  are the arguments valid?
+```
 
-The important word is **denied**. Not "allowed unless we said no" — **refused unless we said
-yes**. That is `DSOR-AUT-01b`, and it is why a grant somebody forgot makes a thing stop working
-loudly, instead of quietly letting a stranger through.
+Until now that order was **where the lines happened to sit** inside one function. Nothing said it
+was the order. Nothing could check it. This step turns it into a list:
+
+```ts
+export const PIPELINE: readonly Stage[] = Object.freeze([
+  stage(1, "authenticate", "both", authenticate),
+  stage(null, "resolve the operation", "both", resolveTheOperation),
+  stage(5, "authorize", "both", authorize),
+  stage(6, "validate the input", "both", validateTheInput),
+]);
+```
+
+and `callOperation` walks it and stops at the first no.
 
 ## Why it matters
 
-`accounts-payable-fte` reads invoices all day. One day the words it is given change — someone
-edits a template, or a document it reads contains an instruction put there to be found — and it
-tries to issue an invoice for 31,400.00 USD.
+While steps 04 to 06 were built, that order was **reshuffled three times**. Step 05 put the
+argument copy before the contract lookup; step 06 hoisted the lookup above the copy; step 04 took
+the copy back entirely. One test caught one of those three moves. The other two were right because
+somebody was paying attention, and attention is not a guarantee.
 
-With step 05 only, that works. The agent is logged in, and being logged in was the only question
-anybody asked.
+And you already know what it costs when the order is wrong, because step 06 tested it: put "does
+this invoice exist" before "may you", and `cfo_100` can count invoices she has no permission to see
+by comparing `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED`. **The order is the security
+guarantee.**
 
-With step 06, the answer depends on something the agent cannot change: whether `invoice:issue`
-was granted to its role. What the agent was *told* changed. What it may *do* did not.
+The failure that is coming is worse. `DSOR-OPR-04a` says *every interface MUST invoke the same DSoR
+pipeline*. Today there is one door. **Step 42 adds an HTTP server.** If the order lives in the shape
+of a function, the second door gets its own order and nobody notices until they disagree — which is
+how real systems end up with a web API that checks permissions and a batch job that does not.
 
-## Where the permission comes from
+## The numbers are §21's
 
-It was already written down. Your contracts have carried it since step 03, and nothing ever read
-it:
+§21 of the specification is a seventeen-line checklist. You have four of them, and each carries its
+real number:
 
-```json
-"authorization": { "permission": "invoice:read" }     // src/contracts/invoice.get.json
-"authorization": { "permission": "invoice:issue" }    // src/contracts/invoice.issue.json
-```
+| | Stage | Arrives in |
+| --- | --- | --- |
+| 1 | authenticate | step 05 |
+| — | resolve the operation | step 03 |
+| 5 | authorize | step 06 |
+| 6 | validate the input | steps 02–04 |
+| 2 | resolve the tenant | step 10 |
+| 3 | resolve the delegation, verify the actor chain | steps 18–19 |
+| 4 | check operational status: suspension, freeze, breaker | step 26 |
+| 7 | claim the idempotency key | step 20 |
+| 8 | create or load the proposal | step 22 |
+| 9 | read bound state, check preconditions | steps 11–13 |
+| 10 | evaluate controls, segregation of duties, limits | steps 27–30 |
+| 11 | **record the decision, always, including DENY** | step 08 |
+| 13 | **write the intent record, before any side effect** | step 08 |
+| 14 | execute through the connector | step 34 |
+| 15 | finalize: COMMITTED, FAILED or OUTCOME_UNKNOWN | step 37 |
+| 16 | commit or release reservations, enqueue events | steps 30, 39 |
+| 17 | seal the decision bundle | step 40 |
 
-So this step does not invent where the answer lives. Each operation already declares the
-permission it needs, in its own spec sheet, beside everything else true about it. The step's job
-is to finally **read** it.
+**The gaps in the numbering are the roadmap.** A list that jumps 1 → 5 → 6 says what is missing
+more honestly than thirteen stages that do nothing.
 
-That matters more than it sounds. The permission belongs to the *operation*, not to the code
-that runs it, so a reader can see what `invoice.issue` requires without reading any code — and
-two callers cannot disagree about it.
+`resolve the operation` carries no number, and that is not an oversight: §21 *begins* after the
+operation is known, because there is no checklist to run for an operation that does not exist.
 
-### The role in between
+## Why a list, and not comments
 
-```ts
-export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  ap_supervisor: Object.freeze(["invoice:read", "invoice:issue"]),
-  approver: Object.freeze(["invoice:read", "payment:approve"]),
-  ap_worker: Object.freeze(["invoice:read", "invoice:issue"]),
-});
-```
+Three things become possible that were not:
 
-| Who | Role | May read | May issue |
-| --- | --- | --- | --- |
-| `user_123` | `ap_supervisor` | yes | yes |
-| `cfo_100` | `approver` | yes | **no** |
-| `accounts-payable-fte` | `ap_worker` | yes | yes |
+- **A test can read the order.** `test/pipeline.test.ts` asserts it directly, and — the test this
+  step most needed — takes every one of the 24 orderings of the four stages and asserts that
+  **exactly one** is accepted.
+- **A later step adds a line** rather than editing a function it could get wrong.
+- **A second door can be handed the same list.** `makeDoor(stages)` builds one, and
+  `callOperation` is `makeDoor(PIPELINE)`. Step 42's HTTP server gets the same list, because it is
+  *given* the list rather than choosing it.
 
-Permissions hang off a **role**, not off a person. That is what the "role-based" in
-`DSOR-AUT-01a` means, and it is how it works in a company: a new joiner is given a role, and
-changing what a job may do is one edit instead of one per person.
+### What the list check refuses
 
-Be honest about what this small table shows, though. Three people, three roles, and two of those
-roles grant the same two permissions — so the saving is invisible here and you have to take it on
-trust. It becomes real the moment there are five people in accounts payable: five `ap_worker`s,
-and one line to change when the job changes. The shape is right before it is useful, which is the
-only time you can still choose it cheaply.
+`assertPipeline` runs when the program loads and refuses five things, each the mistake a later step
+makes while adding a line:
 
-Look at the table again. `cfo_100` is the most senior person in this story and the only one who
-cannot issue an invoice. That is not a mistake — a CFO signs payments off, they do not do
-accounts-payable data entry. **Permissions are not a ladder.** Design them by rank and the most
-powerful account in the company becomes the one most worth stealing.
+- the list is empty
+- the same stage appears twice
+- a §21 number is not one §21 has, or the numbers descend
+- the required stages are not in their required order
+- a command-only stage sits before the operation is resolved, so it would never run
 
-### A typo fails closed, and that is the danger
+That last one needs a word. Whether a command-only stage applies depends on the contract — and the
+contract is resolved *by a stage*. Before that stage has run there is no kind to ask about, so a
+command-only stage placed earlier would be stepped over on **every** call, including commands. A
+step that is silently never reached is what `DSOR-EXE-01b` forbids, and it would be invisible:
+nothing fails, the step just never happens.
 
-Write `INVOICE:READ` in a role and it matches nothing. The role silently grants less than you
-meant, and the first sign of trouble is a person who cannot do their job for reasons nobody can
-find. Failing closed is the *right* direction — silence is not.
+### What it cannot refuse, and this is important
 
-So the table is checked when the program loads, against the pattern in the specification's own
-`common.schema.json`. A typo stops the program instead of taking a permission away:
+`REQUIRED` is a list of **names**. A stage called `authorize` that returns "carry on" without asking
+anything satisfies the check — a review built exactly that door. There is no way to read a
+function's meaning out of a list.
 
-```text
-TypeError: ap_worker grants "INVOICE:READ", which is not <resource>:<action>
-```
+So the check is not the only thing guarding the order. `test/deny-by-default.test.ts` is: a door
+whose `authorize` does nothing lets `cfo_100` issue an invoice, and that is a failing test. Break 4
+below is that door.
 
-The pattern is read out of the schema file rather than copied into the code, so the two cannot
-drift. Writing `/^[a-z]+:[a-z]+$/` by hand would be shorter and wrong: it refuses
-`payment:execute.propose`, which the specification allows.
-
-## The order grew a third question
-
-```text
-step 05:  who are you?  ->  does this operation exist?  ->  are the arguments valid?
-step 06:  who are you?  ->  does this operation exist?  ->  MAY YOU?  ->  are the arguments valid?
-```
-
-Authority is settled **before** the arguments are read, and that is deliberate. If the address
-were read first, `cfo_100` could learn from the error code whether `INV-9999` exists: ask about
-two invoices, compare `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED`, and she has a way to
-count records she has no permission to see. Because the permission is checked first, every one of
-those attempts is the same refusal — the same *words*, which a test pins — and she learns
-nothing.
-
-Step 07 turns this order into a written checklist instead of leaving it as the shape of one
-function.
-
-## What changed since step 05
+## What changed since step 06
 
 ```text
-my_06_permissions_deny_by_default/
-  src/permissions.ts           NEW  the roles, the shape check, and may-you
-  test/permissions.test.ts     NEW  12 tests: the table on its own
-  test/deny-by-default.test.ts NEW  10 tests: cfo_100 can read and cannot issue
-  src/people.ts            CHANGED  every principal carries a role
-  src/operations.ts        CHANGED  the may-you gate, after the lookup and before the arguments
-  src/login.ts             CHANGED  every caller-supplied read goes through one helper
-  src/main.ts              CHANGED  the CFO reads an invoice, then is refused when she issues it
-  test/who-is-calling.test.ts CHANGED two tests issued as cfo_100 and now ask as the agent
-  package.json             CHANGED  name and description only
-  src/envelopes.ts         CHANGED  step 05's NEW IN STEP markers removed, nothing else
-  test/login.test.ts       CHANGED  the same
-  test/operations.test.ts  CHANGED  the same
+my_07_the_pipeline_skeleton/
+  src/pipeline.ts          NEW  Stage, Context, assertPipeline, applies, runPipeline
+  test/pipeline.test.ts    NEW  23 tests: the list, its rules, and the walk
+  src/operations.ts    CHANGED  the four stages, PIPELINE, makeDoor; callOperation walks the list
+  package.json         CHANGED  name and description only
 ```
 
-That last test change is worth a moment. Two of its tests issued an invoice as `cfo_100`. She
-may not any more, so they ask as the agent instead. Nothing about what they test changed. **A new
-gate in front of the program changing which caller a test needs is exactly what it looks like
-when permissions start working.** If adding permissions had broken nothing, nothing was being
-checked.
+Four files. For a step that moved every check in the program, that is the point: the checks
+themselves did not change, only where the order lives.
 
 To see every difference yourself:
 
 ```bash
 cd docs/baby_steps_tutorials
 diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
-  my_05_who_is_calling my_06_permissions_deny_by_default
+  my_06_permissions_deny_by_default my_07_the_pipeline_skeleton
 ```
 
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_06_permissions_deny_by_default
+cd docs/baby_steps_tutorials/my_07_the_pipeline_skeleton
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 146 tests pass
+pnpm check                 # typecheck, then test. 169 tests pass
 ```
 
 ```text
@@ -184,242 +171,214 @@ denied, real invoice    cfo_100               AUTHORIZATION_DENIED     retry: ne
 denied, no such invoice cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
 ```
 
-Read the middle of that. `cfo_100` reads INV-1009 and is told it is a 2,500.00 USD draft. She
-asks to issue it and is refused. Then the agent issues **the same invoice, one line later**, and
-it works. Nothing about the invoice changed between those two lines. The only difference is who
-asked.
-
-And the last two lines are the same refusal twice: once for an invoice that exists, once for
-`INV-9999`, which does not. A caller who may not act learns nothing about what is there.
+Compare that with step 06's output. It is the same, line for line — `diff` reports nothing. A step
+whose whole job is to change where something *lives* should change nothing about what the program
+*does*, and that is how you check.
 
 ## Break it
 
 Five breaks. Change the code back after each. Every number below was produced by running it.
 
-**1. Delete the may-you gate.** In `src/operations.ts`, remove the `holds(...)` block. Run
-`pnpm test`:
+**1. Swap two stages in the list.** In `src/operations.ts`, put `resolve the operation` above
+`authenticate`. Run `pnpm test`:
 
 ```text
+ Test Files  5 failed | 8 passed (13)
+      Tests  97 passed (97)
+
+TypeError: the pipeline runs resolve the operation where authenticate belongs: the order must be
+authenticate then resolve the operation then authorize then validate the input
+```
+
+**Read the totals.** 97 collected, not 169 — and *nothing failed*. Seventy-two tests did not fail;
+they never ran, because five test files import a module that throws while it is loading. The program
+refuses to start. That is what "refused at start-up" looks like from the outside, and it is the
+strongest answer a break can get.
+
+It is also a trap. "All passed" on a shrunken total looks exactly like a break that nothing caught.
+When you run these, read the total first.
+
+**2. Make the walker take the list backwards.** In `src/pipeline.ts`, change
+`for (const stage of stages)` to `for (const stage of [...stages].reverse())` — **the one inside
+`runPipeline`**, not the one inside `assertPipeline`. Run `pnpm test`:
+
+```text
+      Tests  44 failed | 125 passed (169)
+```
+
+Forty-four. The order is load-bearing for nearly every test in the step.
+
+There are two loops with that same first line, and mutating both is a different experiment: it
+breaks the start-up check instead, and you get break 1's shrinking total. That caught me four times
+while building this step.
+
+**3. Let the walk carry on after a refusal.** In `runPipeline`, change `return result` to
+`continue`. Run `pnpm test`:
+
+```text
+      Tests  15 failed | 154 passed (169)
+```
+
+The first no has to be the answer. Without that, a caller who failed a check has later checks run
+on them anyway — and the last one to speak wins.
+
+**4. Make `authorize` do nothing, and keep its name.** In the list, replace the `authorize` stage's
+function with `(context) => carryOn(context)`. Run `pnpm test`:
+
+```text
+     × DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here
      × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
      × DSOR-AUT-01b: the refusal does not say which permission was missing
      × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
      × DSOR-AUT-01b: the supervisor may issue, and does
-AssertionError: expected 'INV-1009 is issued, and only a draft …' to contain 'cfo_100'
-      Tests  5 failed | 141 passed (146)
+      Tests  6 failed | 163 passed (169)
 ```
 
-Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The last
-test then failed because the draft she was never allowed to touch had already been used up.
+This is the break to sit with. **`assertPipeline` is perfectly happy** — the list still holds four
+stages with the right names in the right order. A list cannot see what a function does. What catches
+it is behaviour: `cfo_100` can now issue an invoice.
 
-**2. Say yes to everything.** Make `holds` return `true`. Run `pnpm test`:
+**5. Stop freezing the context between stages.** In `runPipeline`, drop the two `Object.freeze`
+calls. Run `pnpm test`:
 
 ```text
-      Tests  9 failed | 137 passed (146)
+     × DSOR-EXE-01a: a stage cannot edit the context it was given
+      Tests  1 failed | 168 passed (169)
 ```
 
-Nine. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
-prefix now counts as a match, an empty permission is held by everybody. Remember this break,
-because "just allow it while I debug" is a real thing people type.
-
-**3. Give the CFO the supervisor's role.** One word in `src/people.ts`, `approver` to
-`ap_supervisor`. Run `pnpm test`:
-
-```text
-     × DSOR-AUT-01b: a principal holds what their role grants, and nothing else
-     × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
-      Tests  7 failed | 139 passed (146)
-```
-
-No code was touched. One word in a table, and the separation between approving a payment and
-creating one is gone. That separation has a name in a real company — segregation of duties — and
-it is `DSOR-SOD-01a`, in step 30.
-
-**4. Match by prefix instead of by whole string.** In `holds`, use
-`granted.some((g) => g.startsWith(permission))`. Run `pnpm test`:
-
-```text
-     × DSOR-AUT-01b: a permission is matched whole, never by prefix
-AssertionError: "invoice:i": expected true to be false // Object.is equality
-      Tests  1 failed | 145 passed (146)
-```
-
-**A prefix is not a match.** Asking for `invoice:i` succeeds, because `invoice:issue` starts with
-it — and asking for `""` succeeds, because every string starts with nothing.
-
-The same mistake is waiting in step 05's `findPerson`, which matches a caller's name. Change its
-`===` to `startsWith` and `cfo_100_evil` logs in as `cfo_100`. Step 05's own tests catch that, so
-you can try it there too; its README does not list it as a break, which is why it is worth doing
-yourself.
-
-**5. Drop `Object.hasOwn` from the role lookup.** In `permissionsOf`, go back to plain
-`return ROLES[principal.role] ?? NOTHING`. Run `pnpm test`:
-
-```text
-     × DSOR-AUT-01b: a role nobody granted anything holds nothing
-AssertionError: "toString": expected [Function toString] to deeply equal []
-      Tests  1 failed | 145 passed (146)
-```
-
-This one was a real bug in this step, found by a hostile review rather than by me. `ROLES[role]`
-on a plain object **walks the prototype chain**, so a role named `toString` finds a function on
-`Object.prototype`, `?? NOTHING` never fires, and `holds` calls `.includes` on a function and
-throws at the caller instead of answering no. Anything written to `Object.prototype` becomes a
-role granting whatever it likes — one the start-up check never validated and `Object.keys(ROLES)`
-never shows.
-
-The fix already existed one file away. `src/login.ts` uses `Object.hasOwn` for exactly this
-reason, added in step 05 because *a name the object merely inherits is a name nobody in this
-program chose*. The lesson was applied to identity and not to authorization, a day apart. Look
-for the shape of a bug in the other places that shape can live.
+A stage is meant to *return* what it learned, not edit what it was handed. Without the freeze a
+stage can rewrite the request under the checks that already ran — change the operation id after
+`authorize` has said yes. `readonly` on `Context` is erased before Node runs, which is step 01's
+lesson in a fourth place.
 
 ## Build it yourself with Claude Code
 
-This folder is a learner copy — the `my_` prefix. The official `06_permissions_deny_by_default`
-is still listed as planned in the [map](../readme.md), so there is nothing to compare against
-yet.
+This folder is a learner copy — the `my_` prefix. The official `07_the_pipeline_skeleton` is still
+listed as planned in the [map](../readme.md), so there is nothing to compare against yet.
 
 ```bash
 cd docs/baby_steps_tutorials
-cp -r my_05_who_is_calling my_06_permissions_deny_by_default
-cd my_06_permissions_deny_by_default
+cp -r my_06_permissions_deny_by_default my_07_the_pipeline_skeleton
+cd my_07_the_pipeline_skeleton
 rm -rf node_modules && pnpm install
 claude
 ```
 
-Then ask for one thing at a time:
+Ask for the problem before the code:
 
-> I have finished step 05, where every request has a caller. Now I want step 06 of the DSoR baby
-> steps: permissions, denied by default. Read the map's entry for step 06, §15 of the
-> specification, and the sentences for `DSOR-AUT-01a` and `DSOR-AUT-01b` in the requirement
-> registry. Then look at `src/contracts/invoice.issue.json` and tell me where the permission an
-> operation needs is **already** written down. Do not write code yet — explain what you found,
-> and ask me who should be allowed to do what.
+> I have finished step 06, where anything nobody granted is refused. Now I want step 07 of the DSoR
+> baby steps: the pipeline skeleton. Read the map's entry for step 07 and §21 of the specification.
+> Then tell me what problem this step solves — not what it adds. Do not write any code yet, and ask
+> me how literal the checklist should be before you do.
 
-Then, once you agree on the table:
+Then, once you agree on the shape:
 
-> Write the failing tests first, titled with the rule ids, and show me them failing. The one that
-> matters is the map's "done when": a caller with `invoice:read` can read and cannot issue. Then
-> make them pass with the smallest change, and put the may-you check **before** the arguments are
-> read — I want to see for myself why that order matters.
+> Write the failing tests first, titled with the rule ids. Build it a piece at a time, and stop
+> after each: the list on its own before anything walks it, then the walk. The proof the walk worked
+> is that every test from step 06 still passes unchanged and `pnpm start` is byte-identical.
 
-And when it is green, ask for the part that finds real bugs:
+And the part that finds real bugs:
 
-> Now attack it. Try to make `holds` say yes for something nobody granted, try to reach an
-> invoice without passing the gate, and try to make a denied caller learn something about data
-> they may not touch. Mutate every guard one at a time **and whole families at once**. Show me
-> real output for anything you find.
+> Now attack it. Try to make a check run at the wrong moment or not at all. Build a list that
+> passes every rule `assertPipeline` has and is still wrong. Hand the checker a wrong order — note
+> that every ordering test reads PIPELINE, so none of them has ever done that. And compare this
+> step's behaviour against step 06's across hundreds of calls, because "all tests pass" does not
+> prove the behaviour is unchanged when the tests were written for this program.
 
 ## Check yourself
 
-1. Where does the permission an operation needs come from? Why not from the code that runs it?
-2. `cfo_100` is the most senior person in the story and cannot issue an invoice. Is that a bug?
-3. Why is the may-you check before the arguments are read, and not after?
-4. A role grants `INVOICE:READ` by mistake. What happens, and why is the program stopped rather
-   than left running?
-5. Why does the refusal not tell the caller which permission they were missing?
-6. `ROLES` is a plain object and `principal.role` is a string. What is wrong with
-   `ROLES[principal.role] ?? NOTHING`?
+1. What does this step change about what the program *does*?
+2. The order was already right. Why is writing it down worth a step?
+3. Why does `resolve the operation` carry no §21 number?
+4. `assertPipeline` checks five things. Name the one it **cannot** check, and say what catches that
+   instead.
+5. A command-only stage may not sit before `resolve the operation`. Why not?
+6. In break 1 the output says `97 passed (97)` and nothing failed. Why is that the *strongest*
+   result a break can get, and why is it also a trap?
 7. Is this step secure?
 
 <details>
 <summary>Answers</summary>
 
-1. From the operation's own contract, `authorization.permission` — there since step 03. Putting
-   it in the contract means a reader can see what `invoice.issue` requires without reading code,
-   and two pieces of code cannot disagree about it. If the running code decided, the answer would
-   live in as many places as there are callers.
-2. No. A CFO approves payments; they do not do accounts-payable data entry. Permissions describe
-   a job, not a rank. If seniority decided them, the most powerful account in the company would
-   be the one most worth stealing.
-3. So that being refused tells you nothing about the data. If the address were read first,
-   `cfo_100` could compare `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED` and count invoices
-   she has no permission to see. Order is part of the guarantee, and it is testable — moving the
-   gate below the address parse turns tests red.
-4. `INVOICE:READ` matches nothing, so the role silently grants less than its author meant. That
-   fails *closed*, which is the safe direction, but silently — nobody notices until a person
-   cannot do their job. The table is checked against the specification's own pattern when the
-   program loads, so the typo stops the program instead.
-5. Because a refusal that names what you lacked is a map of the permission model. Ask for twenty
-   operations and the refusals draw it for you. The detail belongs in the audit record, which
-   step 08 builds, where an operator can read it and a caller cannot.
-6. It walks the **prototype chain**. A role named `toString`, `constructor` or `valueOf` finds an
-   inherited member of `Object.prototype`, so `?? NOTHING` never fires and you get a function
-   back instead of a list. `holds` then calls `.includes` on it and throws. Worse, anything
-   written to `Object.prototype` becomes a role that grants whatever it likes. `Object.hasOwn`
-   first is the fix — the same one `src/login.ts` already used for inherited *names*.
-7. No. The roles live in the source, not in a role source, so `DSOR-IDN-04a` is not met — steps
-   18 and 19. Nothing is authenticated either, so a caller can still claim to be anyone; step 43
-   for people and 44 for agents. And nothing yet stops the person who creates a payment from
-   approving it — step 30. What *is* real: the answer to may-you cannot be reached from the
-   arguments, and anything ungranted is refused.
+1. Nothing. `pnpm start` is byte-identical to step 06's and every step 06 test passes unchanged.
+   What changed is that the order is now something a test can read and a later step cannot quietly
+   get wrong.
+2. Because the order *is* the guarantee, and it had been reshuffled three times in three steps with
+   one test noticing one of the moves. And because `DSOR-OPR-04a` says every interface must invoke
+   the same pipeline: a list can be handed to step 42's HTTP server, and the shape of a function
+   cannot.
+3. Because §21 begins after the operation is known. There is no checklist to run for an operation
+   that does not exist, so the specification does not number the step that finds out.
+4. It cannot check what a stage *does*. `REQUIRED` is a list of names, so a stage called `authorize`
+   that asks nothing satisfies it. What catches that is behaviour — `cfo_100` can issue an invoice —
+   which is break 4.
+5. Because whether it applies depends on the contract, and the contract is resolved by a stage.
+   Placed earlier, there is no kind to ask about, so the walker steps over it on every call
+   including commands — a step that is silently never reached, which is what `DSOR-EXE-01b` forbids.
+6. Strongest because the program did not start at all: a wrong order is not something you discover
+   on a request. A trap because "97 passed, 0 failed" reads like a break nothing caught, when really
+   seventy-two tests never ran. Always read the total.
+7. No more than step 06 was. Nothing here is authenticated, the roles are in the source, and
+   thirteen of §21's seventeen steps do not exist — including the two that matter most for evidence,
+   recording the decision and writing the intent record, which are step 08. What *is* real is that
+   the four checks that exist run in a declared order, that order is checked when the program loads,
+   and a second door cannot invent its own.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-AUT-01a · L1]** DSoR MUST support role-based access control using the
-  `<resource>:<action>` permission format.
-  ([§15](../../../specs/dsor/02-security.md#15-authorization))
-- **[DSOR-AUT-01b · L1]** DSoR MUST deny any operation for which no permission is granted.
-  ([§15](../../../specs/dsor/02-security.md#15-authorization))
+- **[DSOR-EXE-01a · L1]** Commands MUST pass through the pipeline steps in the order given.
+  ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline))
+- **[DSOR-EXE-01b · L1]** An interface, connector, or operation MUST NOT skip a pipeline step that
+  applies to it. ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline))
 
-`DSOR-AUT-01a` is met, both halves: permissions hang off roles, and every permission string is
-checked against the pattern in `common.schema.json` — the specification's own file — when the
-program loads.
+`DSOR-EXE-01a` is met for the four stages that exist: they run in the order the list gives, the
+order is checked when the program loads, and a permutation test asserts that of all 24 orderings
+exactly one is accepted.
 
-`DSOR-AUT-01b` is met: a permission that was never granted is refused, a role nobody defined
-holds nothing (including one named after a member of `Object.prototype`), and a permission is
-matched whole rather than by prefix.
+`DSOR-EXE-01b` is met in the sense the step can support: no stage that applies is skipped, and a
+list that *would* skip one — a command-only stage before the contract is known — is refused at
+start-up. The rule also covers interfaces and connectors, and there is one interface and no
+connector, so most of its surface has nothing to skip yet.
 
-Step 05's two claims still hold: `DSOR-IDN-01`, and the "not from the arguments" half of
-`DSOR-SRC-02a` — which this step extends. Who you are never came from the arguments, and now
-neither does what you may do.
+Step 06's `DSOR-AUT-01a` and `01b` still hold, along with step 05's `DSOR-IDN-01` and the "not from
+the arguments" half of `DSOR-SRC-02a`.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-AUT-02a` | Authorization must support `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. There are two answers here, yes and no. `REQUIRE_APPROVAL` needs a proposal for the approval to attach to — step 22. |
-| `DSOR-AUT-02b`, `02c` | When several rules apply the strictest wins, and every `REQUIRE_*` must be satisfied. One permission is checked, so nothing can conflict yet. Controls in CEL arrive in step 27. |
-| `DSOR-IDN-04a`, `04b` | Roles and scopes may only come from an authoritative source. These roles are in the source code. Steps 18 and 19. |
-| `DSOR-SOD-01a` | Segregation of duties: whoever creates a payment must not approve it. Break 3 shows the hole this rule fills, and the rule needs approvals — step 30. |
-| `DSOR-ERR-01b` | An error must not reveal a resource the caller is not authorized to read. The mechanism is here; the rule is not claimed — see below. |
-| `DSOR-IDN-02a` | An agent must authenticate with its own credentials. Nothing here authenticates anything. Step 44. |
-| `DSOR-SRC-02b` | A principal or tenant in the arguments that *disagrees* with the security context must be an error, not merely ignored. Still ignored. Steps 10 and 11. |
+| `DSOR-OPR-04a` | Every interface must invoke the same pipeline. The machinery is here — a door is *given* its list — but there is one interface, so nothing yet proves two of them share it. Step 42 adds the second, and that is when this becomes claimable. |
+| `DSOR-EXE-02` | The decision must be recorded before the response, denials included. Nothing is recorded anywhere yet: §21.11 is step 08. |
+| `DSOR-EXE-03a`, `03b` | A durable intent record before any side effect, and no execution if evidence cannot be written. §21.13, step 08. The refusal of arguments that cannot be written down is the smallest shape of it and not the rule. |
+| `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Steps 34 and 37. |
+| `DSOR-AUT-02a` | `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. Two answers here. Step 22. |
+| `DSOR-IDM-01a`–`01c` | The idempotency claim, §21.7 — the first stage that will apply to commands only. Step 20. |
 
 ## What a review found after this looked finished
 
-`pnpm check` was green at 126 tests and every guard had been broken on purpose. Four independent
-reviewers then attacked it, and found three real defects:
+`pnpm check` was green at 161 tests, every guard had been mutated, and `pnpm start` matched step
+06's byte for byte. Four reviewers then attacked it: **sixteen findings confirmed**, seven refuted.
+Two were guarantees rather than gaps, and both were claims in this step's own comments:
 
-- `permissionsOf` walked the prototype chain — break 5 above.
-- **Nothing pinned where the gate's permission came from.** Making it read a `permission` written
-  into the caller's arguments let `cfo_100` issue the invoice with all 126 tests still green.
-  That is step 05's rule, and it needed its own test for authorization.
-- Reading a caller's object could throw where an envelope was promised: a login whose
-  `loggedInAs` is a getter that throws came back as `Error: boom`, not
-  `AUTHENTICATION_REQUIRED`.
+- **`assertPipeline` said it refuses "a stage in the wrong place". It did not.** The only order rule
+  was that §21 numbers never descend — and `resolve the operation` carries `null` by design, so it
+  was exempt from a rule about numbers. A reviewer permuted the four stages: **four of twenty-four
+  orderings passed**, including `resolve the operation` before `authenticate`. `makeDoor` built that
+  door, while its own comment said a door whose order cannot be trusted should not exist.
+- **The test written for the step's central claim proved nothing.** "Being refused for authority
+  tells the caller nothing about the data" sent seven perfectly writable strings, so every refusal
+  it collected came from downstream of both stages. Authorization could be moved to run *after* the
+  arguments were read and all 161 tests stayed green.
 
-Two more were guards with no test behind them, and two were tests that proved less than they
-looked — including one comparing against the literal `"cfo_100"` rather than the login's own
-name, which cannot tell a real answer from that one string.
+Both are fixed, and both are the same mistake: **a check nobody had fed the thing it was supposed to
+catch.** That is lesson 14 in the learner's notes, and it had already cost something once before.
 
-The reason this is in the README rather than quietly fixed: **a green suite and a completed
-mutation sweep were not enough**, and that is worth knowing before you trust your own.
+There is a reason this section exists in three step READMEs now. A green suite and a finished
+mutation sweep are not enough, and the person least able to see it is the one who wrote both.
 
-### Why `DSOR-ERR-01b` is not claimed, although the mechanism is here
-
-The machinery the rule needs is built and tested: authority is settled before any data is
-touched, so a denial reveals nothing about what exists. That is the "being refused for authority
-tells the caller nothing about the data" test, and moving the gate below the address parse turns
-it red.
-
-The rule itself is about a caller who may not **read** a resource. All three roles here hold
-`invoice:read`, so there is no such caller in this step to test it with. Claiming it would mean
-claiming a guarantee nothing exercises. It needs a role without `invoice:read` — and the reason
-not to invent one just to claim a rule is that a cast member who exists only to satisfy a
-conformance table is how a test suite starts describing a program nobody has.
-
-**Next:** step 07, the pipeline skeleton — the four ordered checks this step left as the shape of
-one function become a written checklist that later steps add lines to and never reorder.
+**Next:** step 08, write the decision first — §21.11 and §21.13, the two lines of the checklist that
+matter most for evidence: the decision is recorded before the response even when the answer is no,
+and the intent record is written before anything happens.

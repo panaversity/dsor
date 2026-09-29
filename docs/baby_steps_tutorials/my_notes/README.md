@@ -24,6 +24,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-04-result-and-error-envelopes.md](step-04-result-and-error-envelopes.md) | Codes and retry classes |
 | [step-05-who-is-calling.md](step-05-who-is-calling.md) | A caller, and a refusal when there is none |
 | [step-06-permissions-deny-by-default.md](step-06-permissions-deny-by-default.md) | Roles, and anything ungranted refused |
+| [step-07-the-pipeline-skeleton.md](step-07-the-pipeline-skeleton.md) | The order of the checks becomes a list |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
@@ -39,12 +40,15 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_04_result_and_error_envelopes` | 95 | done |
 | `my_05_who_is_calling` | 124 | done |
 | `my_06_permissions_deny_by_default` | 146 | done, built a piece at a time |
+| `my_07_the_pipeline_skeleton` | 169 | done |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.
 
-Next is step 07, `the_pipeline_skeleton`: the three questions step 06 left as the shape of one
-function become a written checklist that later steps add lines to and never reorder.
+Next is step 08, `write_the_decision_first`: §21.11 and §21.13, the two lines of the checklist that
+matter most for evidence — the decision is recorded before the response even when the answer is no,
+and the intent record is written before anything happens. [Open question 1](open-questions.md) is
+about that step and should be settled before it is planned.
 
 ## Promises made to later steps
 
@@ -54,14 +58,18 @@ they are listed here where the next session will see them.
 | Step | What it owes | Decided in |
 | --- | --- | --- |
 | ~~06~~ | ~~`AUTHORIZATION_DENIED`~~ — paid, 2026-09-28 | step 05's README |
+| ~~07~~ | ~~the ordered checklist~~ — paid, 2026-09-29 | step 06's README |
 | 08 | The audit log. `DSOR-AUD-01` cannot be claimed there as the map describes it — its schema requires the §30 hash chain, which the map does not schedule until step 39 | [open question 1](open-questions.md) |
+| 08 | `DSOR-EXE-02` and `DSOR-EXE-03a`: §21.11 and §21.13. Step 07 has the checklist and neither of the two lines that make it evidence | step 07's README |
 | 10 | Resolve the company from the caller's `memberships`, which step 05 created and never reads, instead of comparing against one hard-coded value | [decision 22](decisions.md) |
-| 27 | Controls in CEL, so more than one rule can apply to a request and the strictest wins (`DSOR-AUT-02b`, `02c`) | step 06's README |
 | 18 | The delegation, so an agent can act *for* a person — the running example's normal case, which no step before it can build | [decision 23](decisions.md) |
 | 18, 19 | A **role source**. Step 06's roles are in the source code, so `DSOR-IDN-04a` is not met | step 06's README |
-| 30 | Segregation of duties (`DSOR-SOD-01a`). Step 06's break 3 shows the hole: one word in a table lets the person who approves a payment also create it | step 06's README |
+| 20 | The idempotency claim, §21.7 — the first stage that applies to commands only, which is what step 07's `applies` flag exists for | step 07's README |
 | 22 | `REQUIRE_APPROVAL`, the third authorization outcome (`DSOR-AUT-02a`). Step 06 has only yes and no | step 06's README |
+| 27 | Controls in CEL, so more than one rule can apply to a request and the strictest wins (`DSOR-AUT-02b`, `02c`) | step 06's README |
+| 30 | Segregation of duties (`DSOR-SOD-01a`). Step 06's break 3 shows the hole: one word in a table lets the person who approves a payment also create it | step 06's README |
 | 42 | Copy and validate `security-context.schema.json`: the shape identity arrives in, `direct` mode, with the three modes as the lesson | [decision 32](decisions.md) |
+| 42 | `DSOR-OPR-04a`. Step 07 built `makeDoor` so a second interface is *given* the list, but with one interface nothing proves two share it | step 07's README |
 | 44 | `DSOR-IDN-02a` — an agent authenticating with its own credentials. Step 05 does not meet it, whatever an earlier version of its README said | [decision 27](decisions.md) |
 
 ## How we work, in one more line than before
