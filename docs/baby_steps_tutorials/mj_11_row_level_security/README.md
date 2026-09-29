@@ -228,7 +228,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 - **C1:** the catalog query lists `app.invoices` and `dsor.audit`, each with
   `relrowsecurity` and `relforcerowsecurity` true and a policy. A table added with a
-  company column and no policy fails it.
+  company column and no policy fails it. And every policy is exactly as written: its
+  command, its roles, and its rule, as PostgreSQL prints them, the way step 09 lists every
+  privilege. Found by the review: a policy limited to `SELECT`, or given to one role
+  only, passed every test.
 - **C2:** as `dsor_runtime`, inside `org_456`, `SELECT tenant_id, id FROM app.invoices
   WHERE id = 'INV-1008'` gives exactly `org_456`'s row. Inside `org_789`, exactly
   `org_789`'s. `SELECT DISTINCT tenant_id FROM app.invoices` inside `org_456` gives
@@ -241,7 +244,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   carries `org_456` for the whole session, still runs with no company: its record is
   written.
 - **C4:** a pool of one connection. Request 1 runs inside `org_456`. Request 2 runs
-  `SELECT … FROM app.invoices` with no company: no rows.
+  `SELECT … FROM app.invoices` with no company: no rows. And decision 3's other half: a
+  connection whose transaction failed is closed, so the next request gets a new one.
 - **C5:** inside `org_456`, an `INSERT` into `dsor.audit` with `tenant = 'org_789'` fails
   with the policy's error, `42501`. With no company set, an `INSERT` with no tenant
   succeeds, and a `SELECT` with no company set cannot see it. Inside `org_456`, the
@@ -255,7 +259,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   transactions of decision 3, with three changes. A test that reads `dsor.audit` as
   `dsor_runtime` reads inside the record's company, because without one an empty answer
   proves nothing. A test that reads a record with no company reads it through the owner
-  (decision 4). The program prints 9 of its 12 records (decision 6).
+  (decision 4). The program prints 9 of its 12 records (decision 6). And step 09's
+  DSOR-EXE-03b tests gain a case: a log whose `INSERT` fails inside its transaction. The
+  two older cases fail before the transaction begins. Found by the review: with the error
+  swallowed inside `inCompany`, the caller got the invoice and no record was kept.
 
 ### Breaks we will try, and what we expect
 
