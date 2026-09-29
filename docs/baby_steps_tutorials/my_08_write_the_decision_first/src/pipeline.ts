@@ -46,6 +46,15 @@ export interface Context {
   readonly login: Login | undefined;
   readonly id: string;
   readonly args: Readonly<Record<string, unknown>>;
+  /**
+   * NEW IN STEP 08: one id for this request, minted before the first stage runs.
+   *
+   * It is required and not optional, which is the point. It used to be minted inside whichever
+   * envelope happened to be built first, so it named *an answer* rather than *a request*. Step 08
+   * writes a record about the same request, and a record whose `request_id` differs from the
+   * answer's cannot be matched to it — which is the one job a correlation id has.
+   */
+  readonly requestId: string;
   readonly principal?: Principal;
   readonly contract?: OperationContract;
   readonly given?: Readonly<Record<string, unknown>>;

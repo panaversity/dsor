@@ -154,6 +154,7 @@ describe("the pipeline", () => {
       login: undefined,
       id: "invoice.get",
       args: {},
+      requestId: "req_1",
       contract: { kind: "query" } as never,
     });
     expect(ran).toEqual(["authenticate", "read the state"]);
@@ -164,6 +165,7 @@ describe("the pipeline", () => {
       login: undefined,
       id: "invoice.issue",
       args: {},
+      requestId: "req_1",
       contract: { kind: "command" } as never,
     });
     expect(ran).toEqual(["authenticate", "claim the idempotency key", "read the state"]);

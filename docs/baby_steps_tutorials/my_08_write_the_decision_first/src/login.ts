@@ -73,6 +73,7 @@ export interface Login {
  */
 export function principalFrom(
   login: Login | undefined,
+  requestId: string,
 ): { readonly principal: Principal } | { readonly refused: ErrorEnvelope } {
   // A login arrives from outside this program, so it is checked as **data**. `Login` is a
   // TypeScript type, and types are erased before Node runs: at run time what arrives here
@@ -85,7 +86,7 @@ export function principalFrom(
   const claimed = ownString(login, "loggedInAs");
 
   if (claimed === undefined) {
-    return { refused: refusal("AUTHENTICATION_REQUIRED", "nobody is logged in") };
+    return { refused: refusal("AUTHENTICATION_REQUIRED", "nobody is logged in", requestId) };
   }
 
   const principal = findPerson(claimed);
@@ -98,6 +99,7 @@ export function principalFrom(
       refused: refusal(
         "AUTHENTICATION_REQUIRED",
         `${JSON.stringify(claimed)} is not someone this program knows`,
+        requestId,
       ),
     };
   }

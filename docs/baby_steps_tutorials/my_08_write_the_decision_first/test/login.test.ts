@@ -94,7 +94,7 @@ describe("the people this program knows", () => {
 
 describe("logging in", () => {
   it("DSOR-IDN-01: a login becomes a principal", () => {
-    const who = principalFrom({ loggedInAs: "user_123" });
+    const who = principalFrom({ loggedInAs: "user_123" }, "req_1");
 
     if ("refused" in who) {
       throw new Error(`expected a principal, got ${who.refused.code}`);
@@ -106,8 +106,8 @@ describe("logging in", () => {
 
   // Decision 22: switching is the point. Step 06 needs two callers to contrast.
   it("DSOR-IDN-01: a different login is a different principal", () => {
-    const a = principalFrom({ loggedInAs: "user_123" });
-    const b = principalFrom({ loggedInAs: "cfo_100" });
+    const a = principalFrom({ loggedInAs: "user_123" }, "req_1");
+    const b = principalFrom({ loggedInAs: "cfo_100" }, "req_1");
 
     if ("refused" in a || "refused" in b) {
       throw new Error("both of those should have logged in");
@@ -119,7 +119,7 @@ describe("logging in", () => {
 
   // Decision 21: no login, no answer.
   it("DSOR-IDN-01: nobody logged in is refused, and a retry cannot help", () => {
-    const who = principalFrom(undefined);
+    const who = principalFrom(undefined, "req_1");
 
     if (!("refused" in who)) {
       throw new Error("a missing login should have been refused");
@@ -131,7 +131,7 @@ describe("logging in", () => {
 
   it("DSOR-IDN-01: a name nobody has is refused the same way", () => {
     for (const name of ["nobody", "USER_123", "", "user_124"]) {
-      const who = principalFrom({ loggedInAs: name });
+      const who = principalFrom({ loggedInAs: name }, "req_1");
 
       if (!("refused" in who)) {
         throw new Error(`${JSON.stringify(name)} should have been refused`);
@@ -144,8 +144,8 @@ describe("logging in", () => {
   // Both refusals carry the same code and retry class on purpose, so the message is the
   // only thing that tells them apart.
   it("DSOR-IDN-01: each refusal says in words which refusal it is", () => {
-    const nobody = principalFrom(undefined);
-    const stranger = principalFrom({ loggedInAs: "nobody" });
+    const nobody = principalFrom(undefined, "req_1");
+    const stranger = principalFrom({ loggedInAs: "nobody" }, "req_1");
 
     if (!("refused" in nobody) || !("refused" in stranger)) {
       throw new Error("both of those should have been refused");
@@ -172,7 +172,7 @@ describe("logging in", () => {
     ];
 
     for (const login of rubbish) {
-      const who = principalFrom(login as Login | undefined);
+      const who = principalFrom(login as Login | undefined, "req_1");
 
       if (!("refused" in who)) {
         throw new Error(`${JSON.stringify(login)} should have been refused`);
@@ -191,7 +191,7 @@ describe("logging in", () => {
     // The name really is readable — this is not a test of nothing.
     expect(polluted.loggedInAs).toBe("cfo_100");
 
-    const who = principalFrom(polluted);
+    const who = principalFrom(polluted, "req_1");
 
     if (!("refused" in who)) {
       throw new Error("an inherited name should have been refused");
@@ -206,7 +206,7 @@ describe("logging in", () => {
   // it has a shape, and a name does not have that shape.
   it("DSOR-IDN-01: an identity refusal carries a generated request id, not a name", () => {
     for (const login of [undefined, { loggedInAs: "cfo_100_evil" }]) {
-      const who = principalFrom(login);
+      const who = principalFrom(login, "req_1");
 
       if (!("refused" in who)) {
         throw new Error("that login should have been refused");
@@ -218,7 +218,7 @@ describe("logging in", () => {
   });
 
   it("a principal cannot be edited after it is handed out", () => {
-    const who = principalFrom({ loggedInAs: "user_123" });
+    const who = principalFrom({ loggedInAs: "user_123" }, "req_1");
 
     if ("refused" in who) {
       throw new Error("user_123 should have logged in");

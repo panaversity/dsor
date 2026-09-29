@@ -11,6 +11,7 @@
 // Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
 
 import {
+  nextRequestId,
   payloadHash,
   refusal,
   success,
@@ -56,6 +57,7 @@ type Handler = (
   contract: OperationContract,
   askedBy: string,
   hash: string,
+  requestId: string,
 ) => OperationAnswer;
 
 /** Contracts that describe an operation this step does not carry out yet. */
@@ -72,6 +74,7 @@ function invoiceIdFrom(
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
+  requestId: string,
 ): { readonly id: string } | { readonly refused: ErrorEnvelope } {
   // The caller's **own** `invoice`, not one inherited from a prototype. A name an object merely
   // inherits is a name nobody in this program chose — the same reason the login reads its field
@@ -83,7 +86,7 @@ function invoiceIdFrom(
       refused: refusal(
         "VALIDATION_FAILED",
         `${contract.id} needs an invoice address, and got ${typeof given}`,
-        undefined,
+        requestId,
         askedBy,
       ),
     };
@@ -94,7 +97,7 @@ function invoiceIdFrom(
   try {
     parsed = parseUri(given);
   } catch (error) {
-    return { refused: refusal("VALIDATION_FAILED", (error as Error).message, undefined, askedBy) };
+    return { refused: refusal("VALIDATION_FAILED", (error as Error).message, requestId, askedBy) };
   }
 
   const namedFor = contract.id.split(".")[0];
@@ -107,7 +110,7 @@ function invoiceIdFrom(
       refused: refusal(
         "TENANT_MISMATCH",
         `${given} is for ${parsed.tenant}, and this program serves ${TENANT}`,
-        undefined,
+        requestId,
         askedBy,
       ),
     };
@@ -118,7 +121,7 @@ function invoiceIdFrom(
       refused: refusal(
         "VALIDATION_FAILED",
         `${contract.id} is named for ${namedFor}, and ${given} names ${parsed.entity}`,
-        undefined,
+        requestId,
         askedBy,
       ),
     };
@@ -128,8 +131,8 @@ function invoiceIdFrom(
 }
 
 const handlers: Readonly<Record<string, Handler>> = {
-  "invoice.get": (args, contract, askedBy) => {
-    const read = invoiceIdFrom(args, contract, askedBy);
+  "invoice.get": (args, contract, askedBy, _hash, requestId) => {
+    const read = invoiceIdFrom(args, contract, askedBy, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
@@ -147,7 +150,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         envelope: refusal(
           "RESOURCE_NOT_FOUND",
           `${read.id} is not an invoice we hold`,
-          undefined,
+          requestId,
           askedBy,
         ),
       };
@@ -156,8 +159,8 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", askedBy, invoice };
   },
 
-  "invoice.issue": (args, contract, askedBy, hash) => {
-    const read = invoiceIdFrom(args, contract, askedBy);
+  "invoice.issue": (args, contract, askedBy, hash, requestId) => {
+    const read = invoiceIdFrom(args, contract, askedBy, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
@@ -172,7 +175,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         envelope: refusal(
           "RESOURCE_NOT_FOUND",
           `${read.id} is not an invoice we hold`,
-          undefined,
+          requestId,
           askedBy,
         ),
       };
@@ -187,7 +190,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         envelope: refusal(
           "CONFLICT",
           `${read.id} is ${outcome.status}, and only a draft invoice can be issued`,
-          undefined,
+          requestId,
           askedBy,
         ),
       };
@@ -201,6 +204,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         semantics: contract.execution?.semantics ?? "atomic",
         payloadHash: hash,
         principalId: askedBy,
+        requestId,
       }),
     };
   },
@@ -274,13 +278,18 @@ export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 // that does not exist.
 
 /** A refusal, wrapped as a stage's answer. */
-const refuse = (askedBy: string, code: string, message: string): StageResult =>
+const refuse = (
+  askedBy: string,
+  code: string,
+  message: string,
+  requestId: string,
+): StageResult =>
   Object.freeze({
     kind: "refused" as const,
     answer: Object.freeze({
       kind: "error" as const,
       askedBy,
-      envelope: refusal(code, message, undefined, askedBy === "(nobody)" ? undefined : askedBy),
+      envelope: refusal(code, message, requestId, askedBy === "(nobody)" ? undefined : askedBy),
     }),
   });
 
@@ -288,7 +297,7 @@ const carryOn = (context: Context): StageResult => ({ kind: "carry_on", context 
 
 /** §21.1 — who is asking. Nothing else is looked at until this answers. */
 const authenticate: Stage["run"] = (context) => {
-  const who = principalFrom(context.login);
+  const who = principalFrom(context.login, context.requestId);
 
   if ("refused" in who) {
     return Object.freeze({
@@ -317,6 +326,7 @@ const resolveTheOperation: Stage["run"] = (context) => {
       context.principal?.id ?? "(nobody)",
       "UNSUPPORTED_CAPABILITY",
       "an operation is named by text, and this is not text",
+      context.requestId,
     );
   }
 
@@ -327,6 +337,7 @@ const resolveTheOperation: Stage["run"] = (context) => {
       context.principal?.id ?? "(nobody)",
       "UNSUPPORTED_CAPABILITY",
       `${context.id} is not an operation: this program has no contract for it`,
+      context.requestId,
     );
   }
 
@@ -342,6 +353,7 @@ const authorize: Stage["run"] = (context) => {
       principal?.id ?? "(nobody)",
       "INTERNAL_ERROR",
       "the pipeline reached authorize without a principal and a contract",
+      context.requestId,
     );
   }
 
@@ -350,6 +362,7 @@ const authorize: Stage["run"] = (context) => {
       principal.id,
       "AUTHORIZATION_DENIED",
       `${principal.id} may not call ${context.id}`,
+      context.requestId,
     );
   }
 
@@ -378,6 +391,7 @@ const validateTheInput: Stage["run"] = (context) => {
       askedBy,
       "VALIDATION_FAILED",
       `${context.id} was given arguments that cannot be written down`,
+      context.requestId,
     );
   }
 };
@@ -449,7 +463,13 @@ export function makeDoor(stages: readonly Stage[]): Door {
   assertPipeline(stages);
 
   return (login, id, args) => {
-    const walked = runPipeline(stages, { login, id, args });
+    // NEW IN STEP 08: one id for this request, minted here — before the first stage, because the
+    // request exists before any answer does. Every refusal and every success below is handed this
+    // same id, so the record step 08 writes and the answer the caller reads name the same request.
+    // It used to be minted inside whichever envelope was built first, which made it the name of an
+    // answer rather than of a request.
+    const requestId = nextRequestId();
+    const walked = runPipeline(stages, { login, id, args, requestId });
 
     if (walked.kind === "refused") {
       return walked.answer;
@@ -481,14 +501,14 @@ export function makeDoor(stages: readonly Stage[]): Door {
         envelope: refusal(
           "INTERNAL_ERROR",
           `${id} finished the pipeline without everything a call needs`,
-          undefined,
+          requestId,
           principal === undefined ? undefined : askedBy,
         ),
       });
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    return Object.freeze(handler(given, contract, principal.id, hash));
+    return Object.freeze(handler(given, contract, principal.id, hash, requestId));
   };
 }
 
