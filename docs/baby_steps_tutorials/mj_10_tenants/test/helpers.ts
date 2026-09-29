@@ -120,9 +120,10 @@ export const SCHEMA_CODES: string[] = envelopeSchema.properties.code.anyOf[0].en
 
 // The login tokens DSoR gave, typed out again from step 05's decision 3
 // rather than imported from src, so a mistake in src is not copied into the tests.
-export const AGENT: RequestEnvelope = { token: "tok_7f3a" };
-export const SUPERVISOR: RequestEnvelope = { token: "tok_2c91" };
-export const CFO: RequestEnvelope = { token: "tok_d4e8" };
+// NEW IN STEP 10: each names the company it works in (step 10's README, decision 1).
+export const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
+export const SUPERVISOR: RequestEnvelope = { token: "tok_2c91", tenant: "org_456" };
+export const CFO: RequestEnvelope = { token: "tok_d4e8", tenant: "org_456" };
 
 // Who an answer names as its caller (step 05's README, decision 9). An
 // answer given before DSoR knows who is calling names nobody.

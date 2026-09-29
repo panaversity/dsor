@@ -93,7 +93,8 @@ async function ask(
 
 // Every call carries a request envelope beside its arguments. This one
 // holds the login token DSoR gave the agent (step 05's README, decision 2).
-const AGENT: RequestEnvelope = { token: "tok_7f3a" };
+// NEW IN STEP 10: and the company the call works in (step 10's README, decision 1).
+const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 
 // The answer is an envelope. A success carries the invoice as its data,
 // and the request id DSoR made for this call.
@@ -122,7 +123,7 @@ console.log(await ask({}, "invoice.get", { id: "INV-1008" }));
 console.log(await ask(AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }));
 // user_123 logs in with their own token, and labels the call with a request
 // id of their own. The answer carries that id, and names user_123 as the caller.
-const USER_123: RequestEnvelope = { token: "tok_2c91", request_id: "ap-desk-7" };
+const USER_123: RequestEnvelope = { token: "tok_2c91", tenant: "org_456", request_id: "ap-desk-7" };
 console.log((await ask(USER_123, "invoice.get", { id: "INV-1008" })).correlation);
 // user_123 holds invoice:issue. So the same call passes lines ①, ⑤, and ⑥.
 // It is refused after them: invoice.issue has a contract but no code yet.

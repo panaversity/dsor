@@ -137,6 +137,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
   it("a request envelope whose request_id cannot be read comes back as a value", async () => {
     const request = {
       token: "tok_7f3a",
+      tenant: "org_456",
       get request_id(): unknown {
         throw new Error("unreadable");
       },

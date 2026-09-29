@@ -5,10 +5,11 @@
 import { Refusal } from "./envelope.ts";
 
 /**
- * What travels beside the arguments: who is calling, and which call this is. It comes
- * from outside the program, so its fields have no types yet.
+ * What travels beside the arguments: who is calling, in which company, and which call
+ * this is. It comes from outside the program, so its fields have no types yet.
  */
-export type RequestEnvelope = { token?: unknown; request_id?: unknown };
+// NEW IN STEP 10: the company the call works in (step 10's README, decision 1).
+export type RequestEnvelope = { token?: unknown; tenant?: unknown; request_id?: unknown };
 
 /** The request id the caller sent, when DSoR can use it (step 05's README, decision 6). */
 export function usableRequestId(request: RequestEnvelope): string | undefined {
