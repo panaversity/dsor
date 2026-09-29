@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
-import { RUNTIME_URL, dbRegistry, newPool, requestId } from "./db.ts";
+import { RUNTIME_URL, dbRegistry, newPool, requestId, tryThenRollBack } from "./db.ts";
 import {
   AGENT,
   INV_1008_OF_456,
@@ -97,6 +97,18 @@ describe("C6: every invoice row and every audit record carries its company", () 
       id: "INV-1008",
     });
     expect(await tenantOf(id)).toStrictEqual([{ tenant: null }]);
+  });
+
+  // Step 02's form, kept by the database too (002_tenants.sql). Found by the review:
+  // nothing tested the CHECK. dsor_runtime may insert this column, so it is the one to try.
+  it("DSOR-TEN-01a: dsor.audit refuses a tenant that is not org_ and digits", async () => {
+    await expect(
+      tryThenRollBack(
+        observer,
+        `INSERT INTO dsor.audit (record_id, kind, "authorization", result, correlation, tenant)
+         VALUES ('aud_check', 'decision', 'DENY', 'ok', '{}', 'acme')`,
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
   });
 });
 

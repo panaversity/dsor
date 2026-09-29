@@ -72,6 +72,9 @@ describe("C1: each request works in exactly one company, which the caller belong
     ["an empty text", ""],
     ["org_ with no digits", "org_"],
     ["a space after the id", "org_456 "],
+    // Found by the review: a pattern that ignored case let ORG_456 through to line ②'s
+    // membership check.
+    ["the id in capital letters", "ORG_456"],
     ["the number 456", 456],
     ["a list that holds the id", ["org_456"]],
     ["null", null],
@@ -161,6 +164,8 @@ describe("C2: a read looks only inside the active company", () => {
     expect(await store.get("org_789", "INV-2001")).toStrictEqual(INV_2001_OF_789);
     expect(await store.get("org_456", "INV-2001")).toBeUndefined();
     expect(await store.get("org_999", "INV-1008")).toBeUndefined();
+    // Found by the review: a store that matched the start of the company, not all of it.
+    expect(await store.get("org_45", "INV-1008")).toBeUndefined();
   });
 });
 
@@ -280,6 +285,52 @@ describe("C4: a company in the arguments that is not the active one is refused",
     expect(() => checkUrisInTenant(own, "org_456")).not.toThrow();
   });
 
+  // Found by the review: a check that skipped the names of fields passed every test.
+  it("DSOR-SRC-02b: a foreign URI used as the name of a field is found", () => {
+    expect(() => checkUrisInTenant({ "dsor://org_789/invoice/INV-1008": 1 }, "org_456")).toThrow(
+      new Refusal("TENANT_MISMATCH", FOREIGN_URI),
+    );
+  });
+
+  // Found by the review: a check that skipped long texts passed every test.
+  it("DSOR-SRC-02b: a long foreign URI is found", () => {
+    const long = `dsor://org_789/invoice/${"X".repeat(200)}`;
+    expect(() => checkUrisInTenant({ id: long }, "org_456")).toThrow(
+      new Refusal("TENANT_MISMATCH", FOREIGN_URI),
+    );
+  });
+
+  // No rule id: text that only starts like a URI is not one. Found by the review: a check
+  // for "dsor:" instead of "dsor://" refused it and passed every test.
+  it("text that starts with dsor: but is not a URI passes", () => {
+    expect(() => checkUrisInTenant({ note: "dsor:notes" }, "org_456")).not.toThrow();
+  });
+
+  // The URI check reads the copy line ⑥ checked, never the input again (step 07's README,
+  // decision 9). Found by the review: checking the input a second time passed every test.
+  // This input names org_789 the first time it is read, and org_456 after that.
+  it("DSOR-SRC-02b: the URI check reads the copy line ⑥ checked, not the input again", async () => {
+    let reads = 0;
+    const input = {
+      get invoice(): string {
+        reads += 1;
+        return reads === 1 ? FOREIGN_1008.invoice : GOOD_ISSUE.invoice;
+      },
+    };
+    expect(await call(registry, log, SUPERVISOR, "invoice.issue", input)).toStrictEqual(
+      refused("TENANT_MISMATCH", FOREIGN_URI, THE_SUPERVISOR),
+    );
+  });
+
+  // Found by the review: every test above works in the caller's first company, so a check
+  // against the first membership, not the active company, passed them all.
+  it("DSOR-SRC-02b: the firm's agent in org_789 naming org_456 in its arguments is refused", async () => {
+    const input = { id: "INV-1008", tenant: "org_456" };
+    expect(await call(registry, log, FIRM_IN_789, "invoice.get", input)).toStrictEqual(
+      refused("TENANT_MISMATCH", otherTenant("tenant"), THE_FIRM),
+    );
+  });
+
   // Line ⑤ still comes first: the agent may not issue at all.
   it("the agent sending a foreign URI to invoice.issue is denied at line ⑤ first", async () => {
     expect(await call(registry, log, AGENT, "invoice.issue", FOREIGN_1008)).toStrictEqual(
@@ -293,12 +344,16 @@ describe("C5: a refusal never tells whether another company, or its invoice, exi
     const real = await call(registry, log, agentIn("org_789"), "invoice.get", { id: "INV-1008" });
     const none = await call(registry, log, agentIn("org_999"), "invoice.get", { id: "INV-1008" });
     expect(withoutRequestId(real)).toStrictEqual(withoutRequestId(none));
+    // Found by the review: "the same" alone passed with the membership check deleted, when
+    // both became line ⑤'s refusal. The same, and the right refusal.
+    expect(real).toStrictEqual(refused("AUTHORIZATION_DENIED", NOT_A_MEMBER, THE_AGENT));
   });
 
   it("DSOR-ERR-01b: org_789's INV-1008 and org_789's NOPE get the same refusal, word for word", async () => {
     const real = await call(registry, log, SUPERVISOR, "invoice.issue", FOREIGN_1008);
     const none = await call(registry, log, SUPERVISOR, "invoice.issue", FOREIGN_NOPE);
     expect(withoutRequestId(real)).toStrictEqual(withoutRequestId(none));
+    expect(real).toStrictEqual(refused("TENANT_MISMATCH", FOREIGN_URI, THE_SUPERVISOR));
   });
 });
 
