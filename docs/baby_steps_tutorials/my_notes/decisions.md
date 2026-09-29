@@ -806,3 +806,55 @@ table, and the pairing check in steps 04 to 06 still had the weak version. Now a
 so.
 **Rejected:** a child process importing a deliberately mismatched module, which would be a real
 proof and costs more machinery than the step teaches.
+
+## 46 · The pipeline is a list of stages, not the shape of a function (2026-09-29)
+
+**Decided by:** the learner, given both options with their costs.
+**What:** an ordered array of named stages. Each stage carries its §21 number, a name, whether it
+applies to commands only or to both, and a function that either lets the request carry on or
+returns a refusal. `callOperation` walks the list and stops at the first no.
+**Why:** the order **is** the security guarantee — step 06 proved that by moving one check below
+another and watching a caller learn which invoices exist. Until now that order was the order the
+lines happened to sit in, and it was reshuffled three times in two days while steps 04 to 06 were
+built, with one test catching one of the three moves. As data, the order can be asserted directly,
+and a later step adds a stage to a list instead of editing a function it could get wrong.
+
+The other half is `DSOR-OPR-04a`: every interface must invoke the *same* pipeline. There is one
+door today and step 42 adds an HTTP server. A list can be handed to a second door; the shape of a
+function cannot.
+**Cost:** it needs a value carried along the stages — a context — which is real machinery and the
+thing [decision 24](#24--the-callers-name-travels-in-its-own-parameter-never-the-request-id-slot-2026-09-28)
+predicted would arrive here. It is not a second idea: uniform stages are impossible without it,
+which is the same reasoning as [decision 43](#43--step-04-keeps-its-own-promise-and-step-05-is-one-idea-again-2026-09-29).
+**Rejected:** one readable function with §21 numbers in comments and an exported list of names for
+a test to check. Lighter, and it matches the map's "read the function top to bottom" more directly
+— but then the order is convention plus a test that has to be kept honest, and nothing stops a
+future step putting a line in the wrong place.
+
+## 47 · Only the stages that exist are in the list, numbered by §21 (2026-09-29)
+
+**Decided by:** the learner.
+**What:** the list holds the stages this program has, each carrying its real §21 number. §21 has
+seventeen; this step has four. The README carries a table of all seventeen and the step that
+brings each.
+**Why:** the gaps in the numbering are the roadmap. A list that jumps 1 → 5 → 6 says what is
+missing more honestly than thirteen stages that do nothing, and there is nothing empty for a
+reader to walk past. Step 03 already taught that an empty container invites the question "why is
+this here?" and needs an answer every time.
+**Cost:** a later step adds a stage rather than filling a slot, so it has to put it in the right
+place. That is exactly the judgement the numbers make checkable.
+**Rejected:** all seventeen with the unbuilt ones as skipped placeholders.
+
+## 48 · One list, and each stage says whether it applies (2026-09-29)
+
+**Decided by:** the learner.
+**What:** one pipeline. Each stage declares `"both"` or `"command"`. A query runs the stages that
+apply to it.
+**Why:** §21 is one pipeline with per-kind applicability — it says a query passes through steps 1
+to 6 and 9 and reaches 11 — and `DSOR-EXE-01b` forbids skipping a step *that applies to it*, which
+only means anything if applicability is a property of the stage. `DSOR-OPR-04a` wants every
+interface invoking the same pipeline, and two lists is how two pipelines drift apart: the shared
+stages exist twice, so the day one changes they disagree.
+**Cost:** the walker needs a condition in it, so a reader cannot see a query's whole path as one
+block. The test that lists which stages a query runs is what answers that instead.
+**Rejected:** a query pipeline and a command pipeline side by side.
