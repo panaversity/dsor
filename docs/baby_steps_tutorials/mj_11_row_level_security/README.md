@@ -125,7 +125,7 @@ Checked on 2026-09-29:
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-RP-01b | **C1.** Every tenant table uses `FORCE ROW LEVEL SECURITY` | A catalog query finds every table in `app` and `dsor` with a `tenant_id` or `tenant` column, and each one has row-level security enabled and forced, and at least one policy |
+| DSOR-RP-01b | **C1.** Every tenant table uses `FORCE ROW LEVEL SECURITY` | A catalog query finds every table outside PostgreSQL's own schemas with a `tenant_id` or `tenant` column, and each one has row-level security enabled and forced, and at least one policy |
 | DSOR-TEN-01b | **C2.** The store keeps companies apart when DSoR's query forgets to | As `dsor_runtime`, inside `org_456`, SQL with no company returns only `org_456`'s rows, and inside `org_789` only `org_789`'s |
 | DSOR-RP-01d | **C3.** No company set, no rows | A fresh connection, and a reused one, with no company set: no invoice rows and no audit rows |
 | DSOR-RP-01c | **C4.** The company lasts one transaction | A pool of one connection: after a request for `org_456` ends, the next request, which sets nothing, reads nothing |
@@ -137,10 +137,11 @@ Checked on 2026-09-29:
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 1. **Every table with a company column gets `ENABLE` and `FORCE ROW LEVEL SECURITY`:**
-   `app.invoices` and `dsor.audit`, in a new migration, `004`. `dsor.migrations` has no
-   company and `dsor_runtime` has no privilege on it, so it gets none. *Downside:* `FORCE`
-   changes nothing for `dsor_runtime`, which owns no table. It guards against a future
-   owner who is not `BYPASSRLS`, and only the catalog test can see it (break V2).
+   `app.invoices` in migration `004`, and `dsor.audit` in migration `005`, one file for
+   each lock, so each lands with the code it needs. `dsor.migrations` has no company and
+   `dsor_runtime` has no privilege on it, so it gets none. *Downside:* `FORCE` changes
+   nothing for `dsor_runtime`, which owns no table. It guards against a future owner who
+   is not `BYPASSRLS`, and only the catalog test can see it (break V2).
 2. **The company is read as `nullif(current_setting('dsor.tenant_id', true), '')`.** On
    a fresh connection an unset value is `NULL`. On a connection that has held a
    transaction-local value, it is `''` after that transaction ends. This was run on a
@@ -327,6 +328,10 @@ _To be written after the review, with the result of every break in the table abo
 - **Break V7 had no test that could catch it.** C5 gains the pool-of-one test.
 - **Decision 3's wording.** "Every database touch" was too wide: the start-up check reads
   no company's table, and a call refused before line ② has no company to set.
+- **One migration became two (decision 1).** A migration runs once, so `004` could not
+  grow commit by commit. With both tables in one file, the audit policy would refuse
+  every record of `org_456` until the log wrote inside its company's transaction, so
+  both locks and all their code would land in one commit.
 
 ## The rules this step meets
 
