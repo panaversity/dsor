@@ -228,6 +228,9 @@ export type RoleFacts = {
   writes_all: boolean;
   owns: number;
   can_change_audit: boolean;
+  // NEW IN STEP 11: how many roles it belongs to. SET ROLE can switch to any of them, and
+  // to that role's powers (DSOR-RP-01a; step 11's README, decision 7).
+  member_of: number;
 };
 
 /** Every reason this login must not run the program. None means it may. */
@@ -239,6 +242,10 @@ export function problemsOf(facts: RoleFacts): string[] {
   if (facts.writes_all) problems.push("is a member of pg_write_all_data");
   if (facts.owns > 0) problems.push(`owns ${facts.owns} tables`);
   if (facts.can_change_audit) problems.push("can change or remove records in dsor.audit");
+  if (facts.member_of > 0) {
+    const roles = facts.member_of === 1 ? "role" : "roles";
+    problems.push(`belongs to ${facts.member_of} other ${roles}, which SET ROLE can switch to`);
+  }
   return problems;
 }
 
@@ -252,7 +259,8 @@ export async function runtimeRoleProblems(pool: pg.Pool): Promise<string[]> {
             (SELECT count(*)::int FROM pg_class c WHERE c.relowner = r.oid) AS owns,
             has_table_privilege('dsor.audit', 'DELETE')
               OR has_table_privilege('dsor.audit', 'TRUNCATE')
-              OR has_any_column_privilege('dsor.audit', 'UPDATE') AS can_change_audit
+              OR has_any_column_privilege('dsor.audit', 'UPDATE') AS can_change_audit,
+            (SELECT count(*)::int FROM pg_auth_members m WHERE m.member = r.oid) AS member_of
        FROM pg_roles r WHERE r.rolname = current_user`,
   );
   return problemsOf(rows[0]!);
