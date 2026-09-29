@@ -231,15 +231,26 @@ membership that crosses from one company into another.
 
 ## Before you build: set up Neon
 
-You do this by hand. Claude Code never sees a password.
+The rule is not "by hand". It is: **a secret never passes through a chat.** Neon's MCP
+server returns a connection string with the owner's password inside, so anything it
+fetches lands in the transcript. Step 09 learned that live. A command whose output goes
+straight into a file keeps the secret out of the chat, so Claude Code may do this setup
+itself, this way:
 
-1. In the [Neon console](https://console.neon.tech), in the tutorial's project, create a
-   branch called `step-10` **from `step-09`**. It starts with step 09's tables,
-   `dsor_runtime`, and the log. Migration `002` builds on them.
-2. Copy this folder's `.env` from step 09's folder, and change the host in both lines to
-   the `step-10` branch's host. The passwords are the same as on `step-09`, unless you
-   have changed them since.
-3. Tell Claude Code "`.env` is set". Never paste the file.
+1. Create a branch `step-10` **from `step-09`**, with the Neon MCP server or with
+   `neonctl branches create`. It starts with step 09's tables, `dsor_runtime`, and the
+   log. Migration `002` builds on them.
+2. Write `.env` with `neonctl connection-string`, its output redirected into the file,
+   never printed: the owner's string as `DSOR_MIGRATION_URL`, and the same string with
+   the user `dsor_runtime` and a new random password (letters and digits) as
+   `DSOR_DB_URL`. Both with `sslmode=verify-full` (step 09's README says why).
+3. Run `pnpm migrate`. It sets `dsor_runtime`'s password from `DSOR_DB_URL`, so the new
+   password works on this branch.
+4. Check without looking: `pnpm test:db` passes, and a search of the transcript finds no
+   `postgresql://` with a password in it.
+
+Doing it by hand in the console is the same, with you as the pipe. Either way, never
+paste the file, and never ask for a connection string.
 
 ## What changed since step 09
 
