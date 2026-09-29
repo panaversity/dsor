@@ -31,7 +31,6 @@ const brokenLog: DecisionLog = {
   add: async () => {
     throw new Error("disk full at /var/dsor/log");
   },
-  records: async () => [],
 };
 
 // Each refusal from helpers.ts, and what its record must say beyond its code and message:
@@ -291,7 +290,6 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
       add: async () => {
         throw "full";
       },
-      records: async () => [],
     };
     expect(await call(registry, strange, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
       code: "EVIDENCE_STORE_UNAVAILABLE",

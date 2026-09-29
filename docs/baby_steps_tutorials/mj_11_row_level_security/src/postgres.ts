@@ -105,8 +105,11 @@ type AuditRow = {
   extensions: DecisionRecord["extensions"] | null;
 };
 
+/** The log in the database: add a decision, and read the records of one company. */
+export type DbLog = DecisionLog & { records: (tenant: string) => Promise<DecisionRecord[]> };
+
 /** The log, as rows of dsor.audit. */
-export function createDbLog(pool: pg.Pool): DecisionLog {
+export function createDbLog(pool: pg.Pool): DbLog {
   return Object.freeze({
     add: async (decision: Decision): Promise<void> => {
       // One INSERT is one transaction. The query finishes only after Postgres has
@@ -133,11 +136,18 @@ export function createDbLog(pool: pg.Pool): DecisionLog {
         ],
       );
     },
-    records: async (): Promise<DecisionRecord[]> => {
-      const { rows } = await pool.query<AuditRow>(
-        `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
-                correlation, tenant, extensions
-           FROM dsor.audit ORDER BY sequence`,
+    // NEW IN STEP 11: one company at a time. dsor_runtime cannot read another company's
+    // records, or a record with no company, so there is no "every record" for it to ask
+    // for (step 11's README, decision 6). The WHERE is DSoR's own lock, and the
+    // transaction's company is the database's (DSOR-TEN-01b).
+    records: async (tenant: string): Promise<DecisionRecord[]> => {
+      const { rows } = await inCompany(pool, tenant, (client) =>
+        client.query<AuditRow>(
+          `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
+                  correlation, tenant, extensions
+             FROM dsor.audit WHERE tenant = $1 ORDER BY sequence`,
+          [tenant],
+        ),
       );
       return rows.map(recordOf);
     },

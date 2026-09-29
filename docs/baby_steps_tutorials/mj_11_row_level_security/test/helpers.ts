@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { expect } from "vitest";
 import type { Answer, ErrorCode } from "../src/envelope.ts";
-import { createLog, type DecisionLog } from "../src/log.ts";
+import { createLog, type MemoryLog } from "../src/log.ts";
 import { Refusal } from "../src/envelope.ts";
 import { memoryInvoices } from "../src/invoice.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -227,7 +227,7 @@ export function registryWith(handler: Handler): Registry {
 }
 
 /** A log for the tests that do not read it. Each test that reads one makes its own. */
-export const log: DecisionLog = createLog();
+export const log: MemoryLog = createLog();
 
 // The shipped operations, reading the invoices in memory, so the unit tests
 // need no database (step 09's README, decision 12).

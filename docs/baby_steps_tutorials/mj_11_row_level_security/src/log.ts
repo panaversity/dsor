@@ -30,17 +30,19 @@ const OURS = "org.panaversity.steps";
 /** One record in the log: a decision, with its id, its place in the log, and its time. */
 export type DecisionRecord = Decision & { record_id: string; sequence: number; at: string };
 
-// Both functions are async, so a log in memory and a log in a database
-// have the same shape. add finishes only once the record is kept (step 09's README,
-// decision 9).
-/** The log has two functions: add a decision, and read a copy of every record. */
-export type DecisionLog = {
-  add: (decision: Decision) => Promise<void>;
-  records: () => Promise<DecisionRecord[]>;
-};
+// add is async, so a log in memory and a log in a database have the same shape. add
+// finishes only once the record is kept (step 09's README, decision 9).
+// NEW IN STEP 11: what every log shares is add, the one function call uses. How a log is
+// read depends on where it is kept: the database log reads one company at a time (step
+// 11's README, decision 6).
+/** What call needs of a log: add a decision. */
+export type DecisionLog = { add: (decision: Decision) => Promise<void> };
+
+/** The log in memory, for the unit tests: add a decision, and read a copy of every record. */
+export type MemoryLog = DecisionLog & { records: () => Promise<DecisionRecord[]> };
 
 /** A new, empty log, held in memory. */
-export function createLog(): DecisionLog {
+export function createLog(): MemoryLog {
   // Only the two functions below can reach this list, so nothing else can change or
   // remove a record (step 08's README, decision 6).
   const kept: DecisionRecord[] = [];
