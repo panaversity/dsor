@@ -95,7 +95,7 @@ describe("the program", () => {
 });
 
 describe("the program's log", () => {
-  // NEW IN STEP 11: dsor_runtime reads one company at a time, and never a record with no
+  // dsor_runtime reads one company at a time, and never a record with no
   // company. The program reads org_456's and org_789's, and says how many it cannot read
   // (step 11's README, decision 6).
   it(

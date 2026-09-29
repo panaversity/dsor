@@ -31,7 +31,7 @@ export function requestId(claim: string): string {
 
 /**
  * Every row of dsor.audit whose correlation carries this request id, read inside this
- * company. NEW IN STEP 11: dsor_runtime sees only the company it has set, so a read with
+ * company. dsor_runtime sees only the company it has set, so a read with
  * no company is empty whatever the table holds, and an empty answer would prove nothing
  * (step 11's README, "Think it through").
  */
@@ -53,7 +53,7 @@ export async function rowsFor(
 /**
  * Runs one statement inside a transaction that is always rolled back. A test that tries to
  * change the log never changes it, even when a break has given dsor_runtime the privilege.
- * NEW IN STEP 11: with a company, the transaction sets it first, as the program does
+ * With a company, the transaction sets it first, as the program does
  * (step 11's README, decision 3).
  */
 export async function tryThenRollBack(
@@ -78,7 +78,7 @@ export async function tryThenRollBack(
   }
 }
 
-// NEW IN STEP 11: the owner's window, for the records dsor_runtime can write and never
+// The owner's window, for the records dsor_runtime can write and never
 // read back (step 11's README, decision 4), and for DSoR's own lock alone.
 /**
  * Runs one of the owner's child programs, and gives back what it printed, as JSON. The

@@ -4,7 +4,7 @@
 // It prints one success and six refusals, each an envelope, and the correlation of a call
 // by user_123. Then the firm's agent reads INV-1008 in each of its two
 // companies, and two calls cross from one company into another and are refused. Then it
-// prints the log: NEW IN STEP 11, the records it can read, one company at a time, and how
+// prints the log: the records it can read, one company at a time, and how
 // many have no company. Last, it shows that a log which cannot take a record turns a
 // "yes" into a refusal.
 // The log and the invoices are tables in the database named by
@@ -154,7 +154,7 @@ console.log(await ask({ ...AGENT, tenant: "org_789" }, "invoice.get", { id: "INV
 console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_789/invoice/INV-1008" }));
 
 // Every call above left one record in the log before its answer was returned, the
-// refusals too. NEW IN STEP 11: dsor_runtime reads one company at a time, and never a
+// refusals too. dsor_runtime reads one company at a time, and never a
 // record with no company (step 11's README, decisions 4 and 6). So the program reads the
 // two companies its calls worked in, and puts their records in the order of their numbers.
 const readable = [...(await log.records("org_456")), ...(await log.records("org_789"))].sort(

@@ -57,7 +57,7 @@ export function openPool(url: string): pg.Pool {
   return pool;
 }
 
-// NEW IN STEP 11: every touch of a company's table is one transaction that sets the
+// Every touch of a company's table is one transaction that sets the
 // company first (DSOR-RP-01c; step 11's README, decision 3).
 /**
  * Runs the work on one connection, inside one transaction that sets the company first. The
@@ -116,7 +116,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
       // add finishes only after Postgres has committed the record, so when add returns,
       // the record survives a crash: "durably" in DSOR-EXE-02. The database gives the
       // record its number and its time (step 09's README, decision 6).
-      // NEW IN STEP 11: inside the transaction of the call's company, or of none when the
+      // Inside the transaction of the call's company, or of none when the
       // call was refused before line ②. The policy lets the record in only if it carries
       // exactly that company (DSOR-TEN-02a; step 11's README, decision 4).
       await inCompany(pool, decision.tenant, (client) =>
@@ -141,7 +141,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
         ),
       );
     },
-    // NEW IN STEP 11: one company at a time. dsor_runtime cannot read another company's
+    // One company at a time. dsor_runtime cannot read another company's
     // records, or a record with no company, so there is no "every record" for it to ask
     // for (step 11's README, decision 6). The WHERE is DSoR's own lock, and the
     // transaction's company is the database's (DSOR-TEN-01b).
@@ -193,7 +193,7 @@ type InvoiceRow = {
 export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   return {
     // The company is part of every query, as a value (DSOR-IDN-03b). That is the first
-    // lock, DSoR's own. NEW IN STEP 11: the query runs inside the company's transaction, so
+    // lock, DSoR's own. The query runs inside the company's transaction, so
     // the database's lock filters the rows too (DSOR-TEN-01b).
     get: async (tenant, id) => {
       const { rows } = await inCompany(pool, tenant, (client) =>
@@ -229,7 +229,7 @@ export type RoleFacts = {
   writes_all: boolean;
   owns: number;
   can_change_audit: boolean;
-  // NEW IN STEP 11: how many roles it belongs to. SET ROLE can switch to any of them, and
+  // How many roles it belongs to. SET ROLE can switch to any of them, and
   // to that role's powers (DSOR-RP-01a; step 11's README, decision 7).
   member_of: number;
 };

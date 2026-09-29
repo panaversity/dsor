@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the owner reads the records of one request. Not a test file: the
+// The owner reads the records of one request. Not a test file: the
 // database tests start it through ownerRowsFor in test/db.ts.
 // A record with no company is written by dsor_runtime and never readable by it (step 11's
 // README, decision 4). The owner reads it because it holds BYPASSRLS, the power

@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the owner runs DSoR's own store. Not a test file: rls.db.test.ts starts
+// The owner runs DSoR's own store. Not a test file: rls.db.test.ts starts
 // it through ownerStore in test/db.ts.
 // The owner holds BYPASSRLS, so no policy applies to it, and only DSoR's own WHERE can
 // filter what the store returns. That tests the first lock alone (DSOR-TEN-01b; step 11's

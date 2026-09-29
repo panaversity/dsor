@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the second lock. PostgreSQL filters every row by the company set in the
+// The second lock. PostgreSQL filters every row by the company set in the
 // transaction, even when the SQL forgets it. By claim, C1 to C5 in step 11's README.
 // Most tests here run their own SQL, with the company left out on purpose: the lock under
 // test is the database's, not DSoR's code (DSOR-TEN-01b, two independent layers).

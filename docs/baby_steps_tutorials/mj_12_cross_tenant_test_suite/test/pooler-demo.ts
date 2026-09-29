@@ -1,4 +1,4 @@
-// NEW IN STEP 11: a demonstration, not a test. Neon's pooled address hands a server
+// A demonstration, not a test. Neon's pooled address hands a server
 // connection to another program after each transaction (step 11's README, decision 8).
 // Separate programs connect one after another, as dsor_runtime. First the right way, the
 // company set with true inside BEGIN ... COMMIT. Then the break: set with false, for the

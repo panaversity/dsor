@@ -32,7 +32,7 @@ export type DecisionRecord = Decision & { record_id: string; sequence: number; a
 
 // add is async, so a log in memory and a log in a database have the same shape. add
 // finishes only once the record is kept (step 09's README, decision 9).
-// NEW IN STEP 11: what every log shares is add, the one function call uses. How a log is
+// What every log shares is add, the one function call uses. How a log is
 // read depends on where it is kept: the database log reads one company at a time (step
 // 11's README, decision 6).
 /** What call needs of a log: add a decision. */

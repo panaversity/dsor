@@ -94,7 +94,7 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
   // An owner may do anything to its own table, and a superuser or a member of
   // pg_write_all_data may change any table, whatever was revoked. Neon puts roles made in
   // its console into neon_superuser, which holds pg_write_all_data (step 09's README).
-  // NEW IN STEP 11: BYPASSRLS skips every policy, FORCE included, so row-level security
+  // BYPASSRLS skips every policy, FORCE included, so row-level security
   // stands on this test. And a role dsor_runtime belongs to is one SET ROLE can switch to,
   // with all that role's powers. Found by the review (step 11's README, C6).
   it("DSOR-RP-01a: dsor_runtime is no superuser, holds no BYPASSRLS, owns no table, belongs to no role, and cannot write every table", async () => {
@@ -282,7 +282,7 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
     expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
   });
 
-  // NEW IN STEP 11: the two tests beside this one fail before the transaction begins, at
+  // The two tests beside this one fail before the transaction begins, at
   // pool.connect(). Here the INSERT itself fails, inside inCompany's transaction, because
   // the log's connections are read-only. Found by step 11's review: with the error
   // swallowed inside inCompany, the caller got the invoice and no record was kept.
