@@ -5,3 +5,8 @@ pnpm-lock.yaml
 packages/spec/schemas/
 packages/spec/examples/
 packages/spec/requirements.json
+
+# Baby-step folders copy the normative schemas byte for byte, and say so in the step's
+# README. Reformatting a copy would make that claim false and hide a real change in a
+# diff of 115 whitespace-only lines.
+docs/baby_steps_tutorials/*/src/schemas/
