@@ -114,7 +114,8 @@ export async function call(
     // throws while waiting is caught below, like any other.
     const data = await line(9, () => {
       reachedCode = true;
-      return handler(checked);
+      // NEW IN STEP 10: the code works inside the active company only.
+      return handler(checked, tenant);
     });
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.

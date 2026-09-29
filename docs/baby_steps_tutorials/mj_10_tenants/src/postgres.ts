@@ -122,6 +122,7 @@ function recordOf(row: AuditRow): DecisionRecord {
 // One row of app.invoices. Money is stored as numeric and char(3) (step 09's README,
 // decision 7), and pg gives a numeric back as text, so no number ever touches it.
 type InvoiceRow = {
+  tenant_id: string;
   id: string;
   vendor_id: string;
   amount_value: string;
@@ -134,17 +135,20 @@ type InvoiceRow = {
 /** The invoices, read from app.invoices. */
 export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   return {
-    get: async (id) => {
+    // NEW IN STEP 10: the company is part of every query, as a value (DSOR-IDN-03b). The
+    // database does not filter by it on its own until step 11.
+    get: async (tenant, id) => {
       const { rows } = await pool.query<InvoiceRow>(
-        `SELECT id, vendor_id, amount_value, amount_currency,
+        `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
                 open_amount_value, open_amount_currency, status
-           FROM app.invoices WHERE id = $1`,
-        [id],
+           FROM app.invoices WHERE tenant_id = $1 AND id = $2`,
+        [tenant, id],
       );
       const row = rows[0];
       if (row === undefined) return undefined;
       // money() checks the text again, so a number from a wrong query is refused here.
       return {
+        tenant_id: row.tenant_id,
         id: row.id,
         vendor_id: row.vendor_id,
         amount: money(row.amount_value, row.amount_currency),

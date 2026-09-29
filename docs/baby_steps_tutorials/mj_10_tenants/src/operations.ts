@@ -10,14 +10,16 @@ import { preview, type Handler } from "./registry.ts";
 /** The code behind each operation, reading invoices from this store. */
 export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
   return {
-    "invoice.get": async (input) => {
+    "invoice.get": async (input, tenant) => {
       // Line ⑥ of the checklist has checked the input against
       // InvoiceGetRequest, so it is { id: string } and nothing else. The code no longer
       // checks it in its own way (step 07's README, outcome 2).
       const { id } = input as { id: string };
       // Each refusal names its code from the §28 table, and call does the
       // rest (step 04's README, decision 5).
-      const invoice = await invoices.get(id);
+      // NEW IN STEP 10: only inside the active company. Another company's INV-2001 is
+      // "not found", word for word as an invoice nobody has (DSOR-IDN-03b, DSOR-ERR-01b).
+      const invoice = await invoices.get(tenant, id);
       if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
       return invoice;
     },
