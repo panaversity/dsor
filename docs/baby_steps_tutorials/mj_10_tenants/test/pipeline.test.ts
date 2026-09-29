@@ -46,7 +46,7 @@ async function linesRun(
 }
 
 describe("C1: every call runs the lines of the checklist in §21's order", () => {
-  // NEW IN STEP 08: every call now ends at line ⑪, where its decision is recorded, the
+  // Every call now ends at line ⑪, where its decision is recorded, the
   // refusals too (step 08's README, decision 1).
   it("DSOR-EXE-01a: invoice.issue, a command, runs lines ①, ②, ⑤, ⑥, and ⑪, in that order", async () => {
     expect((await linesRun(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).lines).toStrictEqual(
@@ -72,7 +72,7 @@ describe("C1: every call runs the lines of the checklist in §21's order", () =>
 
 describe("C2: when two lines would refuse, the earlier one answers", () => {
   // The four rows of the table in step 07's README. Each row is one line further down the
-  // checklist than the row before it. NEW IN STEP 08: after the line that refuses, only
+  // checklist than the row before it. After the line that refuses, only
   // line ⑪ runs, and records the refusal.
   it("DSOR-EXE-01a: no login and a bad input: ① answers, and only ⑪ runs after it", async () => {
     const { answer, lines } = await linesRun(registry, {}, "invoice.issue", BAD_ISSUE);

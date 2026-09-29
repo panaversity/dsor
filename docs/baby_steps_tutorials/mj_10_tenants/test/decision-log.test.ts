@@ -1,4 +1,4 @@
-// NEW IN STEP 08: every decision is written down before the answer leaves, by claim (C1
+// Every decision is written down before the answer leaves, by claim (C1
 // to C5 in step 08's README).
 import { describe, expect, it, vi } from "vitest";
 import { Refusal, type Answer, type ErrorCode } from "../src/envelope.ts";

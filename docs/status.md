@@ -58,7 +58,8 @@ schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.m
 | 08 · write the decision first | Planned. A learner build, `mj_08_write_the_decision_first`, tests DSOR-EXE-02 before the response only (its log is in memory, so not durable), and DSOR-EXE-03b, an L2 rule, for the caller's half only; it is not the official step |
 | 09 · Postgres on Neon | Planned. A learner build, `mj_09_postgres_on_neon`, tests DSOR-AUD-04a (an L2 rule) and DSOR-AUD-02a against a real PostgreSQL on a Neon branch, with `pnpm test:db`, which CI does not run. It makes step 08's DSOR-EXE-02 durable. Of learning-path stage 1's four "done when" checks it meets three; a query's answer still has no schema (open question 19). It is not the official step |
 | 10 · tenants | Planned. A learner build, `mj_10_tenants`, tests DSOR-TEN-01a, DSOR-IDN-03a, DSOR-IDN-03b (reading only), DSOR-SRC-02b (the tenant half), and DSOR-ERR-01b, with a second company, `org_789`, on a Neon branch. It is DSoR's own lock on companies only: the database's lock, DSOR-TEN-01b, is step 11. Its tenant filter in SQL is guarded by `pnpm test:db` alone, which CI does not run. It is not the official step |
-| 11 to 51 | Planned |
+| 11 · row-level security | Planned. A learner build, `mj_11_row_level_security`, tests DSOR-TEN-01b, DSOR-RP-01a, DSOR-RP-01b, DSOR-RP-01c, DSOR-RP-01d, and DSOR-TEN-02a for the audit table only, with PostgreSQL's row-level security on a Neon branch, through `pnpm test:db`, which CI does not run. The database's lock stops a query that forgets the company or a company left on a connection, not a program that holds `dsor_runtime`'s login and sets any company. It is not the official step |
+| 12 to 51 | Planned |
 
 ## Learning-path stages
 

@@ -251,3 +251,18 @@ for a human. An agent may gather evidence; it does not settle these alone.
     opening at that moment can fail, so its database tests now run one file at a time.
     Should the migration job create the runtime role only, and leave its credential to a
     separate, rarer rotation step?
+39. **Should audit record numbers be counted per tenant?** DSOR-TEN-02a says audit
+    partitions MUST be keyed by tenant. Step 11's learner build keeps each company's
+    records apart with row-level security, but one sequence numbers the records of every
+    company. So the gaps in one company's numbers show when, and how often, other
+    companies are served. `EXPLAIN ANALYZE` shows a similar count for every table.
+    Does "keyed by tenant" cover the numbering, so a record's number is counted within
+    its tenant, and should §30 or §36 say so?
+40. **What ties the tenant setting to the authenticated request?** §36 sets
+    `dsor.tenant_id` per transaction, and calls row-level security defense in depth. In
+    step 11's learner build, a program holding `dsor_runtime`'s login can set any tenant,
+    read that tenant's rows, and add records to its audit log. The write policy cannot
+    catch a wrong tenant, because the record and the setting come from one value. Is that the whole promise of
+    the store's layer in DSOR-TEN-01b, a lock against mistakes only, or should §36 name
+    something stronger, such as a role per tenant, or a setting only a trusted function can
+    change?
