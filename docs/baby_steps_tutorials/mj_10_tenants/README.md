@@ -14,17 +14,19 @@ Each company numbers its own bills, so both can have an invoice called `INV-1008
 every invoice row now carries its `tenant_id`, and a row is found by the pair
 *(company, id)*, never by the id alone.
 
-Every request now names the company it works in, beside the login token:
-`{ token, tenant: "org_456" }`. DSoR checks, in its own records, that the caller is a
-**member** of that company. That company is the request's **active tenant**. Every read
-looks only inside it, and only the caller's roles *in that company* count.
+In this tutorial, every request names the company it works in, beside the login token:
+`{ token, tenant: "org_456" }` (decision 1). DSoR checks, in its own records, that the
+caller is a **member** of that company. That company is the request's **active
+tenant**. Every operation reads only inside it, and only the caller's roles *in that
+company* count.
 
-Think of a good hotel's front desk. Ask "is John Smith in room 305?", and the answer is
-the same whether he is there or not: "I can't share guest information." If strangers got
-"no such guest" and real guests got "I can't tell you", the choice of answer would give
-the guest away. DSoR answers the same way about other companies. The analogy stops at the
-lobby: a hotel shares one building, while here two companies share one database, and a
-second lock inside the database itself comes in step 11.
+Think of a good bank teller. Ask "does John Smith have an account here?", and the answer
+is the same whether he does or not: "I can't discuss who our customers are." If a
+stranger heard "no such customer" for a name the bank does not know, and "I can't tell
+you" for a real customer, the choice of answer would give the customer away. DSoR
+answers the same way about other companies. The analogy has a limit. A bank keeps its
+customers apart with one set of rules. §14 asks for two independent checks, which it
+calls two locks: DSoR's own, built here, and a second one inside the database, in step 11.
 
 ## Why it matters
 
@@ -39,16 +41,18 @@ issue invoices for another. If DSoR adds up its roles from every company, power 
 by one company is used inside another.
 
 **Common mistake:** §14 names it: "Telling the AI 'only look at org_456' and calling that
-isolation. The agent is not a lock." And its cousin: taking the company from the
-arguments. An argument is text the agent wrote.
+isolation. The agent is not a lock." A second mistake is close to it: taking the company
+from the arguments. An argument is text the agent wrote.
 
 ## The design, before any code
 
 This section was written before the first test, by the learner with Claude Code, before
 any code existed. Every sentence of the specification it relies on was read on
-2026-09-29: §11 (DSOR-SRC-01a, DSOR-SRC-02a, DSOR-SRC-02b), §12 (the principal and the
-request security context, DSOR-IDN-03a, DSOR-IDN-03b), §14 (DSOR-TEN-01a to 02b), §28
-(DSOR-ERR-01b, and the retry class of `TENANT_MISMATCH`), and the audit record's
+2026-09-29: §11 (DSOR-SRC-01a, DSOR-SRC-02a, DSOR-SRC-02b), §12 (the principal, and the
+*request security context*: who is calling, for whom, and in which company), §12's
+DSOR-IDN-03a and DSOR-IDN-03b, §14 (DSOR-TEN-01a to 02b), §28 (DSOR-ERR-01b, and the
+*retry class* of `TENANT_MISMATCH`, which tells a caller whether trying again can help:
+"never"), and the audit record's
 `tenant` in `audit-record.schema.json`. If the code finds the plan wrong, the plan
 changes here first.
 
@@ -57,7 +61,7 @@ changes here first.
 Written first, before the rules were split into claims.
 
 **Intent.** One company never sees, touches, or learns about another company's data, and
-never uses authority another company gave. The analogy is the hotel desk.
+never uses authority another company gave. The analogy is the bank teller.
 
 **Outcome.** What is true when this step is done:
 
@@ -71,7 +75,8 @@ never uses authority another company gave. The analogy is the hotel desk.
 5. A company named in the arguments, a field or a URI, that is not the active company is
    refused with `TENANT_MISMATCH`, the same whether the thing it points at exists or not.
 6. Every invoice row and every audit record carries its company. A record of a refusal
-   made before the company is known has none.
+   made before DSoR has checked a company has none. When a caller named a well-formed
+   company it is not a member of, the record keeps that name, marked as a claim.
 
 **Not the outcome of this step.** The second lock: PostgreSQL filtering rows by company
 itself, row-level security (step 11). The suite that calls every operation with another
@@ -91,8 +96,8 @@ are written by a migration.
 
 Checked on 2026-09-29:
 
-1. **The map and DSOR-SRC-02b disagree about a foreign URI.** The map's "done when"
-   says it returns "the same 'not found' as a URI that does not exist". DSOR-SRC-02b says
+1. **The map and DSOR-SRC-02b disagree about a foreign URI.** The map is the list of all
+   steps, `../readme.md`. Its "Done when" line for this step says a foreign URI returns "the same 'not found' as a URI that does not exist". DSOR-SRC-02b says
    a tenant identifier in the arguments that disagrees with the security context "MUST
    cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`", and a URI's first part is a
    tenant identifier. This step follows the rule: `TENANT_MISMATCH`, for every foreign
@@ -103,8 +108,9 @@ Checked on 2026-09-29:
    operation writes yet, so this step shows the reading half.
 3. **DSOR-TEN-01b asks for two independent locks.** This step builds the first, in
    DSoR's own code. The database's lock is step 11, so DSOR-TEN-01b is not claimed here.
-4. **DSOR-TEN-02a asks for audit partitions keyed by tenant.** Each audit record carries
-   its tenant. Separate partitions, and the other stores that rule names, come with
+4. **DSOR-TEN-02a asks for audit partitions keyed by tenant.** A partition is a separate
+   part of a store, one for each company. Each audit record carries its tenant. Separate
+   partitions, and the other stores that rule names, come with
    those stores.
 5. **Step 02's open note** asked that whatever creates tenants never make an id out of a
    name (DSOR-RID-01b). Here tenants are written by a migration, with fixed ids. No
@@ -114,8 +120,10 @@ Checked on 2026-09-29:
    caller *claimed* would put a stranger's record in another company's log. So this step
    leaves it empty (decision 6), and its records do not match the schema there. It is
    recorded as a question for the specification. The records do not claim to match the
-   schema yet anyway: the hash chain is step 39.
-7. **§6's `invoice` entity is `tenant_scoped`, but lists no `tenant_id` field.** This
+   schema yet anyway: the chain of fingerprints that links each record to the one before
+   it is step 39.
+7. **§6's `invoice` entity is marked `tenant_scoped: true`, which says each invoice
+   belongs to one company, but it lists no `tenant_id` field.** This
    step gives the invoice the field (decision 10). Whether the field is implied, or the
    list needs it, is a question for the specification.
 
@@ -126,9 +134,10 @@ Checked on 2026-09-29:
 | DSOR-IDN-03a | **C1.** Each request resolves to exactly one active company, in which the caller holds a membership | A request with no company is refused. A company the caller does not belong to is refused, with the same answer as a company that does not exist. The firm's agent works in either company, one per request |
 | DSOR-IDN-03b | **C2.** A read looks only inside the active company | `INV-1008` gives each company its own. `INV-2001`, which only `org_789` has, is "not found" for `org_456`, word for word as `INV-9999` |
 | DSOR-IDN-03a, with DSOR-AUT-01b | **C3.** Only the roles in the active company count | The firm's agent issues in `org_789` and is denied `invoice.issue` in `org_456` |
-| DSOR-SRC-02b | **C4.** A company in the arguments that is not the active one is refused with `TENANT_MISMATCH` | A `tenant` field, and a URI, naming `org_789` from inside `org_456`. A field naming the active company is not refused for that |
+| DSOR-SRC-02b | **C4.** A company in the arguments that is not the active one is refused with `TENANT_MISMATCH` | A `tenant`, `tenant_id`, `tenantId`, or `activeTenantId` field, and a URI, naming `org_789` from inside `org_456`. A field naming the active company is not refused for that |
 | DSOR-ERR-01b | **C5.** A refusal never tells whether another company, or its invoice, exists | Pairs of answers compared word for word: `org_789` and `org_999`, `INV-1008` of `org_789` and `NOPE` of `org_789` |
 | DSOR-TEN-01a | **C6.** Every invoice row and every audit record carries its company | `app.invoices.tenant_id` is `NOT NULL` and part of the key. `dsor.audit.tenant` is the active company, and empty only for a refusal before line ② has checked one |
+| DSOR-IDN-03a | **C7.** An envelope carries exactly one company, and nothing DSoR does not read | An envelope with `tenant` and also `tenant_id`, or any other field besides `token`, `tenant`, and `request_id`, is refused with `VALIDATION_FAILED` (decision 11) |
 
 ### Decisions the specification leaves to us
 
@@ -147,20 +156,27 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    refused with `AUTHORIZATION_DENIED`, with one message for "no such company" and "not a
    member". *Downside:* a caller who typed a real company's id wrongly and one who has no
    right to it get the same message, so the refusal helps an honest caller less.
-3. **Only the active company's roles count at line ⑤.** Step 06's constant `COMPANY`
-   goes, and `permissionsOf` takes the active company. *Downside:* none that we see. This
-   is the rule.
+3. *(Moved to the claims after the review.)* Counting only the active company's roles
+   at line ⑤ is not ours to decide: DSOR-IDN-03a and §12 require it. It is claim C3. The
+   number stays, so that references to it still point here.
 4. **A company named in the arguments is checked at two places, both before "is it
    built".**
-   - At line ②: the fields `tenant` and `tenant_id`, at the top of the input and in its
-     `correlation`, the same places step 05 checks for a principal. One that is not the
-     active company is refused with `TENANT_MISMATCH`.
-   - Right after line ⑥: every text in the checked input that starts with `dsor://` must
-     be a canonical URI of the active company, or it is refused with `TENANT_MISMATCH`.
-     The whole input is searched, not only the fields a schema calls URIs, so a new
-     operation cannot forget the check.
-   *Downside:* a free-text field that merely mentions another company's URI is refused
-   too.
+   - At line ②: the fields `tenant`, `tenant_id`, `tenantId`, and `activeTenantId`, at
+     the top of the input and in its `correlation`, the same places step 05 checks for a
+     principal. `tenantId` and `activeTenantId` are §12's own spellings. One that is not
+     the active company is refused with `TENANT_MISMATCH`.
+   - Right after line ⑥: every text in the checked copy of the input that starts with
+     `dsor://`, in any mix of capital and small letters, must be a canonical URI of the
+     active company, or it is refused with `TENANT_MISMATCH`. The whole input is
+     searched, the names of its fields too, not only the fields a schema calls URIs, so a
+     new operation cannot forget the check.
+   *Downside:* a free-text field that mentions another company's URI is refused too. And
+   the list of field names is fixed: another spelling, such as `company`, is refused only
+   by line ⑥, as `VALIDATION_FAILED`, because no input schema lists it.
+
+   *Changed after the review, on 2026-09-29:* the first version knew only `tenant` and
+   `tenant_id`, so §12's own spelling `tenantId` got `VALIDATION_FAILED`, which
+   DSOR-SRC-02b does not allow.
 5. **Invoices move to a key of (company, id).** A new migration, `002`, adds
    `tenant_id` to `app.invoices`, fills it with `org_456` for the rows already there, and
    makes `(tenant_id, id)` the key. It adds `org_789`'s two invoices: `INV-1008` for
@@ -168,11 +184,22 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    Migration `001` is never edited: a migration that has run is history. *Downside:*
    `VENDOR-77` and the two new invoices are not in the specification's running example.
    They are this step's own.
-6. **Each audit record carries its company, in a new column `tenant`.** It is empty for a
-   refusal made before line ②, such as "no login". `dsor_runtime` gets `INSERT` on that
-   one column too, so the list of privileges from step 09 grows by one word. *Downside:*
-   the refusals with no company share one empty value, so they cannot be counted per
-   company.
+6. **Each audit record carries its company, in a new column `tenant`.** It is empty
+   when no company was checked: a refusal at line ①, such as "no login", or at line ②
+   itself. `dsor_runtime` gets `INSERT` on that one column too, so the list of
+   privileges from step 09 grows by one word. **When line ② refuses a well-formed
+   company the caller is not a member of, the record keeps the name the caller sent**,
+   under `extensions`, as `{ "org.panaversity.steps": { "requested_tenant": "org_789" } }`.
+   DSOR-SCH-02 says a field an implementation adds goes under `extensions`, keyed by a
+   reverse domain name, and the audit schema has that field. The claim is never the
+   record's `tenant`, so the record never lands in `org_789`'s part of the log. A
+   malformed id is not kept: it is text the caller wrote, and it could be anything.
+   Migration `003` adds the column. *Downside:* one more column, and a field that is this
+   tutorial's own. A refusal at line ① keeps no claim.
+
+   *Changed after the review, on 2026-09-29:* the first version kept nothing, so an
+   agent trying `org_789`, `org_790`, and so on left records that did not say which
+   companies it tried.
 7. **Three new principals, in DSoR's own table.**
    - `firm-ap-fte`, an agent of an accounting firm: `ap_agent` in `org_456`, and
      `ap_supervisor` in `org_789`.
@@ -204,19 +231,32 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    are.** The tenant goes into the audit record, not into `correlation`. *Downside:* a
    caller reading an answer does not see which company it was for, only the log does.
 10. **An invoice carries its `tenant_id`, in DSoR's code and in its answer, not only in
-    its row.** From this step, `INV-1008` is two invoices. An invoice's identity is the
-    pair (company, id), and its canonical URI writes that pair down:
-    `dsor://{tenant_id}/invoice/{id}` (DSOR-RID-01a). An object that holds only `id`
-    holds half of its own identity. Once it leaves the database, no code holding it can
-    say whose it is, and would have to borrow the company from elsewhere. Pairing a
-    record with the wrong company is the very bug this step prevents. DSOR-TEN-01a says
-    the *resource* carries its `tenant_id`, and inside DSoR the resource is the object;
-    the row is the store's copy of it. Showing the field to the caller tells it nothing
-    new: it is the company the caller named. So `invoiceUri(invoice)` reads the invoice's
+    its row.** From this step, `INV-1008` is two invoices. So the id alone no longer
+    names an invoice: the pair (company, id) does. Its canonical URI writes that pair
+    down: `dsor://{tenant_id}/invoice/{id}` (DSOR-RID-01a). If the invoice in the code
+    held only its id, code that holds it could not say whose it is. It would have to take
+    the company from somewhere else, and mixing up an invoice's company is the very bug
+    this step prevents. DSOR-TEN-01a says the resource carries its `tenant_id`. In DSoR's
+    code, the invoice object is the resource; the database row is where it is kept.
+    Showing the field to the caller tells it nothing new: it is the company the caller
+    named. So `invoiceUri(invoice)` reads the invoice's
     own `tenant_id`, and step 01's constant `TENANT` goes. *Downside:* §6's `invoice`
     entity is `tenant_scoped`, but its list of fields has no `tenant_id`, so the answer
     has a field the entity does not list. Every test that compares a whole invoice
     changes.
+11. **The request envelope is closed: `token`, `tenant`, and `request_id`, and nothing
+    else.** Any other field is refused with `VALIDATION_FAILED` at line ①, after DSoR
+    knows who is calling. An envelope with `tenant: "org_456"` and also
+    `tenant_id: "org_789"` names two companies, so it has not resolved to exactly one
+    (DSOR-IDN-03a). The list says what is allowed, not what is forbidden, so no spelling
+    can slip past it: deny by default, as step 07 did for inputs. *Downside:* step 05's
+    decision to ignore other envelope fields is reversed. Its test, "a principal written
+    in the envelope is never used", now expects a refusal. Step 18 must add a delegation
+    id to the list on purpose.
+
+    *Added after the review, on 2026-09-29:* the envelope
+    `{ token, tenant: "org_456", tenant_id: "org_789" }` worked in `org_456`, and the
+    second company was ignored without a word.
 
 ### The tests, by claim
 
@@ -239,6 +279,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   call's audit record has `tenant = 'org_456'`. A call with no login has `tenant` empty.
   `dsor_runtime`'s privileges are step 09's list plus `tenant` in the `INSERT` columns,
   and none on `dsor.migrations`.
+- **C7:** `{ ...AGENT, tenant_id: "org_789" }` → `VALIDATION_FAILED`. So does any other
+  extra field. A call with no login and an extra field hears about the login first.
+- **Decision 6's claim:** the agent in `org_789` leaves a record with no `tenant` and
+  `requested_tenant: "org_789"`. With `acme`, or with no login, the record keeps no claim.
 - **Decision 8, not a rule:** a second `pnpm migrate` runs no file, and succeeds.
 
 ### Breaks we will try, and what we expect
@@ -274,9 +318,9 @@ membership that crosses from one company into another.
 
 ## Before you build: set up Neon
 
-The rule is not "by hand". It is: **a secret never passes through a chat.** Neon's MCP
-server returns a connection string with the owner's password inside, so anything it
-fetches lands in the transcript. Step 09 learned that live. A command whose output goes
+Step 09 set up `.env` by hand. The real rule is: **a secret never passes through a
+chat.** Neon's MCP server returns a connection string with the owner's password inside,
+so anything it fetches lands in the transcript. Step 09 found this in a real run. A command whose output goes
 straight into a file keeps the secret out of the chat, so Claude Code may do this setup
 itself, this way:
 
@@ -292,7 +336,8 @@ itself, this way:
 4. Check without looking: `pnpm test:db` passes, and a search of the transcript finds no
    `postgresql://` with a password in it.
 
-Doing it by hand in the console is the same, with you as the pipe. Either way, never
+Doing it by hand is the same, with you carrying the text from Neon's console into the
+file. Either way, never
 paste the file, and never ask for a connection string.
 
 ## What changed since step 09
