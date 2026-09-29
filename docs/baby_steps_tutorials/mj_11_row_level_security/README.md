@@ -266,19 +266,200 @@ itself, this way:
 
 ## What changed since step 10
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `migrations/004_invoices_row_level_security.sql` | **New.** `app.invoices`: row-level security enabled and forced, and the policy `tenant_isolation` |
+| `migrations/005_audit_row_level_security.sql` | **New.** `dsor.audit`: enabled and forced, `audit_write` for `INSERT` and `audit_read` for `SELECT` (decision 4) |
+| `src/postgres.ts` | `inCompany` runs the work in one transaction that sets the company first (decision 3). The invoice read and the record's `INSERT` go through it. The database log reads one company: `records(tenant)` |
+| `src/log.ts` | `DecisionLog` is only `add`. The memory log is a `MemoryLog`, which keeps `records()` (decision 6) |
+| `src/main.ts` | The log is read for `org_456` and `org_789`, merged by number, and the records with no company are counted, not shown |
+| `test/rls.db.test.ts` | **New.** C1 to C5 |
+| `test/owner-reads.ts` | **New.** A child program that reads records as the owner, for the tests of records with no company |
+| `test/db.ts` | `rowsFor` and `tryThenRollBack` take a company. `ownerRowsFor` and `poolOfOne` are new |
+| other database tests | They read `dsor.audit` inside the record's company, or through the owner. The program's log shows 9 lines. Step 09's role test is DSOR-RP-01a |
+| `test/helpers.ts`, `test/decision-log.test.ts` | The memory log's type, and two stand-in logs that no longer need `records` |
+
+Every other file is step 10's, without its `NEW IN STEP` markers. No new dependency.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_10_tenants/src mj_11_row_level_security/src
+git diff --no-index mj_10_tenants/test mj_11_row_level_security/test
+git diff --no-index mj_10_tenants/migrations mj_11_row_level_security/migrations
+```
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # runs only the migrations that have not run yet: 004 and 005
+pnpm check        # typecheck and the unit tests: no database needed
+pnpm test:db      # the database tests, against the branch in .env
+pnpm start        # the program, against the same branch
+```
+
+`pnpm migrate` on the branch `step-11`, made from `step-10`, on 2026-09-29. The step
+was built one lock at a time, so `004` and `005` ran in two separate runs:
+
+```text
+dsor_runtime: password set again from DSOR_DB_URL
+migration 004_invoices_row_level_security: done
+
+dsor_runtime: password set again from DSOR_DB_URL
+migration 005_audit_row_level_security: done
+```
+
+On your own branch made from `step-10`, one `pnpm migrate` prints both lines at once.
+`pnpm check` prints `576 passed`, and `pnpm test:db` prints `56 passed`.
+
+The new part of `pnpm start`, the log. The numbers come from the database:
+
+```text
+2581 invoice.get@1 ALLOW ok org_456
+2582 invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456
+2583 invoice.issue@1 DENY AUTHORIZATION_DENIED org_456
+2586 invoice.get@1 ALLOW ok org_456
+2587 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456
+2588 invoice.issue@1 DENY VALIDATION_FAILED org_456
+2589 invoice.get@1 ALLOW ok org_456
+2590 invoice.get@1 ALLOW ok org_789
+2592 invoice.issue@1 DENY TENANT_MISMATCH org_456
+3 of the 12 records have no company, and dsor_runtime cannot read them
+```
+
+Look at the gaps: 2584, 2585, and 2591. Those are the three records with no company: the
+call with no login, the call that named `cfo_100`, and the stranger to `org_789`. They
+were written, because each call answered, and an answer leaves only after its record is
+committed. `dsor_runtime` cannot read them back (decision 4).
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break of the design's table, performed on 2026-09-29, one at a time, then put
+back, on the finished code (commit `8b453c2`). They ran on a throwaway Neon branch,
+`step-11-breaks`, made from `step-11`, because four of them change the database. The
+unit tests stayed green for all seven: they never touch the database. After the last
+one, every policy was read back as the owner, and all 56 database tests passed again.
+
+| # | The break | Learner's prediction | Caught by, for real |
+| --- | --- | --- | --- |
+| V1 | The company is set with `false`, for the connection | C4, the pool test | 7: C4's two tests, and **five calls whose record had no company**, refused by the database |
+| V2 | `FORCE` is removed from `app.invoices` | only a catalog test | 1: C1, the catalog test |
+| V3 | The invoice policy is dropped, row-level security stays on | zero rows, always | 16: every invoice read found nothing, and C1 |
+| V4 | The helper sets the company with `true`, and runs no `BEGIN` | only the pool test | 20: **every invoice read found nothing, and every record with a company was refused** |
+| V5 | Step 10's U1: the invoice SQL forgets `tenant_id` | survives, harmlessly | **0**. All 56 green |
+| V6 | `dsor_runtime` is given `BYPASSRLS` | C6 and the start-up check | 18: C6, the start-up check, the program, and every test of C2, C3, and C5 that runs its own SQL |
+| V7 | The audit policies use `current_setting` without `nullif` | only on a reused connection | 6: each record with no company written on a reused connection. The pool test always, and five tests whose shared pool happened to reuse one |
+
+**V5, the one this step is for.** Step 10's U1 again. In `src/postgres.ts`, change the
+invoice query to `WHERE id = $1` with `[id]`. Then:
+
+```text
+$ pnpm check
+      Tests  576 passed (576)
+
+$ pnpm test:db
+      Tests  56 passed (56)
+```
+
+In step 10, this break sent `org_456`'s 31,400.00 USD to `org_789`, and four database
+tests caught it. Now the database's lock filters the rows by itself, so the forgotten
+line leaks nothing. That is the second lock doing its job. It also means DSoR's own
+`WHERE` in this query is now guarded by no test (see "Think it through").
+
+**V4, the learner's miss.** Delete `await client.query("BEGIN");` from `inCompany`:
+
+```text
+$ pnpm test:db
+    × DSOR-MON-01: invoice.get returns INV-1008 from app.invoices, its money exactly 31400.00
+    × DSOR-EXE-02: a success is committed before the answer, and another connection sees it
+    × DSOR-RP-01c: after the program reads org_456's INV-1008, the next request sees no invoice
+    …
+      Tests  20 failed | 36 passed (56)
+```
+
+With no `BEGIN`, each statement is a transaction of its own. `set_config(…, true)` sets
+the company, and its transaction ends at once, before the query runs. So every read sees
+no company and finds nothing, and every record with a company is refused by the write
+policy. The learner expected only the pool test: the first request would work, and only
+the next one would notice. But the company was gone before the first request's own
+query.
+
+**V1, more than predicted.** Change `true` to `false` in `inCompany`. The pool test
+fails, as expected. Five more tests fail, each a call with no company that answered
+`EVIDENCE_STORE_UNAVAILABLE`. The pool lent those calls a connection that still held
+`org_456`, so the record, with no company, broke the write policy's rule. The leaked
+company did not put a record into `org_456`. It stopped the record, and so the answer.
+The lock failed shut.
+
+**V7, as predicted, and more often.** Only a connection that has held a company reads
+the unset setting as `''`. The pool test builds that case on purpose. The other five
+tests met it by chance, because a pool reuses its connections all the time.
+
+**Neon's pooled address, shown once (decision 8).** Six separate programs connect to
+the pooled address of `step-11-breaks`, one after another, as `dsor_runtime`. Each
+prints the server connection it was given, the company it sees, and the invoices it
+sees:
+
+```text
+the right way: the company set with true, inside BEGIN ... COMMIT
+  program 1 (org_456): [{"port":5432,"server_connection":6511,"company":null,"invoices_seen":null}]
+  program 2 (sets no company): [{"port":5432,"server_connection":6511,"company":null,"invoices_seen":null}]
+the break: the company set with false, for the connection
+  program 3 (org_456): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
+  program 4 (sets no company): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
+  program 5 (sets no company): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
+  program 6 (sets no company): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
+```
+
+Six programs, one server connection, 6511. Program 1 ran its read after its own
+`COMMIT`, so its company was already gone. Programs 4, 5, and 6 never set a company, and
+each saw `org_456`'s invoice. Behind the pooler, a company set for the connection leaks
+into every later program that is handed the same server connection, not only into the
+next request of the same program.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code". Each PostgreSQL behaviour it relies on was tried on a local PostgreSQL first |
+| 2 | Neon | A branch `step-11` from `step-10`, the owner's password reset by hand, `.env` written by a command, never shown ("Before you build") |
+| 3 | Check the design | Against step 10's code. Five changes, all made in the design before any test (see "Think it through") |
+| 4 | Mechanical | Step 10's `NEW IN STEP` markers removed |
+| 5 | Red | `rls.db.test.ts`, and the old tests that must now read inside a company. Predict how many pass |
+| 6 | Green | Migration `004` and `inCompany` (C2), the log's `records(tenant)` (decision 6), migration `005` (C5), then C6's title. Predict each |
+| 7 | Break it | V1 to V7, for real, on a throwaway Neon branch, because four of them change the database |
+| 8 | Review | Two reviewers who have not seen your conversation attack the step |
+| 9 | Fix the review | Change the design first, then the tests, then the code |
+
+In the red run, the learner predicted about half of the 17 new tests would pass, and
+that some old tests would fail. One new test passed, and every old test passed. A
+company setting filters nothing until a policy reads it, so every "only this company"
+test failed, and every old test still found its record.
+
+Build your own step 11 from a copy of your step 10. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_10_tenants my_11_row_level_security
+cd my_11_row_level_security
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 11. Set up Neon as "Before you
+build" says: a branch from step-10, and secrets only from a command into .env, never
+through the chat. Check the design against step 10's code before any test, and change
+the design first when the code proves it wrong. Red tests first, one commit per claim.
+Run the breaks that change the database on a throwaway branch. Before each run, ask me
+what I expect.
+```
 
 ## Check yourself
 
