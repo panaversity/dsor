@@ -125,6 +125,24 @@ export function assertPipeline(stages: readonly Stage[]): number {
     }
   }
 
+  // A command-only stage cannot sit before the operation is resolved. Until that stage has run
+  // there is no contract, so there is no *kind* to ask about, and the walker would step over the
+  // command-only stage on every call — including commands. A stage that is silently never reached
+  // is exactly what DSOR-EXE-01b forbids, and it would be invisible: nothing fails, the step just
+  // never happens.
+  const resolvesAt = stages.findIndex((stage) => stage.name === "resolve the operation");
+
+  if (resolvesAt !== -1) {
+    for (const [at, stage] of stages.entries()) {
+      if (stage.applies === "command" && at < resolvesAt) {
+        throw new TypeError(
+          `${stage.name} applies to commands only and sits before the operation is resolved, ` +
+            "so it would never run",
+        );
+      }
+    }
+  }
+
   for (const name of REQUIRED) {
     if (!seen.has(name)) {
       throw new TypeError(`the pipeline is missing ${name}, which every call needs`);

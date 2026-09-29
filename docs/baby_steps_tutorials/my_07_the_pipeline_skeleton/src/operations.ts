@@ -392,53 +392,72 @@ export function handlerIds(): string[] {
 }
 
 /**
- * Calls one operation by name.
+ * A door: something that turns a request into an answer.
  *
- * NEW IN STEP 07: this function no longer *is* the order of the checks. It walks the checklist in
- * `PIPELINE` and stops at the first no. Everything it used to do inline is a stage, in the same
- * order, and the order now lives somewhere a test can read it.
- *
- * What is left here is the two things that are not checks: walking the list, and — once every check
- * has said yes — carrying the operation out. That last line is §21.14.
+ * `DSOR-OPR-04a` says every interface MUST invoke the same DSoR pipeline. A door is how an
+ * interface gets one — and it is *given* the list rather than choosing it, so the HTTP server in
+ * step 42 is handed the same `PIPELINE` this one is.
  */
-export function callOperation(
+export type Door = (
   login: Login | undefined,
   id: string,
   args: Readonly<Record<string, unknown>>,
-): OperationAnswer {
-  const walked = runPipeline(PIPELINE, { login, id, args });
+) => OperationAnswer;
 
-  if (walked.kind === "refused") {
-    return walked.answer;
-  }
+/**
+ * Builds a door from a checklist.
+ *
+ * The list is checked **as the door is built**, not on the first request and not by trusting
+ * whoever built it. A door whose order cannot be trusted should not exist, because the order is
+ * the guarantee.
+ */
+export function makeDoor(stages: readonly Stage[]): Door {
+  assertPipeline(stages);
 
-  const { principal, contract, given } = walked.context;
-  const handler = contract === undefined ? undefined : handlers[contract.id];
+  return (login, id, args) => {
+    const walked = runPipeline(stages, { login, id, args });
 
-  // Every one of these was filled by a stage, and `assertPipeline` refused at start-up any list
-  // that was missing the stage which fills it. So this cannot happen — and if it does, it is a bug
-  // in this program rather than anything the caller did, which is what INTERNAL_ERROR means. It is
-  // `never` retryable: asking again cannot fix a broken pipeline.
-  if (
-    principal === undefined ||
-    contract === undefined ||
-    given === undefined ||
-    handler === undefined
-  ) {
-    const askedBy = principal?.id ?? "(nobody)";
+    if (walked.kind === "refused") {
+      return walked.answer;
+    }
 
-    return Object.freeze({
-      kind: "error",
-      askedBy,
-      envelope: refusal(
-        "INTERNAL_ERROR",
-        `${id} finished the pipeline without everything a call needs`,
-        undefined,
-        principal === undefined ? undefined : askedBy,
-      ),
-    });
-  }
+    const { principal, contract, given } = walked.context;
+    const handler = contract === undefined ? undefined : handlers[contract.id];
 
-  // §21.14 — execute. The only thing that happens after every check has said yes.
-  return Object.freeze(handler(given, contract, principal.id));
+    // Every one of these is filled by a stage, and `assertPipeline` refuses a list that is missing
+    // the stage which fills it. What it cannot refuse is a stage that says it carried on without
+    // doing its job — so if the walk ends without something the execution needs, that is a bug in
+    // this program rather than anything the caller did, which is what INTERNAL_ERROR means. Retry
+    // `never`: asking again cannot fix a broken pipeline.
+    if (
+      principal === undefined ||
+      contract === undefined ||
+      given === undefined ||
+      handler === undefined
+    ) {
+      const askedBy = principal?.id ?? "(nobody)";
+
+      return Object.freeze({
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "INTERNAL_ERROR",
+          `${id} finished the pipeline without everything a call needs`,
+          undefined,
+          principal === undefined ? undefined : askedBy,
+        ),
+      });
+    }
+
+    // §21.14 — execute. The only thing that happens after every check has said yes.
+    return Object.freeze(handler(given, contract, principal.id));
+  };
 }
+
+/**
+ * The one door this program has.
+ *
+ * NEW IN STEP 07: this is no longer a function whose *shape* is the order of the checks. It is a
+ * door built from the checklist in `PIPELINE`, and the order lives there where a test can read it.
+ */
+export const callOperation: Door = makeDoor(PIPELINE);

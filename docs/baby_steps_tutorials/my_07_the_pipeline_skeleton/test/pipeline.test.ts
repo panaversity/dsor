@@ -4,10 +4,16 @@
 // the order some lines happened to sit in, and became a list — so these tests are about the list.
 
 import { describe, expect, it } from "vitest";
-import { assertPipeline, stagesFor, type Context, type Stage } from "../src/pipeline.ts";
+import {
+  assertPipeline,
+  runPipeline,
+  stagesFor,
+  type Context,
+  type Stage,
+} from "../src/pipeline.ts";
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
-import { PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
+import { makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(at: number | null, name: string, applies: Stage["applies"] = "both"): Stage {
@@ -126,5 +132,112 @@ describe("the pipeline", () => {
     }
 
     expect(() => (PIPELINE as Stage[]).push(fake(99, "sneak in"))).toThrow(TypeError);
+  });
+
+  // Piece 2 left this branch unreached: every stage in the real list applies to both kinds, so
+  // nothing walked a command-only one. These walk a list of their own, which is the honest way to
+  // test a mechanism the real list does not yet exercise.
+  it("DSOR-EXE-01b: the walker skips a command-only stage for a query, and runs it for a command", () => {
+    const ran: string[] = [];
+    const watch = (at: number | null, name: string, applies: Stage["applies"]): Stage =>
+      Object.freeze({
+        at,
+        name,
+        applies,
+        run: (context: Context) => {
+          ran.push(name);
+
+          return { kind: "carry_on" as const, context };
+        },
+      });
+
+    const list = [
+      watch(1, "authenticate", "both"),
+      watch(7, "claim the idempotency key", "command"),
+      watch(9, "read the state", "both"),
+    ];
+
+    // A query: the contract says `query`, so the command-only stage is stepped over.
+    ran.length = 0;
+    runPipeline(list, {
+      login: undefined,
+      id: "invoice.get",
+      args: {},
+      contract: { kind: "query" } as never,
+    });
+    expect(ran).toEqual(["authenticate", "read the state"]);
+
+    // A command: every stage runs.
+    ran.length = 0;
+    runPipeline(list, {
+      login: undefined,
+      id: "invoice.issue",
+      args: {},
+      contract: { kind: "command" } as never,
+    });
+    expect(ran).toEqual(["authenticate", "claim the idempotency key", "read the state"]);
+  });
+
+  // A command-only stage cannot sit before the contract is resolved, because until then there is no
+  // kind to ask about — the walker would step over it on every call, including commands. That is a
+  // silent skip, which is exactly what DSOR-EXE-01b forbids, so the list is refused at start-up.
+  it("DSOR-EXE-01b: a command-only stage before the contract is resolved stops the program", () => {
+    // The command-only stage carries no §21 number, so the numbers still ascend and this list
+    // fails for the one reason under test rather than for being out of order as well.
+    const tooEarly = [
+      fake(1, "authenticate"),
+      fake(null, "claim the idempotency key", "command"),
+      fake(null, "resolve the operation"),
+      fake(5, "authorize"),
+      fake(6, "validate the input"),
+    ];
+
+    expect(() => assertPipeline(tooEarly)).toThrow(/before the operation is resolved/);
+
+    // The same stage one line later is fine.
+    const inOrder = [
+      fake(1, "authenticate"),
+      fake(null, "resolve the operation"),
+      fake(5, "authorize"),
+      fake(6, "validate the input"),
+      fake(7, "claim the idempotency key", "command"),
+    ];
+
+    expect(assertPipeline(inOrder)).toBe(5);
+  });
+
+  // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
+  // *same* pipeline, so a door is built from a list and the list is checked as the door is built —
+  // not on the first request, and not by trusting whoever builds it.
+  it("DSOR-OPR-04a: a door cannot be built from a list that does not pass the check", () => {
+    expect(() => makeDoor([fake(1, "authenticate")])).toThrow(/missing/);
+    expect(() => makeDoor([])).toThrow();
+  });
+
+  // And the branch piece 2 could not reach. A stage that says it carried on without filling in what
+  // it is for leaves the walk finishing without something the execution needs. That is this
+  // program's bug, not the caller's, which is what INTERNAL_ERROR means.
+  it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", () => {
+    const lazy = PIPELINE.map((stage) =>
+      stage.name === "validate the input"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+
+    const door = makeDoor(lazy);
+    const answer = door({ loggedInAs: "user_123" }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.envelope.retry).toBe("never");
+    expect(answer.askedBy).toBe("user_123");
   });
 });
