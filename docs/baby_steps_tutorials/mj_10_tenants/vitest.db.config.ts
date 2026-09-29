@@ -9,6 +9,10 @@ export default defineConfig({
     setupFiles: ["test/db-setup.ts"],
     // A Neon compute that has gone to sleep takes a few seconds to wake up.
     testTimeout: 30_000,
+    // NEW IN STEP 10: one file at a time. Found live 2026-09-29: the migrate test sets
+    // dsor_runtime's password again, and a login that another file opened at that moment
+    // failed with "password authentication failed" (step 10's README, Think it through).
+    fileParallelism: false,
     hookTimeout: 30_000,
   },
 });
