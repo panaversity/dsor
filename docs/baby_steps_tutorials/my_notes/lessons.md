@@ -331,3 +331,64 @@ Three appearances now, of the shape "the same caller-supplied value, read twice"
 
 The one method that finds it is following the value through every call, and no amount of mutating
 the guard would have.
+
+## 17 · A guard written twice can be half-broken
+
+Step 08's audit clock existed in two places: the initial value of `clock`, and the body of
+`resetClock`.
+
+```ts
+let clock: () => string = () => new Date().toISOString();   // here
+export function resetClock(): void {
+  clock = () => new Date().toISOString();                   // and here
+}
+```
+
+To check that the test really watched the clock, I replaced the first copy with a constant. All 178
+tests passed. The test calls `resetClock()` before it reads the time — so the mutation was healed by
+the second copy before the assertion ran. The test was fine. The *mutation* could not reach the code
+the test used, and I nearly recorded that as "this guard cannot be killed, and here is why".
+
+One name fixed it:
+
+```ts
+const realClock = (): string => new Date().toISOString();
+let clock: () => string = realClock;
+```
+
+The mutation then killed a test, as it should have. The general shape: **when a mutation survives,
+ask whether the thing you changed is the thing the test runs.** Duplicated logic means the answer can
+be no, and then a survivor tells you nothing about the test — only about your mutation.
+
+## 18 · Overlapping checks cannot be tested together
+
+`verifyChain` started with four checks: the sequence matched the position, the chain name was this
+chain, the link backwards was right, and the record's own hash was right. Three tests covered them,
+and every test was caught by two checks at once.
+
+So I removed checks one at a time and ran the suite:
+
+| Removed | Result |
+| --- | --- |
+| the `sequence` check | 181 passed |
+| the `chain` check | 181 passed |
+| the link check | 181 passed |
+| the record-hash check | 2 failed |
+
+Three of four checks were unkillable — not because the tests were weak in general, but because **no
+test fed any check a case only that check could catch.** Two of the three turned out to be genuinely
+redundant, and the reason is worth more than they were: `sequence` and `chain` are *inside* the
+record, so they are inside the hash. Changing either breaks `record_hash` first. They were deleted.
+
+The link check was not redundant; it was untested. Two new tests fixed that, each reaching exactly one
+check:
+
+- a tampered **last** record, where no link follows it to break — only the contents check can catch it
+- a **genuine** record spliced in from a different history: right sequence, valid against the schema,
+  untouched — only the link check can catch it
+
+The method generalises. For each guard, ask: *what case does this catch that no other guard catches?*
+If there is no answer, the guard is redundant — delete it. If there is one, that case is a test you do
+not have yet. This is [lesson 14](#14--a-safety-net-you-have-never-tested-is-not-a-safety-net) told
+from the other end: there, a net had never been thrown anything; here, four nets were stacked so
+nothing ever reached the lower three.

@@ -957,3 +957,95 @@ about later.
 README says why.
 **Rejected:** a record for every refusal including unauthenticated ones. One path and nothing to
 explain, and anyone who can reach the program can fill the audit store with rubbish.
+
+## 54 · The intent record is step 36's, not step 08's (2026-09-30)
+
+**Decided by:** the spec and the map, read before writing code.
+**What:** step 08 adds one pipeline stage, §21.11 `record the decision`. §21.13 `write the intent
+record` is **not** built here.
+**Why:** I had told the learner piece 2 would add both. Then `DSOR-EXE-03a` turned out to require
+*"the proposal id, operation and version, payload hash, idempotency key, connector, and security
+context"* — and this program has no proposals, no idempotency keys and no connectors. An intent
+record built now would hold four of six fields and claim nothing. The map already assigns it:
+step 36, `36_write_it_down_before_you_act`, together with `DSOR-EXE-03b`, `04a` and `04b`.
+**Cost:** the step is smaller than announced, and "write down what you are about to do before you do
+it" — the more famous half of §21 — waits 28 steps.
+**Rejected:** a partial intent record now, to make the step feel complete. That is a stub with a rule
+id on it, which is the thing [decision 27](#27--dsor-idn-02a-was-an-overclaim-and-the-shape-argument-was-wrong-2026-09-28) exists
+to stop.
+
+## 55 · One request id per request, minted before the first stage (2026-09-30)
+
+**What:** the door mints the request id and puts it in the `Context`, where it is **required** rather
+than optional. Every refusal and every success is handed that same id.
+**Why:** `correlation.request_id` is a required field of `audit-record.schema.json`, so step 08 had to
+put something there. The id was being minted lazily inside `correlationFor`, whichever envelope
+happened to be built first — so it named *an answer*, not *a request*. A record minting its own would
+carry a different id from the answer it was about, and nothing could join the two. That is the only
+job a correlation id has.
+**Cost:** the id is threaded through `principalFrom`, both handlers, `invoiceIdFrom` and every
+`refuse` call — one parameter in eleven places. It landed as its own commit, before the record, so the
+repair and the feature are separable.
+**Rejected:** letting the record mint its own and calling the mismatch a later step's problem. The
+record would have looked right in every test and been useless in every investigation.
+
+## 56 · A refusal is carried, not returned, so §21.11 can record a DENY (2026-09-30)
+
+**What:** `Stage` gained `evenAfterARefusal`, `Context` gained `refusal`, and `runPipeline` remembers
+a refusal and keeps walking — skipping the remaining checks, running the stages marked to run anyway.
+The last refusal wins.
+**Why:** §21's own diagram says **RECORD DECISION — always, including DENY**. The walk returned at
+the first refusal, so a stage at §21.11 would never have seen one, and every denial would have gone
+unrecorded. A denial that is not written down is the failure `DSOR-EXE-02` exists to prevent: an
+agent can probe a hundred operations it may not call and leave nothing behind.
+**Cost:** the walker is no longer "stop at the first no", which is the simpler sentence. Two new
+`assertPipeline` rules pay for it: the recording stage must have the flag on, and nothing before it
+may.
+**Rejected:** recording from inside `makeDoor`, after the walk. It works, and it moves the order out
+of the list and back into a function — undoing [step 07](step-07-the-pipeline-skeleton.md) for the
+first stage that needed it.
+
+## 57 · The last refusal wins, so an unrecordable denial is not reported as a denial (2026-09-30)
+
+**What:** when the recording stage refuses, its refusal replaces the one already carried. A call
+denied by `authorize` whose record cannot be written comes back
+`EVIDENCE_STORE_UNAVAILABLE`, not `AUTHORIZATION_DENIED`.
+**Why:** answering `AUTHORIZATION_DENIED` would be answering a refusal we failed to write down, which
+is exactly what `DSOR-EXE-02` forbids — and the caller would have no way to know the refusal went
+unrecorded. Found by mutation: changing the walker to keep the *first* refusal left all 197 tests
+passing, because every test about a failed record used a call that was otherwise allowed.
+**Cost:** a caller can be told the evidence store is unavailable when their request was also going to
+be refused for a second, unrelated reason. They learn less than they might have, which is the right
+way round.
+**Rejected:** keeping the first refusal because it is "the real reason". It is the real reason, and
+reporting it means claiming the decision was recorded.
+
+## 58 · A record says what was decided, not what happened (2026-09-30)
+
+**What:** `authorization` is `ALLOW` or `DENY` and `result` is `ALLOWED` or the refusal's code — the
+**decision**. A call that is authorized and then fails while executing is on the record as `ALLOW`,
+and the caller is told `VALIDATION_FAILED`. The record and the answer disagree, on purpose, and a
+test asserts that they do.
+**Why:** §21 separates them. Step 11 records the decision; step 15 FINALIZE records the outcome as
+`COMMITTED`, `FAILED` or `OUTCOME_UNKNOWN`. This step has step 11 and no step 15, so there is nowhere
+honest to put "what happened". Found by writing the test the other way round first, asserting `DENY`,
+and watching it fail.
+**Cost:** `pnpm start` prints a line reading `ALLOWED` for a call the caller saw refused. That looks
+like a bug until you know why, so the README says so and the test says so.
+**Rejected:** recording the outcome anyway, from the answer the door is about to return. It would
+read correctly and it would be §21.15 built in the wrong place, before proposals exist to hang it on.
+
+## 59 · A test seam for the invoice store (2026-09-30)
+
+**What:** `resetInvoices()`, exported from `invoice.ts`, puts the two-invoice store back to how it
+started.
+**Why:** the story has exactly one draft invoice, INV-1009, and step 08 has four tests that each need
+a draft. Tests in one file share the module, so without a reset they each depend on the order they
+happen to run in — a test proving whatever ran before it. `resetRequestIds`, `resetProposalIds` and
+`forgetTheLog` are the same seam, so the shape is already established here.
+**Cost:** production code exports a function that undoes an issue, and there is no unissuing an
+invoice in DSoR. The doc comment says it is a test seam and why, which is all a comment can do; step
+09 puts the store in a database and the seam becomes a transaction rollback.
+**Rejected:** adding a third draft invoice to the store. It changes the running example
+([§0.4](../../../specs/dsor/00-conventions.md#04-running-example-informative)) to work around a test
+ordering problem, and the next step that needs two drafts would add a fourth.
