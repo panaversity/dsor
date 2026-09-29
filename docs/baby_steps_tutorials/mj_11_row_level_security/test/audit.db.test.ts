@@ -2,6 +2,7 @@
 // read it, and can never change or remove one. By claim, C1 to C5 in step 09's README.
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool, runtimeRoleProblems } from "../src/postgres.ts";
@@ -277,6 +278,32 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
     expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
     expect(answer).not.toHaveProperty("data");
     expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
+  });
+
+  // NEW IN STEP 11: the two tests beside this one fail before the transaction begins, at
+  // pool.connect(). Here the INSERT itself fails, inside inCompany's transaction, because
+  // the log's connections are read-only. Found by step 11's review: with the error
+  // swallowed inside inCompany, the caller got the invoice and no record was kept.
+  it("DSOR-EXE-03b: a log whose INSERT fails inside its transaction gives no invoice, and no record", async () => {
+    const readOnly = new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });
+    readOnly.on("connect", (client) => {
+      void client.query("SET default_transaction_read_only = on");
+    });
+    try {
+      const id = requestId("c4-read-only");
+      const answer = await call(
+        registry,
+        createDbLog(readOnly),
+        { ...AGENT, request_id: id },
+        "invoice.get",
+        { id: "INV-1008" },
+      );
+      expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
+      expect(answer).not.toHaveProperty("data");
+      expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
+    } finally {
+      await readOnly.end();
+    }
   });
 
   it("DSOR-EXE-03b: a log with the wrong password gives no invoice, and no word about why", async () => {

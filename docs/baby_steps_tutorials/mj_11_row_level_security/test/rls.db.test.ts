@@ -55,6 +55,43 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.audit", enabled: true, forced: true, policies: 2 },
     ]);
   });
+
+  // Every policy exactly as written, the way step 09 lists every privilege. Found by the
+  // review: a policy limited to SELECT, or given to one role only, passed every test.
+  it("DSOR-TEN-01b: every policy is exactly as written: its command, its roles, and its rule", async () => {
+    const { rows } = await observer.query(
+      `SELECT schemaname || '.' || tablename AS table, policyname AS name, cmd AS command,
+              roles::text[] AS roles, qual AS using, with_check AS check
+         FROM pg_policies ORDER BY 1, 2`,
+    );
+    const company = "NULLIF(current_setting('dsor.tenant_id'::text, true), ''::text)";
+    expect(rows).toStrictEqual([
+      {
+        table: "app.invoices",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+      },
+      {
+        table: "dsor.audit",
+        name: "audit_read",
+        command: "SELECT",
+        roles: ["public"],
+        using: `(tenant = ${company})`,
+        check: null,
+      },
+      {
+        table: "dsor.audit",
+        name: "audit_write",
+        command: "INSERT",
+        roles: ["public"],
+        using: null,
+        check: `(NOT (tenant IS DISTINCT FROM ${company}))`,
+      },
+    ]);
+  });
 });
 
 describe("C2: the store keeps companies apart when the SQL forgets the company", () => {
@@ -214,6 +251,25 @@ describe("C4: the company lasts one transaction, even when a pool lends the conn
       company: null,
       records: 0,
     });
+  });
+
+  // No rule id: step 11's decision 3. A failed transaction may leave its connection in a
+  // state the next request must not inherit, so the connection is closed, never lent
+  // again. Found by the review: with it lent again, or never given back, every test passed.
+  it("a connection whose transaction failed is closed, and the next request gets a new one", async () => {
+    const { rows } = await one.query("SELECT pg_backend_pid() AS connection");
+    // A record the database refuses: step 02's form has no company called acme, so the
+    // CHECK of migration 002 fails inside the transaction.
+    const refused = createDbLog(one).add({
+      kind: "decision",
+      authorization: "DENY",
+      result: "VALIDATION_FAILED",
+      correlation: { request_id: requestId("c4-failed") },
+      tenant: "acme",
+    });
+    await expect(refused).rejects.toMatchObject({ code: "23514" });
+    const next = await one.query("SELECT pg_backend_pid() AS connection");
+    expect(next.rows[0]!["connection"]).not.toBe(rows[0]!["connection"]);
   });
 });
 
