@@ -208,6 +208,29 @@ Step 08 found one more on 2026-09-27:
 - **`envelope.ts` passed 150 lines** with that fix: 156 in `mj_04`, 157 from `mj_05`.
   Step 07 named 150 as the point to split it. The next change to it should split it.
 
+## Proposed for the house list and the map
+
+Proposals only. The analogy list lives in the `write-for-learners` skill, and the map is
+the official tutorial's. A learner build does not change either. A maintainer decides.
+
+- **Analogies, from steps 09 and 10.** The **letterbox** (step 09): anyone at the slot
+  can drop a letter in and see what is inside, and nobody there can take one out or
+  change it. It fits "add, never change", which no analogy on the list does, and it stops
+  at the owner's key (step 39). The **bank teller who does not say who banks there**
+  (step 10): the same answer whether a name is a customer or not, which is
+  DSOR-ERR-01b. Step 10 first used a hotel desk, and changed to the teller. "Tenants of
+  one building" is the plain meaning of the word, more than an analogy. Step 10 also
+  uses "lock" as §14 does, for one independent check. That is not the list's "lock that
+  stays locked when the power fails", and a reader may mix them up.
+- **Step 05's envelope, reversed by step 10.** Step 05 ignored any field of the request
+  envelope other than `token` and `request_id`. Step 10's decision 11 closes it: `token`,
+  `tenant`, and `request_id`, and any other field is refused. The review found
+  `{ token, tenant: "org_456", tenant_id: "org_789" }` working in `org_456` with the
+  second company ignored. If the official steps follow, step 05's entry in the map should
+  say the envelope is closed from the start, so no later step has to reverse it.
+- **Step 10's "done when".** See open question 35: "the same answer whether the resource
+  exists or not" instead of "the same 'not found'".
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

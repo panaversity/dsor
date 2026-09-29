@@ -224,3 +224,30 @@ for a human. An agent may gather evidence; it does not settle these alone.
     from the agent and the model. Should a rule keep the migration credential out of the
     runtime's reach too, for example in a separate store that only the migration job can
     read?
+35. **Is a foreign URI "not found", or a tenant mismatch?** The baby-steps map says step
+    10 is done when "a URI for another company returns the same 'not found' as a URI
+    that does not exist". DSOR-SRC-02b says a tenant identifier in the arguments that
+    disagrees with the security context "MUST cause `TENANT_MISMATCH` or
+    `AUTHORIZATION_DENIED`", and a canonical URI's first part is a tenant identifier.
+    Step 10's learner build follows the rule: every foreign URI gets `TENANT_MISMATCH`,
+    whether its resource exists or not, so DSOR-ERR-01b still holds, and the probe
+    shows in the audit log. Should the map say "the same answer whether the resource
+    exists or not", and should §21 name the code? This refines question 30, which asks
+    at which line.
+36. **What tenant does the audit record of a refusal before line 2 carry?**
+    `audit-record.schema.json` requires `tenant`. A call refused at line 1, with no
+    login, has no tenant yet, and one refused at line 2 names a company the caller may
+    not belong to. Step 10's learner build leaves the record's tenant empty for both, and
+    keeps a non-member's claimed company under `extensions`, never as the tenant, so a
+    stranger cannot write into another company's audit partition. Should the schema
+    allow a record with no tenant, or should §29's aggregated counts cover these
+    refusals only?
+37. **Why does §6's invoice list no `tenant_id`?** DSOR-TEN-01a says every tenant-owned
+    resource carries its `tenant_id`. The invoice in §6's example has none, and step 10's
+    learner build adds it to the row and to the invoice DSoR returns. Should §6 show it?
+38. **May the migration job change the runtime role's password?** Step 09's learner
+    build sets `dsor_runtime`'s password from `DSOR_DB_URL` on every `pnpm migrate`, so
+    the password is written in one place only. Step 10's build found live that a login
+    opening at that moment can fail, so its database tests now run one file at a time.
+    Should the migration job create the runtime role only, and leave its credential to a
+    separate, rarer rotation step?
