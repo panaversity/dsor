@@ -10,11 +10,20 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
-function fake(at: number | null, name: string, applies: Stage["applies"] = "both"): Stage {
+function fake(
+  at: number | null,
+  name: string,
+  applies: Stage["applies"] = "both",
+  // NEW IN STEP 08. `record the decision` is the only stage that needs it true, so it defaults to
+  // the answer that is right for every other stage — and a list built with the wrong one is exactly
+  // what the two new checks in assertPipeline refuse.
+  evenAfterARefusal = name === "record the decision",
+): Stage {
   return Object.freeze({
     at,
     name,
     applies,
+    evenAfterARefusal,
     run: (context: Context) => ({ kind: "carry_on" as const, context }),
   });
 }
@@ -28,6 +37,7 @@ describe("the pipeline", () => {
       "resolve the operation",
       "authorize",
       "validate the input",
+      "record the decision",
     ]);
   });
 
@@ -35,7 +45,7 @@ describe("the pipeline", () => {
   // roadmap: 1 to 5 is missing the tenant, the delegation and the operational status; after 6 come
   // the idempotency claim, the proposal, the preconditions and the controls.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, null, 5, 6]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, null, 5, 6, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -89,10 +99,11 @@ describe("the pipeline", () => {
       fake(null, "resolve the operation"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
+      fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(4);
+    expect(assertPipeline(whole)).toBe(5);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -135,6 +146,7 @@ describe("the pipeline", () => {
         at,
         name,
         applies,
+        evenAfterARefusal: false,
         run: (context: Context) => {
           ran.push(name);
 
@@ -194,9 +206,10 @@ describe("the pipeline", () => {
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
+      fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(5);
+    expect(assertPipeline(inOrder)).toBe(6);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -217,10 +230,16 @@ describe("the pipeline", () => {
   // than a literal — the literal was lesson 10 in this step's own new test.
   it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", () => {
     for (const login of [{ loggedInAs: "user_123" }, { loggedInAs: "cfo_100" }]) {
-      // Only the stages that FILL something can leave the walk short. `authorize` fills nothing —
-      // it only refuses — so a no-op `authorize` is a different failure, and it has its own test
-      // below.
-      const fillers = PIPELINE.filter((stage) => stage.name !== "authorize");
+      // Only the stages that FILL something can leave the walk short. Two stages fill nothing, and
+      // each has its own test elsewhere because a no-op version of each is a different failure:
+      //
+      //   - `authorize` only refuses, so a no-op one lets the wrong caller through — that is
+      //     deny-by-default, tested in deny-by-default.test.ts.
+      //   - `record the decision` only writes, so a no-op one answers perfectly well and silently
+      //     stops keeping evidence. Nothing about the answer can catch that, which is the point:
+      //     it is caught in decision-first.test.ts by looking at the log.
+      const fillsNothing = new Set(["authorize", "record the decision"]);
+      const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
       for (const lazied of fillers) {
         const list = PIPELINE.map((stage) =>
@@ -365,6 +384,7 @@ describe("the pipeline", () => {
       at: null,
       name: "resolve the operation",
       applies: "both",
+      evenAfterARefusal: false,
       run: (context: Context) => {
         try {
           (context as { id: string }).id = "invoice.issue";
@@ -392,6 +412,9 @@ describe("the pipeline", () => {
   // `authenticate`, which answers an unauthenticated caller UNSUPPORTED_CAPABILITY and tells them
   // which operations exist. Every other ordering test here reads PIPELINE, so none of them ever
   // handed the checker a wrong order.
+  //
+  // Step 08 made the list five long, so this now walks 120 orderings instead of 24, and still
+  // exactly one is accepted. The test cost nothing to strengthen: the number came from the list.
   it("DSOR-EXE-01a: of every ordering of the real stages, exactly one is accepted", () => {
     const orderings = <T>(xs: readonly T[]): T[][] =>
       xs.length <= 1
@@ -402,7 +425,7 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    expect(all).toHaveLength(24);
+    expect(all).toHaveLength(120);
 
     const accepted = all.filter((list) => {
       try {

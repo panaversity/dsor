@@ -66,12 +66,30 @@ function makeInvoice(id: string, vendor: string, amount: Money, status: InvoiceS
 // out here. Every Invoice inside it stays frozen, the array stays private to this
 // module, and issueInvoice is the only thing that writes to it. A real store, with a
 // real transaction, arrives in step 09.
-const invoices: Invoice[] = [
-  makeInvoice("INV-1008", "VENDOR-44", money("31400.00", "USD"), "issued"),
-  // A second invoice, so that a test can prove getInvoice searches the list instead
-  // of always handing back the first entry.
-  makeInvoice("INV-1009", "VENDOR-44", money("2500.00", "USD"), "draft"),
-];
+function startingInvoices(): Invoice[] {
+  return [
+    makeInvoice("INV-1008", "VENDOR-44", money("31400.00", "USD"), "issued"),
+    // A second invoice, so that a test can prove getInvoice searches the list instead
+    // of always handing back the first entry.
+    makeInvoice("INV-1009", "VENDOR-44", money("2500.00", "USD"), "draft"),
+  ];
+}
+
+const invoices: Invoice[] = startingInvoices();
+
+/**
+ * Puts the store back to how it started.
+ *
+ * NEW IN STEP 08, and a test seam only — there is no unissuing an invoice in DSoR, the same way
+ * there is no erasing an audit record. It exists because this step has several tests that each need
+ * a draft invoice, and there is exactly one draft in the story. Tests in one file share the module,
+ * so without this they would depend on the order they happen to run in, which is a test proving
+ * whatever ran before it.
+ */
+export function resetInvoices(): void {
+  invoices.length = 0;
+  invoices.push(...startingInvoices());
+}
 
 /**
  * Finds one invoice by its id.

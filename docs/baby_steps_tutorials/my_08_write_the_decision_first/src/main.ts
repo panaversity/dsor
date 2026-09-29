@@ -3,6 +3,7 @@
 import { greet } from "./greet.ts";
 // NEW IN STEP 06: the same invoice, asked for by two people, one line apart.
 import { callOperation } from "./operations.ts";
+import { countedWithoutARecord, theLog, verifyChain } from "./audit.ts";
 import type { Login } from "./login.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -77,3 +78,32 @@ for (const [what, run] of [
 ] as const) {
   console.log(`${what.padEnd(23)} ${show(run())}`);
 }
+
+// NEW IN STEP 08, and this is the step. Everything above already happened; this is what was written
+// down while it did. Read the `authorization` column: the two DENY lines are the ones a program that
+// logged only its successes would have lost, and they are the most interesting lines here.
+//
+// `previous_hash` is the record before it, so the whole run is one chain. Change any line of it and
+// every hash after it stops agreeing.
+console.log();
+console.log("The audit log:");
+console.log();
+
+for (const record of theLog()) {
+  console.log(
+    [
+      String(record.sequence).padStart(2),
+      (record.authorization ?? "-").padEnd(5),
+      (record.operation ?? "(no such operation)").padEnd(19),
+      record.identity.subject.padEnd(21),
+      record.result.padEnd(22),
+      `${record.record_hash.slice(0, 14)}...`,
+    ].join("  "),
+  );
+}
+
+console.log();
+console.log(`${theLog().length} records, chain verifies: ${verifyChain(theLog())}`);
+console.log(
+  `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,
+);

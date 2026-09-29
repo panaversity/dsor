@@ -33,6 +33,9 @@ import {
   type StageResult,
 } from "./pipeline.ts";
 import { parseUri } from "./uri.ts";
+// NEW IN STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
+// writes a record lives too.
+import { audit } from "./audit.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
 // the program here, before any caller gets a turn. That is DSOR-OPR-02a.
@@ -396,12 +399,86 @@ const validateTheInput: Stage["run"] = (context) => {
   }
 };
 
+/**
+ * §21.11 — record the decision. Always, including a DENY.
+ *
+ * This is the step. Everything above decides; this writes down what was decided, and it runs before
+ * the answer leaves the door — which is the whole of `DSOR-EXE-02`.
+ *
+ * Four things about it are worth more than the code:
+ *
+ *   - It runs **after a refusal too**, which is why `Stage` gained a flag. The common mistake §21
+ *     names is writing the log at the end, in a `finally`: too late, and it misses the crash.
+ *     Skipping it on a refusal is the same mistake wearing a different hat, and it is worse, because
+ *     a probe that is refused a hundred times is exactly the evidence you want.
+ *   - It reads what it records from the **context**, never from the arguments. The subject is the
+ *     principal `authenticate` resolved; the operation is the contract `resolve the operation`
+ *     found; the payload hash is the one `validate the input` computed from text it wrote down once.
+ *     `DSOR-MOD-03` in one sentence: evidence comes from what DSoR established, not from what the
+ *     caller said.
+ *   - The caller's own operation id never reaches the record. `operation` is an `operationRef` in
+ *     the schema — `invoice.get@1`, with a version — so a request for `"invoice.destroy"` has no
+ *     valid value to put there and the field is left out. Putting the caller's string in would make
+ *     the record unwritable, and an unwritable record turns a merely misspelled request into
+ *     `EVIDENCE_STORE_UNAVAILABLE`. The requested id goes in `reason`, which is free text.
+ *   - An unauthenticated caller leaves no record, only a count. `audit` decides that, not this
+ *     stage — see decision 53 and §29.
+ */
+const recordTheDecision: Stage["run"] = (context) => {
+  const { principal, contract, refusal: refused } = context;
+  const denial = refused?.kind === "error" ? refused.envelope : undefined;
+
+  try {
+    audit({
+      kind: "decision",
+      subject: principal?.id,
+      requestId: context.requestId,
+      // The decision, not the outcome. Whether the invoice was actually issued is §21.15's business,
+      // and it has not happened yet — it cannot have, because this line runs first.
+      authorization: denial === undefined ? "ALLOW" : "DENY",
+      result: denial === undefined ? "ALLOWED" : denial.code,
+      reason: denial === undefined ? undefined : denial.message,
+      ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
+      ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
+    });
+  } catch {
+    // The decision could not be written, so there is no honouring DSOR-EXE-02 by answering. The
+    // caller is told that instead, and because this stage sits before anything executes, nothing
+    // has happened yet. `EVIDENCE_STORE_UNAVAILABLE` is the §28 code for it, retry
+    // `safe_same_key`: the request never ran, so sending it again is safe.
+    //
+    // This is the decision-record half of DSOR-EXE-03b. The other half is about the *intent* record
+    // and lands in step 36, along with DSOR-EXE-03a.
+    return refuse(
+      principal?.id ?? "(nobody)",
+      "EVIDENCE_STORE_UNAVAILABLE",
+      `the decision about ${context.id} could not be written down, so it was not carried out`,
+      context.requestId,
+    );
+  }
+
+  return carryOn(context);
+};
+
 const stage = (
   at: number | null,
   name: string,
   applies: Stage["applies"],
   run: Stage["run"],
-): Stage => Object.freeze({ at, name, applies, run });
+): Stage => Object.freeze({ at, name, applies, run, evenAfterARefusal: false });
+
+/**
+ * A stage that runs even when something has already refused.
+ *
+ * A second helper rather than a fifth argument, so the list below reads as what it is. Today §21.11
+ * is the only one; §21.16 and §21.17 join it when the decision bundle arrives.
+ */
+const alsoAfterARefusal = (
+  at: number | null,
+  name: string,
+  applies: Stage["applies"],
+  run: Stage["run"],
+): Stage => Object.freeze({ at, name, applies, run, evenAfterARefusal: true });
 
 /** The checklist, in order. Later steps add lines; they never reorder them. */
 export const PIPELINE: readonly Stage[] = Object.freeze([
@@ -409,6 +486,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(null, "resolve the operation", "both", resolveTheOperation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
+  // NEW IN STEP 08. §21.11, and the only stage in the list that runs after a refusal.
+  alsoAfterARefusal(11, "record the decision", "both", recordTheDecision),
 ]);
 
 // Start-up, not first request, and a count rather than `true` — lesson 12. A list whose order

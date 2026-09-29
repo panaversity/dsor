@@ -68,6 +68,13 @@ export interface Context {
    * that text, carried from here.
    */
   readonly payloadHash?: string;
+  /**
+   * NEW IN STEP 08: the refusal that has already happened, if one has.
+   *
+   * It is here because §21.11 must record a `DENY`, and the stage that records cannot record a
+   * refusal it has not been shown. Set by the walker, never by a stage.
+   */
+  readonly refusal?: OperationAnswer;
 }
 
 /**
@@ -91,6 +98,19 @@ export interface Stage {
   readonly at: number | null;
   readonly name: string;
   readonly applies: Applies;
+  /**
+   * NEW IN STEP 08: does this stage still run once something has refused?
+   *
+   * For almost every stage the answer is no: the first no is the answer, and asking "may you" after
+   * "who are you" already failed is pointless at best. §21.11 is the exception, and §21's own
+   * diagram is emphatic about it — **RECORD DECISION — always, including DENY**. A refusal that is
+   * not written down is the failure DSOR-EXE-02 exists to prevent: an agent can probe a hundred
+   * operations it may not call and leave nothing behind.
+   *
+   * So a refusal does not end the walk any more. It is carried, the stages that do not apply to it
+   * are skipped, and the evidence stages still run.
+   */
+  readonly evenAfterARefusal: boolean;
   readonly run: (context: Context) => StageResult;
 }
 
@@ -113,6 +133,10 @@ const REQUIRED: readonly string[] = Object.freeze([
   "resolve the operation",
   "authorize",
   "validate the input",
+  // NEW IN STEP 08. Last of the five, and that position is the requirement: DSOR-EXE-02 says the
+  // decision is recorded *before the response is returned*, so nothing that produces a response may
+  // sit between the checks and this line.
+  "record the decision",
 ]);
 
 /**
@@ -211,6 +235,33 @@ export function assertPipeline(stages: readonly Stage[]): number {
     throw new TypeError(`the pipeline is missing ${REQUIRED[expected]}, which every call needs`);
   }
 
+  // NEW IN STEP 08: the two rules that make `record the decision` mean what it says.
+  //
+  // The first is the important one. A `record the decision` stage added with the flag off would be
+  // stepped over on every refusal, and *nothing would fail*: every allowed call would still be
+  // recorded, every test about a success would still pass, and denials would quietly stop being
+  // written down. That is the exact failure §21's "always, including DENY" is warning about, and it
+  // is invisible from the outside — which is why it is refused here, at start-up, by name.
+  const recordsAt = stages.findIndex((stage) => stage.name === "record the decision");
+  const records = stages[recordsAt];
+
+  if (records !== undefined && !records.evenAfterARefusal) {
+    throw new TypeError(
+      "record the decision must run even after a refusal, or denials go unrecorded",
+    );
+  }
+
+  // The second: nothing before the recording may run after a refusal. A stage that did would be
+  // acting on a request that has already been refused and has not yet been written down — work
+  // happening outside the evidence, which is the order DSOR-EXE-02 is about.
+  for (const [at, stage] of stages.entries()) {
+    if (stage.evenAfterARefusal && at < recordsAt) {
+      throw new TypeError(
+        `${stage.name} runs after a refusal but sits before the decision is recorded`,
+      );
+    }
+  }
+
   return stages.length;
 }
 
@@ -248,6 +299,7 @@ export function runPipeline(stages: readonly Stage[], start: Context): PipelineR
   // that already ran: change the id after authorize said yes, or the login after authenticate did.
   // `readonly` on Context is erased before Node runs, which is step 01's lesson in a fourth place.
   let context = Object.freeze(start);
+  let refused: OperationAnswer | undefined;
 
   for (const stage of stages) {
     const kind: OperationKind = context.contract?.kind === "command" ? "command" : "query";
@@ -256,13 +308,32 @@ export function runPipeline(stages: readonly Stage[], start: Context): PipelineR
       continue;
     }
 
+    // NEW IN STEP 08: a refusal no longer returns from here. It is remembered, the rest of the
+    // checks are skipped, and the stages marked `evenAfterARefusal` still run — because §21.11 has
+    // to record a DENY, and it cannot record one it never reached.
+    if (refused !== undefined && !stage.evenAfterARefusal) {
+      continue;
+    }
+
     const result = stage.run(context);
 
     if (result.kind === "refused") {
-      return result;
+      // The *last* refusal wins, and only an `evenAfterARefusal` stage can ever overwrite an
+      // earlier one. That is deliberate: the only stages that run after a refusal are the ones
+      // writing the evidence, and a refusal from one of those means "I could not keep the promise
+      // this answer depends on". DSOR-EXE-02 is a promise about the answer, so if it cannot be kept
+      // the caller must be told that instead of being told the original no.
+      refused = result.answer;
+      context = Object.freeze({ ...context, refusal: result.answer });
+
+      continue;
     }
 
     context = Object.freeze(result.context);
+  }
+
+  if (refused !== undefined) {
+    return { kind: "refused", answer: refused };
   }
 
   return { kind: "ready", context };
