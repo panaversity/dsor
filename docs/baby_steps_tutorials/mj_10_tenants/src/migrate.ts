@@ -1,12 +1,18 @@
 // Run with:  pnpm migrate
-// NEW IN STEP 09: builds the database as the owner, DSOR_MIGRATION_URL. It creates
-// dsor_runtime with SQL, never in the Neon console, then runs the migration, all in one
-// transaction. Safe to run twice (step 09's README, decisions 3, 4, and 13).
-import { readFileSync } from "node:fs";
+// Builds the database as the owner, DSOR_MIGRATION_URL. It creates dsor_runtime with SQL,
+// never in the Neon console, then runs the migrations, all in one transaction (step 09's
+// README, decisions 3, 4, and 13).
+// NEW IN STEP 10: each migration runs once. The table dsor.migrations remembers which
+// have run (step 10's README, decision 8).
+import { readdirSync, readFileSync } from "node:fs";
 import pg from "pg";
 import { loadDotEnv, requireEnv } from "./postgres.ts";
 
-const MIGRATION = new URL("../migrations/001_audit_and_invoices.sql", import.meta.url);
+const MIGRATIONS = new URL("../migrations/", import.meta.url);
+// Every .sql file, in name order: 001 before 002.
+const files = readdirSync(MIGRATIONS)
+  .filter((file) => file.endsWith(".sql"))
+  .sort();
 
 loadDotEnv(["DSOR_MIGRATION_URL", "DSOR_DB_URL"]);
 let ownerUrl: string;
@@ -38,12 +44,32 @@ try {
     [exists ? "ALTER" : "CREATE", password],
   );
   await owner.query(rows[0]!.sql);
-  await owner.query(readFileSync(MIGRATION, "utf8"));
+  // NEW IN STEP 10: the list of migrations that have run. dsor_runtime gets no privilege on
+  // it: 001 takes every privilege away from it in this schema, and nothing grants one.
+  await owner.query("CREATE SCHEMA IF NOT EXISTS dsor");
+  await owner.query(
+    `CREATE TABLE IF NOT EXISTS dsor.migrations (
+       name text PRIMARY KEY,
+       at   timestamptz NOT NULL DEFAULT now()
+     )`,
+  );
+  // A second pnpm migrate started at the same moment waits here, then finds the files this
+  // one ran already in the list.
+  await owner.query("LOCK TABLE dsor.migrations IN EXCLUSIVE MODE");
+  const ran = await owner.query<{ name: string }>("SELECT name FROM dsor.migrations");
+  const done = new Set(ran.rows.map((row) => row.name));
+  const todo = files.filter((file) => !done.has(file));
+  // A file and its line in the list are written in one transaction: both, or neither.
+  for (const file of todo) {
+    await owner.query(readFileSync(new URL(file, MIGRATIONS), "utf8"));
+    await owner.query("INSERT INTO dsor.migrations (name) VALUES ($1)", [file]);
+  }
   await owner.query("COMMIT");
   console.log(
     exists ? "dsor_runtime: password set again from DSOR_DB_URL" : "dsor_runtime: created",
   );
-  console.log("migration 001_audit_and_invoices: done");
+  if (todo.length === 0) console.log("no migration to run");
+  for (const file of todo) console.log(`migration ${file.replace(/\.sql$/, "")}: done`);
 } catch (error) {
   await owner.query("ROLLBACK");
   // Only the database's message: it never holds the password, which travelled as a value.
