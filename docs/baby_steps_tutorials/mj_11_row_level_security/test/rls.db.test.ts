@@ -12,6 +12,7 @@ import {
   dbRegistry,
   newPool,
   ownerRowsFor,
+  ownerStore,
   poolOfOne,
   requestId,
   rowsFor,
@@ -78,6 +79,18 @@ describe("C2: the store keeps companies apart when the SQL forgets the company",
     );
     expect(rows).toStrictEqual([{ tenant_id: "org_456" }]);
   });
+
+  // The first lock alone. Found by the review: with DSoR's WHERE deleted (break V5), every
+  // test passed, because the database's lock hid it. The owner holds BYPASSRLS, so no
+  // policy applies to it, and only DSoR's own WHERE can filter what the store returns.
+  it("DSOR-TEN-01b: with every policy skipped, DSoR's own store still finds only org_456's rows", () => {
+    expect(ownerStore()).toStrictEqual({
+      bypassrls: true,
+      inv2001: null,
+      inv1008: "org_456",
+      recordTenants: ["org_456"],
+    });
+  });
 });
 
 describe("C3: no company set, no rows", () => {
@@ -105,12 +118,19 @@ describe("C3: no company set, no rows", () => {
   const INVOICES = "SELECT tenant_id, id FROM app.invoices";
   const RECORDS = "SELECT count(*)::int AS records FROM dsor.audit";
 
+  // So "no record" means the lock hid it, not that the table was empty. Found by the review.
+  async function aRecordExists(): Promise<void> {
+    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
+    expect(answer).toMatchObject({ data: { id: "INV-1008" } });
+  }
+
   it("DSOR-RP-01d: a fresh connection with no company set reads no invoice", async () => {
     const { rows } = await onFreshConnection((client) => client.query(INVOICES));
     expect(rows).toStrictEqual([]);
   });
 
   it("DSOR-RP-01d: a fresh connection with no company set reads no audit record", async () => {
+    await aRecordExists();
     const { rows } = await onFreshConnection((client) => client.query(RECORDS));
     expect(rows).toStrictEqual([{ records: 0 }]);
   });
@@ -124,11 +144,35 @@ describe("C3: no company set, no rows", () => {
   });
 
   it("DSOR-RP-01d: after a transaction inside org_456, no company set reads no audit record", async () => {
+    await aRecordExists();
     const { rows } = await onFreshConnection(async (client) => {
       await afterOrg456(client);
       return client.query(RECORDS);
     });
     expect(rows).toStrictEqual([{ records: 0 }]);
+  });
+
+  // No rule id: step 11's decision 3. Another program's mistake, on a connection a pooler
+  // could hand to DSoR next: a company set for the whole session. A call with no company
+  // must run with none, not with the one the connection carries. Found by the review.
+  it("a call with no company, on a connection that carries org_456 for its whole session, runs with none", async () => {
+    const one = poolOfOne();
+    try {
+      await one.query("SELECT set_config('dsor.tenant_id', 'org_456', false)");
+      const id = requestId("c3-left-over");
+      const answer = await call(
+        dbRegistry(one),
+        createDbLog(one),
+        { tenant: "org_456", request_id: id },
+        "invoice.get",
+        { id: "INV-1008" },
+      );
+      expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
+      expect(ownerRowsFor(id)).toMatchObject([{ tenant: null, result: "AUTHENTICATION_REQUIRED" }]);
+    } finally {
+      // Closing the pool closes the connection, and the session's company with it.
+      await one.end();
+    }
   });
 });
 
@@ -177,17 +221,21 @@ describe("C5: the log is kept apart by company", () => {
   const RECORD = `INSERT INTO dsor.audit (record_id, kind, "authorization", result, correlation, tenant)
                   VALUES ($1, 'decision', 'DENY', 'AUTHORIZATION_DENIED', '{}', $2)`;
 
-  it("DSOR-TEN-02a: inside org_456, a record for org_789 is refused with 42501", async () => {
+  // The policy's refusal, by its message too: a missing privilege has the same code, 42501.
+  // Found by the review.
+  const BY_THE_POLICY = { ...NO_PRIVILEGE, message: expect.stringMatching(/row-level security/) };
+
+  it("DSOR-TEN-02a: inside org_456, a record for org_789 is refused by the policy, 42501", async () => {
     await expect(
       tryThenRollBack(observer, RECORD, "org_456", [requestId("c5-foreign"), "org_789"]),
-    ).rejects.toMatchObject(NO_PRIVILEGE);
+    ).rejects.toMatchObject(BY_THE_POLICY);
   });
 
   // A record with no company would be one that org_456's own readers never see.
-  it("DSOR-TEN-02a: inside org_456, a record with no company is refused with 42501", async () => {
+  it("DSOR-TEN-02a: inside org_456, a record with no company is refused by the policy, 42501", async () => {
     await expect(
       tryThenRollBack(observer, RECORD, "org_456", [requestId("c5-no-company"), null]),
-    ).rejects.toMatchObject(NO_PRIVILEGE);
+    ).rejects.toMatchObject(BY_THE_POLICY);
   });
 
   // Written and read in one transaction that is rolled back, so the table keeps nothing.

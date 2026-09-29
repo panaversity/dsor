@@ -94,17 +94,19 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
   // pg_write_all_data may change any table, whatever was revoked. Neon puts roles made in
   // its console into neon_superuser, which holds pg_write_all_data (step 09's README).
   // NEW IN STEP 11: BYPASSRLS skips every policy, FORCE included, so row-level security
-  // stands on this test (step 11's README, C6).
-  it("DSOR-RP-01a: dsor_runtime is no superuser, holds no BYPASSRLS, owns no table, and cannot write every table", async () => {
+  // stands on this test. And a role dsor_runtime belongs to is one SET ROLE can switch to,
+  // with all that role's powers. Found by the review (step 11's README, C6).
+  it("DSOR-RP-01a: dsor_runtime is no superuser, holds no BYPASSRLS, owns no table, belongs to no role, and cannot write every table", async () => {
     const { rows } = await observer.query(
       `SELECT r.rolsuper AS superuser,
               r.rolbypassrls AS bypassrls,
               pg_has_role(r.oid, 'pg_write_all_data', 'MEMBER') AS writes_all,
-              (SELECT count(*)::int FROM pg_class c WHERE c.relowner = r.oid) AS owns
+              (SELECT count(*)::int FROM pg_class c WHERE c.relowner = r.oid) AS owns,
+              (SELECT count(*)::int FROM pg_auth_members m WHERE m.member = r.oid) AS member_of
          FROM pg_roles r WHERE r.rolname = current_user`,
     );
     expect(rows).toStrictEqual([
-      { superuser: false, bypassrls: false, writes_all: false, owns: 0 },
+      { superuser: false, bypassrls: false, writes_all: false, owns: 0, member_of: 0 },
     ]);
   });
 

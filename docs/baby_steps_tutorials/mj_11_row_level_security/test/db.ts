@@ -79,20 +79,27 @@ export async function tryThenRollBack(
 }
 
 // NEW IN STEP 11: the owner's window, for the records dsor_runtime can write and never
-// read back (step 11's README, decision 4).
-const OWNER_READS = fileURLToPath(new URL("owner-reads.ts", import.meta.url));
-
+// read back (step 11's README, decision 4), and for DSoR's own lock alone.
 /**
- * Every row of dsor.audit with this request id, read by the owner. A child program reads
- * the owner's key from .env and redacts what it prints, so the test never holds the key.
+ * Runs one of the owner's child programs, and gives back what it printed, as JSON. The
+ * child reads the owner's key from .env and redacts what it prints, so the test never
+ * holds the key.
  */
+function asOwner(program: string, args: string[] = []): unknown {
+  const file = fileURLToPath(new URL(program, import.meta.url));
+  const run = spawnSync(process.execPath, [file, ...args], { encoding: "utf8", timeout: 60_000 });
+  if (run.status !== 0) throw new Error(`${program} failed: ${run.stderr}`);
+  return JSON.parse(run.stdout);
+}
+
+/** Every row of dsor.audit with this request id, read by the owner. */
 export function ownerRowsFor(request_id: string): Record<string, unknown>[] {
-  const run = spawnSync(process.execPath, [OWNER_READS, request_id], {
-    encoding: "utf8",
-    timeout: 60_000,
-  });
-  if (run.status !== 0) throw new Error(`owner-reads.ts failed: ${run.stderr}`);
-  return JSON.parse(run.stdout) as Record<string, unknown>[];
+  return asOwner("owner-reads.ts", [request_id]) as Record<string, unknown>[];
+}
+
+/** What DSoR's own store returns to the owner, whom no policy stops (test/owner-store.ts). */
+export function ownerStore(): unknown {
+  return asOwner("owner-store.ts");
 }
 
 /** A pool that holds one connection, so every request reuses it (step 11's README, decision 8). */

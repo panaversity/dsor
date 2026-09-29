@@ -14,6 +14,12 @@ const owner = requireEnv("DSOR_MIGRATION_URL");
 const client = new pg.Client({ connectionString: owner });
 try {
   await client.connect();
+  // Without BYPASSRLS, the owner would read no record with no company, and a test that
+  // expects none would pass for the wrong reason. Found by the review.
+  const power = await client.query("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user");
+  if (power.rows[0]?.["rolbypassrls"] !== true) {
+    throw new Error("the owner does not hold BYPASSRLS, so it cannot read every record");
+  }
   const { rows } = await client.query(
     `SELECT tenant, extensions, "authorization", result
        FROM dsor.audit WHERE correlation->>'request_id' = $1 ORDER BY sequence`,
