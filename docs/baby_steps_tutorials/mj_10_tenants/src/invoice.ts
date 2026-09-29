@@ -57,7 +57,7 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
   return found === undefined ? undefined : structuredClone(found);
 }
 
-// NEW IN STEP 09: where invoices come from, in memory or in the database (step 09's
+// Where invoices come from, in memory or in the database (step 09's
 // README, decision 12). One function, so the operations never know which.
 // NEW IN STEP 10: the company comes first. The store never looks outside it (DSOR-IDN-03b).
 /** Finds one invoice of one company: a copy of it, or `undefined` when there is none. */

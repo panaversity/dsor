@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the program checks who it logged in as, and refuses to run as a user that
+// The program checks who it logged in as, and refuses to run as a user that
 // could change the log (step 09's README, decision 17). Each wrong fact is named.
 import { describe, expect, it } from "vitest";
 import { problemsOf, type RoleFacts } from "../src/postgres.ts";

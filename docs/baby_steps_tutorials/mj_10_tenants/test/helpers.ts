@@ -193,7 +193,7 @@ export function correlationFor(caller: Caller): Record<string, unknown> {
 
 // The messages of step 05's refusals, typed out rather than imported.
 export const LOG_IN_FIRST = "log in first: the call has no login token that DSoR gave";
-// NEW IN STEP 09: well-formed, with no control characters (step 09's README, decision 16).
+// Well-formed, with no control characters (step 09's README, decision 16).
 export const BAD_REQUEST_ID =
   "a request_id must be text of 1 to 128 characters, well-formed, with no control characters";
 
@@ -221,7 +221,7 @@ export function registryWith(handler: Handler): Registry {
 /** A log for the tests that do not read it. Each test that reads one makes its own. */
 export const log: DecisionLog = createLog();
 
-// NEW IN STEP 09: the shipped operations, reading the invoices in memory, so the unit tests
+// The shipped operations, reading the invoices in memory, so the unit tests
 // need no database (step 09's README, decision 12).
 export const handlers: Record<string, Handler> = handlersFor(memoryInvoices());
 

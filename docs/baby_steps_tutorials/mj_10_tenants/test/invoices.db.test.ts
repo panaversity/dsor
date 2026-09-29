@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the invoices come from the table app.invoices, and money never becomes
+// The invoices come from the table app.invoices, and money never becomes
 // a number on the way (C6 in step 09's README, decisions 7 and 12).
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";

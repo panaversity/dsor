@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the program's full runs, moved here from startup.test.ts, because the
+// The program's full runs, moved here from startup.test.ts, because the
 // program now needs the database (step 09's README, decision 15).
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -117,7 +117,7 @@ describe("the program's log", () => {
   );
 });
 
-// NEW IN STEP 09: the program refuses to run as a login that could change the log (step
+// The program refuses to run as a login that could change the log (step
 // 09's README, decision 17). Found by the second review: with the check deleted from
 // main.ts, every test stayed green. This is the only test that touches the owner's key,
 // and it only hands it to the program; the test never logs in as the owner.

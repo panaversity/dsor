@@ -4,7 +4,7 @@
 // It prints one success and six refusals, each an envelope, and the correlation of a call
 // by user_123. Then it prints the log, one record for every call, and shows that a log
 // which cannot take a record turns a "yes" into a refusal.
-// NEW IN STEP 09: the log and the invoices are tables in the database named by
+// The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
 import { fileURLToPath } from "node:url";
 import type { Answer } from "./envelope.ts";
@@ -37,7 +37,7 @@ const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.m
 // Start-up checks the input schemas too. A folder of them can be named after
 // the role table, so a test can start without one. With none named, the step's own is read.
 const INPUTS: string | undefined = process.argv[4];
-// NEW IN STEP 09: the pool is made before the checks, because the operations are built
+// The pool is made before the checks, because the operations are built
 // with the invoices it reads. It connects only at its first query, after every check.
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
 loadDotEnv(["DSOR_DB_URL"]);
@@ -56,7 +56,7 @@ try {
 }
 console.log("operations:", [...registry.contracts.keys()]);
 
-// NEW IN STEP 09: no database named, no program. It never falls back to a log in memory,
+// No database named, no program. It never falls back to a log in memory,
 // because a missing secret must not quietly mean evidence lost on a crash (step 09's
 // README, decision 15).
 try {
@@ -66,7 +66,7 @@ try {
   process.exit(1);
 }
 
-// NEW IN STEP 09: the program checks who it logged in as, before any call, and refuses to
+// The program checks who it logged in as, before any call, and refuses to
 // run as a user that could change the log. It fails closed (step 09's README, decision 17).
 const problems = await runtimeRoleProblems(pool);
 if (problems.length > 0) {
@@ -75,10 +75,10 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-// NEW IN STEP 09: the log every decision is written to is the table dsor.audit.
+// The log every decision is written to is the table dsor.audit.
 const log = createDbLog(pool);
 
-// NEW IN STEP 09: every answer is kept, so the program can find its own records later.
+// Every answer is kept, so the program can find its own records later.
 const answers: Answer[] = [];
 async function ask(
   who: RequestEnvelope,
@@ -133,7 +133,7 @@ console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_456/invo
 console.log(await ask(USER_123, "invoice.issue", { invoice: "INV-1008" }));
 
 // Every call above left one record in the log before its answer was returned, the
-// refusals too. NEW IN STEP 09: the table holds the records of every run, so the program
+// refusals too. The table holds the records of every run, so the program
 // picks out its own by request id. user_123's "ap-desk-7" comes back on every run, so
 // only the last records are this run's. The first record in full, then one line for each.
 const ids = new Set(answers.map((a) => a.correlation.request_id));
@@ -154,5 +154,5 @@ const full: DecisionLog = {
 };
 console.log(await ask(AGENT, "invoice.get", { id: "INV-1008" }, full));
 
-// NEW IN STEP 09: close the pool's connections, or Node would wait for them forever.
+// Close the pool's connections, or Node would wait for them forever.
 await pool.end();

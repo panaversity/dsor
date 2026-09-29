@@ -376,7 +376,7 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     ["129 characters", "r".repeat(129)],
     // Found by the review: code that counted emoji as one each let this one in.
     ["65 emoji, which JavaScript counts as 130", "😀".repeat(65)],
-    // NEW IN STEP 09: text Postgres cannot keep in jsonb made the record fail, and the call
+    // Text Postgres cannot keep in jsonb made the record fail, and the call
     // left no evidence (step 09's README, decision 16).
     ["a NUL character inside it", "ap\u0000desk"],
     ["half of an emoji", "ap\ud83d"],

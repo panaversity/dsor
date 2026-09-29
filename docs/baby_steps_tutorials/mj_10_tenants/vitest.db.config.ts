@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-// NEW IN STEP 09: the database tests only, against the Neon branch in .env
+// The database tests only, against the Neon branch in .env
 // (step 09's README, decisions 8, 10, and 14). Run with `pnpm test:db`.
 export default defineConfig({
   test: {

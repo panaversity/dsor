@@ -4,7 +4,7 @@ import { Refusal } from "./envelope.ts";
 import type { InvoiceStore } from "./invoice.ts";
 import { preview, type Handler } from "./registry.ts";
 
-// NEW IN STEP 09: the operations are built with the store their invoices come from, as
+// The operations are built with the store their invoices come from, as
 // call is given the log (step 09's README, decision 12). The program passes the
 // database; the unit tests pass memory.
 /** The code behind each operation, reading invoices from this store. */

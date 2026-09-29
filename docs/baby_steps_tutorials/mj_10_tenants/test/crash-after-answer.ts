@@ -1,4 +1,4 @@
-// NEW IN STEP 09: a program that crashes the moment it has answered. Not a test file:
+// A program that crashes the moment it has answered. Not a test file:
 // audit.db.test.ts starts it, and then looks for its record. Crash guarantees are proved
 // by fault injection (§47 in specs/dsor/06-conformance.md).
 // Run by the test as:  node test/crash-after-answer.ts <request id>

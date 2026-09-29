@@ -24,7 +24,7 @@ export type Decision = {
 /** One record in the log: a decision, with its id, its place in the log, and its time. */
 export type DecisionRecord = Decision & { record_id: string; sequence: number; at: string };
 
-// NEW IN STEP 09: both functions are async, so a log in memory and a log in a database
+// Both functions are async, so a log in memory and a log in a database
 // have the same shape. add finishes only once the record is kept (step 09's README,
 // decision 9).
 /** The log has two functions: add a decision, and read a copy of every record. */

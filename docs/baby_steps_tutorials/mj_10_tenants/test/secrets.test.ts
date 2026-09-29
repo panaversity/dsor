@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the unit tests of this step. They need no database: the secrets stay
+// The unit tests of this step. They need no database: the secrets stay
 // out of git (C7), the database tests fail loudly without one (decision 8), and the
 // invoices have a store in memory for every other unit test (decision 12).
 import { spawnSync } from "node:child_process";

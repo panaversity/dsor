@@ -17,7 +17,7 @@ export function usableRequestId(request: RequestEnvelope): string | undefined {
   const sent = request?.request_id;
   // Text of 1 to 128 characters. JavaScript's length counts an emoji as two.
   if (typeof sent !== "string" || sent.length < 1 || sent.length > 128) return undefined;
-  // NEW IN STEP 09: text Postgres can keep. jsonb refuses the NUL character and half of an
+  // Text Postgres can keep. jsonb refuses the NUL character and half of an
   // emoji, so such an id made the record fail and left no evidence of the call. Found by
   // step 09's review (step 09's README, decision 16).
   return sent.isWellFormed() && !CONTROL.test(sent) ? sent : undefined;

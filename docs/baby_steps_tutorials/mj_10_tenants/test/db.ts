@@ -1,4 +1,4 @@
-// NEW IN STEP 09: what the database tests share. Not a test file itself.
+// What the database tests share. Not a test file itself.
 // The tests look at the database with pg directly, never through src, so a broken log
 // cannot vouch for itself.
 import { randomUUID } from "node:crypto";

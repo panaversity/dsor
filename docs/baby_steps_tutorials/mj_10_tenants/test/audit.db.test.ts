@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the letterbox. The log is a table, dsor_runtime can drop a record in and
+// The letterbox. The log is a table, dsor_runtime can drop a record in and
 // read it, and can never change or remove one. By claim, C1 to C5 in step 09's README.
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -217,7 +217,7 @@ describe("C3: the record survives a restart", () => {
   });
 });
 
-// NEW IN STEP 09: a crash, not a restart. Found by the second review: closing pools
+// A crash, not a restart. Found by the second review: closing pools
 // politely proves only that a record survives a restart (step 09's README, C3).
 describe("C3, by fault injection: the record survives a crash straight after the answer", () => {
   const CRASH = fileURLToPath(new URL("crash-after-answer.ts", import.meta.url));

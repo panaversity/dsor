@@ -166,7 +166,7 @@ describe("the program", () => {
     },
   );
 
-  // NEW IN STEP 09: the program needs the database now, and it never falls back to a log
+  // The program needs the database now, and it never falls back to a log
   // in memory (step 09's README, decision 15). The empty variable is kept: .env does not
   // override a variable that is already set, even to "".
   it(

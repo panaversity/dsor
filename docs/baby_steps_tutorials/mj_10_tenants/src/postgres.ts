@@ -1,4 +1,4 @@
-// NEW IN STEP 09: everything that talks to PostgreSQL. The log is the table dsor.audit,
+// Everything that talks to PostgreSQL. The log is the table dsor.audit,
 // which dsor_runtime can add to and read, and never change (DSOR-AUD-04a in
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
 import { randomUUID } from "node:crypto";
@@ -163,7 +163,7 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   };
 }
 
-// NEW IN STEP 09: what Postgres says about the user the program logged in as (step 09's
+// What Postgres says about the user the program logged in as (step 09's
 // README, decision 17).
 /** The facts the start-up check needs about the logged-in user. */
 export type RoleFacts = {
