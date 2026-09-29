@@ -109,6 +109,15 @@ Checked on 2026-09-29:
 5. **Step 02's open note** asked that whatever creates tenants never make an id out of a
    name (DSOR-RID-01b). Here tenants are written by a migration, with fixed ids. No
    operation creates one yet, so the note stays open.
+6. **`audit-record.schema.json` makes `tenant` required, on every record.** A refusal
+   made before line ② has no company that DSoR has checked. Writing the company the
+   caller *claimed* would put a stranger's record in another company's log. So this step
+   leaves it empty (decision 6), and its records do not match the schema there. It is
+   recorded as a question for the specification. The records do not claim to match the
+   schema yet anyway: the hash chain is step 39.
+7. **§6's `invoice` entity is `tenant_scoped`, but lists no `tenant_id` field.** This
+   step gives the invoice the field (decision 10). Whether the field is implied, or the
+   list needs it, is a question for the specification.
 
 ### What each rule really says
 
@@ -171,13 +180,43 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    - `accounts-payable-fte`, `user_123`, and `cfo_100` stay in `org_456` only.
    *Downside:* the firm's agent and `user_700` are this step's own, not the running
    example's.
-8. **The migration runner runs every file in `migrations/`, in name order, in one
-   transaction,** and each file stays safe to run twice. There is no table of migrations
-   that have run. *Downside:* every run runs every file again, so each file must be
-   written to be repeatable, and a later step with many migrations will want that table.
+8. **Each migration runs once, and the database remembers which have run.** A new table,
+   `dsor.migrations`, holds the name of every file that has run. `pnpm migrate` runs the
+   files in `migrations/` that are not in it, in name order, and writes each name in the
+   same transaction as the file itself. So a file and its line in the table land
+   together, or neither does. `dsor_runtime` gets no privilege on this table.
+   *Downside:* a file that has run is never run again, so fixing a mistake in it takes a
+   new file. And the table is one more thing the owner must never edit by hand.
+
+   *Changed before any code, on 2026-09-29.* The first version ran every file on every
+   run, and asked each file to be safe to run twice. Reading `001` against `002` proved
+   it wrong. `001` ends with "add INV-1008 unless an invoice with this id exists"
+   (`ON CONFLICT (id)`), and gives no company. After `002` makes the key (company, id)
+   and the company required, that sentence has no answer, so every run after the first
+   would fail. There are two ways to manage a database's shape. **History:** numbered
+   files, each a change, each run once, never edited. **Desired state:** one script that
+   describes the database as it should be now, run again and again, and edited when the
+   shape changes. The first version mixed them: numbered files, all run every time. With
+   one file you cannot tell the difference. With two, the second can take away what the
+   first took for granted. Step 09's decision 13 had predicted it: "A table for that
+   arrives with the second migration."
 9. **The request id, the answer's `correlation`, and the rest of step 09 stay as they
    are.** The tenant goes into the audit record, not into `correlation`. *Downside:* a
    caller reading an answer does not see which company it was for, only the log does.
+10. **An invoice carries its `tenant_id`, in DSoR's code and in its answer, not only in
+    its row.** From this step, `INV-1008` is two invoices. An invoice's identity is the
+    pair (company, id), and its canonical URI writes that pair down:
+    `dsor://{tenant_id}/invoice/{id}` (DSOR-RID-01a). An object that holds only `id`
+    holds half of its own identity. Once it leaves the database, no code holding it can
+    say whose it is, and would have to borrow the company from elsewhere. Pairing a
+    record with the wrong company is the very bug this step prevents. DSOR-TEN-01a says
+    the *resource* carries its `tenant_id`, and inside DSoR the resource is the object;
+    the row is the store's copy of it. Showing the field to the caller tells it nothing
+    new: it is the company the caller named. So `invoiceUri(invoice)` reads the invoice's
+    own `tenant_id`, and step 01's constant `TENANT` goes. *Downside:* §6's `invoice`
+    entity is `tenant_scoped`, but its list of fields has no `tenant_id`, so the answer
+    has a field the entity does not list. Every test that compares a whole invoice
+    changes.
 
 ### The tests, by claim
 
@@ -198,7 +237,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C5:** the pairs of C1 and C4, compared word for word, apart from the request id.
 - **C6:** in the database: `app.invoices.tenant_id` is `NOT NULL` and in the key. A
   call's audit record has `tenant = 'org_456'`. A call with no login has `tenant` empty.
-  `dsor_runtime`'s privileges are step 09's list plus `tenant` in the `INSERT` columns.
+  `dsor_runtime`'s privileges are step 09's list plus `tenant` in the `INSERT` columns,
+  and none on `dsor.migrations`.
+- **Decision 8, not a rule:** a second `pnpm migrate` runs no file, and succeeds.
 
 ### Breaks we will try, and what we expect
 
@@ -228,6 +269,8 @@ membership that crosses from one company into another.
 - **An operation that creates a company**, and with it step 02's note on DSOR-RID-01b.
 - **The map's "same 'not found'" and DSOR-SRC-02b's `TENANT_MISMATCH`:** a question for
   the specification.
+- **A refusal before line ② has no tenant, but the audit schema requires one**, and
+  **§6's `invoice` lists no `tenant_id`:** two more questions for the specification.
 
 ## Before you build: set up Neon
 
@@ -298,7 +341,13 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+Before any code, checking the design against `001` found decision 8 wrong: running
+every migration on every run breaks as soon as a second one changes the key. It became a
+table of migrations that have run (decision 8 says why). The same check found that the
+design never said whether an invoice object carries its company; decision 10 now says it
+does.
+
+_The rest is written after the review, with the result of every break in the table above._
 
 ## The rules this step meets
 
