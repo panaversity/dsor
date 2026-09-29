@@ -648,6 +648,10 @@ clean: the same step, the same author, built both ways, two days apart.
 
 ## 39 · Step 04's false claim was narrowed, not fixed by adding a guard (2026-09-29)
 
+> **Superseded by decision 43, the same day.** The claim was not narrowed in the end — the code was
+> fixed, because the guard belongs to step 04 after all. The reasoning below is kept because it was
+> the reasoning at the time, and [43](decisions.md) explains what was wrong with it.
+
 **Decided by:** me, on an audit finding.
 **What:** step 04's header said *"nothing here throws at a caller any more"*. It now says every
 refusal this step knows about comes back as an envelope, names the hole that is left, and says
@@ -687,6 +691,10 @@ It belongs in a pull request that checks what breaks in `specs/dsor/` first.
 See [open question 4](open-questions.md).
 
 ## 41 · Step 05 keeps three ideas, and says so on the page (2026-09-29)
+
+> **Superseded by decision 43, the same day.** Step 05 is one idea again: the two argument guards
+> moved to step 04, where the promise they keep lives. Kept because the argument below is the one
+> that had to be answered, not dismissed.
 
 **Decided by:** me, on an audit finding I agree with and am not acting on.
 **What:** step 05 carries its one idea — who is calling — plus two guards that are about argument
@@ -734,3 +742,31 @@ allowlist and it would have left the same hole open for the specification's own 
 where a wrong id costs the most.
 **Rejected:** keeping the hand-check from decision 40. It worked exactly once — the time somebody
 was looking.
+
+## 43 · Step 04 keeps its own promise, and step 05 is one idea again (2026-09-29)
+
+**Reverses:** decisions 39 and 41 above, both taken earlier the same day.
+**Decided by:** the learner — "do all these 4 points thoroughly" — which made me look again at two
+things I had argued should stay.
+**What:** the argument guards move from step 05 to **step 04**: the caller's arguments are copied
+once, and a request whose arguments cannot be written down is refused before anything runs. Their
+tests move with them, into a `test/arguments.test.ts` of their own. Step 04's header claims again,
+truthfully, that nothing throws at a caller. Step 05 is back to one idea — who is calling — and its
+README says which guards it inherited and what it adds on top.
+**Why I changed my mind.** Decision 39 assumed the guard would be a *third idea* for step 04. That
+was the wrong way to count it. Step 04's idea is **every answer is an envelope**. A path that throws
+instead of enveloping is not a new idea — it is a **hole in that idea**, and the guard that closes
+it is part of finishing the step's own work. Put that way, it never belonged in step 05.
+
+And it resolves both findings at once instead of writing prose about each. Step 04 no longer ships
+a crash-after-commit, so the paragraph naming the hole is gone rather than carefully worded. Step 05
+no longer breaks the one-idea rule, so the section explaining why it does is gone too. Two honest
+notes replaced by nothing to note, which is better.
+**Cost:** step 04 grows by two tests and about twenty lines of comment, and its break numbers moved
+for the third time in a day — every quoted count in three READMEs had to be re-run again. The
+earlier decisions were not wrong to record; they were the right call *given* the wrong way of
+counting ideas, and finding the better framing took a second pass.
+**What this says about the method:** "is this one idea?" is not answerable by counting the things a
+step does. It is answerable by naming the step's promise and asking which of those things the
+promise requires. Step 04 promises envelopes; a guard that stops a throw is required. Step 06
+promises may-you; the same guard would not have been.

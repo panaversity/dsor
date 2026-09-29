@@ -1,6 +1,6 @@
 # Step 04 · Result and error envelopes
 
-Folder: [`my_04_result_and_error_envelopes`](../my_04_result_and_error_envelopes/README.md) · 82 tests
+Folder: [`my_04_result_and_error_envelopes`](../my_04_result_and_error_envelopes/README.md) · 84 tests
 Spec: [§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) · `DSOR-ERR-01a`, `DSOR-SCH-01`, `DSOR-COR-01b`
 Commits: `6cda512` → `16c177f` (7)
 

@@ -129,6 +129,7 @@ my_04_result_and_error_envelopes/
   src/envelopes.ts          NEW  the two builders, the §28 table, request ids
   test/envelopes.test.ts    NEW  22 tests: the table, the shapes, the refusals
   test/invoice.test.ts  CHANGED  three tests for issueInvoice, the state change this step adds
+  test/arguments.test.ts    NEW  two tests: the arguments are read once, and checked first
   src/schemas/*.json        NEW  result-envelope and error-envelope, copied byte for byte
   src/invoice.ts        CHANGED  a new issueInvoice, which reports an outcome instead of throwing
   src/operations.ts     CHANGED  every refusal is an envelope; invoice.issue has a handler
@@ -194,7 +195,7 @@ UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an opera
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 82 tests pass
+pnpm check                 # typecheck, then test. 84 tests pass
 ```
 
 ### Why two lines say "(no envelope)"
@@ -268,7 +269,7 @@ Five breaks. Change the code back after each.
 `pnpm test`:
 
 ```text
-      Tests  9 failed | 73 passed (82)
+      Tests  10 failed | 74 passed (84)
 ```
 
 Every refusal in the step is now wrong, and note *what is not wrong*: every envelope
@@ -284,7 +285,7 @@ never had an opinion.
      × the schema pins three codes' retry classes, and only three
      × DSOR-ERR-01a: the table cannot be edited at run time
      × DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT
-      Tests  6 failed | 76 passed (82)
+      Tests  6 failed | 78 passed (84)
 ```
 
 This is the break worth sitting with. You have just told every caller that re-issuing an
@@ -294,7 +295,7 @@ thing standing between that and a caller in a loop.
 **3. Drop a code from the table.** Delete the `RATE_LIMITED` line. Run `pnpm test`:
 
 ```text
-      Tests  4 failed | 78 passed (82)
+      Tests  4 failed | 80 passed (84)
 ```
 
 One of those four is the test that reads the schema's own list of 32 codes; another is the
@@ -305,7 +306,7 @@ cannot fall behind the specification without something going red.
 that runs before the envelope is returned. Run `pnpm test`:
 
 ```text
-      Tests  1 failed | 81 passed (82)
+      Tests  1 failed | 83 passed (84)
 ```
 
 That check is why a `BATCH_PARTIAL` cannot be built in this step: the schema requires an
@@ -316,13 +317,13 @@ Without the check, a half-built envelope would be handed to the caller.
 re-issue refusal from `CONFLICT` to `RESOURCE_NOT_FOUND`. Run `pnpm test`:
 
 ```text
-      Tests  2 failed | 80 passed (82)
+      Tests  2 failed | 82 passed (84)
 ```
 
 The envelope is perfectly valid. The retry class is correct for the code. And the answer
 is a lie: the invoice exists. Nothing but a test knows the difference.
 
-Change everything back and run `pnpm check` to see 82 tests pass.
+Change everything back and run `pnpm check` to see 84 tests pass.
 
 ## Build it yourself with Claude Code
 

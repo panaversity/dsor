@@ -1,16 +1,13 @@
 // A caller names an operation instead of calling a function.
 //
-// NEW IN STEP 04: every refusal this step knows about comes back as an error envelope with a
-// code from §28 and a retry class, so a caller can act on the answer instead of reading a
+// NEW IN STEP 04: nothing here throws at a caller. Every refusal comes back as an error envelope
+// with a code from §28 and a retry class, so a caller can act on the answer instead of reading a
 // sentence.
 //
-// Not *nothing* throws, and an earlier version of this comment claimed that. One hole is left
-// on purpose, because closing it needs an idea this step does not have: the arguments belong to
-// the caller, and `success()` hashes them **after** the invoice has been issued. An argument
-// that cannot be turned into JSON — a circular object, a BigInt — therefore lets the change
-// happen and then throws on the way out, so the caller gets a crash for a command that
-// succeeded. Step 05 closes it, by copying the arguments once and refusing a request that
-// cannot be written down before anything runs. And invoice.issue — the command split out of
+// That sentence is only true because of the guard at the top of callOperation, and it was not
+// true when this step was first written: an argument that could not be turned into JSON let the
+// invoice be issued and *then* threw. An audit caught the claim before it caught the bug. The
+// comment beside the guard says what it is for. And invoice.issue — the command split out of
 // step 03 — is carried out here, because a command is what makes an envelope worth
 // having: "this invoice is already issued" needs a code, and a read's refusals are too
 // thin to show why.
@@ -245,6 +242,38 @@ export function callOperation(
   id: string,
   args: Readonly<Record<string, unknown>>,
 ): OperationAnswer {
+  // NEW IN STEP 04, and it is here because of what this step *promises*. "Every refusal comes
+  // back as an envelope" is not true if a path can throw instead, and one could: the arguments
+  // belong to the caller, and `success()` fingerprints them **after** the invoice has been
+  // issued. So an argument that cannot be turned into JSON — a circular object, a BigInt, a
+  // getter that throws — used to let the change happen and then throw on the way out. The caller
+  // got a crash for a command that had succeeded, with no envelope and no code.
+  //
+  // Two things fix it, and both belong before anything runs:
+  //
+  // The arguments are copied **once**, here, and nothing below looks at the original again. A
+  // property can be a *getter*, so reading it twice can give two answers — and these arguments
+  // were read twice, once to choose the invoice and once to fingerprint the receipt. A caller
+  // could make the receipt describe a request that never happened. `{ ...args }` runs every
+  // getter exactly once.
+  //
+  // And if the copy cannot be written down, nothing runs at all. Writing it down *before* doing
+  // it is a rule of its own, DSOR-EXE-03a, and step 08 builds the real version.
+  let given: Readonly<Record<string, unknown>>;
+
+  try {
+    given = Object.freeze({ ...args });
+    JSON.stringify(given);
+  } catch {
+    return {
+      kind: "error",
+      envelope: refusal(
+        "VALIDATION_FAILED",
+        `${id} was given arguments that cannot be written down`,
+      ),
+    };
+  }
+
   const contract = registry.get(id);
   const handler = handlers[id];
 
@@ -260,5 +289,5 @@ export function callOperation(
     };
   }
 
-  return handler(args, contract);
+  return handler(given, contract);
 }

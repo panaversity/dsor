@@ -176,7 +176,7 @@ logged in, no contract  user_123              UNSUPPORTED_CAPABILITY   retry: ne
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 111 tests pass
+pnpm check                 # typecheck, then test. 113 tests pass
 ```
 
 Read those lines carefully, because two things are happening.
@@ -201,42 +201,20 @@ The specification has a rule about that shape, `DSOR-ERR-01b`, and this step can
 properly yet — it turns on whether the caller is *authorized*, and nothing is authorized
 until step 06. So this is the habit, arriving before the rule that needs it.
 
-### Three things, where the rule says one
+### An answer cannot be edited after you are handed it
 
-The tutorial's rule is one new idea per step, and this step has three. It is worth knowing why,
-because the honest answer is not "they belong together".
+One small guard belongs to this step, and it comes from a review that attacked it.
 
-The idea is **who is calling**. The other two — the arguments are copied once, and a request
-whose arguments cannot be written down is refused before anything happens — came from a hostile
-review *after* this step looked finished. Both are about handling the caller's arguments, not
-about identity, and the second is an early instalment of `DSOR-EXE-03a`, which is step 08's own
-rule.
+The answer is frozen. `readonly` is a TypeScript word that is **erased before Node runs** — step
+01's lesson — so without `Object.freeze` a caller could overwrite `askedBy` on the answer they were
+handed, which is this step's whole record of who asked.
 
-They stay here rather than waiting for step 08 for one reason: they close holes that are open in
-step 04, and shipping a step with a known crash-after-commit in it to keep a rule about step
-boundaries tidy is the wrong trade. Step 04's own header now names the hole and says this step
-closes it.
-
-### The arguments are copied once, and an answer cannot be edited
-
-Two small things guard the answer itself, and both come from a review that attacked this step.
-
-The arguments belong to the caller, so `callOperation` **copies them once** and never looks at
-the original again. A caller can define `invoice` as a *getter* — a property that runs code
-every time it is read — and answer differently on the second read. The arguments used to be
-read twice: once to decide which invoice to issue, and again to fingerprint the receipt. So a
-caller could have INV-1009 issued while the receipt fingerprinted a request for a different
-invoice entirely. One copy makes both reads the same read.
-
-If the copy cannot be written down at all — a circular object, a `BigInt` — the call is
-refused with `VALIDATION_FAILED` before anything happens. It used to issue the invoice and
-*then* throw while hashing, which is the worst possible order: the change happened, and the
-caller got a stack trace instead of an envelope, with nothing recording who did it. Writing it
-down before doing it is a rule of its own, `DSOR-EXE-03a`, and step 08 builds the real version.
-
-And the answer is frozen. `readonly` is a TypeScript word that is **erased before Node runs** —
-step 01's lesson — so without `Object.freeze` a caller could overwrite `askedBy` on the answer
-they were handed, which is this step's whole record of who asked.
+Two related guards you will see in `callOperation` are **not** this step's: the arguments are copied
+once, and a request whose arguments cannot be written down is refused first. Both arrived in step 04,
+because they keep step 04's promise that every refusal comes back as an envelope — a path that
+throws instead is a hole in that promise. They are tested in `test/arguments.test.ts`, which came
+forward with them. What this step adds on top is that those refusals, like every other, say **who**
+was refused.
 
 ## Break it
 
@@ -249,7 +227,7 @@ Four breaks. Change the code back after each. Every number below was produced by
      × DSOR-SRC-02a: a principal named in the arguments is ignored
      × DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well
 AssertionError: expected 'cfo_100' to be 'user_123' // Object.is equality
-      Tests  2 failed | 109 passed (111)
+      Tests  2 failed | 111 passed (113)
 ```
 
 This is the break the step exists for, and it is the map's own "done when". Notice how small
@@ -270,7 +248,7 @@ refusing when there is no login. Run `pnpm test`:
      × DSOR-IDN-01: the login is checked before the operation or the arguments
      × DSOR-ERR-01a: an object that throws when read is refused, not thrown at
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  9 failed | 102 passed (111)
+      Tests  9 failed | 104 passed (113)
 ```
 
 Nine. A default caller is not one bug: it takes out the refusal, its retry class, the
@@ -286,7 +264,7 @@ it up in the people list. Run `pnpm test`:
      × DSOR-IDN-01: each refusal says in words which refusal it is
      × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  4 failed | 107 passed (111)
+      Tests  4 failed | 109 passed (113)
 ```
 
 **4. Check the login after the operation.** Move the "no such operation" lookup and refusal so
@@ -295,7 +273,7 @@ they come *before* the login check. Run `pnpm test`:
 ```text
      × DSOR-IDN-01: the login is checked before the operation or the arguments
      × every answer says who asked, and so does the envelope inside it
-      Tests  2 failed | 109 passed (111)
+      Tests  2 failed | 111 passed (113)
 ```
 
 Nothing is insecure yet — the caller is still checked. But an unknown caller now learns which

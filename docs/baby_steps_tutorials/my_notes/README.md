@@ -36,9 +36,9 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_01_one_invoice_in_memory` | 13 | done |
 | `my_02_canonical_uris` | 24 | done |
 | `my_03_operations_and_contracts` | 53 | done |
-| `my_04_result_and_error_envelopes` | 82 | done |
-| `my_05_who_is_calling` | 111 | done |
-| `my_06_permissions_deny_by_default` | 133 | done, built a piece at a time |
+| `my_04_result_and_error_envelopes` | 84 | done |
+| `my_05_who_is_calling` | 113 | done |
+| `my_06_permissions_deny_by_default` | 135 | done, built a piece at a time |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.

@@ -334,6 +334,7 @@ export function callOperation(
     });
   }
 
+  // From step 04, and it is what keeps step 04's promise that nothing throws at a caller.
   // The arguments belong to the caller, so they are copied **once**, here, and nothing
   // below ever looks at the original again. A property with a getter can answer a different
   // value on a second read, and these arguments used to be read twice: once to decide which
