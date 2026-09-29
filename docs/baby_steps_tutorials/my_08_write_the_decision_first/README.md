@@ -1,27 +1,49 @@
-# Step 07 · The pipeline skeleton
+# Step 08 · Write the decision first
 
-**New in this step:** the order of the checks stops being the order some lines sit in, and becomes
-a list.
-
-## Read this first: nothing new is checked
-
-This is the only step so far that adds no check and refuses nothing it did not refuse before. Run
-`pnpm start` and the output is **byte-identical** to step 06's. All of step 06's tests pass
-unchanged.
-
-That is not a small step. It is the difference between a program that happens to be right and one
-that says what right is.
+**New in this step:** every decision is written down **before** the answer goes back, and that
+includes every "no".
 
 ## In plain words
 
-Your program already asks four questions, in this order:
+Until this step the program decided and answered, and kept nothing. Ask it a month later who let
+`user_123` read `INV-1008`, and under whose authority, and the honest answer was: nobody knows. Worse,
+an operation that was *refused* and an operation that was never attempted look identical afterwards —
+because both left nothing behind.
 
-```text
-who are you?  →  does this operation exist?  →  may you?  →  are the arguments valid?
-```
+So now, in the middle of the checklist, there is one more line: **write down what was decided.** It
+runs before the answer leaves, and it runs for a refusal exactly as it does for a yes.
 
-Until now that order was **where the lines happened to sit** inside one function. Nothing said it
-was the order. Nothing could check it. This step turns it into a list:
+The record is not a log line. It is a structured record that has to validate against the
+specification's own `audit-record.schema.json`, and each record carries the **hash** of the record
+before it — so the records form a chain. Edit one record and every hash after it stops agreeing.
+
+Two words for two ideas you will meet in the code:
+
+- a **hash** is a short fingerprint of some text. The same text always gives the same fingerprint, and
+  changing one character of the text gives a completely different one.
+- a **chain** here means each record stores the fingerprint of the previous record. That is what turns
+  "someone edited a record" from invisible into obvious.
+
+## Why it matters
+
+An agent with no permission to issue invoices calls `invoice.issue` two hundred times, one invoice id
+at a time. Every single call is refused. If refusals are not recorded, that entire probe leaves no
+trace at all — and the one thing you most wanted to know, that somebody was trying, is the one thing
+you cannot find out.
+
+§21 says it plainly:
+
+> Denied and failed attempts are evidence, and they are often the most useful evidence.
+
+And it names the mistake to avoid:
+
+> **Common mistake.** Writing the audit record at the end, inside a `finally` block. It is too late,
+> and it misses the crash case completely.
+
+## What the checklist looks like now
+
+Step 07 turned the order of the checks into a list. This step adds one line to it, at its real §21
+number:
 
 ```ts
 export const PIPELINE: readonly Stage[] = Object.freeze([
@@ -29,356 +51,317 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(null, "resolve the operation", "both", resolveTheOperation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
+  // NEW IN STEP 08. §21.11, and the only stage in the list that runs after a refusal.
+  alsoAfterARefusal(11, "record the decision", "both", recordTheDecision),
 ]);
 ```
 
-and `callOperation` walks it and stops at the first no.
-
-## Why it matters
-
-While steps 04 to 06 were built, that order was **reshuffled three times**. Step 05 put the
-argument copy before the contract lookup; step 06 hoisted the lookup above the copy; step 04 took
-the copy back entirely. One test caught one of those three moves. The other two were right because
-somebody was paying attention, and attention is not a guarantee.
-
-And you already know what it costs when the order is wrong, because step 06 tested it: put "does
-this invoice exist" before "may you", and `cfo_100` can count invoices she has no permission to see
-by comparing `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED`. **The order is the security
-guarantee.**
-
-The failure that is coming is worse. `DSOR-OPR-04a` says *every interface MUST invoke the same DSoR
-pipeline*. Today there is one door. **Step 42 adds an HTTP server.** If the order lives in the shape
-of a function, the second door gets its own order and nobody notices until they disagree — which is
-how real systems end up with a web API that checks permissions and a batch job that does not.
-
-## The numbers are §21's
-
-§21 of the specification is a seventeen-line checklist. You have four of them, and each carries its
-real number:
-
-| | Stage | Arrives in |
-| --- | --- | --- |
-| 1 | authenticate | step 05 |
-| — | resolve the operation | step 03 |
-| 5 | authorize | step 06 |
-| 6 | validate the input | steps 02–04 |
-| 2 | resolve the tenant | step 10 |
-| 3 | resolve the delegation, verify the actor chain | steps 18–19 |
-| 4 | check operational status: suspension, freeze, breaker | step 26 |
-| 7 | claim the idempotency key | step 20 |
-| 8 | create or load the proposal | step 22 |
-| 9 | read bound state, check preconditions | steps 11–13 |
-| 10 | evaluate controls, segregation of duties, limits | steps 27–30 |
-| 11 | **record the decision, always, including DENY** | step 08 |
-| 13 | **write the intent record, before any side effect** | step 08 |
-| 14 | execute through the connector | step 34 |
-| 15 | finalize: COMMITTED, FAILED or OUTCOME_UNKNOWN | step 37 |
-| 16 | commit or release reservations, enqueue events | steps 30, 39 |
-| 17 | seal the decision bundle | step 40 |
-
-**The gaps in the numbering are the roadmap.** A list that jumps 1 → 5 → 6 says what is missing
-more honestly than thirteen stages that do nothing.
-
-`resolve the operation` carries no number, and that is not an oversight: §21 *begins* after the
-operation is known, because there is no checklist to run for an operation that does not exist.
-
-## Why a list, and not comments
-
-Three things become possible that were not:
-
-- **A test can read the order.** `test/pipeline.test.ts` asserts it directly, and — the test this
-  step most needed — takes every one of the 24 orderings of the four stages and asserts that
-  **exactly one** is accepted.
-- **A later step adds a line** rather than editing a function it could get wrong.
-- **A second door can be handed the same list.** `makeDoor(stages)` builds one, and
-  `callOperation` is `makeDoor(PIPELINE)`. Step 42's HTTP server gets the same list, because it is
-  *given* the list rather than choosing it.
-
-### What the list check refuses
-
-`assertPipeline` runs when the program loads and refuses five things, each the mistake a later step
-makes while adding a line:
-
-- the list is empty
-- the same stage appears twice
-- a §21 number is not one §21 has, or the numbers descend
-- the required stages are not in their required order
-- a command-only stage sits before the operation is resolved, so it would never run
-
-That last one needs a word. Whether a command-only stage applies depends on the contract — and the
-contract is resolved *by a stage*. Before that stage has run there is no kind to ask about, so a
-command-only stage placed earlier would be stepped over on **every** call, including commands. A
-step that is silently never reached is what `DSOR-EXE-01b` forbids, and it would be invisible:
-nothing fails, the step just never happens.
-
-### What it cannot refuse, and this is important
-
-`REQUIRED` is a list of **names**. A stage called `authorize` that returns "carry on" without asking
-anything satisfies the check — a review built exactly that door. There is no way to read a
-function's meaning out of a list.
-
-So the check is not the only thing guarding the order. `test/deny-by-default.test.ts` is: a door
-whose `authorize` does nothing lets `cfo_100` issue an invoice, and that is a failing test. Break 4
-below is that door.
-
-## What changed since step 06
+`alsoAfterARefusal` instead of `stage` is the whole difficulty of this step in one word. Until now the
+walk **stopped** at the first no and returned it. A stage at §21.11 would therefore never have seen a
+refusal, and every denial would have gone unrecorded. §21's diagram is emphatic about that:
 
 ```text
-my_07_the_pipeline_skeleton/
-  src/pipeline.ts          NEW  Stage, Context, assertPipeline, applies, runPipeline
-  test/pipeline.test.ts    NEW  23 tests: the list, its rules, and the walk
-  src/operations.ts    CHANGED  the four stages, PIPELINE, makeDoor; callOperation walks the list
-  package.json         CHANGED  name and description only
+11  RECORD DECISION — always, including DENY
 ```
 
-Four files. For a step that moved every check in the program, that is the point: the checks
-themselves did not change, only where the order lives.
-
-To see every difference yourself:
-
-```bash
-cd docs/baby_steps_tutorials
-diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
-  my_06_permissions_deny_by_default my_07_the_pipeline_skeleton
-```
+So a refusal is now *carried* instead of returned. The remaining checks are skipped — there is no
+point asking "may you" after "who are you" has already failed — and the stages marked to run anyway
+still run. The first no is still the answer; it just no longer ends the walk.
 
 ## Run it
 
 ```bash
-cd docs/baby_steps_tutorials/my_07_the_pipeline_skeleton
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 169 tests pass
 ```
+
+The old output is unchanged. What is new is at the bottom — everything above it already happened, and
+this is what was written down while it did:
 
 ```text
-Hello, accounts-payable-fte.
+The audit log:
 
-user_123              (no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
-accounts-payable-fte  (no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+ 0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:6a65377...
+ 1  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:b6907ec...
+ 2  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:1dd50a1...
+ 3  ALLOW  invoice.get@1        cfo_100                ALLOWED                 sha256:5bc7d14...
+ 4  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:8383e11...
+ 5  ALLOW  invoice.issue@1      accounts-payable-fte   ALLOWED                 sha256:a9b532f...
+ 6  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:7f66c99...
+ 7  DENY   (no such operation)  user_123               UNSUPPORTED_CAPABILITY  sha256:aac35ab...
+ 8  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:742c0f1...
+ 9  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:f4dff22...
 
-user_123              (no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
-
-cfo_100               (no envelope)            dsor://org_456/invoice/INV-1009  2500.00 USD  draft
-cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
-accounts-payable-fte  COMMITTED                dsor://org_456/invoice/INV-1009  issued
-
-not logged in           (nobody)              AUTHENTICATION_REQUIRED  retry: never                nobody is logged in
-nobody by that name     (nobody)              AUTHENTICATION_REQUIRED  retry: never                "nobody" is not someone this program knows
-logged in, bad address  user_123              VALIDATION_FAILED        retry: never                not a canonical URI: "INV-1008"
-logged in, no contract  user_123              UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an operation: this program has no contract for it
-denied, real invoice    cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
-denied, no such invoice cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
+10 records, chain verifies: true
+2 refusals counted without a record, because nobody was logged in
 ```
 
-Compare that with step 06's output. It is the same, line for line — `diff` reports nothing. A step
-whose whole job is to change where something *lives* should change nothing about what the program
-*does*, and that is how you check.
+Read the second column. **The four `DENY` lines are the ones a program that logged only its successes
+would have lost**, and they are the most interesting lines in the table. Line 4 is the CFO being
+refused; lines 8 and 9 are the same refusal for an invoice that exists and one that does not, word for
+word, which is step 06's guarantee still holding.
+
+Three things in that output are worth stopping on.
+
+**`10 records` for twelve calls.** Two calls arrived with nobody logged in. §29 allows those to be
+counted rather than recorded, and the reason is an attack: a caller with no credentials at all can
+send a million requests, and a log that writes one record each fills the evidence store with the
+attacker's noise until the records that matter cannot be written. This is the first point in the
+tutorial where **the log itself is a resource an attacker can exhaust.**
+
+**Line 7 has no operation.** The caller asked for `execute_sql`, which this program has no contract
+for, so there is no operation and no version to write down. The schema's `operation` field must look
+like `invoice.get@1`, so putting the caller's string there would make the record *unwritable* — and an
+unwritable record turns a misspelled request into `EVIDENCE_STORE_UNAVAILABLE`. The requested id goes
+in `reason` instead, which is free text.
+
+**Line 6 says `ALLOWED`, and that call was refused.** It is the `logged in, bad address` line further
+up the output, answered `VALIDATION_FAILED`. This is not a bug, and it is the most important limit of
+the step — see below.
+
+## The limit worth understanding: decided, not happened
+
+A record here says what was **decided**. It does not say what **happened**.
+
+§21 keeps those apart on purpose. Step 11 records the decision; step 15, `FINALIZE`, records the
+outcome as `COMMITTED`, `FAILED` or `OUTCOME_UNKNOWN`. This step has step 11 and no step 15. So a call
+that is authorized and then fails while it is being carried out is on the record as `ALLOW`, and the
+caller is told `VALIDATION_FAILED`. Both are true. The record is incomplete.
+
+There is a test that asserts exactly this, including the disagreement:
+
+```ts
+expect(theLog()[0]!.authorization, where).toBe("ALLOW");
+expect(theLog()[0]!.result, where).not.toBe(answer.envelope.code);
+```
+
+It is written that way because the first version asserted `DENY` and **failed**, which is how the gap
+got found rather than shipped.
+
+There is a second reason those refusals arrive late, and it belongs to step 04 rather than this one:
+the `validate the input` stage only checks that the arguments *can be written down*. It does not check
+them against the contract's input schema, so a missing `invoice` is not caught at §21.6 where it
+belongs — it is caught inside the handler.
+
+## What changed since step 07
+
+```bash
+git diff --no-index ../my_07_the_pipeline_skeleton ../my_08_write_the_decision_first
+```
+
+Eleven files, ignoring `node_modules`:
+
+| File | What |
+| --- | --- |
+| `src/audit.ts` | new — the record, the chain, the clock, the log, the counter |
+| `src/schemas/audit-record.schema.json` | new — copied byte for byte from `packages/spec/schemas/` |
+| `src/pipeline.ts` | `Stage.evenAfterARefusal`, `Context.refusal` and `Context.requestId`, a walker that carries a refusal, two new list rules |
+| `src/operations.ts` | the `recordTheDecision` stage, `alsoAfterARefusal`, and one request id threaded everywhere |
+| `src/login.ts`, `src/invoice.ts` | the request id reaches `principalFrom`; `resetInvoices` is a new test seam |
+| `src/main.ts` | prints the log |
+| `test/audit.test.ts`, `test/decision-first.test.ts`, `test/request-id.test.ts` | new |
+| `test/pipeline.test.ts`, `test/login.test.ts` | the fifth stage, and the new signature |
+
+169 tests became 198.
+
+## One repair came first
+
+`correlation.request_id` is a **required** field of `audit-record.schema.json`, so this step had to put
+something there. It turned out the request id was being minted lazily, inside whichever envelope
+happened to be built first:
+
+```ts
+const request_id = requestId ?? nextRequestId();   // minted when the envelope is built
+```
+
+So it named *an answer*, not *a request*. A record minting its own id would carry a different id from
+the answer it was about, and nothing could ever join the two — which is the only job a correlation id
+has. The door now mints one id when the request arrives and hands the same one to every refusal, every
+success, and the record. It landed as its own commit, before the record, so the repair and the feature
+stay separable.
 
 ## Break it
 
-Five breaks. Change the code back after each. Every number below was produced by running it.
+Predict each answer before you read it.
 
-**1. Swap two stages in the list.** In `src/operations.ts`, put `resolve the operation` above
-`authenticate`. Run `pnpm test`:
+### Break 1 · let the recording stage skip refusals
 
-```text
- Test Files  5 failed | 8 passed (13)
-      Tests  97 passed (97)
+In `src/operations.ts`, change one word:
 
-TypeError: the pipeline runs resolve the operation where authenticate belongs: the order must be
-authenticate then resolve the operation then authorize then validate the input
+```ts
+stage(11, "record the decision", "both", recordTheDecision),   // was alsoAfterARefusal
 ```
 
-**Read the totals.** 97 collected, not 169 — and *nothing failed*. Seventy-two tests did not fail;
-they never ran, because five test files import a module that throws while it is loading. The program
-refuses to start. That is what "refused at start-up" looks like from the outside, and it is the
-strongest answer a break can get.
-
-It is also a trap. "All passed" on a shrunken total looks exactly like a break that nothing caught.
-When you run these, read the total first.
-
-**2. Make the walker take the list backwards.** In `src/pipeline.ts`, change
-`for (const stage of stages)` to `for (const stage of [...stages].reverse())` — **the one inside
-`runPipeline`**, not the one inside `assertPipeline`. Run `pnpm test`:
+Every allowed call is still recorded. Every test about an answer still passes. Nothing about the
+program's output changes at all — and denials have silently stopped being written down.
 
 ```text
-      Tests  44 failed | 125 passed (169)
+ Test Files  7 failed | 9 passed (16)
+      Tests  110 passed (110)
+
+TypeError: record the decision must run even after a refusal, or denials go unrecorded
 ```
 
-Forty-four. The order is load-bearing for nearly every test in the step.
+**`110 passed (110)`, and nothing failed.** Look at the total, not at the failures: 198 tests were
+collected before, and 88 of them never ran, because seven files import a module that throws while
+loading. `pnpm start` will not start either. This is the strongest result a break can get — the
+program refuses to exist — and it looks exactly like a break nothing caught.
 
-There are two loops with that same first line, and mutating both is a different experiment: it
-breaks the start-up check instead, and you get break 1's shrinking total. That caught me four times
-while building this step.
+### Break 2 · record after the response, the way a `finally` block would
 
-**3. Let the walk carry on after a refusal.** In `runPipeline`, change `return result` to
-`continue`. Run `pnpm test`:
+Take `record the decision` out of the list and call it from the door after the answer is built, with an
+ordinary bug in between:
+
+```ts
+if (walked.kind === "refused") {
+  const answer = walked.answer;
+
+  if (answer.kind === "error" && answer.envelope.code === "AUTHORIZATION_DENIED") {
+    throw new Error("something went wrong on the way out");   // any bug on the way out
+  }
+
+  recordTheDecision(walked.context);
+  return answer;
+}
+```
+
+Then ask for the refusal:
 
 ```text
-      Tests  15 failed | 154 passed (169)
+THREW: something went wrong on the way out
+records written: 0
+
+ Test Files  7 failed | 9 passed (16)
+      Tests  41 failed | 157 passed (198)
 ```
 
-The first no has to be the answer. Without that, a caller who failed a check has later checks run
-on them anyway — and the last one to speak wins.
+The refusal vanished. This is §21's "common mistake" performed on purpose: the record was written
+*after* the thing that could fail, so the one case you most needed evidence for is the one case that
+left none.
 
-**4. Make `authorize` do nothing, and keep its name.** In the list, replace the `authorize` stage's
-function with `(context) => carryOn(context)`. Run `pnpm test`:
+### Break 3 · move the recording above the checks
+
+Swap `authorize` and `record the decision` in the list.
 
 ```text
-     × DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here
-     × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
-     × DSOR-AUT-01b: the refusal does not say which permission was missing
-     × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
-     × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
-     × DSOR-AUT-01b: the supervisor may issue, and does
-      Tests  6 failed | 163 passed (169)
+ Test Files  7 failed | 9 passed (16)
+      Tests  110 passed (110)
+
+TypeError: the pipeline is out of order: §21.6 (validate the input) comes after §21.11
 ```
 
-This is the break to sit with. **`assertPipeline` is perfectly happy** — the list still holds four
-stages with the right names in the right order. A list cannot see what a function does. What catches
-it is behaviour: `cfo_100` can now issue an invoice.
+Refused at start-up by the §21 numbers, which step 07 put there. A decision cannot be recorded before
+it has been made.
 
-**5. Stop freezing the context between stages.** In `runPipeline`, drop the two `Object.freeze`
-calls. Run `pnpm test`:
+### Break 4 · break the chain
+
+In `src/audit.ts`, make every record point at the beginning:
+
+```ts
+const previous = GENESIS;   // was log[sequence - 1]?.record_hash ?? GENESIS
+```
 
 ```text
-     × DSOR-EXE-01a: a stage cannot edit the context it was given
-      Tests  1 failed | 168 passed (169)
+      Test Files  2 failed | 14 passed (16)
+      Tests  5 failed | 193 passed (198)
 ```
 
-A stage is meant to *return* what it learned, not edit what it was handed. Without the freeze a
-stage can rewrite the request under the checks that already ran — change the operation id after
-`authorize` has said yes. `readonly` on `Context` is erased before Node runs, which is step 01's
-lesson in a fourth place.
+Restore each break and confirm `pnpm check` prints `198 passed` again.
 
 ## Build it yourself with Claude Code
 
-This folder is a learner copy — the `my_` prefix. The official `07_the_pipeline_skeleton` is still
-listed as planned in the [map](../readme.md), so there is nothing to compare against yet.
-
-```bash
-cd docs/baby_steps_tutorials
-cp -r my_06_permissions_deny_by_default my_07_the_pipeline_skeleton
-cd my_07_the_pipeline_skeleton
-rm -rf node_modules && pnpm install
-claude
-```
-
-Ask for the problem before the code:
-
-> I have finished step 06, where anything nobody granted is refused. Now I want step 07 of the DSoR
-> baby steps: the pipeline skeleton. Read the map's entry for step 07 and §21 of the specification.
-> Then tell me what problem this step solves — not what it adds. Do not write any code yet, and ask
-> me how literal the checklist should be before you do.
-
-Then, once you agree on the shape:
-
-> Write the failing tests first, titled with the rule ids. Build it a piece at a time, and stop
-> after each: the list on its own before anything walks it, then the walk. The proof the walk worked
-> is that every test from step 06 still passes unchanged and `pnpm start` is byte-identical.
-
-And the part that finds real bugs:
-
-> Now attack it. Try to make a check run at the wrong moment or not at all. Build a list that
-> passes every rule `assertPipeline` has and is still wrong. Hand the checker a wrong order — note
-> that every ordering test reads PIPELINE, so none of them has ever done that. And compare this
-> step's behaviour against step 06's across hundreds of calls, because "all tests pass" does not
-> prove the behaviour is unchanged when the tests were written for this program.
+> Read §21 and §29 of the specification, and `audit-record.schema.json`. Then add one stage to my
+> pipeline at §21.11 that writes an audit record for every decision, before the answer is returned,
+> including every refusal.
+>
+> Copy the schema from `packages/spec/schemas/` byte for byte — do not write your own. Give each
+> record the hash of the record before it, so the records form a chain, and give me a function that
+> says whether a chain still agrees with itself.
+>
+> Tests first, titled with the rule ids. Before you write the stage, tell me what happens to a
+> refusal in the walker I already have, and what you will have to change.
+>
+> Then break every guard you added, one at a time, and show me the test totals. If removing a check
+> leaves every test passing, tell me — do not quietly keep the check.
 
 ## Check yourself
 
-1. What does this step change about what the program *does*?
-2. The order was already right. Why is writing it down worth a step?
-3. Why does `resolve the operation` carry no §21 number?
-4. `assertPipeline` checks five things. Name the one it **cannot** check, and say what catches that
-   instead.
-5. A command-only stage may not sit before `resolve the operation`. Why not?
-6. In break 1 the output says `97 passed (97)` and nothing failed. Why is that the *strongest*
-   result a break can get, and why is it also a trap?
-7. Is this step secure?
+1. Why does recording a refusal need a change to the *walker*, and not just a new stage?
+2. A caller asks for `execute_sql`. Why is the record's `operation` field left empty rather than
+   holding `"execute_sql"`?
+3. Line 6 of the log says `ALLOWED` for a call the caller saw refused. Why is that correct?
+4. Two calls in the demo left no record at all. Which ones, and what protects the log by leaving them
+   out?
+5. `verifyChain` has two checks. It used to have four. What made the other two pointless?
+6. In break 1 the output says `110 passed` and nothing failed. What actually happened?
+7. Could someone who can reach the log still rewrite history?
 
 <details>
 <summary>Answers</summary>
 
-1. Nothing. `pnpm start` is byte-identical to step 06's and every step 06 test passes unchanged.
-   What changed is that the order is now something a test can read and a later step cannot quietly
-   get wrong.
-2. Because the order *is* the guarantee, and it had been reshuffled three times in three steps with
-   one test noticing one of the moves. And because `DSOR-OPR-04a` says every interface must invoke
-   the same pipeline: a list can be handed to step 42's HTTP server, and the shape of a function
-   cannot.
-3. Because §21 begins after the operation is known. There is no checklist to run for an operation
-   that does not exist, so the specification does not number the step that finds out.
-4. It cannot check what a stage *does*. `REQUIRED` is a list of names, so a stage called `authorize`
-   that asks nothing satisfies it. What catches that is behaviour — `cfo_100` can issue an invoice —
-   which is break 4.
-5. Because whether it applies depends on the contract, and the contract is resolved by a stage.
-   Placed earlier, there is no kind to ask about, so the walker steps over it on every call
-   including commands — a step that is silently never reached, which is what `DSOR-EXE-01b` forbids.
-6. Strongest because the program did not start at all: a wrong order is not something you discover
-   on a request. A trap because "97 passed, 0 failed" reads like a break nothing caught, when really
-   seventy-two tests never ran. Always read the total.
-7. No more than step 06 was. Nothing here is authenticated, the roles are in the source, and
-   thirteen of §21's seventeen steps do not exist — including the two that matter most for evidence,
-   recording the decision and writing the intent record, which are step 08. What *is* real is that
-   the four checks that exist run in a declared order, that order is checked when the program loads,
-   and a second door cannot invent its own.
+1. Because the walk returned at the first refusal, so a stage at §21.11 would never have run for a
+   denial — and §21 says the decision is recorded *always, including DENY*. The refusal is now
+   carried: remaining checks are skipped, stages marked `evenAfterARefusal` still run.
+2. Because `operation` in the schema is an `operationRef` — `invoice.get@1`, with a version — and
+   there is no contract and no version for an operation that does not exist. A record the schema
+   refuses cannot be written, and an unwritable record would turn a misspelled request into
+   `EVIDENCE_STORE_UNAVAILABLE`. The requested id goes in `reason`, which is free text.
+3. Because the record says what was **decided**, and the decision was to allow it. What happened
+   afterwards is §21.15 `FINALIZE`, which this step does not have. A test asserts the disagreement so
+   that it is a known gap rather than a surprise.
+4. The two with nobody logged in. §29 allows rejections before a tenant is known to be counted
+   instead, so that an unauthenticated flood cannot fill the audit store — the log is a resource an
+   attacker can exhaust.
+5. `sequence` and `chain` are *inside* the record, so they are inside the hash. Changing either one
+   breaks `record_hash` first, so a separate check for them can never be the thing that catches
+   anything. Both were removed after mutating them away left every test passing.
+6. Seven test files failed to *load*, because the list check throws while the module is being
+   imported, so 88 tests never ran. Nothing failed because almost nothing ran. Always read the total.
+7. Yes. The log is an array in memory, so anyone holding it can edit a record — and a chain that is
+   fully recomputed from the beginning verifies cleanly. What the chain buys is that a *quiet* edit is
+   impossible. Making it impossible outright needs a store that refuses an `UPDATE`, which is step 39.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-EXE-01a · L1]** Commands MUST pass through the pipeline steps in the order given.
+- **[DSOR-EXE-02 · L1]** The decision — outcome, controls evaluated, and the reason for any `DENY` —
+  MUST be durably recorded before the response is returned.
   ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline))
-- **[DSOR-EXE-01b · L1]** An interface, connector, or operation MUST NOT skip a pipeline step that
-  applies to it. ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline))
+- **[DSOR-AUD-01 · L1]** Every command decision, every proposal transition, and every read covered by
+  `DSOR-CLS-05` MUST produce a durable audit record that validates against `audit-record.schema.json`.
+  ([§29](../../../specs/dsor/03-execution.md#29-audit-and-decision-evidence))
 
-`DSOR-EXE-01a` is met for the four stages that exist: they run in the order the list gives, the
-order is checked when the program loads, and a permutation test asserts that of all 24 orderings
-exactly one is accepted.
+`DSOR-EXE-02` is met for the decision itself: every call that reaches a principal is recorded before
+its answer is returned, refusals included, with the refusal's code and message as the reason. Two
+halves of the sentence are **not** met. "Controls evaluated" needs controls, which are step 27 —
+nothing evaluates a control here, so the field is absent rather than empty. And "durably" is doing a
+lot of work for an array in memory; step 09 puts the log in PostgreSQL and step 39 makes it
+append-only for real.
 
-`DSOR-EXE-01b` is met in the sense the step can support: no stage that applies is skipped, and a
-list that *would* skip one — a command-only stage before the contract is known — is refused at
-start-up. The rule also covers interfaces and connectors, and there is one interface and no
-connector, so most of its surface has nothing to skip yet.
-
-Step 06's `DSOR-AUT-01a` and `01b` still hold, along with step 05's `DSOR-IDN-01` and the "not from
-the arguments" half of `DSOR-SRC-02a`.
+`DSOR-AUD-01` is met for the one command, `invoice.issue`: its decisions produce records that validate
+against the specification's own schema, and a test compares that schema byte for byte with
+`packages/spec/schemas/` so it cannot have been quietly edited to fit the code. The rule covers two
+other things this step does not have — proposal transitions (step 21) and reads covered by
+`DSOR-CLS-05`, which are reads returning `CONFIDENTIAL` or `RESTRICTED` data. Neither contract here
+carries a classification, so no read needs a record. Queries are recorded anyway, which is more than
+the rule asks for, not less.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-OPR-04a` | Every interface must invoke the same pipeline. The machinery is here — a door is *given* its list — but there is one interface, so nothing yet proves two of them share it. Step 42 adds the second, and that is when this becomes claimable. |
-| `DSOR-EXE-02` | The decision must be recorded before the response, denials included. Nothing is recorded anywhere yet: §21.11 is step 08. |
-| `DSOR-EXE-03a`, `03b` | A durable intent record before any side effect, and no execution if evidence cannot be written. §21.13, step 08. The refusal of arguments that cannot be written down is the smallest shape of it and not the rule. |
+| `DSOR-EXE-03a` | A durable intent record before any side effect, holding the proposal id, operation and version, payload hash, idempotency key, connector and security context. There are no proposals, no idempotency keys and no connectors, so four of six fields do not exist. §21.13, step 36. |
+| `DSOR-EXE-03b` | If the store cannot accept the decision **or intent** record, do not execute; answer `EVIDENCE_STORE_UNAVAILABLE`. The decision half of that behaviour is here and tested — a record that cannot be written refuses the call and nothing is carried out. The intent half does not exist, so the rule is not claimed. Step 36. |
 | `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Steps 34 and 37. |
-| `DSOR-AUT-02a` | `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. Two answers here. Step 22. |
-| `DSOR-IDM-01a`–`01c` | The idempotency claim, §21.7 — the first stage that will apply to commands only. Step 20. |
+| `DSOR-AUD-02a` | Operational audit must not be stored only as agent memory. There is no agent memory to store it in, so there is nothing to get wrong. Step 40. |
+| `DSOR-AUD-03a` | A decision bundle per consequential command, validating against `decision-bundle.schema.json`. §21.17, and a different artifact. Step 29. |
+| `DSOR-AUD-04a`, `04b` | The audit store's own immutability — the role with no `UPDATE` privilege, and tamper evidence a database enforces. The chain here is *detection*, not prevention. Step 39. |
+| `DSOR-CLS-05` | Reads of `CONFIDENTIAL` or `RESTRICTED` data must be audited with principal, actor chain, operation, resource scope and row count. Nothing is classified yet, and `resources` and `row_count` are not written. Step 19. |
 
-## What a review found after this looked finished
+Everything earlier steps claimed still holds: step 07's `DSOR-EXE-01a` and `01b`, step 06's
+`DSOR-AUT-01a` and `01b`, step 05's `DSOR-IDN-01`, step 04's `DSOR-ERR-01a`, step 03's `DSOR-OPR-01`
+and `DSOR-SCH-01`.
 
-`pnpm check` was green at 161 tests, every guard had been mutated, and `pnpm start` matched step
-06's byte for byte. Four reviewers then attacked it: **sixteen findings confirmed**, seven refuted.
-Two were guarantees rather than gaps, and both were claims in this step's own comments:
-
-- **`assertPipeline` said it refuses "a stage in the wrong place". It did not.** The only order rule
-  was that §21 numbers never descend — and `resolve the operation` carries `null` by design, so it
-  was exempt from a rule about numbers. A reviewer permuted the four stages: **four of twenty-four
-  orderings passed**, including `resolve the operation` before `authenticate`. `makeDoor` built that
-  door, while its own comment said a door whose order cannot be trusted should not exist.
-- **The test written for the step's central claim proved nothing.** "Being refused for authority
-  tells the caller nothing about the data" sent seven perfectly writable strings, so every refusal
-  it collected came from downstream of both stages. Authorization could be moved to run *after* the
-  arguments were read and all 161 tests stayed green.
-
-Both are fixed, and both are the same mistake: **a check nobody had fed the thing it was supposed to
-catch.** That is lesson 14 in the learner's notes, and it had already cost something once before.
-
-There is a reason this section exists in three step READMEs now. A green suite and a finished
-mutation sweep are not enough, and the person least able to see it is the one who wrote both.
-
-**Next:** step 08, write the decision first — §21.11 and §21.13, the two lines of the checklist that
-matter most for evidence: the decision is recorded before the response even when the answer is no,
-and the intent record is written before anything happens.
+**Next:** step 09, `postgres_on_neon` — the invoices and this log move into a real database, and the
+application's database user is allowed to insert log rows and not to change them.
