@@ -15,19 +15,23 @@ the clearest version wins over the fastest or the most general.
 
 ## Rules that never change
 
-1. **One new idea per step.** If the work needs two, stop and say so.
-2. **Write only inside this folder.** Earlier steps are finished. Never edit them, and
+1. **Explain, ask, then build.** Before any code: say what problem this step solves, in plain
+   words, and what goes wrong without it. Then put the step's decisions to the learner in
+   beginner language, with the trade-offs and a recommendation, and **wait** for the answer.
+   Only then build, a piece at a time. A learner copy that arrives finished teaches nothing.
+2. **One new idea per step.** If the work needs two, stop and say so.
+3. **Write only inside this folder.** Earlier steps are finished. Never edit them, and
    never edit the repository around this folder from a step session.
-3. **Tests first, titled by rule id**, for example
+4. **Tests first, titled by rule id**, for example
    `DSOR-EXE-02: a denied command is recorded before the response`. Test the refusal as
    carefully as the success.
-4. **No build step.** Node runs the `.ts` files directly, so imports between files end
+5. **No build step.** Node runs the `.ts` files directly, so imports between files end
    in `.ts`, and only TypeScript syntax that Node can erase is allowed.
-5. **Money is never a `number`.** It is `{ value: "31400.00", currency: "USD" }`.
-6. **Output over claims.** Run `pnpm check` and report what it printed. Never say
+6. **Money is never a `number`.** It is `{ value: "31400.00", currency: "USD" }`.
+7. **Output over claims.** Run `pnpm check` and report what it printed. Never say
    "this should pass".
-7. **Never read or print `.env`.** Ask the human to confirm a variable is set.
-8. **One story.** `org_456`, `user_123`, `accounts-payable-fte`, `cfo_100`, `VENDOR-44`,
+8. **Never read or print `.env`.** Ask the human to confirm a variable is set.
+9. **One story.** `org_456`, `user_123`, `accounts-payable-fte`, `cfo_100`, `VENDOR-44`,
    `INV-1008`, `PAY-901`, 31,400.00 USD.
 
 ## Commands
