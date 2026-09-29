@@ -321,6 +321,7 @@ itself, this way:
 | `test/owner-reads.ts` | **New.** A child program that reads records as the owner, for the tests of records with no company |
 | `test/owner-store.ts` | **New, after the review.** A child program that runs DSoR's store as the owner, whom no policy stops, so DSoR's own `WHERE` is tested alone |
 | `test/runtime-role.test.ts` | The start-up check refuses a role membership |
+| `test/pooler-demo.ts` | **New, after the review.** Not a test: a demonstration of Neon's pooler, run by hand (decision 8) |
 | `test/db.ts` | `rowsFor` and `tryThenRollBack` take a company. `ownerRowsFor` and `poolOfOne` are new |
 | other database tests | They read `dsor.audit` inside the record's company, or through the owner. The program's log shows 9 lines. Step 09's role test is DSOR-RP-01a |
 | `test/helpers.ts`, `test/decision-log.test.ts` | The memory log's type, and two stand-in logs that no longer need `records` |
@@ -359,7 +360,9 @@ migration 005_audit_row_level_security: done
 ```
 
 On your own branch made from `step-10`, one `pnpm migrate` prints both lines at once.
-`pnpm check` prints `576 passed`, and `pnpm test:db` prints `56 passed`.
+`pnpm check` prints `577 passed`, and `pnpm test:db` prints `61 passed`. Outside the
+repository, three tests that compare the schemas with the repository's originals are
+skipped: `574 passed | 3 skipped`.
 
 The new part of `pnpm start`, the log. The numbers come from the database:
 
@@ -465,27 +468,30 @@ these five calls work again, and only the pool tests catch V1.
 the unset setting as `''`. The pool test builds that case on purpose. The other five
 tests met it by chance, because a pool reuses its connections all the time.
 
-**Neon's pooled address, shown once (decision 8).** Six separate programs connect to
-the pooled address of `step-11-breaks`, one after another, as `dsor_runtime`. Each
-prints the server connection it was given, the company it sees, and the invoices it
-sees:
+**Neon's pooled address, shown by hand (decision 8).** `test/pooler-demo.ts` connects
+six separate programs, one after another, to the pooled address of the branch in `.env`,
+as `dsor_runtime`. Each prints the server connection it was given, the company it sees,
+and the invoices it sees. It reads only, and clears at the end the company it left. Run
+it only on a branch you may break:
 
 ```text
+$ node test/pooler-demo.ts
 the right way: the company set with true, inside BEGIN ... COMMIT
-  program 1 (org_456): [{"port":5432,"server_connection":6511,"company":null,"invoices_seen":null}]
-  program 2 (sets no company): [{"port":5432,"server_connection":6511,"company":null,"invoices_seen":null}]
+  program 1 (org_456), inside its transaction: {"server_connection":1364,"company":"org_456","invoices_seen":"org_456/INV-1008"}
+  program 2 (sets no company): {"server_connection":1364,"company":null,"invoices_seen":null}
 the break: the company set with false, for the connection
-  program 3 (org_456): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
-  program 4 (sets no company): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
-  program 5 (sets no company): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
-  program 6 (sets no company): [{"port":5432,"server_connection":6511,"company":"org_456","invoices_seen":"org_456/INV-1008"}]
+  program 3 (org_456): {"server_connection":1364,"company":"org_456","invoices_seen":"org_456/INV-1008"}
+  program 4 (sets no company): {"server_connection":1364,"company":"org_456","invoices_seen":"org_456/INV-1008"}
+  program 5 (sets no company): {"server_connection":1364,"company":"org_456","invoices_seen":"org_456/INV-1008"}
+clean-up: the company set back to none, for the connection
+  program 6 (sets no company): {"server_connection":1364,"company":null,"invoices_seen":null}
 ```
 
-Six programs, one server connection, 6511. Program 1 ran its read after its own
-`COMMIT`, so its company was already gone. Programs 4, 5, and 6 never set a company, and
-each saw `org_456`'s invoice. Behind the pooler, a company set for the connection leaks
-into every later program that is handed the same server connection, not only into the
-next request of the same program.
+Six programs, one server connection, 1364. Program 1 sees its company's invoice inside
+its transaction, and program 2, on the same server connection, sees nothing. Programs 4
+and 5 never set a company, and each saw `org_456`'s invoice. Behind the pooler, a
+company set for the connection leaks into every later program that is handed the same
+server connection, not only into the next request of the same program.
 
 ## Build it yourself with Claude Code
 
@@ -608,7 +614,37 @@ and the code, and one changed the code in small ways to find changes no test cat
   stop, outcomes 5 and 6, the gaps in the record numbers, V6's count, the demo that could
   not be repeated, tutorial rules worded as DSoR's, and several hard sentences.
 
+**Found by the mutation sweep, and fixed.** It made 24 small changes to the code and 5 to
+the policies, each on the code as it stood before the review above. Ten passed every
+test. On the fixed code:
+
+| Change | Now caught by |
+| --- | --- |
+| `records` without its `WHERE` | the owner's run of DSoR's store (fixed by the review above) |
+| `inCompany` swallows the error | a log whose `INSERT` fails inside its transaction, and the closed-connection test. Before: the caller got the invoice, and no record was kept |
+| `inCompany` lends a failed connection again, or never gives it back | the closed-connection test |
+| the invoice policy limited to `SELECT`, or given to `dsor_runtime` only | C1's list of every policy, exactly as written |
+| `set_config` even with no company | nothing, and rightly: after the review, that is the code |
+
+**Tried as `dsor_runtime`, on the throwaway branch, and refused:** `row_security = off`,
+`SET ROLE` or `SET SESSION AUTHORIZATION` to the owner, disabling row-level security,
+dropping or adding a policy, a function in `app` or `public`, and the audit table's
+number sequence. A temporary view, and a temporary `SECURITY DEFINER` function, both saw
+no rows with no company. Two companies in one setting, or a company with SQL in it, saw
+nothing. Other sessions' queries are hidden. Setting another company, and writing a record
+there, worked, as "What this lock does not stop" says.
+
 **Left open on purpose:**
+
+- **`COMMIT` instead of `ROLLBACK` after an error** passes every test. Each transaction
+  holds one statement, so there is nothing to roll back yet. A test waits for the first
+  transaction with two.
+- **The program's filter for its own records** could let other runs' records in, and no
+  test sees it, because nothing else writes while the program test runs. It changes only
+  what the program prints.
+- **`EXPLAIN ANALYZE` with no company** prints "Rows Removed by Filter: 3": how many
+  invoice rows every company holds together. Only a holder of `dsor_runtime`'s login can
+  ask, and such a holder can set any company anyway.
 
 - **A program that holds `dsor_runtime`'s login can set any company.** Row-level security
   stops mistakes, not a hostile program with the login. §36 calls it defense in depth.
@@ -630,7 +666,7 @@ and the code, and one changed the code in small ways to find changes no test cat
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-TEN-01b | Tenant isolation is enforced in at least two independent layers | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/rls.db.test.ts` (C2): the database's lock alone, with SQL that leaves the company out, and DSoR's lock alone, with the store run by the owner, whom no policy stops |
+| DSOR-TEN-01b | Tenant isolation is enforced in at least two independent layers | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/rls.db.test.ts` (C2): the database's lock alone, with SQL that leaves the company out, and DSoR's lock alone, with the store run by the owner, whom no policy stops. And (C1) every policy exactly as written |
 | DSOR-RP-01a | `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, and owns no tenant table | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/audit.db.test.ts` (the role's facts, and no role membership), `test/runtime-role.test.ts` (the start-up check refuses each) |
 | DSOR-RP-01b | Tenant tables use `FORCE ROW LEVEL SECURITY` | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C1): every table with a company column, found in the catalog |
 | DSOR-RP-01c | The tenant setting is transaction-local | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C4): a pool of one connection, through the program's own store and log |
