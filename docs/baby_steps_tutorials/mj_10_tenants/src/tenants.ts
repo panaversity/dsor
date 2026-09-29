@@ -7,11 +7,10 @@ import { isTenantId, parseUri } from "./uri.ts";
 
 /**
  * Line ② of the checklist: the company the envelope names, once DSoR has checked in its
- * own table that the caller is a member of it. Anything else is refused.
+ * own table that the caller is a member of it. Anything else is refused. The caller reads
+ * the envelope's tenant once and passes it in, so the value checked is the value kept.
  */
-export function activeTenant(request: RequestEnvelope, caller: Principal): string {
-  // The envelope comes from outside the program, so it may even be null.
-  const named = request?.tenant;
+export function activeTenant(named: RequestEnvelope["tenant"], caller: Principal): string {
   // Always required, even for a caller with one company: DSoR never guesses it (step 10's
   // README, decision 1). A malformed id tells nothing about who exists.
   if (!isTenantId(named)) {

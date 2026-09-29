@@ -69,6 +69,7 @@ type AuditRow = {
   reason: string | null;
   correlation: DecisionRecord["correlation"];
   tenant: string | null;
+  extensions: DecisionRecord["extensions"] | null;
 };
 
 /** The log, as rows of dsor.audit. */
@@ -81,8 +82,9 @@ export function createDbLog(pool: pg.Pool): DecisionLog {
       // README, decision 6).
       await pool.query(
         `INSERT INTO dsor.audit
-           (record_id, kind, operation, "authorization", result, reason, correlation, tenant)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
+            extensions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           `aud_${randomUUID()}`,
           decision.kind,
@@ -93,13 +95,15 @@ export function createDbLog(pool: pg.Pool): DecisionLog {
           decision.correlation,
           // NEW IN STEP 10: NULL when no company was checked (step 10's README, decision 6).
           decision.tenant ?? null,
+          // A company a non-member claimed (step 10's README, decision 6).
+          decision.extensions ?? null,
         ],
       );
     },
     records: async (): Promise<DecisionRecord[]> => {
       const { rows } = await pool.query<AuditRow>(
         `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
-                correlation, tenant
+                correlation, tenant, extensions
            FROM dsor.audit ORDER BY sequence`,
       );
       return rows.map(recordOf);
@@ -120,6 +124,7 @@ function recordOf(row: AuditRow): DecisionRecord {
     ...(row.reason === null ? {} : { reason: row.reason }),
     correlation: row.correlation,
     ...(row.tenant === null ? {} : { tenant: row.tenant }),
+    ...(row.extensions === null ? {} : { extensions: row.extensions }),
   };
 }
 

@@ -14,6 +14,7 @@ import {
   type RequestEnvelope,
 } from "./request.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
+import { isTenantId } from "./uri.ts";
 
 // The observer is told each line's number as it runs, and only a test
 // listens (step 07's README, decision 6).
@@ -53,6 +54,9 @@ export async function call(
   // NEW IN STEP 10: set once line ② has checked the company, so the record names it, even
   // when a later line refuses (step 10's README, decision 6).
   let tenantOfRecord: string | undefined;
+  // NEW IN STEP 10: a well-formed company the caller named. If line ② refuses it, the record
+  // keeps it as a claim, never as its tenant (step 10's README, decision 6).
+  let claimedTenant: string | undefined;
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
@@ -85,7 +89,10 @@ export async function call(
     //   nothing there (step 10's README, decision 2). Then any company the arguments name
     //   must be the active one (DSOR-SRC-02b; step 10's README, decision 4).
     const tenant = line(2, () => {
-      const active = activeTenant(request, caller);
+      // The envelope comes from outside the program, so it may even be null. Read once.
+      const named = request?.tenant;
+      if (isTenantId(named)) claimedTenant = named;
+      const active = activeTenant(named, caller);
       tenantOfRecord = active;
       checkNamedTenants(input, active);
       return active;
@@ -160,7 +167,15 @@ export async function call(
   // and a database that refuses it lands in the catch (step 09's README, C2 and C4).
   try {
     await line(11, () =>
-      log.add(decisionOf(answer, registry.contracts.get(name), reachedCode, tenantOfRecord)),
+      log.add(
+        decisionOf(
+          answer,
+          registry.contracts.get(name),
+          reachedCode,
+          tenantOfRecord,
+          claimedTenant,
+        ),
+      ),
     );
   } catch {
     // DSOR-EXE-03b, an L2 rule built early: with no record, there is no answer, not even a
