@@ -27,9 +27,9 @@ export function activeTenant(request: RequestEnvelope, caller: Principal): strin
 }
 
 // The places where the arguments may name a company: the same places step 05 checks for a
-// principal (step 10's README, decision 4). A new spelling is not caught here. That is the
-// decision's downside.
-const TENANT_FIELDS = ["tenant", "tenant_id"];
+// principal. tenantId and activeTenantId are §12's own spellings (step 10's README,
+// decision 4). Another spelling is refused only by line ⑥. That is the decision's downside.
+const TENANT_FIELDS = ["tenant", "tenant_id", "tenantId", "activeTenantId"];
 
 /** Refuses the call when its arguments name any company but the active one (DSOR-SRC-02b). */
 export function checkNamedTenants(input: unknown, tenant: string): void {
