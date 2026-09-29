@@ -112,28 +112,32 @@ export type DbLog = DecisionLog & { records: (tenant: string) => Promise<Decisio
 export function createDbLog(pool: pg.Pool): DbLog {
   return Object.freeze({
     add: async (decision: Decision): Promise<void> => {
-      // One INSERT is one transaction. The query finishes only after Postgres has
-      // committed it, so when add returns, the record survives a crash: "durably" in
-      // DSOR-EXE-02. The database gives the record its number and its time (step 09's
-      // README, decision 6).
-      await pool.query(
-        `INSERT INTO dsor.audit
-           (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-            extensions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [
-          `aud_${randomUUID()}`,
-          decision.kind,
-          decision.operation ?? null,
-          decision.authorization,
-          decision.result,
-          decision.reason ?? null,
-          decision.correlation,
-          // NULL when no company was checked (step 10's README, decision 6).
-          decision.tenant ?? null,
-          // A company a non-member claimed (step 10's README, decision 6).
-          decision.extensions ?? null,
-        ],
+      // add finishes only after Postgres has committed the record, so when add returns,
+      // the record survives a crash: "durably" in DSOR-EXE-02. The database gives the
+      // record its number and its time (step 09's README, decision 6).
+      // NEW IN STEP 11: inside the transaction of the call's company, or of none when the
+      // call was refused before line ②. The policy lets the record in only if it carries
+      // exactly that company (DSOR-TEN-02a; step 11's README, decision 4).
+      await inCompany(pool, decision.tenant, (client) =>
+        client.query(
+          `INSERT INTO dsor.audit
+             (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
+              extensions)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            `aud_${randomUUID()}`,
+            decision.kind,
+            decision.operation ?? null,
+            decision.authorization,
+            decision.result,
+            decision.reason ?? null,
+            decision.correlation,
+            // NULL when no company was checked (step 10's README, decision 6).
+            decision.tenant ?? null,
+            // A company a non-member claimed (step 10's README, decision 6).
+            decision.extensions ?? null,
+          ],
+        ),
       );
     },
     // NEW IN STEP 11: one company at a time. dsor_runtime cannot read another company's
