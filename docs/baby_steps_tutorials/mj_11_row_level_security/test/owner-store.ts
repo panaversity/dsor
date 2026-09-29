@@ -5,7 +5,13 @@
 // README, "What the specification asks", point 1). The key stays in this child, and what
 // it prints is redacted first (step 09's README, decision 18).
 // Run by the tests as:  node test/owner-store.ts
-import { createDbInvoices, createDbLog, loadDotEnv, openPool, requireEnv } from "../src/postgres.ts";
+import {
+  createDbInvoices,
+  createDbLog,
+  loadDotEnv,
+  openPool,
+  requireEnv,
+} from "../src/postgres.ts";
 import { redact } from "./db.ts";
 
 loadDotEnv(["DSOR_MIGRATION_URL"]);

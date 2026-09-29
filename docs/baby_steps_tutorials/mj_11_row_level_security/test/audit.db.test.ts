@@ -218,7 +218,9 @@ describe("C3: the record survives a restart", () => {
 
     const after = newPool();
     try {
-      expect(await rowsFor(after, "org_456", id)).toMatchObject([{ authorization: "ALLOW", result: "ok" }]);
+      expect(await rowsFor(after, "org_456", id)).toMatchObject([
+        { authorization: "ALLOW", result: "ok" },
+      ]);
     } finally {
       await after.end();
     }

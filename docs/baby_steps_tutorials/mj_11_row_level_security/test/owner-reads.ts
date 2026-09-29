@@ -16,7 +16,9 @@ try {
   await client.connect();
   // Without BYPASSRLS, the owner would read no record with no company, and a test that
   // expects none would pass for the wrong reason. Found by the review.
-  const power = await client.query("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user");
+  const power = await client.query(
+    "SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user",
+  );
   if (power.rows[0]?.["rolbypassrls"] !== true) {
     throw new Error("the owner does not hold BYPASSRLS, so it cannot read every record");
   }
