@@ -70,7 +70,7 @@ real number:
 | 9 | read bound state, check preconditions | steps 11–13 |
 | 10 | evaluate controls, segregation of duties, limits | steps 27–30 |
 | 11 | **record the decision, always, including DENY** | step 08 |
-| 13 | **write the intent record, before any side effect** | step 08 |
+| 13 | **write the intent record, before any side effect** | step 36 |
 | 14 | execute through the connector | step 34 |
 | 15 | finalize: COMMITTED, FAILED or OUTCOME_UNKNOWN | step 37 |
 | 16 | commit or release reservations, enqueue events | steps 30, 39 |
@@ -320,8 +320,9 @@ And the part that finds real bugs:
    on a request. A trap because "97 passed, 0 failed" reads like a break nothing caught, when really
    seventy-two tests never ran. Always read the total.
 7. No more than step 06 was. Nothing here is authenticated, the roles are in the source, and
-   thirteen of §21's seventeen steps do not exist — including the two that matter most for evidence,
-   recording the decision and writing the intent record, which are step 08. What *is* real is that
+   thirteen of §21's seventeen steps do not exist — including the two that matter most for evidence:
+   recording the decision, which is step 08, and writing the intent record, which is step 36. What
+   *is* real is that
    the four checks that exist run in a declared order, that order is checked when the program loads,
    and a second door cannot invent its own.
 
@@ -352,7 +353,8 @@ Rules nearby this step does **not** claim:
 | --- | --- |
 | `DSOR-OPR-04a` | Every interface must invoke the same pipeline. The machinery is here — a door is *given* its list — but there is one interface, so nothing yet proves two of them share it. Step 42 adds the second, and that is when this becomes claimable. |
 | `DSOR-EXE-02` | The decision must be recorded before the response, denials included. Nothing is recorded anywhere yet: §21.11 is step 08. |
-| `DSOR-EXE-03a`, `03b` | A durable intent record before any side effect, and no execution if evidence cannot be written. §21.13, step 08. The refusal of arguments that cannot be written down is the smallest shape of it and not the rule. |
+| `DSOR-EXE-03a` | A durable intent record before any side effect. §21.13, step 36 — it needs a proposal id, an idempotency key and a connector, none of which exist before then. The refusal of arguments that cannot be written down is the smallest shape of it and not the rule. |
+| `DSOR-EXE-03b` | No execution if the evidence cannot be written. Its sentence covers the decision record *or* the intent record: step 08 meets the decision branch, step 36 the intent branch. |
 | `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Steps 34 and 37. |
 | `DSOR-AUT-02a` | `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. Two answers here. Step 22. |
 | `DSOR-IDM-01a`–`01c` | The idempotency claim, §21.7 — the first stage that will apply to commands only. Step 20. |
@@ -379,6 +381,11 @@ catch.** That is lesson 14 in the learner's notes, and it had already cost somet
 There is a reason this section exists in three step READMEs now. A green suite and a finished
 mutation sweep are not enough, and the person least able to see it is the one who wrote both.
 
-**Next:** step 08, write the decision first — §21.11 and §21.13, the two lines of the checklist that
-matter most for evidence: the decision is recorded before the response even when the answer is no,
-and the intent record is written before anything happens.
+**Next:** step 08, write the decision first — §21.11, the line of the checklist that matters most for
+evidence: the decision is recorded before the response even when the answer is no.
+
+> Corrected 2026-09-30, while building step 08. This section used to promise §21.11 **and** §21.13
+> together. §21.13's rule, `DSOR-EXE-03a`, requires the proposal id, the idempotency key and the
+> connector, so four of its six fields do not exist until far later — the map puts it at step 36, and
+> building it here would have been a stub with a rule id on it. See
+> [decision 54](../my_notes/decisions.md#54--the-intent-record-is-step-36s-not-step-08s-2026-09-30).
