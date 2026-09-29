@@ -1049,3 +1049,95 @@ invoice in DSoR. The doc comment says it is a test seam and why, which is all a 
 **Rejected:** adding a third draft invoice to the store. It changes the running example
 ([§0.4](../../../specs/dsor/00-conventions.md#04-running-example-informative)) to work around a test
 ordering problem, and the next step that needs two drafts would add a fourth.
+
+## 60 · A checkpoint, because a hash chain cannot see a deletion (2026-09-30)
+
+**What:** `audit.ts` keeps a head — the record count and the last record's hash — and `verifyChain`
+takes it as an optional second argument. `main.ts` and every test that audits its own log pass it.
+**Why:** a review dropped the last record from a three-record log and `verifyChain` returned `true`.
+Then dropped two: `true`. Then handed it an empty log: `true`. Every link held, every hash matched,
+there was simply less of it. **Hash chaining is evidence a record was not edited. It is no evidence at
+all that one was not deleted from the end**, and that is the cheapest attack available.
+[§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) names signed checkpoints
+beside hash chaining, and this is the smallest checkpoint there is: two values held apart from the
+records.
+**Cost:** `verifyChain` now has two modes, and a caller who forgets the head gets the weaker one. The
+argument is optional rather than required because comparing two *different* histories is a real thing
+a test does, and the head belongs to only one of them.
+**Rejected:** making the head required. Two of this step's tests legitimately verify a history that is
+not the current one, and a required head would have forced them to lie about which.
+
+## 61 · A record's fields are read from the caller exactly once (2026-09-30)
+
+**What:** `audit()` copies every field of its argument into a local before it decides anything.
+**Why:** it read `decision.subject` three times — once to choose record-or-count, once for
+`identity.subject`, once for `correlation.principal_id`. A review handed it a getter that answered
+`user_123` then `cfo_100`: the gate saw the supervisor so a record was written, and the record blamed
+the CFO. Schema-valid, chain verifies, nothing downstream can tell.
+**Cost:** eight lines of locals at the top of the function, which reads like ceremony until you know
+why.
+**Rejected:** trusting that callers pass plain objects. That is the assumption
+[lesson 16](lessons.md) was written about twice already, in
+[step 05](step-05-who-is-calling.md) and [step 07](step-07-the-pipeline-skeleton.md).
+
+## 62 · Only named stages may run after a refusal, and only named stages may be unnumbered (2026-09-30)
+
+**What:** two frozen lists in `pipeline.ts`. `AFTER_A_REFUSAL` holds the stages allowed to carry
+`evenAfterARefusal`; `UNNUMBERED` holds the stages allowed to carry `at: null`. Each has one member
+today.
+**Why:** both replaced *positional* rules, and a review escaped both. The flag rule said "nothing
+flagged before the recording", which left a flagged stage **after** it legal — and one with a side
+effect in it carried out a command the pipeline had **denied**, with `DENY` in the log beside the
+invoice it had just issued. `at: null` was exempt from the ascending rule by design, and nothing said
+which stages could claim the exemption, so one unnumbered stage was accepted in all six positions of
+the five-stage list, including before `authenticate`.
+**Cost:** adding a stage in a later step now means editing a list in `pipeline.ts` as well as the
+pipeline itself. That is the point: the list is the decision, and it should not be reachable by
+accident.
+**Rejected:** a cleverer positional rule. The flag was doing two jobs — "this is an evidence stage" and
+"this stage may act on a refused request" — and only the first is ever wanted, so the answer is to stop
+letting the list's author choose.
+
+## 63 · Caller text is capped before it becomes evidence (2026-09-30)
+
+**What:** `nameOf` caps an operation id at 200 characters where a message is built; `clip` caps every
+caller-supplied string at 500 before it reaches a record.
+**Why:** a review sent a two-million-character operation id and got back an error envelope whose
+message was two million characters and a schema-valid audit record whose `reason` was 2,000,057.
+[Decision 53](#53--an-unauthenticated-refusal-is-counted-not-recorded-2026-09-30) named the log as a
+resource an attacker can exhaust and guarded the *unauthenticated* half by counting. One authenticated
+principal fills it far faster, because each of its requests is **supposed** to be recorded.
+**Cost:** a long id is reported in a shortened form, so a caller debugging a genuinely long identifier
+sees "… (2000000 characters)" rather than the whole thing. The count is in the message so nothing is
+silently misrepresented.
+**Rejected:** capping only at the record. The envelope goes to the caller and a two-megabyte error
+message is its own problem.
+
+## 64 · A test title names the rule it proves, and nothing else (2026-09-30)
+
+**What:** eleven test titles changed. Six tamper-evidence tests moved from `DSOR-AUD-01` to
+`DSOR-AUD-04b`, three request-id tests from `DSOR-ERR-01a` to `DSOR-COR-01a` and `01b`, and two
+evidence-failure tests from `DSOR-EXE-02` to `DSOR-EXE-03b`.
+**Why:** a title is how this project counts coverage
+([AGENTS.md](../../../AGENTS.md), "How we work"), so a title naming the wrong rule is a wrong number in
+the coverage report. `DSOR-AUD-01` requires a record that *validates against the schema*; a constant
+hash satisfies it word for word. What the chain tests prove is `DSOR-AUD-04b`, tamper-evidence — a rule
+the step's README was simultaneously **disclaiming**. `DSOR-ERR-01a` is "every error validates against
+`error-envelope.schema.json`", and nothing in `request-id.test.ts` calls `validateEnvelope`.
+**Cost:** `DSOR-AUD-01` now has fewer tests, which looks like a step backwards and is the truth.
+**Rejected:** leaving them and noting the discrepancy in the README. A note cannot correct a number
+that a script computes from titles.
+
+## 65 · A skipped test is better than a silently passing one (2026-09-30)
+
+**What:** the test comparing the step's copy of `audit-record.schema.json` byte for byte with
+`packages/spec/schemas/` is `it.skipIf(!insideTheRepository)`. The "it compiled" half always runs.
+**Why:** found by copying the folder outside the repository, which the `build-baby-step` skill
+requires — the unconditional read died with `ENOENT`. A step is a self-contained project and a test
+that reaches four directories up is a test that makes it depend on its surroundings.
+**Cost:** outside the repository the strongest guarantee about the schema is unverified, and `pnpm
+check` prints `218 passed | 1 skipped` instead of `219 passed`. Both numbers are in the README so a
+learner does not read the skip as a break.
+**Rejected:** dropping the comparison, and vendoring a hash of the spec's schema into the step. The
+first loses the only check that the schema was not quietly edited to fit the code; the second is a
+second copy of the same fact, which is the shape [lesson 17](lessons.md) is about.
