@@ -3,7 +3,7 @@
 import { greet } from "./greet.ts";
 // NEW IN STEP 06: the same invoice, asked for by two people, one line apart.
 import { callOperation } from "./operations.ts";
-import { countedWithoutARecord, theLog, verifyChain } from "./audit.ts";
+import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
 import type { Login } from "./login.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -103,7 +103,11 @@ for (const record of theLog()) {
 }
 
 console.log();
-console.log(`${theLog().length} records, chain verifies: ${verifyChain(theLog())}`);
+// `theHead()` is passed on purpose. Without it, `verifyChain` can only judge the records it is
+// handed — so dropping the last one, the one holding a denial, would still print `true`.
+console.log(
+  `${theLog().length} records, chain verifies against the head: ${verifyChain(theLog(), theHead())}`,
+);
 console.log(
   `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,
 );
