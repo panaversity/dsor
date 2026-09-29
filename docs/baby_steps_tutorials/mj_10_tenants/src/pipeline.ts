@@ -8,7 +8,7 @@ import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
-import { activeTenant } from "./tenants.ts";
+import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 
 // The observer is told each line's number as it runs, and only a test
 // listens (step 07's README, decision 6).
@@ -71,8 +71,13 @@ export async function call(
     // NEW IN STEP 10: ② Resolve tenant. The company comes from the envelope, and DSoR checks
     //   in its own table that the caller is a member of it (DSOR-IDN-03a, DSOR-SRC-02a).
     //   Right after ①, before the operation is looked up, so a stranger to a company learns
-    //   nothing there (step 10's README, decision 2).
-    const tenant = line(2, () => activeTenant(request, caller));
+    //   nothing there (step 10's README, decision 2). Then any company the arguments name
+    //   must be the active one (DSOR-SRC-02b; step 10's README, decision 4).
+    const tenant = line(2, () => {
+      const active = activeTenant(request, caller);
+      checkNamedTenants(input, active);
+      return active;
+    });
 
     // Ours, not §21's: which operation? Lines ③ to ⑤ need its contract (step 07's
     // README, decision 4).
@@ -94,6 +99,12 @@ export async function call(
     //   From here on, only the copy that line ⑥ checked is used (step 07's README,
     //   decision 9).
     const checked = line(6, () => checkInput(name, registry.inputs, input));
+
+    // NEW IN STEP 10: ours, not §21's: every URI in the checked input must name the active
+    // company (DSOR-SRC-02b). After ⑥, so it reads the checked copy, and before "is it
+    // built", so a foreign URI is never answered as "not built yet" (step 10's README,
+    // decision 4).
+    checkUrisInTenant(checked, tenant);
 
     // Ours, not §21's: is it built? Never before ⑤, so "not allowed" is never answered as
     // "not built yet" (step 06's README, C5), and never before ⑥ (step 07's README,
