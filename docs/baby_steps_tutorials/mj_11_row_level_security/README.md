@@ -554,7 +554,9 @@ what I expect.
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+Every break of the design's table was run for real ("Break it"). Then two reviewers who
+had not seen the conversation attacked the step: one checked each rule against the tests
+and the code, and one changed the code in small ways to find changes no test catches.
 
 **Changed by checking the design against step 10's code, before the first test:**
 
@@ -574,17 +576,62 @@ _To be written after the review, with the result of every break in the table abo
   every record of `org_456` until the log wrote inside its company's transaction, so
   both locks and all their code would land in one commit.
 
+**Found by the review, and fixed:**
+
+- **The first lock was tested by nothing.** With DSoR's `WHERE tenant_id = $1` deleted
+  (break V5), every test passed, because the database's lock hid the loss. So "two
+  independent layers" was proved for one layer only. Now `test/owner-store.ts` runs
+  DSoR's store as the owner, whom no policy stops, and only DSoR's `WHERE` can filter.
+  V5 fails that test now.
+- **A role membership skipped every check.** After `GRANT neondb_owner TO dsor_runtime`,
+  every check of step 09 stayed green, and `SET ROLE neondb_owner` then skipped every
+  policy. The start-up check and the DSOR-RP-01a test now refuse any role membership
+  (decision 7).
+- **A call with no company set nothing.** It then ran with whatever company the
+  connection still carried, behind a shared pooler even another program's. Now it sets
+  `''` (decision 3). The cost: break V1 is caught only by the pool tests now.
+- **The program stated a count it had not read.** Its last line now says which part it
+  read, and which part it knows from the rule that an answer leaves only after its record
+  is committed.
+- **Tests that could pass for the wrong reason.** A `42501` error could be a missing
+  privilege, not the policy: the tests now match the policy's message. A read of an empty
+  table gives no rows too: C3 now writes a record first. An owner without `BYPASSRLS`
+  would read nothing: the owner's programs now check that first.
+- **The README said more than was proved,** or said it unclearly: what the lock does not
+  stop, outcomes 5 and 6, the gaps in the record numbers, V6's count, the demo that could
+  not be repeated, tutorial rules worded as DSoR's, and several hard sentences.
+
+**Left open on purpose:**
+
+- **A program that holds `dsor_runtime`'s login can set any company.** Row-level security
+  stops mistakes, not a hostile program with the login. §36 calls it defense in depth.
+- **In `add`, one value gives both the record's company and the transaction's.** So the
+  write policy catches a missing or leftover company, never a wrong one.
+- **One counter numbers every company's records.** The gaps in `records('org_456')` show
+  when, and how often, other companies are served. DSOR-TEN-02a asks for audit partitions
+  keyed by tenant. Numbering per company is a step of its own, and a question for the
+  specification.
+- **The owner must hold `BYPASSRLS`.** Without it, the owner reads no row and a
+  migration's `UPDATE` changes none, with no error. Neon's owner holds it.
+- **`dsor.principal_id`**, which §36's example also sets, waits until something reads it.
+- **Decision 9's rule for joins and foreign keys** waits for a second business table.
+- **Neon's pooler is shown, not tested** (decision 8).
+- **`src/postgres.ts` is 268 lines,** far past the 150 at which a file wants splitting.
+  Splitting it is a step of its own.
+
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-TEN-01b | Tenant isolation is enforced in at least two independent layers | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | _to be counted_ |
-| DSOR-RP-01a | `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, and owns no tenant table | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | _to be counted_ |
-| DSOR-RP-01b | Tenant tables use `FORCE ROW LEVEL SECURITY` | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | _to be counted_ |
-| DSOR-RP-01c | The tenant setting is transaction-local | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | _to be counted_ |
-| DSOR-RP-01d | A query with no tenant setting yields no rows | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | _to be counted_ |
+| DSOR-TEN-01b | Tenant isolation is enforced in at least two independent layers | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/rls.db.test.ts` (C2): the database's lock alone, with SQL that leaves the company out, and DSoR's lock alone, with the store run by the owner, whom no policy stops |
+| DSOR-RP-01a | `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, and owns no tenant table | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/audit.db.test.ts` (the role's facts, and no role membership), `test/runtime-role.test.ts` (the start-up check refuses each) |
+| DSOR-RP-01b | Tenant tables use `FORCE ROW LEVEL SECURITY` | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C1): every table with a company column, found in the catalog |
+| DSOR-RP-01c | The tenant setting is transaction-local | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C4): a pool of one connection, through the program's own store and log |
+| DSOR-RP-01d | A query with no tenant setting yields no rows | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C3): a fresh connection, and one that has just held `org_456`, for both tables |
 
-Also advanced, not claimed in full: DSOR-TEN-02a, for the audit table only.
+Also advanced, not claimed in full: DSOR-TEN-02a, for the audit table only
+(`test/rls.db.test.ts`, C5). Its idempotency records, counters, holds, proposals, and
+events come with their own steps, and one counter still numbers every company's records.
 
 ## Next
 
