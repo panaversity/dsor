@@ -149,7 +149,40 @@ describe("anything not granted is refused", () => {
     expect(noArgument.code).toBe("AUTHORIZATION_DENIED");
     seen.add(noArgument.message);
 
-    // One message for all seven, so the words cannot be compared either.
+    // And arguments that cannot be written down at all. These are the ones that matter, because
+    // they are the only ones the *validate* stage can refuse by itself — so they are the only
+    // inputs that can tell whether authority was settled first.
+    //
+    // Every attempt above is a perfectly writable string, so each of their refusals comes from
+    // further downstream, and a review proved it: authorization could be moved to run AFTER the
+    // arguments were read and all 161 tests stayed green. cfo_100 then got VALIDATION_FAILED for
+    // an unwritable argument and AUTHORIZATION_DENIED for a writable one — two distinguishable
+    // answers where this step promises one.
+    const circular: Record<string, unknown> = { invoice: INV_1009 };
+
+    circular["itself"] = circular;
+
+    for (const [why, args] of [
+      ["a circular argument", circular],
+      ["a BigInt", { invoice: INV_1009, big: 1n }],
+      [
+        "a getter that throws",
+        {
+          get invoice(): string {
+            throw new Error("boom");
+          },
+        },
+      ],
+    ] as const) {
+      const envelope = refusalFrom(
+        callOperation(CFO, "invoice.issue", args as Readonly<Record<string, unknown>>),
+      );
+
+      expect(envelope.code, why).toBe("AUTHORIZATION_DENIED");
+      seen.add(envelope.message);
+    }
+
+    // One message for all ten, so the words cannot be compared either.
     expect(seen.size).toBe(1);
   });
 

@@ -4,16 +4,10 @@
 // the order some lines happened to sit in, and became a list — so these tests are about the list.
 
 import { describe, expect, it } from "vitest";
-import {
-  assertPipeline,
-  runPipeline,
-  stagesFor,
-  type Context,
-  type Stage,
-} from "../src/pipeline.ts";
+import { assertPipeline, runPipeline, applies, type Context, type Stage } from "../src/pipeline.ts";
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
-import { makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
+import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(at: number | null, name: string, applies: Stage["applies"] = "both"): Stage {
@@ -52,27 +46,24 @@ describe("the pipeline", () => {
     expect(new Set(PIPELINE.map((s) => s.name)).size).toBe(PIPELINE.length);
   });
 
-  // A query runs the stages that apply to it. Today every stage applies to both, so this asserts
-  // the mechanism on a list of its own rather than pretending the real list exercises it — the
-  // first command-only stage is the idempotency claim, in step 20.
-  it("DSOR-EXE-01b: a query runs the stages that apply to it, and no others", () => {
-    const list = [
-      fake(1, "authenticate"),
-      fake(7, "claim the idempotency key", "command"),
-      fake(9, "read the state"),
-    ];
+  // `applies` is the one place that decides, and the walker is its only caller. There used to be a
+  // `stagesFor` helper saying the same thing beside a condition inside the walker, and no door ever
+  // called the helper — so the two tests here certified a copy nothing ran.
+  it("DSOR-EXE-01b: a command-only stage applies to a command and not to a query", () => {
+    const both = fake(1, "authenticate");
+    const only = fake(7, "claim the idempotency key", "command");
 
-    expect(stagesFor("query", list).map((s) => s.name)).toEqual(["authenticate", "read the state"]);
-    expect(stagesFor("command", list).map((s) => s.name)).toEqual([
-      "authenticate",
-      "claim the idempotency key",
-      "read the state",
-    ]);
+    expect(applies(both, "query")).toBe(true);
+    expect(applies(both, "command")).toBe(true);
+    expect(applies(only, "query")).toBe(false);
+    expect(applies(only, "command")).toBe(true);
   });
 
   it("DSOR-EXE-01b: every stage in the real list applies to both kinds, for now", () => {
-    expect(stagesFor("query", PIPELINE)).toEqual(PIPELINE);
-    expect(stagesFor("command", PIPELINE)).toEqual(PIPELINE);
+    for (const stage of PIPELINE) {
+      expect(applies(stage, "query"), stage.name).toBe(true);
+      expect(applies(stage, "command"), stage.name).toBe(true);
+    }
   });
 
   // A bad list is refused when the program loads, the way a bad contract is in step 03 and a bad
@@ -217,9 +208,65 @@ describe("the pipeline", () => {
   // And the branch piece 2 could not reach. A stage that says it carried on without filling in what
   // it is for leaves the walk finishing without something the execution needs. That is this
   // program's bug, not the caller's, which is what INTERNAL_ERROR means.
+  //
+  // Every stage, not one: a review pointed out that lazying only `validate the input` left the
+  // other three unproven, and that removing `authorize`'s own guard made the door THROW at the
+  // caller with all 161 tests green. And two callers, not one, asserted against the login rather
+  // than a literal — the literal was lesson 10 in this step's own new test.
   it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", () => {
-    const lazy = PIPELINE.map((stage) =>
-      stage.name === "validate the input"
+    for (const login of [{ loggedInAs: "user_123" }, { loggedInAs: "cfo_100" }]) {
+      // Only the stages that FILL something can leave the walk short. `authorize` fills nothing —
+      // it only refuses — so a no-op `authorize` is a different failure, and it has its own test
+      // below.
+      const fillers = PIPELINE.filter((stage) => stage.name !== "authorize");
+
+      for (const lazied of fillers) {
+        const list = PIPELINE.map((stage) =>
+          stage.name === lazied.name
+            ? Object.freeze({
+                ...stage,
+                run: (context: Context) => ({ kind: "carry_on" as const, context }),
+              })
+            : stage,
+        );
+
+        const where = `${login.loggedInAs} with ${lazied.name} lazied`;
+        const answer = makeDoor(list)(login, "invoice.get", {
+          invoice: "dsor://org_456/invoice/INV-1008",
+        });
+
+        if (answer.kind !== "error") {
+          throw new Error(`${where}: expected a refusal, got ${answer.kind}`);
+        }
+
+        expect(answer.envelope.code, where).toBe("INTERNAL_ERROR");
+        expect(answer.envelope.retry, where).toBe("never");
+
+        // Who it is attributed to follows what actually happened: nobody, when authenticate is the
+        // stage that did nothing; otherwise the caller who asked.
+        const expected = lazied.name === "authenticate" ? "(nobody)" : login.loggedInAs;
+
+        expect(answer.askedBy, where).toBe(expected);
+
+        // And "(nobody)" is never written into the evidence as if it were a person.
+        if (lazied.name === "authenticate") {
+          expect(answer.envelope.correlation.principal_id, where).toBeUndefined();
+        } else {
+          expect(answer.envelope.correlation.principal_id, where).toBe(login.loggedInAs);
+        }
+      }
+    }
+  });
+
+  // What the list check CANNOT see, stated as a test rather than only as a comment.
+  //
+  // `REQUIRED` is a list of names, so a stage called `authorize` that returns carry_on without
+  // asking anything satisfies assertPipeline — a review built exactly that door. There is no way to
+  // check a function's meaning from a list. What catches it is behaviour: cfo_100 does not hold
+  // invoice:issue, and with that door she can issue.
+  it("DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here", () => {
+    const hollow = PIPELINE.map((stage) =>
+      stage.name === "authorize"
         ? Object.freeze({
             ...stage,
             run: (context: Context) => ({ kind: "carry_on" as const, context }),
@@ -227,25 +274,122 @@ describe("the pipeline", () => {
         : stage,
     );
 
-    const door = makeDoor(lazy);
-    const answer = door({ loggedInAs: "user_123" }, "invoice.get", {
+    // The list is fine. That is the point.
+    expect(assertPipeline(hollow)).toBe(PIPELINE.length);
+
+    const answer = makeDoor(hollow)({ loggedInAs: "cfo_100" }, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+    });
+
+    // She gets past the gate, which is exactly what the real door must never allow.
+    expect(answer.kind).not.toBe("error");
+
+    // And the real door refuses her.
+    const real = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+    });
+
+    if (real.kind !== "error") {
+      throw new Error(`the real door should refuse cfo_100, got ${real.kind}`);
+    }
+
+    expect(real.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  // Every path out of the door hands back a frozen answer. `readonly` is erased before Node runs, so
+  // without this a caller could rewrite `askedBy` on the answer they were given — and two of these
+  // paths had no test at all.
+  it("every answer the door gives back is frozen", () => {
+    const good = "dsor://org_456/invoice/INV-1008";
+    const paths = [
+      ["nobody logged in", undefined, "invoice.get", { invoice: good }],
+      ["a name nobody has", { loggedInAs: "nobody" }, "invoice.get", { invoice: good }],
+      ["no such operation", { loggedInAs: "user_123" }, "execute_sql", {}],
+      ["an id that is not text", { loggedInAs: "user_123" }, Symbol("id"), {}],
+      ["an id from the prototype", { loggedInAs: "user_123" }, "toString", {}],
+      ["denied", { loggedInAs: "cfo_100" }, "invoice.issue", { invoice: good }],
+      ["already issued", { loggedInAs: "user_123" }, "invoice.issue", { invoice: good }],
+      ["read", { loggedInAs: "user_123" }, "invoice.get", { invoice: good }],
+    ] as const;
+
+    for (const [why, login, id, args] of paths) {
+      const answer = callOperation(
+        login as never,
+        id as never,
+        args as Readonly<Record<string, unknown>>,
+      );
+
+      expect(Object.isFrozen(answer), why).toBe(true);
+      expect(() => {
+        (answer as { askedBy: string }).askedBy = "cfo_100";
+      }, why).toThrow(TypeError);
+    }
+  });
+
+  // An operation named by something that is not text used to reach a template string and throw a
+  // raw TypeError at the caller. And `handlers` is a plain object, so an id of "toString" found a
+  // function on Object.prototype — the same lookup that let a role named `toString` grant
+  // permissions in step 06.
+  it("DSOR-ERR-01a: an operation named by something that is not text is refused, not thrown at", () => {
+    for (const id of [Symbol("nope"), 7, null, undefined, {}, ["invoice.get"]]) {
+      const answer = callOperation({ loggedInAs: "user_123" }, id as never, {});
+
+      if (answer.kind !== "error") {
+        throw new Error(`${String(id)}: expected a refusal, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.code, String(id)).toBe("UNSUPPORTED_CAPABILITY");
+    }
+  });
+
+  it("DSOR-ERR-01a: an operation id that only exists on Object.prototype is not an operation", () => {
+    for (const id of ["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf"]) {
+      const answer = callOperation({ loggedInAs: "user_123" }, id, {});
+
+      if (answer.kind !== "error") {
+        throw new Error(`${id}: expected a refusal, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.code, id).toBe("UNSUPPORTED_CAPABILITY");
+    }
+  });
+
+  // A stage returns what it learned; it does not edit what it was handed. The context is frozen on
+  // the way in and after every stage, so a stage cannot rewrite the request under the checks that
+  // already ran — change the id after authorize said yes, say.
+  it("DSOR-EXE-01a: a stage cannot edit the context it was given", () => {
+    let threw = "";
+    const vandal: Stage = Object.freeze({
+      at: null,
+      name: "resolve the operation",
+      applies: "both",
+      run: (context: Context) => {
+        try {
+          (context as { id: string }).id = "invoice.issue";
+        } catch (error) {
+          threw = (error as Error).constructor.name;
+        }
+
+        return { kind: "carry_on" as const, context };
+      },
+    });
+
+    const list = PIPELINE.map((stage) => (stage.name === vandal.name ? vandal : stage));
+    const answer = makeDoor(list)({ loggedInAs: "user_123" }, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
 
-    if (answer.kind !== "error") {
-      throw new Error(`expected a refusal, got ${answer.kind}`);
-    }
+    expect(threw).toBe("TypeError");
 
-    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
-    expect(answer.envelope.retry).toBe("never");
-    expect(answer.askedBy).toBe("user_123");
+    // And the call it actually made is the one that was asked for, not the one the stage wanted.
+    expect(answer.kind).toBe("error");
   });
 
   // The test this step most needed and did not have. A review permuted the four real stages and
   // found FOUR of the twenty-four orderings accepted — including `resolve the operation` before
   // `authenticate`, which answers an unauthenticated caller UNSUPPORTED_CAPABILITY and tells them
-  // which operations exist. Every ordering test above reads PIPELINE, so none of them ever handed
-  // the checker a wrong order.
+  // which operations exist. Every other ordering test here reads PIPELINE, so none of them ever
+  // handed the checker a wrong order.
   it("DSOR-EXE-01a: of every ordering of the real stages, exactly one is accepted", () => {
     const orderings = <T>(xs: readonly T[]): T[][] =>
       xs.length <= 1
@@ -269,13 +413,15 @@ describe("the pipeline", () => {
     });
 
     expect(accepted).toHaveLength(1);
-    expect(accepted[0]?.map((s) => s.name)).toEqual(PIPELINE.map((s) => s.name));
+    expect(accepted[0]?.map((stage) => stage.name)).toEqual(PIPELINE.map((stage) => stage.name));
   });
 
-  // The two swaps that matter most, named, so a failure says which guarantee went.
-  it("DSOR-EXE-01a: the order the checker refuses, in the words a reader needs", () => {
+  // The two swaps that matter most, named, so a failure says which guarantee went — and which guard
+  // caught it. The numbers catch a swap between two numbered stages; the name order catches the ones
+  // they cannot, which are the swaps involving a stage that carries `null`.
+  it("DSOR-EXE-01a: the orders the checker refuses, in the words a reader needs", () => {
     const byName = (name: string): Stage => {
-      const found = PIPELINE.find((s) => s.name === name);
+      const found = PIPELINE.find((stage) => stage.name === name);
 
       if (found === undefined) {
         throw new Error(`${name} is not in the pipeline`);
@@ -285,6 +431,7 @@ describe("the pipeline", () => {
     };
 
     // Resolving the operation before knowing who is asking tells a stranger which operations exist.
+    // Only the name order can catch this one: `resolve the operation` carries no number.
     expect(() =>
       assertPipeline([
         byName("resolve the operation"),
@@ -294,10 +441,8 @@ describe("the pipeline", () => {
       ]),
     ).toThrow(/authenticate belongs/);
 
-    // Reading the arguments before authority is settled is the leak step 06 tested for. This one
-    // the *numbers* catch, because 6 before 5 descends — which is the division of labour worth
-    // seeing: the numbers catch a swap between two numbered stages, and the name order catches the
-    // ones they cannot, which are the swaps involving a stage that carries `null`.
+    // Reading the arguments before authority is settled is the leak step 06 tested for. The numbers
+    // catch this one, because 6 before 5 descends.
     expect(() =>
       assertPipeline([
         byName("authenticate"),
@@ -308,8 +453,8 @@ describe("the pipeline", () => {
     ).toThrow(/out of order/);
   });
 
-  // §21 has seventeen steps. A number outside that is not a §21 number — and NaN is the one that
-  // matters, because every comparison against it is false, so one NaN hides exactly one descent.
+  // §21 has seventeen steps, so a number outside that is not a §21 number. NaN is the one that
+  // matters: every comparison against it is false, so one NaN hides exactly one descent.
   it("DSOR-EXE-01a: a §21 number §21 does not have stops the program", () => {
     for (const at of [0, 18, 99, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       const list = [
@@ -321,11 +466,5 @@ describe("the pipeline", () => {
 
       expect(() => assertPipeline(list), String(at)).toThrow(/not a step §21 has/);
     }
-  });
-
-  // Every guard that throws says which one fired, so a test cannot pass because a different guard
-  // caught the input first — which is how the command-only test passed for the wrong reason once.
-  it("DSOR-EXE-01a: an empty list is refused for being empty", () => {
-    expect(() => assertPipeline([])).toThrow(/is empty/);
   });
 });

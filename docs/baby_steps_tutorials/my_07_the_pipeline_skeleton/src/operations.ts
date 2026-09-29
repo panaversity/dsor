@@ -302,9 +302,27 @@ const authenticate: Stage["run"] = (context) => {
 
 /** Not in §21, which assumes it: is this an operation this program has a contract for? */
 const resolveTheOperation: Stage["run"] = (context) => {
+  // `typeof` first, because everything below puts the id in a message and `${}` on a Symbol throws
+  // — a raw TypeError at a caller who is owed an envelope.
+  //
+  // `Object.hasOwn` on `handlers` because it is a plain object, so `handlers["toString"]` finds a
+  // function on Object.prototype: the same lookup that let a role named `toString` grant permissions
+  // in step 06. Be honest about it though — no test can kill this one. `registry` is a **Map**, and
+  // a Map has no prototype keys, so `registry.get("toString")` already returns nothing and the
+  // `contract === undefined` half refuses first. It is here for the day the registry stops being a
+  // Map, and because the two halves should agree about what an id is. A guard that provably changes
+  // nothing today is worth a sentence rather than a silent line.
+  if (typeof context.id !== "string") {
+    return refuse(
+      context.principal?.id ?? "(nobody)",
+      "UNSUPPORTED_CAPABILITY",
+      "an operation is named by text, and this is not text",
+    );
+  }
+
   const contract = registry.get(context.id);
 
-  if (contract === undefined || handlers[context.id] === undefined) {
+  if (contract === undefined || !Object.hasOwn(handlers, context.id)) {
     return refuse(
       context.principal?.id ?? "(nobody)",
       "UNSUPPORTED_CAPABILITY",
@@ -419,6 +437,13 @@ export type Door = (
  * The list is checked **as the door is built**, not on the first request and not by trusting
  * whoever built it. A door whose order cannot be trusted should not exist, because the order is
  * the guarantee.
+ *
+ * What the check cannot see is what a stage *does*. `REQUIRED` is a list of names, so a stage
+ * called `authorize` that returns `carry_on` without asking anything satisfies it — a review built
+ * exactly that door. There is no way to check a function's meaning from a list, so the honest
+ * answer is to say so here rather than imply the check is stronger than it is. What guards that
+ * instead is the behaviour tests: a door whose `authorize` does nothing lets cfo_100 issue an
+ * invoice, and `deny-by-default.test.ts` is where that is caught.
  */
 export function makeDoor(stages: readonly Stage[]): Door {
   assertPipeline(stages);
@@ -431,7 +456,10 @@ export function makeDoor(stages: readonly Stage[]): Door {
     }
 
     const { principal, contract, given, payloadHash: hash } = walked.context;
-    const handler = contract === undefined ? undefined : handlers[contract.id];
+    const handler =
+      contract !== undefined && Object.hasOwn(handlers, contract.id)
+        ? handlers[contract.id]
+        : undefined;
 
     // Every one of these is filled by a stage, and `assertPipeline` refuses a list that is missing
     // the stage which fills it. What it cannot refuse is a stage that says it carried on without

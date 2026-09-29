@@ -205,9 +205,15 @@ export function assertPipeline(stages: readonly Stage[]): number {
   return stages.length;
 }
 
-/** The stages that apply to this kind of call, in order. */
-export function stagesFor(kind: OperationKind, stages: readonly Stage[]): readonly Stage[] {
-  return stages.filter((stage) => stage.applies === "both" || kind === "command");
+/**
+ * Does this stage apply to this kind of call?
+ *
+ * One function, used by the walker and by nothing else — which is the point. There used to be a
+ * `stagesFor` helper beside a condition inside `runPipeline` that said the same thing twice, and no
+ * door ever called the helper. Two tests carried a rule id and certified the copy nobody ran.
+ */
+export function applies(stage: Stage, kind: OperationKind): boolean {
+  return stage.applies === "both" || kind === "command";
 }
 
 /** What has been walked, and what it found. */
@@ -228,10 +234,16 @@ export type PipelineResult =
  * command-only stage may sit that early, and `assertPipeline` is where that will be refused.
  */
 export function runPipeline(stages: readonly Stage[], start: Context): PipelineResult {
-  let context = start;
+  // Frozen on the way in and again after every stage. A stage is meant to *return* what it learned,
+  // not edit what it was handed — and without this it could rewrite the request under the checks
+  // that already ran: change the id after authorize said yes, or the login after authenticate did.
+  // `readonly` on Context is erased before Node runs, which is step 01's lesson in a fourth place.
+  let context = Object.freeze(start);
 
   for (const stage of stages) {
-    if (stage.applies === "command" && context.contract?.kind !== "command") {
+    const kind: OperationKind = context.contract?.kind === "command" ? "command" : "query";
+
+    if (!applies(stage, kind)) {
       continue;
     }
 
@@ -241,7 +253,7 @@ export function runPipeline(stages: readonly Stage[], start: Context): PipelineR
       return result;
     }
 
-    context = result.context;
+    context = Object.freeze(result.context);
   }
 
   return { kind: "ready", context };
