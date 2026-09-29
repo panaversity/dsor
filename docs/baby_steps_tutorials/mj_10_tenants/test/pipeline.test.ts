@@ -219,7 +219,8 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     const spy = vi.fn<Handler>(() => "ran");
     const input = { id: "INV-1008" };
     await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
+    // NEW IN STEP 10: and the active company, which line ② checked.
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
     expect(input).toStrictEqual({ id: "INV-1008" });
   });
 
@@ -242,7 +243,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       withDefault,
     );
     await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
   });
 
   // Found by the review: the check read the id once and the code read it again. A getter
@@ -257,7 +258,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       },
     };
     await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
   });
 
   it("an input that JSON cannot copy is refused with VALIDATION_FAILED", async () => {
