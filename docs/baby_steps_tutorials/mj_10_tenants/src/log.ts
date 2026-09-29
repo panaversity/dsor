@@ -16,6 +16,9 @@ export type Decision = {
   result: string;
   reason?: string;
   correlation: Correlation;
+  // NEW IN STEP 10: the company the call worked in. None when the call was refused before
+  // DSoR had checked one (step 10's README, decision 6).
+  tenant?: string;
 };
 
 /** One record in the log: a decision, with its id, its place in the log, and its time. */
@@ -56,6 +59,8 @@ export function decisionOf(
   answer: Answer,
   contract: Contract | undefined,
   reachedCode: boolean,
+  // NEW IN STEP 10: the active tenant, once line ② has checked it.
+  tenant: string | undefined,
 ): Decision {
   const refused = "code" in answer;
   return {
@@ -70,5 +75,6 @@ export function decisionOf(
     result: refused ? answer.code : "ok",
     ...(refused ? { reason: answer.message } : {}),
     correlation: answer.correlation,
+    ...(tenant === undefined ? {} : { tenant }),
   };
 }

@@ -52,7 +52,11 @@ const RECORDED_AS: Record<string, ["ALLOW" | "DENY", string | undefined]> = {
 
 // NEW IN STEP 10: the refusals that come before line ②, so their records name no company
 // (step 10's README, decision 6).
-const AT_LINE_1 = ["a call with no login", "a request id that is empty"];
+const AT_LINE_1 = [
+  "a call with no login",
+  "a request id that is empty",
+  "the agent naming cfo_100 in its arguments",
+];
 
 /** The record a test expects: the fields DSoR fills in, and the decision itself. */
 function recordOf(sequence: number, decision: Record<string, unknown>): Record<string, unknown> {

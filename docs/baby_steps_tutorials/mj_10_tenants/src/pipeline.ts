@@ -45,6 +45,9 @@ export async function call(
   // Set once DSoR's checks let the call reach its code at line ⑨. From then on, its
   // record says ALLOW (step 08's README, decision 5).
   let reachedCode = false;
+  // NEW IN STEP 10: set once line ② has checked the company, so the record names it, even
+  // when a later line refuses (step 10's README, decision 6).
+  let tenantOfRecord: string | undefined;
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
@@ -75,6 +78,7 @@ export async function call(
     //   must be the active one (DSOR-SRC-02b; step 10's README, decision 4).
     const tenant = line(2, () => {
       const active = activeTenant(request, caller);
+      tenantOfRecord = active;
       checkNamedTenants(input, active);
       return active;
     });
@@ -147,7 +151,9 @@ export async function call(
   // NEW IN STEP 09: await. The answer waits until the database has committed the record,
   // and a database that refuses it lands in the catch (step 09's README, C2 and C4).
   try {
-    await line(11, () => log.add(decisionOf(answer, registry.contracts.get(name), reachedCode)));
+    await line(11, () =>
+      log.add(decisionOf(answer, registry.contracts.get(name), reachedCode, tenantOfRecord)),
+    );
   } catch {
     // DSOR-EXE-03b, an L2 rule built early: with no record, there is no answer, not even a
     // "yes". Whatever the log threw stays inside: it can name paths and servers. This
