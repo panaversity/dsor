@@ -99,6 +99,27 @@ describe("C6: every invoice row and every audit record carries its company", () 
     expect(await tenantOf(id)).toStrictEqual([{ tenant: null }]);
   });
 
+  // The company a non-member asked for, kept as a claim (step 10's README, decision 6).
+  it("a non-member's refusal keeps the company it asked for under extensions, not as tenant", async () => {
+    const id = requestId("c6-claim");
+    await call(
+      registry,
+      log,
+      { token: "tok_7f3a", tenant: "org_789", request_id: id },
+      "invoice.get",
+      {
+        id: "INV-1008",
+      },
+    );
+    const { rows } = await observer.query(
+      `SELECT tenant, extensions FROM dsor.audit WHERE correlation->>'request_id' = $1`,
+      [id],
+    );
+    expect(rows).toStrictEqual([
+      { tenant: null, extensions: { "org.panaversity.steps": { requested_tenant: "org_789" } } },
+    ]);
+  });
+
   // Step 02's form, kept by the database too (002_tenants.sql). Found by the review:
   // nothing tested the CHECK. dsor_runtime may insert this column, so it is the one to try.
   it("DSOR-TEN-01a: dsor.audit refuses a tenant that is not org_ and digits", async () => {

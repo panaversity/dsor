@@ -58,7 +58,7 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       {
         object: "dsor.audit INSERT",
         // NEW IN STEP 10: tenant too (step 10's README, decision 6).
-        held: "record_id kind operation authorization result reason correlation tenant",
+        held: "record_id kind operation authorization result reason correlation tenant extensions",
       },
       { object: "schema app", held: "USAGE" },
       { object: "schema dsor", held: "USAGE" },

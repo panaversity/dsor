@@ -136,6 +136,14 @@ export const BAD_TENANT = "a tenant must be an id like org_456, named in the req
 export const NOT_A_MEMBER = "the caller may not work in the tenant it named";
 export const FOREIGN_URI = "the arguments name a resource outside the active tenant";
 
+/** The message when the envelope carries a field besides its three (step 10's decision 11). */
+export function extraField(field: string): string {
+  return `the request envelope may carry only token, tenant, and request_id, not "${field}"`;
+}
+
+// The name under which a record keeps the company a caller claimed (step 10's decision 6).
+export const OUR_EXTENSIONS = "org.panaversity.steps";
+
 /** The message when the arguments name a tenant other than the active one, in this place. */
 export function otherTenant(place: string): string {
   return `the arguments name a tenant other than the active one, in ${place}`;

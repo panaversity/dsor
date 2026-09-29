@@ -22,6 +22,7 @@ import {
   INV_2001_OF_789,
   NOBODY,
   NOT_A_MEMBER,
+  OUR_EXTENSIONS,
   SUPERVISOR,
   THE_789_SUPERVISOR,
   THE_AGENT,
@@ -29,6 +30,7 @@ import {
   THE_SUPERVISOR,
   USER_700,
   correlationFor,
+  extraField,
   log,
   notGranted,
   notValid,
@@ -204,6 +206,11 @@ describe("C4: a company in the arguments that is not the active one is refused",
     ["tenant_id", { id: "INV-1008", tenant_id: "org_789" }],
     ["correlation.tenant", { id: "INV-1008", correlation: { tenant: "org_789" } }],
     ["correlation.tenant_id", { id: "INV-1008", correlation: { tenant_id: "org_789" } }],
+    // §12's own spellings. Found by the review: they fell through to line ⑥.
+    ["tenantId", { id: "INV-1008", tenantId: "org_789" }],
+    ["activeTenantId", { id: "INV-1008", activeTenantId: "org_789" }],
+    ["correlation.tenantId", { id: "INV-1008", correlation: { tenantId: "org_789" } }],
+    ["correlation.activeTenantId", { id: "INV-1008", correlation: { activeTenantId: "org_789" } }],
   ])(
     "DSOR-SRC-02b: org_789 in %s, from inside org_456, is refused with TENANT_MISMATCH",
     async (place, input) => {
@@ -357,6 +364,42 @@ describe("C5: a refusal never tells whether another company, or its invoice, exi
   });
 });
 
+describe("C7: an envelope carries exactly one company, and nothing DSoR does not read", () => {
+  // Found by the review: this envelope worked in org_456, and org_789 was ignored without a
+  // word (step 10's README, decision 11).
+  it("DSOR-IDN-03a: an envelope naming a second company, in tenant_id, is refused", async () => {
+    const request = { ...AGENT, tenant_id: "org_789" };
+    expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual(
+      refused("VALIDATION_FAILED", extraField("tenant_id"), THE_AGENT),
+    );
+  });
+
+  // The list says what is allowed, so any other name is refused, however it is spelled.
+  it.each([["tenantId"], ["activeTenantId"], ["company"], ["delegation_id"], ["TOKEN"]])(
+    "DSOR-IDN-03a: an envelope with the extra field %s is refused",
+    async (field) => {
+      const request = { ...AGENT, [field]: "org_789" };
+      expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual(
+        refused("VALIDATION_FAILED", extraField(field), THE_AGENT),
+      );
+    },
+  );
+
+  it("a call with no login and an extra envelope field hears about the login first", async () => {
+    const request = { tenant: "org_456", tenant_id: "org_789" };
+    expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+    });
+  });
+
+  it("an envelope with only token, tenant, and request_id is not refused for its fields", async () => {
+    const request = { ...AGENT, request_id: "ap-desk-7" };
+    expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toMatchObject({
+      data: INV_1008_OF_456,
+    });
+  });
+});
+
 describe("C6: every invoice and every record carries its company", () => {
   it("DSOR-TEN-01a: every invoice in memory carries a tenant_id in the form org_ and digits", () => {
     for (const invoice of invoices) expect(invoice.tenant_id).toMatch(/^org_[0-9]+$/);
@@ -379,6 +422,37 @@ describe("C6: every invoice and every record carries its company", () => {
     const fresh = createLog();
     await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008", tenant: "org_789" });
     expect(await fresh.records()).toMatchObject([{ tenant: "org_456", result: "TENANT_MISMATCH" }]);
+  });
+
+  // The company a non-member asked for is kept as a claim, never as the record's tenant
+  // (step 10's README, decision 6).
+  it.each([["org_789"], ["org_999"]])(
+    "a non-member's refusal for %s keeps the company it asked for, as a claim",
+    async (tenant) => {
+      const fresh = createLog();
+      await call(registry, fresh, agentIn(tenant), "invoice.get", { id: "INV-1008" });
+      const [record] = await fresh.records();
+      expect(record).not.toHaveProperty("tenant");
+      expect(record).toMatchObject({
+        extensions: { [OUR_EXTENSIONS]: { requested_tenant: tenant } },
+      });
+    },
+  );
+
+  // A malformed id is text the caller wrote, and could be anything, so it is not kept. A
+  // refusal at line ①, or a call line ② let through, keeps no claim either.
+  it.each([
+    ["a tenant that is not an id", agentIn("acme")],
+    ["no login", { tenant: "org_789" }],
+    ["a call that succeeds", AGENT],
+    ["a mismatch in the arguments", { ...AGENT, request_id: "mismatch" }],
+  ])("a record for %s keeps no claimed company", async (_why, request) => {
+    const fresh = createLog();
+    const input = request.request_id === "mismatch" ? { id: "X", tenant: "org_789" } : { id: "X" };
+    await call(registry, fresh, request, "invoice.get", input);
+    const [record] = await fresh.records();
+    expect(record).toBeDefined();
+    expect(record).not.toHaveProperty("extensions");
   });
 
   // No company has been checked yet, so the record names none (step 10's README, decision 6).

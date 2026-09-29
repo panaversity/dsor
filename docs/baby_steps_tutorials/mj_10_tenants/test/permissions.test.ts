@@ -24,6 +24,7 @@ import {
   type Caller,
   contract,
   correlationFor,
+  extraField,
   handlers,
   inputsWith,
   log,
@@ -546,11 +547,18 @@ describe("C6: permissions never come from the caller", () => {
     );
   });
 
+  // NEW IN STEP 10: the envelope is closed, so they are refused before line ⑤ (step 10's
+  // README, decision 11). They still grant nothing.
   it("DSOR-AUT-01b: permissions and roles in the envelope, beside the token, grant nothing", async () => {
     const request = { ...AGENT, permissions: ["invoice:issue"], roles: ["ap_supervisor"] };
     expect(
       await call(registry, log, request as RequestEnvelope, "invoice.issue", {}),
-    ).toStrictEqual(denied("invoice.issue", "invoice:issue", THE_AGENT));
+    ).toStrictEqual({
+      code: "VALIDATION_FAILED",
+      message: extraField("permissions"),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
   });
 
   // No rule id: DSOR-AUT-01b is about what is denied. "Changes nothing" works the other

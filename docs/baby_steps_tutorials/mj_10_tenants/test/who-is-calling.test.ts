@@ -13,6 +13,7 @@ import {
   SUPERVISOR,
   THE_AGENT,
   correlationFor,
+  extraField,
   log,
   notTheCaller,
   registry,
@@ -183,11 +184,14 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
   });
 
   // Found by the review: no test sent the envelope a field besides the token and the
-  // request id. Only the token says who is calling.
-  it("DSOR-SRC-02a: a principal written in the envelope, beside the token, is never used", async () => {
+  // request id. Only the token says who is calling. NEW IN STEP 10: the envelope is closed,
+  // so the field is refused, and still never used (step 10's README, decision 11).
+  it("DSOR-SRC-02a: a principal written in the envelope, beside the token, is refused, never used", async () => {
     const request = { ...AGENT, principal: "cfo_100" } as RequestEnvelope;
     expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual({
-      data: expect.objectContaining({ id: "INV-1008" }),
+      code: "VALIDATION_FAILED",
+      message: extraField("principal"),
+      retry: "never",
       correlation: AS_AGENT,
     });
   });
