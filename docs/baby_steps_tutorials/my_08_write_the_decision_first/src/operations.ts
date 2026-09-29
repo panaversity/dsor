@@ -281,6 +281,31 @@ export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 // that does not exist.
 
 /** A refusal, wrapped as a stage's answer. */
+/**
+ * The operation the caller named, as text that is safe to put in a message.
+ *
+ * Two things a caller controls, handled in one place:
+ *
+ *   - It may not be text at all. `Door`'s types are erased before Node runs, so `id` can be a
+ *     `Symbol`, and `${aSymbol}` **throws**. `resolveTheOperation` already knew that and guarded its
+ *     own message; `recordTheDecision`, the one stage that still runs *after* that guard has fired,
+ *     interpolated `context.id` anyway. A review sent a Symbol with the evidence store failing and got
+ *     a stack trace where an envelope was owed.
+ *   - It may be enormous. A two-million-character id produced a two-million-character error message
+ *     *and* a record to match. `audit` caps what it stores; this caps what is built, which is the
+ *     caller's half of the same problem.
+ *
+ * Lesson 13 in the learner's notes: a fix belongs everywhere its shape lives. Four places read a
+ * caller's operation id into a sentence, so there is one function that does it.
+ */
+function nameOf(id: unknown): string {
+  if (typeof id !== "string") {
+    return "an operation named by something that is not text";
+  }
+
+  return id.length <= 200 ? id : `${id.slice(0, 200)}… (${id.length} characters)`;
+}
+
 const refuse = (
   askedBy: string,
   code: string,
@@ -339,7 +364,7 @@ const resolveTheOperation: Stage["run"] = (context) => {
     return refuse(
       context.principal?.id ?? "(nobody)",
       "UNSUPPORTED_CAPABILITY",
-      `${context.id} is not an operation: this program has no contract for it`,
+      `${nameOf(context.id)} is not an operation: this program has no contract for it`,
       context.requestId,
     );
   }
@@ -364,7 +389,7 @@ const authorize: Stage["run"] = (context) => {
     return refuse(
       principal.id,
       "AUTHORIZATION_DENIED",
-      `${principal.id} may not call ${context.id}`,
+      `${principal.id} may not call ${nameOf(context.id)}`,
       context.requestId,
     );
   }
@@ -393,7 +418,7 @@ const validateTheInput: Stage["run"] = (context) => {
     return refuse(
       askedBy,
       "VALIDATION_FAILED",
-      `${context.id} was given arguments that cannot be written down`,
+      `${nameOf(context.id)} was given arguments that cannot be written down`,
       context.requestId,
     );
   }
@@ -403,7 +428,15 @@ const validateTheInput: Stage["run"] = (context) => {
  * §21.11 — record the decision. Always, including a DENY.
  *
  * This is the step. Everything above decides; this writes down what was decided, and it runs before
- * the answer leaves the door — which is the whole of `DSOR-EXE-02`.
+ * the answer leaves the door. That is the **ordering** half of `DSOR-EXE-02`, and this comment used to
+ * claim it was "the whole of" the rule. It is not, on two counts:
+ *
+ *   - *"controls evaluated"* — nothing evaluates a control until step 27, so the schema's `controls`
+ *     array is absent rather than empty.
+ *   - *"durably"* — the log is an array in one process. A restart loses every record, which is the
+ *     exact failure §21's "Why it matters" describes. Step 09 puts it in PostgreSQL.
+ *
+ * `src/login.ts` names an unmet rule the same way for `DSOR-IDN-02a`, and that comment is the model.
  *
  * Four things about it are worth more than the code:
  *
@@ -428,6 +461,45 @@ const recordTheDecision: Stage["run"] = (context) => {
   const { principal, contract, refusal: refused } = context;
   const denial = refused?.kind === "error" ? refused.envelope : undefined;
 
+  // The completeness check lives **here**, before the record is written, and it used to live in the
+  // door after the walk. A review measured what that cost:
+  //
+  //   authenticate lazied       -> INTERNAL_ERROR, 0 records
+  //   validate the input lazied -> INTERNAL_ERROR, and a record saying ALLOW / ALLOWED
+  //
+  // The second is a record that lies by omission: the caller was told the call failed and nothing on
+  // the record says it never ran. Checking before the recording means the refusal is the thing that
+  // gets recorded, which is what DSOR-EXE-02 asks for.
+  //
+  // Only when nothing has refused. A genuine DENY at §21.5 skips §21.6, so `given` is *supposed* to
+  // be missing then.
+  const missing =
+    denial !== undefined
+      ? undefined
+      : principal === undefined
+        ? "a principal"
+        : contract === undefined
+          ? "a contract"
+          : context.given === undefined
+            ? "its arguments"
+            : context.payloadHash === undefined
+              ? "a payload hash"
+              : Object.hasOwn(handlers, contract.id)
+                ? undefined
+                : "any code to carry it out";
+
+  const shortfall =
+    missing === undefined
+      ? undefined
+      : refusal(
+          "INTERNAL_ERROR",
+          `${nameOf(context.id)} reached §21.11 without ${missing}`,
+          context.requestId,
+          principal?.id,
+        );
+
+  const outcome = denial ?? shortfall;
+
   try {
     audit({
       kind: "decision",
@@ -435,9 +507,9 @@ const recordTheDecision: Stage["run"] = (context) => {
       requestId: context.requestId,
       // The decision, not the outcome. Whether the invoice was actually issued is §21.15's business,
       // and it has not happened yet — it cannot have, because this line runs first.
-      authorization: denial === undefined ? "ALLOW" : "DENY",
-      result: denial === undefined ? "ALLOWED" : denial.code,
-      reason: denial === undefined ? undefined : denial.message,
+      authorization: outcome === undefined ? "ALLOW" : "DENY",
+      result: outcome === undefined ? "ALLOWED" : outcome.code,
+      reason: outcome === undefined ? undefined : outcome.message,
       ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
       ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
     });
@@ -452,9 +524,26 @@ const recordTheDecision: Stage["run"] = (context) => {
     return refuse(
       principal?.id ?? "(nobody)",
       "EVIDENCE_STORE_UNAVAILABLE",
-      `the decision about ${context.id} could not be written down, so it was not carried out`,
+      `the decision about ${nameOf(context.id)} could not be written down, so it was not carried out`,
       context.requestId,
     );
+  }
+
+  // A shortfall is this program's bug, not the caller's, so it is reported as INTERNAL_ERROR with
+  // retry `never` — asking again cannot fix a broken pipeline. It is recorded first, above, whenever
+  // there is a principal to attribute it to. When there is not — a pipeline so broken that
+  // `authenticate` never ran — there is no subject, and the schema requires one, so `audit` counts it
+  // instead. Inventing a subject to fill the field would be worse than counting. What stops that case
+  // arising is `assertPipeline` at start-up rather than anything here.
+  if (shortfall !== undefined) {
+    return Object.freeze({
+      kind: "refused" as const,
+      answer: Object.freeze({
+        kind: "error" as const,
+        askedBy: principal?.id ?? "(nobody)",
+        envelope: shortfall,
+      }),
+    });
   }
 
   return carryOn(context);
@@ -539,7 +628,15 @@ export type Door = (
  * invoice, and `deny-by-default.test.ts` is where that is caught.
  */
 export function makeDoor(stages: readonly Stage[]): Door {
-  assertPipeline(stages);
+  // A frozen **copy**, checked, and it is the copy the door walks. A review checked the array it was
+  // handed and then kept walking the caller's live reference: `const door = makeDoor(list)` followed
+  // by `list.length = 2` gave a door with no authorize, no validate and no recording, and
+  // `list[2] = aNoOpAuthorize` let cfo_100 issue an invoice. `PIPELINE` itself is frozen so
+  // `callOperation` was never exposed — but `makeDoor` is exported precisely so step 42's HTTP server
+  // can build its own door, and "register a stage" is an obvious shape for that.
+  const checked = Object.freeze([...stages]);
+
+  assertPipeline(checked);
 
   return (login, id, args) => {
     // NEW IN STEP 08: one id for this request, minted here — before the first stage, because the
@@ -548,13 +645,17 @@ export function makeDoor(stages: readonly Stage[]): Door {
     // It used to be minted inside whichever envelope was built first, which made it the name of an
     // answer rather than of a request.
     const requestId = nextRequestId();
-    const walked = runPipeline(stages, { login, id, args, requestId });
+    const walked = runPipeline(checked, { login, id, args, requestId });
 
     if (walked.kind === "refused") {
       return walked.answer;
     }
 
-    const { principal, contract, given, payloadHash: hash } = walked.context;
+    // `walked.context.requestId`, not the closure's `requestId`. They are the same value today, and a
+    // review pointed out that there were two *sources* — every stage's refusal reads the context,
+    // every handler's envelope read the closure — so the day a stage legitimately rewrites the id
+    // (DSOR-COR-01b implies a caller may one day supply one) they would drift apart silently.
+    const { principal, contract, given, payloadHash: hash, requestId: id_ } = walked.context;
     const handler =
       contract !== undefined && Object.hasOwn(handlers, contract.id)
         ? handlers[contract.id]
@@ -579,15 +680,15 @@ export function makeDoor(stages: readonly Stage[]): Door {
         askedBy,
         envelope: refusal(
           "INTERNAL_ERROR",
-          `${id} finished the pipeline without everything a call needs`,
-          requestId,
+          `${nameOf(id)} finished the pipeline without everything a call needs`,
+          id_,
           principal === undefined ? undefined : askedBy,
         ),
       });
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    return Object.freeze(handler(given, contract, principal.id, hash, requestId));
+    return Object.freeze(handler(given, contract, principal.id, hash, id_));
   };
 }
 

@@ -7,6 +7,16 @@
 // different id from the answer it was about, and nothing could join the two. That is the single job
 // a correlation id has.
 
+// The right requirement ids matter here, because a test title is how this project counts coverage.
+// These used to say `DSOR-ERR-01a`, which is "every error MUST validate against
+// error-envelope.schema.json" — nothing in this file calls `validateEnvelope`. A review pointed out
+// that the correct two were one file over all along:
+//
+//   DSOR-COR-01b: DSoR MUST generate a `request_id` when the caller supplies none.
+//   DSOR-COR-01a: DSoR MUST propagate the correlation identifiers through connectors, audit, and events.
+//
+// `01a` is the exact rule for "the record and the answer name the same request".
+
 import { describe, expect, it } from "vitest";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { callOperation } from "../src/operations.ts";
@@ -31,7 +41,7 @@ describe("the request id", () => {
   // Consecutive ids with no gaps is the whole test. A gap would mean a request minted an id and
   // then threw it away, which is what "minted inside the envelope" does as soon as one request
   // builds two envelopes.
-  it("DSOR-ERR-01a: each request mints exactly one id, and refusals are not exempt", () => {
+  it("DSOR-COR-01b: each request mints exactly one id, and refusals are not exempt", () => {
     resetRequestIds();
     resetProposalIds();
 
@@ -52,7 +62,7 @@ describe("the request id", () => {
     expect(notAllowed.kind === "error" && notAllowed.envelope.code).toBe("AUTHORIZATION_DENIED");
   });
 
-  it("DSOR-ERR-01a: a command that succeeds carries the id its request was given", () => {
+  it("DSOR-COR-01a: a command that succeeds carries the id its request was given", () => {
     resetRequestIds();
     resetProposalIds();
 
@@ -67,9 +77,14 @@ describe("the request id", () => {
 
     expect(issued.envelope.correlation.request_id).toBe("req_2");
     expect(issued.envelope.correlation.principal_id).toBe("user_123");
+
+    // And one more, because that is where an extra mint shows. A review added `nextRequestId()` to the
+    // top of a handler and the whole suite passed: the handler's extra id lands *after* the door has
+    // already taken req_2, so the gap only appears on the request after it.
+    expect(idOf(callOperation(undefined, "invoice.get", {}))).toBe("req_3");
   });
 
-  it("DSOR-ERR-01a: two requests never share an id", () => {
+  it("DSOR-COR-01b: two requests never share an id", () => {
     resetRequestIds();
     resetProposalIds();
 

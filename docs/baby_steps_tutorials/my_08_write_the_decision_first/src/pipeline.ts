@@ -140,6 +140,34 @@ const REQUIRED: readonly string[] = Object.freeze([
 ]);
 
 /**
+ * The stages allowed to carry `evenAfterARefusal`, **by name**.
+ *
+ * A review broke the first version of this open. The rule was positional — no *flagged* stage before
+ * the recording — which left a flagged stage **after** it perfectly legal. The reviewer appended
+ * `{ at: 14, name: "execute", evenAfterARefusal: true }`, `assertPipeline` accepted the list, and a
+ * command the pipeline had **denied** was carried out anyway, with `DENY` sitting in the log beside
+ * the invoice it had just issued.
+ *
+ * The flag was doing two jobs: "this is an evidence stage" and "this stage may act on a refused
+ * request". Only the first is ever wanted, so this list decides which stages get it — not whoever
+ * writes the pipeline. §21.16 and §21.17 join it when the decision bundle arrives.
+ */
+const AFTER_A_REFUSAL: readonly string[] = Object.freeze(["record the decision"]);
+
+/**
+ * The stages allowed to carry no §21 number.
+ *
+ * The other half of the same hole. `at: null` is exempt from the ascending rule — that is what it is
+ * *for* — but nothing said which stages may claim it, so `null` was a wildcard. A review inserted one
+ * unnumbered stage into the real five and found **all six positions accepted**, including before
+ * `authenticate`; with a side effect in it, an invoice was issued before §21.11 recorded anything. Of
+ * the 720 orderings of that six-stage list, six passed.
+ *
+ * So `null` means "§21 assumes this step", not "this step floats anywhere". One name qualifies.
+ */
+const UNNUMBERED: readonly string[] = Object.freeze(["resolve the operation"]);
+
+/**
  * Refuses a list that cannot be trusted, and returns how many stages it checked.
  *
  * Five ways a list goes wrong, and every one of them is the kind of mistake a later step makes
@@ -174,6 +202,15 @@ export function assertPipeline(stages: readonly Stage[]): number {
 
     seen.add(stage.name);
 
+    // `null` is not a wildcard — see UNNUMBERED. Without this, an unnumbered stage may sit anywhere at
+    // all, because every rule about position here is a rule about numbers.
+    if (stage.at === null && !UNNUMBERED.includes(stage.name)) {
+      throw new TypeError(
+        `${stage.name} carries no §21 number, so nothing says where it belongs: ` +
+          `only ${UNNUMBERED.join(", ")} may be unnumbered`,
+      );
+    }
+
     if (stage.at !== null) {
       // §21 has seventeen steps, so a number outside that is not a §21 number. Without this, one
       // stage carrying NaN hides exactly one descent, because every comparison against NaN is
@@ -200,8 +237,8 @@ export function assertPipeline(stages: readonly Stage[]): number {
   const resolvesAt = stages.findIndex((stage) => stage.name === "resolve the operation");
 
   if (resolvesAt !== -1) {
-    for (const [at, stage] of stages.entries()) {
-      if (stage.applies === "command" && at < resolvesAt) {
+    for (const [index, stage] of stages.entries()) {
+      if (stage.applies === "command" && index < resolvesAt) {
         throw new TypeError(
           `${stage.name} applies to commands only and sits before the operation is resolved, ` +
             "so it would never run",
@@ -235,29 +272,45 @@ export function assertPipeline(stages: readonly Stage[]): number {
     throw new TypeError(`the pipeline is missing ${REQUIRED[expected]}, which every call needs`);
   }
 
-  // NEW IN STEP 08: the two rules that make `record the decision` mean what it says.
-  //
-  // The first is the important one. A `record the decision` stage added with the flag off would be
-  // stepped over on every refusal, and *nothing would fail*: every allowed call would still be
-  // recorded, every test about a success would still pass, and denials would quietly stop being
-  // written down. That is the exact failure §21's "always, including DENY" is warning about, and it
-  // is invisible from the outside — which is why it is refused here, at start-up, by name.
-  const recordsAt = stages.findIndex((stage) => stage.name === "record the decision");
-  const records = stages[recordsAt];
+  // NEW IN STEP 08: the three rules that make `record the decision` mean what it says.
+  const records = stages.find((stage) => stage.name === "record the decision");
 
-  if (records !== undefined && !records.evenAfterARefusal) {
+  // Unreachable while REQUIRED holds the same name and is checked above — and written anyway, because
+  // a review showed why. This used to be `stages[findIndex(...)]`, and with an index of -1 both checks
+  // below became silent no-ops that *accepted* every list: `undefined` skipped the first, and
+  // `index < -1` is never true. They were correct only because the REQUIRED check happened to run
+  // first, and nothing held that order — moving these blocks above it left all 198 tests passing.
+  if (records === undefined) {
+    throw new TypeError("the pipeline has no record the decision stage");
+  }
+
+  // The important one. A `record the decision` stage added with the flag off would be stepped over on
+  // every refusal, and *nothing would fail*: every allowed call would still be recorded, every test
+  // about a success would still pass, and denials would quietly stop being written down. That is the
+  // exact failure §21's "always, including DENY" warns about, and it is invisible from outside — which
+  // is why it is refused here, at start-up, by name.
+  if (!records.evenAfterARefusal) {
     throw new TypeError(
       "record the decision must run even after a refusal, or denials go unrecorded",
     );
   }
 
-  // The second: nothing before the recording may run after a refusal. A stage that did would be
-  // acting on a request that has already been refused and has not yet been written down — work
-  // happening outside the evidence, which is the order DSOR-EXE-02 is about.
-  for (const [at, stage] of stages.entries()) {
-    if (stage.evenAfterARefusal && at < recordsAt) {
+  // §21: "Queries pass through steps 1-6 and 9, apply §19, and reach step 11 where DSOR-CLS-05
+  // applies." So the recording applies to every kind of call there is. A review made it command-only,
+  // `assertPipeline` accepted the list, and every read in the deployment went unrecorded while the
+  // answers stayed perfect.
+  if (records.applies !== "both") {
+    throw new TypeError(
+      "record the decision must apply to both kinds: §21.11 is reached by queries too",
+    );
+  }
+
+  // And only a stage named in AFTER_A_REFUSAL may carry the flag at all. This replaces a positional
+  // rule that let a flagged stage sit *after* the recording and execute a command that was denied.
+  for (const stage of stages) {
+    if (stage.evenAfterARefusal && !AFTER_A_REFUSAL.includes(stage.name)) {
       throw new TypeError(
-        `${stage.name} runs after a refusal but sits before the decision is recorded`,
+        `${stage.name} may not run after a refusal: only ${AFTER_A_REFUSAL.join(", ")} may`,
       );
     }
   }
@@ -273,7 +326,11 @@ export function assertPipeline(stages: readonly Stage[]): number {
  * door ever called the helper. Two tests carried a rule id and certified the copy nobody ran.
  */
 export function applies(stage: Stage, kind: OperationKind): boolean {
-  return stage.applies === "both" || kind === "command";
+  // The positive form, `=== kind`, rather than `kind === "command"`. The two are identical while
+  // `Applies` has exactly two members, and they stop being identical the day it gains `"query"` — at
+  // which point the short version silently runs a query-only stage on every command, with no test
+  // failing. A review asked for the form that stays right.
+  return stage.applies === "both" || stage.applies === kind;
 }
 
 /** What has been walked, and what it found. */
@@ -311,6 +368,15 @@ export function runPipeline(stages: readonly Stage[], start: Context): PipelineR
     // NEW IN STEP 08: a refusal no longer returns from here. It is remembered, the rest of the
     // checks are skipped, and the stages marked `evenAfterARefusal` still run — because §21.11 has
     // to record a DENY, and it cannot record one it never reached.
+    //
+    // These two `continue`s can be swapped with no test failing, and that is worth knowing rather
+    // than hiding. A review found the reason they *could* have mattered: `kind` comes from the
+    // contract, which a stage fills, so after a refusal at `authenticate` there is no contract and
+    // the kind falls back to `"query"` — which would silently skip a **command-only flagged** stage
+    // on a refused command, an evidence hole nothing could see. What closes it is not the order of
+    // these lines: it is `assertPipeline`, which lets only `record the decision` carry the flag and
+    // insists that stage applies to both kinds. The case is unreachable by construction, so no test
+    // can pin the order, and the guard that matters is named where it lives.
     if (refused !== undefined && !stage.evenAfterARefusal) {
       continue;
     }

@@ -2,7 +2,7 @@
   "name": "@dsor-steps/08-write-the-decision-first",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 08 of the DSoR baby steps: the decision is written down before the answer, and the intent before the side effect.",
+  "description": "DSoR baby step 08 - every decision is written down before the answer, and that includes every no",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

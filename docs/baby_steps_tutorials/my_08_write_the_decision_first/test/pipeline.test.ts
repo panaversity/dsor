@@ -136,6 +136,147 @@ describe("the pipeline", () => {
     expect(() => (PIPELINE as Stage[]).push(fake(99, "sneak in"))).toThrow(TypeError);
   });
 
+  /**
+   * The walker itself, against a refusal. A review pointed out that `runPipeline` was called exactly
+   * twice in this file and neither call refused — so every claim about "carry the refusal, skip the
+   * unflagged, run the flagged, the last one wins" was proven only indirectly, through `callOperation`.
+   * Swapping the two `continue`s in the walker left all 198 tests passing.
+   */
+  it("DSOR-EXE-02: a refusal is carried, the unflagged are skipped, and the flagged still run", () => {
+    const ran: string[] = [];
+    const refuses = (name: string, flagged: boolean, no: boolean): Stage =>
+      Object.freeze({
+        at: null,
+        name,
+        applies: "both" as const,
+        evenAfterARefusal: flagged,
+        run: (context: Context) => {
+          ran.push(name);
+
+          return no
+            ? {
+                kind: "refused" as const,
+                answer: Object.freeze({
+                  kind: "error" as const,
+                  askedBy: "(nobody)",
+                  envelope: { code: name, message: name, retry: "never" } as never,
+                }),
+              }
+            : { kind: "carry_on" as const, context };
+        },
+      });
+
+    const start = { login: undefined, id: "invoice.get", args: {}, requestId: "req_1" };
+    const walked = runPipeline(
+      [refuses("first", false, true), refuses("second", false, true), refuses("third", true, true)],
+      start,
+    );
+
+    // "second" never ran, because something had already refused and it is not flagged.
+    expect(ran).toEqual(["first", "third"]);
+
+    // And the flagged stage's refusal replaced the first one — which is what makes an unrecordable
+    // denial come back as EVIDENCE_STORE_UNAVAILABLE rather than as the denial.
+    if (walked.kind !== "refused" || walked.answer.kind !== "error") {
+      throw new Error(`expected a refusal in an error envelope, got ${walked.kind}`);
+    }
+
+    expect(walked.answer.envelope.code).toBe("third");
+
+    // The flagged stage is handed the refusal that happened, and a context whose later fields were
+    // never filled — because the stages that fill them were skipped. Nothing says a flagged stage may
+    // assume otherwise, so this is the promise it is owed.
+    ran.length = 0;
+
+    let sawRefusal: unknown;
+    const watcher: Stage = Object.freeze({
+      at: null,
+      name: "record the decision",
+      applies: "both" as const,
+      evenAfterARefusal: true,
+      run: (context: Context) => {
+        sawRefusal = context.refusal;
+
+        expect(context.principal).toBeUndefined();
+        expect(context.requestId).toBe("req_1");
+
+        return { kind: "carry_on" as const, context };
+      },
+    });
+
+    runPipeline([refuses("first", false, true), watcher], start);
+
+    expect((sawRefusal as { envelope: { code: string } }).envelope.code).toBe("first");
+  });
+
+  // NEW IN STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.
+  it("DSOR-EXE-01a: an unnumbered stage may not float anywhere it likes", () => {
+    const floating = fake(null, "do the side effect");
+
+    // Six positions in the real five-stage list. Every one of them used to be accepted.
+    for (let at = 0; at <= PIPELINE.length; at += 1) {
+      const list = [...PIPELINE.slice(0, at), floating, ...PIPELINE.slice(at)];
+
+      expect(() => assertPipeline(list), `position ${at}`).toThrow(/carries no §21 number/);
+    }
+
+    // And `resolve the operation` is still allowed to, because §21 assumes that step.
+    expect(assertPipeline(PIPELINE)).toBe(PIPELINE.length);
+  });
+
+  it("DSOR-EXE-02: only the recording stage may run after a refusal, wherever it sits", () => {
+    for (const name of PIPELINE.map((stage) => stage.name)) {
+      if (name === "record the decision") {
+        continue;
+      }
+
+      const flagged = PIPELINE.map((stage) =>
+        stage.name === name ? Object.freeze({ ...stage, evenAfterARefusal: true }) : stage,
+      );
+
+      expect(() => assertPipeline(flagged), name).toThrow(/may not run after a refusal/);
+    }
+
+    // The case the positional rule missed: flagged and sitting AFTER the recording. A review appended
+    // exactly this with a side effect in it, and a DENIED command was carried out.
+    const late = fake(14, "execute", "both", true);
+
+    expect(() => assertPipeline([...PIPELINE, late])).toThrow(/may not run after a refusal/);
+
+    // Unflagged, the same stage in the same place is fine.
+    expect(assertPipeline([...PIPELINE, fake(14, "execute")])).toBe(PIPELINE.length + 1);
+  });
+
+  it("DSOR-EXE-01b: a command-only recording stage stops the program", () => {
+    // §21 routes queries to step 11 too, so a command-only recording stage answers every read
+    // perfectly and records none of them. assertPipeline accepted it until a review said so.
+    const commandOnly = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({ ...stage, applies: "command" as const })
+        : stage,
+    );
+
+    expect(() => assertPipeline(commandOnly)).toThrow(/must apply to both kinds/);
+    expect(() => makeDoor(commandOnly)).toThrow(/must apply to both kinds/);
+  });
+
+  // A door is checked when it is built, and then walks a frozen copy — not the array it was handed.
+  it("DSOR-OPR-04a: a door cannot be rewritten after it has been checked", () => {
+    const list = [...PIPELINE];
+    const door = makeDoor(list);
+
+    // Every one of these used to change what the door did, after the check had passed.
+    list.length = 2;
+    list.push(fake(99, "nonsense"));
+
+    const answer = door({ loggedInAs: "cfo_100" }, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+    });
+
+    expect(answer.kind).toBe("error");
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
+
   // Piece 2 left this branch unreached: every stage in the real list applies to both kinds, so
   // nothing walked a command-only one. These walk a list of their own, which is the honest way to
   // test a mechanism the real list does not yet exercise.
@@ -187,14 +328,18 @@ describe("the pipeline", () => {
   // kind to ask about — the walker would step over it on every call, including commands. That is a
   // silent skip, which is exactly what DSOR-EXE-01b forbids, so the list is refused at start-up.
   it("DSOR-EXE-01b: a command-only stage before the contract is resolved stops the program", () => {
-    // The command-only stage carries no §21 number, so the numbers still ascend and this list
-    // fails for the one reason under test rather than for being out of order as well.
+    // This test used to give the command-only stage `at: null`, so that "the numbers still ascend and
+    // this list fails for the one reason under test". That worked because `null` was a wildcard — which
+    // is the hole a review found, and the wildcard is gone. §21.2 is a real step number, it is below
+    // the §21.5 that follows, and `resolve the operation` carries no number, so the list still fails
+    // for exactly one reason.
     const tooEarly = [
       fake(1, "authenticate"),
-      fake(null, "claim the idempotency key", "command"),
+      fake(2, "claim the idempotency key", "command"),
       fake(null, "resolve the operation"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
+      fake(11, "record the decision"),
     ];
 
     expect(() => assertPipeline(tooEarly)).toThrow(/before the operation is resolved/);

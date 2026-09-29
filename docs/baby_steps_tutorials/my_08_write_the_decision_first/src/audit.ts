@@ -12,12 +12,20 @@
 //      supply the time, the sequence, or the hashes.
 //   2. It is *linked*. Each record carries the hash of the record before it, so the records form a
 //      chain. Editing one record leaves every hash after it disagreeing. That does not make an
-//      edit impossible — this log is an array in memory, and step 39 is where a real database and
-//      an audit role with no UPDATE privilege make it impossible. It makes an edit **detectable**,
+//      edit impossible — this log is an array in memory, and step 09 is where a real database and an
+//      application user with no UPDATE on the log make it impossible (step 39 hardens it). It makes
+//      an edit **detectable**,
 //      which is the part that belongs to the record's shape rather than to the store.
 //
-// Rule DSOR-AUD-01: DSoR MUST write an append-only audit record for each decision, with the fields
-// audit-record.schema.json requires.
+// Rule DSOR-AUD-01: every command decision, every proposal transition, and every read covered by
+// DSOR-CLS-05 MUST produce a durable audit record that validates against audit-record.schema.json.
+// Rule DSOR-AUD-04b: audit records MUST be tamper-evident through hash chaining, signed checkpoints,
+// or an equivalent mechanism.
+//
+// Those are the sentences, not a paraphrase. This file used to say AUD-01 required "an append-only
+// audit record for each decision" — which widened it to every decision and folded in "append-only",
+// and append-only is AUD-04b's business. Ids in comments are this tutorial's traceability, so the
+// paraphrase has to be the sentence.
 // Rule DSOR-SCH-01: every artifact named in Appendix A MUST validate against its JSON Schema
 // wherever it crosses an interface or is stored as evidence.
 
@@ -338,6 +346,11 @@ export function audit(decision: DecisionToRecord): AuditRecord | undefined {
     return undefined;
   }
 
+  // found live 2026-09-30 (review): this read-then-write is only safe because nothing suspends between
+  // these three lines and the `log.push` below. Two requests cannot claim one sequence today for that
+  // reason alone. Step 09 makes it a database write, and on that day it has to become one atomic
+  // statement with a unique constraint on (chain, sequence) — proven by a real parallel *.db.test.ts,
+  // because AGENTS.md forbids proving a concurrency guarantee against a mock.
   const at = now();
   const sequence = log.length;
   const previous = log[sequence - 1]?.record_hash ?? GENESIS;
