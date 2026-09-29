@@ -18,7 +18,13 @@ import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
 import { TENANT } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { holds } from "./permissions.ts";
-import { assertPipeline, type Context, type Stage, type StageResult } from "./pipeline.ts";
+import {
+  assertPipeline,
+  runPipeline,
+  type Context,
+  type Stage,
+  type StageResult,
+} from "./pipeline.ts";
 import { parseUri } from "./uri.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
@@ -388,118 +394,51 @@ export function handlerIds(): string[] {
 /**
  * Calls one operation by name.
  *
- * There is deliberately no caller, no permission check and no ordered checklist here. Who
- * is asking arrives in step 05, whether they may in step 06, and the fixed order of
- * checks in step 07. This is a lookup, a call, and an envelope.
+ * NEW IN STEP 07: this function no longer *is* the order of the checks. It walks the checklist in
+ * `PIPELINE` and stops at the first no. Everything it used to do inline is a stage, in the same
+ * order, and the order now lives somewhere a test can read it.
+ *
+ * What is left here is the two things that are not checks: walking the list, and — once every check
+ * has said yes — carrying the operation out. That last line is §21.14.
  */
 export function callOperation(
   login: Login | undefined,
   id: string,
   args: Readonly<Record<string, unknown>>,
 ): OperationAnswer {
-  // The login is read first, on purpose. DSOR-IDN-01 says a caller is normalized
-  // into a principal "before any other processing", so an unknown operation and a broken
-  // address both come second: with nobody logged in, neither is even looked at.
-  //
-  // The login arrives here as its own argument. `args` is never consulted for it, which is
-  // the whole of DSOR-SRC-02a's "not from the arguments" half.
-  const who = principalFrom(login);
+  const walked = runPipeline(PIPELINE, { login, id, args });
 
-  if ("refused" in who) {
-    return Object.freeze({ kind: "error", askedBy: "(nobody)", envelope: who.refused });
+  if (walked.kind === "refused") {
+    return walked.answer;
   }
 
-  // The name comes from the principal the lookup returned, never from login.loggedInAs.
-  // Today those are the same string, because findPerson matches on `===` — a mutation
-  // test proved no test can tell the two apart. The day the lookup gets any leniency
-  // (case, trimming, an alias) they stop being the same, and only this one is right:
-  // the caller would be filed under whatever they typed instead of who they are.
-  const askedBy = who.principal.id;
-  const contract = registry.get(id);
-  const handler = handlers[id];
+  const { principal, contract, given } = walked.context;
+  const handler = contract === undefined ? undefined : handlers[contract.id];
 
-  // UNSUPPORTED_CAPABILITY, retry never. The caller asked for something this system does
-  // not offer; asking again will not make it appear.
-  if (contract === undefined || handler === undefined) {
+  // Every one of these was filled by a stage, and `assertPipeline` refused at start-up any list
+  // that was missing the stage which fills it. So this cannot happen — and if it does, it is a bug
+  // in this program rather than anything the caller did, which is what INTERNAL_ERROR means. It is
+  // `never` retryable: asking again cannot fix a broken pipeline.
+  if (
+    principal === undefined ||
+    contract === undefined ||
+    given === undefined ||
+    handler === undefined
+  ) {
+    const askedBy = principal?.id ?? "(nobody)";
+
     return Object.freeze({
       kind: "error",
       askedBy,
       envelope: refusal(
-        "UNSUPPORTED_CAPABILITY",
-        `${id} is not an operation: this program has no contract for it`,
+        "INTERNAL_ERROR",
+        `${id} finished the pipeline without everything a call needs`,
         undefined,
-        askedBy,
+        principal === undefined ? undefined : askedBy,
       ),
     });
   }
 
-  // NEW IN STEP 06: may you?
-  //
-  // The permission comes from the operation's own contract — `"permission": "invoice:issue"`,
-  // which has been sitting in invoice.issue.json since step 03 with nothing reading it. Not
-  // from the caller, not from the arguments. The caller supplies neither side of this question.
-  //
-  // AUTHORIZATION_DENIED, retry never. Asking again changes nothing: either somebody grants the
-  // role, or a person who has it does the work.
-  //
-  // **This is before the arguments are read, and that is the guarantee.** If the address were
-  // parsed first, cfo_100 could ask about two invoices and compare the answers —
-  // RESOURCE_NOT_FOUND for one, AUTHORIZATION_DENIED for the other — and count records she has
-  // no permission to touch. Refused first, every attempt is the same refusal.
-  //
-  // The message does not name the missing permission, for the same reason step 05's two login
-  // refusals are word for word identical. A refusal that says what you lacked draws the
-  // permission model for anyone willing to ask twenty times. That detail belongs in the audit
-  // record, step 08, where an operator can read it and a caller cannot.
-  if (!holds(who.principal, contract.authorization.permission)) {
-    return Object.freeze({
-      kind: "error",
-      askedBy,
-      envelope: refusal(
-        "AUTHORIZATION_DENIED",
-        `${askedBy} may not call ${id}`,
-        undefined,
-        askedBy,
-      ),
-    });
-  }
-
-  // From step 04, and it is what keeps step 04's promise that nothing throws at a caller.
-  // The arguments belong to the caller, so they are copied **once**, here, and nothing
-  // below ever looks at the original again. A property with a getter can answer a different
-  // value on a second read, and these arguments used to be read twice: once to decide which
-  // invoice to act on, and again to fingerprint the receipt. A caller could make those two
-  // reads disagree, so the receipt described a request that never happened. One copy makes
-  // them the same read — `{ ...args }` runs every getter exactly once.
-
-  // And if the copy cannot be written down, nothing runs at all. The receipt is a hash of
-  // the arguments, so an unhashable argument — a circular object, a BigInt — used to let the
-  // change happen and *then* throw on the way out: a side effect with no envelope, no code,
-  // and no record of who caused it. This is the first small shape of DSOR-EXE-03a, write it
-  // down before you do it. Step 08 builds the real intent record.
-  let given: Readonly<Record<string, unknown>>;
-
-  try {
-    // The copy is **inside** the try, not above it. `{ ...args }` runs every getter, and a
-    // getter can throw — a hostile review sent `{ get invoice() { throw } }` and the exception
-    // reached the caller instead of an envelope.
-    given = Object.freeze({ ...args });
-    JSON.stringify(given);
-  } catch {
-    return Object.freeze({
-      kind: "error",
-      askedBy,
-      envelope: refusal(
-        "VALIDATION_FAILED",
-        `${id} was given arguments that cannot be written down`,
-        undefined,
-        askedBy,
-      ),
-    });
-  }
-
-  // Frozen on the way out. `readonly` on OperationAnswer is erased before Node runs, and
-  // `askedBy` is this step's entire record of who asked — step 01's lesson, applied to this
-  // step's own new type.
-  return Object.freeze(handler(given, contract, askedBy));
+  // §21.14 — execute. The only thing that happens after every check has said yes.
+  return Object.freeze(handler(given, contract, principal.id));
 }

@@ -139,22 +139,31 @@ export function stagesFor(kind: OperationKind, stages: readonly Stage[]): readon
   return stages.filter((stage) => stage.applies === "both" || kind === "command");
 }
 
+/** What has been walked, and what it found. */
+export type PipelineResult =
+  | { readonly kind: "ready"; readonly context: Context }
+  | { readonly kind: "refused"; readonly answer: OperationAnswer };
+
 /**
  * Walks the checklist and stops at the first no.
  *
  * This is the whole of `DSOR-EXE-01a`: the stages run in the order the list gives, and nothing
- * chooses to take them in a different one.
+ * chooses to take them in a different one. The first refusal is the answer — there is no "carry on
+ * and remember this went wrong", which is what makes the order matter.
+ *
+ * Whether a command-only stage applies is decided **as the walk reaches it**, not before the walk
+ * starts. It has to be: which kind of operation this is comes from the contract, and the contract is
+ * resolved *by a stage*. Before that stage has run there is no kind to ask about — so no
+ * command-only stage may sit that early, and `assertPipeline` is where that will be refused.
  */
-export function runPipeline(
-  stages: readonly Stage[],
-  kind: OperationKind,
-  start: Context,
-):
-  | { readonly kind: "ready"; readonly context: Context }
-  | { readonly kind: "refused"; readonly answer: OperationAnswer } {
+export function runPipeline(stages: readonly Stage[], start: Context): PipelineResult {
   let context = start;
 
-  for (const stage of stagesFor(kind, stages)) {
+  for (const stage of stages) {
+    if (stage.applies === "command" && context.contract?.kind !== "command") {
+      continue;
+    }
+
     const result = stage.run(context);
 
     if (result.kind === "refused") {
