@@ -93,7 +93,9 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
   // An owner may do anything to its own table, and a superuser or a member of
   // pg_write_all_data may change any table, whatever was revoked. Neon puts roles made in
   // its console into neon_superuser, which holds pg_write_all_data (step 09's README).
-  it("DSOR-AUD-04a: dsor_runtime owns no table, is no superuser, and cannot write every table", async () => {
+  // NEW IN STEP 11: BYPASSRLS skips every policy, FORCE included, so row-level security
+  // stands on this test (step 11's README, C6).
+  it("DSOR-RP-01a: dsor_runtime is no superuser, holds no BYPASSRLS, owns no table, and cannot write every table", async () => {
     const { rows } = await observer.query(
       `SELECT r.rolsuper AS superuser,
               r.rolbypassrls AS bypassrls,
