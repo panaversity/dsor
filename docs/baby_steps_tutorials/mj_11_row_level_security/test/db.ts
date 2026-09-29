@@ -1,7 +1,9 @@
 // What the database tests share. Not a test file itself.
 // The tests look at the database with pg directly, never through src, so a broken log
 // cannot vouch for itself.
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createDbInvoices, requireEnv } from "../src/postgres.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -27,11 +29,22 @@ export function requestId(claim: string): string {
   return `${claim}-${randomUUID()}`;
 }
 
-/** Every row of dsor.audit whose correlation carries this request id. */
-export async function rowsFor(pool: pg.Pool, request_id: string): Promise<pg.QueryResultRow[]> {
-  const { rows } = await pool.query(
+/**
+ * Every row of dsor.audit whose correlation carries this request id, read inside this
+ * company. NEW IN STEP 11: dsor_runtime sees only the company it has set, so a read with
+ * no company is empty whatever the table holds, and an empty answer would prove nothing
+ * (step 11's README, "Think it through").
+ */
+export async function rowsFor(
+  pool: pg.Pool,
+  company: string | undefined,
+  request_id: string,
+): Promise<pg.QueryResultRow[]> {
+  const { rows } = await tryThenRollBack(
+    pool,
     `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason, correlation
        FROM dsor.audit WHERE correlation->>'request_id' = $1 ORDER BY sequence`,
+    company,
     [request_id],
   );
   return rows;
@@ -40,19 +53,51 @@ export async function rowsFor(pool: pg.Pool, request_id: string): Promise<pg.Que
 /**
  * Runs one statement inside a transaction that is always rolled back. A test that tries to
  * change the log never changes it, even when a break has given dsor_runtime the privilege.
+ * NEW IN STEP 11: with a company, the transaction sets it first, as the program does
+ * (step 11's README, decision 3).
  */
-export async function tryThenRollBack(pool: pg.Pool, sql: string): Promise<pg.QueryResult> {
+export async function tryThenRollBack(
+  pool: pg.Pool,
+  sql: string,
+  company?: string,
+  values: unknown[] = [],
+): Promise<pg.QueryResult> {
   // Found live 2026-09-28: break T1 granted UPDATE, and the test's own UPDATE then
   // rewrote every record on the branch. Postgres checks the privilege before it runs the
   // statement, so rolling back takes nothing from the test.
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    return await client.query(sql);
+    if (company !== undefined) {
+      await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company]);
+    }
+    return await client.query(sql, values);
   } finally {
     await client.query("ROLLBACK");
     client.release();
   }
+}
+
+// NEW IN STEP 11: the owner's window, for the records dsor_runtime can write and never
+// read back (step 11's README, decision 4).
+const OWNER_READS = fileURLToPath(new URL("owner-reads.ts", import.meta.url));
+
+/**
+ * Every row of dsor.audit with this request id, read by the owner. A child program reads
+ * the owner's key from .env and redacts what it prints, so the test never holds the key.
+ */
+export function ownerRowsFor(request_id: string): Record<string, unknown>[] {
+  const run = spawnSync(process.execPath, [OWNER_READS, request_id], {
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  if (run.status !== 0) throw new Error(`owner-reads.ts failed: ${run.stderr}`);
+  return JSON.parse(run.stdout) as Record<string, unknown>[];
+}
+
+/** A pool that holds one connection, so every request reuses it (step 11's README, decision 8). */
+export function poolOfOne(): pg.Pool {
+  return new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   RUNTIME_URL,
   dbRegistry,
   newPool,
+  ownerRowsFor,
   requestId,
   redact,
   rowsFor,
@@ -130,7 +131,7 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
     });
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
     // Right after the answer, with no waiting: the observer is a separate connection.
-    expect(await rowsFor(observer, id)).toMatchObject([
+    expect(await rowsFor(observer, "org_456", id)).toMatchObject([
       {
         kind: "decision",
         operation: "invoice.get@1",
@@ -148,7 +149,7 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
       invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
-    expect(await rowsFor(observer, id)).toMatchObject([
+    expect(await rowsFor(observer, "org_456", id)).toMatchObject([
       { operation: "invoice.issue@1", authorization: "DENY", result: "AUTHORIZATION_DENIED" },
     ]);
   });
@@ -166,8 +167,10 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
       expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
       // Recorded under the id DSoR made, because the one sent could not be kept.
       expect(answer.correlation.request_id).toMatch(/^req_/);
-      expect(await rowsFor(observer, answer.correlation.request_id)).toMatchObject([
-        { authorization: "DENY", result: "VALIDATION_FAILED" },
+      // Refused at line ①, before any company, so only the owner can read the record
+      // (step 11's README, decision 4).
+      expect(ownerRowsFor(answer.correlation.request_id)).toMatchObject([
+        { tenant: null, authorization: "DENY", result: "VALIDATION_FAILED" },
       ]);
     },
   );
@@ -176,17 +179,17 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
   it("DSOR-AUD-02a: the record is a row in DSoR's own table, numbered and timed by the database", async () => {
     const id = requestId("c5");
     await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", { id: "INV-1008" });
-    const rows = await rowsFor(observer, id);
+    const rows = await rowsFor(observer, "org_456", id);
     expect(rows).toHaveLength(1);
     expect(rows[0]!["record_id"]).toMatch(/^aud_[0-9a-f-]{36}$/);
     expect(rows[0]!["at"]).toBeInstanceOf(Date);
     expect(Number(rows[0]!["sequence"])).toBeGreaterThan(0);
   });
 
-  it("DSOR-EXE-02: the log reads back what it wrote, through its own records()", async () => {
+  it("DSOR-EXE-02: the log reads back what it wrote, through its own records(tenant)", async () => {
     const id = requestId("c2-records");
     await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", { id: "INV-1008" });
-    const mine = (await log.records()).filter((r) => r.correlation.request_id === id);
+    const mine = (await log.records("org_456")).filter((r) => r.correlation.request_id === id);
     expect(mine).toMatchObject([{ authorization: "ALLOW", result: "ok" }]);
     expect(typeof mine[0]!.sequence).toBe("number");
     expect(typeof mine[0]!.at).toBe("string");
@@ -210,7 +213,7 @@ describe("C3: the record survives a restart", () => {
 
     const after = newPool();
     try {
-      expect(await rowsFor(after, id)).toMatchObject([{ authorization: "ALLOW", result: "ok" }]);
+      expect(await rowsFor(after, "org_456", id)).toMatchObject([{ authorization: "ALLOW", result: "ok" }]);
     } finally {
       await after.end();
     }
@@ -240,7 +243,7 @@ describe("C3, by fault injection: the record survives a crash straight after the
           correlation: { request_id: id },
         });
         // ...so the record must already be in the database.
-        expect(await rowsFor(observer, id)).toMatchObject([
+        expect(await rowsFor(observer, "org_456", id)).toMatchObject([
           { authorization: "ALLOW", result: "ok" },
         ]);
       }
@@ -269,7 +272,7 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
     );
     expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
     expect(answer).not.toHaveProperty("data");
-    expect(await rowsFor(observer, id)).toStrictEqual([]);
+    expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
   });
 
   it("DSOR-EXE-03b: a log with the wrong password gives no invoice, and no word about why", async () => {

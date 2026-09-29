@@ -57,7 +57,7 @@ describe("C6: invoices come from the database, and money stays a string", () => 
       { id: "INV-9999" },
     );
     expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
-    expect(await rowsFor(observer, id)).toMatchObject([
+    expect(await rowsFor(observer, "org_456", id)).toMatchObject([
       { authorization: "ALLOW", result: "RESOURCE_NOT_FOUND" },
     ]);
   });

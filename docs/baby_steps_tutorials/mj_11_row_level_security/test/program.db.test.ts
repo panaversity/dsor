@@ -95,8 +95,11 @@ describe("the program", () => {
 });
 
 describe("the program's log", () => {
+  // NEW IN STEP 11: dsor_runtime reads one company at a time, and never a record with no
+  // company. The program reads org_456's and org_789's, and says how many it cannot read
+  // (step 11's README, decision 6).
   it(
-    "DSOR-EXE-02: prints one record for each of its twelve calls, in order",
+    "DSOR-EXE-02: prints the 9 records of its 12 calls that it can read, in order, and counts the other 3",
     { timeout: 60_000 },
     () => {
       const run = start();
@@ -106,22 +109,23 @@ describe("the program's log", () => {
       // any more. They still go up, in the order of the calls.
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
-      expect(new Set(numbers).size).toBe(12);
-      // Each record ends with its company, or "-" when none was checked.
+      expect(new Set(numbers).size).toBe(9);
+      // Each record ends with its company. The three calls refused before line ② have
+      // none, and are not here.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456",
         "invoice.issue@1 DENY AUTHORIZATION_DENIED org_456",
-        "invoice.get@1 DENY AUTHENTICATION_REQUIRED -",
-        "invoice.get@1 DENY AUTHORIZATION_DENIED -",
         "invoice.get@1 ALLOW ok org_456",
         "invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456",
         "invoice.issue@1 DENY VALIDATION_FAILED org_456",
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW ok org_789",
-        "invoice.get@1 DENY AUTHORIZATION_DENIED -",
         "invoice.issue@1 DENY TENANT_MISMATCH org_456",
       ]);
+      expect(run.stdout).toMatch(
+        "3 of the 12 records have no company, and dsor_runtime cannot read them",
+      );
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },
   );

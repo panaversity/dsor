@@ -6,7 +6,14 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
-import { RUNTIME_URL, dbRegistry, newPool, requestId, tryThenRollBack } from "./db.ts";
+import {
+  RUNTIME_URL,
+  dbRegistry,
+  newPool,
+  ownerRowsFor,
+  requestId,
+  tryThenRollBack,
+} from "./db.ts";
 import {
   AGENT,
   INV_1008_OF_456,
@@ -76,10 +83,12 @@ describe("C6: every invoice row and every audit record carries its company", () 
     expect(rows).toStrictEqual([{ column: "tenant_id" }, { column: "id" }]);
   });
 
-  /** The tenant column of the one record this request id left. */
-  async function tenantOf(request_id: string): Promise<unknown[]> {
-    const { rows } = await observer.query(
+  /** The tenant column of the one record this request id left, read inside a company. */
+  async function tenantOf(company: string, request_id: string): Promise<unknown[]> {
+    const { rows } = await tryThenRollBack(
+      observer,
       `SELECT tenant FROM dsor.audit WHERE correlation->>'request_id' = $1`,
+      company,
       [request_id],
     );
     return rows;
@@ -88,7 +97,7 @@ describe("C6: every invoice row and every audit record carries its company", () 
   it("DSOR-TEN-01a: a call's record in dsor.audit names its company", async () => {
     const id = requestId("c6-tenant");
     await call(registry, log, { ...USER_700, request_id: id }, "invoice.get", { id: "INV-1008" });
-    expect(await tenantOf(id)).toStrictEqual([{ tenant: "org_789" }]);
+    expect(await tenantOf("org_789", id)).toStrictEqual([{ tenant: "org_789" }]);
   });
 
   it("DSOR-TEN-01a: a refusal with no login is recorded with no company", async () => {
@@ -96,7 +105,8 @@ describe("C6: every invoice row and every audit record carries its company", () 
     await call(registry, log, { tenant: "org_456", request_id: id }, "invoice.get", {
       id: "INV-1008",
     });
-    expect(await tenantOf(id)).toStrictEqual([{ tenant: null }]);
+    // No company, so only the owner can read it (step 11's README, decision 4).
+    expect(ownerRowsFor(id)).toMatchObject([{ tenant: null }]);
   });
 
   // The company a non-member asked for, kept as a claim (step 10's README, decision 6).
@@ -111,23 +121,23 @@ describe("C6: every invoice row and every audit record carries its company", () 
         id: "INV-1008",
       },
     );
-    const { rows } = await observer.query(
-      `SELECT tenant, extensions FROM dsor.audit WHERE correlation->>'request_id' = $1`,
-      [id],
-    );
-    expect(rows).toStrictEqual([
+    // No company was checked, so only the owner can read it (step 11's README, decision 4).
+    expect(ownerRowsFor(id)).toMatchObject([
       { tenant: null, extensions: { "org.panaversity.steps": { requested_tenant: "org_789" } } },
     ]);
   });
 
   // Step 02's form, kept by the database too (002_tenants.sql). Found by the review:
   // nothing tested the CHECK. dsor_runtime may insert this column, so it is the one to try.
+  // Inside the company acme, so the policy lets the row through and only the CHECK can
+  // refuse it (step 11's README, decision 4).
   it("DSOR-TEN-01a: dsor.audit refuses a tenant that is not org_ and digits", async () => {
     await expect(
       tryThenRollBack(
         observer,
         `INSERT INTO dsor.audit (record_id, kind, "authorization", result, correlation, tenant)
          VALUES ('aud_check', 'decision', 'DENY', 'ok', '{}', 'acme')`,
+        "acme",
       ),
     ).rejects.toMatchObject({ code: "23514" });
   });
