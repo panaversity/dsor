@@ -50,6 +50,10 @@ const RECORDED_AS: Record<string, ["ALLOW" | "DENY", string | undefined]> = {
   "a bug in an operation's code": ["ALLOW", "test.run@1"],
 };
 
+// NEW IN STEP 10: the refusals that come before line ②, so their records name no company
+// (step 10's README, decision 6).
+const AT_LINE_1 = ["a call with no login", "a request id that is empty"];
+
 /** The record a test expects: the fields DSoR fills in, and the decision itself. */
 function recordOf(sequence: number, decision: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -81,6 +85,8 @@ describe("C1: every answer call gives has a record in the log", () => {
         operation: "invoice.get@1",
         authorization: "ALLOW",
         result: "ok",
+        // NEW IN STEP 10: the company the call worked in (step 10's README, decision 6).
+        tenant: "org_456",
         correlation: answer.correlation,
       }),
     ]);
@@ -101,6 +107,8 @@ describe("C1: every answer call gives has a record in the log", () => {
         ...(operation === undefined ? {} : { operation }),
         authorization,
         result: code,
+        // NEW IN STEP 10: a refusal at line ① comes before any company is checked.
+        ...(AT_LINE_1.includes(why) ? {} : { tenant: "org_456" }),
         reason: message,
         correlation: answer.correlation,
       }),
@@ -164,6 +172,7 @@ describe("C2: a failure between the decision and the answer still leaves a recor
         operation: "test.run@1",
         authorization: "ALLOW",
         result: "INTERNAL_ERROR",
+        tenant: "org_456",
         reason: UNEXPECTED,
         correlation: correlationFor(THE_AGENT),
       }),
@@ -311,7 +320,7 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
   it("a call through a broken log still reaches line ⑪", async () => {
     const lines: number[] = [];
     await call(registry, brokenLog, AGENT, "invoice.get", { id: "INV-1008" }, (n) => lines.push(n));
-    expect(lines).toStrictEqual([1, 5, 6, 9, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 6, 9, 11]);
   });
 
   it("the refusal passes the error envelope's schema", async () => {

@@ -121,13 +121,27 @@ describe("C3: every principal has a type and at least one tenant membership", ()
   );
 
   // No rule id: the story's three principals are step 05's decision 3. The
-  // agent's role is step 06's decision 5.
-  it("the table holds the story's three principals, each with its own token", async () => {
+  // agent's role is step 06's decision 5. NEW IN STEP 10: the firm's agent and user_700,
+  // step 10's decision 7.
+  it("the table holds the story's principals, each with its own token", async () => {
     const inOrg456 = (roles: string[]) => [{ tenant_id: "org_456", roles }];
     expect(Object.fromEntries(logins)).toStrictEqual({
       tok_7f3a: { id: "accounts-payable-fte", type: "agent", memberships: inOrg456(["ap_agent"]) },
       tok_2c91: { id: "user_123", type: "human", memberships: inOrg456(["ap_supervisor"]) },
       tok_d4e8: { id: "cfo_100", type: "human", memberships: inOrg456(["CFO"]) },
+      tok_9b52: {
+        id: "firm-ap-fte",
+        type: "agent",
+        memberships: [
+          { tenant_id: "org_456", roles: ["ap_agent"] },
+          { tenant_id: "org_789", roles: ["ap_supervisor"] },
+        ],
+      },
+      tok_e1a7: {
+        id: "user_700",
+        type: "human",
+        memberships: [{ tenant_id: "org_789", roles: ["ap_supervisor"] }],
+      },
     });
   });
 });

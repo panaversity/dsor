@@ -83,6 +83,8 @@ describe("C6: a query's success is { data, correlation }", () => {
   it("invoice.get for INV-1008 answers with the invoice as its data", async () => {
     expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
       data: {
+        // NEW IN STEP 10: the invoice carries its company (step 10's README, decision 10).
+        tenant_id: "org_456",
         id: "INV-1008",
         vendor_id: "VENDOR-44",
         amount: { value: "31400.00", currency: "USD" },

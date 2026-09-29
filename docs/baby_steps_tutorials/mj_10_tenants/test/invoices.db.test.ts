@@ -22,7 +22,9 @@ afterAll(async () => {
 });
 
 // INV-1008, typed out again from the running example rather than read from the migration.
+// NEW IN STEP 10: with its company (step 10's README, decision 10).
 const INV_1008 = {
+  tenant_id: "org_456",
   id: "INV-1008",
   vendor_id: "VENDOR-44",
   amount: { value: "31400.00", currency: "USD" },
@@ -41,7 +43,7 @@ describe("C6: invoices come from the database, and money stays a string", () => 
   });
 
   it("the store gives back undefined for an invoice that is not there", async () => {
-    expect(await createDbInvoices(pool).get("INV-9999")).toBeUndefined();
+    expect(await createDbInvoices(pool).get("org_456", "INV-9999")).toBeUndefined();
   });
 
   // Found by the review: this test said "recorded" and never read the record.

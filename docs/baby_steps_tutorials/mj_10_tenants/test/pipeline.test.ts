@@ -48,17 +48,17 @@ async function linesRun(
 describe("C1: every call runs the lines of the checklist in §21's order", () => {
   // NEW IN STEP 08: every call now ends at line ⑪, where its decision is recorded, the
   // refusals too (step 08's README, decision 1).
-  it("DSOR-EXE-01a: invoice.issue, a command, runs lines ①, ⑤, ⑥, and ⑪, in that order", async () => {
+  it("DSOR-EXE-01a: invoice.issue, a command, runs lines ①, ②, ⑤, ⑥, and ⑪, in that order", async () => {
     expect((await linesRun(registry, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).lines).toStrictEqual(
-      [1, 5, 6, 11],
+      [1, 2, 5, 6, 11],
     );
   });
 
   // No rule id: DSOR-EXE-01a is about commands. §21 says queries pass lines 1 to 6 too.
   // Found by the review: a query's code runs at line ⑨, and was not numbered.
-  it("invoice.get, a query, runs lines ①, ⑤, ⑥, ⑨, and ⑪, in that order", async () => {
+  it("invoice.get, a query, runs lines ①, ②, ⑤, ⑥, ⑨, and ⑪, in that order", async () => {
     const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", { id: "INV-1008" });
-    expect(lines).toStrictEqual([1, 5, 6, 9, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 6, 9, 11]);
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
   });
 
@@ -93,7 +93,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
       retry: "never",
       correlation: correlationFor(THE_CFO),
     });
-    expect(lines).toStrictEqual([1, 5, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 11]);
   });
 
   it("DSOR-EXE-01a: user_123, who may issue, with a bad input: ⑥ answers before 'is it built?'", async () => {
@@ -106,7 +106,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
       retry: "never",
       correlation: correlationFor(THE_SUPERVISOR),
     });
-    expect(lines).toStrictEqual([1, 5, 6, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 6, 11]);
   });
 
   it("DSOR-EXE-01a: user_123 with a good input passes every line, and hears 'not built yet'", async () => {
@@ -117,7 +117,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
       retry: "never",
       correlation: correlationFor(THE_SUPERVISOR),
     });
-    expect(lines).toStrictEqual([1, 5, 6, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 6, 11]);
   });
 
   // No rule id: the same order for a query. Here the CFO role grants nothing at all.
@@ -129,7 +129,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
     );
     const { answer, lines } = await linesRun(grantsNothing, CFO, "invoice.get", { id: 1008 });
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
-    expect(lines).toStrictEqual([1, 5, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 11]);
   });
 });
 
@@ -184,7 +184,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     const { answer, lines } = await linesRun(registry, SUPERVISOR, "invoice.issue", {
       invoice: "dsor://acme/invoice/INV-1008",
     });
-    expect(lines).toStrictEqual([1, 5, 6, 11]);
+    expect(lines).toStrictEqual([1, 2, 5, 6, 11]);
     expect(answer).not.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 

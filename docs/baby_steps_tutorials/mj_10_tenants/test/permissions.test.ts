@@ -257,7 +257,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   ])(
     "DSOR-AUT-01a: %s holds exactly the permissions its roles grant",
     async (_who, token, held) => {
-      expect([...permissionsOf(whoIsCalling({ token }), registry.roles)].sort()).toEqual(held);
+      expect([...permissionsOf(whoIsCalling({ token }), registry.roles, "org_456")].sort()).toEqual(held);
     },
   );
 

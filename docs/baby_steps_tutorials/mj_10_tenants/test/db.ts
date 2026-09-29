@@ -61,7 +61,8 @@ export async function tryThenRollBack(pool: pg.Pool, sql: string): Promise<pg.Qu
  * through a role it belongs to: has_..._privilege counts them all.
  */
 export const PRIVILEGES_HELD = `
-  WITH tables(rel) AS (VALUES ('app.invoices'::regclass), ('dsor.audit'::regclass)),
+  WITH tables(rel) AS (VALUES ('app.invoices'::regclass), ('dsor.audit'::regclass),
+                             ('dsor.migrations'::regclass)),
   on_tables AS (
     SELECT rel::text AS object, string_agg(p, ' ' ORDER BY p) AS held
       FROM tables, unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE',
