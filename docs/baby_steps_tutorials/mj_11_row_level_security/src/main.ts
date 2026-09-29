@@ -173,10 +173,13 @@ console.log(records[0]);
 for (const { sequence, operation, authorization, result, tenant } of records) {
   console.log(sequence, operation ?? "(no contract)", authorization, result, tenant);
 }
-// Every answer above came back after its record was committed, so the rest were written.
-const hidden = answers.length - records.length;
+// The records it could not read. The program did not see them. It knows they were written
+// because an answer leaves only after its record is committed (DSOR-EXE-02). Found by the
+// review: this line used to state them as if it had read them.
+const n = answers.length;
 console.log(
-  `${hidden} of the ${answers.length} records have no company, and dsor_runtime cannot read them`,
+  `${n} calls answered, so ${n} records were written. dsor_runtime reads ${records.length}` +
+    ` of them, in org_456 and org_789, and cannot read the other ${n - records.length}`,
 );
 
 // A log that cannot take a record. This call would succeed, but with no record there is

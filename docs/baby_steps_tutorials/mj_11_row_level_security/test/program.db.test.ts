@@ -99,7 +99,7 @@ describe("the program's log", () => {
   // company. The program reads org_456's and org_789's, and says how many it cannot read
   // (step 11's README, decision 6).
   it(
-    "DSOR-EXE-02: prints the 9 records of its 12 calls that it can read, in order, and counts the other 3",
+    "DSOR-EXE-02: prints the 9 records of its 12 calls that it can read, in order, and says it cannot read 3",
     { timeout: 60_000 },
     () => {
       const run = start();
@@ -123,8 +123,11 @@ describe("the program's log", () => {
         "invoice.get@1 ALLOW ok org_789",
         "invoice.issue@1 DENY TENANT_MISMATCH org_456",
       ]);
+      // A fact and one inference, and the line says which: every call answered, and an
+      // answer leaves only after its record is committed. Found by the review: the line
+      // used to state the 3 as if it had read them.
       expect(run.stdout).toMatch(
-        "3 of the 12 records have no company, and dsor_runtime cannot read them",
+        "12 calls answered, so 12 records were written. dsor_runtime reads 9 of them, in org_456 and org_789, and cannot read the other 3",
       );
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },
