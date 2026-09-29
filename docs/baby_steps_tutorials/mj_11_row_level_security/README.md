@@ -146,12 +146,14 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    transaction-local value, it is `''` after that transaction ends. This was run on a
    local PostgreSQL 17 on 2026-09-29. `nullif` makes both mean "no company". *Downside:*
    the policies are longer than §36's example, and a reader must learn why.
-3. **Every database touch is one transaction that sets the company first:** a helper
-   runs `BEGIN`, `set_config('dsor.tenant_id', $1, true)`, the work, and `COMMIT`, and it
-   rolls back on any error. Line ⑨'s read and line ⑪'s record are two separate
-   transactions, each with the call's company. No code sets the company any other way,
-   and `set_config(…, false)` never appears. *Downside:* each call makes two round trips
-   of four statements, where step 10 made two of one.
+3. **Every touch of a company's table is one transaction that sets the company first:** a
+   helper runs `BEGIN`, `set_config('dsor.tenant_id', $1, true)`, the work, and `COMMIT`,
+   and it rolls back on any error. Line ⑨'s read and line ⑪'s record are two separate
+   transactions, each with the call's company. A call refused before line ② has no
+   company, so its record's transaction sets none. No code sets the company any other way,
+   and `set_config(…, false)` never appears. The start-up check reads no company's table,
+   so it stays a plain query. *Downside:* each call makes two round trips of four
+   statements, where step 10 made two of one.
 4. **The audit table has two policies.** Writing:
    `WITH CHECK (tenant IS NOT DISTINCT FROM <the company>)`, so a record carries exactly
    the company set in its transaction, or none when none is set. Reading:
@@ -164,9 +166,14 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    `USING (tenant_id = <the company>)`. `dsor_runtime` may only `SELECT` invoices, so the
    policy's check on writes waits for the first command that writes. *Downside:* none
    yet. A write policy is tested when there is a write.
-6. **The log reads one company at a time.** `records()` becomes `records(tenant)`,
-   because under the policy there is no "every record" for `dsor_runtime`. *Downside:*
-   step 08's shape of the log changes again.
+6. **The database log reads one company at a time.** Its `records()` becomes
+   `records(tenant)`, because under the policy there is no "every record" for
+   `dsor_runtime`. `call` uses only `add`, so the type every log shares keeps only `add`.
+   The memory log of the unit tests keeps `records()`: keeping companies apart is the
+   database's job, and AGENTS.md says it is never proved against a mock. The program
+   prints the 9 records it can read, both companies merged by number, and says that its 3
+   calls with no company left records it cannot read. *Downside:* step 08's shape of the
+   log changes again, and the program can no longer show every record it wrote.
 7. **The start-up check stays as step 09 built it.** It already refuses a login that is
    a superuser, holds `BYPASSRLS`, owns tables, or belongs to `pg_write_all_data`. The
    map's step 11 asks for such a check. It exists. *Downside:* none. It is proven again
@@ -202,10 +209,15 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   with the policy's error, `42501`. With no company set, an `INSERT` with no tenant
   succeeds, and a `SELECT` with no company set cannot see it. Inside `org_456`, the
   records read back are only `org_456`'s. A call with no login still leaves its record:
-  the owner, in a child program with redacted output, finds it.
+  the owner, in a child program with redacted output, finds it. On a pool of one
+  connection, a call with no login right after a call in `org_456` is still recorded: it
+  answers `AUTHENTICATION_REQUIRED`, not `EVIDENCE_STORE_UNAVAILABLE`.
 - **C6:** step 09's role checks, now titled DSOR-RP-01a.
 - **The program as a whole:** every step 10 test still passes, now through the
-  transactions of decision 3.
+  transactions of decision 3, with three changes. A test that reads `dsor.audit` as
+  `dsor_runtime` reads inside the record's company, because without one an empty answer
+  proves nothing. A test that reads a record with no company reads it through the owner
+  (decision 4). The program prints 9 of its 12 records (decision 6).
 
 ### Breaks we will try, and what we expect
 
@@ -220,7 +232,7 @@ recorded before any code.
 | V4 | The helper sets the company with `true` but runs no `BEGIN` | every invoice read: the setting ends with its own statement | only the pool test |
 | V5 | Step 10's U1: the invoice SQL forgets `tenant_id` | nothing. The second lock makes it harmless, which is the point | survives, harmlessly |
 | V6 | `dsor_runtime` is given `BYPASSRLS` | C6 and the start-up check | C6 and the start-up check |
-| V7 | The audit policies use `current_setting` without `nullif` | only a record with no company written on a reused connection, which then fails as `EVIDENCE_STORE_UNAVAILABLE` | only on a reused connection |
+| V7 | The audit policies use `current_setting` without `nullif` | only C5's pool test: a record with no company written on a reused connection fails, and the call answers `EVIDENCE_STORE_UNAVAILABLE` | only on a reused connection |
 
 The review also attacks the step with the cross-tenant threats of §10.2, now against the
 store: a query, a setting, or a connection that crosses from one company into another.
@@ -301,6 +313,20 @@ _To be written when the code exists._
 ## Think it through
 
 _To be written after the review, with the result of every break in the table above._
+
+**Changed by checking the design against step 10's code, before the first test:**
+
+- **The log's reader (decision 6).** Step 10's program and about 20 unit tests read
+  records with no company. Under decision 4, `dsor_runtime` cannot. Only the database log
+  reads by company. The memory log stays as it was, so `pnpm test` still needs no
+  database.
+- **Tests that expect no rows.** Step 09's "a broken log leaves no record" read
+  `dsor.audit` with no company set. Under the policy, that read is empty whatever the
+  table holds, so the test would pass for the wrong reason. It reads inside the record's
+  company now.
+- **Break V7 had no test that could catch it.** C5 gains the pool-of-one test.
+- **Decision 3's wording.** "Every database touch" was too wide: the start-up check reads
+  no company's table, and a call refused before line ② has no company to set.
 
 ## The rules this step meets
 
