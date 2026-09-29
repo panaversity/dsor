@@ -22,14 +22,17 @@ A plain list of objects will not validate. Because the steps compile their schem
 ajv from step 03 onward, this surfaces as a red test rather than a quiet overclaim, which
 is the good outcome — but it has to be decided, not discovered.
 
-Three honest options:
+**Closed 2026-09-30: step 08 builds the chain.** See [decision 51](decisions.md).
 
-1. Claim `DSOR-EXE-02` only, and record that `DSOR-AUD-01` waits for step 39, naming the
-   four fields. Matches how step 04 handled its own unclaimed ids, which is the precedent
-   with the best record here.
-2. Compute `sequence`, `previous_hash` and `record_hash` in step 08. Cheap — `createHash`
-   is already imported in step 04's `envelopes.ts` — but arguably a second new idea.
-3. Split the chain into a step of its own.
+The question was whether the chain is a second idea for step 08. It is not, by the test decision 43
+settled on: name the step's promise, then ask which parts the promise requires. Step 08 promises that
+the decision is written down before the answer **and that it is evidence** — and a record that does
+not validate against the evidence schema is not evidence. Five lines, and `createHash` was already
+there.
+
+What stays at step 39 is the part a list in memory cannot demonstrate: that the runtime identity
+cannot update or delete a record (`DSOR-AUD-04a`), and that a chain still verifies across a restart.
+Both need a real database, which is step 09.
 
 ## 2 · §12's interface and `security-context.schema.json` disagree (found 2026-09-25)
 

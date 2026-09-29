@@ -905,3 +905,55 @@ name sequence already is.
 **What it still cannot do:** see what a stage *does*. A stage called `authorize` that asks nothing
 passes. That is now a test rather than a comment — the door that does it lets `cfo_100` issue an
 invoice.
+
+## 51 · Step 08 builds the hash chain, and claims `DSOR-AUD-01` properly (2026-09-30)
+
+**Decided by:** the learner, closing [open question 1](open-questions.md), which had been open since
+2026-09-25.
+**What:** every audit record carries `chain`, `sequence`, `previous_hash` and `record_hash`, and is
+validated against the specification's own `audit-record.schema.json` before it is kept.
+**Why:** the question was framed as "is the chain a second idea for step 08?" The answer comes from
+the test [decision 43](#43--step-04-keeps-its-own-promise-and-step-05-is-one-idea-again-2026-09-29)
+settled on: name the step's promise, then ask which parts the promise *requires*. Step 08's promise
+is that the decision is written down before the answer **and that it is evidence**. A record that
+does not validate against the evidence schema is not evidence. So the chain is required by the
+promise, exactly as the argument copy was required by step 04's promise about envelopes.
+
+The alternative was a record in a shape of our own, which every step since 03 has avoided for a
+reason that keeps paying: a copied normative schema catches what a shape of our own invention cannot.
+It would also mean writing the record twice, once now and once properly at step 39.
+**Cost:** about five lines and three fields earlier than the map schedules them. Step 39 keeps the
+part that actually needs a database — proving the runtime identity cannot update or delete a record
+(`DSOR-AUD-04a`), and verifying a chain across a restart — which a list in memory cannot demonstrate
+at all.
+**Rejected:** claiming `DSOR-EXE-02` only and naming the four missing fields, which is how step 04
+handled a rule it could not meet. Right there, wrong here: step 04 could not have met its rule
+without machinery it did not have, and this one needs five lines.
+
+## 52 · The clock is a real clock, with a seam (2026-09-30)
+
+**Decided by:** the learner.
+**What:** an audit record's `at` is a real ISO 8601 timestamp from a `now()` the tests can replace.
+**Why:** `at` is the field an auditor reads first and the one a record can least afford to fake. A
+fixed placeholder would put something untrue in every record and step 09 would have to undo it. The
+seam costs one function, makes the README's output stable and the tests exact, and it is the same
+seam step 09 needs when the log moves into PostgreSQL.
+**Cost:** a mutable module-level binding, which is the shape this repository otherwise avoids.
+Contained: only tests set it, and it is reset the way the request-id counter already is.
+**Rejected:** a counter and no timestamp. Reproducible for nothing, and it makes every record say
+something false.
+
+## 53 · An unauthenticated refusal is counted, not recorded (2026-09-30)
+
+**Decided by:** the learner.
+**What:** a call with no login, or a login naming nobody, is refused and a counter goes up. Every
+decision from "who are you" onward gets its own record.
+**Why:** §29 permits it — *"Rejections at steps 1 and 2, before a tenant is known, MAY be recorded as
+aggregated counts, so that an unauthenticated flood cannot fill the audit store"* — and the reason is
+a real attack. This is the first point in the tutorial where **the log itself is a resource an
+attacker can exhaust**, and that is worth meeting where it first becomes true rather than reading
+about later.
+**Cost:** two paths instead of one, and a counter that a reader has to be told about. The step's
+README says why.
+**Rejected:** a record for every refusal including unauthenticated ones. One path and nothing to
+explain, and anyone who can reach the program can fill the audit store with rubbish.
