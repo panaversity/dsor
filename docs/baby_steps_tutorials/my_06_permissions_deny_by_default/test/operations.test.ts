@@ -9,7 +9,7 @@ import {
   callOperation,
   handlerIds,
   operationIds,
-  WIRING_CHECKED,
+  PAIRS_CHECKED,
 } from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import {
@@ -90,14 +90,18 @@ describe("callOperation", () => {
   // The pairing check runs at module scope, and what a test can prove about it splits in
   // three. That assertPaired catches every mismatch: the three tests below. That the
   // lists it checks do match today: the second assertion here. That it actually ran at
-  // load: only WIRING_CHECKED, which exists solely because the wrapper around the call
-  // returned — deleting the wrapper is a compile error.
+  // load: only PAIRS_CHECKED, which holds how many pairs the walk looked at. A boolean used to
+  // sit here and it proved nothing — deleting the call and leaving `return true` kept every test
+  // green.
   //
   // What no test in this process can prove is the middle link: with the lists matching,
   // removing the call changes nothing observable. A child process importing a deliberately
   // mismatched module would close that, and costs more machinery than it teaches here.
   it("DSOR-OPR-01: the wiring was checked at start-up, not on first request", () => {
-    expect(WIRING_CHECKED).toBe(true);
+    expect(PAIRS_CHECKED).toBeGreaterThan(0);
+
+    // Every contract, plus every id on the waiting list.
+    expect(PAIRS_CHECKED).toBe(operationIds().length);
 
     // The state that check guarantees. A handler with no contract would be an unnamed
     // operation, which is the thing §7 exists to prevent.
@@ -197,6 +201,49 @@ describe("callOperation", () => {
 
     // The address names a company. Acting on a different company's invoice than the
     // address asked for is how one tenant reads another's records.
+    // A NEAR MISS, which the org_999 case above cannot catch: a prefix match refuses org_999
+    // too. Replacing the tenant's `!==` with a prefix test left every test green in step 03, and
+    // `org_45` then read org_456's invoice. Fifth appearance of this shape in six steps.
+    it("DSOR-ERR-01a: a tenant that is only part of ours is TENANT_MISMATCH, both ways round", () => {
+      for (const tenant of ["org_45", "org_4", "org_4567", "org_456789"]) {
+        const envelope = refusalFrom(
+          callOperation(SUPERVISOR, "invoice.get", {
+            invoice: `dsor://${tenant}/invoice/INV-1008`,
+          }),
+        );
+
+        expect(envelope.code, tenant).toBe("TENANT_MISMATCH");
+        expect(envelope.message, tenant).toContain(tenant);
+      }
+    });
+
+    // The same near-miss question for the entity.
+    it("DSOR-ERR-01a: an entity that is only part of ours is VALIDATION_FAILED", () => {
+      for (const entity of ["invoices", "invoice_line", "inv"]) {
+        expect(
+          refusalFrom(
+            callOperation(SUPERVISOR, "invoice.get", {
+              invoice: `dsor://org_456/${entity}/INV-1008`,
+            }),
+          ).code,
+          entity,
+        ).toBe("VALIDATION_FAILED");
+      }
+    });
+
+    // The caller's OWN argument: an object that inherits `invoice` carries an argument nobody
+    // in this program passed.
+    it("DSOR-ERR-01a: an invoice argument the object only inherits is not read", () => {
+      const inherited = Object.create({
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }) as Record<string, unknown>;
+
+      expect(inherited["invoice"]).toBe("dsor://org_456/invoice/INV-1008");
+      expect(refusalFrom(callOperation(SUPERVISOR, "invoice.get", inherited)).code).toBe(
+        "VALIDATION_FAILED",
+      );
+    });
+
     it("DSOR-ERR-01a: an address for another company is TENANT_MISMATCH", () => {
       const envelope = refusalFrom(
         callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_999/invoice/INV-1008" }),

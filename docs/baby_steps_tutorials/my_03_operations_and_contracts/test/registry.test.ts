@@ -225,4 +225,70 @@ describe("validateContract", () => {
     expect(message).toMatch(/audit/);
     expect(message).toMatch(/controls/);
   });
+
+  // "Frozen all the way down" was only ever asserted for three named children — risk, audit and
+  // authorization. This walks the whole contract instead, so a nested object nobody thought of
+  // cannot arrive mutable. Object.freeze is one level deep, which is the whole reason deepFreeze
+  // exists.
+  it("DSOR-OPR-02b: every object and array inside a contract is frozen, all the way down", () => {
+    const registry = loadRegistry(contractsFromDisk());
+
+    expect(registry.size).toBeGreaterThan(0);
+
+    let seen = 0;
+
+    const walk = (value: unknown, where: string): void => {
+      if (typeof value !== "object" || value === null) {
+        return;
+      }
+
+      seen += 1;
+      expect(Object.isFrozen(value), where).toBe(true);
+
+      for (const [key, inner] of Object.entries(value)) {
+        walk(inner, `${where}.${key}`);
+      }
+    };
+
+    for (const [id, contract] of registry) {
+      walk(contract, id);
+    }
+
+    // The contracts really do have nested objects, so the walk is not vacuous.
+    expect(seen).toBeGreaterThan(registry.size);
+  });
+
+  // deepFreeze used to return early on anything already frozen, which is the wrong test: a frozen
+  // object can still hold mutable children, because Object.freeze is one level deep.
+  it("DSOR-OPR-02b: a document whose top level is already frozen is still frozen inside", () => {
+    const document = {
+      where: "test",
+      expectedId: "invoice.get",
+      document: Object.freeze({
+        id: "invoice.get",
+        version: 1,
+        kind: "query",
+        effect: "read",
+        input: { schema: "InvoiceGetRequest" },
+        output: { schema: "Invoice" },
+        authorization: { permission: "invoice:read" },
+        tenancy: { required: true },
+        risk: { level: "low" },
+        audit: { level: "standard" },
+      }),
+    };
+
+    const loaded = loadRegistry([document as never]).get("invoice.get");
+
+    if (loaded === undefined) {
+      throw new Error("invoice.get should have loaded");
+    }
+
+    expect(Object.isFrozen(loaded)).toBe(true);
+    expect(Object.isFrozen(loaded.risk)).toBe(true);
+    expect(Object.isFrozen(loaded.authorization)).toBe(true);
+    expect(() => {
+      (loaded.risk as { level: string }).level = "critical";
+    }).toThrow(TypeError);
+  });
 });

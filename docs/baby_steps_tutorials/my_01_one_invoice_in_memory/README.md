@@ -117,7 +117,7 @@ the status is only a label on the record. Nothing reads it before acting. Turnin
 payment needs an issued invoice" into a rule the system checks is step 32.
 
 ```bash
-pnpm check                 # typecheck, then test. 13 tests pass
+pnpm check                 # typecheck, then test. 15 tests pass
 ```
 
 ### Why some tests are titled with a rule id
@@ -179,7 +179,7 @@ AssertionError: expected '31400' to be '31400.00' // Object.is equality
 Expected: "31400.00"
 Received: "31400"
  Test Files  1 failed | 2 passed (3)
-      Tests  3 failed | 10 passed (13)
+      Tests  3 failed | 12 passed (15)
 ```
 
 Only a test knows what the string is supposed to *say*.
@@ -232,7 +232,7 @@ Now put `readonly` back and delete `Object.freeze` from the `return` instead. Ru
 AssertionError: expected function to throw an error, but it didn't
 AssertionError: expected false to be true // Object.is equality
  Test Files  1 failed | 2 passed (3)
-      Tests  2 failed | 11 passed (13)
+      Tests  2 failed | 13 passed (15)
 ```
 
 The compiler was satisfied and the amount changed anyway. `readonly` is a promise the
@@ -240,7 +240,7 @@ compiler checks and then **erases**: Node deletes every type before it runs the 
 at run time there is nothing left to stop an assignment. `Object.freeze` is the run-time
 half. You need both, and the two breaks above prove neither one covers for the other.
 
-Change everything back and run `pnpm check` to confirm 13 tests pass again.
+Change everything back and run `pnpm check` to confirm 15 tests pass again.
 
 ## Build it yourself with Claude Code
 

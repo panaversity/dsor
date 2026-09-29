@@ -125,12 +125,10 @@ does not depend on what an invoice is.
 Nothing is broken by it. It is a shape that will cost a little extra when step 10 makes more than
 one company possible — a file that should have been replaced becomes two files to unpick.
 
-Two options, and neither needs deciding today:
+**Closed 2026-09-29: moved.** `src/tenant.ts` now holds it in steps 03 to 06, and `invoice.ts`
+imports it like everybody else. See [decision 44](decisions.md).
 
-1. **Leave it** and let step 10 do the unpicking, with this note as the warning.
-2. **Move `TENANT` to a `src/tenant.ts` of its own**, repeated forward through steps 03 to 06.
-   Four folders touched for a change nothing tests, which is exactly the kind of edit that
-   introduces a mistake while fixing a smell.
-
-The house rule that applies is decision 38: the smallest testable piece first. This is not a
-piece, and not testable — so it waits for the step that has a reason to touch it.
+This note had recommended leaving it, on the grounds that four folders touched for a change no test
+can see is the kind of edit that introduces a mistake while fixing a smell. That was the right call
+while the question was whether it deserved a detour. It stopped being right when the answer became
+"do all of it" — and the edit was mechanical, with all six suites green before and after.

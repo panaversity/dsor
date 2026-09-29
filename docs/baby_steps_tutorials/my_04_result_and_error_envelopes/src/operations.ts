@@ -16,7 +16,8 @@
 // Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
 
 import { refusal, success, type ErrorEnvelope, type ResultEnvelope } from "./envelopes.ts";
-import { getInvoice, issueInvoice, TENANT, type Invoice } from "./invoice.ts";
+import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
+import { TENANT } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { parseUri } from "./uri.ts";
 
@@ -57,7 +58,10 @@ function invoiceIdFrom(
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
 ): { readonly id: string } | { readonly refused: ErrorEnvelope } {
-  const given = args["invoice"];
+  // The caller's **own** `invoice`, not one inherited from a prototype. A name an object merely
+  // inherits is a name nobody in this program chose — the same reason the login reads its field
+  // this way, and the same reason step 06 looks a role up with Object.hasOwn.
+  const given = Object.hasOwn(args, "invoice") ? args["invoice"] : undefined;
 
   if (typeof given !== "string") {
     return {
@@ -176,11 +180,15 @@ export function assertPaired(
   contracts: ReadonlyMap<string, OperationContract>,
   named: Readonly<Record<string, Handler>>,
   waiting: ReadonlySet<string> = NOT_YET_IMPLEMENTED,
-): void {
+): number {
+  let checked = 0;
+
   for (const id of contracts.keys()) {
     if (named[id] === undefined && !waiting.has(id)) {
       throw new TypeError(`${id} has a contract and no handler`);
     }
+
+    checked += 1;
   }
 
   for (const id of Object.keys(named)) {
@@ -200,20 +208,22 @@ export function assertPaired(
     if (named[id] !== undefined) {
       throw new TypeError(`${id} has a handler, so take it off the waiting list`);
     }
+
+    checked += 1;
   }
+
+  return checked;
 }
 
 // Start-up, not first request. This and the loadRegistry above it are the whole of
 // "refused before anything runs".
 //
-// Wrapped so that deleting it cannot be silent. No test can watch a line at module scope
-// run — by the time a test imports this file it already has — but a test can ask whether
-// the constant exists, and it only exists if the check ran.
-export const WIRING_CHECKED: boolean = ((): boolean => {
-  assertPaired(registry, handlers);
-
-  return true;
-})();
+// The constant holds **how many** pairs the check looked at, not `true`. A boolean was not
+// enough: no test can watch a line at module scope run, and deleting the call while leaving
+// `return true` behind kept every test green. A count has to come from walking the lists. It is
+// still not a proof — hardcoding today's number would pass — but it moves the mistake from
+// "delete a line" to "delete a line and keep a number right as the lists change".
+export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 
 /** The operations this program can answer to. */
 export function operationIds(): string[] {

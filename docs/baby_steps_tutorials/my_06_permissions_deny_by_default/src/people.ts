@@ -8,7 +8,7 @@
 // Rule DSOR-IDN-01: DSoR MUST normalize every caller into a principal with a type and
 // tenant memberships before any other processing.
 
-import { TENANT } from "./invoice.ts";
+import { TENANT } from "./tenant.ts";
 
 /**
  * What kind of thing is asking.

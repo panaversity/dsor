@@ -33,12 +33,12 @@ with one pure function and two tests, and every later step begins as a copy of i
 | | Tests | State |
 | --- | --- | --- |
 | `00_foundation` | 2 | came with the repository |
-| `my_01_one_invoice_in_memory` | 13 | done |
-| `my_02_canonical_uris` | 24 | done |
-| `my_03_operations_and_contracts` | 53 | done |
-| `my_04_result_and_error_envelopes` | 84 | done |
-| `my_05_who_is_calling` | 113 | done |
-| `my_06_permissions_deny_by_default` | 135 | done, built a piece at a time |
+| `my_01_one_invoice_in_memory` | 15 | done |
+| `my_02_canonical_uris` | 30 | done |
+| `my_03_operations_and_contracts` | 65 | done |
+| `my_04_result_and_error_envelopes` | 95 | done |
+| `my_05_who_is_calling` | 124 | done |
+| `my_06_permissions_deny_by_default` | 146 | done, built a piece at a time |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.

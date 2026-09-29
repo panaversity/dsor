@@ -8,7 +8,8 @@
 //
 // Rule DSOR-OPR-01: every operation MUST have a contract.
 
-import { getInvoice, TENANT, type Invoice } from "./invoice.ts";
+import { getInvoice, type Invoice } from "./invoice.ts";
+import { TENANT } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { parseUri } from "./uri.ts";
 
@@ -60,7 +61,10 @@ function invoiceIdFrom(
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
 ): string {
-  const given = args["invoice"];
+  // The caller's **own** `invoice`, not one inherited from a prototype. A name an object merely
+  // inherits is a name nobody in this program chose — the same reason step 05's login reads its
+  // field this way, and the same reason step 06 looks a role up with Object.hasOwn.
+  const given = Object.hasOwn(args, "invoice") ? args["invoice"] : undefined;
 
   if (typeof given !== "string") {
     throw new TypeError(`${contract.id} needs an invoice address, and got ${typeof given}`);
@@ -99,11 +103,15 @@ const handlers: Readonly<Record<string, Handler>> = {
 export function assertPaired(
   contracts: ReadonlyMap<string, OperationContract>,
   named: Readonly<Record<string, Handler>>,
-): void {
+): number {
+  let checked = 0;
+
   for (const id of contracts.keys()) {
     if (named[id] === undefined && !NOT_YET_IMPLEMENTED.has(id)) {
       throw new TypeError(`${id} has a contract and no handler`);
     }
+
+    checked += 1;
   }
 
   for (const id of Object.keys(named)) {
@@ -122,12 +130,25 @@ export function assertPaired(
     if (named[id] !== undefined) {
       throw new TypeError(`${id} has a handler, so take it off the waiting list`);
     }
+
+    checked += 1;
   }
+
+  return checked;
 }
 
 // Start-up, not first request. This line and the loadRegistry above it are the whole of
 // "refused before anything runs".
-assertPaired(registry, handlers);
+// Start-up, not first request, and the constant holds **how many** pairs were checked rather
+// than nothing at all.
+//
+// The bare call was this step's headline idea — "refused at start-up, not on first request" — and
+// no test could tell whether it had run: deleting the line left all 53 tests green, because the
+// two lists match today so the check is silent when it passes. A count has to come from walking
+// them. It is not a proof, since hardcoding today's number would also pass; it moves the mistake
+// from "delete a line" to "delete a line and keep a number right". Step 06 reaches the same
+// conclusion about its own table.
+export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 
 /** The operations this program can answer to. */
 export function operationIds(): string[] {

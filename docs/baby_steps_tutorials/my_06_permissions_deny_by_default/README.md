@@ -161,7 +161,7 @@ diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
 cd docs/baby_steps_tutorials/my_06_permissions_deny_by_default
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 135 tests pass
+pnpm check                 # typecheck, then test. 146 tests pass
 ```
 
 ```text
@@ -206,7 +206,7 @@ Five breaks. Change the code back after each. Every number below was produced by
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
      × DSOR-AUT-01b: the supervisor may issue, and does
 AssertionError: expected 'INV-1009 is issued, and only a draft …' to contain 'cfo_100'
-      Tests  5 failed | 130 passed (135)
+      Tests  5 failed | 141 passed (146)
 ```
 
 Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The last
@@ -215,7 +215,7 @@ test then failed because the draft she was never allowed to touch had already be
 **2. Say yes to everything.** Make `holds` return `true`. Run `pnpm test`:
 
 ```text
-      Tests  9 failed | 126 passed (135)
+      Tests  9 failed | 137 passed (146)
 ```
 
 Nine. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
@@ -228,7 +228,7 @@ because "just allow it while I debug" is a real thing people type.
 ```text
      × DSOR-AUT-01b: a principal holds what their role grants, and nothing else
      × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
-      Tests  7 failed | 128 passed (135)
+      Tests  7 failed | 139 passed (146)
 ```
 
 No code was touched. One word in a table, and the separation between approving a payment and
@@ -241,7 +241,7 @@ it is `DSOR-SOD-01a`, in step 30.
 ```text
      × DSOR-AUT-01b: a permission is matched whole, never by prefix
 AssertionError: "invoice:i": expected true to be false // Object.is equality
-      Tests  1 failed | 134 passed (135)
+      Tests  1 failed | 145 passed (146)
 ```
 
 **A prefix is not a match.** Asking for `invoice:i` succeeds, because `invoice:issue` starts with
@@ -258,7 +258,7 @@ yourself.
 ```text
      × DSOR-AUT-01b: a role nobody granted anything holds nothing
 AssertionError: "toString": expected [Function toString] to deeply equal []
-      Tests  1 failed | 134 passed (135)
+      Tests  1 failed | 145 passed (146)
 ```
 
 This one was a real bug in this step, found by a hostile review rather than by me. `ROLES[role]`

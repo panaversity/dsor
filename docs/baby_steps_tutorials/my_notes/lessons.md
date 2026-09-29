@@ -1,6 +1,7 @@
 # Lessons
 
-The mistakes that repeated across steps 01 to 06, and what catches each one. Kept
+The mistakes that repeated across steps 01 to 06, and what catches each one. Fifteen of them now,
+and lesson 15 is the one to read if you only read one. Kept
 separately from [decisions.md](decisions.md) because these are not choices — they are
 things that went wrong more than once.
 
@@ -263,3 +264,34 @@ applied to the tools instead of the code, and it had never occurred to me to app
 
 The general shape: every claim of the form "X protects us from Y" is a testable claim. If it has
 not been tested, it is a hope.
+
+## 15 · The same wrong shape appeared in five places before anybody looked for it
+
+"Is this a whole match or a prefix?" has now been the answer five times in six steps:
+
+| Step | The code | What a prefix match would do |
+| --- | --- | --- |
+| 01 | `getInvoice`'s `invoice.id === id` | `getInvoice("")` hands back INV-1008 |
+| 02 | `parseUri`'s entity segment | a payment address parses as an invoice |
+| 03 | the tenant check's `tenant !== TENANT` | `org_45` reads org_456's records |
+| 05 | `findPerson`'s `p.id === id` | `cfo_100_evil` logs in as `cfo_100` |
+| 06 | `holds`'s `includes` | asking for `invoice:i` is granted |
+
+Two of the five were real defects when they were found. The other three were correct code that
+**no test protected**: every one of them passed its whole suite after the change.
+
+What is worth extracting is not "watch out for prefixes". It is the method that found them, and
+what it cost that nothing else did:
+
+- Steps 05 and 06 each had a hostile review. Each review found real bugs **in that step**, and
+  neither looked back at the same shape in the steps below.
+- The arc audit read all six steps and found stale numbers and broken promises — things that can
+  only be wrong *between* steps — and did not find these, because they need running code.
+- Only attacking steps 01 to 03 found them, and only because the attackers were told to look for
+  the shapes this codebase had already got wrong. That instruction came from
+  [lesson 13](#13--a-fix-belongs-everywhere-its-shape-lives), which existed because the shape had
+  already repeated twice.
+
+So the lesson compounds: **write down the shape of a bug, and then go looking for that shape
+everywhere, including in the code you wrote before you knew.** Lesson 13 said a fix belongs
+everywhere its shape lives. This says the same about a *test*.

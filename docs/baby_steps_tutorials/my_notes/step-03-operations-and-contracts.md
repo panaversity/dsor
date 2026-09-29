@@ -1,6 +1,6 @@
 # Step 03 · Operations and contracts
 
-Folder: [`my_03_operations_and_contracts`](../my_03_operations_and_contracts/README.md) · 53 tests
+Folder: [`my_03_operations_and_contracts`](../my_03_operations_and_contracts/README.md) · 65 tests
 Spec: [§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) · `DSOR-OPR-01`, `DSOR-OPR-02a`, `DSOR-OPR-02b`
 Commits: `0d3774d` → `8ae1a94` (12, including two outside the step folder)
 

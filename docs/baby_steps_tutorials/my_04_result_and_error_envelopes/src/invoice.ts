@@ -6,6 +6,7 @@
 
 import { money, type Money } from "./money.ts";
 // an invoice now knows its own address.
+import { TENANT } from "./tenant.ts";
 import { formatUri } from "./uri.ts";
 
 /**
@@ -37,7 +38,6 @@ export interface Invoice {
 }
 
 // The one company in the story. Real multi-tenancy is step 10.
-export const TENANT = "org_456";
 
 // builds one invoice and its address together.
 //

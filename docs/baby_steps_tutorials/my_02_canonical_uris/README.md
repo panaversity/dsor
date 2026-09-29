@@ -127,7 +127,7 @@ INV-9999: not found.
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 24 tests pass
+pnpm check                 # typecheck, then test. 30 tests pass
 ```
 
 ### Why the address is built from the id
@@ -185,7 +185,7 @@ AssertionError: expected function to throw an error, but it didn't
  FAIL  test/uri.test.ts > parseUri > DSOR-RID-01b: the refusal says which half was wrong
  FAIL  test/uri.test.ts > formatUri > DSOR-RID-01b: refuses to write an address it would not read
  Test Files  1 failed | 3 passed (4)
-      Tests  3 failed | 21 passed (24)
+      Tests  3 failed | 27 passed (30)
 ```
 
 This is the break to sit with. The pattern you just pasted in is not wrong — it is what
@@ -198,7 +198,7 @@ nothing else". Without them a match anywhere inside a longer string counts:
 ```text
 AssertionError: expected function to throw an error, but it didn't
  Test Files  1 failed | 3 passed (4)
-      Tests  2 failed | 22 passed (24)
+      Tests  3 failed | 27 passed (30)
 ```
 
 `dsor://org_456/invoice/INV-1008 and more` now parses cleanly.
@@ -209,7 +209,7 @@ literal `"INV-1008"`. Run `pnpm test`:
 ```text
 AssertionError: expected 'dsor://org_456/invoice/INV-1008' to be 'dsor://org_456/invoice/INV-1009' // Object.is equality
  Test Files  1 failed | 3 passed (4)
-      Tests  2 failed | 22 passed (24)
+      Tests  2 failed | 28 passed (30)
 ```
 
 INV-1009 now claims INV-1008's address. Nothing crashed, nothing looked broken, and two
@@ -222,7 +222,7 @@ different invoices answer to the same name.
 src/invoice.ts(50,57): error TS2353: Object literal may only specify known properties, and 'invoiceId' does not exist in type 'ResourceUri'.
 ```
 
-No test had to run. Change everything back and run `pnpm check` to see 24 tests pass.
+No test had to run. Change everything back and run `pnpm check` to see 30 tests pass.
 
 ## Build it yourself with Claude Code
 

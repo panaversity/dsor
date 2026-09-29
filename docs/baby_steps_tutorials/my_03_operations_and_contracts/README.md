@@ -162,7 +162,7 @@ refused  no contract: execute_sql is not an operation: this program has no contr
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 53 tests pass
+pnpm check                 # typecheck, then test. 65 tests pass
 ```
 
 ### A contract without a handler, on purpose
@@ -260,10 +260,10 @@ The program printed nothing at all — not the greeting, not the operation list.
 
 ```text
  Test Files  2 failed | 4 passed (6)
-      Tests  4 failed | 33 passed (37)
+      Tests  5 failed | 40 passed (45)
 ```
 
-Read the totals. **37 collected, not 53.** Sixteen tests did not fail — they never ran,
+Read the totals. **45 collected, not 65.** Twenty tests did not fail — they never ran,
 because `operations.test.ts` imports a module that throws while it is loading. That is
 what "refused at start-up" looks like from the outside.
 
@@ -325,7 +325,7 @@ at all**. Now `pnpm test`:
 
 ```text
  Test Files  1 failed | 5 passed (6)
-      Tests  4 failed | 49 passed (53)
+      Tests  4 failed | 61 passed (65)
 ```
 
 All 53 collected this time, because nothing threw while loading. Only the four tests

@@ -110,13 +110,24 @@ export function validateContract(document: unknown, where: string): OperationCon
 }
 
 /** Freezes an object and everything inside it. */
-function deepFreeze<T>(value: T): T {
-  if (typeof value !== "object" || value === null || Object.isFrozen(value)) {
+function deepFreeze<T>(value: T, seen: WeakSet<object> = new WeakSet()): T {
+  if (typeof value !== "object" || value === null) {
     return value;
   }
 
+  // `seen`, not `Object.isFrozen`. Stopping on an already-frozen object was the wrong test: a
+  // frozen object can still hold mutable children — `Object.freeze` is one level deep — so a
+  // contract whose top level arrived frozen would have been handed back with editable innards.
+  // A WeakSet stops the infinite loop a cycle would cause, which is the only thing the early
+  // return was needed for.
+  if (seen.has(value)) {
+    return value;
+  }
+
+  seen.add(value);
+
   for (const inner of Object.values(value)) {
-    deepFreeze(inner);
+    deepFreeze(inner, seen);
   }
 
   return Object.freeze(value);

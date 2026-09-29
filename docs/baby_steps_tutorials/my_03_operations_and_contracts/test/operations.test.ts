@@ -4,7 +4,7 @@
 // registry, so an operation with no contract cannot be called at all.
 
 import { describe, expect, it } from "vitest";
-import { assertPaired, callOperation, operationIds } from "../src/operations.ts";
+import { assertPaired, callOperation, operationIds, PAIRS_CHECKED } from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -115,6 +115,48 @@ describe("callOperation", () => {
         callOperation("invoice.get", { invoice: "dsor://org_1/invoice/INV-1008" }),
       ).toThrow(/this program serves org_456/);
     });
+
+    // A NEAR MISS, which is what the two cases above cannot catch: `org_999` and `org_1` are
+    // refused by a prefix match too, so nothing protected the `!==`. Replacing it with
+    // `!TENANT.startsWith(parsed.tenant)` left all 53 tests green, and `org_45` and `org_4` then
+    // read org_456's invoice.
+    //
+    // Fifth appearance of this shape in six steps: getInvoice's id, parseUri's entity, this
+    // tenant, step 05's findPerson, step 06's holds. Two of the five became real defects.
+    it("DSOR-RID-01b: a tenant that is only part of ours is refused, both ways round", () => {
+      for (const tenant of ["org_45", "org_4", "org_4567", "org_456789"]) {
+        expect(
+          () => callOperation("invoice.get", { invoice: `dsor://${tenant}/invoice/INV-1008` }),
+          tenant,
+        ).toThrow(/this program serves org_456/);
+      }
+
+      expect(
+        callOperation("invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
+      ).toBeDefined();
+    });
+
+    // The same near-miss question for the entity. `vendor` is refused by a prefix match too;
+    // `invoices` and `invoice_line` are not.
+    it("DSOR-RID-01b: an entity that is only part of ours is refused", () => {
+      for (const entity of ["invoices", "invoice_line", "inv", "invoic"]) {
+        expect(
+          () => callOperation("invoice.get", { invoice: `dsor://org_456/${entity}/INV-1008` }),
+          entity,
+        ).toThrow(/is named for invoice/);
+      }
+    });
+
+    // The caller's OWN argument. An object that inherits `invoice` from a prototype carries an
+    // argument nobody in this program passed.
+    it("DSOR-RID-01b: an invoice argument the object only inherits is not read", () => {
+      const inherited = Object.create({
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }) as Record<string, unknown>;
+
+      expect(inherited["invoice"]).toBe("dsor://org_456/invoice/INV-1008");
+      expect(() => callOperation("invoice.get", inherited)).toThrow(/needs an invoice address/);
+    });
   });
 
   // invoice.issue ships a contract in this step and no handler. The command itself is
@@ -161,5 +203,18 @@ describe("callOperation", () => {
         }),
       ).toThrow(/take it off the waiting list/);
     });
+  });
+
+  // The step's headline idea: the pairing is checked when the program loads, not on the first
+  // request. No test in this process can watch a line at module scope run, so the constant carries
+  // how many pairs the walk looked at. Deleting the call used to leave all 53 tests green, because
+  // the two lists match today and the check is silent when it passes.
+  it("DSOR-OPR-01: the pairing was checked at start-up, and all of it was", () => {
+    const registry = loadRegistry(contractsFromDisk());
+
+    expect(PAIRS_CHECKED).toBeGreaterThan(0);
+
+    // Every contract, plus every id on the waiting list.
+    expect(PAIRS_CHECKED).toBe(registry.size + 1);
   });
 });

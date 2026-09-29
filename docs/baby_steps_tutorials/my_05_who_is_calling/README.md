@@ -176,7 +176,7 @@ logged in, no contract  user_123              UNSUPPORTED_CAPABILITY   retry: ne
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 113 tests pass
+pnpm check                 # typecheck, then test. 124 tests pass
 ```
 
 Read those lines carefully, because two things are happening.
@@ -227,7 +227,7 @@ Four breaks. Change the code back after each. Every number below was produced by
      × DSOR-SRC-02a: a principal named in the arguments is ignored
      × DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well
 AssertionError: expected 'cfo_100' to be 'user_123' // Object.is equality
-      Tests  2 failed | 111 passed (113)
+      Tests  2 failed | 122 passed (124)
 ```
 
 This is the break the step exists for, and it is the map's own "done when". Notice how small
@@ -248,7 +248,7 @@ refusing when there is no login. Run `pnpm test`:
      × DSOR-IDN-01: the login is checked before the operation or the arguments
      × DSOR-ERR-01a: an object that throws when read is refused, not thrown at
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  9 failed | 104 passed (113)
+      Tests  9 failed | 115 passed (124)
 ```
 
 Nine. A default caller is not one bug: it takes out the refusal, its retry class, the
@@ -264,7 +264,7 @@ it up in the people list. Run `pnpm test`:
      × DSOR-IDN-01: each refusal says in words which refusal it is
      × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
-      Tests  4 failed | 109 passed (113)
+      Tests  4 failed | 120 passed (124)
 ```
 
 **4. Check the login after the operation.** Move the "no such operation" lookup and refusal so
@@ -273,7 +273,7 @@ they come *before* the login check. Run `pnpm test`:
 ```text
      × DSOR-IDN-01: the login is checked before the operation or the arguments
      × every answer says who asked, and so does the envelope inside it
-      Tests  2 failed | 111 passed (113)
+      Tests  2 failed | 122 passed (124)
 ```
 
 Nothing is insecure yet — the caller is still checked. But an unknown caller now learns which

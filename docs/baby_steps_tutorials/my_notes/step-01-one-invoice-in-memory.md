@@ -1,6 +1,6 @@
 # Step 01 · One invoice in memory
 
-Folder: [`my_01_one_invoice_in_memory`](../my_01_one_invoice_in_memory/README.md) · 13 tests
+Folder: [`my_01_one_invoice_in_memory`](../my_01_one_invoice_in_memory/README.md) · 15 tests
 Spec: [§9](../../../specs/dsor/01-model.md#9-money-and-currency) · `DSOR-MON-01`
 Commits: `4c69eca` → `3a3fe44` (6)
 

@@ -1,6 +1,6 @@
 # Step 02 · Canonical URIs
 
-Folder: [`my_02_canonical_uris`](../my_02_canonical_uris/README.md) · 24 tests
+Folder: [`my_02_canonical_uris`](../my_02_canonical_uris/README.md) · 30 tests
 Spec: [§5](../../../specs/dsor/01-model.md#5-resource-identity) · `DSOR-RID-01a`, `DSOR-RID-01b`
 Commits: `bf08e1c` → `454e711` (6)
 

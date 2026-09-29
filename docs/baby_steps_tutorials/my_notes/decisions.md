@@ -770,3 +770,39 @@ counting ideas, and finding the better framing took a second pass.
 step does. It is answerable by naming the step's promise and asking which of those things the
 promise requires. Step 04 promises envelopes; a guard that stops a throw is required. Step 06
 promises may-you; the same guard would not have been.
+
+## 44 · `TENANT` moves to a module of its own (2026-09-29)
+
+**Decided by:** the learner — "do all these 4 points thoroughly" — closing
+[open question 5](open-questions.md), which had been parked as not worth touching yet.
+**What:** `src/tenant.ts` in steps 03 to 06, holding the one company id. `invoice.ts` imports it
+like everybody else.
+**Why:** the tenant is a fact about **identity** — which company a caller belongs to, which records
+they may touch. It lived in `invoice.ts` because that was the first file that needed it, which by
+step 05 meant the identity module imported the company id from the invoice module. Backwards: who
+you belong to does not depend on what an invoice is. And step 10, which makes more than one company
+possible, now replaces one small file instead of unpicking a constant out of a module that has
+nothing to do with tenancy.
+**Cost:** four folders touched for a change no test can see, which is the kind of edit that
+introduces a mistake while fixing a smell. Mitigated by doing it in one mechanical pass with all
+six suites green before and after.
+**Rejected:** leaving it for step 10, which is what open question 5 recommended. That was the right
+call while the question was "is this worth a detour"; it stopped being right once the answer was
+"do all of it".
+
+## 45 · The pairing sentinel is a count in every step that has one (2026-09-29)
+
+**Decided by:** an attack on step 03, which found the same hole
+[lesson 12](lessons.md) had already named in step 06.
+**What:** `assertPaired` returns how many pairs it walked, and every step from 03 onward exports
+`PAIRS_CHECKED: number` rather than `WIRING_CHECKED: boolean`.
+**Why:** step 03's headline idea is *refused at start-up, not on first request*, and no test could
+tell whether the check had run — deleting the call left all 53 tests green, because the two lists
+match today so a passing check is silent. Step 04 had wrapped the call in an IIFE returning `true`,
+which reads like proof and is not: lesson 12 was written about exactly that in step 06's permission
+table, and the pairing check in steps 04 to 06 still had the weak version. Now all four agree.
+**Cost:** hardcoding today's number still passes, so it is not a proof. It moves the mistake from
+"delete a line" to "delete a line and keep a number right as the lists change", and the code says
+so.
+**Rejected:** a child process importing a deliberately mismatched module, which would be a real
+proof and costs more machinery than the step teaches.
