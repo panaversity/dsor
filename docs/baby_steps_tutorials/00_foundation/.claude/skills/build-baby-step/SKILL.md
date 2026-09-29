@@ -2,7 +2,7 @@
 name: build-baby-step
 description: Builds one numbered step of the DSoR baby-steps tutorial. Use when asked to build, plan, continue, fix, or review a baby step or tutorial step ("plan step 07", "build this step"), or when a learner wants to build a step themselves ("learner mode"). Covers the one-new-idea rule, the design written before any code, tests titled by rule id and written first, the NEW IN STEP marker, performing the break-it exercise for real, the learner-shaped README, and proving the step runs by itself.
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Building a baby step
@@ -141,6 +141,18 @@ reports every change that leaves all tests green. It makes those breaks in a cop
 outside the repository, never in the step folder. It also attacks the step with the
 threats in §10.2 of the specification that concern this step's idea, with inputs of its
 own. Fix what it finds or record it under "Think it through".
+
+When the step has database tests, the review is slow, so plan it. Found in step 11,
+where one full database run took 3 minutes and the sweep took 2 hours:
+
+- **Start the sweep early,** as soon as the green commits land, and run the breaks and
+  write the README while it works.
+- **Run each change against the one or two test files it touches,** and the full unit
+  and database suites only for the changes that survive there.
+- **Split the changes across two or three throwaway Neon branches** made from the step's
+  branch, one sweep for each, because each branch has its own compute. Give each sweep a
+  copy of the step whose `.env` points at its own branch, written by a command, never
+  shown. A copy without `.env` fails the test that finds `.env` by itself.
 
 Finish by telling the human exactly what to do next, because these are outside this
 folder and are theirs to do: add this step's rows to `rules-met.md` beside the steps (a
