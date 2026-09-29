@@ -19,9 +19,6 @@ export type Roles = ReadonlyMap<string, ReadonlySet<string>>;
 // copied from packages/spec/schemas/common.schema.json#/$defs/permission/pattern
 const PERMISSION = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*(\.propose)?$/;
 
-// The one company this step knows. Step 10 picks the company of each call.
-const COMPANY = "org_456";
-
 /** Reads the role table from a file. */
 export function readRoles(path: string): RoleSource {
   return { file: basename(path), text: readFileSync(path, "utf8") };
@@ -82,12 +79,15 @@ export function checkRoles(
   return { roles, problems };
 }
 
-/** The permissions a caller holds: what its roles in org_456 grant, and nothing else. */
-export function permissionsOf(caller: Principal, roles: Roles): ReadonlySet<string> {
+// NEW IN STEP 10: the company is the call's active tenant, which line ② checked. Step 06's
+// constant COMPANY is gone (step 10's README, decision 3).
+/** The permissions a caller holds: what its roles in this company grant, and nothing else. */
+export function permissionsOf(caller: Principal, roles: Roles, tenant: string): ReadonlySet<string> {
   const held = new Set<string>();
   for (const { tenant_id, roles: names } of caller.memberships) {
-    // Roles count only in the company of the call (step 06's README, decision 1).
-    if (tenant_id !== COMPANY) continue;
+    // Roles count only in the company of the call, so authority one company gave is never
+    // used in another (DSOR-IDN-03a, step 06's README, decision 1).
+    if (tenant_id !== tenant) continue;
     // A role missing from the table grants nothing. Start-up refuses such a table anyway.
     for (const name of names) for (const permission of roles.get(name) ?? []) held.add(permission);
   }
@@ -95,7 +95,13 @@ export function permissionsOf(caller: Principal, roles: Roles): ReadonlySet<stri
 }
 
 /** Refuses the call unless the caller holds the very permission the contract names. */
-export function checkPermission(caller: Principal, contract: Contract, roles: Roles): void {
+export function checkPermission(
+  caller: Principal,
+  contract: Contract,
+  roles: Roles,
+  // NEW IN STEP 10: the active company.
+  tenant: string,
+): void {
   const name = JSON.stringify(contract.id);
   const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;
   // The schema makes every contract name one at start-up. If one ever did not, nobody could
@@ -105,7 +111,7 @@ export function checkPermission(caller: Principal, contract: Contract, roles: Ro
   }
   // Only the same text grants it. No wildcard, no "issue grants read", and the ".propose"
   // form does not stand in for the full one (step 06's README, decisions 2 and 3).
-  if (!permissionsOf(caller, roles).has(needed)) {
+  if (!permissionsOf(caller, roles, tenant).has(needed)) {
     throw new Refusal(
       "AUTHORIZATION_DENIED",
       `${name} needs ${needed}, which the caller does not hold`,

@@ -261,8 +261,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     },
   );
 
-  // No rule id: only the roles in org_456 count, the one company of this step (step 06's
-  // README, decision 1). Step 10 picks the company of each call. Found by the review:
+  // No rule id: only the roles in the call's company count (step 06's README, decision 1).
+  // NEW IN STEP 10: the company is the call's active tenant, here org_456. Found by the review:
   // with org_456 always last, code that read only the last membership passed, and so did
   // code that let org_4567 count as org_456.
   const COMPANIES: [string, Membership[], string[]][] = [
@@ -288,7 +288,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   it.each(COMPANIES)(
     "only the roles held in org_456 count: %s",
     async (_why, memberships, held) => {
-      expect([...permissionsOf(person(memberships), registry.roles)]).toEqual(held);
+      expect([...permissionsOf(person(memberships), registry.roles, "org_456")]).toEqual(held);
     },
   );
 
@@ -298,7 +298,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     const cfoApproves = { ...STARTING_ROLES, CFO: ["invoice:read", "payment:approve"] };
     const { roles } = checkRoles(rolesFile(cfoApproves), []);
     const twoRoles = person([{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }]);
-    expect([...permissionsOf(twoRoles, roles)].sort()).toEqual([
+    expect([...permissionsOf(twoRoles, roles, "org_456")].sort()).toEqual([
       "invoice:issue",
       "invoice:read",
       "payment:approve",
@@ -310,7 +310,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   // made up.
   it("DSOR-AUT-01a: a role that the table does not have grants nothing", async () => {
     const auditor = person([{ tenant_id: "org_456", roles: ["auditor"] }]);
-    expect([...permissionsOf(auditor, registry.roles)]).toEqual([]);
+    expect([...permissionsOf(auditor, registry.roles, "org_456")]).toEqual([]);
   });
 
   // No rule id. Found by the review: one table shared by every registry passed, because

@@ -86,7 +86,8 @@ export async function call(
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).
-    line(5, () => checkPermission(caller, contract, registry.roles));
+    // NEW IN STEP 10: only the caller's roles in the active company count.
+    line(5, () => checkPermission(caller, contract, registry.roles, tenant));
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
     //   computing its payload hash: not built yet, step 29.
