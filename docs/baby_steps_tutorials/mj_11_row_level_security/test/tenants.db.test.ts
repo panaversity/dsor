@@ -1,4 +1,4 @@
-// NEW IN STEP 10: the database keeps each company's invoices apart, and every record says
+// The database keeps each company's invoices apart, and every record says
 // whose it is (C2 and C6 in step 10's README, decisions 5, 6, and 8). The same claims as
 // test/tenants.test.ts, asked of app.invoices and dsor.audit.
 import { spawnSync } from "node:child_process";

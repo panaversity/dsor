@@ -5,7 +5,7 @@ import { getInvoice, invoices } from "../src/invoice.ts";
 
 describe("getInvoice", () => {
   // No rule id: no rule in this step is about finding a record. The map asks for it.
-  // NEW IN STEP 10: by its company and its id (step 10's README, decision 5).
+  // By its company and its id (step 10's README, decision 5).
   it("reads INV-1008 by its company and its id", () => {
     const invoice = getInvoice(invoices, "org_456", "INV-1008");
     expect(invoice?.id).toBe("INV-1008");

@@ -14,7 +14,7 @@ export type ContractSource = { file: string; text: string };
 /** A contract that passed the schema. It is kept exactly as it was written. */
 export type Contract = { readonly id: string; readonly [field: string]: unknown };
 
-// NEW IN STEP 10: the code is given the active company, which line ② checked. It never
+// The code is given the active company, which line ② checked. It never
 // takes one from the input (step 10's README, decision 3).
 /** The code that runs an operation, inside one company. */
 export type Handler = (input: unknown, tenant: string) => unknown;

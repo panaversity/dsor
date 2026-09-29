@@ -1,4 +1,4 @@
-// NEW IN STEP 10: every request works inside exactly one company, by claim (C1 to C6 in
+// Every request works inside exactly one company, by claim (C1 to C6 in
 // step 10's README). The unit tests read the invoices in memory. test/tenants.db.test.ts
 // asks the same of the database.
 import { describe, expect, it } from "vitest";

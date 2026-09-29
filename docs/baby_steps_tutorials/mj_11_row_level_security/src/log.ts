@@ -16,10 +16,10 @@ export type Decision = {
   result: string;
   reason?: string;
   correlation: Correlation;
-  // NEW IN STEP 10: the company the call worked in. None when the call was refused before
+  // The company the call worked in. None when the call was refused before
   // DSoR had checked one (step 10's README, decision 6).
   tenant?: string;
-  // NEW IN STEP 10: fields this tutorial adds, under a name of its own (DSOR-SCH-02). Here
+  // Fields this tutorial adds, under a name of its own (DSOR-SCH-02). Here
   // only the company a non-member asked for (step 10's README, decision 6).
   extensions?: { [namespace: string]: { requested_tenant: string } };
 };
@@ -65,9 +65,9 @@ export function decisionOf(
   answer: Answer,
   contract: Contract | undefined,
   reachedCode: boolean,
-  // NEW IN STEP 10: the active tenant, once line ② has checked it.
+  // The active tenant, once line ② has checked it.
   tenant: string | undefined,
-  // NEW IN STEP 10: the well-formed company the caller named, checked or not.
+  // The well-formed company the caller named, checked or not.
   claimed: string | undefined,
 ): Decision {
   const refused = "code" in answer;

@@ -1,4 +1,4 @@
-// NEW IN STEP 10: the company a call works in, its active tenant. DSOR-IDN-03a in
+// The company a call works in, its active tenant. DSOR-IDN-03a in
 // specs/dsor/02-security.md, section 12, and DSOR-SRC-02b in section 11.
 import { Refusal } from "./envelope.ts";
 import type { Principal } from "./principals.ts";

@@ -25,7 +25,7 @@ describe("formatUri and parseUri", () => {
   it("DSOR-RID-01a: every invoice in the list has a canonical URI", () => {
     for (const invoice of invoices) {
       expect(parseUri(invoiceUri(invoice))).toEqual({
-        // NEW IN STEP 10: each invoice's own company (step 10's README, decision 10).
+        // Each invoice's own company (step 10's README, decision 10).
         tenant_id: invoice.tenant_id,
         entity: "invoice",
         id: invoice.id,

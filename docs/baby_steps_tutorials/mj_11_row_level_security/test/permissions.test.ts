@@ -265,7 +265,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   );
 
   // No rule id: only the roles in the call's company count (step 06's README, decision 1).
-  // NEW IN STEP 10: the company is the call's active tenant, here org_456. Found by the review:
+  // The company is the call's active tenant, here org_456. Found by the review:
   // with org_456 always last, code that read only the last membership passed, and so did
   // code that let org_4567 count as org_456.
   const COMPANIES: [string, Membership[], string[]][] = [
@@ -547,7 +547,7 @@ describe("C6: permissions never come from the caller", () => {
     );
   });
 
-  // NEW IN STEP 10: the envelope is closed, so they are refused before line ⑤ (step 10's
+  // The envelope is closed, so they are refused before line ⑤ (step 10's
   // README, decision 11). They still grant nothing.
   it("DSOR-AUT-01b: permissions and roles in the envelope, beside the token, grant nothing", async () => {
     const request = { ...AGENT, permissions: ["invoice:issue"], roles: ["ap_supervisor"] };

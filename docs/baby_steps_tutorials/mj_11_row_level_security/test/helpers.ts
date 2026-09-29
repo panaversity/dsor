@@ -120,18 +120,18 @@ export const SCHEMA_CODES: string[] = envelopeSchema.properties.code.anyOf[0].en
 
 // The login tokens DSoR gave, typed out again from step 05's decision 3
 // rather than imported from src, so a mistake in src is not copied into the tests.
-// NEW IN STEP 10: each names the company it works in (step 10's README, decision 1).
+// Each names the company it works in (step 10's README, decision 1).
 export const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 export const SUPERVISOR: RequestEnvelope = { token: "tok_2c91", tenant: "org_456" };
 export const CFO: RequestEnvelope = { token: "tok_d4e8", tenant: "org_456" };
 
-// NEW IN STEP 10: the accounting firm's agent, in each of its two companies, and
+// The accounting firm's agent, in each of its two companies, and
 // org_789's own supervisor. Typed out again from step 10's README, decision 7.
 export const FIRM_IN_456: RequestEnvelope = { token: "tok_9b52", tenant: "org_456" };
 export const FIRM_IN_789: RequestEnvelope = { token: "tok_9b52", tenant: "org_789" };
 export const USER_700: RequestEnvelope = { token: "tok_e1a7", tenant: "org_789" };
 
-// NEW IN STEP 10: the messages of step 10's refusals, typed out rather than imported.
+// The messages of step 10's refusals, typed out rather than imported.
 export const BAD_TENANT = "a tenant must be an id like org_456, named in the request envelope";
 export const NOT_A_MEMBER = "the caller may not work in the tenant it named";
 export const FOREIGN_URI = "the arguments name a resource outside the active tenant";
@@ -149,7 +149,7 @@ export function otherTenant(place: string): string {
   return `the arguments name a tenant other than the active one, in ${place}`;
 }
 
-// NEW IN STEP 10: the invoices of both companies, typed out again from step 10's README,
+// The invoices of both companies, typed out again from step 10's README,
 // decisions 5 and 10, rather than read from src or the migration. Each carries its company.
 export const INV_1008_OF_456 = {
   tenant_id: "org_456",
@@ -190,7 +190,7 @@ export const NOBODY: Caller = {};
 // The two people, now that some calls are theirs to make.
 export const THE_SUPERVISOR: Caller = { principal_id: "user_123" };
 export const THE_CFO: Caller = { principal_id: "cfo_100" };
-// NEW IN STEP 10: the firm's agent, and org_789's supervisor.
+// The firm's agent, and org_789's supervisor.
 export const THE_FIRM: Caller = { agent_id: "firm-ap-fte" };
 export const THE_789_SUPERVISOR: Caller = { principal_id: "user_700" };
 

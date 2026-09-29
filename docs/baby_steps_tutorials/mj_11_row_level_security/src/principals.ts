@@ -29,7 +29,7 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   ["tok_7f3a", principal("accounts-payable-fte", "agent", ["ap_agent"])],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
-  // NEW IN STEP 10: an accounting firm's agent, working for two client companies, with
+  // An accounting firm's agent, working for two client companies, with
   // different roles in each, and org_789's own supervisor (step 10's README, decision 7).
   [
     "tok_9b52",

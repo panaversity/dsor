@@ -51,10 +51,10 @@ export async function call(
   // Set once DSoR's checks let the call reach its code at line ⑨. From then on, its
   // record says ALLOW (step 08's README, decision 5).
   let reachedCode = false;
-  // NEW IN STEP 10: set once line ② has checked the company, so the record names it, even
+  // Set once line ② has checked the company, so the record names it, even
   // when a later line refuses (step 10's README, decision 6).
   let tenantOfRecord: string | undefined;
-  // NEW IN STEP 10: a well-formed company the caller named. If line ② refuses it, the record
+  // A well-formed company the caller named. If line ② refuses it, the record
   // keeps it as a claim, never as its tenant (step 10's README, decision 6).
   let claimedTenant: string | undefined;
 
@@ -77,13 +77,13 @@ export async function call(
       correlation = { ...correlation, ...callerIds(found) };
       checkNamedPrincipals(input, found);
       checkRequestId(request);
-      // NEW IN STEP 10: and nothing in the envelope that DSoR does not read (step 10's
+      // And nothing in the envelope that DSoR does not read (step 10's
       // README, decision 11).
       checkEnvelopeFields(request);
       return found;
     });
 
-    // NEW IN STEP 10: ② Resolve tenant. The company comes from the envelope, and DSoR checks
+    // ② Resolve tenant. The company comes from the envelope, and DSoR checks
     //   in its own table that the caller is a member of it (DSOR-IDN-03a, DSOR-SRC-02a).
     //   Right after ①, before the operation is looked up, so a stranger to a company learns
     //   nothing there (step 10's README, decision 2). Then any company the arguments name
@@ -110,7 +110,7 @@ export async function call(
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).
-    // NEW IN STEP 10: only the caller's roles in the active company count.
+    // Only the caller's roles in the active company count.
     line(5, () => checkPermission(caller, contract, registry.roles, tenant));
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
@@ -119,7 +119,7 @@ export async function call(
     //   decision 9).
     const checked = line(6, () => checkInput(name, registry.inputs, input));
 
-    // NEW IN STEP 10: ours, not §21's: every URI in the checked input must name the active
+    // Ours, not §21's: every URI in the checked input must name the active
     // company (DSOR-SRC-02b). After ⑥, so it reads the checked copy, and before "is it
     // built", so a foreign URI is never answered as "not built yet" (step 10's README,
     // decision 4).
@@ -145,7 +145,7 @@ export async function call(
     // throws while waiting is caught below, like any other.
     const data = await line(9, () => {
       reachedCode = true;
-      // NEW IN STEP 10: the code works inside the active company only.
+      // The code works inside the active company only.
       return handler(checked, tenant);
     });
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,

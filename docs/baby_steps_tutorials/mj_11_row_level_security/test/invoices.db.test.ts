@@ -22,7 +22,7 @@ afterAll(async () => {
 });
 
 // INV-1008, typed out again from the running example rather than read from the migration.
-// NEW IN STEP 10: with its company (step 10's README, decision 10).
+// With its company (step 10's README, decision 10).
 const INV_1008 = {
   tenant_id: "org_456",
   id: "INV-1008",

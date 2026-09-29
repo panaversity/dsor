@@ -93,7 +93,7 @@ export function createDbLog(pool: pg.Pool): DecisionLog {
           decision.result,
           decision.reason ?? null,
           decision.correlation,
-          // NEW IN STEP 10: NULL when no company was checked (step 10's README, decision 6).
+          // NULL when no company was checked (step 10's README, decision 6).
           decision.tenant ?? null,
           // A company a non-member claimed (step 10's README, decision 6).
           decision.extensions ?? null,
@@ -144,7 +144,7 @@ type InvoiceRow = {
 /** The invoices, read from app.invoices. */
 export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   return {
-    // NEW IN STEP 10: the company is part of every query, as a value (DSOR-IDN-03b). The
+    // The company is part of every query, as a value (DSOR-IDN-03b). The
     // database does not filter by it on its own until step 11.
     get: async (tenant, id) => {
       const { rows } = await pool.query<InvoiceRow>(

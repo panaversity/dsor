@@ -2,7 +2,7 @@
 // Builds the database as the owner, DSOR_MIGRATION_URL. It creates dsor_runtime with SQL,
 // never in the Neon console, then runs the migrations, all in one transaction (step 09's
 // README, decisions 3, 4, and 13).
-// NEW IN STEP 10: each migration runs once. The table dsor.migrations remembers which
+// Each migration runs once. The table dsor.migrations remembers which
 // have run (step 10's README, decision 8).
 import { readdirSync, readFileSync } from "node:fs";
 import pg from "pg";
@@ -44,7 +44,7 @@ try {
     [exists ? "ALTER" : "CREATE", password],
   );
   await owner.query(rows[0]!.sql);
-  // NEW IN STEP 10: the list of migrations that have run. dsor_runtime gets no privilege on
+  // The list of migrations that have run. dsor_runtime gets no privilege on
   // it: 001 takes every privilege away from it in this schema, and nothing grants one.
   await owner.query("CREATE SCHEMA IF NOT EXISTS dsor");
   await owner.query(

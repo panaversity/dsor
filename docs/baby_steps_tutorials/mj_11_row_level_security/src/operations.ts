@@ -17,7 +17,7 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
       const { id } = input as { id: string };
       // Each refusal names its code from the §28 table, and call does the
       // rest (step 04's README, decision 5).
-      // NEW IN STEP 10: only inside the active company. Another company's INV-2001 is
+      // Only inside the active company. Another company's INV-2001 is
       // "not found", word for word as an invoice nobody has (DSOR-IDN-03b, DSOR-ERR-01b).
       const invoice = await invoices.get(tenant, id);
       if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);

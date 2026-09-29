@@ -8,7 +8,7 @@ import { Refusal } from "./envelope.ts";
  * What travels beside the arguments: who is calling, in which company, and which call
  * this is. It comes from outside the program, so its fields have no types yet.
  */
-// NEW IN STEP 10: the company the call works in (step 10's README, decision 1).
+// The company the call works in (step 10's README, decision 1).
 export type RequestEnvelope = { token?: unknown; tenant?: unknown; request_id?: unknown };
 
 /** The request id the caller sent, when DSoR can use it (step 05's README, decision 6). */
@@ -28,7 +28,7 @@ export function usableRequestId(request: RequestEnvelope): string | undefined {
 // own rule (step 09's README, decision 16).
 const CONTROL = /\p{Cc}/u;
 
-// NEW IN STEP 10: the envelope is closed. The list says what is allowed, so no other
+// The envelope is closed. The list says what is allowed, so no other
 // spelling of a company, or of anything else, can ride along unread (step 10's README,
 // decision 11).
 const ENVELOPE_FIELDS = ["token", "tenant", "request_id"];

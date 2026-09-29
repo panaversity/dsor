@@ -1,4 +1,4 @@
-// NEW IN STEP 08: every decision is written down before the answer leaves, by claim (C1
+// Every decision is written down before the answer leaves, by claim (C1
 // to C5 in step 08's README).
 import { describe, expect, it, vi } from "vitest";
 import { Refusal, type Answer, type ErrorCode } from "../src/envelope.ts";
@@ -50,7 +50,7 @@ const RECORDED_AS: Record<string, ["ALLOW" | "DENY", string | undefined]> = {
   "a bug in an operation's code": ["ALLOW", "test.run@1"],
 };
 
-// NEW IN STEP 10: the refusals that come before line ②, so their records name no company
+// The refusals that come before line ②, so their records name no company
 // (step 10's README, decision 6).
 const AT_LINE_1 = [
   "a call with no login",
@@ -89,7 +89,7 @@ describe("C1: every answer call gives has a record in the log", () => {
         operation: "invoice.get@1",
         authorization: "ALLOW",
         result: "ok",
-        // NEW IN STEP 10: the company the call worked in (step 10's README, decision 6).
+        // The company the call worked in (step 10's README, decision 6).
         tenant: "org_456",
         correlation: answer.correlation,
       }),
@@ -111,7 +111,7 @@ describe("C1: every answer call gives has a record in the log", () => {
         ...(operation === undefined ? {} : { operation }),
         authorization,
         result: code,
-        // NEW IN STEP 10: a refusal at line ① comes before any company is checked.
+        // A refusal at line ① comes before any company is checked.
         ...(AT_LINE_1.includes(why) ? {} : { tenant: "org_456" }),
         reason: message,
         correlation: answer.correlation,

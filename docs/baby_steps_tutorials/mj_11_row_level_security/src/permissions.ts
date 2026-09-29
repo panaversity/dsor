@@ -79,7 +79,7 @@ export function checkRoles(
   return { roles, problems };
 }
 
-// NEW IN STEP 10: the company is the call's active tenant, which line ② checked. Step 06's
+// The company is the call's active tenant, which line ② checked. Step 06's
 // constant COMPANY is gone (step 10's README, decision 3).
 /** The permissions a caller holds: what its roles in this company grant, and nothing else. */
 export function permissionsOf(
@@ -103,7 +103,7 @@ export function checkPermission(
   caller: Principal,
   contract: Contract,
   roles: Roles,
-  // NEW IN STEP 10: the active company.
+  // The active company.
   tenant: string,
 ): void {
   const name = JSON.stringify(contract.id);

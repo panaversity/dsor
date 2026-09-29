@@ -96,7 +96,7 @@ describe("C2: a call with no login DSoR knows is refused", () => {
 describe("C3: every principal has a type and at least one tenant membership", () => {
   it("DSOR-IDN-01: each principal has a type from §12's list, and a membership in a tenant", async () => {
     const principals = [...logins.values()];
-    // An empty table would make the loop below prove nothing. NEW IN STEP 10: five, with
+    // An empty table would make the loop below prove nothing. Five, with
     // the firm's agent and user_700 (step 10's README, decision 7).
     expect(principals).toHaveLength(5);
     for (const principal of principals) {
@@ -123,7 +123,7 @@ describe("C3: every principal has a type and at least one tenant membership", ()
   );
 
   // No rule id: the story's three principals are step 05's decision 3. The
-  // agent's role is step 06's decision 5. NEW IN STEP 10: the firm's agent and user_700,
+  // agent's role is step 06's decision 5. The firm's agent and user_700,
   // step 10's decision 7.
   it("the table holds the story's principals, each with its own token", async () => {
     const inOrg456 = (roles: string[]) => [{ tenant_id: "org_456", roles }];
@@ -184,7 +184,7 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
   });
 
   // Found by the review: no test sent the envelope a field besides the token and the
-  // request id. Only the token says who is calling. NEW IN STEP 10: the envelope is closed,
+  // request id. Only the token says who is calling. The envelope is closed,
   // so the field is refused, and still never used (step 10's README, decision 11).
   it("DSOR-SRC-02a: a principal written in the envelope, beside the token, is refused, never used", async () => {
     const request = { ...AGENT, principal: "cfo_100" } as RequestEnvelope;

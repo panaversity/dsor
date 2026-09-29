@@ -64,7 +64,7 @@ describe("the program", () => {
       expect(output).toMatch("code: 'AUTHORIZATION_DENIED'");
       expect(output).not.toMatch("principal_id: 'cfo_100'");
       expect(output).toMatch("{ request_id: 'ap-desk-7', principal_id: 'user_123' }");
-      // NEW IN STEP 10: each company's own INV-1008, a stranger refused, a foreign URI.
+      // Each company's own INV-1008, a stranger refused, a foreign URI.
       expect(output).toMatch("org_456 INV-1008 VENDOR-44 { value: '31400.00', currency: 'USD' }");
       expect(output).toMatch("org_789 INV-1008 VENDOR-77 { value: '99000.00', currency: 'USD' }");
       expect(output).toMatch("message: 'the caller may not work in the tenant it named'");
@@ -107,7 +107,7 @@ describe("the program's log", () => {
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
       expect(new Set(numbers).size).toBe(12);
-      // NEW IN STEP 10: each record ends with its company, or "-" when none was checked.
+      // Each record ends with its company, or "-" when none was checked.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456",

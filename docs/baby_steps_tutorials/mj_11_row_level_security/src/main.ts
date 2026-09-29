@@ -2,7 +2,7 @@
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
 // The program checks every contract, and the role table, then calls operations by name.
 // It prints one success and six refusals, each an envelope, and the correlation of a call
-// by user_123. NEW IN STEP 10: then the firm's agent reads INV-1008 in each of its two
+// by user_123. Then the firm's agent reads INV-1008 in each of its two
 // companies, and two calls cross from one company into another and are refused. Then it
 // prints the log, one record for every call, and shows that a log which cannot take a
 // record turns a "yes" into a refusal.
@@ -95,7 +95,7 @@ async function ask(
 
 // Every call carries a request envelope beside its arguments. This one
 // holds the login token DSoR gave the agent (step 05's README, decision 2).
-// NEW IN STEP 10: and the company the call works in (step 10's README, decision 1).
+// And the company the call works in (step 10's README, decision 1).
 const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 
 // The answer is an envelope. A success carries the invoice as its data,
@@ -134,7 +134,7 @@ console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_456/invo
 // refuses it, before DSoR asks whether invoice.issue is built.
 console.log(await ask(USER_123, "invoice.issue", { invoice: "INV-1008" }));
 
-// NEW IN STEP 10: a second company, org_789. An accounting firm's agent works for both.
+// A second company, org_789. An accounting firm's agent works for both.
 // Asked for INV-1008, each company gets its own invoice (step 10's README, outcome 2).
 const FIRM_IN_456: RequestEnvelope = { token: "tok_9b52", tenant: "org_456" };
 const FIRM_IN_789: RequestEnvelope = { token: "tok_9b52", tenant: "org_789" };
@@ -145,10 +145,10 @@ for (const firm of [FIRM_IN_456, FIRM_IN_789]) {
     console.log(tenant_id, id, vendor_id, amount);
   }
 }
-// NEW IN STEP 10: the org_456 agent asks to work in org_789, where it is no member. The
+// The org_456 agent asks to work in org_789, where it is no member. The
 // answer is the same as for a company that does not exist.
 console.log(await ask({ ...AGENT, tenant: "org_789" }, "invoice.get", { id: "INV-1008" }));
-// NEW IN STEP 10: user_123, working in org_456, names org_789's invoice. Refused with
+// User_123, working in org_456, names org_789's invoice. Refused with
 // TENANT_MISMATCH, before DSoR asks whether invoice.issue is built.
 console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_789/invoice/INV-1008" }));
 
@@ -160,7 +160,7 @@ const ids = new Set(answers.map((a) => a.correlation.request_id));
 const all = await log.records();
 const records = all.filter((r) => ids.has(r.correlation.request_id)).slice(-answers.length);
 console.log(records[0]);
-// NEW IN STEP 10: with the company each call worked in, or "-" when none was checked.
+// With the company each call worked in, or "-" when none was checked.
 for (const { sequence, operation, authorization, result, tenant } of records) {
   console.log(sequence, operation ?? "(no contract)", authorization, result, tenant ?? "-");
 }
