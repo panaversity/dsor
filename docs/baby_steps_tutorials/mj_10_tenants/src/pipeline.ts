@@ -7,7 +7,12 @@ import { decisionOf, type DecisionLog } from "./log.ts";
 import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
-import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
+import {
+  checkEnvelopeFields,
+  checkRequestId,
+  usableRequestId,
+  type RequestEnvelope,
+} from "./request.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 
 // The observer is told each line's number as it runs, and only a test
@@ -68,6 +73,9 @@ export async function call(
       correlation = { ...correlation, ...callerIds(found) };
       checkNamedPrincipals(input, found);
       checkRequestId(request);
+      // NEW IN STEP 10: and nothing in the envelope that DSoR does not read (step 10's
+      // README, decision 11).
+      checkEnvelopeFields(request);
       return found;
     });
 

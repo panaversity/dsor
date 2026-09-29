@@ -28,6 +28,23 @@ export function usableRequestId(request: RequestEnvelope): string | undefined {
 // own rule (step 09's README, decision 16).
 const CONTROL = /\p{Cc}/u;
 
+// NEW IN STEP 10: the envelope is closed. The list says what is allowed, so no other
+// spelling of a company, or of anything else, can ride along unread (step 10's README,
+// decision 11).
+const ENVELOPE_FIELDS = ["token", "tenant", "request_id"];
+
+/** Refuses an envelope that carries any field besides token, tenant, and request_id. */
+export function checkEnvelopeFields(request: RequestEnvelope): void {
+  // The envelope comes from outside the program, so it may not even be an object.
+  if (typeof request !== "object" || request === null) return;
+  const extra = Object.keys(request).find((field) => !ENVELOPE_FIELDS.includes(field));
+  if (extra !== undefined) {
+    // The name is the caller's text, so only a short piece of it is shown.
+    const allowed = "the request envelope may carry only token, tenant, and request_id";
+    throw new Refusal("VALIDATION_FAILED", `${allowed}, not ${JSON.stringify(extra.slice(0, 60))}`);
+  }
+}
+
 /** Refuses a request id that DSoR cannot use. A call that sends none is fine. */
 export function checkRequestId(request: RequestEnvelope): void {
   if (request?.request_id !== undefined && usableRequestId(request) === undefined) {
