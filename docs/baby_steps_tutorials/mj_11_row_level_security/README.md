@@ -97,18 +97,30 @@ business table yet (see decision 9). Reading the log as an auditor (DSOR-AUD-05b
 - A pool of one connection: a request sets `org_456` and ends. The next request sets no
   company and reads no rows.
 
-**A limit, not a signal.** `neondb_owner` holds `BYPASSRLS`, so it sees every row
-whatever this step does. Nothing inside a table can stop such a role. The defence is that
-the program never runs as it: step 09's start-up check refuses that login.
+**What this lock does not stop.** It stops a mistake: a query that forgets the company,
+or a company left on a connection. It does not stop a program that holds
+`dsor_runtime`'s login and means harm. Such a program can set any company it likes, and
+then read that company's rows. §36 says so: "RLS is defense in depth. It does not replace
+DSoR authorization." Two more limits:
+
+- `neondb_owner` holds `BYPASSRLS`, so it sees every row whatever this step does. Nothing
+  inside a table can stop such a role. The program never runs as it: step 09's start-up
+  check refuses that login.
+- In `add`, the record's company and the transaction's company both come from the same
+  value, the call's company. So the write policy cannot catch the program filing a
+  record under the wrong company. It catches a company that is missing, or left over
+  from another request.
 
 ### What the specification asks, and what this step can honestly give
 
 Checked on 2026-09-29:
 
 1. **DSOR-TEN-01b asks for two independent layers.** Step 10 built the first, in DSoR's
-   code. This step builds the second, in the store. Each is tested on its own: step 10's
-   unit tests need no database, and this step's database tests run SQL that leaves the
-   company out.
+   code. This step builds the second, in the store. Each is tested on its own. For the
+   second, this step's database tests run SQL that leaves the company out. For the first,
+   the owner runs DSoR's own store: the owner holds `BYPASSRLS`, so no policy applies,
+   and only DSoR's `WHERE` can filter. Found by the review: before that test, removing
+   the `WHERE` (break V5) passed every test.
 2. **DSOR-RP-01a** says `dsor_runtime` "MUST NOT be a superuser, hold `BYPASSRLS`, or own
    tenant tables". Step 09 already checks all three, in a test and at start-up. This step
    claims the rule.
@@ -130,7 +142,7 @@ Checked on 2026-09-29:
 | DSOR-RP-01d | **C3.** No company set, no rows | A fresh connection, and a reused one, with no company set: no invoice rows and no audit rows |
 | DSOR-RP-01c | **C4.** The company lasts one transaction | A pool of one connection: after a request for `org_456` ends, the next request, which sets nothing, reads nothing |
 | DSOR-TEN-02a, the audit part | **C5.** The log is kept apart by company | `dsor_runtime` in `org_456` cannot write a record for `org_789` and cannot read one. A record with no company is written when no company is set, and `dsor_runtime` cannot read it back |
-| DSOR-RP-01a | **C6.** `dsor_runtime` holds no power that skips the policies | Step 09's checks: not a superuser, no `BYPASSRLS`, owns no table |
+| DSOR-RP-01a | **C6.** `dsor_runtime` holds no power that skips the policies | Step 09's checks: not a superuser, no `BYPASSRLS`, owns no table. And it belongs to no role, so `SET ROLE` cannot reach one that has such a power |
 
 ### Decisions the specification leaves to us
 
@@ -141,7 +153,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    each lock, so each lands with the code it needs. `dsor.migrations` has no company and
    `dsor_runtime` has no privilege on it, so it gets none. *Downside:* `FORCE` changes
    nothing for `dsor_runtime`, which owns no table. It guards against a future owner who
-   is not `BYPASSRLS`, and only the catalog test can see it (break V2).
+   is not `BYPASSRLS`, and only the catalog test can see it (break V2). And the owner
+   now needs `BYPASSRLS`: an owner without it would read no row, and a migration's
+   `UPDATE` would change no row, with no error. Neon's `neondb_owner` holds it, and the
+   owner's test programs check that first (found by the review).
 2. **The company is read as `nullif(current_setting('dsor.tenant_id', true), '')`.** On
    a fresh connection an unset value is `NULL`. On a connection that has held a
    transaction-local value, it is `''` after that transaction ends. This was run on a
@@ -151,10 +166,13 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    helper runs `BEGIN`, `set_config('dsor.tenant_id', $1, true)`, the work, and `COMMIT`,
    and it rolls back on any error. Line ⑨'s read and line ⑪'s record are two separate
    transactions, each with the call's company. A call refused before line ② has no
-   company, so its record's transaction sets none. No code sets the company any other way,
-   and `set_config(…, false)` never appears. The start-up check reads no company's table,
-   so it stays a plain query. *Downside:* each call makes two round trips of four
-   statements, where step 10 made two of one.
+   company, so its record's transaction sets the company to `''`, which means none.
+   Setting nothing would leave whatever company the connection still carries: behind a
+   shared pooler, another program's. Found by the review. No code sets the company any
+   other way, and `set_config(…, false)` never appears. The start-up check reads no
+   company's table, so it stays a plain query. *Downside:* each statement is a round trip
+   to the database. A call now makes 8 (`BEGIN`, `set_config`, the work, and `COMMIT`,
+   twice), where step 10 made 2.
 4. **The audit table has two policies.** Writing:
    `WITH CHECK (tenant IS NOT DISTINCT FROM <the company>)`, so a record carries exactly
    the company set in its transaction, or none when none is set. Reading:
@@ -175,14 +193,17 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    prints the 9 records it can read, both companies merged by number, and says that its 3
    calls with no company left records it cannot read. *Downside:* step 08's shape of the
    log changes again, and the program can no longer show every record it wrote.
-7. **The start-up check stays as step 09 built it.** It already refuses a login that is
-   a superuser, holds `BYPASSRLS`, owns tables, or belongs to `pg_write_all_data`. The
-   map's step 11 asks for such a check. It exists. *Downside:* none. It is proven again
-   here by break V6.
+7. **The start-up check also refuses a login that belongs to any role.** Step 09's check
+   already refuses a login that is a superuser, holds `BYPASSRLS`, owns tables, or
+   belongs to `pg_write_all_data`. Found by the review: after
+   `GRANT neondb_owner TO dsor_runtime`, every one of those checks stayed green, and
+   `SET ROLE neondb_owner` then skipped every policy. *Downside:* a deployment that wants
+   `dsor_runtime` in a harmless group role must change the check.
 8. **The pooling test uses the program's own pool, `pg.Pool`, with one connection.**
    That is deterministic. Neon's pooled address, which hands a connection to another
-   program after each transaction, is shown once in "Break it" and not tested.
-   *Downside:* the Neon pooler is demonstrated, not guarded by a test.
+   program after each transaction, is shown in "Break it" by `test/pooler-demo.ts`, run
+   by hand, and not tested. *Downside:* the Neon pooler is demonstrated, not guarded by a
+   test.
 9. **A rule written now, for the tables to come:** every join between tenant tables
    includes `tenant_id`, and every foreign key between them starts with the row's own
    `tenant_id`, as in `FOREIGN KEY (tenant_id, invoice_id) REFERENCES app.invoices
@@ -201,9 +222,15 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   company column and no policy fails it.
 - **C2:** as `dsor_runtime`, inside `org_456`, `SELECT tenant_id, id FROM app.invoices
   WHERE id = 'INV-1008'` gives exactly `org_456`'s row. Inside `org_789`, exactly
-  `org_789`'s. `SELECT count(*) FROM app.invoices` inside `org_456` counts only its rows.
+  `org_789`'s. `SELECT DISTINCT tenant_id FROM app.invoices` inside `org_456` gives
+  only `org_456`. And the first lock alone: the owner, whom no policy stops, runs DSoR's
+  store. `get('org_456', 'INV-2001')` finds nothing, and `records('org_456')` gives only
+  `org_456`'s records.
 - **C3:** no company set, on a fresh connection and on one that has just ended a
-  transaction for `org_456`: `app.invoices` gives no rows, and `dsor.audit` gives none.
+  transaction for `org_456`: `app.invoices` gives no rows, and `dsor.audit` gives none,
+  though it surely holds a record. And a call with no company, on a connection that
+  carries `org_456` for the whole session, still runs with no company: its record is
+  written.
 - **C4:** a pool of one connection. Request 1 runs inside `org_456`. Request 2 runs
   `SELECT … FROM app.invoices` with no company: no rows.
 - **C5:** inside `org_456`, an `INSERT` into `dsor.audit` with `tenant = 'org_789'` fails
@@ -213,7 +240,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   the owner, in a child program with redacted output, finds it. On a pool of one
   connection, a call with no login right after a call in `org_456` is still recorded: it
   answers `AUTHENTICATION_REQUIRED`, not `EVIDENCE_STORE_UNAVAILABLE`.
-- **C6:** step 09's role checks, now titled DSOR-RP-01a.
+- **C6:** step 09's role checks, now titled DSOR-RP-01a, and one more: `dsor_runtime`
+  belongs to no role. The start-up check refuses a login that belongs to one.
 - **The program as a whole:** every step 10 test still passes, now through the
   transactions of decision 3, with three changes. A test that reads `dsor.audit` as
   `dsor_runtime` reads inside the record's company, because without one an empty answer
