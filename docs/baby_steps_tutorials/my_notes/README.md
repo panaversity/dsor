@@ -102,21 +102,18 @@ Settled over steps 01 to 04. Each line is here because skipping it cost somethin
 that every relative link resolves to a real file and a real heading. Run it from the repository
 root after editing anything here.
 
-**It does not check the rule ids in these notes, or in any step.** It strips inline code spans
-before looking for identifiers, and the tutorial writes every id in backticks, so the check
-never sees one. Proven on 2026-09-29: `` `DSOR-FAKE-99` `` passes, and the same text without
-backticks is caught. This was believed to be protection for four steps and was not — an audit
-found `DSOR-SOD-01`, which is not a rule, cited in four files. Every id across all six steps and
-these notes was checked by hand afterwards: 171 distinct ids, all real. Until the guard is
-extended, a new id here has to be looked up in
-[`requirements.json`](../../../packages/spec/requirements.json) by hand. See
-[open question 4](open-questions.md).
+**It checks the rule ids in these notes and in every step, as of 2026-09-29** — including ids
+written in backticks, which is how the tutorial writes all of them. It did not until that date:
+it stripped inline code spans first, so of 171 ids across six steps it had seen none, and it let
+`DSOR-SOD-01` sit in four files while staying green. The check was extended, and proven by probe
+three ways: a bogus id in backticks now fails, a bogus id in plain text still fails, and a
+no-longer-used exemption fails too. See [decision 42](decisions.md).
 
-**Two ids in this directory are deliberately not real**, and a hand-check will flag them every
-time: `DSOR-FAKE-99`, the probe that proved the gap, and `DSOR-SOD-01`, quoted as the example of
-an id that does not exist. They are the reason the guard strips code spans in the first place —
-prose about a bad identifier has to be able to name it — which is also the reason extending the
-guard is not a one-line change.
+**Two ids in this directory are deliberately not real**: `DSOR-FAKE-99`, the probe that proved
+the gap, and `DSOR-SOD-01`, quoted as the example of an id that does not exist. Prose about a bad
+identifier has to be able to name it, so both are listed in the guard's own `ILLUSTRATIVE` map
+with the reason they are there — and the guard fails if either stops being used, so the exemption
+cannot outlive its purpose.
 
 [`docs/status.md`](../../status.md) is the only authority on what the repository has
 built. These notes describe learner copies, which are not part of that.

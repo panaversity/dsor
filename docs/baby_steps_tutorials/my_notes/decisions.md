@@ -703,3 +703,34 @@ it in the step is the only thing that stops that being a quiet precedent.
 **Rejected:** a step 05b for the two guards. It is the tidiest answer and it renumbers nothing,
 but it splits identity from the fix to the bug identity exposed, and a learner meeting 05b would
 have to hold both halves anyway.
+
+## 42 · The guard now reads inline code spans, with a named list of the four ids that may be fake (2026-09-29)
+
+**Decided by:** the learner — "fix all problems" — after
+[decision 40](#40--the-tutorials-rule-ids-are-checked-by-hand-2026-09-29) had parked it as a
+change too risky to make blind.
+**What:** `scripts/guard-spec.mjs` checks `DSOR-` identifiers inside inline code spans as well as
+in plain prose, so the tutorial's ids are finally covered. A small `ILLUSTRATIVE` map names the
+four ids that appear on purpose and do not resolve, each with the reason. A new `stale-example`
+check fails if any of those four stops being used.
+**Why:** decision 40 left this open because the code spans are stripped for a reason and nobody
+had measured what that reason cost. Measuring it took one script: across all 60 markdown files,
+checking code spans would fail on **four** ids, and all four are deliberate examples —
+`DSOR-DEL-04` and `DSOR-DEL-11` in the `change-the-spec` skill, which is the document that
+teaches how ids are split and numbered, and the two in these notes. Prose about identifiers must
+be able to name one that does not exist. So the risk was real, bounded, and nameable — which is
+the difference between a change that needs an allowlist and a change that cannot be made.
+
+Proven three ways rather than reasoned about, which is [lesson 14](lessons.md) applied to the fix
+for lesson 14: a bogus id in backticks now fails, a bogus id in plain text still fails, and
+removing the skill's use of `DSOR-DEL-11` produces
+`error: stale-example — DSOR-DEL-11 is listed as illustrative and no file mentions it any more`.
+**Cost:** this is the first change in this work to repository infrastructure rather than to a
+learner copy, and it changes a check every contributor runs. The blast radius was measured before
+the edit rather than after it, and the four exemptions are in the script where a reviewer of that
+script will see them — not in a config file somewhere else.
+**Rejected:** checking code spans only under `docs/baby_steps_tutorials/`. It would have needed no
+allowlist and it would have left the same hole open for the specification's own prose, which is
+where a wrong id costs the most.
+**Rejected:** keeping the hand-check from decision 40. It worked exactly once — the time somebody
+was looking.

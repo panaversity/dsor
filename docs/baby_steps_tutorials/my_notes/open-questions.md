@@ -100,15 +100,18 @@ It had already let something through. `DSOR-SOD-01` does not exist — the regis
 notes' own promises table. Fixed, and every id in all six steps plus these notes was then
 checked by hand: 171 distinct, all real.
 
-Two ways to close it, and the second is not the learner's to make alone:
+**Closed 2026-09-29: the guard was extended.** See [decision 42](decisions.md).
 
-1. **Check by hand after every edit**, as now, and keep the warning in this directory's README
-   so nobody trusts the guard for this again. Costs nothing, relies on someone remembering.
-2. **Extend `scripts/guard-spec.mjs`** to look inside backticks. This is repository
-   infrastructure outside the tutorial, and the code spans are stripped for a reason — the spec
-   prose may show example or illustrative ids that are meant not to resolve. Changing it needs a
-   check of what breaks in `specs/dsor/` first, and it belongs in a pull request of its own
-   rather than inside a step.
+The worry that stopped it being the obvious choice turned out to be real and small. Checking code
+spans across the whole repository would have failed on exactly **four** ids, and all four are
+deliberate examples: `DSOR-DEL-04` and `DSOR-DEL-11` in the `change-the-spec` skill, which teaches
+how ids are split and numbered, and the two in these notes. Prose about identifiers has to be able
+to name one that does not exist.
+
+So the guard now reads inline code spans, and carries a small `ILLUSTRATIVE` map naming those four
+with the reason each is there. An entry that stops being used is itself an error, so the exemption
+list cannot rot into a permanent hole. Proven three ways by probe: a bogus id in backticks fails, a
+bogus id in plain text still fails, and a stale exemption fails.
 
 ## 5 · The one company's id lives in the invoice module (found 2026-09-29)
 
