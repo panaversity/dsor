@@ -306,12 +306,7 @@ function nameOf(id: unknown): string {
   return id.length <= 200 ? id : `${id.slice(0, 200)}… (${id.length} characters)`;
 }
 
-const refuse = (
-  askedBy: string,
-  code: string,
-  message: string,
-  requestId: string,
-): StageResult =>
+const refuse = (askedBy: string, code: string, message: string, requestId: string): StageResult =>
   Object.freeze({
     kind: "refused" as const,
     answer: Object.freeze({

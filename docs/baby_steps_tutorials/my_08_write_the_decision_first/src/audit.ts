@@ -107,7 +107,10 @@ export interface AuditRecord {
     readonly mode: "direct" | "on_behalf_of" | "unattended";
     readonly subject: string;
     readonly actor_chain: readonly string[];
-    readonly subject_authority: { readonly source: "token" | "role_source"; readonly as_of: string };
+    readonly subject_authority: {
+      readonly source: "token" | "role_source";
+      readonly as_of: string;
+    };
   };
   readonly operation?: string;
   readonly payload_hash?: string;

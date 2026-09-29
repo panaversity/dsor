@@ -59,7 +59,10 @@ function recorded(over: Partial<DecisionToRecord> = {}): AuditRecord {
  * version of the test below read the path unconditionally and a step outside the repository failed
  * with ENOENT — a test that made the step depend on its surroundings.
  */
-const specCopy = new URL("../../../../packages/spec/schemas/audit-record.schema.json", import.meta.url);
+const specCopy = new URL(
+  "../../../../packages/spec/schemas/audit-record.schema.json",
+  import.meta.url,
+);
 const insideTheRepository = existsSync(specCopy);
 
 describe("the audit log", () => {
@@ -98,7 +101,9 @@ describe("the audit log", () => {
     () => {
       // A record validated against a schema of our own making would prove nothing about
       // DSOR-AUD-01. This is the test that says the schema was not quietly edited to fit the code.
-      const ours = readFileSync(new URL("../src/schemas/audit-record.schema.json", import.meta.url));
+      const ours = readFileSync(
+        new URL("../src/schemas/audit-record.schema.json", import.meta.url),
+      );
 
       expect(ours.equals(readFileSync(specCopy))).toBe(true);
     },
@@ -434,7 +439,13 @@ describe("the audit log", () => {
   // A verifier that crashes on hostile input rather than answering `false` is a shape a caller gets
   // wrong exactly once.
   it("DSOR-AUD-04b: verifyChain answers false for rubbish instead of throwing", () => {
-    for (const rubbish of [[null], [undefined], new Array<AuditRecord>(2), [{} as AuditRecord]]) {
+    for (const rubbish of [
+      [null],
+      [undefined],
+      // A hole in a sparse array, which reads as undefined and is not the same thing as a missing key.
+      Array.from<AuditRecord>({ length: 2 }),
+      [{} as AuditRecord],
+    ]) {
       expect(verifyChain(rubbish as readonly AuditRecord[])).toBe(false);
     }
   });
@@ -549,7 +560,9 @@ describe("the audit log", () => {
 
     // `invoice.get` with no version is not an operationRef, so the schema refuses it. The point is
     // what happens next: the log does not grow, and the sequence does not advance.
-    expect(() => audit(decision({ operation: "invoice.get" }))).toThrow(/audit-record\.schema\.json/);
+    expect(() => audit(decision({ operation: "invoice.get" }))).toThrow(
+      /audit-record\.schema\.json/,
+    );
     expect(theLog()).toHaveLength(0);
 
     // The next good record is still sequence 0, so the refused one left no gap in the chain.

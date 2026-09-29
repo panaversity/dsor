@@ -108,7 +108,12 @@ describe("the decision is written down first", () => {
   it("DSOR-EXE-02: every refusal made during the decision is recorded as a DENY", () => {
     const refusedWhileDeciding = [
       { login: SUPERVISOR, id: "invoice.destroy", args: {}, code: "UNSUPPORTED_CAPABILITY" },
-      { login: CFO, id: "invoice.issue", args: { invoice: INV_1009 }, code: "AUTHORIZATION_DENIED" },
+      {
+        login: CFO,
+        id: "invoice.issue",
+        args: { invoice: INV_1009 },
+        code: "AUTHORIZATION_DENIED",
+      },
     ];
 
     for (const { login, id, args, code } of refusedWhileDeciding) {
