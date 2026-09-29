@@ -349,15 +349,16 @@ paste the file, and never ask for a connection string.
 | `src/permissions.ts` | `permissionsOf` and `checkPermission` take the company. Step 06's constant `COMPANY` is gone |
 | `src/invoice.ts` | An invoice carries its `tenant_id`, and `invoiceUri` reads it. Step 01's constant `TENANT` is gone. `org_789`'s two invoices, in memory |
 | `src/principals.ts` | `firm-ap-fte`, in two companies with a different role in each, and `user_700` |
-| `src/postgres.ts` | The invoice query filters by `tenant_id`. The log writes and reads `tenant` |
-| `src/log.ts`, `src/registry.ts`, `src/operations.ts` | A decision has an optional `tenant`. The code of an operation is given the company |
-| `src/request.ts`, `src/uri.ts` | The envelope has a `tenant`. `isTenantId` checks step 02's form |
+| `src/postgres.ts` | The invoice query filters by `tenant_id`. The log writes and reads `tenant` and `extensions` |
+| `src/log.ts`, `src/registry.ts`, `src/operations.ts` | A decision has an optional `tenant`, and a non-member's claimed company under `extensions`. The code of an operation is given the company |
+| `src/request.ts`, `src/uri.ts` | The envelope has a `tenant`, and is closed: `checkEnvelopeFields` (decision 11). `isTenantId` checks step 02's form |
 | `src/migrate.ts` | Runs each file in `migrations/` once, and remembers it in `dsor.migrations` (decision 8) |
 | `migrations/002_tenants.sql` | **New.** `tenant_id` on invoices, the key (company, id), `org_789`'s invoices, `tenant` on the log, and one more `INSERT` column for `dsor_runtime` |
+| `migrations/003_claimed_tenant.sql` | **New, after the review.** `extensions` on the log, and `INSERT` on it for `dsor_runtime` (decision 6) |
 | `src/main.ts` | Four more calls: the firm's agent in each company, a stranger to `org_789`, a foreign URI. Each log line ends with its company |
-| `test/tenants.test.ts`, `test/tenants.db.test.ts` | **New.** C1 to C6, and decision 8 |
+| `test/tenants.test.ts`, `test/tenants.db.test.ts` | **New.** C1 to C7, and decisions 6 and 8 |
 | `vitest.db.config.ts` | Database test files run one at a time (see "Think it through") |
-| every other test | Every envelope names `org_456`. Invoices and records carry their company. Line ② is in the expected order |
+| every other test | Every envelope names `org_456`. Invoices and records carry their company. Line ② is in the expected order. Step 05's and step 06's envelope tests now expect a refusal (decision 11) |
 
 Both tenant columns also refuse any text that is not `org_` and digits, a database
 `CHECK`. That is this tutorial's decision, from step 02's form. No new dependency.
@@ -382,9 +383,10 @@ pnpm test:db      # the database tests, against the branch in .env
 pnpm start        # the program, against the same branch
 ```
 
-`pnpm migrate` on the branch `step-10`, made from `step-09`, on 2026-09-29. Before the
-table of migrations existed, the new runner ran `001` again once; it could, because
-`002` was not there yet. Then `002`, then nothing:
+`pnpm migrate` on the branch `step-10`, made from `step-09`, on 2026-09-29, as the step
+was built. The first run of the new runner found no table of migrations, so it ran
+`001` again, once; it could, because `002` was not there yet. Then `002`, and after the
+review `003`. Then nothing:
 
 ```text
 dsor_runtime: password set again from DSOR_DB_URL
@@ -394,8 +396,16 @@ dsor_runtime: password set again from DSOR_DB_URL
 migration 002_tenants: done
 
 dsor_runtime: password set again from DSOR_DB_URL
+migration 003_claimed_tenant: done
+
+dsor_runtime: password set again from DSOR_DB_URL
 no migration to run
 ```
+
+On your own branch made from `step-09`, one `pnpm migrate` prints all three
+`migration … done` lines at once. `pnpm check` prints `576 passed` here, inside the
+repository. Outside it, three tests that compare the schemas with the repository's
+originals are skipped: `573 passed | 3 skipped`.
 
 The new part of `pnpm start`. The same id, two invoices. Then a stranger, and a URI
 from another company. The record numbers come from the database:
@@ -435,12 +445,15 @@ org_789 INV-1008 VENDOR-77 { value: '99000.00', currency: 'USD' }
 
 Record 1393 has no company: the agent named `cfo_100` in its arguments, and line ①
 refused it before line ② ran. Record 1399 has none either: line ② itself refused it, so
-no company was ever checked.
+no company was ever checked. Since the review, record 1399's kind of record also keeps
+`org_789` under `extensions`, as the company the agent asked for (decision 6). The line
+printed here shows only its tenant.
 
 ## Break it
 
 Every break of the design's table, performed on 2026-09-29, one at a time, then put
-back. The unit tests ran for all six, the database tests for U1 and U6.
+back, on the code as it stood before the review (commit `34d356e`). The unit tests ran
+for all six, the database tests for U1 and U6.
 
 | # | The break | Learner's prediction | Caught by, for real |
 | --- | --- | --- | --- |
@@ -469,8 +482,8 @@ $ pnpm test:db
 `pnpm check` stays green: the unit tests read the invoices in memory, which never met
 the broken query. Only a test against the real table sees a bug in the real query.
 `org_456`'s own INV-1008 test stays green too. Both rows answer to `INV-1008`, and the
-query takes the first, which happens to be `org_456`'s. `org_789` gets `org_456`'s
-31,400.00 USD. That is the leak §14 warns about, and step 11's second lock is for this
+code takes the first row. Without `ORDER BY`, PostgreSQL promises no order; in this run
+the first row was `org_456`'s. So `org_789` got `org_456`'s 31,400.00 USD. That is the leak §14 warns about, and step 11's second lock is for this
 very bug.
 
 **U5.** In `activeTenant`, answer `"no such tenant"` for a company outside a list of
@@ -493,15 +506,17 @@ This is how the step was built:
 | 3 | Check the design | Against §11, §12, §14, §28, the audit schema, **and migration `001`**. Two gaps found: decisions 8 and 10 |
 | 4 | Mechanical | Every existing envelope names `org_456`. Nothing checks it yet, so every test stays green |
 | 5 | Red | `tenants.test.ts`, `tenants.db.test.ts`, and the old expectations that change. Predict how many pass |
-| 6 | Green | One commit per claim: the ledger, `002`, then C1, C2, C3, C4 (C5 came with it), C6 |
+| 6 | Green | One commit per claim: the table of migrations, `002`, then C1, C2, C3, C4 (C5 came with it), C6 |
 | 7 | Break it | U1 to U6, for real. Compare with your predictions |
-| 8 | Review | A reviewer who has not seen your conversation attacks the step |
+| 8 | Review | Two reviewers who have not seen your conversation attack the step: one checks each rule, one breaks the code in 64 small ways |
+| 9 | Fix the review | Change the design first (decisions 4, 6, 11), then the tests that kill the surviving breaks, then red tests, then the code |
 
 In the red run, the learner predicted about 10 of 51 new tests would pass, and 10 did.
 Each of them expects "the same" or "nothing": the same answer for two companies, no
 company on a record, "not built yet" for the company's own URI. With no code that tells
-companies apart, "the same" is true for free. Such a test proves something only beside
-the code it guards.
+companies apart, "the same" is true with no code at all. Such a test proves something
+only beside the code it guards. The review found two of them still proved nothing after
+the code existed (see "Think it through").
 
 Build your own step 10 from a copy of your step 09. From `docs/baby_steps_tutorials`:
 
@@ -545,8 +560,9 @@ break, ask me what I expect.
 4. Only that the URI names another company, which the caller already knew, because it
    wrote the URI. It says nothing about whether that company's invoice exists: every
    foreign URI gets the same answer.
-5. So that one bug cannot leak. If a query in DSoR's code forgets the company, the
-   database still filters by it (step 11).
+5. So that one bug is not enough to leak another company's data. From step 11, if a
+   query in DSoR's code forgets the company, the database will filter by it too. Break
+   U1 is that bug, and in this step only the database tests catch it.
 
 </details>
 
@@ -558,16 +574,69 @@ table of migrations that have run (decision 8 says why). The same check found th
 design never said whether an invoice object carries its company; decision 10 now says it
 does.
 
-_The rest is written after the review, with the result of every break in the table above._
+The breaks, against the learner's predictions ("Break it" has the table). Three of six
+were right. U1: `org_456`'s own INV-1008 test did not catch it; the INV-2001 test and
+`org_789`'s did, and no unit test did. U2 and U5: each was caught by more tests than
+predicted, because an older test (step 06's memberships) or an exact message (C1's
+`org_999`) guards the same line.
+
+Two things the build found, before the review:
+
+- **The C2 commit broke three step 07 tests**, and was committed because only the new
+  file was run. They pinned what the code is called with, and the code now also gets
+  the company. A separate commit fixed them. Run the whole suite before every commit.
+- **`pnpm migrate` while the program runs can make a new login fail.** The migrate test
+  sets `dsor_runtime`'s password again, and a test in another file, opening a login at
+  that moment, got "password authentication failed for user dsor_runtime". The database
+  test files now run one at a time. In a real system, `pnpm migrate` would stop setting
+  the password when it already works. That is left open.
+
+**What the review found, and what was done.** Two reviewers who had not seen the
+conversation: one checked each rule against the code and attacked with §10.2's
+cross-tenant threats, one made 64 small breaks in a copy. Neither found a way to read
+another company's data, use its authority, or put a record in its part of the log.
+
+1. **DSOR-SRC-02b missed §12's own spelling, `tenantId`.** Fixed: four spellings
+   (decision 4). Any other spelling is still refused, but by line ⑥.
+2. **An envelope naming two companies worked, and ignored the second.** Fixed: the
+   envelope is closed (decision 11, claim C7). This reverses part of step 05.
+3. **Probing left no trace of which company was tried.** Fixed: the claim is kept under
+   `extensions` (decision 6, migration `003`).
+4. **Seven breaks survived every test**, and tests were added that catch each: the URI
+   check reading the input again instead of line ⑥'s copy; the argument check using the
+   caller's first company instead of the active one; field names not searched; long
+   texts skipped; `dsor:` instead of `dsor://`; a store matching only the start of a
+   company's id; and the C5 tests, which passed with the check they guard deleted,
+   because "the same" stays true when both answers change.
+5. **Decision 3 was the rule, not our choice.** It moved to the claims.
+6. **The prose.** The hotel desk became the bank teller: the house list already uses a
+   hotel for "booking the last room". Terms are defined where they first appear, and
+   idioms are gone.
+
+**Left open, on purpose:**
+
+- **The subject, not the caller.** DSOR-IDN-03a says the *subject* holds the membership.
+  Until delegations (step 18), the subject is the caller. Then line ② must check the
+  subject.
+- **Only DSoR's code keeps companies apart.** Break U1 shows one query is enough to leak.
+  Step 11 adds the database's own check.
+- **`src/pipeline.ts` is 194 lines**, past this tutorial's guide of about 150. Splitting
+  it is a step of its own.
+- **Analogies to add to the house list, or to change:** "tenants of one building" and
+  the bank teller who does not say who banks there. "Lock" here is §14's own word for
+  one independent check, not the list's "lock that stays locked when the power fails".
+- **Questions for the specification:** the map's "same 'not found'" against
+  DSOR-SRC-02b's `TENANT_MISMATCH`; a refusal before line ② has no tenant, but the audit
+  schema requires one; §6's `invoice` lists no `tenant_id`.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
 | DSOR-TEN-01a | Every tenant-owned resource carries its `tenant_id` | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/tenants.test.ts` (C6), `test/tenants.db.test.ts` (C6: `NOT NULL`, the key, the log's `tenant`) |
-| DSOR-IDN-03a | Each request resolves to exactly one active tenant in which the subject holds a membership | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C1, C3) |
+| DSOR-IDN-03a | Each request resolves to exactly one active tenant in which the subject holds a membership | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C1, C3, C7). Until step 18, the subject is the caller |
 | DSOR-IDN-03b | An operation does not read or write across tenants | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C2), `test/tenants.db.test.ts` (C2). Reading only: no operation writes yet |
-| DSOR-SRC-02b | A tenant or principal in the arguments that disagrees with the security context is refused | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | `test/tenants.test.ts` (C4), the tenant half. The principal half is step 05's |
+| DSOR-SRC-02b | A tenant or principal in the arguments that disagrees with the security context is refused | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | `test/tenants.test.ts` (C4), the tenant half: `tenant`, `tenant_id`, `tenantId`, `activeTenantId`, and URIs. Any other spelling is refused by line ⑥ as `VALIDATION_FAILED`. The principal half is step 05's |
 | DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | `test/tenants.test.ts` (C5, and C2's `INV-2001`), for other companies and their invoices |
 
 Not met here, and why: DSOR-TEN-01b, whose second lock is step 11. DSOR-TEN-02a, whose
