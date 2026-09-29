@@ -62,7 +62,7 @@ export function openPool(url: string): pg.Pool {
 /**
  * Runs the work on one connection, inside one transaction that sets the company first. The
  * company ends with the transaction, so the next request on the connection has none. With
- * no company, none is set.
+ * no company, it is set to '', which means none.
  */
 export async function inCompany<T>(
   pool: pg.Pool,
@@ -74,9 +74,10 @@ export async function inCompany<T>(
     await client.query("BEGIN");
     // true: only until COMMIT or ROLLBACK. Never false, which would leave the company on
     // the connection, and the pool lends the connection to the next request (§36).
-    if (company !== undefined) {
-      await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company]);
-    }
+    // Set even when there is no company: setting nothing would keep whatever company the
+    // connection still carries, behind a shared pooler even another program's. Found by
+    // the review (step 11's README, decision 3).
+    await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company ?? ""]);
     const result = await work(client);
     await client.query("COMMIT");
     client.release();
