@@ -49,6 +49,16 @@ export interface Context {
   readonly principal?: Principal;
   readonly contract?: OperationContract;
   readonly given?: Readonly<Record<string, unknown>>;
+  /**
+   * The fingerprint of the arguments, from the text the validate stage wrote down.
+   *
+   * It lives here, filled by the stage at §21.6, because §21.6 *is* "validate and canonicalize
+   * input; compute payload hash". It used to be computed later by `success()`, from the caller's
+   * object a **second** time — and a review found an object whose `toJSON` throws on its second
+   * call, which committed the change and then threw at the caller. Written down once, hashed from
+   * that text, carried from here.
+   */
+  readonly payloadHash?: string;
 }
 
 /**
@@ -76,11 +86,18 @@ export interface Stage {
 }
 
 /**
- * The stages this program must have, by name.
+ * The stages this program must have, **in the order they must be in**.
  *
- * Not a count and not a comment — the names, so that deleting one is an error rather than a
- * silently shorter list. `DSOR-EXE-01b` is the rule about not skipping a step, and a list is only
- * as trustworthy as the thing that says what belongs in it.
+ * An ordered sequence, not a set, and that matters. When this was a set of names, a review found
+ * that four of the twenty-four orderings of the real four stages passed the check — including
+ * `resolve the operation` before `authenticate`, which answers an unauthenticated caller
+ * `UNSUPPORTED_CAPABILITY` and tells them which operations exist. The §21 numbers could not catch
+ * it, because `resolve the operation` carries `null` by design and a `null` is exempt from a rule
+ * about numbers ascending.
+ *
+ * So the check is now: these names, in this relative order, with anything else allowed between
+ * them. That is what `DSOR-EXE-01a` means by "in the order given", and it is the one thing in this
+ * file that a later step must not be able to get wrong.
  */
 const REQUIRED: readonly string[] = Object.freeze([
   "authenticate",
@@ -92,9 +109,19 @@ const REQUIRED: readonly string[] = Object.freeze([
 /**
  * Refuses a list that cannot be trusted, and returns how many stages it checked.
  *
- * Three ways a list goes wrong, and all three are the kind of mistake a later step makes while
- * adding a line: a stage in the wrong place, the same stage twice, and a stage missing. The
- * numbers are what make the first one checkable.
+ * Five ways a list goes wrong, and every one of them is the kind of mistake a later step makes
+ * while adding a line:
+ *
+ *   - it is empty
+ *   - the same stage appears twice
+ *   - a §21 number is not a number §21 has, or the numbers descend
+ *   - the required stages are not in their required order
+ *   - a command-only stage sits before the operation is resolved, so it would never run
+ *
+ * An earlier version of this comment said it refused "a stage in the wrong place", and it did not:
+ * the only order rule was that non-null numbers never descend. A review permuted the four real
+ * stages and found four of the twenty-four orderings accepted. The claim came first and the check
+ * caught up, which is the wrong way round — see lesson 14 in the learner's notes.
  *
  * It takes the list as an argument rather than reading the one below, so a test can hand it a
  * rotten one — and so it can run at start-up instead of on the first request.
@@ -115,6 +142,13 @@ export function assertPipeline(stages: readonly Stage[]): number {
     seen.add(stage.name);
 
     if (stage.at !== null) {
+      // §21 has seventeen steps, so a number outside that is not a §21 number. Without this, one
+      // stage carrying NaN hides exactly one descent, because every comparison against NaN is
+      // false.
+      if (!Number.isSafeInteger(stage.at) || stage.at < 1 || stage.at > 17) {
+        throw new TypeError(`${stage.name} claims §21.${stage.at}, which is not a step §21 has`);
+      }
+
       if (stage.at < highest) {
         throw new TypeError(
           `the pipeline is out of order: §21.${stage.at} (${stage.name}) comes after §21.${highest}`,
@@ -143,10 +177,29 @@ export function assertPipeline(stages: readonly Stage[]): number {
     }
   }
 
-  for (const name of REQUIRED) {
-    if (!seen.has(name)) {
-      throw new TypeError(`the pipeline is missing ${name}, which every call needs`);
+  // The required stages, in their required order. Anything may sit between them; nothing may
+  // swap two of them.
+  let expected = 0;
+
+  for (const stage of stages) {
+    const wants = REQUIRED.indexOf(stage.name);
+
+    if (wants === -1) {
+      continue;
     }
+
+    if (wants !== expected) {
+      throw new TypeError(
+        `the pipeline runs ${stage.name} where ${REQUIRED[expected]} belongs: ` +
+          `the order must be ${REQUIRED.join(" then ")}`,
+      );
+    }
+
+    expected += 1;
+  }
+
+  if (expected < REQUIRED.length) {
+    throw new TypeError(`the pipeline is missing ${REQUIRED[expected]}, which every call needs`);
   }
 
   return stages.length;

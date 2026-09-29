@@ -72,11 +72,29 @@ describe("the caller's arguments", () => {
     resetProposalIds();
 
     let reads = 0;
+
+    // Two traps in one object, because there were two reads and they were in different places.
+    // The getter is read by the copy; `toJSON` is read by whatever computes the fingerprint. A
+    // review found the second one: `success()` used to stringify the caller's object again, AFTER
+    // the invoice had been issued, so an object whose toJSON throws the second time committed the
+    // change and then threw at the caller — no envelope, no code, nothing recording it.
+    let hashed = 0;
     const args = {
       get invoice(): string {
         reads += 1;
 
         return reads === 1 ? INV_1009 : "dsor://org_456/invoice/INV-0000";
+      },
+      trap: {
+        toJSON(): number {
+          hashed += 1;
+
+          if (hashed > 1) {
+            throw new Error("read a second time");
+          }
+
+          return 1;
+        },
       },
     };
 
@@ -87,10 +105,11 @@ describe("the caller's arguments", () => {
     }
 
     expect(reads).toBe(1);
+    expect(hashed).toBe(1);
     expect(answer.envelope.outcome).toBe("COMMITTED");
 
     const honest = createHash("sha256")
-      .update(JSON.stringify({ invoice: INV_1009 }))
+      .update(JSON.stringify({ invoice: INV_1009, trap: 1 }))
       .digest("hex");
 
     expect(answer.envelope.payload_hash).toBe(`sha256:${honest}`);

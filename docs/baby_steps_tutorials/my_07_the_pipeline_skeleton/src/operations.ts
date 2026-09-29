@@ -10,7 +10,13 @@
 // Rule DSOR-OPR-01: every operation MUST have a contract.
 // Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
 
-import { refusal, success, type ErrorEnvelope, type ResultEnvelope } from "./envelopes.ts";
+import {
+  payloadHash,
+  refusal,
+  success,
+  type ErrorEnvelope,
+  type ResultEnvelope,
+} from "./envelopes.ts";
 // Every call says who is asking, and NEW IN STEP 06 every call is checked against what that
 // caller may do.
 import { principalFrom, type Login } from "./login.ts";
@@ -49,6 +55,7 @@ type Handler = (
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
+  hash: string,
 ) => OperationAnswer;
 
 /** Contracts that describe an operation this step does not carry out yet. */
@@ -149,7 +156,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", askedBy, invoice };
   },
 
-  "invoice.issue": (args, contract, askedBy) => {
+  "invoice.issue": (args, contract, askedBy, hash) => {
     const read = invoiceIdFrom(args, contract, askedBy);
 
     if ("refused" in read) {
@@ -192,7 +199,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       envelope: success({
         data: outcome.invoice as unknown as Record<string, unknown>,
         semantics: contract.execution?.semantics ?? "atomic",
-        payload: args,
+        payloadHash: hash,
         principalId: askedBy,
       }),
     };
@@ -343,9 +350,11 @@ const validateTheInput: Stage["run"] = (context) => {
   try {
     const given = Object.freeze({ ...context.args });
 
-    JSON.stringify(given);
+    // Written down **once**, and the text is kept. Nothing below reads the caller's object again:
+    // a second read can answer differently, and it used to.
+    const written = JSON.stringify(given);
 
-    return carryOn({ ...context, given });
+    return carryOn({ ...context, given, payloadHash: payloadHash(written) });
   } catch {
     return refuse(
       askedBy,
@@ -421,7 +430,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
       return walked.answer;
     }
 
-    const { principal, contract, given } = walked.context;
+    const { principal, contract, given, payloadHash: hash } = walked.context;
     const handler = contract === undefined ? undefined : handlers[contract.id];
 
     // Every one of these is filled by a stage, and `assertPipeline` refuses a list that is missing
@@ -433,6 +442,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
       principal === undefined ||
       contract === undefined ||
       given === undefined ||
+      hash === undefined ||
       handler === undefined
     ) {
       const askedBy = principal?.id ?? "(nobody)";
@@ -450,7 +460,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    return Object.freeze(handler(given, contract, principal.id));
+    return Object.freeze(handler(given, contract, principal.id, hash));
   };
 }
 

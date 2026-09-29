@@ -111,7 +111,7 @@ describe("the pipeline", () => {
   });
 
   it("DSOR-EXE-01a: an empty list stops the program", () => {
-    expect(() => assertPipeline([])).toThrow();
+    expect(() => assertPipeline([])).toThrow(/is empty/);
   });
 
   // The count, not `true`. Lesson 12: a boolean beside a start-up check can be left behind when
@@ -211,7 +211,7 @@ describe("the pipeline", () => {
   // not on the first request, and not by trusting whoever builds it.
   it("DSOR-OPR-04a: a door cannot be built from a list that does not pass the check", () => {
     expect(() => makeDoor([fake(1, "authenticate")])).toThrow(/missing/);
-    expect(() => makeDoor([])).toThrow();
+    expect(() => makeDoor([])).toThrow(/is empty/);
   });
 
   // And the branch piece 2 could not reach. A stage that says it carried on without filling in what
@@ -239,5 +239,93 @@ describe("the pipeline", () => {
     expect(answer.envelope.code).toBe("INTERNAL_ERROR");
     expect(answer.envelope.retry).toBe("never");
     expect(answer.askedBy).toBe("user_123");
+  });
+
+  // The test this step most needed and did not have. A review permuted the four real stages and
+  // found FOUR of the twenty-four orderings accepted — including `resolve the operation` before
+  // `authenticate`, which answers an unauthenticated caller UNSUPPORTED_CAPABILITY and tells them
+  // which operations exist. Every ordering test above reads PIPELINE, so none of them ever handed
+  // the checker a wrong order.
+  it("DSOR-EXE-01a: of every ordering of the real stages, exactly one is accepted", () => {
+    const orderings = <T>(xs: readonly T[]): T[][] =>
+      xs.length <= 1
+        ? [[...xs]]
+        : xs.flatMap((x, i) =>
+            orderings([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]),
+          );
+
+    const all = orderings(PIPELINE);
+
+    expect(all).toHaveLength(24);
+
+    const accepted = all.filter((list) => {
+      try {
+        assertPipeline(list);
+
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]?.map((s) => s.name)).toEqual(PIPELINE.map((s) => s.name));
+  });
+
+  // The two swaps that matter most, named, so a failure says which guarantee went.
+  it("DSOR-EXE-01a: the order the checker refuses, in the words a reader needs", () => {
+    const byName = (name: string): Stage => {
+      const found = PIPELINE.find((s) => s.name === name);
+
+      if (found === undefined) {
+        throw new Error(`${name} is not in the pipeline`);
+      }
+
+      return found;
+    };
+
+    // Resolving the operation before knowing who is asking tells a stranger which operations exist.
+    expect(() =>
+      assertPipeline([
+        byName("resolve the operation"),
+        byName("authenticate"),
+        byName("authorize"),
+        byName("validate the input"),
+      ]),
+    ).toThrow(/authenticate belongs/);
+
+    // Reading the arguments before authority is settled is the leak step 06 tested for. This one
+    // the *numbers* catch, because 6 before 5 descends — which is the division of labour worth
+    // seeing: the numbers catch a swap between two numbered stages, and the name order catches the
+    // ones they cannot, which are the swaps involving a stage that carries `null`.
+    expect(() =>
+      assertPipeline([
+        byName("authenticate"),
+        byName("resolve the operation"),
+        byName("validate the input"),
+        byName("authorize"),
+      ]),
+    ).toThrow(/out of order/);
+  });
+
+  // §21 has seventeen steps. A number outside that is not a §21 number — and NaN is the one that
+  // matters, because every comparison against it is false, so one NaN hides exactly one descent.
+  it("DSOR-EXE-01a: a §21 number §21 does not have stops the program", () => {
+    for (const at of [0, 18, 99, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const list = [
+        fake(1, "authenticate"),
+        fake(null, "resolve the operation"),
+        fake(at, "authorize"),
+        fake(6, "validate the input"),
+      ];
+
+      expect(() => assertPipeline(list), String(at)).toThrow(/not a step §21 has/);
+    }
+  });
+
+  // Every guard that throws says which one fired, so a test cannot pass because a different guard
+  // caught the input first — which is how the command-only test passed for the wrong reason once.
+  it("DSOR-EXE-01a: an empty list is refused for being empty", () => {
+    expect(() => assertPipeline([])).toThrow(/is empty/);
   });
 });

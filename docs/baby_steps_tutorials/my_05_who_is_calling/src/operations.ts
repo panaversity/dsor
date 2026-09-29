@@ -10,7 +10,13 @@
 // Rule DSOR-OPR-01: every operation MUST have a contract.
 // Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
 
-import { refusal, success, type ErrorEnvelope, type ResultEnvelope } from "./envelopes.ts";
+import {
+  payloadHash,
+  refusal,
+  success,
+  type ErrorEnvelope,
+  type ResultEnvelope,
+} from "./envelopes.ts";
 // NEW IN STEP 05: every call now says who is asking.
 import { principalFrom, type Login } from "./login.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
@@ -40,6 +46,7 @@ type Handler = (
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
+  hash: string,
 ) => OperationAnswer;
 
 /** Contracts that describe an operation this step does not carry out yet. */
@@ -140,7 +147,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", askedBy, invoice };
   },
 
-  "invoice.issue": (args, contract, askedBy) => {
+  "invoice.issue": (args, contract, askedBy, hash) => {
     const read = invoiceIdFrom(args, contract, askedBy);
 
     if ("refused" in read) {
@@ -183,7 +190,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       envelope: success({
         data: outcome.invoice as unknown as Record<string, unknown>,
         semantics: contract.execution?.semantics ?? "atomic",
-        payload: args,
+        payloadHash: hash,
         principalId: askedBy,
       }),
     };
@@ -307,13 +314,17 @@ export function callOperation(
   // and no record of who caused it. This is the first small shape of DSOR-EXE-03a, write it
   // down before you do it. Step 08 builds the real intent record.
   let given: Readonly<Record<string, unknown>>;
+  let written: string;
 
   try {
     // The copy is **inside** the try, not above it. `{ ...args }` runs every getter, and a
     // getter can throw — a hostile review sent `{ get invoice() { throw } }` and the exception
     // reached the caller instead of an envelope.
     given = Object.freeze({ ...args });
-    JSON.stringify(given);
+    // Written down **once**, and the text is kept. Nothing below reads the caller's object again:
+    // a second read can answer differently, and it used to — `success()` stringified it a second
+    // time after the invoice had been issued.
+    written = JSON.stringify(given);
   } catch {
     return Object.freeze({
       kind: "error",
@@ -348,5 +359,5 @@ export function callOperation(
   // Frozen on the way out. `readonly` on OperationAnswer is erased before Node runs, and
   // `askedBy` is this step's entire record of who asked — step 01's lesson, applied to this
   // step's own new type.
-  return Object.freeze(handler(given, contract, askedBy));
+  return Object.freeze(handler(given, contract, askedBy, payloadHash(written)));
 }

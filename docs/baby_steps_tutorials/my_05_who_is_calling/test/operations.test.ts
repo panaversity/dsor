@@ -13,6 +13,7 @@ import {
 } from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import {
+  payloadHash,
   refusal,
   resetProposalIds,
   resetRequestIds,
@@ -339,7 +340,7 @@ describe("callOperation", () => {
       resetProposalIds();
 
       for (const semantics of ["atomic", "best_effort"]) {
-        const envelope = success({ data: { ok: true }, semantics, payload: {} });
+        const envelope = success({ data: { ok: true }, semantics, payloadHash: payloadHash("{}") });
 
         expect(envelope.semantics).toBe(semantics);
         expect(validateEnvelope("result", envelope)).toBe(true);

@@ -203,7 +203,7 @@ export function refusal(code: string, message: string, requestId?: string): Erro
 export function success(answer: {
   data: Readonly<Record<string, unknown>>;
   semantics: string;
-  payload: Readonly<Record<string, unknown>>;
+  payloadHash: string;
   requestId?: string;
 }): ResultEnvelope {
   proposalCount += 1;
@@ -212,7 +212,7 @@ export function success(answer: {
   const envelope: ResultEnvelope = Object.freeze({
     outcome: "COMMITTED" as const,
     proposal: `dsor://org_456/proposal/prop_${id}`,
-    payload_hash: `sha256:${createHash("sha256").update(JSON.stringify(answer.payload)).digest("hex")}`,
+    payload_hash: answer.payloadHash,
     semantics: answer.semantics,
     data: answer.data,
     correlation: Object.freeze({ request_id: answer.requestId ?? nextRequestId() }),
@@ -223,6 +223,20 @@ export function success(answer: {
   }
 
   return envelope;
+}
+
+/**
+ * The fingerprint of a request's arguments, from text that was written down **once**.
+ *
+ * Takes the already-serialised text, not the object. That is the whole point: the arguments belong
+ * to the caller, and reading them twice lets the two reads disagree. A review found that
+ * `success()` used to `JSON.stringify` the caller's object a second time, after the invoice had
+ * already been issued — so an object whose `toJSON` throws on its second call committed the change
+ * and then threw at the caller, with no envelope and no code. The same shape as the getter that
+ * answered twice, one layer further down.
+ */
+export function payloadHash(text: string): string {
+  return `sha256:${createHash("sha256").update(text).digest("hex")}`;
 }
 
 /** Starts the proposal counter again. For tests. */

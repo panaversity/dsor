@@ -15,7 +15,13 @@
 // Rule DSOR-OPR-01: every operation MUST have a contract.
 // Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
 
-import { refusal, success, type ErrorEnvelope, type ResultEnvelope } from "./envelopes.ts";
+import {
+  payloadHash,
+  refusal,
+  success,
+  type ErrorEnvelope,
+  type ResultEnvelope,
+} from "./envelopes.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
 import { TENANT } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
@@ -42,6 +48,7 @@ export type OperationAnswer =
 type Handler = (
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
+  hash: string,
 ) => OperationAnswer;
 
 /** Contracts that describe an operation this step does not carry out yet. */
@@ -129,7 +136,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", invoice };
   },
 
-  "invoice.issue": (args, contract) => {
+  "invoice.issue": (args, contract, hash) => {
     const read = invoiceIdFrom(args, contract);
 
     if ("refused" in read) {
@@ -162,7 +169,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       envelope: success({
         data: outcome.invoice as unknown as Record<string, unknown>,
         semantics: contract.execution?.semantics ?? "atomic",
-        payload: args,
+        payloadHash: hash,
       }),
     };
   },
@@ -270,10 +277,14 @@ export function callOperation(
   // And if the copy cannot be written down, nothing runs at all. Writing it down *before* doing
   // it is a rule of its own, DSOR-EXE-03a, and step 08 builds the real version.
   let given: Readonly<Record<string, unknown>>;
+  let written: string;
 
   try {
     given = Object.freeze({ ...args });
-    JSON.stringify(given);
+    // Written down **once**, and the text is kept. Nothing below reads the caller's object again:
+    // a second read can answer differently, and it used to — `success()` stringified it a second
+    // time after the invoice had been issued.
+    written = JSON.stringify(given);
   } catch {
     return {
       kind: "error",
@@ -299,5 +310,5 @@ export function callOperation(
     };
   }
 
-  return handler(given, contract);
+  return handler(given, contract, payloadHash(written));
 }

@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  payloadHash,
   CODE_RETRY,
   errorCodes,
   nextRequestId,
@@ -216,7 +217,7 @@ describe("the result envelope", () => {
     const envelope = success({
       data: { id: "INV-1009" },
       semantics: "atomic",
-      payload: { invoice: "dsor://org_456/invoice/INV-1009" },
+      payloadHash: payloadHash(JSON.stringify({ invoice: "dsor://org_456/invoice/INV-1009" })),
     });
 
     expect(validateEnvelope("result", envelope)).toBe(true);
@@ -229,7 +230,7 @@ describe("the result envelope", () => {
     const envelope = success({
       data: { id: "INV-1009" },
       semantics: "atomic",
-      payload: { invoice: "dsor://org_456/invoice/INV-1009" },
+      payloadHash: payloadHash(JSON.stringify({ invoice: "dsor://org_456/invoice/INV-1009" })),
     });
 
     expect(envelope.proposal).toMatch(/^dsor:\/\/org_456\/proposal\/prop_\d+$/);
@@ -238,9 +239,21 @@ describe("the result envelope", () => {
   });
 
   it("DSOR-SCH-01: the same payload hashes the same, a different one does not", () => {
-    const a = success({ data: {}, semantics: "atomic", payload: { invoice: "a" } });
-    const b = success({ data: {}, semantics: "atomic", payload: { invoice: "a" } });
-    const c = success({ data: {}, semantics: "atomic", payload: { invoice: "b" } });
+    const a = success({
+      data: {},
+      semantics: "atomic",
+      payloadHash: payloadHash('{"invoice":"a"}'),
+    });
+    const b = success({
+      data: {},
+      semantics: "atomic",
+      payloadHash: payloadHash('{"invoice":"a"}'),
+    });
+    const c = success({
+      data: {},
+      semantics: "atomic",
+      payloadHash: payloadHash('{"invoice":"b"}'),
+    });
 
     expect(a.payload_hash).toBe(b.payload_hash);
     expect(a.payload_hash).not.toBe(c.payload_hash);
@@ -249,16 +262,16 @@ describe("the result envelope", () => {
   it("DSOR-SCH-01: a result that would not validate never leaves the builder", () => {
     // The same self-check refusal() has. Without it, an envelope whose semantics is not
     // one of the five allowed words would be handed to a caller.
-    expect(() => success({ data: {}, semantics: "instantly", payload: {} })).toThrow(
-      /does not validate/,
-    );
+    expect(() =>
+      success({ data: {}, semantics: "instantly", payloadHash: payloadHash("{}") }),
+    ).toThrow(/does not validate/);
   });
 
   // DSOR-SCH-01, not DSOR-ERR-01a. This one is about a *result* envelope, and ERR-01a is a rule
   // about errors. Coverage is counted from these titles, so a wrong id inflates the rule it
   // names and leaves the right one looking thinner than it is.
   it("DSOR-SCH-01: a result envelope cannot be edited either", () => {
-    const envelope = success({ data: {}, semantics: "atomic", payload: {} });
+    const envelope = success({ data: {}, semantics: "atomic", payloadHash: payloadHash("{}") });
 
     expect(Object.isFrozen(envelope)).toBe(true);
     expect(Object.isFrozen(envelope.correlation)).toBe(true);
@@ -292,8 +305,12 @@ describe("request ids", () => {
       "req_from_caller",
     );
     expect(
-      success({ data: {}, semantics: "atomic", payload: {}, requestId: "req_from_caller" })
-        .correlation.request_id,
+      success({
+        data: {},
+        semantics: "atomic",
+        payloadHash: payloadHash("{}"),
+        requestId: "req_from_caller",
+      }).correlation.request_id,
     ).toBe("req_from_caller");
   });
 
