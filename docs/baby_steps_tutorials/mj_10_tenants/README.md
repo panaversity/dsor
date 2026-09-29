@@ -128,7 +128,7 @@ Checked on 2026-09-29:
 | DSOR-IDN-03a, with DSOR-AUT-01b | **C3.** Only the roles in the active company count | The firm's agent issues in `org_789` and is denied `invoice.issue` in `org_456` |
 | DSOR-SRC-02b | **C4.** A company in the arguments that is not the active one is refused with `TENANT_MISMATCH` | A `tenant` field, and a URI, naming `org_789` from inside `org_456`. A field naming the active company is not refused for that |
 | DSOR-ERR-01b | **C5.** A refusal never tells whether another company, or its invoice, exists | Pairs of answers compared word for word: `org_789` and `org_999`, `INV-1008` of `org_789` and `NOPE` of `org_789` |
-| DSOR-TEN-01a | **C6.** Every invoice row and every audit record carries its company | `app.invoices.tenant_id` is `NOT NULL` and part of the key. `dsor.audit.tenant` is the active company, and empty only for a refusal before line ② |
+| DSOR-TEN-01a | **C6.** Every invoice row and every audit record carries its company | `app.invoices.tenant_id` is `NOT NULL` and part of the key. `dsor.audit.tenant` is the active company, and empty only for a refusal before line ② has checked one |
 
 ### Decisions the specification leaves to us
 
@@ -297,19 +297,185 @@ paste the file, and never ask for a connection string.
 
 ## What changed since step 09
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `src/tenants.ts` | **New.** Line ②: `activeTenant` checks the envelope's company against the caller's memberships. `checkNamedTenants` refuses another company in the arguments' fields. `checkUrisInTenant` refuses a URI outside the company, anywhere in the checked input |
+| `src/pipeline.ts` | Line ② runs right after line ①. The URI check runs right after line ⑥. The code, line ⑤, and the record all get the active company |
+| `src/permissions.ts` | `permissionsOf` and `checkPermission` take the company. Step 06's constant `COMPANY` is gone |
+| `src/invoice.ts` | An invoice carries its `tenant_id`, and `invoiceUri` reads it. Step 01's constant `TENANT` is gone. `org_789`'s two invoices, in memory |
+| `src/principals.ts` | `firm-ap-fte`, in two companies with a different role in each, and `user_700` |
+| `src/postgres.ts` | The invoice query filters by `tenant_id`. The log writes and reads `tenant` |
+| `src/log.ts`, `src/registry.ts`, `src/operations.ts` | A decision has an optional `tenant`. The code of an operation is given the company |
+| `src/request.ts`, `src/uri.ts` | The envelope has a `tenant`. `isTenantId` checks step 02's form |
+| `src/migrate.ts` | Runs each file in `migrations/` once, and remembers it in `dsor.migrations` (decision 8) |
+| `migrations/002_tenants.sql` | **New.** `tenant_id` on invoices, the key (company, id), `org_789`'s invoices, `tenant` on the log, and one more `INSERT` column for `dsor_runtime` |
+| `src/main.ts` | Four more calls: the firm's agent in each company, a stranger to `org_789`, a foreign URI. Each log line ends with its company |
+| `test/tenants.test.ts`, `test/tenants.db.test.ts` | **New.** C1 to C6, and decision 8 |
+| `vitest.db.config.ts` | Database test files run one at a time (see "Think it through") |
+| every other test | Every envelope names `org_456`. Invoices and records carry their company. Line ② is in the expected order |
+
+Both tenant columns also refuse any text that is not `org_` and digits, a database
+`CHECK`. That is this tutorial's decision, from step 02's form. No new dependency.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_09_postgres_on_neon/src mj_10_tenants/src
+git diff --no-index mj_09_postgres_on_neon/test mj_10_tenants/test
+git diff --no-index mj_09_postgres_on_neon/migrations mj_10_tenants/migrations
+```
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # runs only the migrations that have not run yet
+pnpm check        # typecheck and the unit tests: no database needed
+pnpm test:db      # the database tests, against the branch in .env
+pnpm start        # the program, against the same branch
+```
+
+`pnpm migrate` on the branch `step-10`, made from `step-09`, on 2026-09-29. Before the
+table of migrations existed, the new runner ran `001` again once; it could, because
+`002` was not there yet. Then `002`, then nothing:
+
+```text
+dsor_runtime: password set again from DSOR_DB_URL
+migration 001_audit_and_invoices: done
+
+dsor_runtime: password set again from DSOR_DB_URL
+migration 002_tenants: done
+
+dsor_runtime: password set again from DSOR_DB_URL
+no migration to run
+```
+
+The new part of `pnpm start`. The same id, two invoices. Then a stranger, and a URI
+from another company. The record numbers come from the database:
+
+```text
+org_456 INV-1008 VENDOR-44 { value: '31400.00', currency: 'USD' }
+org_789 INV-1008 VENDOR-77 { value: '99000.00', currency: 'USD' }
+{
+  code: 'AUTHORIZATION_DENIED',
+  message: 'the caller may not work in the tenant it named',
+  retry: 'never',
+  correlation: {
+    request_id: 'req_a1d56f79-55d9-4185-b2cf-33824bb4ca65',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  code: 'TENANT_MISMATCH',
+  message: 'the arguments name a resource outside the active tenant',
+  retry: 'never',
+  correlation: { request_id: 'ap-desk-7', principal_id: 'user_123' }
+}
+...
+1389 invoice.get@1 ALLOW ok org_456
+1390 invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456
+1391 invoice.issue@1 DENY AUTHORIZATION_DENIED org_456
+1392 invoice.get@1 DENY AUTHENTICATION_REQUIRED -
+1393 invoice.get@1 DENY AUTHORIZATION_DENIED -
+1394 invoice.get@1 ALLOW ok org_456
+1395 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456
+1396 invoice.issue@1 DENY VALIDATION_FAILED org_456
+1397 invoice.get@1 ALLOW ok org_456
+1398 invoice.get@1 ALLOW ok org_789
+1399 invoice.get@1 DENY AUTHORIZATION_DENIED -
+1400 invoice.issue@1 DENY TENANT_MISMATCH org_456
+```
+
+Record 1393 has no company: the agent named `cfo_100` in its arguments, and line ①
+refused it before line ② ran. Record 1399 has none either: line ② itself refused it, so
+no company was ever checked.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break of the design's table, performed on 2026-09-29, one at a time, then put
+back. The unit tests ran for all six, the database tests for U1 and U6.
+
+| # | The break | Learner's prediction | Caught by, for real |
+| --- | --- | --- | --- |
+| U1 | The invoice query drops `tenant_id = $1` | INV-1008 and INV-2001, every time | 4 database tests, **0 unit tests**. `org_456`'s INV-1008 test passed |
+| U2 | Line ⑤ adds up the roles from every membership | only the firm-agent test | 7: three firm tests, and **step 06's four membership tests** |
+| U3 | A `tenant` in the arguments is used as the active company | C4 | 6: five of C4, one of C6 |
+| U4 | The URI check runs after "is it built" | C4's `invoice.issue` test | 2: that test, and `dsor://acme/…` |
+| U5 | "No such company" gets its own message | C5 only | 2: C5, and **C1's `org_999` test** |
+| U6 | The audit record's tenant is left empty | not asked | 12 unit tests, 2 database tests |
+
+**U1**, the one to try yourself. In `src/postgres.ts`, change the invoice query to
+`WHERE id = $1` with `[id]`. Then:
+
+```text
+$ pnpm check
+      Tests  552 passed (552)
+
+$ pnpm test:db
+    × DSOR-IDN-03b: org_456 reading INV-2001 hears the same as for INV-9999
+    × DSOR-IDN-03b: org_789 reads INV-1008 from app.invoices: 99,000.00 USD
+    × DSOR-IDN-03b: the store finds an invoice by company and id together
+    × starts, reads INV-1008 through invoice.get, and prints every answer as an envelope
+      Tests  4 failed | 33 passed (37)
+```
+
+`pnpm check` stays green: the unit tests read the invoices in memory, which never met
+the broken query. Only a test against the real table sees a bug in the real query.
+`org_456`'s own INV-1008 test stays green too. Both rows answer to `INV-1008`, and the
+query takes the first, which happens to be `org_456`'s. `org_789` gets `org_456`'s
+31,400.00 USD. That is the leak §14 warns about, and step 11's second lock is for this
+very bug.
+
+**U5.** In `activeTenant`, answer `"no such tenant"` for a company outside a list of
+known ones:
+
+```text
+    × DSOR-ERR-01b: org_789 and org_999 get the same refusal, word for word
+    × DSOR-IDN-03a: the agent asking to work in org_999, which does not exist, is denied
+      Tests  2 failed | 550 passed (552)
+```
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", before the setup |
+| 2 | Neon | A branch `step-10` from `step-09`, `.env` written by a command, never shown ("Before you build") |
+| 3 | Check the design | Against §11, §12, §14, §28, the audit schema, **and migration `001`**. Two gaps found: decisions 8 and 10 |
+| 4 | Mechanical | Every existing envelope names `org_456`. Nothing checks it yet, so every test stays green |
+| 5 | Red | `tenants.test.ts`, `tenants.db.test.ts`, and the old expectations that change. Predict how many pass |
+| 6 | Green | One commit per claim: the ledger, `002`, then C1, C2, C3, C4 (C5 came with it), C6 |
+| 7 | Break it | U1 to U6, for real. Compare with your predictions |
+| 8 | Review | A reviewer who has not seen your conversation attacks the step |
+
+In the red run, the learner predicted about 10 of 51 new tests would pass, and 10 did.
+Each of them expects "the same" or "nothing": the same answer for two companies, no
+company on a record, "not built yet" for the company's own URI. With no code that tells
+companies apart, "the same" is true for free. Such a test proves something only beside
+the code it guards.
+
+Build your own step 10 from a copy of your step 09. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_09_postgres_on_neon my_10_tenants
+cd my_10_tenants
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 10. Set up Neon as "Before you
+build" says: a branch from step-09, and secrets only from a command into .env, never
+through the chat. Check the design against §11, §12, §14, and §28, and against
+migration 001, before any test. Red tests first, one commit per claim. Before each
+break, ask me what I expect.
+```
 
 ## Check yourself
 
@@ -353,11 +519,11 @@ _The rest is written after the review, with the result of every break in the tab
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-TEN-01a | Every tenant-owned resource carries its `tenant_id` | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | _to be counted_ |
-| DSOR-IDN-03a | Each request resolves to exactly one active tenant in which the subject holds a membership | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | _to be counted_ |
-| DSOR-IDN-03b | An operation does not read or write across tenants | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | _to be counted_, reading only: no operation writes yet |
-| DSOR-SRC-02b | A tenant or principal in the arguments that disagrees with the security context is refused | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | _to be counted_, the tenant half. The principal half is step 05's |
-| DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | _to be counted_, for other companies and their invoices |
+| DSOR-TEN-01a | Every tenant-owned resource carries its `tenant_id` | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/tenants.test.ts` (C6), `test/tenants.db.test.ts` (C6: `NOT NULL`, the key, the log's `tenant`) |
+| DSOR-IDN-03a | Each request resolves to exactly one active tenant in which the subject holds a membership | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C1, C3) |
+| DSOR-IDN-03b | An operation does not read or write across tenants | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C2), `test/tenants.db.test.ts` (C2). Reading only: no operation writes yet |
+| DSOR-SRC-02b | A tenant or principal in the arguments that disagrees with the security context is refused | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | `test/tenants.test.ts` (C4), the tenant half. The principal half is step 05's |
+| DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | `test/tenants.test.ts` (C5, and C2's `INV-2001`), for other companies and their invoices |
 
 Not met here, and why: DSOR-TEN-01b, whose second lock is step 11. DSOR-TEN-02a, whose
 partitions come with each store. DSOR-TEN-02b, the suite of step 12.
