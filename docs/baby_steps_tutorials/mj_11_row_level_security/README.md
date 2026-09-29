@@ -18,6 +18,8 @@ CREATE POLICY tenant_isolation ON app.invoices
   USING (tenant_id = current_setting('dsor.tenant_id', true));
 ```
 
+That is §36's example. This step's policy adds one word, `nullif` (decision 2).
+
 DSoR tells the database which company a piece of work is for, at the start of a
 **transaction** (a group of statements that succeed or fail together):
 
@@ -28,9 +30,10 @@ SELECT … FROM app.invoices WHERE id = 'INV-1008';        -- filtered by the po
 COMMIT;
 ```
 
-When no company is set, the setting is empty, the policy matches nothing, and the query
-returns no rows. A forgotten company shows nothing, never everything. This is the lock
-that stays locked when the power fails, from the house list of analogies.
+When no company is set, the company is unknown: `NULL`. `tenant_id = NULL` is never
+true, so the policy matches no row, and the query returns nothing. A forgotten company
+shows nothing, never everything. It is like an electric lock that stays locked when the
+power fails.
 
 ## Why it matters
 
@@ -51,9 +54,10 @@ request 2 (org_789) forgets to set a company, reads          → org_456/INV-100
 
 **Common mistake:** §36 names two: "The table owner bypasses RLS unless you `FORCE` it.
 And with connection pooling, a tenant setting made per connection leaks into the next
-request that reuses the connection, so set it per transaction." A third, found live on
-2026-09-29: Neon's `neondb_owner` holds `BYPASSRLS`, which ignores every policy, `FORCE`
-included.
+request that reuses the connection, so set it per transaction."
+
+Found live on 2026-09-29, and not in the specification: Neon's `neondb_owner` holds
+`BYPASSRLS`, a power that skips every policy, `FORCE` included.
 
 ## The design, before any code
 
@@ -70,8 +74,9 @@ plan wrong, the plan changes here first.
 Written first, before the rules were split into claims.
 
 **Intent.** A bug in one query cannot leak a company. The database keeps companies apart
-by itself, as a second lock that does not depend on DSoR's code remembering. The analogy
-is the lock that stays locked when the power fails: no company set, no rows.
+by itself, as a second lock that does not depend on DSoR's code remembering. And when
+DSoR forgets to set a company, the lock stays shut, like the electric lock that stays
+locked when the power fails: no company set, no rows.
 
 **Outcome.** What is true when this step is done:
 
@@ -82,8 +87,11 @@ is the lock that stays locked when the power fails: no company set, no rows.
 3. With no company set, every query on those tables returns no rows.
 4. A company set for one request is gone for the next request on the same connection.
 5. `dsor_runtime` can write an audit record only for the company set in its transaction,
-   or with no company when none is set, and reads only the active company's records.
-6. `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, and owns no table.
+   or with no company when none is set, and reads only the active company's records. The
+   program sets that company from the call, so this catches a company that is missing or
+   left over, not a wrong one (see "What this lock does not stop").
+6. `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, owns no table, and
+   belongs to no role.
 
 **Not the outcome of this step.** The suite that calls every operation with another
 company's URI (step 12). Joins and foreign keys between tenant tables: there is only one
@@ -187,7 +195,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    yet. A write policy is tested when there is a write.
 6. **The database log reads one company at a time.** Its `records()` becomes
    `records(tenant)`, because under the policy there is no "every record" for
-   `dsor_runtime`. `call` uses only `add`, so the type every log shares keeps only `add`.
+   `dsor_runtime`. `call` uses only `add`, so `DecisionLog`, the type every log shares, now
+   holds only `add`.
    The memory log of the unit tests keeps `records()`: keeping companies apart is the
    database's job, and AGENTS.md says it is never proved against a mock. The program
    prints the 9 records it can read, both companies merged by number, and says that its 3
@@ -204,7 +213,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    program after each transaction, is shown in "Break it" by `test/pooler-demo.ts`, run
    by hand, and not tested. *Downside:* the Neon pooler is demonstrated, not guarded by a
    test.
-9. **A rule written now, for the tables to come:** every join between tenant tables
+9. **This tutorial's rule, written now for the tables to come:** every join between tenant tables
    includes `tenant_id`, and every foreign key between them starts with the row's own
    `tenant_id`, as in `FOREIGN KEY (tenant_id, invoice_id) REFERENCES app.invoices
    (tenant_id, id)`. PostgreSQL checks keys without applying policies, so a key with a
@@ -298,11 +307,13 @@ itself, this way:
 | --- | --- |
 | `migrations/004_invoices_row_level_security.sql` | **New.** `app.invoices`: row-level security enabled and forced, and the policy `tenant_isolation` |
 | `migrations/005_audit_row_level_security.sql` | **New.** `dsor.audit`: enabled and forced, `audit_write` for `INSERT` and `audit_read` for `SELECT` (decision 4) |
-| `src/postgres.ts` | `inCompany` runs the work in one transaction that sets the company first (decision 3). The invoice read and the record's `INSERT` go through it. The database log reads one company: `records(tenant)` |
+| `src/postgres.ts` | `inCompany` runs the work in one transaction that sets the company first, `''` when there is none (decision 3). The invoice read and the record's `INSERT` go through it. The database log reads one company: `records(tenant)`. The start-up check also refuses a login that belongs to any role (decision 7) |
 | `src/log.ts` | `DecisionLog` is only `add`. The memory log is a `MemoryLog`, which keeps `records()` (decision 6) |
-| `src/main.ts` | The log is read for `org_456` and `org_789`, merged by number, and the records with no company are counted, not shown |
+| `src/main.ts` | The log is read for `org_456` and `org_789`, merged by number. The last line says how many records it read, and how many it knows were written |
 | `test/rls.db.test.ts` | **New.** C1 to C5 |
 | `test/owner-reads.ts` | **New.** A child program that reads records as the owner, for the tests of records with no company |
+| `test/owner-store.ts` | **New, after the review.** A child program that runs DSoR's store as the owner, whom no policy stops, so DSoR's own `WHERE` is tested alone |
+| `test/runtime-role.test.ts` | The start-up check refuses a role membership |
 | `test/db.ts` | `rowsFor` and `tryThenRollBack` take a company. `ownerRowsFor` and `poolOfOne` are new |
 | other database tests | They read `dsor.audit` inside the record's company, or through the owner. The program's log shows 9 lines. Step 09's role test is DSOR-RP-01a |
 | `test/helpers.ts`, `test/decision-log.test.ts` | The memory log's type, and two stand-in logs that no longer need `records` |
@@ -346,27 +357,34 @@ On your own branch made from `step-10`, one `pnpm migrate` prints both lines at 
 The new part of `pnpm start`, the log. The numbers come from the database:
 
 ```text
-2581 invoice.get@1 ALLOW ok org_456
-2582 invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456
-2583 invoice.issue@1 DENY AUTHORIZATION_DENIED org_456
-2586 invoice.get@1 ALLOW ok org_456
-2587 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456
-2588 invoice.issue@1 DENY VALIDATION_FAILED org_456
-2589 invoice.get@1 ALLOW ok org_456
-2590 invoice.get@1 ALLOW ok org_789
-2592 invoice.issue@1 DENY TENANT_MISMATCH org_456
-3 of the 12 records have no company, and dsor_runtime cannot read them
+3055 invoice.get@1 ALLOW ok org_456
+3056 invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456
+3057 invoice.issue@1 DENY AUTHORIZATION_DENIED org_456
+3060 invoice.get@1 ALLOW ok org_456
+3061 invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456
+3062 invoice.issue@1 DENY VALIDATION_FAILED org_456
+3063 invoice.get@1 ALLOW ok org_456
+3064 invoice.get@1 ALLOW ok org_789
+3066 invoice.issue@1 DENY TENANT_MISMATCH org_456
+12 calls answered, so 12 records were written. dsor_runtime reads 9 of them, in org_456 and org_789, and cannot read the other 3
 ```
 
-Look at the gaps: 2584, 2585, and 2591. Those are the three records with no company: the
-call with no login, the call that named `cfo_100`, and the stranger to `org_789`. They
-were written, because each call answered, and an answer leaves only after its record is
-committed. `dsor_runtime` cannot read them back (decision 4).
+The last line holds one fact and one inference. The fact: the program read 9 records.
+The inference: 12 were written, because every call answered, and an answer leaves only
+after its record is committed. The other 3 have no company: the call with no login, the
+call that named `cfo_100`, and the call for `org_789` by a caller who is no member of it.
+`dsor_runtime` can write them and never read them back (decision 4).
+
+Look at the gaps in the numbers: 3058, 3059, and 3065. In this run they are those three
+records, because nothing else wrote at that moment. A gap does not always mean that. One
+counter numbers the records of every company, so a gap can also be another company's
+record, or a number taken by a write that was then rolled back. That shared counter tells
+one company how busy the others are (see "Think it through").
 
 ## Break it
 
 Every break of the design's table, performed on 2026-09-29, one at a time, then put
-back, on the finished code (commit `8b453c2`). They ran on a throwaway Neon branch,
+back, on the code as it stood before the review (commit `8b453c2`). They ran on a throwaway Neon branch,
 `step-11-breaks`, made from `step-11`, because four of them change the database. The
 unit tests stayed green for all seven: they never touch the database. After the last
 one, every policy was read back as the owner, and all 56 database tests passed again.
@@ -378,8 +396,19 @@ one, every policy was read back as the owner, and all 56 database tests passed a
 | V3 | The invoice policy is dropped, row-level security stays on | zero rows, always | 16: every invoice read found nothing, and C1 |
 | V4 | The helper sets the company with `true`, and runs no `BEGIN` | only the pool test | 20: **every invoice read found nothing, and every record with a company was refused** |
 | V5 | Step 10's U1: the invoice SQL forgets `tenant_id` | survives, harmlessly | **0**. All 56 green |
-| V6 | `dsor_runtime` is given `BYPASSRLS` | C6 and the start-up check | 18: C6, the start-up check, the program, and every test of C2, C3, and C5 that runs its own SQL |
+| V6 | `dsor_runtime` is given `BYPASSRLS` | C6 and the start-up check | 18: C6, the start-up check, the program, and every test of C2, C3, C4, and C5 that runs its own SQL |
 | V7 | The audit policies use `current_setting` without `nullif` | only on a reused connection | 6: each record with no company written on a reused connection. The pool test always, and five tests whose shared pool happened to reuse one |
+
+One program test, "finds its own role table and .env, whatever folder it is started
+from", reads the step's own `.env` on purpose. So during the database breaks it ran
+against `step-11`, not the throwaway branch, and could not see them.
+
+**After the review, two breaks were run again** on the fixed code (commit `4fab426`):
+
+| # | Before the review | After |
+| --- | --- | --- |
+| V5 | 0: every test green | **1**: the new test where the owner, whom no policy stops, runs DSoR's store (learner's prediction: exactly 1) |
+| V1 | 7 | 2: C4's two pool tests. A call with no company now sets `''` itself, so it no longer meets the company a connection kept |
 
 **V5, the one this step is for.** Step 10's U1 again. In `src/postgres.ts`, change the
 invoice query to `WHERE id = $1` with `[id]`. Then:
@@ -394,8 +423,10 @@ $ pnpm test:db
 
 In step 10, this break sent `org_456`'s 31,400.00 USD to `org_789`, and four database
 tests caught it. Now the database's lock filters the rows by itself, so the forgotten
-line leaks nothing. That is the second lock doing its job. It also means DSoR's own
-`WHERE` in this query is now guarded by no test (see "Think it through").
+line leaks nothing. That is the second lock doing its job. But it also meant that
+DSoR's own `WHERE` was guarded by no test, so the first lock could vanish unseen. The
+review found this, and a test now runs DSoR's store as the owner, whom no policy stops.
+After the review, V5 fails that one test.
 
 **V4, the learner's miss.** Delete `await client.query("BEGIN");` from `inCompany`:
 
@@ -419,8 +450,9 @@ query.
 fails, as expected. Five more tests fail, each a call with no company that answered
 `EVIDENCE_STORE_UNAVAILABLE`. The pool lent those calls a connection that still held
 `org_456`, so the record, with no company, broke the write policy's rule. The leaked
-company did not put a record into `org_456`. It stopped the record, and so the answer.
-The lock failed shut.
+company did not put a record into `org_456`. It stopped the record, and so the answer:
+the lock failed closed. After the review, a call with no company sets `''` itself, so
+these five calls work again, and only the pool tests catch V1.
 
 **V7, as predicted, and more often.** Only a connection that has held a company reads
 the unset setting as `''`. The pool test builds that case on purpose. The other five
@@ -497,8 +529,8 @@ what I expect.
 3. `FORCE ROW LEVEL SECURITY` is on. Why does `neondb_owner` still see every row, and
    what protects DSoR from that?
 4. Why must the company be set with `true`, inside `BEGIN … COMMIT`?
-5. A payment row points at an invoice. Why must its foreign key start with the
-   payment's own `tenant_id`?
+5. A payment row points at an invoice. This tutorial says its foreign key starts with the
+   payment's own `tenant_id`. Why?
 
 <details>
 <summary>Answers</summary>
