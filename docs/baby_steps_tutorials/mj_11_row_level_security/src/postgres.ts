@@ -57,6 +57,39 @@ export function openPool(url: string): pg.Pool {
   return pool;
 }
 
+// NEW IN STEP 11: every touch of a company's table is one transaction that sets the
+// company first (DSOR-RP-01c; step 11's README, decision 3).
+/**
+ * Runs the work on one connection, inside one transaction that sets the company first. The
+ * company ends with the transaction, so the next request on the connection has none. With
+ * no company, none is set.
+ */
+export async function inCompany<T>(
+  pool: pg.Pool,
+  company: string | undefined,
+  work: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // true: only until COMMIT or ROLLBACK. Never false, which would leave the company on
+    // the connection, and the pool lends the connection to the next request (§36).
+    if (company !== undefined) {
+      await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company]);
+    }
+    const result = await work(client);
+    await client.query("COMMIT");
+    client.release();
+    return result;
+  } catch (error) {
+    // Whatever failed may have left the connection in a state the next request must not
+    // inherit, so it is closed, never lent again. true tells the pool so.
+    await client.query("ROLLBACK").catch(() => {});
+    client.release(true);
+    throw error;
+  }
+}
+
 // One row of dsor.audit, as pg gives it back.
 type AuditRow = {
   record_id: string;
@@ -144,14 +177,17 @@ type InvoiceRow = {
 /** The invoices, read from app.invoices. */
 export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   return {
-    // The company is part of every query, as a value (DSOR-IDN-03b). The
-    // database does not filter by it on its own until step 11.
+    // The company is part of every query, as a value (DSOR-IDN-03b). That is the first
+    // lock, DSoR's own. NEW IN STEP 11: the query runs inside the company's transaction, so
+    // the database's lock filters the rows too (DSOR-TEN-01b).
     get: async (tenant, id) => {
-      const { rows } = await pool.query<InvoiceRow>(
-        `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
-                open_amount_value, open_amount_currency, status
-           FROM app.invoices WHERE tenant_id = $1 AND id = $2`,
-        [tenant, id],
+      const { rows } = await inCompany(pool, tenant, (client) =>
+        client.query<InvoiceRow>(
+          `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
+                  open_amount_value, open_amount_currency, status
+             FROM app.invoices WHERE tenant_id = $1 AND id = $2`,
+          [tenant, id],
+        ),
       );
       const row = rows[0];
       if (row === undefined) return undefined;
