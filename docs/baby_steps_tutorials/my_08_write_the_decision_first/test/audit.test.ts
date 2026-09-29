@@ -3,7 +3,7 @@
 // Nothing here calls an operation. These tests are about what an audit record is, and about the
 // chain that makes one hard to change quietly — before anything writes one.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   audit,
@@ -50,19 +50,34 @@ function recorded(over: Partial<DecisionToRecord> = {}): AuditRecord {
   return written;
 }
 
+/**
+ * The specification's copy of the schema, when this folder is sitting inside the dsor repository.
+ *
+ * `undefined` when it is not, and that case is real: a step is a self-contained project, and the
+ * tutorial's own instructions say to copy one somewhere else and run `pnpm check` there. The first
+ * version of the test below read the path unconditionally and a step outside the repository failed
+ * with ENOENT — a test that made the step depend on its surroundings.
+ */
+const specCopy = new URL("../../../../packages/spec/schemas/audit-record.schema.json", import.meta.url);
+const insideTheRepository = existsSync(specCopy);
+
 describe("the audit log", () => {
-  it("DSOR-AUD-01: the schema is the specification's own, and it compiled", () => {
+  it("DSOR-AUD-01: the schema compiled, so a record can be checked against it", () => {
     expect(AUDIT_SCHEMA_CHECKED).toBe(true);
-
-    // Byte for byte the file packages/spec/schemas holds. A record validated against a schema of
-    // our own making would prove nothing about DSOR-AUD-01.
-    const ours = readFileSync(new URL("../src/schemas/audit-record.schema.json", import.meta.url));
-    const theirs = readFileSync(
-      new URL("../../../../packages/spec/schemas/audit-record.schema.json", import.meta.url),
-    );
-
-    expect(ours.equals(theirs)).toBe(true);
   });
+
+  // Skipped rather than quietly passed when the repository is not there, so the test report says
+  // which of the two things happened. A check that silently does nothing is worse than no check.
+  it.skipIf(!insideTheRepository)(
+    "DSOR-AUD-01: the schema is byte for byte the specification's own",
+    () => {
+      // A record validated against a schema of our own making would prove nothing about
+      // DSOR-AUD-01. This is the test that says the schema was not quietly edited to fit the code.
+      const ours = readFileSync(new URL("../src/schemas/audit-record.schema.json", import.meta.url));
+
+      expect(ours.equals(readFileSync(specCopy))).toBe(true);
+    },
+  );
 
   it("DSOR-AUD-01: a record validates against audit-record.schema.json", () => {
     forgetTheLog();
