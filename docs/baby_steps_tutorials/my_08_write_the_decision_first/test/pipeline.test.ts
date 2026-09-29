@@ -548,6 +548,34 @@ describe("the pipeline", () => {
 
     expect(threw).toBe("TypeError");
 
+    // And the **first** stage too, which is the only one that can see the freeze on the way in.
+    // `runPipeline` freezes `start` and then freezes again after every stage, so a vandal anywhere but
+    // position one is stopped by the second freeze — which means removing the first one changed nothing
+    // that any test could see. Found by a mutation sweep after the review.
+    let firstThrew = "";
+    const earlyVandal: Stage = Object.freeze({
+      at: 1,
+      name: "authenticate",
+      applies: "both",
+      evenAfterARefusal: false,
+      run: (context: Context) => {
+        try {
+          (context as { id: string }).id = "invoice.issue";
+        } catch (error) {
+          firstThrew = (error as Error).constructor.name;
+        }
+
+        return { kind: "carry_on" as const, context };
+      },
+    });
+
+    runPipeline(
+      PIPELINE.map((stage) => (stage.name === "authenticate" ? earlyVandal : stage)),
+      { login: undefined, id: "invoice.get", args: {}, requestId: "req_1" },
+    );
+
+    expect(firstThrew).toBe("TypeError");
+
     // And the call it actually made is the one that was asked for, not the one the stage wanted.
     expect(answer.kind).toBe("error");
   });
