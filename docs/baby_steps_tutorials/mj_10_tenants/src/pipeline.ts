@@ -8,6 +8,7 @@ import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
+import { activeTenant } from "./tenants.ts";
 
 // The observer is told each line's number as it runs, and only a test
 // listens (step 07's README, decision 6).
@@ -67,6 +68,12 @@ export async function call(
       return found;
     });
 
+    // NEW IN STEP 10: ② Resolve tenant. The company comes from the envelope, and DSoR checks
+    //   in its own table that the caller is a member of it (DSOR-IDN-03a, DSOR-SRC-02a).
+    //   Right after ①, before the operation is looked up, so a stranger to a company learns
+    //   nothing there (step 10's README, decision 2).
+    const tenant = line(2, () => activeTenant(request, caller));
+
     // Ours, not §21's: which operation? Lines ③ to ⑤ need its contract (step 07's
     // README, decision 4).
     const contract = registry.contracts.get(name);
@@ -74,7 +81,6 @@ export async function call(
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }
 
-    // ② Resolve tenant. Not checked yet: step 10.
     // ③ Resolve delegation; verify the actor chain; establish current authority. Not
     //   checked yet: step 18.
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.

@@ -24,6 +24,13 @@ const SCHEME = "dsor://";
 // (step 02's README).
 const TENANT_ID = /^org_[0-9]+$/;
 
+// NEW IN STEP 10: the request envelope's company must have this form too (step 10's
+// README, decision 2).
+/** True when the value is a tenant id in this tutorial's form, such as org_456. */
+export function isTenantId(value: unknown): value is string {
+  return typeof value === "string" && TENANT_ID.test(value);
+}
+
 /** Splits a canonical URI into its three parts, refusing anything else. */
 export function parseUri(uri: string): ResourceParts {
   // Check the type first, as money() does. `.test()` turns anything into text before it

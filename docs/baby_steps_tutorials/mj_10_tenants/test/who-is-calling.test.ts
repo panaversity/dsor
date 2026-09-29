@@ -95,8 +95,9 @@ describe("C2: a call with no login DSoR knows is refused", () => {
 describe("C3: every principal has a type and at least one tenant membership", () => {
   it("DSOR-IDN-01: each principal has a type from §12's list, and a membership in a tenant", async () => {
     const principals = [...logins.values()];
-    // An empty table would make the loop below prove nothing.
-    expect(principals).toHaveLength(3);
+    // An empty table would make the loop below prove nothing. NEW IN STEP 10: five, with
+    // the firm's agent and user_700 (step 10's README, decision 7).
+    expect(principals).toHaveLength(5);
     for (const principal of principals) {
       expect(["human", "agent", "application", "system"]).toContain(principal.type);
       expect(principal.memberships.length).toBeGreaterThan(0);

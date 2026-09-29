@@ -14,7 +14,7 @@ export type Membership = { tenant_id: string; roles: string[] };
 /** Who is calling. */
 export type Principal = { id: string; type: PrincipalType; memberships: Membership[] };
 
-// Every principal in this step belongs to one company, org_456. Tenants arrive in step 10.
+// The principals of steps 05 to 09 belong to one company, org_456.
 function principal(id: string, type: PrincipalType, roles: string[]): Principal {
   return { id, type, memberships: [{ tenant_id: "org_456", roles }] };
 }
@@ -29,6 +29,27 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   ["tok_7f3a", principal("accounts-payable-fte", "agent", ["ap_agent"])],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
+  // NEW IN STEP 10: an accounting firm's agent, working for two client companies, with
+  // different roles in each, and org_789's own supervisor (step 10's README, decision 7).
+  [
+    "tok_9b52",
+    {
+      id: "firm-ap-fte",
+      type: "agent",
+      memberships: [
+        { tenant_id: "org_456", roles: ["ap_agent"] },
+        { tenant_id: "org_789", roles: ["ap_supervisor"] },
+      ],
+    },
+  ],
+  [
+    "tok_e1a7",
+    {
+      id: "user_700",
+      type: "human",
+      memberships: [{ tenant_id: "org_789", roles: ["ap_supervisor"] }],
+    },
+  ],
 ]);
 
 /** Finds who is calling, from the login token and DSoR's own table, or refuses the call. */
