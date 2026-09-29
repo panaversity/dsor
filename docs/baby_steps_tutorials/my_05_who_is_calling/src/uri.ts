@@ -78,11 +78,51 @@ export function parseUri(uri: string): ResourceUri {
  * address for a record that does not exist. Types do not stop that, because Node
  * deletes them before it runs the file. Comparing the parts does.
  */
+/**
+ * The object's **own** `key`, when it is a string. Refuses everything else.
+ *
+ * Each part is read exactly **once**, through here, and the three locals below are the only
+ * things the address is built from. Two reasons, both found by attacking this function:
+ *
+ * - A property can be a *getter*, and a getter can answer differently each time it is read.
+ *   `formatUri` reads each part twice — once to build the address and once to compare it back —
+ *   so an object that answers `INV-1008` then `INV-9999` made those two reads disagree. Reading
+ *   once means the comparison is against the value that was actually used.
+ * - A name the object merely **inherits** is a name nobody in this program chose. An object
+ *   owning nothing at all used to mint a perfectly valid address from its prototype.
+ */
+function ownText(parts: object, key: "tenant" | "entity" | "id"): string {
+  if (!Object.hasOwn(parts, key)) {
+    throw new TypeError(`an address needs its own ${key}, and this object only inherits one`);
+  }
+
+  const value = (parts as Record<string, unknown>)[key];
+
+  if (typeof value !== "string") {
+    throw new TypeError(`an address needs a ${key} that is text, and got ${typeof value}`);
+  }
+
+  return value;
+}
+
 export function formatUri(parts: ResourceUri): string {
-  const uri = `dsor://${parts.tenant}/${parts.entity}/${parts.id}`;
+  const tenant = ownText(parts, "tenant");
+  const entity = ownText(parts, "entity");
+  const id = ownText(parts, "id");
+
+  const uri = `dsor://${tenant}/${entity}/${id}`;
   const back = parseUri(uri);
 
-  if (back.tenant !== parts.tenant || back.entity !== parts.entity || back.id !== parts.id) {
+  // Compared against the locals, not against `parts` — which is the point of reading once.
+  //
+  // Be honest about this compare: since each part is read through ownText, nothing that reaches
+  // here can fail it. Every string that would read back differently — a slash inside a part, a
+  // leading or trailing newline — makes parseUri refuse the address above. It was the original
+  // fix for `${...}` coercing a missing id into the text "undefined", and ownText now catches
+  // that earlier and catches more. It stays as the last line of defence, and because it is what
+  // this step teaches, but no test can kill it. A guard that cannot be killed is worth a comment
+  // rather than a quiet line.
+  if (back.tenant !== tenant || back.entity !== entity || back.id !== id) {
     throw new TypeError(`address does not read back the same: ${JSON.stringify(uri)}`);
   }
 

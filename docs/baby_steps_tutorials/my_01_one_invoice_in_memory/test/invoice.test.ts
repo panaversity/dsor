@@ -44,6 +44,22 @@ describe("getInvoice", () => {
   });
 
   // Test the "no" as carefully as the "yes".
+  // The `===` in getInvoice, pinned. Without this, changing it to `startsWith` passes every
+  // other test in the step: "INV-1008".startsWith("INV-9999") is false, so the one wrong id
+  // already tested is the one wrong id a prefix match still refuses.
+  //
+  // This is not a hypothetical. The same shape — a prefix standing in for a whole match — later
+  // became a real bug twice: in step 05 it let `cfo_100_evil` log in as `cfo_100`, and in step 06
+  // it granted `invoice:i`. Step 01's lookup is where the shape starts.
+  it("an id that is only the beginning of a real id finds nothing", () => {
+    for (const id of ["INV-100", "INV-1", "INV", "I", ""]) {
+      expect(getInvoice(id), JSON.stringify(id)).toBeUndefined();
+    }
+
+    // And the whole id still works, so this is not a test that refuses everything.
+    expect(getInvoice("INV-1008")?.id).toBe("INV-1008");
+  });
+
   it("returns undefined for an invoice that does not exist", () => {
     expect(getInvoice("INV-9999")).toBeUndefined();
   });
@@ -128,5 +144,24 @@ describe("the stored invoices", () => {
 
     expect(getInvoice("INV-1008")?.amount.value).toBe("31400.00");
     expect(getInvoice("INV-1008")?.status).toBe("issued");
+  });
+
+  // Step 01 froze both invoices and only tested one. INV-1009 is the draft every later step
+  // issues, so it is the one whose freeze matters most.
+  it("DSOR-MON-01: every invoice in the list is frozen, not just the first", () => {
+    for (const id of ["INV-1008", "INV-1009"]) {
+      const invoice = getInvoice(id);
+
+      if (invoice === undefined) {
+        throw new Error(`${id} is missing from the list of invoices`);
+      }
+
+      expect(Object.isFrozen(invoice), id).toBe(true);
+      expect(Object.isFrozen(invoice.amount), `${id} amount`).toBe(true);
+      expect(() => {
+        (invoice as { status: string }).status = "paid";
+      }, id).toThrow(TypeError);
+      expect(invoice.status).toBe(id === "INV-1008" ? "issued" : "draft");
+    }
   });
 });

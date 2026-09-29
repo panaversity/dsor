@@ -89,6 +89,68 @@ describe("formatUri", () => {
   // "undefined" reads like a perfectly good id. An invoice would then carry
   // dsor://org_456/invoice/undefined: canonical, permanent, and pointing at
   // nothing. Types do not stop this, because Node deletes them before it runs.
+  // The three parts must come OUT OF the address, not from somewhere convenient. Every address
+  // in this whole step uses the entity `invoice`, so replacing `match[2]` with the constant
+  // `"invoice"` used to pass all 24 tests — and a payment address then parsed as an invoice.
+  // That is lesson 10: the expected value was a literal that also appeared in the input.
+  it("DSOR-RID-01a: each part comes out of the address, not from a default", () => {
+    for (const entity of ["invoice", "payment", "vendor", "journal_entry"]) {
+      expect(parseUri(`dsor://org_456/${entity}/X-1`).entity, entity).toBe(entity);
+    }
+
+    // The tenant pattern is this deployment's own `org_<digits>` convention, so the values that
+    // can vary here are narrower than for the other two parts.
+    for (const tenant of ["org_456", "org_999", "org_1", "org_00"]) {
+      expect(parseUri(`dsor://${tenant}/invoice/INV-1`).tenant, tenant).toBe(tenant);
+    }
+
+    for (const id of ["INV-1008", "PAY-901", "X", "a_b.c-1"]) {
+      expect(parseUri(`dsor://org_456/invoice/${id}`).id, id).toBe(id);
+    }
+  });
+
+  // formatUri reads each part exactly once, through an own-property gate. Both halves were found
+  // by attacking it: an object that only *inherits* its parts used to mint a valid address, and a
+  // part that is a getter was read twice, so it could answer differently the second time.
+  it("DSOR-RID-01a: a part the object only inherits is refused", () => {
+    const honest = { tenant: "org_456", entity: "invoice", id: "INV-1008" };
+
+    expect(formatUri(honest)).toBe("dsor://org_456/invoice/INV-1008");
+
+    // Owns nothing, inherits everything, and reads exactly like the honest object.
+    const inherited = Object.create(honest) as typeof honest;
+
+    expect(inherited.id).toBe("INV-1008");
+    expect(() => formatUri(inherited)).toThrow(/only inherits/);
+
+    for (const key of ["tenant", "entity", "id"] as const) {
+      const mixed: Record<string, unknown> = { ...honest };
+
+      delete mixed[key];
+
+      const partly = Object.create({ [key]: honest[key] }) as typeof honest;
+
+      Object.assign(partly, mixed);
+      expect(() => formatUri(partly), key).toThrow(/only inherits/);
+    }
+  });
+
+  it("DSOR-RID-01a: each part is read once, so a getter cannot answer twice", () => {
+    let reads = 0;
+    const twoFaced = {
+      tenant: "org_456",
+      entity: "invoice",
+      get id(): string {
+        reads += 1;
+
+        return reads === 1 ? "INV-1008" : "INV-9999";
+      },
+    };
+
+    expect(formatUri(twoFaced)).toBe("dsor://org_456/invoice/INV-1008");
+    expect(reads).toBe(1);
+  });
+
   it("DSOR-RID-01a: refuses a part that is not text", () => {
     const missing = undefined as unknown as string;
     const nothing = null as unknown as string;
@@ -105,5 +167,37 @@ describe("formatUri", () => {
       TypeError,
     );
     expect(() => formatUri({ tenant: "org_456", entity: "invoice", id: list })).toThrow(TypeError);
+  });
+
+  // What the round-trip compare can and cannot be tested for, stated plainly.
+  //
+  // The compare was this step's original fix: `${...}` turns anything into text, so a missing id
+  // became the string "undefined" and produced a perfectly valid-looking address. Reading each
+  // part through an own-property, must-be-text gate now catches that **earlier** — and it catches
+  // more, because it also refuses a part the object merely inherits.
+  //
+  // Which leaves the compare unreachable. Every string that would read back differently —
+  // a slash inside a part, a leading or trailing newline — makes parseUri refuse the address
+  // first. No input this function accepts can now make the comparison fail. It stays as the last
+  // line of defence and because it is the lesson, and this comment is here so nobody mistakes an
+  // unkillable guard for a tested one.
+  it("DSOR-RID-01a: a part that is not text is refused before an address is built", () => {
+    const cases = [
+      ["tenant", { tenant: { toString: () => "org_456" }, entity: "invoice", id: "INV-1008" }],
+      ["entity", { tenant: "org_456", entity: ["invoice"], id: "INV-1008" }],
+      ["id", { tenant: "org_456", entity: "invoice", id: { toString: () => "INV-1008" } }],
+      ["a missing id", { tenant: "org_456", entity: "invoice" }],
+    ] as const;
+
+    for (const [which, parts] of cases) {
+      expect(() => formatUri(parts as never), which).toThrow(TypeError);
+    }
+
+    // And the addresses that would not read back are refused by parseUri, one layer down.
+    for (const id of ["INV-1008\n", "\nINV-1008", "INV/1008"]) {
+      expect(() => formatUri({ tenant: "org_456", entity: "invoice", id }), id).toThrow(
+        /not a canonical URI/,
+      );
+    }
   });
 });
