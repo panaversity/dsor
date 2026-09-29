@@ -82,7 +82,11 @@ export function checkRoles(
 // NEW IN STEP 10: the company is the call's active tenant, which line ② checked. Step 06's
 // constant COMPANY is gone (step 10's README, decision 3).
 /** The permissions a caller holds: what its roles in this company grant, and nothing else. */
-export function permissionsOf(caller: Principal, roles: Roles, tenant: string): ReadonlySet<string> {
+export function permissionsOf(
+  caller: Principal,
+  roles: Roles,
+  tenant: string,
+): ReadonlySet<string> {
   const held = new Set<string>();
   for (const { tenant_id, roles: names } of caller.memberships) {
     // Roles count only in the company of the call, so authority one company gave is never

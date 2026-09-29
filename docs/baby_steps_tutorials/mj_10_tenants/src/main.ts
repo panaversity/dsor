@@ -2,8 +2,10 @@
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
 // The program checks every contract, and the role table, then calls operations by name.
 // It prints one success and six refusals, each an envelope, and the correlation of a call
-// by user_123. Then it prints the log, one record for every call, and shows that a log
-// which cannot take a record turns a "yes" into a refusal.
+// by user_123. NEW IN STEP 10: then the firm's agent reads INV-1008 in each of its two
+// companies, and two calls cross from one company into another and are refused. Then it
+// prints the log, one record for every call, and shows that a log which cannot take a
+// record turns a "yes" into a refusal.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
 import { fileURLToPath } from "node:url";
@@ -132,6 +134,24 @@ console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_456/invo
 // refuses it, before DSoR asks whether invoice.issue is built.
 console.log(await ask(USER_123, "invoice.issue", { invoice: "INV-1008" }));
 
+// NEW IN STEP 10: a second company, org_789. An accounting firm's agent works for both.
+// Asked for INV-1008, each company gets its own invoice (step 10's README, outcome 2).
+const FIRM_IN_456: RequestEnvelope = { token: "tok_9b52", tenant: "org_456" };
+const FIRM_IN_789: RequestEnvelope = { token: "tok_9b52", tenant: "org_789" };
+for (const firm of [FIRM_IN_456, FIRM_IN_789]) {
+  const read = await ask(firm, "invoice.get", { id: "INV-1008" });
+  if ("data" in read) {
+    const { tenant_id, id, vendor_id, amount } = read.data as Invoice;
+    console.log(tenant_id, id, vendor_id, amount);
+  }
+}
+// NEW IN STEP 10: the org_456 agent asks to work in org_789, where it is no member. The
+// answer is the same as for a company that does not exist.
+console.log(await ask({ ...AGENT, tenant: "org_789" }, "invoice.get", { id: "INV-1008" }));
+// NEW IN STEP 10: user_123, working in org_456, names org_789's invoice. Refused with
+// TENANT_MISMATCH, before DSoR asks whether invoice.issue is built.
+console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_789/invoice/INV-1008" }));
+
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. The table holds the records of every run, so the program
 // picks out its own by request id. user_123's "ap-desk-7" comes back on every run, so
@@ -140,8 +160,9 @@ const ids = new Set(answers.map((a) => a.correlation.request_id));
 const all = await log.records();
 const records = all.filter((r) => ids.has(r.correlation.request_id)).slice(-answers.length);
 console.log(records[0]);
-for (const { sequence, operation, authorization, result } of records) {
-  console.log(sequence, operation ?? "(no contract)", authorization, result);
+// NEW IN STEP 10: with the company each call worked in, or "-" when none was checked.
+for (const { sequence, operation, authorization, result, tenant } of records) {
+  console.log(sequence, operation ?? "(no contract)", authorization, result, tenant ?? "-");
 }
 
 // A log that cannot take a record. This call would succeed, but with no record there is

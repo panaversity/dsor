@@ -93,17 +93,21 @@ describe("C1: each request works in exactly one company, which the caller belong
   });
 
   it("DSOR-IDN-03a: the firm's agent works in org_456, and reads org_456's INV-1008", async () => {
-    expect(await call(registry, log, FIRM_IN_456, "invoice.get", { id: "INV-1008" })).toStrictEqual({
-      data: INV_1008_OF_456,
-      correlation: correlationFor(THE_FIRM),
-    });
+    expect(await call(registry, log, FIRM_IN_456, "invoice.get", { id: "INV-1008" })).toStrictEqual(
+      {
+        data: INV_1008_OF_456,
+        correlation: correlationFor(THE_FIRM),
+      },
+    );
   });
 
   it("DSOR-IDN-03a: the firm's agent works in org_789, and reads org_789's INV-1008", async () => {
-    expect(await call(registry, log, FIRM_IN_789, "invoice.get", { id: "INV-1008" })).toStrictEqual({
-      data: INV_1008_OF_789,
-      correlation: correlationFor(THE_FIRM),
-    });
+    expect(await call(registry, log, FIRM_IN_789, "invoice.get", { id: "INV-1008" })).toStrictEqual(
+      {
+        data: INV_1008_OF_789,
+        correlation: correlationFor(THE_FIRM),
+      },
+    );
   });
 
   // Line ② comes right after line ①, before DSoR looks for the operation (step 10's README,
@@ -144,9 +148,7 @@ describe("C2: a read looks only inside the active company", () => {
   it("DSOR-IDN-03b: org_456 reading INV-2001 hears the same as for INV-9999, which nobody has", async () => {
     const theirs = await call(registry, log, AGENT, "invoice.get", { id: "INV-2001" });
     const nobodys = await call(registry, log, AGENT, "invoice.get", { id: "INV-9999" });
-    expect(theirs).toStrictEqual(
-      refused("RESOURCE_NOT_FOUND", 'no invoice "INV-2001"', THE_AGENT),
-    );
+    expect(theirs).toStrictEqual(refused("RESOURCE_NOT_FOUND", 'no invoice "INV-2001"', THE_AGENT));
     // Word for word, once the id the caller itself sent is set aside.
     const asSent = JSON.stringify(withoutRequestId(nobodys)).replaceAll("INV-9999", "INV-2001");
     expect(JSON.stringify(withoutRequestId(theirs))).toBe(asSent);
@@ -167,10 +169,13 @@ describe("C3: only the caller's roles in the active company count", () => {
     ["org_456", ["invoice:read"]],
     ["org_789", ["invoice:issue", "invoice:read"]],
     ["org_999", []],
-  ])("DSOR-AUT-01b: in %s, the firm's agent holds only what its roles there grant", (tenant, held) => {
-    const firm = whoIsCalling({ token: "tok_9b52" });
-    expect([...permissionsOf(firm, registry.roles, tenant)].sort()).toStrictEqual(held);
-  });
+  ])(
+    "DSOR-AUT-01b: in %s, the firm's agent holds only what its roles there grant",
+    (tenant, held) => {
+      const firm = whoIsCalling({ token: "tok_9b52" });
+      expect([...permissionsOf(firm, registry.roles, tenant)].sort()).toStrictEqual(held);
+    },
+  );
 
   it("DSOR-IDN-03a: the firm's agent is denied invoice.issue in org_456", async () => {
     const answer = await call(registry, log, FIRM_IN_456, "invoice.issue", GOOD_ISSUE);
@@ -194,18 +199,24 @@ describe("C4: a company in the arguments that is not the active one is refused",
     ["tenant_id", { id: "INV-1008", tenant_id: "org_789" }],
     ["correlation.tenant", { id: "INV-1008", correlation: { tenant: "org_789" } }],
     ["correlation.tenant_id", { id: "INV-1008", correlation: { tenant_id: "org_789" } }],
-  ])("DSOR-SRC-02b: org_789 in %s, from inside org_456, is refused with TENANT_MISMATCH", async (place, input) => {
-    expect(await call(registry, log, AGENT, "invoice.get", input)).toStrictEqual(
-      refused("TENANT_MISMATCH", otherTenant(place), THE_AGENT),
-    );
-  });
+  ])(
+    "DSOR-SRC-02b: org_789 in %s, from inside org_456, is refused with TENANT_MISMATCH",
+    async (place, input) => {
+      expect(await call(registry, log, AGENT, "invoice.get", input)).toStrictEqual(
+        refused("TENANT_MISMATCH", otherTenant(place), THE_AGENT),
+      );
+    },
+  );
 
   // Anything there but the active company's own id: a company that does not exist, a
   // list or an object that holds one, a number.
   it.each([["org_999"], [["org_789"]], [{ id: "org_789" }], [789], [null]])(
     "DSOR-SRC-02b: a tenant field holding %j is refused with TENANT_MISMATCH",
     async (value) => {
-      const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008", tenant: value });
+      const answer = await call(registry, log, AGENT, "invoice.get", {
+        id: "INV-1008",
+        tenant: value,
+      });
       expect(answer).toStrictEqual(refused("TENANT_MISMATCH", otherTenant("tenant"), THE_AGENT));
     },
   );

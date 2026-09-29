@@ -64,6 +64,11 @@ describe("the program", () => {
       expect(output).toMatch("code: 'AUTHORIZATION_DENIED'");
       expect(output).not.toMatch("principal_id: 'cfo_100'");
       expect(output).toMatch("{ request_id: 'ap-desk-7', principal_id: 'user_123' }");
+      // NEW IN STEP 10: each company's own INV-1008, a stranger refused, a foreign URI.
+      expect(output).toMatch("org_456 INV-1008 VENDOR-44 { value: '31400.00', currency: 'USD' }");
+      expect(output).toMatch("org_789 INV-1008 VENDOR-77 { value: '99000.00', currency: 'USD' }");
+      expect(output).toMatch("message: 'the caller may not work in the tenant it named'");
+      expect(output).toMatch("code: 'TENANT_MISMATCH'");
     },
   );
 
@@ -91,26 +96,31 @@ describe("the program", () => {
 
 describe("the program's log", () => {
   it(
-    "DSOR-EXE-02: prints one record for each of its eight calls, in order",
+    "DSOR-EXE-02: prints one record for each of its twelve calls, in order",
     { timeout: 60_000 },
     () => {
       const run = start();
       expect(run.status).toBe(0);
-      const lines = run.stdout.split("\n").filter((l) => /^\d+ \S+ (ALLOW|DENY) \S+$/.test(l));
+      const lines = run.stdout.split("\n").filter((l) => /^\d+ \S+ (ALLOW|DENY) \S+ \S+$/.test(l));
       // The database numbers the records across every run, so the numbers are not 1 to 8
       // any more. They still go up, in the order of the calls.
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
-      expect(new Set(numbers).size).toBe(8);
+      expect(new Set(numbers).size).toBe(12);
+      // NEW IN STEP 10: each record ends with its company, or "-" when none was checked.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
-        "invoice.get@1 ALLOW ok",
-        "invoice.get@1 ALLOW RESOURCE_NOT_FOUND",
-        "invoice.issue@1 DENY AUTHORIZATION_DENIED",
-        "invoice.get@1 DENY AUTHENTICATION_REQUIRED",
-        "invoice.get@1 DENY AUTHORIZATION_DENIED",
-        "invoice.get@1 ALLOW ok",
-        "invoice.issue@1 DENY UNSUPPORTED_CAPABILITY",
-        "invoice.issue@1 DENY VALIDATION_FAILED",
+        "invoice.get@1 ALLOW ok org_456",
+        "invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456",
+        "invoice.issue@1 DENY AUTHORIZATION_DENIED org_456",
+        "invoice.get@1 DENY AUTHENTICATION_REQUIRED -",
+        "invoice.get@1 DENY AUTHORIZATION_DENIED -",
+        "invoice.get@1 ALLOW ok org_456",
+        "invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456",
+        "invoice.issue@1 DENY VALIDATION_FAILED org_456",
+        "invoice.get@1 ALLOW ok org_456",
+        "invoice.get@1 ALLOW ok org_789",
+        "invoice.get@1 DENY AUTHORIZATION_DENIED -",
+        "invoice.issue@1 DENY TENANT_MISMATCH org_456",
       ]);
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },

@@ -156,12 +156,10 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
     "DSOR-SRC-02a: the token %s is named in correlation as its own principal",
     async (token, caller) => {
       const request = { token, tenant: "org_456" };
-      expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual(
-        {
-          data: expect.objectContaining({ id: "INV-1008" }),
-          correlation: correlationFor(caller),
-        },
-      );
+      expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+        data: expect.objectContaining({ id: "INV-1008" }),
+        correlation: correlationFor(caller),
+      });
     },
   );
 
