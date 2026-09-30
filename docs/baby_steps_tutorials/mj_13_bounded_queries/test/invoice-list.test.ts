@@ -112,6 +112,30 @@ describe("C4: a limit must be a whole number of at least 1", () => {
       correlation: correlationFor(THE_AGENT),
     });
   });
+
+  // A cursor looks like an id: the characters the specification's resourceUri allows in
+  // an id, at most 64 of them (step 13's README, decision 5). Found by the review.
+  const ID_ONLY = '/cursor must match pattern "^[A-Za-z0-9_.\\-]+$"';
+  it.each([
+    ["of 65 characters", "A".repeat(65), "/cursor must NOT have more than 64 characters"],
+    ["holding a NUL character", "INV-\u00001008", ID_ONLY],
+    ["that is another company's URI", "dsor://org_789/invoice/INV-2001", ID_ONLY],
+  ])("decision 5: a cursor %s is refused at line ⑥", async (_what, cursor, problem) => {
+    expect(await call(registry, log, AGENT, "invoice.list", { cursor })).toStrictEqual({
+      code: "VALIDATION_FAILED",
+      message: notValid("invoice.list", problem),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+  });
+
+  it("decision 5: a cursor of 64 characters is accepted", async () => {
+    // Every id of org_456 comes after AAAA…, so the page starts at the first.
+    expect(await pageAsked(AGENT, { limit: 1, cursor: "A".repeat(64) })).toStrictEqual({
+      items: ORG_456.slice(0, 1),
+      next_cursor: "INV-1001",
+    });
+  });
 });
 
 describe("C3: the cursor walks the whole list, once", () => {
