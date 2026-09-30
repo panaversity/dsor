@@ -18,7 +18,7 @@ import {
 describe("C2: a contract passes the specification's own schema", () => {
   it("DSOR-OPR-01: the three shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
-    // NEW IN STEP 13: invoice.list.
+    // invoice.list.
     expect([...registry.contracts.keys()].sort()).toEqual([
       "invoice.get",
       "invoice.issue",
@@ -76,7 +76,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     const query = contract("invoice.get");
     for (const field of COMMAND_ONLY) expect(query).not.toHaveProperty(field);
     // Only the input schema this one contract names, or start-up refuses
-    // the others as unused. NEW IN STEP 13: invoice.list's is one of them.
+    // the others as unused. invoice.list's is one of them.
     const inputs = shippedInputs.filter((s) => s.file === "InvoiceGetRequest.schema.json");
     expect(
       buildRegistry([source(query)], {}, shippedRoles, inputs).contracts.has("invoice.get"),
@@ -139,7 +139,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
       execution: { semantics: "compensatable", compensated_by: ["invoice.cancel"] },
     };
     // Only the input schema these contracts name, or start-up refuses the
-    // others as unused. NEW IN STEP 13: invoice.list's is one of them.
+    // others as unused. invoice.list's is one of them.
     const inputs = shippedInputs.filter((s) => s.file === "InvoiceIssueRequest.schema.json");
     for (const good of [neverUndone, undoable]) {
       expect(

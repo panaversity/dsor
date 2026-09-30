@@ -359,7 +359,7 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
   ],
 ];
 
-// NEW IN STEP 13: so a test can type out a whole page on one line (step 13's README, C1).
+// So a test can type out a whole page on one line (step 13's README, C1).
 /** The answer's page with each item cut down to "company/id", or the refusal as it is. */
 export function idsOf(answer: Answer): unknown {
   if (!("data" in answer)) return answer;
@@ -367,7 +367,7 @@ export function idsOf(answer: Answer): unknown {
   return { items: items.map(({ tenant_id, id }) => `${tenant_id}/${id}`), ...rest };
 }
 
-// NEW IN STEP 13: a caller that follows the cursor to the end (step 13's README, C3).
+// A caller that follows the cursor to the end (step 13's README, C3).
 /** Every page `ask` gives, from the first, following next_cursor until a page has none. */
 export async function walk(
   ask: (input: object) => Promise<unknown>,

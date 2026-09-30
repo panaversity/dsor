@@ -1,4 +1,4 @@
-// NEW IN STEP 13: invoice.list, the first query that returns many rows. DSoR decides how
+// invoice.list, the first query that returns many rows. DSoR decides how
 // many rows one answer holds, whatever the caller asks for (DSOR-QRY-01; step 13's README,
 // C1). The invoices are in memory. test/invoice-list.db.test.ts asks the same of the
 // database.

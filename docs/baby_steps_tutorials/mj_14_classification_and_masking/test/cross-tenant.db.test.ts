@@ -33,7 +33,7 @@ async function recordsIn(company: string, ids: string[]): Promise<Record<string,
 describe("the suite, on the database", () => {
   it("DSOR-TEN-02b: every operation, reading from the database, is attacked from both companies and refused", () => {
     expect(report.findings).toStrictEqual([]);
-    // NEW IN STEP 13: invoice.list, checked by its rows, adds no attack to the 27.
+    // invoice.list, checked by its rows, adds no attack to the 27.
     expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list"]);
     expect(report.attacks).toHaveLength(27);
   });

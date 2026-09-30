@@ -1,4 +1,4 @@
-// NEW IN STEP 13: DSoR, not the caller, decides how many rows and how many bytes one
+// DSoR, not the caller, decides how many rows and how many bytes one
 // answer holds (DSOR-QRY-01 in specs/dsor/01-model.md, section 7.1).
 import { Refusal } from "./envelope.ts";
 

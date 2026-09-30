@@ -35,7 +35,7 @@ describe("reading the contracts folder", () => {
     ]);
   });
 
-  // NEW IN STEP 13: invoice.list is the third.
+  // invoice.list is the third.
   it("the shipped folder holds the three contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "invoice.get.json",
@@ -113,7 +113,7 @@ describe("the program", () => {
     () => {
       const dir = mkdtempSync(join(tmpdir(), "dsor-contracts-"));
       try {
-        // NEW IN STEP 13: InvoiceSearchRequest, because InvoiceListRequest has a file now.
+        // InvoiceSearchRequest, because InvoiceListRequest has a file now.
         const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceSearchRequest" } };
         writeFileSync(join(dir, "invoice.get.json"), JSON.stringify(renamed));
         const run = spawnSync(process.execPath, [MAIN, dir], { encoding: "utf8" });

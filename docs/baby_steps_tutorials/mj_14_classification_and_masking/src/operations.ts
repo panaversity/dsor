@@ -29,7 +29,7 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
       if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
       return invoice;
     },
-    // NEW IN STEP 13: a page of the company's invoices, in order of id. The caller's limit
+    // A page of the company's invoices, in order of id. The caller's limit
     // is a wish, and DSoR's maximum wins (DSOR-QRY-01; step 13's README, decisions 1 and 2).
     "invoice.list": async (input, tenant) => {
       // Line ⑥ has checked the input against InvoiceListRequest.

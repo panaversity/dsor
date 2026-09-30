@@ -1,4 +1,4 @@
--- NEW IN STEP 13: more invoices, so that a list has more than one page. `pnpm migrate`
+-- More invoices, so that a list has more than one page. `pnpm migrate`
 -- runs this file once, as the owner, after 005 (step 13's README, decision 7).
 -- The owner holds BYPASSRLS, so the policy of 004 does not stop these rows.
 

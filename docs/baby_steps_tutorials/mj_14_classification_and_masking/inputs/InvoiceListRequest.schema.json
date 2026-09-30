@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "InvoiceListRequest",
-  "description": "The input of invoice.list: how many rows the caller would like, and where the page starts. This tutorial's own schema (step 13's README, decision 1). The limit is a wish: DSoR cuts it down to its own maximum (decision 2). NEW IN STEP 13, C4: a whole number of at least 1, and no maximum here, so a large limit is cut down, not refused (decision 5). NEW IN STEP 13, C3: the cursor is the last id of the page before, a place in the caller's own company only (decision 4). It looks like an id: the characters the specification's resourceUri pattern allows in an id, at most 64, so it cannot carry a URI, a NUL, or megabytes (decision 5, found by the review).",
+  "description": "The input of invoice.list: how many rows the caller would like, and where the page starts. This tutorial's own schema (step 13's README, decision 1). The limit is a wish: DSoR cuts it down to its own maximum (decision 2). A whole number of at least 1, and no maximum here, so a large limit is cut down, not refused (decision 5). The cursor is the last id of the page before, a place in the caller's own company only (decision 4). It looks like an id: the characters the specification's resourceUri pattern allows in an id, at most 64, so it cannot carry a URI, a NUL, or megabytes (decision 5, found by the review).",
   "type": "object",
   "properties": {
     "limit": { "type": "integer", "minimum": 1 },

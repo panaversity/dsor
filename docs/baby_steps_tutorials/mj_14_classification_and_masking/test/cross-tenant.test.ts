@@ -108,7 +108,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
   it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 27 swaps, no findings", async () => {
     const report = await crossTenantSuite(registry, createLog(), examples);
     expect(report.findings).toStrictEqual([]);
-    // Typed out, and the registry's own list: nothing skipped. NEW IN STEP 13: invoice.list
+    // Typed out, and the registry's own list: nothing skipped. invoice.list
     // has no URI to swap. Its rows are checked instead, and it adds no swap below.
     expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list"]);
     expect(report.attacked).toStrictEqual([...registry.contracts.keys()]);
@@ -123,7 +123,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
   // the invoice of the company the call works in. Found by the review: with the suite's
   // call to its judge deleted, every test stayed green.
   it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 27 attacks", async () => {
-    // NEW IN STEP 13: a list has no URI to check, so its calls go to DSoR itself.
+    // A list has no URI to check, so its calls go to DSoR itself.
     const noUriCheck: Send = async (reg, log, request, name, input) =>
       name === "invoice.list"
         ? call(reg, log, request, name, input)
@@ -374,7 +374,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     async (_gap, target, findings) => {
       const report = await suiteOver(target);
       expect(report.findings).toStrictEqual(findings);
-      // NEW IN STEP 13: invoice.list.
+      // invoice.list.
       expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list"]);
     },
   );
@@ -389,7 +389,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       "examples/invoice.get_all.json: no operation has this name",
       "invoice.get: no example request in examples/invoice.get.json",
     ]);
-    // NEW IN STEP 13: invoice.list.
+    // invoice.list.
     expect(report.attacked).toStrictEqual(["invoice.issue", "invoice.list"]);
   });
 

@@ -207,7 +207,7 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
       const row = rows[0];
       return row === undefined ? undefined : invoiceOf(row);
     },
-    // NEW IN STEP 13: the first `count` invoices of the company after the cursor, in order
+    // The first `count` invoices of the company after the cursor, in order
     // of id (step 13's README, decision 4). With no cursor, $2 is NULL, and the list starts
     // at the first. The company is in the WHERE, DSoR's own lock, and the
     // transaction sets it for the database's lock, as for get. The order is the database's
@@ -227,7 +227,7 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   };
 }
 
-// One row as an invoice. NEW IN STEP 13: shared by get and list.
+// One row as an invoice. Shared by get and list.
 function invoiceOf(row: InvoiceRow): Invoice {
   // money() checks the text again, so a number from a wrong query is refused here.
   return {

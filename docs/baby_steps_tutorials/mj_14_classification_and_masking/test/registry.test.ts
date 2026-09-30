@@ -170,7 +170,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
   it("DSOR-OPR-02b: each loaded contract equals its file", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // An empty list would make the loop below prove nothing.
-    // NEW IN STEP 13: invoice.list is the third.
+    // invoice.list is the third.
     expect(shipped).toHaveLength(3);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };

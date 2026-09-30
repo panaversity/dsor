@@ -45,7 +45,7 @@ export const invoices: Invoice[] = [
     open_amount: money("12500.00", "USD"),
     status: "issued",
   },
-  // NEW IN STEP 13: more invoices, so that a list has more than one page. The same ones
+  // More invoices, so that a list has more than one page. The same ones
   // migration 006 adds (step 13's README, decision 7).
   invoice("org_456", "INV-1001", "VENDOR-12", "1250.00", "0.00", "paid"),
   invoice("org_456", "INV-1002", "VENDOR-44", "8900.50", "8900.50", "issued"),
@@ -98,7 +98,7 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
 export type InvoiceStore = {
   /** Finds one invoice of one company: a copy of it, or `undefined` when there is none. */
   get: (tenant: string, id: string) => Promise<Invoice | undefined>;
-  // NEW IN STEP 13: a list reads rows in order of id, after the cursor, never more than
+  // A list reads rows in order of id, after the cursor, never more than
   // it is asked for (step 13's README, decision 4).
   /** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id. */
   list: (tenant: string, after: string | undefined, count: number) => Promise<Invoice[]>;
@@ -112,7 +112,7 @@ export function memoryInvoices(): InvoiceStore {
   };
 }
 
-// NEW IN STEP 13: the memory version of the list's SQL (step 13's README, decision 4).
+// The memory version of the list's SQL (step 13's README, decision 4).
 /** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id. */
 export function listInvoices(
   list: Invoice[],

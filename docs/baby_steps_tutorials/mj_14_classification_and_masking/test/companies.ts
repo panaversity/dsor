@@ -106,7 +106,7 @@ export function foreignIn(data: unknown, home: string): string | undefined {
   return undefined;
 }
 
-// NEW IN STEP 13: a list names no single thing, so it has no URI to swap. Its rows are
+// A list names no single thing, so it has no URI to swap. Its rows are
 // checked instead (step 13's README, decision 6).
 /** Whether this is a page of a list: an object whose items are a list. */
 export function isPage(data: unknown): boolean {

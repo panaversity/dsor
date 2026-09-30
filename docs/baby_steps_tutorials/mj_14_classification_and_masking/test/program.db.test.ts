@@ -41,7 +41,7 @@ describe("the program", () => {
       expect(run.stderr).toBe("");
       expect(run.status).toBe(0);
       const output = run.stdout;
-      // NEW IN STEP 13: invoice.list.
+      // invoice.list.
       expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue', 'invoice.list' ]");
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.
@@ -70,7 +70,7 @@ describe("the program", () => {
       expect(output).toMatch("org_789 INV-1008 VENDOR-77 { value: '99000.00', currency: 'USD' }");
       expect(output).toMatch("message: 'the caller may not work in the tenant it named'");
       expect(output).toMatch("code: 'TENANT_MISMATCH'");
-      // NEW IN STEP 13: a million asked, ten given, and the answer says so.
+      // A million asked, ten given, and the answer says so.
       expect(output).toMatch(
         "INV-1001 INV-1002 INV-1003 INV-1004 INV-1005 INV-1006 INV-1007 INV-1008 INV-1009 INV-1010 { next_cursor: 'INV-1010', capped: { asked: 1000000, max: 10 } }",
       );
@@ -127,7 +127,6 @@ describe("the program's log", () => {
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW ok org_789",
         "invoice.issue@1 DENY TENANT_MISMATCH org_456",
-        // NEW IN STEP 13.
         "invoice.list@1 ALLOW ok org_456",
       ]);
       // A fact and one inference, and the line says which: every call answered, and an

@@ -1,4 +1,4 @@
-// NEW IN STEP 13: invoice.list reads its pages from app.invoices, as dsor_runtime
+// invoice.list reads its pages from app.invoices, as dsor_runtime
 // (step 13's README, C1). The same claims as test/invoice-list.test.ts, asked of the
 // database.
 import { afterAll, describe, expect, it } from "vitest";

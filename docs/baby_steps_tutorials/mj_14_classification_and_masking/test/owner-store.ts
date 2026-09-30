@@ -5,7 +5,7 @@
 // README, "What the specification asks", point 1). The key stays in this child, and what
 // it prints is redacted first (step 09's README, decision 18).
 // Run by the tests as:  node test/owner-store.ts
-// NEW IN STEP 13: or as  node test/owner-store.ts list,  which lists org_456's invoices
+// Or as  node test/owner-store.ts list,  which lists org_456's invoices
 // through the store instead (step 13's README, C7).
 import {
   createDbInvoices,

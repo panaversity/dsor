@@ -111,7 +111,7 @@ export async function crossTenantSuite(
     // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
     // one when every test is green (step 12's README, outcome 5). Every gap is named.
     let example = exampleOf(registry, operation, examples, report.findings);
-    // NEW IN STEP 13: an example with no URI of org_456 has nothing to swap. It is kept
+    // An example with no URI of org_456 has nothing to swap. It is kept
     // only when the operation answers with a page, whose rows are checked instead. If not,
     // it is step 12's finding, word for word (step 13's README, decision 6).
     if (example !== undefined && swaps(example, WRITTEN_IN).length === 0) {
@@ -179,7 +179,7 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
     const said = "its same-company call answered with another company's data";
     if (what !== undefined) report.findings.push(`${who}: ${said}: ${what}`);
   }
-  // NEW IN STEP 13: a list has no URI to swap. Every item of its page must carry this
+  // A list has no URI to swap. Every item of its page must carry this
   // company instead (step 13's README, decision 6). A refusal is a finding above already.
   if (swaps(own, home).length === 0) {
     if ("data" in answer) {
@@ -260,7 +260,7 @@ function exampleOf(
   return example;
 }
 
-// NEW IN STEP 13: asked once, as the first caller of org_456 who may call it, with the
+// Asked once, as the first caller of org_456 who may call it, with the
 // example as it is (step 13's README, decision 6). With no such caller, or for a command,
 // the answer is no.
 /** Whether the operation answers its example with a page. */
@@ -280,7 +280,7 @@ async function answersWithPage(
   return "data" in answer && isPage(answer.data);
 }
 
-// NEW IN STEP 13: the example with only the fields its input schema requires, {} for
+// The example with only the fields its input schema requires, {} for
 // invoice.list (step 13's README, decision 6).
 function requiredOf(registry: Registry, operation: string, example: unknown): unknown {
   const schema = registry.inputs.get(operation)?.schema as { required?: unknown } | undefined;

@@ -1,4 +1,4 @@
-// NEW IN STEP 13: the cross-tenant suite learns lists (step 13's README, C5 and decision
+// The cross-tenant suite learns lists (step 13's README, C5 and decision
 // 6). A list names no single thing, so there is no URI to swap. The suite checks its rows
 // instead: every item must carry the caller's company. Each test plants one list,
 // invoice.browse, beside the shipped operations. Step 12's invoice.peek test, an operation
@@ -66,7 +66,7 @@ function finding(who: string, home: string, why: string): string {
   return `invoice.browse as ${who} in ${home}: ${why}`;
 }
 
-// NEW IN STEP 13, after the review: a list is also asked with only the fields its input
+// A list is also asked with only the fields its input
 // schema requires, {} here (step 13's README, decision 6).
 /** The same finding, for the list asked with its example, then asked bare. */
 function twice(who: string, home: string, why: string): string[] {

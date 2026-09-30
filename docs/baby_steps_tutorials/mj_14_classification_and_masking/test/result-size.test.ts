@@ -1,4 +1,4 @@
-// NEW IN STEP 13: no query's result is larger than 64 KiB (DSOR-QRY-01; step 13's README,
+// No query's result is larger than 64 KiB (DSOR-QRY-01; step 13's README,
 // C2 and decision 3). The result is the answer's data, as JSON text, counted in bytes.
 // Each test plants a fake query, test.run, whose code the test writes.
 import { describe, expect, it } from "vitest";
