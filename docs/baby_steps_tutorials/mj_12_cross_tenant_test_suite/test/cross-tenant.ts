@@ -163,8 +163,21 @@ export function compare(answers: Answer[]): string | undefined {
   return same ? undefined : "the three answers differ";
 }
 
-/** Another company's thing in the data, or undefined. A stub until C8's commit. */
-export function foreignIn(_data: unknown, _home: string): string | undefined {
+// The company a URI names, as the checklist reads it: "dsor://" may be in capitals
+// (step 10's README, decision 4).
+const URI_COMPANY = /^dsor:\/\/([^/]*)/i;
+
+/**
+ * Another company's thing in the data, or undefined when it holds only this company's. Two
+ * signs name a company: a tenant_id field, and a URI (step 12's README, decision 8).
+ */
+export function foreignIn(data: unknown, home: string): string | undefined {
+  for (const [path, text] of texts(data)) {
+    const field = path[path.length - 1];
+    if (field === "tenant_id" && text !== home) return `tenant_id ${JSON.stringify(text)}`;
+    const company = URI_COMPANY.exec(text)?.[1];
+    if (company !== undefined && company !== home) return JSON.stringify(text);
+  }
   return undefined;
 }
 
@@ -224,6 +237,13 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
   const answer = await call(registry, log, request, operation, own);
   if (!("data" in answer) && answer.code === "TENANT_MISMATCH") {
     report.findings.push(`${who}: its same-company call is answered TENANT_MISMATCH`);
+  }
+  // This is the only request that reaches the operation's own code, so the code's own
+  // leaks show here: its answer may hold nothing of another company (C8).
+  if ("data" in answer) {
+    const what = foreignIn(answer.data, home);
+    const said = "its same-company call answered with another company's data";
+    if (what !== undefined) report.findings.push(`${who}: ${said}: ${what}`);
   }
   const ways = waysFrom(home);
   for (const swap of swaps(own, home)) {
