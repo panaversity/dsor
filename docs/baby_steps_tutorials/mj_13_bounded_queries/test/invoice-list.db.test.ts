@@ -96,6 +96,13 @@ describe("C3: the cursor walks the whole list in the database, once", () => {
     ]);
   });
 
+  // Found by the review: the cursor was tested as a place, never a lookup, in memory only.
+  it("DSOR-IDN-03b: as org_789, the cursor INV-1010, which only org_456 has, gives the same page as the made-up INV-1099", async () => {
+    const theirs = await pageAsked(FIRM_IN_789, { cursor: "INV-1010" });
+    expect(await pageAsked(FIRM_IN_789, { cursor: "INV-1099" })).toStrictEqual(theirs);
+    expect(theirs).toStrictEqual({ items: ORG_789.slice(1) });
+  });
+
   it("DSOR-QRY-01: following next_cursor from { limit: 2 } gives org_789's 5 invoices as 2, 2, and 1", async () => {
     expect(await walk((input) => pageAsked(FIRM_IN_789, input), 2)).toStrictEqual([
       { items: ORG_789.slice(0, 2), next_cursor: "INV-2001" },

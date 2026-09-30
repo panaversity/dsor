@@ -148,12 +148,13 @@ describe("C3: the cursor walks the whole list, once", () => {
   });
 
   // The cursor is a place in the alphabet of the caller's own company. It tells nothing
-  // about another company's invoice of that name (step 13's README, decision 4).
-  it("DSOR-IDN-03b: org_789's INV-2001 as a cursor gives org_456 the same answer as the made-up INV-2000", async () => {
-    const theirs = await call(registry, log, AGENT, "invoice.list", { cursor: "INV-2001" });
-    const nobodys = await call(registry, log, AGENT, "invoice.list", { cursor: "INV-2000" });
+  // about another company's invoice of that name (step 13's README, decision 4). Found by
+  // the review: two cursors past org_456's last id gave two empty pages, whatever the code
+  // did with them. Here both land between org_789's INV-1008 and INV-2001.
+  it("DSOR-IDN-03b: as org_789, the cursor INV-1010, which only org_456 has, gives the same page as the made-up INV-1099", async () => {
+    const theirs = await call(registry, log, FIRM_IN_789, "invoice.list", { cursor: "INV-1010" });
+    const nobodys = await call(registry, log, FIRM_IN_789, "invoice.list", { cursor: "INV-1099" });
     expect(withoutRequestId(theirs)).toStrictEqual(withoutRequestId(nobodys));
-    // Every id of org_456 comes before INV-2000, so both are the empty page after the end.
-    expect(theirs).toMatchObject({ data: { items: [] } });
+    expect(idsOf(theirs)).toStrictEqual({ items: ORG_789.slice(1) });
   });
 });
