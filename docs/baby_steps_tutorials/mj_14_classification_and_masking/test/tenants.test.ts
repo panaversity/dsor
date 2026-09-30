@@ -117,6 +117,8 @@ describe("C1: each request works in exactly one company, which the caller belong
       }),
     ).toStrictEqual({
       data: MASKED_1008_OF_456,
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
     });
@@ -129,6 +131,8 @@ describe("C1: each request works in exactly one company, which the caller belong
       }),
     ).toStrictEqual({
       data: MASKED_1008_OF_789,
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
     });
@@ -158,7 +162,12 @@ describe("C2: a read looks only inside the active company", () => {
     const answer = await call(registry, log, CFO, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
-    expect(answer).toStrictEqual({ data: INV_1008_OF_456, correlation: correlationFor(THE_CFO) });
+    expect(answer).toStrictEqual({
+      data: INV_1008_OF_456,
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "confidential",
+      correlation: correlationFor(THE_CFO),
+    });
   });
 
   it("DSOR-IDN-03b: org_789 reads INV-1008 and gets 99,000.00 USD from VENDOR-77", async () => {
@@ -167,6 +176,8 @@ describe("C2: a read looks only inside the active company", () => {
     });
     expect(answer).toStrictEqual({
       data: INV_1008_OF_789,
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "confidential",
       correlation: correlationFor(THE_789_SUPERVISOR),
     });
   });

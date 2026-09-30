@@ -68,6 +68,8 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     const answer = await runAs(SUPERVISOR, async () => "x".repeat(LIMIT - 2));
     expect(answer).toStrictEqual({
       data: "x".repeat(LIMIT - 2),
+      // NEW IN STEP 14: text has no label, so it is confidential (DSOR-CLS-01).
+      classification: "confidential",
       correlation: correlationFor(THE_SUPERVISOR),
     });
   });
@@ -142,6 +144,9 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   it("DSOR-QRY-01: a query whose code returns nothing is answered, as before this step", async () => {
     expect(await runAs(SUPERVISOR, async () => undefined)).toStrictEqual({
       data: undefined,
+      // NEW IN STEP 14: nothing is not a record, so it is confidential too (step 14's
+      // README, decision 3).
+      classification: "confidential",
       correlation: correlationFor(THE_SUPERVISOR),
     });
   });

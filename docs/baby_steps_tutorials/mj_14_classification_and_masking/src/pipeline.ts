@@ -164,9 +164,11 @@ export async function call(
     //   27, and 30.
 
     // A query's answer is { data, correlation } (step 04's README, decision 3).
-    // NEW IN STEP 14: and the fields left out, when there are any (DSOR-CLS-02b).
-    const { redactions } = shown;
-    answer = { data: shown.data, ...(redactions.length > 0 ? { redactions } : {}), correlation };
+    // NEW IN STEP 14: with its label (DSOR-CLS-03), and the fields left out, when there are
+    // any (DSOR-CLS-02b).
+    const { classification, redactions } = shown;
+    const listed = redactions.length > 0 ? { redactions } : {};
+    answer = { data: shown.data, classification, ...listed, correlation };
   } catch (thrown) {
     // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
     // review, and fixed in toEnvelope from step 04 on.

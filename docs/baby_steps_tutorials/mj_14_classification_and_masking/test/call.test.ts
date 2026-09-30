@@ -106,6 +106,8 @@ describe("C6: a query's success is { data, correlation }", () => {
         open_amount: { value: "31400.00", currency: "USD" },
         status: "issued",
       },
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "confidential",
       correlation: correlationFor(THE_CFO),
     });
   });

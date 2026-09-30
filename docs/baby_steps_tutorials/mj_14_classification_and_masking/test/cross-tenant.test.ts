@@ -133,6 +133,8 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
         ? call(reg, log, request, name, input)
         : {
             data: { tenant_id: request.tenant, id: "INV-1008" },
+            // NEW IN STEP 14: every answer carries its label.
+            classification: "internal" as const,
             correlation: { request_id: `req_${randomUUID()}` },
           };
     const report = await crossTenantSuite(registry, createLog(), examples, noUriCheck);
@@ -406,7 +408,15 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     ["AUTHORIZATION_DENIED", refusal("AUTHORIZATION_DENIED")],
     ["VALIDATION_FAILED", refusal("VALIDATION_FAILED")],
     ["RESOURCE_NOT_FOUND", refusal("RESOURCE_NOT_FOUND")],
-    ["with data", { data: INV_1008_OF_456, correlation: { request_id: "req_1" } }],
+    // NEW IN STEP 14: every answer carries its label.
+    [
+      "with data",
+      {
+        data: INV_1008_OF_456,
+        classification: "confidential" as const,
+        correlation: { request_id: "req_1" },
+      },
+    ],
   ])("DSOR-TEN-02b: the judge names an answer %s as a finding", (what, answer) => {
     expect(judge(answer)).toBe(`answered ${what}, not TENANT_MISMATCH`);
   });

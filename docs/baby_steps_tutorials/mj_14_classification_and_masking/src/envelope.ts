@@ -2,7 +2,7 @@
 // DSOR-ERR-01a in specs/dsor/03-execution.md, section 28.
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import type { Redaction } from "./classification.ts";
+import type { Label, Redaction } from "./classification.ts";
 
 /** What an error tells the caller about trying again. */
 export type RetryClass =
@@ -60,10 +60,15 @@ export type ErrorEnvelope = {
   correlation: Correlation;
 };
 
-// NEW IN STEP 14: what was withheld, only when something was, with the result envelope's
-// name and shape (step 14's README, decision 4).
+// NEW IN STEP 14: its label, always, and what was withheld, only when something was, with
+// the result envelope's names and shapes (step 14's README, decision 4).
 /** A query's answer. This shape is step 04's decision 3, not the specification's. */
-export type Success = { data: unknown; redactions?: Redaction[]; correlation: Correlation };
+export type Success = {
+  data: unknown;
+  classification: Label;
+  redactions?: Redaction[];
+  correlation: Correlation;
+};
 
 /** Everything call can return. */
 export type Answer = Success | ErrorEnvelope;

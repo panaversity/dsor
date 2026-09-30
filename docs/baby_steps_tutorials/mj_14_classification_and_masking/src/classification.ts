@@ -95,8 +95,8 @@ export function clearanceOf(principal: Principal): Label | undefined {
 /** One field that was withheld, why, and how. */
 export type Redaction = { field: string; reason: "clearance"; treatment: "omitted" };
 
-/** What leaves DSoR for one caller, and what was withheld from it. */
-export type Shown = { data: unknown; redactions: Redaction[] };
+/** What leaves DSoR for one caller, its label, and what was withheld from it. */
+export type Shown = { data: unknown; classification: Label; redactions: Redaction[] };
 
 // DSOR-CLS-02a. The answer is walked by the kind its contract names, field by field. A
 // field above the clearance is left out, never replaced (step 14's README, decision 3).
@@ -110,6 +110,14 @@ export function show(
 ): Shown {
   // DSOR-CLS-02b. Each field left out, as a path, named once however many items lost it.
   const withheld = new Set<string>();
+  // DSOR-CLS-03. The highest label among the fields the answer still holds, after
+  // masking. An answer that holds no field, such as an empty page, is public (step 14's
+  // README, what the specification asks, 4).
+  let highest: Label = "public";
+  function holds(label: string): void {
+    const at = Math.min(rank(label), LABELS.length - 1);
+    if (at > rank(highest)) highest = LABELS[at]!;
+  }
   // A record of `kind`: each field kept, left out, or walked as a list. `path` is where
   // the record sits: "" for the answer, "items[]." for a page's items.
   function record(value: unknown, kind: string, path: string): unknown {
@@ -126,6 +134,7 @@ export function show(
           : whole(inside);
       } else if (clearance === undefined || rank(label) <= rank(clearance)) {
         kept[field] = inside;
+        holds(label);
       } else {
         withheld.add(`${path}${field}`);
       }
@@ -137,6 +146,8 @@ export function show(
     // A throw, not a refusal: the operation's code returned what its contract does not
     // promise, a bug. The caller hears INTERNAL_ERROR, with a fixed message.
     if (clearance !== undefined) throw new Error("the answer is not a record of its kind");
+    // Nothing in it has a label, so it is confidential (DSOR-CLS-01).
+    holds("confidential");
     return value;
   }
   const shown = record(data, kind, "");
@@ -144,7 +155,7 @@ export function show(
   const redactions = [...withheld].sort().map(
     (field): Redaction => ({ field, reason: "clearance", treatment: "omitted" }),
   );
-  return { data: shown, redactions };
+  return { data: shown, classification: highest, redactions };
 }
 
 // Where a label sits among the four: public 0, restricted 3. Start-up lets no other label

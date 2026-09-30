@@ -35,12 +35,16 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
     const in456 = { invoice: "dsor://org_456/invoice/INV-1008" };
     expect(await call(registry, log, AGENT, "invoice.get", in456)).toStrictEqual({
       data: MASKED_1008_OF_456,
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_AGENT),
     });
     const in789 = { invoice: "dsor://org_789/invoice/INV-1008" };
     expect(await call(registry, log, FIRM_IN_789, "invoice.get", in789)).toStrictEqual({
       data: MASKED_1008_OF_789,
+      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
     });
