@@ -3,7 +3,7 @@
 // database.
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
-import { createDbLog, openPool } from "../src/postgres.ts";
+import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { RUNTIME_URL, dbRegistry, newPool, ownerList, requestId, rowsFor } from "./db.ts";
 import { AGENT, FIRM_IN_789, idsOf, walk } from "./helpers.ts";
@@ -144,5 +144,17 @@ describe("C6: each page is its own call, with its own record", () => {
       ]);
       expect(await rowsFor(observer, "org_789", id)).toStrictEqual([]);
     }
+  });
+});
+
+// Found by the sweep: `LIMIT $3 + 1000` passed every test, because pageOf cut the extra
+// rows afterwards. The cap must hold where the rows are read.
+describe("C1: the database store reads no more rows than it is asked for", () => {
+  it("DSOR-QRY-01: asked for 3, then for 2 after INV-1003, it gives exactly those", async () => {
+    const store = createDbInvoices(pool);
+    const three = await store.list("org_456", undefined, 3);
+    expect(three.map(({ id }) => id)).toStrictEqual(["INV-1001", "INV-1002", "INV-1003"]);
+    const two = await store.list("org_456", "INV-1003", 2);
+    expect(two.map(({ id }) => id)).toStrictEqual(["INV-1004", "INV-1005"]);
   });
 });

@@ -3,10 +3,20 @@
 // C1). The invoices are in memory. test/invoice-list.db.test.ts asks the same of the
 // database.
 import { describe, expect, it } from "vitest";
+import {
+  invoices,
+  listInvoices,
+  memoryInvoices,
+  type Invoice,
+  type InvoiceStore,
+} from "../src/invoice.ts";
+import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
+import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
+  INV_1008_OF_456,
   FIRM_IN_789,
   THE_AGENT,
   correlationFor,
@@ -14,6 +24,8 @@ import {
   log,
   notValid,
   registry,
+  shipped,
+  shippedRoles,
   walk,
   withoutRequestId,
 } from "./helpers.ts";
@@ -129,6 +141,8 @@ describe("C4: a limit must be a whole number of at least 1", () => {
   it.each([
     ["of 65 characters", "A".repeat(65), "/cursor must NOT have more than 64 characters"],
     ["holding a NUL character", "INV-\u00001008", ID_ONLY],
+    // Found by the sweep: a cursor that could be null passed every test.
+    ["that is null", null, "/cursor must be string"],
     ["that is another company's URI", "dsor://org_789/invoice/INV-2001", ID_ONLY],
   ])("decision 5: a cursor %s is refused at line ⑥", async (_what, cursor, problem) => {
     expect(await call(registry, log, AGENT, "invoice.list", { cursor })).toStrictEqual({
@@ -166,5 +180,53 @@ describe("C3: the cursor walks the whole list, once", () => {
     const nobodys = await call(registry, log, FIRM_IN_789, "invoice.list", { cursor: "INV-1099" });
     expect(withoutRequestId(theirs)).toStrictEqual(withoutRequestId(nobodys));
     expect(idsOf(theirs)).toStrictEqual({ items: ORG_789.slice(1) });
+  });
+});
+
+// Found by the sweep: nothing checked how many rows the store was asked for, or read. A
+// store that read every row, or a handler that asked for the caller's million, gave the
+// same pages, because pageOf cut them afterwards. The cap must hold where the rows are read.
+describe("C1: the store is asked for one row more than the page, and reads no more", () => {
+  it("DSOR-QRY-01: for no limit, a million, and 3, the code asks the store for 11, 11, and 4 rows", async () => {
+    const memory = memoryInvoices();
+    const asked: number[] = [];
+    const counting: InvoiceStore = {
+      get: memory.get,
+      list: async (tenant, after, count) => {
+        asked.push(count);
+        return memory.list(tenant, after, count);
+      },
+    };
+    const counted = buildRegistry(shipped, handlersFor(counting), shippedRoles);
+    for (const input of [{}, { limit: 1000000 }, { limit: 3 }]) {
+      await call(counted, log, AGENT, "invoice.list", input);
+    }
+    expect(asked).toStrictEqual([11, 11, 4]);
+  });
+
+  it("DSOR-QRY-01: the store in memory gives no more rows than it is asked for", async () => {
+    const three = await memoryInvoices().list("org_456", undefined, 3);
+    expect(three.map(({ id }) => id)).toStrictEqual(["INV-1001", "INV-1002", "INV-1003"]);
+    const two = await memoryInvoices().list("org_456", "INV-1003", 2);
+    expect(two.map(({ id }) => id)).toStrictEqual(["INV-1004", "INV-1005"]);
+  });
+
+  // As invoice.get's copy, found by step 04's review. Found for list by the sweep.
+  it("decision 1: a listed invoice is a copy: changing it changes nothing stored", async () => {
+    const [first] = await memoryInvoices().list("org_456", "INV-1007", 1);
+    first!.amount.value = "0.01";
+    const [again] = await memoryInvoices().list("org_456", "INV-1007", 1);
+    expect(again).toStrictEqual(INV_1008_OF_456);
+    expect(invoices[0]).toStrictEqual(INV_1008_OF_456);
+  });
+
+  // The database's C.UTF-8 puts every capital letter before every small one. A sort by
+  // the reader's language would not, and memory and the database would walk in different
+  // orders. Found by the sweep.
+  it("decision 4: ids are ordered by their character codes: INV-B before INV-a", () => {
+    const named = (id: string): Invoice => ({ ...INV_1008_OF_456, status: "issued", id });
+    const list = [named("INV-a"), named("INV-B"), named("INV-1")];
+    const ids = listInvoices(list, "org_456", undefined, 10).map(({ id }) => id);
+    expect(ids).toStrictEqual(["INV-1", "INV-B", "INV-a"]);
   });
 });
