@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InvoiceIssueRequest",
+  "description": "The input of invoice.issue: the invoice's canonical URI. This tutorial's own schema: the specification names it and does not define it (step 07's README, decision 2).",
+  "type": "object",
+  "properties": {
+    "invoice": { "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri" }
+  },
+  "required": ["invoice"],
+  "additionalProperties": false
+}
