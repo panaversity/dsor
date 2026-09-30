@@ -12,7 +12,7 @@ import {
   rowsFor,
   tryThenRollBack,
 } from "./db.ts";
-import { AGENT } from "./helpers.ts";
+import { AGENT, CFO } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
 const observer = newPool();
@@ -33,8 +33,10 @@ const INV_1008 = {
 };
 
 describe("C6: invoices come from the database, and money stays a string", () => {
+  // NEW IN STEP 14: cfo_100 asks, a person. An agent's answer has no money (step 14's
+  // README, decision 5).
   it("DSOR-MON-01: invoice.get returns INV-1008 from app.invoices, its money exactly 31400.00", async () => {
-    const answer = await call(dbRegistry(pool), createDbLog(pool), AGENT, "invoice.get", {
+    const answer = await call(dbRegistry(pool), createDbLog(pool), CFO, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
     // toStrictEqual: "31400" or the number 31400 would both fail here.

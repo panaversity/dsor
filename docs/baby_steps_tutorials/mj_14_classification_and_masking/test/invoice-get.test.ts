@@ -8,13 +8,14 @@ import {
   AGENT,
   FIRM_IN_789,
   INV_1008_OF_456,
-  INV_1008_OF_789,
   THE_AGENT,
   THE_FIRM,
   correlationFor,
   log,
   notValid,
   registry,
+  MASKED_1008_OF_456,
+  MASKED_1008_OF_789,
 } from "./helpers.ts";
 
 describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
@@ -27,15 +28,17 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
     });
   });
 
+  // NEW IN STEP 14: both callers are agents, so neither answer has amounts. The company and
+  // the vendor say whose invoice it is (step 14's README, outcome 1).
   it("DSOR-IDN-03b: invoice.get with a URI gives INV-1008 of the active company", async () => {
     const in456 = { invoice: "dsor://org_456/invoice/INV-1008" };
     expect(await call(registry, log, AGENT, "invoice.get", in456)).toStrictEqual({
-      data: INV_1008_OF_456,
+      data: MASKED_1008_OF_456,
       correlation: correlationFor(THE_AGENT),
     });
     const in789 = { invoice: "dsor://org_789/invoice/INV-1008" };
     expect(await call(registry, log, FIRM_IN_789, "invoice.get", in789)).toStrictEqual({
-      data: INV_1008_OF_789,
+      data: MASKED_1008_OF_789,
       correlation: correlationFor(THE_FIRM),
     });
   });

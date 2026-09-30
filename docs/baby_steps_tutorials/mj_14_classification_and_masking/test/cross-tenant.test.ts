@@ -57,6 +57,9 @@ type Plant = {
   handler?: Handler;
   // The text of its example file. None means the file is missing.
   example?: string;
+  // NEW IN STEP 14: the kind its answer is. An Invoice, as invoice.get's, unless the test
+  // names another (step 14's README, decision 1).
+  output?: string;
 };
 
 /** The shipped registry and examples, with one planted operation added. */
@@ -66,6 +69,7 @@ function plant(p: Plant): { registry: Registry; examples: ContractSource[] } {
     id: p.id,
     authorization: { permission: p.permission ?? "invoice:read" },
     input: { schema: p.input?.name ?? "InvoiceGetRequest" },
+    output: { schema: p.output ?? "Invoice" },
   };
   const inputs =
     p.input === undefined
@@ -514,9 +518,13 @@ describe("C8: an operation's own code answers a same-company call with nothing o
   }
 
   it("DSOR-IDN-03b: invoice.dump, which answers with every company's invoices, is a finding", async () => {
+    // NEW IN STEP 14: a page of them, as its contract says. A bare list is not a record of
+    // any kind, so an agent would be refused it, and the leak would hide behind the refusal
+    // (step 14's README, decision 3). Masking leaves tenant_id, so the leak still shows.
     const dump = plant({
       id: "invoice.dump",
-      handler: async () => invoices,
+      output: "InvoicePage",
+      handler: async () => ({ items: invoices }),
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(dump);

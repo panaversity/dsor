@@ -49,6 +49,7 @@ describe("the program", () => {
       expect(output).toMatch("id: 'INV-1008'");
       // The money read from the database, still a string. Anchored to the start of the line:
       // found by break T7, "amount: {" also matches inside "open_amount: {".
+      // NEW IN STEP 14: printed from cfo_100's INV-1008. The agent's has no amounts.
       expect(output).toMatch(/^\s+amount: \{ value: '31400\.00', currency: 'USD' \}/m);
       expect(output).toMatch(/^\s+open_amount: \{ value: '31400\.00', currency: 'USD' \}/m);
       expect(output).toMatch(/request_id: 'req_/);
@@ -66,8 +67,9 @@ describe("the program", () => {
       expect(output).not.toMatch("principal_id: 'cfo_100'");
       expect(output).toMatch("{ request_id: 'ap-desk-7', principal_id: 'user_123' }");
       // Each company's own INV-1008, a stranger refused, a foreign URI.
-      expect(output).toMatch("org_456 INV-1008 VENDOR-44 { value: '31400.00', currency: 'USD' }");
-      expect(output).toMatch("org_789 INV-1008 VENDOR-77 { value: '99000.00', currency: 'USD' }");
+      // NEW IN STEP 14: the firm's agent gets no amount, so the vendor says whose it is.
+      expect(output).toMatch(/^org_456 INV-1008 VENDOR-44$/m);
+      expect(output).toMatch(/^org_789 INV-1008 VENDOR-77$/m);
       expect(output).toMatch("message: 'the caller may not work in the tenant it named'");
       expect(output).toMatch("code: 'TENANT_MISMATCH'");
       // A million asked, ten given, and the answer says so.
@@ -104,7 +106,7 @@ describe("the program's log", () => {
   // company. The program reads org_456's and org_789's, and says how many it cannot read
   // (step 11's README, decision 6).
   it(
-    "DSOR-EXE-02: prints the 10 records of its 13 calls that it can read, in order, and says it cannot read 3",
+    "DSOR-EXE-02: prints the 11 records of its 14 calls that it can read, in order, and says it cannot read 3",
     { timeout: 60_000 },
     () => {
       const run = start();
@@ -114,10 +116,12 @@ describe("the program's log", () => {
       // any more. They still go up, in the order of the calls.
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
-      expect(new Set(numbers).size).toBe(10);
+      expect(new Set(numbers).size).toBe(11);
       // Each record ends with its company. The three calls refused before line ② have
       // none, and are not here.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
+        "invoice.get@1 ALLOW ok org_456",
+        // NEW IN STEP 14: cfo_100 reads INV-1008 whole.
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456",
         "invoice.issue@1 DENY AUTHORIZATION_DENIED org_456",
@@ -133,7 +137,7 @@ describe("the program's log", () => {
       // answer leaves only after its record is committed. Found by the review: the line
       // used to state the 3 as if it had read them.
       expect(run.stdout).toMatch(
-        "13 calls answered, so 13 records were written. dsor_runtime reads 10 of them, in org_456 and org_789, and cannot read the other 3",
+        "14 calls answered, so 14 records were written. dsor_runtime reads 11 of them, in org_456 and org_789, and cannot read the other 3",
       );
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },

@@ -216,8 +216,10 @@ export function notGranted(name: string, permission: string): string {
 }
 
 /** A real registry: the shipped operations, plus "test.run", whose code the test writes. */
-export function registryWith(handler: Handler): Registry {
-  const testRun = { ...contract("invoice.get"), id: "test.run" };
+// NEW IN STEP 14: test.run returns an Invoice, as invoice.get does, unless the test names
+// another kind for its output (step 14's README, decision 1).
+export function registryWith(handler: Handler, output = "Invoice"): Registry {
+  const testRun = { ...contract("invoice.get"), id: "test.run", output: { schema: output } };
   return buildRegistry(
     [...shipped, source(testRun, "test.run.json")],
     { ...handlers, "test.run": handler },
@@ -243,6 +245,47 @@ export function run(handler: Handler): Promise<Answer> {
   return call(registryWith(handler), log, AGENT, "test.run", {
     invoice: "dsor://org_456/invoice/INV-1008",
   });
+}
+
+// NEW IN STEP 14: an agent's answer is masked and a person's is not, so a test says who
+// asks (step 14's README, decision 5).
+/** Calls "test.run" as this caller. Its code is the handler, and its output this kind. */
+export function runAs(who: RequestEnvelope, handler: Handler, output = "Invoice"): Promise<Answer> {
+  return call(registryWith(handler, output), log, who, "test.run", {
+    invoice: "dsor://org_456/invoice/INV-1008",
+  });
+}
+
+// NEW IN STEP 14: what an agent with clearance internal sees of each company's INV-1008,
+// typed out again rather than made from src (step 14's README, outcome 1).
+export const MASKED_1008_OF_456 = {
+  tenant_id: "org_456",
+  id: "INV-1008",
+  vendor_id: "VENDOR-44",
+  status: "issued",
+};
+export const MASKED_1008_OF_789 = {
+  tenant_id: "org_789",
+  id: "INV-1008",
+  vendor_id: "VENDOR-77",
+  status: "issued",
+};
+
+// NEW IN STEP 14: an invoice's answer with a field that classifications.json does not
+// name. Only internal fields beside it and no amount, so only the planted field can make
+// a person's answer confidential (step 14's README, C1).
+export const PLANTED = {
+  tenant_id: "org_456",
+  id: "INV-1008",
+  status: "issued",
+  vendor_bank_account: "PK36SCBL0000001123456702",
+};
+// The same answer as an agent with clearance internal sees it.
+export const PLANTED_MASKED = { tenant_id: "org_456", id: "INV-1008", status: "issued" };
+
+/** One entry of an answer's redactions: this field, left out for the caller's clearance. */
+export function omitted(field: string): { field: string; reason: string; treatment: string } {
+  return { field, reason: "clearance", treatment: "omitted" };
 }
 
 /** Calls "test.run", whose code refuses with this code. */

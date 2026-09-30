@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { keysWrittenTwice } from "./json.ts";
+import type { Principal } from "./principals.ts";
 
 /** How sensitive a field is. */
 export type Label = "public" | "internal" | "confidential" | "restricted";
@@ -80,6 +81,62 @@ export function checkClassifications(source: ClassificationSource): {
 /** What the file says a field holds: its label, or "Kind[]". With no line for it, confidential. */
 export function labelOf(kinds: Kinds, kind: string, field: string): string {
   return kinds.get(kind)?.get(field) ?? "confidential";
+}
+
+// DSOR-CLS-02a is for agent principals. An agent with no clearance written down has the
+// lowest, never a default that shows more (step 14's README, decision 2).
+/** The highest label this caller may see, or undefined for a caller whose answers are not masked. */
+export function clearanceOf(principal: Principal): Label | undefined {
+  return principal.type === "agent" ? (principal.clearance ?? "public") : undefined;
+}
+
+/** What leaves DSoR for one caller. */
+export type Shown = { data: unknown };
+
+// DSOR-CLS-02a. The answer is walked by the kind its contract names, field by field. A
+// field above the clearance is left out, never replaced (step 14's README, decision 3).
+// The answer is copied, never changed, so nothing withheld stays reachable in it.
+/** The answer, as this clearance may see it. With no clearance, nothing is left out. */
+export function show(
+  data: unknown,
+  kind: string,
+  kinds: Kinds,
+  clearance: Label | undefined,
+): Shown {
+  // A record of `kind`: each field kept, left out, or walked as a list.
+  function record(value: unknown, kind: string): unknown {
+    // What is not a record has no fields to leave out. An agent gets none of it, and a
+    // person gets it whole (step 14's README, decision 3).
+    if (!isObject(value)) return whole(value);
+    const kept: { [field: string]: unknown } = {};
+    for (const [field, inside] of Object.entries(value)) {
+      const label = labelOf(kinds, kind, field);
+      if (label.endsWith("[]")) {
+        const itemKind = label.slice(0, -2);
+        kept[field] = Array.isArray(inside)
+          ? inside.map((item) => record(item, itemKind))
+          : whole(inside);
+      } else if (clearance === undefined || rank(label) <= rank(clearance)) {
+        kept[field] = inside;
+      }
+    }
+    return kept;
+  }
+  // Something DSoR cannot walk field by field.
+  function whole(value: unknown): unknown {
+    // A throw, not a refusal: the operation's code returned what its contract does not
+    // promise, a bug. The caller hears INTERNAL_ERROR, with a fixed message.
+    if (clearance !== undefined) throw new Error("the answer is not a record of its kind");
+    return value;
+  }
+  return { data: record(data, kind) };
+}
+
+// Where a label sits among the four: public 0, restricted 3. Start-up lets no other label
+// in, and one that got in anyway would sit above them all, so it is never shown.
+function rank(label: string): number {
+  const at = (LABELS as readonly string[]).indexOf(label);
+  return at === -1 ? LABELS.length : at;
 }
 
 /** True when the value is one of the four labels, written as the schema writes it. */

@@ -1,6 +1,7 @@
 // Who is calling. DSoR finds the caller from the login token and its own
 // table, never from the arguments. DSOR-IDN-01 in specs/dsor/02-security.md, section 12,
 // and DSOR-SRC-02a and DSOR-SRC-02b in section 11.
+import type { Label } from "./classification.ts";
 import { Refusal } from "./envelope.ts";
 import type { RequestEnvelope } from "./request.ts";
 
@@ -11,8 +12,15 @@ export type PrincipalType = "human" | "agent" | "application" | "system";
 /** A company the principal belongs to, and its roles there. */
 export type Membership = { tenant_id: string; roles: string[] };
 
+// NEW IN STEP 14: an agent's clearance, the highest label it may see. A person has none,
+// because a person's answer is not masked (step 14's README, decisions 2 and 5).
 /** Who is calling. */
-export type Principal = { id: string; type: PrincipalType; memberships: Membership[] };
+export type Principal = {
+  id: string;
+  type: PrincipalType;
+  memberships: Membership[];
+  clearance?: Label;
+};
 
 // The principals of steps 05 to 09 belong to one company, org_456.
 function principal(id: string, type: PrincipalType, roles: string[]): Principal {
@@ -26,7 +34,9 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   // The agent holds a stand-in role of its own, ap_agent. It may read, and
   // nothing more. Step 18 should replace it with a person's permission slip (step 06's
   // README, decision 5).
-  ["tok_7f3a", principal("accounts-payable-fte", "agent", ["ap_agent"])],
+  // NEW IN STEP 14: internal, so amounts are masked. §19.2's example gives it
+  // confidential (step 14's README, decision 2).
+  ["tok_7f3a", { ...principal("accounts-payable-fte", "agent", ["ap_agent"]), clearance: "internal" }],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
   // An accounting firm's agent, working for two client companies, with
@@ -36,6 +46,8 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
     {
       id: "firm-ap-fte",
       type: "agent",
+      // NEW IN STEP 14: the firm's agent sees what our own agent sees.
+      clearance: "internal",
       memberships: [
         { tenant_id: "org_456", roles: ["ap_agent"] },
         { tenant_id: "org_789", roles: ["ap_supervisor"] },

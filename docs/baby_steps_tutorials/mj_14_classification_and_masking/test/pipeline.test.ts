@@ -447,13 +447,16 @@ describe("C5: the code behind an operation is reached only through the checklist
   });
 
   it("DSOR-OPR-04a: a call that passes every line reaches the code, once", async () => {
-    const spy = vi.fn<Handler>(() => "ran");
+    // NEW IN STEP 14: the code returns an invoice, the kind its contract names. An agent is
+    // refused anything else (step 14's README, decision 3).
+    const ran = { tenant_id: "org_456", id: "INV-1008", status: "issued" };
+    const spy = vi.fn<Handler>(() => ran);
     expect(
       await call(registryWithGet(spy), log, AGENT, "invoice.get", {
         invoice: "dsor://org_456/invoice/INV-1008",
       }),
     ).toMatchObject({
-      data: "ran",
+      data: ran,
     });
     expect(spy).toHaveBeenCalledTimes(1);
   });

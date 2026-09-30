@@ -6,6 +6,7 @@ import { checkInput } from "./inputs.ts";
 import { decisionOf, type DecisionLog } from "./log.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
+import { clearanceOf, show } from "./classification.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import {
@@ -149,15 +150,21 @@ export async function call(
       // The code works inside the active company only.
       return handler(checked, tenant);
     });
+    // NEW IN STEP 14: ours, not §21's. For an agent, every field above its clearance is
+    // left out before the answer leaves (DSOR-CLS-02a). The contract names the kind of its
+    // answer. Masking comes first, so the size measured below is the size that leaves (step
+    // 14's README, decision 5).
+    const kind = (contract["output"] as { schema: string }).schema;
+    const shown = show(data, kind, registry.classifications, clearanceOf(caller));
     // Ours, not §21's. No query's result leaves larger than DSoR gives in
     // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
     // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
-    checkResultSize(data);
+    checkResultSize(shown.data);
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
 
     // A query's answer is { data, correlation } (step 04's README, decision 3).
-    answer = { data, correlation };
+    answer = { data: shown.data, correlation };
   } catch (thrown) {
     // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
     // review, and fixed in toEnvelope from step 04 on.

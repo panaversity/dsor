@@ -28,6 +28,7 @@ import {
   shippedRoles,
   walk,
   withoutRequestId,
+  CFO,
 } from "./helpers.ts";
 
 // org_456's twelve invoices, in order of id, typed out from step 13's README, decision 7.
@@ -100,8 +101,10 @@ describe("C1: a page holds at most 10 rows, whatever the caller asks, and says w
     });
   });
 
+  // NEW IN STEP 14: cfo_100 asks, a person. An agent's items have no money (step 14's
+  // README, decision 5).
   it("decision 1: each item is a whole invoice, with its company, its money as text", async () => {
-    const answer = await call(registry, log, AGENT, "invoice.list", { limit: 1 });
+    const answer = await call(registry, log, CFO, "invoice.list", { limit: 1 });
     expect("data" in answer && answer.data).toStrictEqual({
       items: [
         {

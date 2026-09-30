@@ -110,6 +110,11 @@ const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 // (step 12's README, decision 1).
 const answer = await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
 console.log(answer);
+// NEW IN STEP 14: the agent's INV-1008 above has no amount and no open_amount. cfo_100, a
+// person, asks for the same invoice and gets it whole (step 14's README, outcome 5).
+const CFO: RequestEnvelope = { token: "tok_d4e8", tenant: "org_456" };
+const whole = await ask(CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
+if ("data" in whole) console.log(whole.data);
 
 // The invoice's permanent address, and the address read back.
 // The invoice is the answer's data. A refusal has no data.
@@ -160,9 +165,10 @@ const READS = [
 ] as const;
 for (const [firm, invoice] of READS) {
   const read = await ask(firm, "invoice.get", { invoice });
+  // NEW IN STEP 14: the firm's agent gets no amount. The vendor says whose invoice it is.
   if ("data" in read) {
-    const { tenant_id, id, vendor_id, amount } = read.data as Invoice;
-    console.log(tenant_id, id, vendor_id, amount);
+    const { tenant_id, id, vendor_id } = read.data as Invoice;
+    console.log(tenant_id, id, vendor_id);
   }
 }
 // The org_456 agent asks to work in org_789, where it is no member. The

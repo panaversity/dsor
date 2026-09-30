@@ -119,31 +119,39 @@ describe("C3: every principal has a type and at least one tenant membership", ()
 
   // Found by the review: the test above checks the table, not what a call finds in it.
   // The agent holds one role, ap_agent (step 06's README, decision 5).
-  const FOUND: [string, string, string, string[]][] = [
-    ["tok_7f3a", "accounts-payable-fte", "agent", ["ap_agent"]],
-    ["tok_2c91", "user_123", "human", ["ap_supervisor"]],
-    ["tok_d4e8", "cfo_100", "human", ["CFO"]],
+  // NEW IN STEP 14: the agent has a clearance too, and a person none (step 14's README,
+  // decision 2).
+  const FOUND: [string, string, string, string[], object][] = [
+    ["tok_7f3a", "accounts-payable-fte", "agent", ["ap_agent"], { clearance: "internal" }],
+    ["tok_2c91", "user_123", "human", ["ap_supervisor"], {}],
+    ["tok_d4e8", "cfo_100", "human", ["CFO"], {}],
   ];
   it.each(FOUND)(
     "DSOR-IDN-01: the token %s finds %s, with a type and a membership",
-    async (token, id, type, roles) => {
+    async (token, id, type, roles, clearance) => {
       const memberships = [{ tenant_id: "org_456", roles }];
-      expect(whoIsCalling({ token })).toStrictEqual({ id, type, memberships });
+      expect(whoIsCalling({ token })).toStrictEqual({ id, type, memberships, ...clearance });
     },
   );
 
   // No rule id: the story's three principals are step 05's decision 3. The
   // agent's role is step 06's decision 5. The firm's agent and user_700,
-  // step 10's decision 7.
+  // step 10's decision 7. NEW IN STEP 14: each agent's clearance, step 14's decision 2.
   it("the table holds the story's principals, each with its own token", async () => {
     const inOrg456 = (roles: string[]) => [{ tenant_id: "org_456", roles }];
     expect(Object.fromEntries(logins)).toStrictEqual({
-      tok_7f3a: { id: "accounts-payable-fte", type: "agent", memberships: inOrg456(["ap_agent"]) },
+      tok_7f3a: {
+        id: "accounts-payable-fte",
+        type: "agent",
+        memberships: inOrg456(["ap_agent"]),
+        clearance: "internal",
+      },
       tok_2c91: { id: "user_123", type: "human", memberships: inOrg456(["ap_supervisor"]) },
       tok_d4e8: { id: "cfo_100", type: "human", memberships: inOrg456(["CFO"]) },
       tok_9b52: {
         id: "firm-ap-fte",
         type: "agent",
+        clearance: "internal",
         memberships: [
           { tenant_id: "org_456", roles: ["ap_agent"] },
           { tenant_id: "org_789", roles: ["ap_supervisor"] },

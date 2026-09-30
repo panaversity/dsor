@@ -37,6 +37,10 @@ function suiteWithList(
     ...contract(kind === "query" ? "invoice.get" : "invoice.issue"),
     id: "invoice.browse",
     input: { schema: "InvoiceBrowseRequest" },
+    // NEW IN STEP 14: a list answers a page, and its contract says so, as invoice.list's
+    // does. Each field of the page is then masked by its own label (step 14's README,
+    // decision 1).
+    output: { schema: "InvoicePage" },
   };
   const input = {
     type: "object",

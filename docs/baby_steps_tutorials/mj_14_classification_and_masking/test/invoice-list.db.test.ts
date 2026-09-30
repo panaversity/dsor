@@ -6,7 +6,7 @@ import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { RUNTIME_URL, dbRegistry, newPool, ownerList, requestId, rowsFor } from "./db.ts";
-import { AGENT, FIRM_IN_789, idsOf, walk } from "./helpers.ts";
+import { AGENT, CFO, FIRM_IN_789, idsOf, walk } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
 // A connection of its own, to read the records the program's pool wrote.
@@ -70,8 +70,10 @@ describe("C1: a page from the database holds at most 10 rows", () => {
     expect(await pageAsked(FIRM_IN_789, { limit: 5 })).toStrictEqual({ items: ORG_789 });
   });
 
+  // NEW IN STEP 14: cfo_100 asks, a person. An agent's items have no money (step 14's
+  // README, decision 5).
   it("DSOR-MON-01: each item is a whole invoice from app.invoices, its money exactly as stored", async () => {
-    const answer = await call(registry, log, AGENT, "invoice.list", { limit: 1 });
+    const answer = await call(registry, log, CFO, "invoice.list", { limit: 1 });
     expect("data" in answer && answer.data).toStrictEqual({
       items: [
         {

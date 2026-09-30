@@ -16,6 +16,7 @@ import {
 } from "./db.ts";
 import {
   AGENT,
+  CFO,
   INV_1008_OF_456,
   INV_1008_OF_789,
   INV_2001_OF_789,
@@ -33,8 +34,10 @@ const registry = dbRegistry(pool);
 const log = createDbLog(pool);
 
 describe("C2: a read in the database looks only inside the active company", () => {
+  // NEW IN STEP 14: cfo_100 asks, a person, as user_700 does below. An agent's answer has
+  // no amount (step 14's README, decision 5).
   it("DSOR-IDN-03b: org_456 reads INV-1008 from app.invoices: 31,400.00 USD", async () => {
-    const answer = await call(registry, log, AGENT, "invoice.get", {
+    const answer = await call(registry, log, CFO, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect((answer as { data: unknown }).data).toStrictEqual(INV_1008_OF_456);
