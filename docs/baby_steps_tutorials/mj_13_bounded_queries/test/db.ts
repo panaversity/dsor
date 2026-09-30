@@ -102,6 +102,12 @@ export function ownerStore(): unknown {
   return asOwner("owner-store.ts");
 }
 
+// NEW IN STEP 13: the list's own SQL, with no policy behind it (step 13's README, C7).
+/** The ids DSoR's store lists for org_456 to the owner, whom no policy stops, and whether it bypasses them. */
+export function ownerList(): unknown {
+  return asOwner("owner-store.ts", ["list"]);
+}
+
 /** A pool that holds one connection, so every request reuses it (step 11's README, decision 8). */
 export function poolOfOne(): pg.Pool {
   return new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });

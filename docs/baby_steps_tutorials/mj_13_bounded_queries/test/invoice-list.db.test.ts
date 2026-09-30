@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbLog, openPool } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { RUNTIME_URL, dbRegistry } from "./db.ts";
+import { RUNTIME_URL, dbRegistry, ownerList } from "./db.ts";
 import { AGENT, FIRM_IN_789, idsOf } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
@@ -70,5 +70,14 @@ describe("C1: a page from the database holds at most 10 rows", () => {
       ],
       next_cursor: "INV-1001",
     });
+  });
+});
+
+// Row-level security would hide a list that forgot its company. Only the owner, who
+// bypasses it, can see whether DSoR's own WHERE holds by itself (step 11's README, "What
+// the specification asks", point 1).
+describe("C7: the list's own SQL keeps to the company, without the database's lock", () => {
+  it("DSOR-TEN-01b: the owner lists org_456 through DSoR's store, and gets org_456's 12 invoices and nothing else", () => {
+    expect(ownerList()).toStrictEqual({ bypassrls: true, listed: ORG_456 });
   });
 });

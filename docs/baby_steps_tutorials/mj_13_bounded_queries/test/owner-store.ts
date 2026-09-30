@@ -5,6 +5,8 @@
 // README, "What the specification asks", point 1). The key stays in this child, and what
 // it prints is redacted first (step 09's README, decision 18).
 // Run by the tests as:  node test/owner-store.ts
+// NEW IN STEP 13: or as  node test/owner-store.ts list,  which lists org_456's invoices
+// through the store instead (step 13's README, C7).
 import {
   createDbInvoices,
   createDbLog,
@@ -23,14 +25,22 @@ try {
     "SELECT rolbypassrls AS bypassrls FROM pg_roles WHERE rolname = current_user",
   );
   const invoices = createDbInvoices(pool);
-  const records = await createDbLog(pool).records("org_456");
-  const result = {
-    bypassrls: rows[0]?.["bypassrls"] === true,
-    // org_789's only invoice by that name.
-    inv2001: (await invoices.get("org_456", "INV-2001")) ?? null,
-    inv1008: (await invoices.get("org_456", "INV-1008"))?.tenant_id ?? null,
-    recordTenants: [...new Set(records.map((record) => record.tenant ?? null))],
-  };
+  const bypassrls = rows[0]?.["bypassrls"] === true;
+  let result: unknown;
+  if (process.argv[2] === "list") {
+    // More rows than both companies hold together, so a missing WHERE would show them all.
+    const listed = await invoices.list("org_456", 100);
+    result = { bypassrls, listed: listed.map(({ tenant_id, id }) => `${tenant_id}/${id}`) };
+  } else {
+    const records = await createDbLog(pool).records("org_456");
+    result = {
+      bypassrls,
+      // org_789's only invoice by that name.
+      inv2001: (await invoices.get("org_456", "INV-2001")) ?? null,
+      inv1008: (await invoices.get("org_456", "INV-1008"))?.tenant_id ?? null,
+      recordTenants: [...new Set(records.map((record) => record.tenant ?? null))],
+    };
+  }
   process.stdout.write(redact(JSON.stringify(result), { "<owner URL>": owner }));
 } catch (error) {
   process.stderr.write(redact(String(error), { "<owner URL>": owner }));
