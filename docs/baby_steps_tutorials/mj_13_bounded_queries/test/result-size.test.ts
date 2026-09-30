@@ -23,7 +23,7 @@ function row(n: number, kib: number): { id: string; text: string } {
   return { id: `ROW-${String(n).padStart(2, "0")}`, text: "x".repeat(kib * 1024) };
 }
 
-/** The size of a result as the rule counts it: its JSON text, in UTF-8 bytes. */
+/** The size of a result as step 13's decision 3 counts it: its JSON text, in UTF-8 bytes. */
 function bytes(data: unknown): number {
   return Buffer.byteLength(JSON.stringify(data), "utf8");
 }
