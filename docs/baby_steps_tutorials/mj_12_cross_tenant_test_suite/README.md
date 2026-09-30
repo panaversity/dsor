@@ -553,11 +553,16 @@ _To be written after the review, with the result of every break in the table abo
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-TEN-02b | A cross-tenant test suite exercises every operation with a foreign-tenant URI | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | _to be counted_ |
-| DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | _to be counted_, for every operation |
+| DSOR-TEN-02b | A cross-tenant test suite exercises every operation with a foreign-tenant URI | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/cross-tenant.test.ts`: the shipped registry attacked from both companies with no finding (C1), the fake DSoR with no URI check named on all 27 attacks, every gap named (C4, C5), and the same-company call (C7). `test/cross-tenant.db.test.ts`: the same with the database |
+| DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | `test/cross-tenant.test.ts` (C2): the three answers of every operation, caller, and URI, compared word for word, and a fake DSoR whose answers differ named |
+
+Also advanced, first met in earlier steps: DSOR-IDN-03b, for every operation's own code
+as far as a same-company call shows it (C3 and C8, `test/cross-tenant.test.ts`, and
+`test/invoice-get.test.ts` for `invoice.get`'s code), and DSOR-EXE-02, one record for
+every attack, with its operation, result, and reason (C6, `test/cross-tenant.db.test.ts`).
 
 ## Next
 
 Step 13 · Bounded queries: `invoice.list`, whose page size the server caps even when the
-caller asks for everything. It is the first new operation, and the suite attacks it the
-moment it is registered.
+caller asks for everything. It is the first new operation. The moment it is registered,
+the suite attacks it, or names why it cannot ("Left open").
