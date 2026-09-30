@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput } from "./inputs.ts";
 import { decisionOf, type DecisionLog } from "./log.ts";
+import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
@@ -148,6 +149,10 @@ export async function call(
       // The code works inside the active company only.
       return handler(checked, tenant);
     });
+    // NEW IN STEP 13: ours, not §21's. No query's result leaves larger than DSoR gives in
+    // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
+    // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
+    checkResultSize(data);
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
 
