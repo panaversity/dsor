@@ -358,16 +358,17 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
   // invoice:read_all, and grants none of it (break Q2b).
   it("DSOR-AUT-01b: holding invoice:read does not grant an operation that needs invoice:read_all", async () => {
     const readAll = { permission: "invoice:read_all" };
-    const list = { ...contract("invoice.get"), id: "invoice.list", authorization: readAll };
+    // NEW IN STEP 13: invoice.list is a real operation now, so this one is invoice.list_all.
+    const list = { ...contract("invoice.get"), id: "invoice.list_all", authorization: readAll };
     expect(
       await call(
         withOperation(list, () => []),
         log,
         AGENT,
-        "invoice.list",
+        "invoice.list_all",
         {},
       ),
-    ).toStrictEqual(denied("invoice.list", "invoice:read_all", THE_AGENT));
+    ).toStrictEqual(denied("invoice.list_all", "invoice:read_all", THE_AGENT));
   });
 
   // The permission comes from the contract, not from the operation's name or its code.

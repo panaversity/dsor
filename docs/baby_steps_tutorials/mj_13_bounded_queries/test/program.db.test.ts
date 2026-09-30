@@ -41,7 +41,8 @@ describe("the program", () => {
       expect(run.stderr).toBe("");
       expect(run.status).toBe(0);
       const output = run.stdout;
-      expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue' ]");
+      // NEW IN STEP 13: invoice.list.
+      expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue', 'invoice.list' ]");
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.
       expect(output).toMatch("data: {");

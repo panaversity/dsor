@@ -2,6 +2,7 @@
 // A name here with no contract in contracts/ stops start-up (DSOR-OPR-01).
 import { Refusal } from "./envelope.ts";
 import type { InvoiceStore } from "./invoice.ts";
+import { pageOf, pageSize } from "./pages.ts";
 import { preview, type Handler } from "./registry.ts";
 import { parseUri } from "./uri.ts";
 
@@ -27,6 +28,15 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
       const invoice = await invoices.get(tenant, id);
       if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
       return invoice;
+    },
+    // NEW IN STEP 13: a page of the company's invoices, in order of id. The caller's limit
+    // is a wish, and DSoR's maximum wins (DSOR-QRY-01; step 13's README, decisions 1 and 2).
+    "invoice.list": async (input, tenant) => {
+      // Line ⑥ has checked the input against InvoiceListRequest.
+      const { limit } = input as { limit?: number };
+      // One row more than the page holds, to know whether another page follows.
+      const rows = await invoices.list(tenant, pageSize(limit) + 1);
+      return pageOf(rows, limit);
     },
     // invoice.issue has a contract but no code yet. Its success needs a
     // proposal, and proposals are step 22. Until then, call refuses every command before

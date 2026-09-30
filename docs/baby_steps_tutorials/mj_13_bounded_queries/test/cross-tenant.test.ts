@@ -105,11 +105,12 @@ function uriFields(required: string[], optional: string[] = []): object {
 }
 
 describe("C1: every operation in the registry is attacked with foreign URIs, and refused", () => {
-  it("DSOR-TEN-02b: the shipped registry: both operations attacked from both companies, 27 times, no findings", async () => {
+  it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 27 swaps, no findings", async () => {
     const report = await crossTenantSuite(registry, createLog(), examples);
     expect(report.findings).toStrictEqual([]);
-    // Typed out, and the registry's own list: nothing skipped.
-    expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue"]);
+    // Typed out, and the registry's own list: nothing skipped. NEW IN STEP 13: invoice.list
+    // has no URI to swap. Its rows are checked instead, and it adds no swap below.
+    expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list"]);
     expect(report.attacked).toStrictEqual([...registry.contracts.keys()]);
     // In org_456: invoice.get has 4 callers, invoice.issue 1. In org_789: 2 and 2.
     // Each example has 1 URI, sent 3 ways: (4 + 1 + 2 + 2) × 3 = 27.
@@ -122,10 +123,14 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
   // the invoice of the company the call works in. Found by the review: with the suite's
   // call to its judge deleted, every test stayed green.
   it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 27 attacks", async () => {
-    const noUriCheck: Send = async (_registry, _log, request) => ({
-      data: { tenant_id: request.tenant, id: "INV-1008" },
-      correlation: { request_id: `req_${randomUUID()}` },
-    });
+    // NEW IN STEP 13: a list has no URI to check, so its calls go to DSoR itself.
+    const noUriCheck: Send = async (reg, log, request, name, input) =>
+      name === "invoice.list"
+        ? call(reg, log, request, name, input)
+        : {
+            data: { tenant_id: request.tenant, id: "INV-1008" },
+            correlation: { request_id: `req_${randomUUID()}` },
+          };
     const report = await crossTenantSuite(registry, createLog(), examples, noUriCheck);
     expect(report.findings).toHaveLength(27);
     for (const finding of report.findings) {
@@ -369,7 +374,8 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     async (_gap, target, findings) => {
       const report = await suiteOver(target);
       expect(report.findings).toStrictEqual(findings);
-      expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue"]);
+      // NEW IN STEP 13: invoice.list.
+      expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list"]);
     },
   );
 
@@ -383,7 +389,8 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       "examples/invoice.get_all.json: no operation has this name",
       "invoice.get: no example request in examples/invoice.get.json",
     ]);
-    expect(report.attacked).toStrictEqual(["invoice.issue"]);
+    // NEW IN STEP 13: invoice.list.
+    expect(report.attacked).toStrictEqual(["invoice.issue", "invoice.list"]);
   });
 
   function refusal(code: ErrorCode): Answer {

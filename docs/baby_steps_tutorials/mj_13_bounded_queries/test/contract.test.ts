@@ -6,9 +6,9 @@ import { buildRegistry } from "../src/registry.ts";
 import {
   contract,
   handlers,
-  inputsWith,
   refusal,
   shipped,
+  shippedInputs,
   shippedRoles,
   shippedWith,
   source,
@@ -16,9 +16,14 @@ import {
 } from "./helpers.ts";
 
 describe("C2: a contract passes the specification's own schema", () => {
-  it("DSOR-OPR-01: both shipped contracts pass", async () => {
+  it("DSOR-OPR-01: the three shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
-    expect([...registry.contracts.keys()].sort()).toEqual(["invoice.get", "invoice.issue"]);
+    // NEW IN STEP 13: invoice.list.
+    expect([...registry.contracts.keys()].sort()).toEqual([
+      "invoice.get",
+      "invoice.issue",
+      "invoice.list",
+    ]);
   });
 
   it("DSOR-OPR-01: a risk level the schema does not list is refused", async () => {
@@ -71,8 +76,8 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     const query = contract("invoice.get");
     for (const field of COMMAND_ONLY) expect(query).not.toHaveProperty(field);
     // Only the input schema this one contract names, or start-up refuses
-    // the other as unused.
-    const inputs = inputsWith("InvoiceIssueRequest.schema.json", undefined);
+    // the others as unused. NEW IN STEP 13: invoice.list's is one of them.
+    const inputs = shippedInputs.filter((s) => s.file === "InvoiceGetRequest.schema.json");
     expect(
       buildRegistry([source(query)], {}, shippedRoles, inputs).contracts.has("invoice.get"),
     ).toBe(true);
@@ -134,8 +139,8 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
       execution: { semantics: "compensatable", compensated_by: ["invoice.cancel"] },
     };
     // Only the input schema these contracts name, or start-up refuses the
-    // other as unused.
-    const inputs = inputsWith("InvoiceGetRequest.schema.json", undefined);
+    // others as unused. NEW IN STEP 13: invoice.list's is one of them.
+    const inputs = shippedInputs.filter((s) => s.file === "InvoiceIssueRequest.schema.json");
     for (const good of [neverUndone, undoable]) {
       expect(
         buildRegistry([source(good)], {}, shippedRoles, inputs).contracts.has("invoice.issue"),

@@ -358,3 +358,11 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
     THE_AGENT,
   ],
 ];
+
+// NEW IN STEP 13: so a test can type out a whole page on one line (step 13's README, C1).
+/** The answer's page with each item cut down to "company/id", or the refusal as it is. */
+export function idsOf(answer: Answer): unknown {
+  if (!("data" in answer)) return answer;
+  const { items, ...rest } = answer.data as { items: { tenant_id: string; id: string }[] };
+  return { items: items.map(({ tenant_id, id }) => `${tenant_id}/${id}`), ...rest };
+}

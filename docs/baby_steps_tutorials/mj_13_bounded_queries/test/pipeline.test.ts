@@ -330,13 +330,15 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
   });
 
   // A file with a misspelled name would otherwise sit there, unused, and nobody would know.
+  // NEW IN STEP 13: InvoiceListRequest is a real schema now, so the name nobody uses is
+  // InvoiceSearchRequest.
   it("an input schema file that no contract names stops start-up", async () => {
     const extra = inputsWith(
-      "InvoiceListRequest.schema.json",
+      "InvoiceSearchRequest.schema.json",
       '{ "type": "object", "additionalProperties": false }',
     );
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, extra))).toMatch(
-      "inputs/InvoiceListRequest.schema.json: no contract names this input schema",
+      "inputs/InvoiceSearchRequest.schema.json: no contract names this input schema",
     );
   });
 
@@ -375,7 +377,8 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
   });
 
   it("a contract that names an input schema with no file stops start-up, with the others", async () => {
-    const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceListRequest" } };
+    // NEW IN STEP 13: InvoiceSearchRequest, because InvoiceListRequest has a file now.
+    const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceSearchRequest" } };
     const message = refusal(() =>
       buildRegistry(
         shippedWith(renamed),
@@ -384,7 +387,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
         inputsWith("InvoiceIssueRequest.schema.json", "[]"),
       ),
     );
-    expect(message).toMatch("invoice.get: its input schema InvoiceListRequest has no file");
+    expect(message).toMatch("invoice.get: its input schema InvoiceSearchRequest has no file");
     expect(message).toMatch("inputs/InvoiceIssueRequest.schema.json: not a valid JSON Schema");
   });
 

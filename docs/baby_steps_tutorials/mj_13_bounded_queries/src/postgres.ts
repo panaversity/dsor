@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 import pg from "pg";
-import type { InvoiceStatus, InvoiceStore } from "./invoice.ts";
+import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import type { Decision, DecisionLog, DecisionRecord } from "./log.ts";
 import { money } from "./money.ts";
 
@@ -205,17 +205,36 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
         ),
       );
       const row = rows[0];
-      if (row === undefined) return undefined;
-      // money() checks the text again, so a number from a wrong query is refused here.
-      return {
-        tenant_id: row.tenant_id,
-        id: row.id,
-        vendor_id: row.vendor_id,
-        amount: money(row.amount_value, row.amount_currency),
-        open_amount: money(row.open_amount_value, row.open_amount_currency),
-        status: row.status,
-      };
+      return row === undefined ? undefined : invoiceOf(row);
     },
+    // NEW IN STEP 13: the first `count` invoices of the company, in order of id (step 13's
+    // README, decision 4). The company is in the WHERE, DSoR's own lock, and the
+    // transaction sets it for the database's lock, as for get. The order is the database's
+    // C.UTF-8, which compares text by its character codes, as < does in memory.
+    list: async (tenant, count) => {
+      const { rows } = await inCompany(pool, tenant, (client) =>
+        client.query<InvoiceRow>(
+          `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
+                  open_amount_value, open_amount_currency, status
+             FROM app.invoices WHERE tenant_id = $1 ORDER BY id LIMIT $2`,
+          [tenant, count],
+        ),
+      );
+      return rows.map(invoiceOf);
+    },
+  };
+}
+
+// One row as an invoice. NEW IN STEP 13: shared by get and list.
+function invoiceOf(row: InvoiceRow): Invoice {
+  // money() checks the text again, so a number from a wrong query is refused here.
+  return {
+    tenant_id: row.tenant_id,
+    id: row.id,
+    vendor_id: row.vendor_id,
+    amount: money(row.amount_value, row.amount_currency),
+    open_amount: money(row.open_amount_value, row.open_amount_currency),
+    status: row.status,
   };
 }
 

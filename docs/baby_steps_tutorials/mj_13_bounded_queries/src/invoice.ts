@@ -95,12 +95,30 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
 // Where invoices come from, in memory or in the database (step 09's
 // README, decision 12). One function, so the operations never know which.
 // The company comes first. The store never looks outside it (DSOR-IDN-03b).
-/** Finds one invoice of one company: a copy of it, or `undefined` when there is none. */
-export type InvoiceStore = { get: (tenant: string, id: string) => Promise<Invoice | undefined> };
+export type InvoiceStore = {
+  /** Finds one invoice of one company: a copy of it, or `undefined` when there is none. */
+  get: (tenant: string, id: string) => Promise<Invoice | undefined>;
+  // NEW IN STEP 13: a list reads rows in order of id, never more than it is asked for
+  // (step 13's README, decision 4).
+  /** Copies of the first `count` invoices of one company, in order of id. */
+  list: (tenant: string, count: number) => Promise<Invoice[]>;
+};
 
 /** The invoices above, held in memory, for the unit tests. */
 export function memoryInvoices(): InvoiceStore {
-  return { get: async (tenant, id) => getInvoice(invoices, tenant, id) };
+  return {
+    get: async (tenant, id) => getInvoice(invoices, tenant, id),
+    list: async (tenant, count) => listInvoices(invoices, tenant, count),
+  };
+}
+
+// NEW IN STEP 13: the memory version of the list's SQL (step 13's README, decision 4).
+/** Copies of the first `count` invoices of one company, in order of id. */
+export function listInvoices(list: Invoice[], tenant: string, count: number): Invoice[] {
+  // < compares text by its character codes, as the database's C.UTF-8 does.
+  const byId = (a: Invoice, b: Invoice): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const own = list.filter((invoice) => invoice.tenant_id === tenant).sort(byId);
+  return own.slice(0, count).map((invoice) => structuredClone(invoice));
 }
 
 // Every invoice has its canonical URI (DSOR-RID-01a). The URI names the

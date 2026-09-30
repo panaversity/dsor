@@ -1,0 +1,74 @@
+// NEW IN STEP 13: invoice.list reads its pages from app.invoices, as dsor_runtime
+// (step 13's README, C1). The same claims as test/invoice-list.test.ts, asked of the
+// database.
+import { afterAll, describe, expect, it } from "vitest";
+import { call } from "../src/pipeline.ts";
+import { createDbLog, openPool } from "../src/postgres.ts";
+import type { RequestEnvelope } from "../src/request.ts";
+import { RUNTIME_URL, dbRegistry } from "./db.ts";
+import { AGENT, FIRM_IN_789, idsOf } from "./helpers.ts";
+
+const pool = openPool(RUNTIME_URL);
+afterAll(() => pool.end());
+const registry = dbRegistry(pool);
+const log = createDbLog(pool);
+
+// Each company's invoices, in order of id, typed out from step 13's README, decision 7.
+const ORG_456 = [
+  "INV-1001", "INV-1002", "INV-1003", "INV-1004", "INV-1005", "INV-1006",
+  "INV-1007", "INV-1008", "INV-1009", "INV-1010", "INV-1011", "INV-1012",
+].map((id) => `org_456/${id}`);
+const ORG_789 = ["INV-1008", "INV-2001", "INV-2002", "INV-2003", "INV-2004"].map(
+  (id) => `org_789/${id}`,
+);
+
+/** Asks invoice.list for a page, from the database. */
+function pageAsked(who: RequestEnvelope, input: unknown): Promise<unknown> {
+  return call(registry, log, who, "invoice.list", input).then(idsOf);
+}
+
+describe("C1: a page from the database holds at most 10 rows", () => {
+  it("DSOR-QRY-01: invoice.list with no limit gives the first 10 of org_456's 12 invoices, and a cursor", async () => {
+    expect(await pageAsked(AGENT, {})).toStrictEqual({
+      items: ORG_456.slice(0, 10),
+      next_cursor: "INV-1010",
+    });
+  });
+
+  it("DSOR-QRY-01: invoice.list { limit: 1000000 } gives 10 invoices, capped, and a cursor", async () => {
+    expect(await pageAsked(AGENT, { limit: 1000000 })).toStrictEqual({
+      items: ORG_456.slice(0, 10),
+      next_cursor: "INV-1010",
+      capped: { asked: 1000000, max: 10 },
+    });
+  });
+
+  it("DSOR-QRY-01: invoice.list { limit: 3 } gives 3 invoices and a cursor, and is not capped", async () => {
+    expect(await pageAsked(AGENT, { limit: 3 })).toStrictEqual({
+      items: ORG_456.slice(0, 3),
+      next_cursor: "INV-1003",
+    });
+  });
+
+  it("DSOR-QRY-01: org_789's 5 invoices fit in one page, even asked for exactly 5: no cursor", async () => {
+    expect(await pageAsked(FIRM_IN_789, {})).toStrictEqual({ items: ORG_789 });
+    expect(await pageAsked(FIRM_IN_789, { limit: 5 })).toStrictEqual({ items: ORG_789 });
+  });
+
+  it("DSOR-MON-01: each item is a whole invoice from app.invoices, its money exactly as stored", async () => {
+    const answer = await call(registry, log, AGENT, "invoice.list", { limit: 1 });
+    expect("data" in answer && answer.data).toStrictEqual({
+      items: [
+        {
+          tenant_id: "org_456",
+          id: "INV-1001",
+          vendor_id: "VENDOR-12",
+          amount: { value: "1250.00", currency: "USD" },
+          open_amount: { value: "0.00", currency: "USD" },
+          status: "paid",
+        },
+      ],
+      next_cursor: "INV-1001",
+    });
+  });
+});

@@ -35,8 +35,13 @@ describe("reading the contracts folder", () => {
     ]);
   });
 
-  it("the shipped folder holds the two contracts", () => {
-    expect(shipped.map((s) => s.file)).toEqual(["invoice.get.json", "invoice.issue.json"]);
+  // NEW IN STEP 13: invoice.list is the third.
+  it("the shipped folder holds the three contracts", () => {
+    expect(shipped.map((s) => s.file)).toEqual([
+      "invoice.get.json",
+      "invoice.issue.json",
+      "invoice.list.json",
+    ]);
   });
 });
 
@@ -108,12 +113,13 @@ describe("the program", () => {
     () => {
       const dir = mkdtempSync(join(tmpdir(), "dsor-contracts-"));
       try {
-        const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceListRequest" } };
+        // NEW IN STEP 13: InvoiceSearchRequest, because InvoiceListRequest has a file now.
+        const renamed = { ...contract("invoice.get"), input: { schema: "InvoiceSearchRequest" } };
         writeFileSync(join(dir, "invoice.get.json"), JSON.stringify(renamed));
         const run = spawnSync(process.execPath, [MAIN, dir], { encoding: "utf8" });
         expect(run.status).toBe(1);
         expect(run.stderr).toMatch(
-          "invoice.get: its input schema InvoiceListRequest has no file inputs/InvoiceListRequest.schema.json",
+          "invoice.get: its input schema InvoiceSearchRequest has no file inputs/InvoiceSearchRequest.schema.json",
         );
         expect(run.stdout).not.toMatch("operations:");
       } finally {
