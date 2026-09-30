@@ -144,4 +144,14 @@ describe("C5: a list, with no URI to swap, is checked by its rows", () => {
     const calls = (await log.records()).filter((r) => r.operation === "invoice.browse@1");
     expect(calls).toStrictEqual([]);
   });
+
+  // Found by the sweep: with "not a page" answered as no finding, every test stayed green.
+  // The first question is asked in org_456 only, so org_789's answer is checked here.
+  it("DSOR-TEN-02b: a list that answers org_789 with one invoice, not a page, is a finding there", async () => {
+    const report = await suiteWithList(async (_input, tenant) =>
+      tenant === "org_456" ? { items: own(tenant) } : own(tenant)[0],
+    );
+    const why = "its answer is not a page";
+    expect(report.findings).toStrictEqual(READERS_789.flatMap((who) => twice(who, "org_789", why)));
+  });
 });
