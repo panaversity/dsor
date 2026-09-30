@@ -66,8 +66,8 @@ is the library's ten books per visit.
    cursor for the next page.
 3. Following the cursor, page after page, visits every invoice of the caller's company
    exactly once, in order, and the last page has no cursor.
-4. No answer to any query is larger than 64 KiB. A page stops early, before the next row
-   would take it past, and its cursor continues from there.
+4. No query's result, the data in its answer, is larger than 64 KiB. A page stops early,
+   before the next row would take it past, and its cursor continues from there.
 5. A `limit` of 0, a negative one, a fraction, or text is refused.
 6. Step 12's suite checks `invoice.list` from both companies, and finds only the caller's
    company's rows in each answer.
@@ -92,7 +92,7 @@ Checked on 2026-09-30:
 1. **DSOR-QRY-01 asks for "a server-side maximum page size and maximum result size on
    every query".** It does not say what a result size is, and the contract schema holds
    no field for either. This step's page size counts rows, and its result size counts the
-   bytes of one answer (decisions 2 and 3). Both are this tutorial's numbers, written in
+   bytes of one result: the data in the answer, written as JSON text (decisions 2 and 3). Both are this tutorial's numbers, written in
    DSoR's code, not in the contract. Both are recorded as questions for the specification.
 2. **"Every query"** includes `invoice.get`. Its answer is one invoice, so its page size is
    one by nature, and the size limit of decision 3 applies to it as to every query.
@@ -104,11 +104,12 @@ Checked on 2026-09-30:
 | Rule | Claim | How we know |
 | --- | --- | --- |
 | DSOR-QRY-01 | **C1.** A page holds at most 10 rows, whatever the caller asks, and says when it was cut down | No `limit`: 10 rows. `limit: 1000000`: 10 rows, `capped`, a cursor. `limit: 3`: 3 rows, not capped |
-| DSOR-QRY-01 | **C2.** No answer to a query is larger than 64 KiB | A page stops before the row that would take it past, with a cursor. A query whose one answer is larger is refused |
+| DSOR-QRY-01 | **C2.** No query's result is larger than 64 KiB | A page stops before the row that would take it past, with a cursor. A query whose one result is larger is refused |
 | DSOR-QRY-01 | **C3.** The cursor walks the whole list, once | Pages followed to the end visit every invoice of the company exactly once, in order, and the last has no cursor |
 | (our decision) | **C4.** A `limit` must be a whole number of at least 1 | 0, -1, 1.5, and `"10"` are refused with `VALIDATION_FAILED` at line ⑥ |
 | DSOR-TEN-02b | **C5.** Step 12's suite checks a list from both companies | Every row in `invoice.list`'s answer, for `org_456` and for `org_789`, carries the caller's company. A planted list that leaks a row, or returns a row with no company, is a finding |
 | DSOR-EXE-02 | **C6.** Each page is its own call, with its own record | Three pages leave three records |
+| DSOR-TEN-01b | **C7.** The list's own SQL keeps to the company, without the database's lock | The owner, whom row-level security does not stop, lists `org_456` through DSoR's store, and every row is `org_456`'s |
 
 ### Decisions the specification leaves to us
 
@@ -125,18 +126,25 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    so that a test, and a learner, can see the cap work with a dozen invoices. *Downside:*
    a real deployment would choose a larger number, and this one lives in the code, not in
    the contract, because the contract schema has no field for it.
-3. **No answer to a query may be larger than 64 KiB.** A list stops adding rows before the
-   row that would take its answer past the limit, and gives the cursor from there. After
-   line ⑨, the pipeline measures every query's answer, and one that is still too large is
-   refused with `UNSUPPORTED_CAPABILITY`, "the answer is larger than DSoR gives in one
-   call". *Downside:* §28 has no code for this. `UNSUPPORTED_CAPABILITY` with retry
-   `never` is the closest: asking again gets the same answer. It is a question for the
-   specification.
+3. **No query's result may be larger than 64 KiB.** The result is the data in the
+   answer, written as JSON text, and counted in bytes. The correlation beside it is
+   DSoR's own and small, so it is not counted. A list stops adding rows before the row
+   that would take its result past the limit, and gives the cursor from there. A page
+   always holds at least one row, so a cursor always moves forward: a page with no rows
+   and a cursor would send the caller back to the same place forever. After line ⑨, the
+   pipeline measures every query's result, and one that is still too large, such as a
+   page whose one row is larger than 64 KiB, is refused with `UNSUPPORTED_CAPABILITY`,
+   "the answer is larger than DSoR gives in one call". *Downside:* §28 has no code for
+   this. `UNSUPPORTED_CAPABILITY` with retry `never` is the closest: asking again gets the
+   same answer. It is a question for the specification. And a row that is too large
+   blocks every row after it, because no page can step over it.
 4. **The list is in order of invoice id, and the cursor is the last id of the page.** The
    next page is `WHERE tenant_id = <the company> AND id > <cursor> ORDER BY id`, one row
    more than the page needs, to know whether another page follows. The cursor is a
    position in the caller's own company only: a cursor that names another company's
    invoice id is just a place in the alphabet, and tells nothing about that invoice.
+   The order is the database's: text compared by its character codes (`C.UTF-8`,
+   checked live on 2026-09-30), the same order JavaScript's `<` gives these ids in memory.
    *Downside:* an invoice added behind the cursor while a caller is paging is missed by
    that walk.
 5. **A `limit` must be a whole number of at least 1,** checked by `invoice.list`'s input
@@ -145,17 +153,20 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    asks for a million is not told "no". It is told "here are ten, and you asked for a
    million".
 6. **Step 12's suite learns a second check, for lists.** A list names no single thing, so
-   its example holds no `dsor://` URI, and there is nothing to swap. An operation whose
-   example holds no URI is accepted only when its answer is a page, `{ items: [...] }`.
-   The suite then calls it from both companies, and every item must carry `tenant_id`
-   equal to the caller's company. An item with no `tenant_id` is a finding, because it
-   cannot be checked. Any other operation with no URI in its example is still a finding,
-   as in step 12. *Downside:* the suite now trusts an operation that says it is a list to
+   its example holds no `dsor://` URI, and there is nothing to swap. Its example still
+   holds every field its input schema lists, as step 12 asks: `{ "limit": 10, "cursor":
+   "INV-1000" }`. An operation whose example holds no URI is accepted only when its answer
+   is a page, `{ items: [...] }`. The suite asks once, as the first caller of `org_456`
+   who may call it. If that answer is a page, the suite then calls it as every such
+   caller of both companies, and every item must carry `tenant_id` equal to the caller's
+   company. An item with no `tenant_id` is a finding, because it cannot be checked. If
+   that first answer is not a page, the operation gets step 12's finding, once, word for
+   word, and is not called again. *Downside:* the suite now trusts an operation that says it is a list to
    return items that carry their company. A single-thing operation dressed as a
    one-item page would be checked by its rows, not by a swap.
 7. **More invoices, so that there is more than one page.** A migration, `006`, adds
-   `INV-1001` to `INV-1012` to `org_456`, keeping `INV-1008` as it is, and three more to
-   `org_789`. *Downside:* the running example gains invoices the specification does not
+   `INV-1001` to `INV-1012` to `org_456`, keeping `INV-1008` as it is, and `INV-2002` to
+   `INV-2004` to `org_789`. The invoices in memory, for the unit tests, are the same. *Downside:* the running example gains invoices the specification does not
    name.
 
 ### The tests, by claim
@@ -173,10 +184,13 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C4:** `{ limit: 0 }`, `{ limit: -1 }`, `{ limit: 1.5 }`, and `{ limit: "10" }` are each
   `VALIDATION_FAILED`.
 - **C5:** the suite over the shipped registry gives no findings and counts 3 operations.
-  Planted: a list that returns one `org_789` row to `org_456`, a list whose item has no
-  `tenant_id`, and a single-thing operation with no URI whose answer is not a page. Each
-  gives its finding.
+  Planted: a list that behaves gives no finding. A list that returns one `org_789` row to
+  `org_456`, and a list whose item has no `tenant_id`, each give their finding. A
+  single-thing operation with no URI whose answer is not a page is step 12's
+  `invoice.peek` test, kept word for word.
 - **C6:** in the database tier, three pages leave three records in the caller's company.
+- **C7:** in the database tier, the owner lists `org_456`'s invoices through DSoR's store,
+  page after page, and gets `org_456`'s 12 invoices, and nothing of `org_789`'s.
 
 ### Breaks we will try, and what we expect
 
@@ -188,7 +202,7 @@ Run against the finished step. The learner's predictions were recorded before an
 | X2 | No `limit` means every row | C1's empty-input test | not asked; the expectation stands |
 | X3 | A cut-down page says nothing (`capped` left out) | C1's million test | the million test |
 | X4 | The cursor query uses `>=` instead of `>` | C3: the cursor's own row comes back again | C3 |
-| X5 | The list's SQL forgets the company | the suite's list check on memory. On the database, nothing: the second lock hides it | red on memory, green on the database |
+| X5 | The list's SQL forgets the company | the suite's list check on memory. On the database, only C7's owner test: the second lock hides it from every other | red on memory, green on the database (predicted before C7 was added) |
 | X6 | The suite's list check accepts an item with no `tenant_id` | only C5's planted item | only the planted item test |
 
 The review also attacks the step with the threat that is its reason: bulk extraction by
@@ -262,7 +276,18 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+**Changed by the design check, before the first test (2026-09-30).**
+
+- **C7 was added.** Break X5 would have survived every test. The unit tests never run the
+  list's SQL, and on the database row-level security hides a missing company filter.
+  Step 11 closed the same gap for `invoice.get` by letting the owner, whom row-level
+  security does not stop, run DSoR's store. The list gets the same test.
+- **The 64 KiB counts the result, not the whole answer** (decision 3). The list's code
+  builds the data and cannot see the correlation that the pipeline adds after it.
+- **A page always holds at least one row** (decision 3), and the suite asks a no-URI
+  operation once before it attacks it (decision 6).
+
+_The rest is written after the review, with the result of every break in the table above._
 
 ## The rules this step meets
 
