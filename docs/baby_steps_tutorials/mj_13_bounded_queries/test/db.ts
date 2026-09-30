@@ -103,7 +103,7 @@ export function ownerStore(): unknown {
 }
 
 // NEW IN STEP 13: the list's own SQL, with no policy behind it (step 13's README, C7).
-/** The ids DSoR's store lists for org_456 to the owner, whom no policy stops, and whether it bypasses them. */
+/** The ids DSoR's store lists for each company to the owner, whom no policy stops, and whether it bypasses them. */
 export function ownerList(): unknown {
   return asOwner("owner-store.ts", ["list"]);
 }

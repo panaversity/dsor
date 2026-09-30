@@ -92,8 +92,11 @@ describe("C1: a page from the database holds at most 10 rows", () => {
 // bypasses it, can see whether DSoR's own WHERE holds by itself (step 11's README, "What
 // the specification asks", point 1).
 describe("C7: the list's own SQL keeps to the company, without the database's lock", () => {
-  it("DSOR-TEN-01b: the owner lists org_456 through DSoR's store, and gets org_456's 12 invoices and nothing else", () => {
-    expect(ownerList()).toStrictEqual({ bypassrls: true, listed: ORG_456 });
+  it("DSOR-TEN-01b: the owner lists each company through DSoR's store, and gets that company's invoices and nothing else", () => {
+    expect(ownerList()).toStrictEqual({
+      bypassrls: true,
+      listed: { org_456: ORG_456, org_789: ORG_789 },
+    });
   });
 });
 

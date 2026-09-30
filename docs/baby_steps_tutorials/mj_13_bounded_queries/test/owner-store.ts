@@ -29,14 +29,19 @@ try {
   let result: unknown;
   if (process.argv[2] === "list") {
     // Page after page, five rows at a time, so the SQL after a cursor runs too. Found by the
-    // review: one read of every row never ran it (step 13's README, C7).
-    const listed: string[] = [];
-    let after: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const rows = await invoices.list("org_456", after, 5);
-      listed.push(...rows.map(({ tenant_id, id }) => `${tenant_id}/${id}`));
-      if (rows.length < 5) break;
-      after = rows[rows.length - 1]!.id;
+    // review: one read of every row never ran it (step 13's README, C7). Both companies, so
+    // a lister that kept only org_456's rows would be seen. Found by the sweep.
+    const listed: Record<string, string[]> = {};
+    for (const company of ["org_456", "org_789"]) {
+      const ids: string[] = [];
+      let after: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const rows = await invoices.list(company, after, 5);
+        ids.push(...rows.map(({ tenant_id, id }) => `${tenant_id}/${id}`));
+        if (rows.length < 5) break;
+        after = rows[rows.length - 1]!.id;
+      }
+      listed[company] = ids;
     }
     result = { bypassrls, listed };
   } else {
