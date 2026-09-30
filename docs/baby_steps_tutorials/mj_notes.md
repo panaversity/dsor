@@ -131,6 +131,9 @@ reviewer for a mutation sweep too.
   decision's cost "Downside", and have the review try the §10.2 threats with inputs of
   its own. Since version 2.2.0 (2026-09-26) it asks for them, and for the design written
   before any code. Every build from `mj_01` to `mj_06` carries that copy.
+- A suite behind one gate tests the gate (step 12). Ask the reviewer to plant operations
+  that leak, and see whether the suite notices. The first version of step 12's suite
+  passed all three.
 
 ## Bugs found in earlier builds
 
@@ -230,6 +233,21 @@ the official tutorial's. A learner build does not change either. A maintainer de
   say the envelope is closed from the start, so no later step has to reverse it.
 - **Step 10's "done when".** See open question 35: "the same answer whether the resource
   exists or not" instead of "the same 'not found'".
+- **Analogy, from step 12: the bank's mystery shopper.** A tester the bank sends in,
+  posing as a customer. For every service on the bank's list, the new ones too, the
+  shopper hands the teller a form that names another customer's account, and expects
+  "not your account". Then the shopper asks about their own account and opens the
+  envelope: only their own papers may be inside. It reuses step 10's teller. The counter
+  is the checklist every call runs, and the back office is each operation's own code.
+  Step 12 first used a hotel inspector trying a stranger's key card. The review flagged
+  it: "hotel" is already the list's "booking the last hotel room", and the inspector hid
+  that every door shares one front desk. Step 12 also renamed its "control call" to
+  "same-company call", because a control is a CEL rule in DSoR.
+- **Step 12's entry in the map.** "Runs on a fresh Neon branch" needs a Neon API key
+  that can delete branches in `.env`; the learner build ran on its own branch instead.
+  And "adding a new operation without tenant checks makes this suite fail" is met only
+  through the same-company call, because the checklist refuses every foreign URI before
+  an operation's code runs (open question 41).
 
 ## Still unknown
 

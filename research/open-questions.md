@@ -266,3 +266,18 @@ for a human. An agent may gather evidence; it does not settle these alone.
     the store's layer in DSOR-TEN-01b, a lock against mistakes only, or should §36 name
     something stronger, such as a role per tenant, or a setting only a trusted function can
     change?
+41. **Should the cross-tenant suite also call each operation in its own tenant, and
+    search the answer?** DSOR-TEN-02b asks for a suite that "exercises every operation
+    with a foreign-tenant URI". When one check refuses every foreign URI before any
+    operation's code runs, such a suite tests that check, and not the operations. Step
+    12's learner build planted three operations that leaked another tenant's data, and
+    each passed a suite of foreign URIs only. It now also sends each operation's example
+    in the caller's own tenant, searches the answer for a `tenant_id` or a URI of another
+    tenant, and works from both tenants. Should §14 ask for this, or say what the
+    foreign-URI suite is meant to prove?
+42. **How is an operation with no URI in its input tested across tenants?** DSOR-TEN-02b
+    names a foreign-tenant URI. A query such as `invoice.list`, whose input may hold only
+    a page size, has none to swap. Step 12's learner build calls that a finding, so its
+    suite stays red until the step that adds such an operation decides. Should §14 say
+    how such an operation is exercised, for example by searching its same-tenant answer
+    for rows of another tenant?
