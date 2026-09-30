@@ -281,3 +281,28 @@ for a human. An agent may gather evidence; it does not settle these alone.
     suite stays red until the step that adds such an operation decides. Should §14 say
     how such an operation is exercised, for example by searching its same-tenant answer
     for rows of another tenant?
+    Step 13's learner build, which adds `invoice.list`, answers one way. The cursor looks
+    like an id and cannot hold a URI, so the suite checks the list by its rows. It asks
+    once, then calls the list as every permitted caller of both tenants, with its example
+    and with only its required fields. Every item must carry the caller's `tenant_id`,
+    and an empty page is a finding, because it checks nothing. The suite still counts the
+    list as "exercised", though no foreign URI was sent. Is that what DSOR-TEN-02b means
+    for such an operation?
+43. **What is a "result size"?** DSOR-QRY-01 asks for "a server-side maximum page size
+    and maximum result size on every query", and says no more. Step 13's learner build
+    counts a page in rows, and a result in bytes: the answer's data written as JSON, in
+    UTF-8, at most 64 KiB, with the correlation not counted. A row count misses one huge
+    row, and a byte count alone lets a million tiny rows through. Is a result size
+    counted in bytes, in rows, or both? Measured on the data, the envelope, or what
+    leaves on the wire? And before masking (§19) or after it?
+44. **Which code answers "this result is too large to give"?** §28 has none. Step 13's
+    learner build refuses with `UNSUPPORTED_CAPABILITY`, retry `never`, because asking
+    again gets the same answer. The same refusal comes when one row alone is larger than
+    the cap, and then every row after it is out of reach: no page can step over it.
+    Should §28 name a code for this, and should §7.1 say what happens to a row larger
+    than the cap?
+45. **Where do a query's page size and result size live?** DSOR-QRY-01 asks for
+    server-side maxima on every query, but `operation-contract.schema.json` has no field
+    for either. Step 13's learner build writes one pair in code for every query: 10 rows
+    and 64 KiB. Should a query's contract carry its own maxima, under a ceiling DSoR sets,
+    so that a contract can lower its cap but never raise it past the server's?

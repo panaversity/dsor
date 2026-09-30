@@ -134,6 +134,17 @@ reviewer for a mutation sweep too.
 - A suite behind one gate tests the gate (step 12). Ask the reviewer to plant operations
   that leak, and see whether the suite notices. The first version of step 12's suite
   passed all three.
+- **A test can pass before its code, in two ways** (step 13). Five times the learner
+  predicted red and saw green. A "yes" test passes while nothing says no: "exactly 64 KiB
+  is answered", and "a cursor of 64 characters is accepted". A "no" test passes when
+  earlier code already says no: C1's `"type": "integer"` refused the limits 1.5 and
+  `"10"` before C4 existed, and step 12's code already said no to `invoice.peek`. Neither
+  kind proves the new code. Only a break that turns it red does. Before a red run, ask of
+  each test: which code already answers this?
+- **The cap must hold where the rows are read** (step 13). The mutation sweep found that
+  a handler could ask the store for a million rows, and the SQL could read 1,000 extra,
+  and every test stayed green, because the page was cut afterwards. Test what the store
+  is asked for, not only what the caller receives.
 
 ## Bugs found in earlier builds
 
@@ -243,6 +254,22 @@ the official tutorial's. A learner build does not change either. A maintainer de
   it: "hotel" is already the list's "booking the last hotel room", and the inspector hid
   that every door shares one front desk. Step 12 also renamed its "control call" to
   "same-company call", because a control is a CEL rule in DSoR.
+- **Analogy, from step 13: the new clerk, not a library.** Step 13's design used a library
+  that lends ten books per visit, with a slip that says where you stopped. The README
+  review flagged it as new. It had no picture for the byte cap, and lending removes a
+  book where a read only copies it. The learner chose the list's **new clerk** instead:
+  the clerk hands over at most ten invoices, never a bundle too heavy to carry, with a
+  note that says where the pile stopped, and every handover goes in the logbook. It
+  covers both caps, the cursor, and the record, and it stops at the clerk's memory:
+  nothing counts the visits.
+- **A step for row budgets.** Step 13 leaves the slow read open: a caller can follow the
+  cursor to the end, one recorded page at a time. The specification's answer is §19.2's
+  row budget: DSOR-CLS-04b, budgets on rows returned per agent principal and per
+  delegation over a time window, and DSOR-CLS-04c, never keyed on an identifier the
+  caller can mint. Both are L2. No step in the map names either. They need delegations
+  (step 18), so they could sit near step 25's emergency brake. Step 13's README first
+  said the gap was "recorded in the map", which was not true, and was corrected on
+  2026-10-01.
 - **Step 12's entry in the map.** "Runs on a fresh Neon branch" needs a Neon API key
   that can delete branches in `.env`; the learner build ran on its own branch instead.
   And "adding a new operation without tenant checks makes this suite fail" is met only
