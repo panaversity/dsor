@@ -406,7 +406,7 @@ On 2026-09-30, on the final code:
 ✓ DSOR-IDN-03b: invoice.theirs, which answers with the other company's invoice, is a finding
 ✓ DSOR-IDN-03b: invoice.cached, which keeps invoices by id alone, is a finding from org_789
 …
-      Tests  39 passed (39)
+      Tests  51 passed (51)
 ```
 
 Why 27 attacks: in `org_456`, `invoice.get` has 4 callers and `invoice.issue` has 1. In
@@ -414,28 +414,29 @@ Why 27 attacks: in `org_456`, `invoice.get` has 4 callers and `invoice.issue` ha
 holds 1 URI, and each URI is sent 3 ways: 9 × 1 × 3 = 27. Each caller also sends one
 same-company call, which is not counted as an attack.
 
-`pnpm check` prints `616 passed`, and `pnpm test:db` prints `64 passed`. `pnpm start`
+`pnpm check` prints `628 passed`, and `pnpm test:db` prints `64 passed`. `pnpm start`
 prints what step 11's program printed, with every call sending a URI.
 
 ## Break it
 
 Every break of the design's table, performed on 2026-09-30, one at a time, then put
 back from a copy and compared byte for byte. W1 to W7 ran twice: on the step before the
-review (commit `1e01b0a`), and on the final code (commit `5abb240`). W8 and W9 test what
+review (commit `1e01b0a`), and on the final code (commit `14eb49d`, after the review and the
+sweep). W8 and W9 test what
 the review added, so they ran on the final code only. W1 and W9 change what reaches the
 database, so they also ran on the database tier.
 
 | # | The break | Learner's prediction | Before the review | On the final code |
 | --- | --- | --- | --- | --- |
-| W1 | Step 10's URI check is taken out of the pipeline | red for every operation, in both tiers | 12 unit, 2 database | **19 unit**: every suite test that uses the real checklist, and 4 of step 10's. **3 database** |
-| W2 | The suite stops after the first operation | only the count | 8: the count, and every planted test | **16**: the count, both fake DSoRs, and every planted test |
+| W1 | Step 10's URI check is taken out of the pipeline | red for every operation, in both tiers | 12 unit, 2 database | **23 unit**: every suite test that uses the real checklist, and 4 of step 10's. **3 database** |
+| W2 | The suite stops after the first operation | only the count | 8: the count, and every planted test | **20**: the count, the fake DSoRs, C6's log, and every planted test |
 | W3 | The suite accepts any refusal | survives, unless a planted test | 3: the judge's own tests | 3 |
 | W4 | The rule "an example must hold a URI of org_456" is removed | red: the example has no URI | 2: `invoice.peek`, and the example whose only URI is `org_789`'s | 2 |
-| W5 | The three answers are compared with the request id left in | not asked | 9: a false alarm everywhere the real checklist answers | 16 |
+| W5 | The three answers are compared with the request id left in | not asked | 9: a false alarm everywhere the real checklist answers | 19 |
 | W6 | The suite leaves out the same-company call's check | only C7 | 1: C7 | 1: C7, as predicted |
 | W7 | The swap changes every URI at once | only the two-URI swap test | 1 | 2: the swap's own test, and the fake that records what is sent |
 | W8 | The same-company call's data is not searched | only the three planted leaks | not built yet | **3**: `invoice.dump`, `invoice.theirs`, `invoice.cached`, as predicted |
-| W9 | The suite works in `org_456` only | only `invoice.cached` | not built yet | **8 unit, 2 database**: every test that expects `org_789`'s attacks or findings |
+| W9 | The suite works in `org_456` only | only `invoice.cached` | not built yet | **10 unit, 2 database**: every test that expects `org_789`'s attacks or findings |
 
 **W1, the one this step is for.** In `src/pipeline.ts`, comment out
 `checkUrisInTenant(checked, tenant);`. Then:
@@ -505,7 +506,7 @@ The learner's predictions, and what happened:
 | After C1, database | both pass | both |
 | After C4 | 5 more pass | **6**: C5's `{ id }` operation is caught by the same check as C4's example with no URI of `org_456` |
 | After the review, both companies | 3 of 17 pass | **6**: the count, C4's permission nobody holds, and C7 expect `org_789` too |
-| W8 and W9 | only the leaks; only `invoice.cached` | W8 right. W9 was caught by 8 tests |
+| W8 and W9 | only the leaks; only `invoice.cached` | W8 right. W9 was caught by 10 tests |
 
 The learner's pattern across this step: each commit turned more tests green than
 predicted, because one piece of code often serves several claims.
