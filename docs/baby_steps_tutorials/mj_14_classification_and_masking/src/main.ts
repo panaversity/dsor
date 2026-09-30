@@ -10,6 +10,7 @@
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
 import { fileURLToPath } from "node:url";
+import { readClassifications } from "./classification.ts";
 import type { Answer } from "./envelope.ts";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import type { DecisionLog } from "./log.ts";
@@ -40,6 +41,9 @@ const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.m
 // Start-up checks the input schemas too. A folder of them can be named after
 // the role table, so a test can start without one. With none named, the step's own is read.
 const INPUTS: string | undefined = process.argv[4];
+// NEW IN STEP 14: start-up checks the labels too (step 14's README, decision 1). A file of
+// them can be named after the inputs folder, so a test can start with a broken one.
+const CLASSIFICATIONS: string | undefined = process.argv[5];
 // The pool is made before the checks, because the operations are built
 // with the invoices it reads. It connects only at its first query, after every check.
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
@@ -52,6 +56,7 @@ try {
     handlersFor(createDbInvoices(pool)),
     readRoles(ROLES),
     readInputs(INPUTS),
+    readClassifications(CLASSIFICATIONS),
   );
 } catch (error) {
   console.error((error as Error).message);

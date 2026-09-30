@@ -3,6 +3,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
+import {
+  checkClassifications,
+  readClassifications,
+  type ClassificationSource,
+  type Kinds,
+} from "./classification.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { keysWrittenTwice } from "./json.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
@@ -27,6 +33,8 @@ export type Registry = {
   roles: Roles;
   // The check for each operation's input (step 07's README, decision 2).
   inputs: InputChecks;
+  // NEW IN STEP 14: each field's label (step 14's README, decision 1).
+  classifications: Kinds;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -72,6 +80,8 @@ export function buildRegistry(
   roleSource: RoleSource,
   // The input schemas. This step's own, unless the caller gives others.
   inputSources: InputSource[] = readInputs(),
+  // NEW IN STEP 14: the labels. This step's own, unless the caller gives others.
+  classificationSource: ClassificationSource = readClassifications(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -129,10 +139,14 @@ export function buildRegistry(
   const { inputs, problems: inputProblems } = checkInputs(contracts.values(), inputSources);
   problems.push(...inputProblems);
 
+  // NEW IN STEP 14: a label that is not one of the four stops start-up, with the rest.
+  const { kinds, problems: labelProblems } = checkClassifications(classificationSource);
+  problems.push(...labelProblems);
+
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles, inputs };
+  return { contracts, handlers: code, roles, inputs, classifications: kinds };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

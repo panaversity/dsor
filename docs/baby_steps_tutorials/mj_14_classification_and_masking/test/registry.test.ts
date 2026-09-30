@@ -90,6 +90,8 @@ describe("C1: nothing can be called without a contract", () => {
       roles: new Map(),
       // A registry holds the check for each input too. This one has none.
       inputs: new Map(),
+      // NEW IN STEP 14: and the labels. This one has none.
+      classifications: new Map(),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

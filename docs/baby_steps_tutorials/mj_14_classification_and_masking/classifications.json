@@ -1,0 +1,15 @@
+{
+  "Invoice": {
+    "id": "internal",
+    "tenant_id": "internal",
+    "vendor_id": "internal",
+    "status": "internal",
+    "amount": "confidential",
+    "open_amount": "confidential"
+  },
+  "InvoicePage": {
+    "items": "Invoice[]",
+    "next_cursor": "internal",
+    "capped": "public"
+  }
+}
