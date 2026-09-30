@@ -1,693 +1,277 @@
-# Step 12 · The cross-tenant test suite
+# Step 13 · Bounded queries
 
-**New in this step:** one test, generated from the list of operations, calls every
-operation with another company's URI, and grows by itself each time an operation is added
-(DSOR-TEN-02b).
+**New in this step:** `invoice.list`, the first query that returns many rows. DSoR
+decides how much one answer may hold, by rows and by size, whatever the caller asks for
+(DSOR-QRY-01).
 
 ## In plain words
 
-Steps 10 and 11 keep each company's data away from the others, and tests prove it for the
-two operations that exist. But each of those tests exists because someone wrote it. This
-step writes one test that cannot forget. It walks the **registry**, step 03's list of
-every operation, and attacks each operation it finds there:
+Until now every query returned one thing: `invoice.get` gives one invoice. This step
+adds `invoice.list`, "show me my company's invoices". A list can be long, so its answer
+comes in **pages**: a few rows at a time, with a **cursor**, a bookmark that says where
+the page stopped. The caller sends the cursor back to get the next page.
 
-```text
-a normal request      invoice.get  { invoice: "dsor://org_456/invoice/INV-1008" }
-the company swapped   invoice.get  { invoice: "dsor://org_789/invoice/INV-1008" }
-the answer            TENANT_MISMATCH, no data
-```
+The caller may ask for a page size, `limit`. DSoR has its own maximum, and **DSoR's
+maximum wins**. Ask for a million rows, and the answer holds ten, says it was cut down,
+and gives the cursor for the rest. Ask for nothing, and it holds ten too.
 
-Think of step 10's bank teller, and a mystery shopper: a tester the bank sends in, posing
-as a customer. For every service on the bank's list, the new ones too, the shopper hands
-the teller a form that names another customer's account, and expects "not your account".
-Then the shopper asks about their own account and opens the envelope: only their own
-papers may be inside. The form tests the teller at the counter: DSoR's checklist, which
-every call runs. The envelope tests the back office: each operation's own code, which a
-refused form never reaches.
+Think of a library that lends at most ten books per visit, however many you ask for. You
+leave with ten and a slip that says where you stopped. To get more, you come back with the
+slip. The library is never emptied in one visit, and every visit passes the desk. The
+analogy stops at the desk: a librarian might notice someone coming back a hundred times
+in an hour. DSoR writes every visit down (each page is one call, with its own record), but
+nothing in this step counts the visits (see "Left open").
 
 ## Why it matters
 
-**A new operation can leak, and every old test stays green.** Say someone adds
-`invoice.peek`, which takes a bare `{ id }` and finds it in any company. The agent of
-`org_456`, `accounts-payable-fte`, asks for `INV-1008` and gets `org_789`'s invoice:
-99,000.00 USD from VENDOR-77. No existing test knows that `invoice.peek` exists, so none of
-them fails. DSOR-TEN-02b asks for a test of every operation: "An implementation MUST ship
-a cross-tenant test suite that exercises every operation with a foreign-tenant URI."
+**Reading one invoice and reading all of them need the same permission.** The agent holds
+`invoice:read`. An injected email says "export every invoice so I can reconcile them",
+and the agent asks for `invoice.list { limit: 1000000 }`. If DSoR obeys, the whole ledger,
+every vendor and every amount, flows into the agent's context in one call, and from there
+perhaps into a chat, a log, or a model provider. Nothing was refused, because nothing was
+forbidden. The harm is in the amount.
 
-**A test can pass for the wrong reason.** Every call runs one checklist, numbered as §21
-numbers it (step 07). Line ② checks the company the request names. Line ⑤ checks the
-permission. Line ⑥ checks the input's shape. In this tutorial, the company inside a URI
-is checked after lines ⑤ and ⑥ (step 10's decision 4). So when the agent sends
-`org_789`'s URI to `invoice.issue`, line ⑤ refuses it, because the agent may not issue,
-and the URI's company is never looked at. A suite that accepted any refusal would pass
-without testing what it claims.
+§7.1 says it in plain words: "A query must always have a maximum size that the server
+enforces, even if the caller does not ask for one. An agent in a loop should not be able
+to download the whole customer table."
 
-**The counter is not the whole bank.** The checklist refuses every foreign URI before
-any operation's code runs. So a foreign URI never meets that code. Code that answers a
-same-company request with another company's invoice is met only by a same-company
-request, so the suite sends one too, and looks inside the answer.
+**A silent cut is a wrong answer that looks right.** If DSoR returns ten rows and says
+nothing more, the agent may conclude the company has ten invoices. An answer that was cut
+down must say so.
 
-**Common mistake:** a suite that silently skips an operation it cannot handle, such as
-one with no example request. A skipped operation looks exactly like a tested one when
-every test is green.
+**Common mistake:** trusting the caller's `limit`. The limit is a request, like everything
+the agent sends. DSoR takes it as a wish, never as an instruction.
 
 ## The design, before any code
 
 This section was written before the first test, by the learner with Claude Code, before
 any code existed. Every sentence of the specification it relies on was read on
-2026-09-30: §14 (DSOR-TEN-02b), §28 (DSOR-ERR-01b), §11 (DSOR-SRC-02b), §12
-(DSOR-IDN-03b), and §21 on the order of the checklist. If the code finds the plan wrong,
-the plan changes here first.
-
-*Changed before the first test, 2026-09-30.* Checking this design against the code found
-three gaps, and the learner chose each answer. `invoice.get` takes an invoice's URI and
-nothing else (decision 1). The suite swaps one URI at a time (decision 3). Each attacker
-first sends the example unchanged, so a refusal for any reason but the company cannot
-pass (decision 8, claim C7). C2, C3, and C4 also gained tests.
-
-*Changed after the review, 2026-09-30.* Two reviewers who had not seen the conversation
-attacked the finished step. Fake operations that leak passed the suite, because the
-checklist refuses every foreign URI before any operation's code runs. The learner chose
-three changes. The same-company call's answer is searched for another company's data
-(claim C8). The suite works in both companies, `org_456` and `org_789` (decision 9). And
-it takes the call function as an argument, so a test can hand it a fake DSoR (decision
-10). The analogy changed too, from a hotel inspector to the bank's mystery shopper. The
-mutation sweep, which changed the code in 103 small ways, then showed that an example
-naming an invoice its company lacks made the suite prove less, silently. So a query's
-same-company call must now answer with data (decision 8).
+2026-09-30: §7.1 (DSOR-QRY-01), §7 and `operation-contract.schema.json` (which holds no
+field for a page size or a result size), §14 (DSOR-TEN-02b, for the suite's new check),
+and §28 (its codes, none of which names an answer that is too large). If the code finds
+the plan wrong, the plan changes here first.
 
 ### The intent and the outcome
 
 Written first, before the rules were split into claims.
 
-**Intent.** No operation reaches callers without a cross-company test, because the test
-is generated from the registry and nobody has to remember to write it. The analogy is
-the bank's mystery shopper.
+**Intent.** No single call can drain a table. DSoR, not the caller, decides how many rows
+and how many bytes one answer holds, and says so when it cuts an answer down. The analogy
+is the library's ten books per visit.
 
 **Outcome.** What is true when this step is done:
 
-1. For every operation in the registry, the suite sends its example request with one
-   URI's company swapped, three ways. To `org_789` with the same id. To `org_789` with
-   the id `NOPE`, which it does not have. And to `org_999`, a company that does not
-   exist. Every answer is `TENANT_MISMATCH`, with no data. An example with two URIs is
-   attacked one URI at a time.
-2. The three answers are the same, word for word, apart from the request id.
-3. Each attack is made by every principal who holds the operation's permission in the
-   company the suite works in. The suite works in `org_456`, then in `org_789`. So
-   `firm-ap-fte`, who belongs to both, attacks in each direction.
-4. Before its attacks, each caller sends the example unchanged, in its own company: a
-   **same-company call**. Its answer is not `TENANT_MISMATCH`, so the refusals come from
-   the company that changed. A query's same-company call is answered with data, so the
-   example names a thing that exists, in both companies. And its answer holds nothing of
-   another company: no `tenant_id` and no URI of another company.
-5. Nothing is skipped. These turn the suite red: an operation with no example, an
-   example with no URI of its company, an example that leaves out a field its input
-   schema lists, and an operation that nobody in the company may call.
-6. **Planted** operations turn the suite red. A planted operation is a fake one, added
-   only inside one test, to prove the suite would notice it. There are four: one that
-   takes a bare `{ id }`, one that answers with every company's invoices, one that
-   answers with the other company's, and one that keeps invoices in a cache keyed by id
-   alone.
-7. `invoice.get` takes a canonical URI, `{ invoice: "dsor://org_456/invoice/INV-1008" }`,
-   like `invoice.issue`. A URI that names anything but an invoice is refused at line ⑥.
-8. The suite runs in `pnpm check`, with the invoices in memory, so CI, the checks GitHub
-   runs on every push, runs it too. It runs again in `pnpm test:db`, where every
-   same-company read goes through the database.
+1. `invoice.list` with no `limit` returns at most 10 invoices of the caller's company.
+2. `invoice.list { limit: 1000000 }` returns 10 invoices, says it was capped, and gives a
+   cursor for the next page.
+3. Following the cursor, page after page, visits every invoice of the caller's company
+   exactly once, in order, and the last page has no cursor.
+4. No answer to any query is larger than 64 KiB. A page stops early, before the next row
+   would take it past, and its cursor continues from there.
+5. A `limit` of 0, a negative one, a fraction, or text is refused.
+6. Step 12's suite checks `invoice.list` from both companies, and finds only the caller's
+   company's rows in each answer.
 
-**Not the outcome of this step.** A fresh Neon branch made and deleted for each run, as
-the map of all steps suggests (decision 7). Attacks that are not URIs, such as a company
-in a field named `tenant`: step 10's tests cover those. Leaks that the example does not
-reach (see "Left open").
+**Not the outcome of this step.** Stopping a slow drain: an agent that follows the cursor
+page after page can still read every invoice, one call at a time. Each call is recorded,
+so it is visible, but no step in the map counts calls or slows them down (see "Left
+open"). Filters and sorting chosen by the caller.
 
 **The success signals**, each a test that fails if this step's code is deleted:
 
-- The suite's own count: it attacked exactly the operations the registry holds.
-- The planted `{ id }` operation turns the suite red, with a finding that names it. A
-  **finding** is one problem the suite names.
-- Handed a fake DSoR that answers every request with data, as if step 10's URI check
-  were gone, the suite names every attack.
-- The planted operations that leak through a same-company call turn the suite red.
-- A planted operation whose code refuses every request with `TENANT_MISMATCH`, its own
-  company's too, turns the suite red.
+- `invoice.list { limit: 1000000 }` returns exactly 10 rows, `capped`, and a cursor, while
+  the company has more than 10 invoices.
+- `invoice.list {}` returns 10 rows, not all of them.
+- A fake query whose answer would be larger than 64 KiB is cut down or refused, never
+  sent whole.
 
 ### What the specification asks, and what this step can honestly give
 
 Checked on 2026-09-30:
 
-1. **DSOR-TEN-02b asks for every operation, with a foreign-tenant URI.** The suite
-   covers every operation in the registry, the commands too. A command is refused
-   before its code runs. In this tutorial's checklist, the URI's company is checked
-   before "is it built?", so a command answers `TENANT_MISMATCH` too.
-2. **The map's "Done when" says "adding a new operation without tenant checks makes this
-   suite fail".** In this tutorial, the checklist checks every URI once, before any
-   operation's code. A new operation cannot forget that check. What it can forget is to
-   stay inside its company in its own code. The suite catches that only through what a
-   same-company call answers (C8): a bare id, an answer with another company's data, a
-   cache keyed by id alone. A leak that only another input would show is not caught.
-3. **The map says the suite "runs on a fresh Neon branch, so it can create two companies
-   and destroy them".** The two companies already exist, written by step 10's migration.
-   This step runs on the step's own branch, and makes no branch per run. That would need
-   a Neon API key that can delete branches (decision 7).
-4. **DSOR-ERR-01b** is checked again, now for every operation: the answer never tells
-   whether the other company's thing, or the other company, exists.
-5. **The database run does not attack the database's lock.** A foreign URI is refused
-   before any read, and the code hands the store the active company. So step 11's lock
-   in the database never meets a foreign company. The database run proves that the same
-   checks hold with the real store and the real log. Every same-company read goes through
-   the database and answers with its own company's invoice. And every attack's record
-   lands in the caller's company, under step 11's policy.
+1. **DSOR-QRY-01 asks for "a server-side maximum page size and maximum result size on
+   every query".** It does not say what a result size is, and the contract schema holds
+   no field for either. This step's page size counts rows, and its result size counts the
+   bytes of one answer (decisions 2 and 3). Both are this tutorial's numbers, written in
+   DSoR's code, not in the contract. Both are recorded as questions for the specification.
+2. **"Every query"** includes `invoice.get`. Its answer is one invoice, so its page size is
+   one by nature, and the size limit of decision 3 applies to it as to every query.
+3. **§28 has no code for "this answer is too large to give".** Decision 3 picks one, and
+   the choice is recorded as a question.
 
 ### What each rule really says
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-TEN-02b | **C1.** Every operation in the registry is called with foreign-tenant URIs, one URI at a time, from both companies, and each answer is `TENANT_MISMATCH` with no data | The suite's findings are empty, and it attacked every operation in the registry |
-| DSOR-ERR-01b | **C2.** The three foreign answers of an operation are the same, apart from the request id | Compared word for word, for every operation, caller, and URI |
-| DSOR-IDN-03b | **C3.** A principal who belongs to both companies, working in one, cannot reach the other | `firm-ap-fte` attacks from `org_456` and from `org_789` |
-| DSOR-TEN-02b | **C4.** Nothing is skipped: every gap in an example, or no caller allowed, is a finding | A registry with each gap planted gives each finding |
-| DSOR-TEN-02b | **C5.** The suite notices an operation that takes a bare id | The planted `invoice.peek { id }` gives a finding |
-| DSOR-EXE-02 | **C6.** Every attack leaves its record in the caller's company, with its operation, result, and reason | One record per attack, in the company it worked in, and none in the other |
-| DSOR-TEN-02b | **C7.** The refusal is for the company, and for nothing else: the same-company call is not answered `TENANT_MISMATCH`, and a query's is answered with data | A planted operation that refuses everything as foreign, and a query whose example names a missing invoice, each give findings |
-| DSOR-IDN-03b | **C8.** An operation's own code answers a same-company call with nothing of another company | The planted `invoice.dump`, `invoice.theirs`, and `invoice.cached` each give a finding |
+| DSOR-QRY-01 | **C1.** A page holds at most 10 rows, whatever the caller asks, and says when it was cut down | No `limit`: 10 rows. `limit: 1000000`: 10 rows, `capped`, a cursor. `limit: 3`: 3 rows, not capped |
+| DSOR-QRY-01 | **C2.** No answer to a query is larger than 64 KiB | A page stops before the row that would take it past, with a cursor. A query whose one answer is larger is refused |
+| DSOR-QRY-01 | **C3.** The cursor walks the whole list, once | Pages followed to the end visit every invoice of the company exactly once, in order, and the last has no cursor |
+| (our decision) | **C4.** A `limit` must be a whole number of at least 1 | 0, -1, 1.5, and `"10"` are refused with `VALIDATION_FAILED` at line ⑥ |
+| DSOR-TEN-02b | **C5.** Step 12's suite checks a list from both companies | Every row in `invoice.list`'s answer, for `org_456` and for `org_789`, carries the caller's company. A planted list that leaks a row, or returns a row with no company, is a finding |
+| DSOR-EXE-02 | **C6.** Each page is its own call, with its own record | Three pages leave three records |
 
 ### Decisions the specification leaves to us
 
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
-1. **`invoice.get` takes a canonical URI:** `{ invoice: "dsor://org_456/invoice/INV-1008" }`.
-   Step 02 gave every thing one address, and now every operation names the thing it works
-   on the same way. The suite needs one trick: swap the company. The code reads the id
-   out of the URI, and still reads only inside the active company, the one line ②
-   checked. Only an invoice's URI is accepted. The input schema adds our own `/invoice/`
-   part to the specification's pattern, so `dsor://org_456/vendor/VENDOR-44` is refused
-   at line ⑥, before the code, as every input has been since step 07. *Downside:* step
-   07's input `{ id }` changes, and every test and example that used it changes too. The
-   schema holds a pattern of ours beside the specification's. `invoice.issue` still
-   accepts a URI of any kind, until step 22 gives it code.
-2. **Each operation has an example request in a file:** `examples/<operation>.json`,
-   beside `contracts/` and `inputs/`. The suite reads it and checks it against the
-   operation's input schema. The example must name every field that schema lists, so a
-   field that may hold a URI is attacked too. An example file that no operation names is
-   a finding too: most likely a name spelled wrong. *Downside:* one more file for each
-   new operation. That is the point: the suite turns red until it exists.
-3. **The swap goes three ways, one URI at a time.** The URI's company becomes `org_789`,
-   with the same id. In this story `org_789` has an `INV-1008` of its own. Then the
-   company becomes `org_789` with the id `NOPE`, which it does not have. Then the company
-   becomes `org_999`, which does not exist. The other URIs in the example stay in their
-   company, so each attack carries exactly one foreign URI. Swapping them all at once
-   would let an operation that checks only its first URI pass. *Downside:* three calls
-   for each URI, caller, and operation. And the suite never checks that `org_789` really
-   has the same id (see "Left open").
-4. **The only accepted answer is `TENANT_MISMATCH`, from callers who may call the
-   operation.** For each operation, the suite finds in DSoR's own tables every principal
-   whose roles in the company grant the operation's permission, and attacks as each of
-   them. Any other answer, a refusal included, is a finding. *Downside:* an operation
-   that nobody in `org_456`, or nobody in `org_789`, may call is a finding too. Its
-   author must give some role its permission before it ships.
-5. **The suite is a function that returns findings,** and it never stops at the first
-   one. The real test expects no findings. The test of the test runs the same function
-   over a registry with planted gaps, and expects each gap named. *Downside:* the
-   findings are text the tests must match, so their wording is part of the test.
-6. **It runs in both tiers.** A tier is one kind of test run: the unit tests, which need
-   no database, and the database tests. In `pnpm check`, the invoices come from memory,
-   so CI runs the suite on every push. In `pnpm test:db`, the same suite runs with the
-   database's store and log. *Downside:* the two runs share the suite, so a bug in it
-   hides in both. And the database run does not attack the database's lock (point 5
-   above).
-7. **No throwaway Neon branch per run.** The suite runs on the step's own branch,
-   `step-12`, where step 10's migration already made both companies. A branch per run
-   would need a Neon API key in `.env`, and that key can create and delete branches and
-   projects. *Downside:* the map's "fresh branch" is not done, and the branch's log grows
-   with every run.
-8. **Each attacker first sends the example unchanged, in its own company: a
-   same-company call.** Its answer must not be `TENANT_MISMATCH` (C7). For a query, it
-   must be data: then the example names a thing its company has, and, moved to the other
-   company with the same id, a thing that company has too. So the first way of the swap
-   really names something that exists. If it holds data,
-   the data may hold no `tenant_id` and no URI of another company (C8). This is the only
-   request that reaches an operation's code, so it is where the code's own mistakes
-   show. *Downside:* one more call for each operation and caller. It sees only what the
-   example asks for. And it knows two signs of a company, a `tenant_id` field and a URI:
-   data that names a company another way passes. And a query's example must name a thing
-   both companies hold, so the stored data must have one. A command is refused before its
-   code runs until step 22, so its same-company call cannot answer with data yet. A query
-   with no code yet is a finding too: it cannot answer with data.
-9. **The suite works in both companies:** first in `org_456`, then in `org_789`. For
-   `org_789`, the example's `org_456` URIs are rewritten to `org_789`, and the swaps go
-   to `org_456`. So `firm-ap-fte`, who belongs to both, attacks each company from the
-   other. And a cache keyed by id alone, filled in one company, is read from the other.
-   *Downside:* 27 attacks instead of 15, and every operation needs a caller in both
-   companies.
-10. **The suite takes the call function as its last argument,** `call` unless a test
-    hands it another. A test hands it a fake DSoR: one that answers every request with
-    data, as if step 10's URI check were gone, or one whose three answers differ. So the
-    suite's use of its judge and its comparer is tested, not only those two functions
-    alone. *Downside:* one more argument, and a fake to read.
+1. **`invoice.list` is a query, with the permission `invoice:read`.** Its input is
+   `{ limit?, cursor? }`, and nothing else. Its answer is
+   `{ items, next_cursor?, capped? }`, where `capped` is `{ asked, max }` when the
+   `limit` was cut down. *Downside:* every caller who may read one invoice may list them
+   all, a page at a time. A permission of its own for listing would be stricter, and the
+   specification does not ask for one.
+2. **The page size is at most 10 rows, and 10 when no `limit` is given.** A `limit` above
+   10 becomes 10, and the answer says `capped: { asked, max: 10 }`. The number is small
+   so that a test, and a learner, can see the cap work with a dozen invoices. *Downside:*
+   a real deployment would choose a larger number, and this one lives in the code, not in
+   the contract, because the contract schema has no field for it.
+3. **No answer to a query may be larger than 64 KiB.** A list stops adding rows before the
+   row that would take its answer past the limit, and gives the cursor from there. After
+   line ⑨, the pipeline measures every query's answer, and one that is still too large is
+   refused with `UNSUPPORTED_CAPABILITY`, "the answer is larger than DSoR gives in one
+   call". *Downside:* §28 has no code for this. `UNSUPPORTED_CAPABILITY` with retry
+   `never` is the closest: asking again gets the same answer. It is a question for the
+   specification.
+4. **The list is in order of invoice id, and the cursor is the last id of the page.** The
+   next page is `WHERE tenant_id = <the company> AND id > <cursor> ORDER BY id`, one row
+   more than the page needs, to know whether another page follows. The cursor is a
+   position in the caller's own company only: a cursor that names another company's
+   invoice id is just a place in the alphabet, and tells nothing about that invoice.
+   *Downside:* an invoice added behind the cursor while a caller is paging is missed by
+   that walk.
+5. **A `limit` must be a whole number of at least 1,** checked by `invoice.list`'s input
+   schema at line ⑥. The schema sets no maximum, so a large `limit` passes line ⑥ and is
+   cut down, as the map's "done when" asks, instead of refused. *Downside:* a caller that
+   asks for a million is not told "no". It is told "here are ten, and you asked for a
+   million".
+6. **Step 12's suite learns a second check, for lists.** A list names no single thing, so
+   its example holds no `dsor://` URI, and there is nothing to swap. An operation whose
+   example holds no URI is accepted only when its answer is a page, `{ items: [...] }`.
+   The suite then calls it from both companies, and every item must carry `tenant_id`
+   equal to the caller's company. An item with no `tenant_id` is a finding, because it
+   cannot be checked. Any other operation with no URI in its example is still a finding,
+   as in step 12. *Downside:* the suite now trusts an operation that says it is a list to
+   return items that carry their company. A single-thing operation dressed as a
+   one-item page would be checked by its rows, not by a swap.
+7. **More invoices, so that there is more than one page.** A migration, `006`, adds
+   `INV-1001` to `INV-1012` to `org_456`, keeping `INV-1008` as it is, and three more to
+   `org_789`. *Downside:* the running example gains invoices the specification does not
+   name.
 
 ### The tests, by claim
 
-- **C1:** the suite over the shipped registry gives no findings, and attacked both
-  operations from both companies: 27 attacks, each with its own request id. Handed a fake
-  DSoR that answers every request with its company's invoice, as step 10's missing URI
-  check would, it names all 27. The swap of an example with two URIs gives six requests,
-  each with exactly one foreign URI, and the suite sends all six. A URI inside a list is
-  swapped too. A text that only contains a URI is not a URI, and is not swapped.
-- **C2:** the three answers of each operation, caller, and URI, with the request id
-  taken out, are equal. The comparer, handed three answers whose messages differ, names
-  a finding. *Added before the first test:* without it, a suite that never compares
-  stays green. And a fake DSoR whose three answers differ gives one finding for each
-  caller and URI. *Added after the review:* without it, the suite's call to the comparer
-  could be deleted, and every test stayed green.
-- **C3:** the attackers are exactly the principals who hold the permission. In
-  `org_456`: for `invoice.get`, `accounts-payable-fte`, `cfo_100`, `firm-ap-fte`, and
-  `user_123`; for `invoice.issue`, `user_123` alone. In `org_789`: `firm-ap-fte` and
-  `user_700`, for both.
-- **C4:** planted registries: an operation with no example file, an example that is not
-  JSON, an example whose only URI is `org_789`'s, an example that fails its own input
-  schema, an example that leaves out a field its schema lists, and an operation whose
-  permission no role grants. Each gives the findings that name the operation and the
-  gap. An example file that no operation names gives one finding. And the suite's judge,
-  handed an answer of `AUTHORIZATION_DENIED`, `VALIDATION_FAILED`, `RESOURCE_NOT_FOUND`,
-  or a success with data, names each one as a finding: a refusal for the wrong reason is
-  not a pass. *Added before any code, 2026-09-30:* the learner's prediction for break W3
-  showed that without it, nothing would catch a suite that accepts any refusal.
-- **C5:** a planted `invoice.peek` with input `{ id }` gives the finding "no URI of
-  org_456 in its example".
-- **C6:** in the database tier, after the suite, each company holds one record for each
-  attack made in it: `DENY`, `TENANT_MISMATCH`, the operation, and the reason. The other
-  company holds none of them.
-- **C7:** a planted operation whose code refuses every request with `TENANT_MISMATCH`
-  gives one finding for each caller, in each company. A planted query whose example names
-  `INV-2001`, which only `org_789` has, gives a finding for each caller in `org_456`.
-  One whose example names `INV-9999`, which nobody has, gives one for each caller in both.
-  *Added after the sweep.*
-- **C8:** the planted `invoice.dump`, which answers with every company's invoices,
-  `invoice.theirs`, which answers with the other company's, and `invoice.cached`, which
-  keeps invoices in a cache keyed by id alone, each give findings. The data search,
-  handed data with another company's URI deep inside it, names it.
-- **Decision 1:** `invoice.get` with `{ id }` is refused by line ⑥, and with its URI
-  gives `INV-1008` of the active company. A vendor's URI is refused by line ⑥. The code,
-  handed `org_789`'s URI while working in `org_456`, still reads `org_456`'s invoice.
+- **C1:** on memory and on the database: `invoice.list {}` gives 10 items and a cursor.
+  `{ limit: 1000000 }` gives 10 items, `capped: { asked: 1000000, max: 10 }`, and a
+  cursor. `{ limit: 3 }` gives 3 items, no `capped`, and a cursor.
+- **C2:** a fake list whose rows are 10 KiB each stops at 6 rows, under 64 KiB, with a
+  cursor. A fake query whose one answer is 100 KiB is refused with
+  `UNSUPPORTED_CAPABILITY`. The real answers are measured and stay under the limit.
+- **C3:** following `next_cursor` from `{ limit: 5 }` gives 5, 5, and 2 items for
+  `org_456`'s 12 invoices, each id once, in order, and the last page has no cursor. A
+  cursor that is `org_789`'s `INV-2001` gives the same page as the made-up cursor
+  `INV-2000`, apart from the request id.
+- **C4:** `{ limit: 0 }`, `{ limit: -1 }`, `{ limit: 1.5 }`, and `{ limit: "10" }` are each
+  `VALIDATION_FAILED`.
+- **C5:** the suite over the shipped registry gives no findings and counts 3 operations.
+  Planted: a list that returns one `org_789` row to `org_456`, a list whose item has no
+  `tenant_id`, and a single-thing operation with no URI whose answer is not a page. Each
+  gives its finding.
+- **C6:** in the database tier, three pages leave three records in the caller's company.
 
 ### Breaks we will try, and what we expect
 
-W1 to W7 were run against the step before the review ("Break it"). W8 and W9 test the
-changes the review brought. The learner's predictions were recorded before the code
-they break.
+Run against the finished step. The learner's predictions were recorded before any code.
 
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
-| W1 | Step 10's URI check is taken out of the pipeline | the suite, for every operation, in both tiers | red for every operation, in both tiers |
-| W2 | The suite stops after the first operation | only the count in C1 | only the count catches it |
-| W3 | The suite accepts any refusal | C4's judge, handed a wrong-reason refusal | survives, unless a planted test (and there was none: C4 gained one) |
-| W4 | The rule "an example must hold a URI of org_456" is removed | C5, the planted `{ id }` operation | red: example has no URI |
-| W5 | The suite compares the three answers with the request id left in | a false alarm: every operation is a finding | not asked |
-| W6 | The suite leaves out the same-company call | C7, the planted operation that refuses everything | only C7 |
-| W7 | The swap changes every URI at once | C1's swap of a two-URI example | only the two-URI swap test |
-| W8 | The same-company call's data is not searched | C8's planted operations | only the three planted leaks |
-| W9 | The suite works in `org_456` only | C3's attackers in `org_789`, the count, and `invoice.cached` | only `invoice.cached` |
+| X1 | The caller's `limit` is obeyed | C1's million test | not asked; the expectation stands |
+| X2 | No `limit` means every row | C1's empty-input test | not asked; the expectation stands |
+| X3 | A cut-down page says nothing (`capped` left out) | C1's million test | the million test |
+| X4 | The cursor query uses `>=` instead of `>` | C3: the cursor's own row comes back again | C3 |
+| X5 | The list's SQL forgets the company | the suite's list check on memory. On the database, nothing: the second lock hides it | red on memory, green on the database |
+| X6 | The suite's list check accepts an item with no `tenant_id` | only C5's planted item | only the planted item test |
+
+The review also attacks the step with the threat that is its reason: bulk extraction by
+an allowed caller, through a large `limit`, a forged cursor, or a loop.
 
 ### Left open, and not this step's idea
 
-- **A throwaway Neon branch for each run** (decision 7).
-- **One database test alone guards step 11's helper.** Step 11 found that only one test
-  catches a connection that goes back to the pool still holding a company. A second test
-  belongs with the next change to that helper, `inCompany`.
-- **The database tier in CI.** Steps 10 and 11's breaks that live in SQL are caught only
-  by `pnpm test:db`, which CI does not run. This step puts DSoR's own check of every
-  operation into CI. The database's lock still waits for a database in CI.
-- **An operation whose input holds no URI.** Step 13 adds `invoice.list`, whose input
-  may name no invoice at all. The suite will call that a finding, as outcome 5 says.
-  Step 13 must decide how a list is attacked. The same-company call's data search
-  (C8) is a start: a list must hold no row of another company.
-- **Leaks the example does not reach.** The suite attacks what the example holds. It
-  does not reach a bare id beside a URI, a URI used as the name of a field, or code that
-  leaks only for an id another company has.
-- **`NOPE` may break a stricter input.** An operation whose input schema allows only ids
-  like `INV-` and digits refuses `NOPE` at line ⑥, and the suite calls that a finding.
-  The easy way to green is to loosen the schema, which is wrong. The example could name
-  a missing id of its own.
-- **"The same id" is checked to exist for queries only.** A query's same-company call must
-  answer with data in both companies (decision 8). A command's cannot yet, so for a
-  command the first way of the swap may name nothing, and the comparison of the three
-  answers then proves less. Step 22, which gives commands code, can close this.
+- **Stopping a slow drain.** Each call is bounded, but a caller can call again and again.
+  §28 has `RATE_LIMITED`, and no step in the map counts calls. Step 25's emergency brake
+  can stop an agent by hand. Recorded as a gap in the map.
+- **The page size and result size in the contract**, per operation, instead of in code.
+  The contract schema has no field for them.
+- **Filters and sorting** chosen by the caller.
+- **Listing by vendor,** once vendors are records of their own (step 17).
 
 ## Before you build: set up Neon
 
 The rule is: **a secret never passes through a chat.** Claude Code may do this setup
 itself, this way:
 
-1. Create a branch `step-12` **from `step-11`**, with the Neon MCP server or with
-   `neonctl branches create`. It carries step 11's roles, so the owner's password is the
-   one you reset on `step-11`.
+1. Create a branch `step-13` **from `step-12`**, with the Neon MCP server or with
+   `neonctl branches create`.
 2. Write `.env` with `neonctl connection-string`, its output redirected into the file,
    never printed: the owner's string as `DSOR_MIGRATION_URL`, and the same string with
    the user `dsor_runtime` and a new random password (letters and digits) as
    `DSOR_DB_URL`. Both with `sslmode=verify-full`.
-3. Run `pnpm migrate`. It sets `dsor_runtime`'s password from `DSOR_DB_URL`.
+3. Run `pnpm migrate`. It sets `dsor_runtime`'s password from `DSOR_DB_URL`, and runs
+   migration `006`.
 4. Check without looking: `pnpm test:db` passes, and the transcript holds no
    `postgresql://` with a password in it.
 
-## What changed since step 11
+## What changed since step 12
 
-| File | What changed |
-| --- | --- |
-| `examples/invoice.get.json`, `examples/invoice.issue.json` | **New.** One example request for each operation (decision 2) |
-| `test/cross-tenant.ts` | **New.** The suite: `attackersOf`, `judge`, `compare`, and `crossTenantSuite`, which returns a report of what it attacked and what it found (decision 5). It takes the call function as its last argument (decision 10) |
-| `test/companies.ts` | **New, after the review.** Where the suite finds and changes a company: `swaps`, the example moved into another company, and `foreignIn`, the data search. Split from `test/cross-tenant.ts` when that file passed 300 lines |
-| `test/cross-tenant.test.ts` | **New.** C1 to C5, C7, and C8, over the shipped registry, over registries with one fake operation planted in each, and with fake DSoRs |
-| `test/cross-tenant.db.test.ts` | **New.** The suite with the database's store and log, and C6: the record of every attack, in each company |
-| `test/invoice-get.test.ts` | **New.** Decision 1 |
-| `inputs/InvoiceGetRequest.schema.json` | `{ invoice }`, an invoice's canonical URI, in place of `{ id }` (decision 1) |
-| `src/operations.ts` | `invoice.get`'s code reads the id out of the URI, and still reads inside the active company |
-| `src/main.ts` | Every call to `invoice.get` sends a URI. The firm's agent sends each company's own |
-| every other test | About 170 inputs `{ id: "INV-1008" }` became the URI of the caller's active company. Three tests changed more, and two were put right after the review (see "Think it through") |
-| `.claude/skills/build-baby-step/SKILL.md` | Version 2.3.0, which the copy from step 11 had missed |
-
-Every other file is step 11's, without its `NEW IN STEP` markers. No new dependency.
-
-To see every line, from `docs/baby_steps_tutorials`:
-
-```bash
-git diff --no-index mj_11_row_level_security/src mj_12_cross_tenant_test_suite/src
-git diff --no-index mj_11_row_level_security/test mj_12_cross_tenant_test_suite/test
-git diff --no-index mj_11_row_level_security/inputs mj_12_cross_tenant_test_suite/inputs
-```
+_To be written when the code exists._
 
 ## Run it
 
-Set up Neon first ("Before you build" above). Then, in this folder:
-
-```bash
-pnpm install
-pnpm migrate      # no new migration: it only sets dsor_runtime's password again
-pnpm check        # typecheck and the unit tests, the suite on memory among them
-pnpm test:db      # the database tests, the suite with the database among them
-```
-
-To run only the suite and its tests, on memory:
-
-```bash
-npx vitest run test/cross-tenant.test.ts test/invoice-get.test.ts --reporter=verbose
-```
-
-On 2026-09-30, on the final code:
-
-```text
-✓ DSOR-IDN-03b: the code, handed org_789's URI while working in org_456, reads org_456's invoice
-✓ DSOR-TEN-02b: the shipped registry: both operations attacked from both companies, 27 times, no findings
-✓ DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 27 attacks
-✓ DSOR-TEN-02b: the suite sends all six swaps of a two-URI example, after the same-company call
-✓ DSOR-ERR-01b: handed a fake DSoR whose three answers differ, the suite names each caller and URI
-✓ DSOR-IDN-03b: in org_789, invoice.get is attacked by the firm's agent and user_700
-✓ DSOR-TEN-02b: an example that leaves out a field its input schema lists is named, and the rest is still attacked
-✓ DSOR-TEN-02b: code that refuses every request as foreign, its own company's too, is a finding
-✓ DSOR-IDN-03b: invoice.dump, which answers with every company's invoices, is a finding
-✓ DSOR-IDN-03b: invoice.theirs, which answers with the other company's invoice, is a finding
-✓ DSOR-IDN-03b: invoice.cached, which keeps invoices by id alone, is a finding from org_789
-…
-      Tests  51 passed (51)
-```
-
-Why 27 attacks: in `org_456`, `invoice.get` has 4 callers and `invoice.issue` has 1. In
-`org_789`, each has 2: `firm-ap-fte` and `user_700`. That is 9 callers. Each example
-holds 1 URI, and each URI is sent 3 ways: 9 × 1 × 3 = 27. Each caller also sends one
-same-company call, which is not counted as an attack.
-
-`pnpm check` prints `628 passed`, and `pnpm test:db` prints `64 passed`. `pnpm start`
-prints what step 11's program printed, with every call sending a URI.
+_To be written when the code exists._
 
 ## Break it
 
-Every break of the design's table, performed on 2026-09-30, one at a time, then put
-back from a copy and compared byte for byte. W1 to W7 ran twice: on the step before the
-review (commit `1e01b0a`), and on the final code (commit `14eb49d`, after the review and the
-sweep). W8 and W9 test what
-the review added, so they ran on the final code only. W1 and W9 change what reaches the
-database, so they also ran on the database tier.
-
-| # | The break | Learner's prediction | Before the review | On the final code |
-| --- | --- | --- | --- | --- |
-| W1 | Step 10's URI check is taken out of the pipeline | red for every operation, in both tiers | 12 unit, 2 database | **23 unit**: every suite test that uses the real checklist, and 4 of step 10's. **3 database** |
-| W2 | The suite stops after the first operation | only the count | 8: the count, and every planted test | **20**: the count, the fake DSoRs, C6's log, and every planted test |
-| W3 | The suite accepts any refusal | survives, unless a planted test | 3: the judge's own tests | 3 |
-| W4 | The rule "an example must hold a URI of org_456" is removed | red: the example has no URI | 2: `invoice.peek`, and the example whose only URI is `org_789`'s | 2 |
-| W5 | The three answers are compared with the request id left in | not asked | 9: a false alarm everywhere the real checklist answers | 19 |
-| W6 | The suite leaves out the same-company call's check | only C7 | 1: C7 | 1: C7, as predicted |
-| W7 | The swap changes every URI at once | only the two-URI swap test | 1 | 2: the swap's own test, and the fake that records what is sent |
-| W8 | The same-company call's data is not searched | only the three planted leaks | not built yet | **3**: `invoice.dump`, `invoice.theirs`, `invoice.cached`, as predicted |
-| W9 | The suite works in `org_456` only | only `invoice.cached` | not built yet | **10 unit, 2 database**: every test that expects `org_789`'s attacks or findings |
-
-**W1, the one this step is for.** In `src/pipeline.ts`, comment out
-`checkUrisInTenant(checked, tenant);`. Then:
-
-```text
-$ npx vitest run test/cross-tenant.test.ts -t "the shipped registry"
-AssertionError: expected [ …(33) ] to strictly equal []
-+ [
-+   "invoice.get as accounts-payable-fte in org_456, dsor://org_456/invoice/INV-1008 sent to org_789, with the same id: answered with data, not TENANT_MISMATCH",
-+   "invoice.get as accounts-payable-fte in org_456, dsor://org_456/invoice/INV-1008 sent to org_789, with an id it does not have: answered RESOURCE_NOT_FOUND, not TENANT_MISMATCH",
-+   "invoice.get as accounts-payable-fte in org_456, dsor://org_456/invoice/INV-1008 sent to org_999, which does not exist: answered with data, not TENANT_MISMATCH",
-+   "invoice.get as accounts-payable-fte in org_456, dsor://org_456/invoice/INV-1008: the three answers differ",
-    …the same four for user_123, cfo_100, and firm-ap-fte in org_456…
-+   "invoice.get as firm-ap-fte in org_789, dsor://org_789/invoice/INV-1008 sent to org_456, with the same id: answered with data, not TENANT_MISMATCH",
-    …and so on for firm-ap-fte and user_700 in org_789…
-+   "invoice.issue as user_123 in org_456, dsor://org_456/invoice/INV-1008 sent to org_789, with the same id: answered UNSUPPORTED_CAPABILITY, not TENANT_MISMATCH",
-    …
-+ ]
-```
-
-Every operation is named, with every caller, from both companies, and every way. Look
-at "answered with data": it is the caller's own company's INV-1008. The code reads inside
-the active company, whatever company the URI names, so nothing of the other company
-leaked. The suite still calls it a finding, because a request that names another company
-must be refused, not answered with something else. The comparer notices too: `NOPE` is
-not found, and the other two are answered. Here the difference comes from the caller's
-own invoices, but an answer that changes with the company named is the kind that can
-tell a caller about another company.
-
-The fake DSoR with no URI check (decision 10) now does the same in a test that is always
-there: it names all 27 attacks. So W1 no longer depends on someone running it by hand.
-
-**W2 and W9, more than predicted.** The learner expected only the count to notice W2,
-and only `invoice.cached` to notice W9. But every planted operation comes after the two
-shipped ones, so a suite that stops after the first never reaches it. And every test
-that expects `org_789`'s attacks, findings, or callers notices a suite that never works
-there: the counts, both fake DSoRs, C4's permission that nobody holds, C7, and all three
-leaks.
-
-**W8, as predicted.** Only the three planted leaks answer a same-company call with
-another company's data, so only they notice when nobody looks.
+_To be written when the code exists, with real output._
 
 ## Build it yourself with Claude Code
 
-This is how the step was built:
-
-| # | Move | What you do |
-|---|---|---|
-| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one |
-| 2 | Neon | A branch `step-12` from `step-11`, and `.env` written by a command, never shown ("Before you build") |
-| 3 | Check the design | Against step 11's code. Three gaps, and the learner chose each answer, in the design before any test |
-| 4 | Mechanical | Step 11's `NEW IN STEP` markers removed |
-| 5 | Red | Every new test, beside a **stub**: a suite with the right functions, which attack nothing and find nothing. Predict how many pass |
-| 6 | Green | Decision 1, then C1, C2, C4, and C7, one commit each. Predict each |
-| 7 | Break it | W1 to W7, for real |
-| 8 | Review | Two reviewers who have not seen your conversation attack the step. Ask one to plant operations that leak, and see if the suite notices |
-| 9 | Fix the review | Change the design first, then the tests, then the code: both companies, the data search, the fake DSoR, two more gaps. Predict each |
-| 10 | Break it again | W1 to W7 on the fixed code, and W8 and W9 for what the review added |
-
-The learner's predictions, and what happened:
-
-| Moment | Prediction | Real |
-| --- | --- | --- |
-| Red run, stub suite | every new test fails | 20 of 22 failed. The 2 that expect "no finding" passed: a stub that finds nothing says "fine" to everything |
-| After decision 1 | 5 pass | 5 |
-| After C1 | 3 more pass | **9**: `attackersOf` and `judge` are C1's own code, so C3's two tests and the four judge tests passed with it |
-| After C1, database | both pass | both |
-| After C4 | 5 more pass | **6**: C5's `{ id }` operation is caught by the same check as C4's example with no URI of `org_456` |
-| After the review, both companies | 3 of 17 pass | **6**: the count, C4's permission nobody holds, and C7 expect `org_789` too |
-| W8 and W9 | only the leaks; only `invoice.cached` | W8 right. W9 was caught by 10 tests |
-
-The learner's pattern across this step: each commit turned more tests green than
-predicted, because one piece of code often serves several claims.
-
-Build your own step 12 from a copy of your step 11. From `docs/baby_steps_tutorials`:
-
-```bash
-cp -R my_11_row_level_security my_12_cross_tenant_test_suite
-cd my_12_cross_tenant_test_suite
-rm -rf node_modules
-claude
-```
-
-Then paste:
-
-```text
-Use the build-baby-step skill in learner mode for step 12. Set up Neon as "Before you
-build" says: a branch from step-11, and secrets only from a command into .env, never
-through the chat. Check the design against step 11's code before any test, and change
-the design first when the code proves it wrong. Red tests first, one commit per claim.
-Before each run, ask me what I expect.
-```
+_To be written when the code exists._
 
 ## Check yourself
 
-1. Steps 10 and 11 already test the two locks. What does a generated suite add?
-2. Why must the suite accept only `TENANT_MISMATCH`, and not any refusal? And why does each
-   caller first send the example unchanged?
-3. Why is an operation with no example request a failure, and not a skip?
-4. A foreign URI never reaches an operation's code. So how can the suite notice code that
-   leaks another company's invoice?
-5. The suite runs in `pnpm check` on memory, and in `pnpm test:db` on the database. What
-   does each run prove, and what does neither prove?
+1. The agent holds `invoice:read`. Why is that not enough to stop it reading every
+   invoice in one call?
+2. Why does DSoR return ten rows for `limit: 1000000`, instead of refusing?
+3. Why must a cut-down answer say it was cut down?
+4. Why is the page size counted in rows, and the result size in bytes?
+5. Can an agent still read every invoice? What does this step change about how?
 
 <details>
 <summary>Answers</summary>
 
-1. It cannot forget. It reads the registry, so an operation added later is attacked
-   without anyone writing a test for it.
-2. In this tutorial's checklist, the URI's company is checked after line ⑤, the
-   permission. A caller without the permission is refused at line ⑤, and the URI's
-   company is never looked at. Only `TENANT_MISMATCH` shows that the company check ran.
-   The unchanged example, the same-company call, must not be refused as foreign. Then the
-   refusal of the swapped request can only come from the company that changed. Without
-   it, code that refuses everything as foreign would pass.
-3. A skipped operation looks like a tested one when every test is green. The suite must
-   fail until the operation can be attacked.
-4. Through the same-company call, the only request that reaches the code. Its answer is
-   searched for a `tenant_id` or a URI of another company. And the suite works from both
-   companies, so a cache filled in one is read from the other.
-5. On memory, CI runs every check of the suite on every push. On the database, the same
-   checks run with the real store and log: every same-company read goes through the
-   database, and every attack's record lands in the caller's company. Neither run
-   attacks the database's own lock, because no foreign company ever reaches a read.
+1. Reading one invoice and reading a million need the same permission. The harm is in the
+   amount, so the amount needs a limit of its own.
+2. The map asks that a million rows return one page. The limit is the caller's wish, and
+   DSoR answers it as far as its own maximum allows.
+3. Otherwise ten rows look like "the company has ten invoices": a wrong answer that looks
+   right.
+4. A row count misses one huge row. A size in bytes catches it, whatever the rows hold.
+5. Yes, a page at a time, following the cursor. Each page is a separate call with its own
+   record, so a drain is slow and visible. Nothing in this step stops it.
 
 </details>
 
 ## Think it through
 
-Every break of the design's table was run for real, before the review and again after
-it ("Break it"). Then two reviewers who had not seen the conversation attacked the step.
-One checked each rule against the tests and the code, and planted operations that leak.
-The other made 103 small changes to the code, one at a time, and ran the tests after
-each: a change that leaves every test green shows a test that is missing. This is
-called a mutation sweep.
-
-**Changed by checking the design against step 11's code, before the first test:**
-
-- **`invoice.get` takes an invoice's URI only** (decision 1). The specification's
-  pattern accepts a URI of any kind, so a vendor's URI would have been read as an
-  invoice's id.
-- **One URI at a time** (decision 3). Swapping every URI at once would let an operation
-  that checks only its first URI pass.
-- **The same-company call** (decision 8, C7). Without it, code that refuses everything as
-  foreign would pass.
-- **C2, C3, and C4 gained tests.** The comparer is handed answers that differ, the
-  attackers are pinned exactly, and a fourth gap was planted: an example that fails its
-  own schema.
-
-**Changed by decision 1, in the old tests.** About 170 inputs `{ id: "INV-1008" }` became
-the URI of the caller's active company. Three tests changed more. Two of step 10's sent a
-URI inside `invoice.get`'s `id`, a field of any text, to prove the whole input is
-searched. No shipped input has such a field now, so they ask `checkUrisInTenant`
-directly. Step 09's id written as SQL can no longer reach the store through a call,
-because line ⑥ refuses a quote in a URI, so it asks the store directly. The review found
-two calls made in `org_789` that the change had given `org_456`'s URI. One of them had
-stopped proving a successful read. Both are fixed.
-
-**Found by the review, and fixed:**
-
-- **Operations that leak passed the suite.** The reviewer planted `invoice.dump`, which
-  answers with every company's invoices, a cache keyed by id alone, and more. Each
-  passed with no finding, because the checklist refuses every foreign URI before any
-  operation's code runs. Now the same-company call's answer is searched for another
-  company's data (C8), and the suite works from both companies (decision 9).
-- **The suite's judge and comparer could be switched off** with every test green. Every
-  foreign answer in every test was the same `TENANT_MISMATCH`, so the two were tested
-  only alone. Now the suite takes the call function as an argument, and fake DSoRs make
-  it name every attack, or every difference (decision 10).
-- **"The database run tests both locks" was false.** No attack reaches the database's
-  lock. The README now says what the database run proves.
-- **`invoice.get`'s code reading the URI's company, not the active one,** passed every
-  test. A test now hands the code another company's URI directly.
-- **Smaller gaps.** A field the example leaves out, and an example file no operation
-  names, are findings now. C6 checks each record's operation and reason.
-- **The README.** The hotel inspector became the bank's mystery shopper: "hotel" already
-  means booking the last room, and the inspector hid that every door shares one front
-  desk. "Control call" became "same-company call": a control is a CEL rule in DSoR. The
-  order of the checklist was worded as DSoR's rule, and answer 2 was wrong about it. One
-  sentence under W1 taught something false. Terms are now defined where they first
-  appear, and long sentences are split.
-
-**Found by the mutation sweep, and fixed.** It ran on the step before the review's
-changes. `pnpm check` caught 80 of its 103 changes. Of the 23 that passed, five change
-nothing today ("Left open", below). Six were already caught by the review's fixes, each
-run again to be sure: only the first URI attacked, the judge's findings dropped, the
-comparer's findings dropped, the comparer handed one answer, code reading the URI's
-company, and the suite's pattern without `^`. The other twelve, now caught:
-
-| Change that passed every test | Now caught by |
-| --- | --- |
-| A finding that names the wrong way of the swap | the fake DSoR test, which types out the first caller's three findings |
-| The comparer skips the first answer, or the last | the comparer's test, with the odd answer in each place |
-| The search for URIs stops at the first text that is not one | a text before a URI |
-| The suite's pattern without `$`, or with a slash allowed in the kind | three odd texts that are not URIs |
-| An example that is a bare URI, not an object | a bare URI as the example, swapped as a whole |
-| The suite writes to a log of its own | C6 in the unit tier: the suite's log holds one record for each attack |
-| The example found by a name that only starts with the operation's | a look-alike example name |
-| `invoice.get`'s schema without the specification's pattern, or with `/invoice` short of its `/` | a URI with a fourth part, and the kind `invoices`, refused at line ⑥ |
-| `invoice.get`'s example names `INV-9999`, or `INV-2001`, which only `org_789` has | **a query's same-company call must answer with data**, from both companies (decision 8). This was a design change, chosen by the learner |
-
-**My own sweep of the review's new code.** Fifteen changes to the data search, the move
-into `org_789`, and the fake-DSoR argument. Fourteen were caught. One, an attack
-recorded under the wrong operation, was caught only by the database tier, and C6's new
-unit test catches it now.
-
-**Attacked with the threats of §10.2** that concern this idea: T4, cross-company
-disclosure; T2, a misbehaving agent; T3, a confused deputy, such as `firm-ap-fte` in
-one company reaching for the other. The sweep sent 66 hostile inputs of its own to
-`invoice.get`: percent-encoding, capitals, look-alike letters, extra slashes, a URI as a
-field's name, getters that change, and more. None returned another company's data. Every
-pair of answers that could have told whether a company or an invoice exists was the same,
-word for word.
-
-**Left open on purpose:**
-
-- **Five changes no test can catch, because they change nothing today.** The
-  same-company call made as the first attacker only: code never learns who is calling,
-  until a later step lets it. A missing input check counted as a pass: start-up gives
-  every contract one. The two checks of an example in the other order: both give a
-  finding. The id read as the URI's last part: line ⑥ allows only three parts. A command
-  example's id: commands are refused before their code until step 22.
-- **The suite sends canonical URIs only.** Odd spellings, a URI in a list or as a
-  field's name, and the check's place in the checklist are guarded by step 10's
-  hand-written tests, not by the suite. The sweep showed seven changes that only those
-  tests catch.
-- **`test/cross-tenant.ts` is 217 lines,** above the 150 this tutorial aims for, even
-  after `test/companies.ts` was split from it.
-- **The mystery shopper is a new analogy,** not on the house list. It reuses step 10's
-  bank teller, and it is flagged for review.
-- **Questions for the specification.** DSOR-TEN-02b asks for foreign-tenant URIs. When
-  one check refuses every foreign URI before any operation's code, such a suite tests
-  that check, not each operation. Should the rule also ask for same-company calls whose
-  answers are searched for another company's data? And how is an operation with no URI
-  in its input, such as a list, to be attacked?
-- Everything under "Left open, and not this step's idea" in the design.
+_To be written after the review, with the result of every break in the table above._
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-TEN-02b | A cross-tenant test suite exercises every operation with a foreign-tenant URI | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/cross-tenant.test.ts`: the shipped registry attacked from both companies with no finding (C1), the fake DSoR with no URI check named on all 27 attacks, every gap named (C4, C5), and the same-company call (C7). `test/cross-tenant.db.test.ts`: the same with the database |
-| DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | `test/cross-tenant.test.ts` (C2): the three answers of every operation, caller, and URI, compared word for word, and a fake DSoR whose answers differ named |
-
-Also advanced, first met in earlier steps: DSOR-IDN-03b, for every operation's own code
-as far as a same-company call shows it (C3 and C8, `test/cross-tenant.test.ts`, and
-`test/invoice-get.test.ts` for `invoice.get`'s code), and DSOR-EXE-02, one record for
-every attack, with its operation, result, and reason (C6, `test/cross-tenant.db.test.ts`).
+| DSOR-QRY-01 | A server-side maximum page size and result size on every query | [§7.1 Queries](../../../specs/dsor/01-model.md#71-queries) | _to be counted_ |
 
 ## Next
 
-Step 13 · Bounded queries: `invoice.list`, whose page size the server caps even when the
-caller asks for everything. It is the first new operation. The moment it is registered,
-the suite attacks it, or names why it cannot ("Left open").
+Step 14 · Classification and masking: each field gets a sensitivity label, and a field
+above the caller's clearance, such as an invoice's `amount` for the agent, is hidden
+before the answer leaves, with a list of what was hidden.
