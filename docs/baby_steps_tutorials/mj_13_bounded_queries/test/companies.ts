@@ -110,7 +110,9 @@ export function foreignIn(data: unknown, home: string): string | undefined {
 // checked instead (step 13's README, decision 6).
 /** Whether this is a page of a list: an object whose items are a list. */
 export function isPage(data: unknown): boolean {
-  return typeof data === "object" && data !== null && Array.isArray((data as { items?: unknown }).items);
+  return (
+    typeof data === "object" && data !== null && Array.isArray((data as { items?: unknown }).items)
+  );
 }
 
 /** Why this page is a finding, or undefined when every item carries this company. */
@@ -121,7 +123,8 @@ export function pageProblem(data: unknown, home: string): string | undefined {
   if (items.length === 0) return "its answer is a page with no items, so it checks nothing";
   for (const [i, item] of items.entries()) {
     const tenant = (item as { tenant_id?: unknown } | null)?.tenant_id;
-    if (tenant === undefined) return `items[${i}] has no tenant_id, so its company cannot be checked`;
+    if (tenant === undefined)
+      return `items[${i}] has no tenant_id, so its company cannot be checked`;
     if (tenant !== home) {
       return `items[${i}] carries tenant_id ${JSON.stringify(tenant)}, not ${JSON.stringify(home)}`;
     }

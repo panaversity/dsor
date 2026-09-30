@@ -36,7 +36,12 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     expect("data" in answer).toBe(true);
     const page = (answer as { data: { items: { id: string }[]; next_cursor?: string } }).data;
     expect(page.items.map(({ id }) => id)).toStrictEqual([
-      "ROW-01", "ROW-02", "ROW-03", "ROW-04", "ROW-05", "ROW-06",
+      "ROW-01",
+      "ROW-02",
+      "ROW-03",
+      "ROW-04",
+      "ROW-05",
+      "ROW-06",
     ]);
     expect(page.next_cursor).toBe("ROW-06");
     expect(bytes(page)).toBeLessThanOrEqual(LIMIT);
@@ -58,7 +63,10 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   // A string of n characters x is n + 2 bytes of JSON, with its two quotes.
   it("DSOR-QRY-01: a result of exactly 64 KiB is answered", async () => {
     const answer = await run(async () => "x".repeat(LIMIT - 2));
-    expect(answer).toStrictEqual({ data: "x".repeat(LIMIT - 2), correlation: correlationFor(THE_AGENT) });
+    expect(answer).toStrictEqual({
+      data: "x".repeat(LIMIT - 2),
+      correlation: correlationFor(THE_AGENT),
+    });
   });
 
   it("DSOR-QRY-01: a result one byte over 64 KiB is refused", async () => {

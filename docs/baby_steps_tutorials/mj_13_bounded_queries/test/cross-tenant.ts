@@ -188,10 +188,17 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
     }
     // Asked again with only the fields its input schema requires, because a list may leak
     // on a path its example does not take, such as no cursor. Found by the review.
-    const bare = await send(registry, log, request, operation, requiredOf(registry, operation, own));
+    const bare = await send(
+      registry,
+      log,
+      request,
+      operation,
+      requiredOf(registry, operation, own),
+    );
     const why =
       "data" in bare ? pageProblem(bare.data, home) : `it is not answered with data: ${bare.code}`;
-    if (why !== undefined) report.findings.push(`${who}, asked with only its required fields: ${why}`);
+    if (why !== undefined)
+      report.findings.push(`${who}, asked with only its required fields: ${why}`);
   }
   const ways = waysFrom(home);
   for (const swap of swaps(own, home)) {
