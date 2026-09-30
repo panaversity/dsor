@@ -535,33 +535,143 @@ Before each run, ask me what I expect.
 2. Why must the suite accept only `TENANT_MISMATCH`, and not any refusal? And why does each
    caller first send the example unchanged?
 3. Why is an operation with no example request a failure, and not a skip?
-4. Why does `invoice.get` take a URI from this step on?
+4. A foreign URI never reaches an operation's code. So how can the suite notice code that
+   leaks another company's invoice?
 5. The suite runs in `pnpm check` on memory, and in `pnpm test:db` on the database. What
-   does each run prove?
+   does each run prove, and what does neither prove?
 
 <details>
 <summary>Answers</summary>
 
 1. It cannot forget. It reads the registry, so an operation added later is attacked
    without anyone writing a test for it.
-2. Line ⑤ checks permission before the company is checked. A caller without the
-   permission is refused there, and the company check never runs. Only
-   `TENANT_MISMATCH` shows the company check ran. The unchanged example is the control:
-   it must not be refused as foreign. Then the refusal of the swapped request can only
-   come from the company that changed. Without it, code that refuses everything as
-   foreign would pass.
-3. A skipped operation looks like a tested one in a green run. The suite must fail until
-   the operation can be attacked.
-4. So there is a company inside every request to swap. With `{ id }`, there was nothing
-   to change, and the suite could not make another company's version of the request.
-5. On memory, DSoR's own lock holds by itself, and CI runs it on every push. On the
-   database, both locks hold together.
+2. In this tutorial's checklist, the URI's company is checked after line ⑤, the
+   permission. A caller without the permission is refused at line ⑤, and the URI's
+   company is never looked at. Only `TENANT_MISMATCH` shows that the company check ran.
+   The unchanged example, the same-company call, must not be refused as foreign. Then the
+   refusal of the swapped request can only come from the company that changed. Without
+   it, code that refuses everything as foreign would pass.
+3. A skipped operation looks like a tested one when every test is green. The suite must
+   fail until the operation can be attacked.
+4. Through the same-company call, the only request that reaches the code. Its answer is
+   searched for a `tenant_id` or a URI of another company. And the suite works from both
+   companies, so a cache filled in one is read from the other.
+5. On memory, CI runs every check of the suite on every push. On the database, the same
+   checks run with the real store and log: every same-company read goes through the
+   database, and every attack's record lands in the caller's company. Neither run
+   attacks the database's own lock, because no foreign company ever reaches a read.
 
 </details>
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+Every break of the design's table was run for real, before the review and again after
+it ("Break it"). Then two reviewers who had not seen the conversation attacked the step.
+One checked each rule against the tests and the code, and planted operations that leak.
+The other made 103 small changes to the code, one at a time, and ran the tests after
+each: a change that leaves every test green shows a test that is missing. This is
+called a mutation sweep.
+
+**Changed by checking the design against step 11's code, before the first test:**
+
+- **`invoice.get` takes an invoice's URI only** (decision 1). The specification's
+  pattern accepts a URI of any kind, so a vendor's URI would have been read as an
+  invoice's id.
+- **One URI at a time** (decision 3). Swapping every URI at once would let an operation
+  that checks only its first URI pass.
+- **The same-company call** (decision 8, C7). Without it, code that refuses everything as
+  foreign would pass.
+- **C2, C3, and C4 gained tests.** The comparer is handed answers that differ, the
+  attackers are pinned exactly, and a fourth gap was planted: an example that fails its
+  own schema.
+
+**Changed by decision 1, in the old tests.** About 170 inputs `{ id: "INV-1008" }` became
+the URI of the caller's active company. Three tests changed more. Two of step 10's sent a
+URI inside `invoice.get`'s `id`, a field of any text, to prove the whole input is
+searched. No shipped input has such a field now, so they ask `checkUrisInTenant`
+directly. Step 09's id written as SQL can no longer reach the store through a call,
+because line ⑥ refuses a quote in a URI, so it asks the store directly. The review found
+two calls made in `org_789` that the change had given `org_456`'s URI. One of them had
+stopped proving a successful read. Both are fixed.
+
+**Found by the review, and fixed:**
+
+- **Operations that leak passed the suite.** The reviewer planted `invoice.dump`, which
+  answers with every company's invoices, a cache keyed by id alone, and more. Each
+  passed with no finding, because the checklist refuses every foreign URI before any
+  operation's code runs. Now the same-company call's answer is searched for another
+  company's data (C8), and the suite works from both companies (decision 9).
+- **The suite's judge and comparer could be switched off** with every test green. Every
+  foreign answer in every test was the same `TENANT_MISMATCH`, so the two were tested
+  only alone. Now the suite takes the call function as an argument, and fake DSoRs make
+  it name every attack, or every difference (decision 10).
+- **"The database run tests both locks" was false.** No attack reaches the database's
+  lock. The README now says what the database run proves.
+- **`invoice.get`'s code reading the URI's company, not the active one,** passed every
+  test. A test now hands the code another company's URI directly.
+- **Smaller gaps.** A field the example leaves out, and an example file no operation
+  names, are findings now. C6 checks each record's operation and reason.
+- **The README.** The hotel inspector became the bank's mystery shopper: "hotel" already
+  means booking the last room, and the inspector hid that every door shares one front
+  desk. "Control call" became "same-company call": a control is a CEL rule in DSoR. The
+  order of the checklist was worded as DSoR's rule, and answer 2 was wrong about it. One
+  sentence under W1 taught something false. Terms are now defined where they first
+  appear, and long sentences are split.
+
+**Found by the mutation sweep, and fixed.** It ran on the step before the review's
+changes. `pnpm check` caught 80 of its 103 changes. Of the 23 that passed, five change
+nothing today ("Left open", below). Six were already caught by the review's fixes, each
+run again to be sure: only the first URI attacked, the judge's findings dropped, the
+comparer's findings dropped, the comparer handed one answer, code reading the URI's
+company, and the suite's pattern without `^`. The other twelve, now caught:
+
+| Change that passed every test | Now caught by |
+| --- | --- |
+| A finding that names the wrong way of the swap | the fake DSoR test, which types out the first caller's three findings |
+| The comparer skips the first answer, or the last | the comparer's test, with the odd answer in each place |
+| The search for URIs stops at the first text that is not one | a text before a URI |
+| The suite's pattern without `$`, or with a slash allowed in the kind | three odd texts that are not URIs |
+| An example that is a bare URI, not an object | a bare URI as the example, swapped as a whole |
+| The suite writes to a log of its own | C6 in the unit tier: the suite's log holds one record for each attack |
+| The example found by a name that only starts with the operation's | a look-alike example name |
+| `invoice.get`'s schema without the specification's pattern, or with `/invoice` short of its `/` | a URI with a fourth part, and the kind `invoices`, refused at line ⑥ |
+| `invoice.get`'s example names `INV-9999`, or `INV-2001`, which only `org_789` has | **a query's same-company call must answer with data**, from both companies (decision 8). This was a design change, chosen by the learner |
+
+**My own sweep of the review's new code.** Fifteen changes to the data search, the move
+into `org_789`, and the fake-DSoR argument. Fourteen were caught. One, an attack
+recorded under the wrong operation, was caught only by the database tier, and C6's new
+unit test catches it now.
+
+**Attacked with the threats of §10.2** that concern this idea: T4, cross-company
+disclosure; T2, a misbehaving agent; T3, a confused deputy, such as `firm-ap-fte` in
+one company reaching for the other. The sweep sent 66 hostile inputs of its own to
+`invoice.get`: percent-encoding, capitals, look-alike letters, extra slashes, a URI as a
+field's name, getters that change, and more. None returned another company's data. Every
+pair of answers that could have told whether a company or an invoice exists was the same,
+word for word.
+
+**Left open on purpose:**
+
+- **Five changes no test can catch, because they change nothing today.** The
+  same-company call made as the first attacker only: code never learns who is calling,
+  until a later step lets it. A missing input check counted as a pass: start-up gives
+  every contract one. The two checks of an example in the other order: both give a
+  finding. The id read as the URI's last part: line ⑥ allows only three parts. A command
+  example's id: commands are refused before their code until step 22.
+- **The suite sends canonical URIs only.** Odd spellings, a URI in a list or as a
+  field's name, and the check's place in the checklist are guarded by step 10's
+  hand-written tests, not by the suite. The sweep showed seven changes that only those
+  tests catch.
+- **`test/cross-tenant.ts` is 217 lines,** above the 150 this tutorial aims for, even
+  after `test/companies.ts` was split from it.
+- **The mystery shopper is a new analogy,** not on the house list. It reuses step 10's
+  bank teller, and it is flagged for review.
+- **Questions for the specification.** DSOR-TEN-02b asks for foreign-tenant URIs. When
+  one check refuses every foreign URI before any operation's code, such a suite tests
+  that check, not each operation. Should the rule also ask for same-company calls whose
+  answers are searched for another company's data? And how is an operation with no URI
+  in its input, such as a list, to be attacked?
+- Everything under "Left open, and not this step's idea" in the design.
 
 ## The rules this step meets
 
