@@ -90,8 +90,13 @@ export function clearanceOf(principal: Principal): Label | undefined {
   return principal.type === "agent" ? (principal.clearance ?? "public") : undefined;
 }
 
-/** What leaves DSoR for one caller. */
-export type Shown = { data: unknown };
+// The result envelope's shape for one withheld field. This step only leaves fields out,
+// for the clearance (step 14's README, decisions 3 and 6).
+/** One field that was withheld, why, and how. */
+export type Redaction = { field: string; reason: "clearance"; treatment: "omitted" };
+
+/** What leaves DSoR for one caller, and what was withheld from it. */
+export type Shown = { data: unknown; redactions: Redaction[] };
 
 // DSOR-CLS-02a. The answer is walked by the kind its contract names, field by field. A
 // field above the clearance is left out, never replaced (step 14's README, decision 3).
@@ -103,8 +108,11 @@ export function show(
   kinds: Kinds,
   clearance: Label | undefined,
 ): Shown {
-  // A record of `kind`: each field kept, left out, or walked as a list.
-  function record(value: unknown, kind: string): unknown {
+  // DSOR-CLS-02b. Each field left out, as a path, named once however many items lost it.
+  const withheld = new Set<string>();
+  // A record of `kind`: each field kept, left out, or walked as a list. `path` is where
+  // the record sits: "" for the answer, "items[]." for a page's items.
+  function record(value: unknown, kind: string, path: string): unknown {
     // What is not a record has no fields to leave out. An agent gets none of it, and a
     // person gets it whole (step 14's README, decision 3).
     if (!isObject(value)) return whole(value);
@@ -114,10 +122,12 @@ export function show(
       if (label.endsWith("[]")) {
         const itemKind = label.slice(0, -2);
         kept[field] = Array.isArray(inside)
-          ? inside.map((item) => record(item, itemKind))
+          ? inside.map((item) => record(item, itemKind, `${path}${field}[].`))
           : whole(inside);
       } else if (clearance === undefined || rank(label) <= rank(clearance)) {
         kept[field] = inside;
+      } else {
+        withheld.add(`${path}${field}`);
       }
     }
     return kept;
@@ -129,7 +139,12 @@ export function show(
     if (clearance !== undefined) throw new Error("the answer is not a record of its kind");
     return value;
   }
-  return { data: record(data, kind) };
+  const shown = record(data, kind, "");
+  // In order of field, so the same answer always lists them the same way.
+  const redactions = [...withheld].sort().map(
+    (field): Redaction => ({ field, reason: "clearance", treatment: "omitted" }),
+  );
+  return { data: shown, redactions };
 }
 
 // Where a label sits among the four: public 0, restricted 3. Start-up lets no other label

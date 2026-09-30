@@ -42,6 +42,7 @@ import {
   THE_CFO,
   MASKED_1008_OF_456,
   MASKED_1008_OF_789,
+  MASKED_REDACTIONS,
 } from "./helpers.ts";
 
 /** The error envelope a test expects, with a request id DSoR made. */
@@ -116,6 +117,7 @@ describe("C1: each request works in exactly one company, which the caller belong
       }),
     ).toStrictEqual({
       data: MASKED_1008_OF_456,
+      redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
     });
   });
@@ -127,6 +129,7 @@ describe("C1: each request works in exactly one company, which the caller belong
       }),
     ).toStrictEqual({
       data: MASKED_1008_OF_789,
+      redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
     });
   });

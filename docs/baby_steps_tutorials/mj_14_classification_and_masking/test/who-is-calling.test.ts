@@ -175,14 +175,13 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
     "DSOR-SRC-02a: the token %s is named in correlation as its own principal",
     async (token, caller) => {
       const request = { token, tenant: "org_456" };
-      expect(
-        await call(registry, log, request, "invoice.get", {
-          invoice: "dsor://org_456/invoice/INV-1008",
-        }),
-      ).toStrictEqual({
-        data: expect.objectContaining({ id: "INV-1008" }),
-        correlation: correlationFor(caller),
+      const answer = await call(registry, log, request, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
       });
+      // NEW IN STEP 14: the agent's answer also lists what was left out, and a person's does
+      // not, so this test looks at the data and the correlation only.
+      expect(answer).toMatchObject({ data: { id: "INV-1008" } });
+      expect(answer.correlation).toStrictEqual(correlationFor(caller));
     },
   );
 

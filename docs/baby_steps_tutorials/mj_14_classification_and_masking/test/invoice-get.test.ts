@@ -16,6 +16,7 @@ import {
   registry,
   MASKED_1008_OF_456,
   MASKED_1008_OF_789,
+  MASKED_REDACTIONS,
 } from "./helpers.ts";
 
 describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
@@ -34,11 +35,13 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
     const in456 = { invoice: "dsor://org_456/invoice/INV-1008" };
     expect(await call(registry, log, AGENT, "invoice.get", in456)).toStrictEqual({
       data: MASKED_1008_OF_456,
+      redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_AGENT),
     });
     const in789 = { invoice: "dsor://org_789/invoice/INV-1008" };
     expect(await call(registry, log, FIRM_IN_789, "invoice.get", in789)).toStrictEqual({
       data: MASKED_1008_OF_789,
+      redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
     });
   });

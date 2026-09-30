@@ -288,6 +288,13 @@ export function omitted(field: string): { field: string; reason: string; treatme
   return { field, reason: "clearance", treatment: "omitted" };
 }
 
+// NEW IN STEP 14: what an agent with clearance internal is told was left out of an invoice
+// (step 14's README, C3).
+export const MASKED_REDACTIONS: { field: string; reason: string; treatment: string }[] = [
+  omitted("amount"),
+  omitted("open_amount"),
+];
+
 /** Calls "test.run", whose code refuses with this code. */
 export function refusedWith(code: ErrorCode): Promise<Answer> {
   return run(() => {
