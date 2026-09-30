@@ -181,9 +181,17 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
   }
   // NEW IN STEP 13: a list has no URI to swap. Every item of its page must carry this
   // company instead (step 13's README, decision 6). A refusal is a finding above already.
-  if (swaps(own, home).length === 0 && "data" in answer) {
-    const why = pageProblem(answer.data, home);
-    if (why !== undefined) report.findings.push(`${who}: ${why}`);
+  if (swaps(own, home).length === 0) {
+    if ("data" in answer) {
+      const why = pageProblem(answer.data, home);
+      if (why !== undefined) report.findings.push(`${who}: ${why}`);
+    }
+    // Asked again with only the fields its input schema requires, because a list may leak
+    // on a path its example does not take, such as no cursor. Found by the review.
+    const bare = await send(registry, log, request, operation, requiredOf(registry, operation, own));
+    const why =
+      "data" in bare ? pageProblem(bare.data, home) : `it is not answered with data: ${bare.code}`;
+    if (why !== undefined) report.findings.push(`${who}, asked with only its required fields: ${why}`);
   }
   const ways = waysFrom(home);
   for (const swap of swaps(own, home)) {
@@ -246,7 +254,7 @@ function exampleOf(
 }
 
 // NEW IN STEP 13: asked once, as the first caller of org_456 who may call it, with the
-// example as it is (step 13's README, decision 6). With no such caller, nobody can ask, and
+// example as it is (step 13's README, decision 6). With no such caller, or for a command,
 // the answer is no.
 /** Whether the operation answers its example with a page. */
 async function answersWithPage(
@@ -256,9 +264,20 @@ async function answersWithPage(
   operation: string,
   example: unknown,
 ): Promise<boolean> {
+  // Only a query is asked. A command that runs would change something. Found by the review.
+  if (registry.contracts.get(operation)?.["kind"] !== "query") return false;
   const first = attackersOf(registry, operation, WRITTEN_IN)[0];
   if (first === undefined) return false;
   const request = { token: first.token, tenant: WRITTEN_IN };
   const answer = await send(registry, log, request, operation, example);
   return "data" in answer && isPage(answer.data);
+}
+
+// NEW IN STEP 13: the example with only the fields its input schema requires, {} for
+// invoice.list (step 13's README, decision 6).
+function requiredOf(registry: Registry, operation: string, example: unknown): unknown {
+  const schema = registry.inputs.get(operation)?.schema as { required?: unknown } | undefined;
+  const required = Array.isArray(schema?.required) ? schema.required : [];
+  const fields = Object.entries(example as object);
+  return Object.fromEntries(fields.filter(([field]) => required.includes(field)));
 }
