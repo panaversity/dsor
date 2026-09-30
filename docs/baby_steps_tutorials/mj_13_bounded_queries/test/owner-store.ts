@@ -28,9 +28,17 @@ try {
   const bypassrls = rows[0]?.["bypassrls"] === true;
   let result: unknown;
   if (process.argv[2] === "list") {
-    // More rows than both companies hold together, so a missing WHERE would show them all.
-    const listed = await invoices.list("org_456", undefined, 100);
-    result = { bypassrls, listed: listed.map(({ tenant_id, id }) => `${tenant_id}/${id}`) };
+    // Page after page, five rows at a time, so the SQL after a cursor runs too. Found by the
+    // review: one read of every row never ran it (step 13's README, C7).
+    const listed: string[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const rows = await invoices.list("org_456", after, 5);
+      listed.push(...rows.map(({ tenant_id, id }) => `${tenant_id}/${id}`));
+      if (rows.length < 5) break;
+      after = rows[rows.length - 1]!.id;
+    }
+    result = { bypassrls, listed };
   } else {
     const records = await createDbLog(pool).records("org_456");
     result = {
