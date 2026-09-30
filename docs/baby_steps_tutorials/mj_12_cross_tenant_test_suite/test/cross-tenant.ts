@@ -191,6 +191,14 @@ export async function crossTenantSuite(
   send: Send = call,
 ): Promise<Report> {
   const report: Report = { attacked: [], attacks: [], findings: [] };
+  // An example that no operation names is most likely a name spelled wrong, and the
+  // operation it was meant for has none (step 12's README, decision 2).
+  for (const { file } of examples) {
+    const named = file.slice(0, -".json".length);
+    if (!registry.contracts.has(named)) {
+      report.findings.push(`examples/${file}: no operation has this name`);
+    }
+  }
   for (const operation of registry.contracts.keys()) {
     // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
     // one when every test is green (step 12's README, outcome 5). Every gap is named.
@@ -294,6 +302,14 @@ function exampleOf(
   const check = registry.inputs.get(operation);
   if (check === undefined || !check(example)) {
     return gap("its example does not pass its input schema");
+  }
+  // Every field the schema lists, so a field that may hold a URI is attacked too, even one
+  // that the operation does not require (step 12's README, decision 2).
+  const listed = Object.keys((check.schema as { properties?: object }).properties ?? {});
+  const left = listed.filter((field) => !Object.hasOwn(example as object, field));
+  if (left.length > 0) {
+    const fields = left.map((field) => JSON.stringify(field)).join(", ");
+    return gap(`its example leaves out ${fields}, which its input schema lists`);
   }
   if (swaps(example, WRITTEN_IN).length === 0) {
     return gap(`no URI of ${WRITTEN_IN} in its example`);
