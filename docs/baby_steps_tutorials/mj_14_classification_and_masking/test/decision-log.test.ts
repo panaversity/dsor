@@ -17,6 +17,7 @@ import {
   registry,
   registryWith,
   schemaProblems,
+  OUR_EXTENSIONS,
 } from "./helpers.ts";
 
 // "aud_" and a random UUID. The form is this tutorial's decision (step 08's README,
@@ -91,6 +92,11 @@ describe("C1: every answer call gives has a record in the log", () => {
         // The company the call worked in (step 10's README, decision 6).
         tenant: "org_456",
         correlation: answer.correlation,
+        // NEW IN STEP 14: what the read returned, and the label of what the agent got
+        // (DSOR-CLS-05; step 14's README, decision 7).
+        resources: ["dsor://org_456/invoice/INV-1008"],
+        row_count: 1,
+        extensions: { [OUR_EXTENSIONS]: { classification: "internal" } },
       }),
     ]);
   });

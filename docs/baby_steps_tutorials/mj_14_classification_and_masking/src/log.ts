@@ -3,6 +3,7 @@
 // This file holds the log in memory, for the unit tests. The log the program uses is a
 // table in the database: createDbLog in postgres.ts.
 import { randomUUID } from "node:crypto";
+import type { Label } from "./classification.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
 
@@ -19,10 +20,19 @@ export type Decision = {
   // The company the call worked in. None when the call was refused before
   // DSoR had checked one (step 10's README, decision 6).
   tenant?: string;
-  // Fields this tutorial adds, under a name of its own (DSOR-SCH-02). Here
-  // only the company a non-member asked for (step 10's README, decision 6).
-  extensions?: { [namespace: string]: { requested_tenant: string } };
+  // Fields this tutorial adds, under a name of its own (DSOR-SCH-02): the company a
+  // non-member asked for (step 10's README, decision 6), or the label of what a read
+  // returned (step 14's README, decision 7).
+  extensions?: { [namespace: string]: { requested_tenant?: string; classification?: Label } };
+  // NEW IN STEP 14: what a read returned, in the audit record's own fields (DSOR-CLS-05).
+  resources?: string[];
+  row_count?: number;
 };
+
+// NEW IN STEP 14: what a query's answer returned, for its record (step 14's README,
+// decision 7).
+/** The URIs a read returned, and the label of its answer. */
+export type Read = { resources: string[]; classification: Label };
 
 // The reverse domain name this tutorial's own record fields sit under (DSOR-SCH-02).
 const OURS = "org.panaversity.steps";
@@ -71,6 +81,8 @@ export function decisionOf(
   tenant: string | undefined,
   // The well-formed company the caller named, checked or not.
   claimed: string | undefined,
+  // NEW IN STEP 14: what the answer returned, when it returned data.
+  read?: Read,
 ): Decision {
   const refused = "code" in answer;
   return {
@@ -90,5 +102,15 @@ export function decisionOf(
     ...(tenant === undefined && claimed !== undefined
       ? { extensions: { [OURS]: { requested_tenant: claimed } } }
       : {}),
+    // NEW IN STEP 14: who, what, and how many (DSOR-CLS-05). URIs, a count, and a label,
+    // never a value read (DSOR-AUD-05a). A read returns data only after line ②, so a
+    // claimed company is never beside it.
+    ...(read === undefined
+      ? {}
+      : {
+          resources: read.resources,
+          row_count: read.resources.length,
+          extensions: { [OURS]: { classification: read.classification } },
+        }),
   };
 }

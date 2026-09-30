@@ -6,6 +6,7 @@ import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { keysWrittenTwice } from "./json.ts";
 import type { Principal } from "./principals.ts";
+import { formatUri, type ResourceParts } from "./uri.ts";
 
 /** How sensitive a field is. */
 export type Label = "public" | "internal" | "confidential" | "restricted";
@@ -95,8 +96,13 @@ export function clearanceOf(principal: Principal): Label | undefined {
 /** One field that was withheld, why, and how. */
 export type Redaction = { field: string; reason: "clearance"; treatment: "omitted" };
 
-/** What leaves DSoR for one caller, its label, and what was withheld from it. */
-export type Shown = { data: unknown; classification: Label; redactions: Redaction[] };
+/** What leaves DSoR for one caller, its label, what was withheld, and the URIs it holds. */
+export type Shown = {
+  data: unknown;
+  classification: Label;
+  redactions: Redaction[];
+  resources: string[];
+};
 
 // DSOR-CLS-02a. The answer is walked by the kind its contract names, field by field. A
 // field above the clearance is left out, never replaced (step 14's README, decision 3).
@@ -114,6 +120,8 @@ export function show(
   // masking. An answer that holds no field, such as an empty page, is public (step 14's
   // README, what the specification asks, 4).
   let highest: Label = "public";
+  // DSOR-CLS-05. The canonical URI of each row the answer returns.
+  const resources: string[] = [];
   function holds(label: string): void {
     const at = Math.min(rank(label), LABELS.length - 1);
     if (at > rank(highest)) highest = LABELS[at]!;
@@ -124,6 +132,14 @@ export function show(
     // What is not a record has no fields to leave out. An agent gets none of it, and a
     // person gets it whole (step 14's README, decision 3).
     if (!isObject(value)) return whole(value);
+    // A row is a record of a kind with no list in it: one invoice, not a page. Its URI is
+    // its company, its kind in lower case, and its id. formatUri refuses a row with no id
+    // or no tenant_id, so an answer DSoR cannot record is never sent, to anyone (step 14's
+    // README, decision 7).
+    if (isRow(kind)) {
+      const { tenant_id, id } = value;
+      resources.push(formatUri({ tenant_id, id, entity: kind.toLowerCase() } as ResourceParts));
+    }
     const kept: { [field: string]: unknown } = {};
     for (const [field, inside] of Object.entries(value)) {
       const label = labelOf(kinds, kind, field);
@@ -155,7 +171,12 @@ export function show(
   const redactions = [...withheld].sort().map(
     (field): Redaction => ({ field, reason: "clearance", treatment: "omitted" }),
   );
-  return { data: shown, classification: highest, redactions };
+  return { data: shown, classification: highest, redactions, resources };
+
+  // A kind none of whose fields is a list.
+  function isRow(kind: string): boolean {
+    return ![...(kinds.get(kind)?.values() ?? [])].some((value) => value.endsWith("[]"));
+  }
 }
 
 // Where a label sits among the four: public 0, restricted 3. Start-up lets no other label

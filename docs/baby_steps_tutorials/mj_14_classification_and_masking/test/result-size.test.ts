@@ -21,9 +21,19 @@ const TOO_LARGE = {
   correlation: correlationFor(THE_SUPERVISOR),
 };
 
-/** A row of about `kib` KiB: an id, and text to make it large. */
-function row(n: number, kib: number): { id: string; text: string } {
-  return { id: `ROW-${String(n).padStart(2, "0")}`, text: "x".repeat(kib * 1024) };
+// NEW IN STEP 14: a row carries its company, so its record can name it by its URI (step
+// 14's README, decision 7).
+/** A row of about `kib` KiB: its company, an id, and text to make it large. */
+function row(n: number, kib: number): { tenant_id: string; id: string; text: string } {
+  const id = `ROW-${String(n).padStart(2, "0")}`;
+  return { tenant_id: "org_456", id, text: "x".repeat(kib * 1024) };
+}
+
+// NEW IN STEP 14: a page's code answers an InvoicePage, as invoice.list's does, so each row
+// is walked as an invoice (step 14's README, decision 1).
+/** Calls test.run as user_123, with code that answers a page of these rows. */
+function askPage(rows: object[], limit?: number): ReturnType<typeof runAs> {
+  return runAs(SUPERVISOR, async () => pageOf(rows as { id: string }[], limit), "InvoicePage");
 }
 
 /** The size of a result as step 13's decision 3 counts it: its JSON text, in UTF-8 bytes. */
@@ -35,7 +45,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   it("DSOR-QRY-01: a list whose rows are 10 KiB each stops at 6 rows, under 64 KiB, with a cursor from there", async () => {
     // Eleven rows, as a list reads them: one more than a page of 10.
     const rows = Array.from({ length: 11 }, (_, i) => row(i + 1, 10));
-    const answer = await runAs(SUPERVISOR, async () => pageOf(rows, undefined));
+    const answer = await askPage(rows);
     expect("data" in answer).toBe(true);
     const page = (answer as { data: { items: { id: string }[]; next_cursor?: string } }).data;
     expect(page.items.map(({ id }) => id)).toStrictEqual([
@@ -53,14 +63,15 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   });
 
   it("DSOR-QRY-01: a query whose one result is 100 KiB is refused with UNSUPPORTED_CAPABILITY", async () => {
-    expect(await runAs(SUPERVISOR, async () => ({ text: "x".repeat(100 * 1024) }))).toStrictEqual(TOO_LARGE);
+    const large = { tenant_id: "org_456", id: "INV-1008", text: "x".repeat(100 * 1024) };
+    expect(await runAs(SUPERVISOR, async () => large)).toStrictEqual(TOO_LARGE);
   });
 
   // A page keeps its first row whatever its size, so the cursor always moves. The pipeline
   // then refuses the page (step 13's README, decision 3).
   it("DSOR-QRY-01: a page whose first row alone is larger than 64 KiB is refused, not sent", async () => {
     const rows = [row(1, 100), row(2, 1)];
-    expect(await runAs(SUPERVISOR, async () => pageOf(rows, undefined))).toStrictEqual(TOO_LARGE);
+    expect(await askPage(rows)).toStrictEqual(TOO_LARGE);
   });
 
   // A string of n characters x is n + 2 bytes of JSON, with its two quotes.
@@ -106,7 +117,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   it("DSOR-QRY-01: a last page cut for size still gives a cursor, so no row is lost", async () => {
     // Three rows of 30 KiB: all that is left, so no row past the page was read.
     const rows = [row(1, 30), row(2, 30), row(3, 30)];
-    const answer = await runAs(SUPERVISOR, async () => pageOf(rows, undefined));
+    const answer = await askPage(rows);
     expect(idsIn(answer)).toStrictEqual({ items: ["ROW-01", "ROW-02"], next_cursor: "ROW-02" });
   });
 
@@ -116,14 +127,14 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     const rows = sized(LIMIT - 5);
     expect(bytes({ items: rows.slice(0, 2) })).toBeLessThanOrEqual(LIMIT);
     expect(bytes({ items: rows.slice(0, 2), next_cursor: "ROW-02" })).toBeGreaterThan(LIMIT);
-    const answer = await runAs(SUPERVISOR, async () => pageOf(rows, undefined));
+    const answer = await askPage(rows);
     expect(idsIn(answer)).toStrictEqual({ items: ["ROW-01"], next_cursor: "ROW-01" });
   });
 
   it("DSOR-QRY-01: a page of exactly 64 KiB, its cursor included, keeps both its rows", async () => {
     const rows = sized(LIMIT - bytes({ next_cursor: "ROW-02" }) + 1);
     expect(bytes({ items: rows.slice(0, 2), next_cursor: "ROW-02" })).toBe(LIMIT);
-    const answer = await runAs(SUPERVISOR, async () => pageOf(rows, undefined));
+    const answer = await askPage(rows);
     expect(idsIn(answer)).toStrictEqual({ items: ["ROW-01", "ROW-02"], next_cursor: "ROW-02" });
   });
 
@@ -131,7 +142,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   // sweep: `max: items.length` passed every test.
   it("DSOR-QRY-01: a page cut by its limit and then by size says capped at 10, and holds 6", async () => {
     const rows = Array.from({ length: 11 }, (_, i) => row(i + 1, 10));
-    const answer = await runAs(SUPERVISOR, async () => pageOf(rows, 50));
+    const answer = await askPage(rows, 50);
     expect(idsIn(answer)).toStrictEqual({
       items: ["ROW-01", "ROW-02", "ROW-03", "ROW-04", "ROW-05", "ROW-06"],
       next_cursor: "ROW-06",
@@ -166,6 +177,7 @@ function idsIn(answer: unknown): unknown {
 function sized(target: number): { id: string; text: string }[] {
   const empty = bytes({ items: [row(1, 0), row(2, 0)] });
   const first = row(1, 20);
-  const second = { id: "ROW-02", text: "x".repeat(target - empty - first.text.length) };
+  // NEW IN STEP 14: from row(), so it carries its company as the others do.
+  const second = { ...row(2, 0), text: "x".repeat(target - empty - first.text.length) };
   return [first, second, row(3, 0)];
 }

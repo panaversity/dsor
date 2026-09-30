@@ -104,6 +104,9 @@ type AuditRow = {
   correlation: DecisionRecord["correlation"];
   tenant: string | null;
   extensions: DecisionRecord["extensions"] | null;
+  // NEW IN STEP 14: what a read returned. NULL on every other record.
+  resources: string[] | null;
+  row_count: number | null;
 };
 
 /** The log in the database: add a decision, and read the records of one company. */
@@ -123,8 +126,8 @@ export function createDbLog(pool: pg.Pool): DbLog {
         client.query(
           `INSERT INTO dsor.audit
              (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-              extensions)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              extensions, resources, row_count)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             `aud_${randomUUID()}`,
             decision.kind,
@@ -135,8 +138,12 @@ export function createDbLog(pool: pg.Pool): DbLog {
             decision.correlation,
             // NULL when no company was checked (step 10's README, decision 6).
             decision.tenant ?? null,
-            // A company a non-member claimed (step 10's README, decision 6).
+            // A company a non-member claimed (step 10's README, decision 6), or the
+            // label of what a read returned (step 14's README, decision 7).
             decision.extensions ?? null,
+            // NEW IN STEP 14: the URIs a read returned, and how many (DSOR-CLS-05).
+            decision.resources ?? null,
+            decision.row_count ?? null,
           ],
         ),
       );
@@ -149,7 +156,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
       const { rows } = await inCompany(pool, tenant, (client) =>
         client.query<AuditRow>(
           `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
-                  correlation, tenant, extensions
+                  correlation, tenant, extensions, resources, row_count
              FROM dsor.audit WHERE tenant = $1 ORDER BY sequence`,
           [tenant],
         ),
@@ -173,6 +180,8 @@ function recordOf(row: AuditRow): DecisionRecord {
     correlation: row.correlation,
     ...(row.tenant === null ? {} : { tenant: row.tenant }),
     ...(row.extensions === null ? {} : { extensions: row.extensions }),
+    ...(row.resources === null ? {} : { resources: row.resources }),
+    ...(row.row_count === null ? {} : { row_count: row.row_count }),
   };
 }
 

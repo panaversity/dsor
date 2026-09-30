@@ -6,8 +6,9 @@
 import { describe, expect, it } from "vitest";
 import { invoices, type Invoice } from "../src/invoice.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
+import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
-import { crossTenantSuite, readExamples, type Report } from "./cross-tenant.ts";
+import { crossTenantSuite, readExamples, type Report, type Send } from "./cross-tenant.ts";
 import {
   INV_2001_OF_789,
   contract,
@@ -30,6 +31,8 @@ function suiteWithList(
   handler: Handler,
   kind: "query" | "command" = "query",
   log: MemoryLog = createLog(),
+  // NEW IN STEP 14: DSoR itself, unless the test hands the suite a fake one.
+  send: Send = call,
 ): Promise<Report> {
   // A query that needs invoice:read, as invoice.get does, or a command that needs
   // invoice:issue, as invoice.issue does. Its input is a limit, and no URI.
@@ -57,7 +60,7 @@ function suiteWithList(
     ...readExamples(),
     { file: "invoice.browse.json", text: JSON.stringify({ limit: 10 }) },
   ];
-  return crossTenantSuite(registry, log, examples);
+  return crossTenantSuite(registry, log, examples, send);
 }
 
 /** This company's invoices, in memory. */
@@ -99,10 +102,28 @@ describe("C5: a list, with no URI to swap, is checked by its rows", () => {
     );
   });
 
-  it("DSOR-TEN-02b: a list whose items carry no tenant_id is a finding: their company cannot be checked", async () => {
+  // NEW IN STEP 14: DSoR itself refuses this answer now, to everyone. With no tenant_id, an
+  // item has no URI for the record of the read (step 14's README, decision 7). The suite
+  // hears no page, and says so: still a finding, step 12's, word for word.
+  it("DSOR-TEN-02b: a list whose items carry no tenant_id is a finding: DSoR refuses its answer", async () => {
     const report = await suiteWithList(async (_input, tenant) => ({
       items: own(tenant).map(({ tenant_id: _left_out, ...rest }) => rest),
     }));
+    expect(report.findings).toStrictEqual(["invoice.browse: no URI of org_456 in its example"]);
+  });
+
+  // NEW IN STEP 14: the suite's own check, which DSoR no longer lets such a page reach. A
+  // fake DSoR answers the page anyway, as a DSoR without step 14's record would.
+  it("DSOR-TEN-02b: a list whose items carry no tenant_id is a finding: their company cannot be checked", async () => {
+    const noRecord: Send = async (registry, log, request, name, input) =>
+      name === "invoice.browse"
+        ? {
+            data: { items: own(String(request.tenant)).map(({ tenant_id: _left_out, ...rest }) => rest) },
+            classification: "internal",
+            correlation: { request_id: "req_fake" },
+          }
+        : call(registry, log, request, name, input);
+    const report = await suiteWithList(async () => ({ items: [] }), "query", createLog(), noRecord);
     const why = "items[0] has no tenant_id, so its company cannot be checked";
     expect(report.findings).toStrictEqual([
       ...READERS_456.flatMap((who) => twice(who, "org_456", why)),

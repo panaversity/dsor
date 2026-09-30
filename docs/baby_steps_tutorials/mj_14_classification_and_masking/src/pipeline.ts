@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput } from "./inputs.ts";
-import { decisionOf, type DecisionLog } from "./log.ts";
+import { decisionOf, type DecisionLog, type Read } from "./log.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
 import { clearanceOf, show } from "./classification.ts";
@@ -59,6 +59,9 @@ export async function call(
   // A well-formed company the caller named. If line ② refuses it, the record
   // keeps it as a claim, never as its tenant (step 10's README, decision 6).
   let claimedTenant: string | undefined;
+  // NEW IN STEP 14: what the answer returned, set only when it returns data. Its record
+  // says so (DSOR-CLS-05; step 14's README, decision 7).
+  let read: Read | undefined;
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
@@ -166,9 +169,10 @@ export async function call(
     // A query's answer is { data, correlation } (step 04's README, decision 3).
     // NEW IN STEP 14: with its label (DSOR-CLS-03), and the fields left out, when there are
     // any (DSOR-CLS-02b).
-    const { classification, redactions } = shown;
+    const { classification, redactions, resources } = shown;
     const listed = redactions.length > 0 ? { redactions } : {};
     answer = { data: shown.data, classification, ...listed, correlation };
+    read = { resources, classification };
   } catch (thrown) {
     // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
     // review, and fixed in toEnvelope from step 04 on.
@@ -190,6 +194,7 @@ export async function call(
           reachedCode,
           tenantOfRecord,
           claimedTenant,
+          read,
         ),
       ),
     );
