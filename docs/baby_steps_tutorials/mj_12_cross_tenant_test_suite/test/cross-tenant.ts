@@ -209,3 +209,11 @@ function planOf(
   if (found.length === 0) return gap(`no URI of ${HOME} in its example`);
   return { example, swaps: found };
 }
+
+/** The call function the suite sends its requests through. A stub for the red run. */
+export type Send = typeof call;
+
+/** Another company's thing in the data, or undefined. A stub for the red run. */
+export function foreignIn(_data: unknown, _home: string): string | undefined {
+  return undefined;
+}

@@ -1,6 +1,8 @@
 // NEW IN STEP 12: invoice.get takes the invoice's canonical URI, as invoice.issue does, so
 // every request holds a company the suite can swap (step 12's README, decision 1).
 import { describe, expect, it } from "vitest";
+import { memoryInvoices } from "../src/invoice.ts";
+import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import {
   AGENT,
@@ -48,5 +50,14 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
       retry: "never",
       correlation: correlationFor(THE_AGENT),
     });
+  });
+
+  // The checklist refuses a foreign URI before the code runs, so no call can show this.
+  // The code is asked directly. Found by the review: code that read the URI's company
+  // passed every test.
+  it("DSOR-IDN-03b: the code, handed org_789's URI while working in org_456, reads org_456's invoice", async () => {
+    const get = handlersFor(memoryInvoices())["invoice.get"]!;
+    const foreign = { invoice: "dsor://org_789/invoice/INV-1008" };
+    expect(await get(foreign, "org_456")).toStrictEqual(INV_1008_OF_456);
   });
 });
