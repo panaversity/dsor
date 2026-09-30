@@ -21,7 +21,9 @@ const registry = buildRegistry(
 );
 // The agent's login token, as in main.ts, and the request id the test chose.
 const request = { token: "tok_7f3a", tenant: "org_456", request_id: process.argv[2] };
-const answer = await call(registry, createDbLog(pool), request, "invoice.get", { id: "INV-1008" });
+const answer = await call(registry, createDbLog(pool), request, "invoice.get", {
+  invoice: "dsor://org_456/invoice/INV-1008",
+});
 
 // writeSync, because on a pipe console.log may still be waiting when the process dies.
 writeSync(1, JSON.stringify(answer));

@@ -132,7 +132,7 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
   it("DSOR-EXE-02: a success is committed before the answer, and another connection sees it", async () => {
     const id = requestId("c2-success");
     const answer = await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", {
-      id: "INV-1008",
+      invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
     // Right after the answer, with no waiting: the observer is a separate connection.
@@ -167,7 +167,7 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
     "DSOR-EXE-02: a request id with %s is refused, and the refusal is recorded",
     async (_why, bad) => {
       const answer = await call(registry, log, { ...AGENT, request_id: bad }, "invoice.get", {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       });
       expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
       // Recorded under the id DSoR made, because the one sent could not be kept.
@@ -183,7 +183,9 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
   // The database numbers and timestamps each record (step 09's README, decision 6).
   it("DSOR-AUD-02a: the record is a row in DSoR's own table, numbered and timed by the database", async () => {
     const id = requestId("c5");
-    await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", { id: "INV-1008" });
+    await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     const rows = await rowsFor(observer, "org_456", id);
     expect(rows).toHaveLength(1);
     expect(rows[0]!["record_id"]).toMatch(/^aud_[0-9a-f-]{36}$/);
@@ -193,7 +195,9 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
 
   it("DSOR-EXE-02: the log reads back what it wrote, through its own records(tenant)", async () => {
     const id = requestId("c2-records");
-    await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", { id: "INV-1008" });
+    await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     const mine = (await log.records("org_456")).filter((r) => r.correlation.request_id === id);
     expect(mine).toMatchObject([{ authorization: "ALLOW", result: "ok" }]);
     expect(typeof mine[0]!.sequence).toBe("number");
@@ -211,7 +215,7 @@ describe("C3: the record survives a restart", () => {
       { ...AGENT, request_id: id },
       "invoice.get",
       {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       },
     );
     await before.end();
@@ -274,7 +278,7 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
       { ...AGENT, request_id: id },
       "invoice.get",
       {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       },
     );
     expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
@@ -298,7 +302,7 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
         createDbLog(readOnly),
         { ...AGENT, request_id: id },
         "invoice.get",
-        { id: "INV-1008" },
+        { invoice: "dsor://org_456/invoice/INV-1008" },
       );
       expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
       expect(answer).not.toHaveProperty("data");
@@ -320,7 +324,7 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
         { ...AGENT, request_id: id },
         "invoice.get",
         {
-          id: "INV-1008",
+          invoice: "dsor://org_456/invoice/INV-1008",
         },
       );
       expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });

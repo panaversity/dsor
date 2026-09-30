@@ -28,7 +28,11 @@ describe("C1: nothing can be called without a contract", () => {
 
   // The invoice comes back as the envelope's data.
   it("DSOR-OPR-01: invoice.get runs by its name", async () => {
-    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(registry, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -37,14 +41,18 @@ describe("C1: nothing can be called without a contract", () => {
   // always read INV-1008 passed the test above.
   // INV-9999 is refused with a code, not answered with undefined.
   it("DSOR-OPR-01: invoice.get passes the caller's input to its code", async () => {
-    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-9999" })).toMatchObject({
+    expect(
+      await call(registry, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-9999",
+      }),
+    ).toMatchObject({
       code: "RESOURCE_NOT_FOUND",
     });
   });
 
   // No rule id: checking an operation's input is not step 03's rule.
   // The refusal is an envelope, not a thrown TypeError.
-  it("invoice.get without an id is refused", async () => {
+  it("invoice.get without an invoice is refused", async () => {
     expect(await call(registry, log, AGENT, "invoice.get", {})).toMatchObject({
       code: "VALIDATION_FAILED",
     });

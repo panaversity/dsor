@@ -32,14 +32,18 @@ const MINE = "req_00000000-0000-4000-8000-000000000000";
 
 describe("C4: every answer carries a request_id that DSoR made", () => {
   it("DSOR-COR-01b: a success carries a request_id that DSoR made", async () => {
-    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
   });
 
   // Found by a run: before INV-9999 was refused, it came back as { data: undefined } with
   // a request id, and a test that looked only at the id passed. So the code comes first.
   it("DSOR-COR-01b: a refusal carries a request_id that DSoR made", async () => {
-    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-9999" });
+    const answer = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-9999",
+    });
     expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
     expect(answer.correlation.request_id).toMatch(REQUEST_ID);
   });
@@ -47,7 +51,11 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
   // Found by the review: a fixed request id on a refusal, on a bug, or on the envelope
   // sent in place of a broken one passed every test. Only successes were called twice.
   const EVERY_ANSWER: [string, () => Promise<Answer>][] = [
-    ["a success", () => call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })],
+    [
+      "a success",
+      () =>
+        call(registry, log, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
+    ],
     ...REFUSALS.map(([why, ask]): [string, () => Promise<Answer>] => [why, ask]),
     ["an envelope that fails the schema, so INTERNAL_ERROR", () => refusedWith("BATCH_PARTIAL")],
   ];
@@ -66,10 +74,10 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
   // not the place to send one is step 04's decision 4. Found by the review: an id
   // in a correlation object inside the input was used, and every test passed.
   it.each([
-    ["at the top of the input", { id: "INV-1008", request_id: MINE }],
+    ["at the top of the input", { invoice: "dsor://org_456/invoice/INV-1008", request_id: MINE }],
     [
       "in a correlation object inside the input",
-      { id: "INV-1008", correlation: { request_id: MINE } },
+      { invoice: "dsor://org_456/invoice/INV-1008", correlation: { request_id: MINE } },
     ],
   ])("a request_id %s is not used", async (_where, input) => {
     const answer = await call(registry, log, AGENT, "invoice.get", input);
@@ -81,7 +89,11 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
 // No rule id: this shape is step 04's decision 3, and it does not meet DSOR-SCH-01.
 describe("C6: a query's success is { data, correlation }", () => {
   it("invoice.get for INV-1008 answers with the invoice as its data", async () => {
-    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(
+      await call(registry, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toStrictEqual({
       data: {
         // The invoice carries its company (step 10's README, decision 10).
         tenant_id: "org_456",
@@ -98,12 +110,16 @@ describe("C6: a query's success is { data, correlation }", () => {
   // No rule id: a read never writes. Found by step 04's review: a caller that changed the
   // data of its answer changed INV-1008 for every caller after it.
   it("changing an answer's data does not change the stored invoice", async () => {
-    const answer = (await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })) as {
+    const answer = (await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    })) as {
       data: Invoice;
     };
     answer.data.status = "paid";
     answer.data.open_amount.value = "0.00";
-    expect(await call(registry, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(registry, log, CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
+    ).toMatchObject({
       data: { status: "issued", open_amount: { value: "31400.00", currency: "USD" } },
     });
   });
@@ -145,7 +161,9 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
       },
     };
     // An async call that threw would reject, and the await would fail this test.
-    const answer = await call(registry, log, request, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, log, request, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(answer).toMatchObject({
       code: "INTERNAL_ERROR",
       correlation: { request_id: expect.stringMatching(REQUEST_ID) },
@@ -156,7 +174,7 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
     ["null", null],
     ["a number", 1008],
     ["a text", "INV-1008"],
-    ["an id that is a number", { id: 1008 }],
+    ["an invoice that is a number", { invoice: 1008 }],
     ["a list", ["INV-1008"]],
   ])("invoice.get with %s as its input is refused with VALIDATION_FAILED", async (_why, input) => {
     expect(await call(registry, log, AGENT, "invoice.get", input)).toMatchObject({
@@ -175,7 +193,8 @@ describe("C7: nothing a caller can send as JSON makes call throw", () => {
     // class for this bug, so the class cannot tell them apart (step 04's README, decision 5).
     [
       "a TypeError, from reading .id of undefined",
-      (input) => (input as { invoice: { id: string } }).invoice.id,
+      // The input has no vendor, so this reads .id of undefined.
+      (input) => (input as { vendor: { id: string } }).vendor.id,
     ],
     [
       "an Error",
@@ -255,7 +274,7 @@ describe("a refusal of a huge id", () => {
   it("shows only a short piece of it", async () => {
     const huge = "INV-" + "9".repeat(100_000);
     const { message } = (await call(registry, log, AGENT, "invoice.get", {
-      id: huge,
+      invoice: `dsor://org_456/invoice/${huge}`,
     })) as ErrorEnvelope;
     expect(message).toMatch("no invoice");
     expect(message.length).toBeLessThan(200);

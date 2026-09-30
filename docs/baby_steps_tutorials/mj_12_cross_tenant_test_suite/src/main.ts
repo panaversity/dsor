@@ -101,7 +101,9 @@ const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 
 // The answer is an envelope. A success carries the invoice as its data,
 // and the request id DSoR made for this call.
-const answer = await ask(AGENT, "invoice.get", { id: "INV-1008" });
+// NEW IN STEP 12: invoice.get takes the invoice's canonical URI, as invoice.issue does
+// (step 12's README, decision 1).
+const answer = await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
 console.log(answer);
 
 // The invoice's permanent address, and the address read back.
@@ -114,20 +116,27 @@ if ("data" in answer) {
 
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
-console.log(await ask(AGENT, "invoice.get", { id: "INV-9999" }));
+console.log(await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }));
 // The agent's role grants invoice:read and not invoice:issue. So this call
 // is denied at line ⑤, before DSoR looks at the input or asks whether it is built.
 console.log(await ask(AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // A call with no login token is refused before DSoR checks anything else.
-console.log(await ask({}, "invoice.get", { id: "INV-1008" }));
+console.log(await ask({}, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }));
 // The agent names the CFO in its arguments. DSoR still knows it is the
 // agent, from its token, and refuses the call.
-console.log(await ask(AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }));
+console.log(
+  await ask(AGENT, "invoice.get", {
+    invoice: "dsor://org_456/invoice/INV-1008",
+    principal: "cfo_100",
+  }),
+);
 // user_123 logs in with their own token, and labels the call with a request
 // id of their own. The answer carries that id, and names user_123 as the caller.
 const USER_123: RequestEnvelope = { token: "tok_2c91", tenant: "org_456", request_id: "ap-desk-7" };
-console.log((await ask(USER_123, "invoice.get", { id: "INV-1008" })).correlation);
+console.log(
+  (await ask(USER_123, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" })).correlation,
+);
 // user_123 holds invoice:issue. So the same call passes lines ①, ⑤, and ⑥.
 // It is refused after them: invoice.issue has a contract but no code yet.
 console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
@@ -139,8 +148,13 @@ console.log(await ask(USER_123, "invoice.issue", { invoice: "INV-1008" }));
 // Asked for INV-1008, each company gets its own invoice (step 10's README, outcome 2).
 const FIRM_IN_456: RequestEnvelope = { token: "tok_9b52", tenant: "org_456" };
 const FIRM_IN_789: RequestEnvelope = { token: "tok_9b52", tenant: "org_789" };
-for (const firm of [FIRM_IN_456, FIRM_IN_789]) {
-  const read = await ask(firm, "invoice.get", { id: "INV-1008" });
+// NEW IN STEP 12: each company's INV-1008 has a URI of its own, which names the company.
+const READS = [
+  [FIRM_IN_456, "dsor://org_456/invoice/INV-1008"],
+  [FIRM_IN_789, "dsor://org_789/invoice/INV-1008"],
+] as const;
+for (const [firm, invoice] of READS) {
+  const read = await ask(firm, "invoice.get", { invoice });
   if ("data" in read) {
     const { tenant_id, id, vendor_id, amount } = read.data as Invoice;
     console.log(tenant_id, id, vendor_id, amount);
@@ -148,7 +162,11 @@ for (const firm of [FIRM_IN_456, FIRM_IN_789]) {
 }
 // The org_456 agent asks to work in org_789, where it is no member. The
 // answer is the same as for a company that does not exist.
-console.log(await ask({ ...AGENT, tenant: "org_789" }, "invoice.get", { id: "INV-1008" }));
+console.log(
+  await ask({ ...AGENT, tenant: "org_789" }, "invoice.get", {
+    invoice: "dsor://org_789/invoice/INV-1008",
+  }),
+);
 // User_123, working in org_456, names org_789's invoice. Refused with
 // TENANT_MISMATCH, before DSoR asks whether invoice.issue is built.
 console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_789/invoice/INV-1008" }));
@@ -189,7 +207,7 @@ const full: DecisionLog = {
     throw new Error("disk full");
   },
 };
-console.log(await ask(AGENT, "invoice.get", { id: "INV-1008" }, full));
+console.log(await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }, full));
 
 // Close the pool's connections, or Node would wait for them forever.
 await pool.end();

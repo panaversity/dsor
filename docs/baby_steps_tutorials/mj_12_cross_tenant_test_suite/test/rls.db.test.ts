@@ -157,7 +157,9 @@ describe("C3: no company set, no rows", () => {
 
   // So "no record" means the lock hid it, not that the table was empty. Found by the review.
   async function aRecordExists(): Promise<void> {
-    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
   }
 
@@ -202,7 +204,7 @@ describe("C3: no company set, no rows", () => {
         createDbLog(one),
         { tenant: "org_456", request_id: id },
         "invoice.get",
-        { id: "INV-1008" },
+        { invoice: "dsor://org_456/invoice/INV-1008" },
       );
       expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
       expect(ownerRowsFor(id)).toMatchObject([{ tenant: null, result: "AUTHENTICATION_REQUIRED" }]);
@@ -243,7 +245,7 @@ describe("C4: the company lasts one transaction, even when a pool lends the conn
   it("DSOR-RP-01c: after the program records a call in org_456, the next request sees no record", async () => {
     const { rows } = await one.query("SELECT pg_backend_pid() AS connection");
     const answer = await call(dbRegistry(one), createDbLog(one), AGENT, "invoice.get", {
-      id: "INV-1008",
+      invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
     expect(await nextRequest()).toMatchObject({
@@ -313,8 +315,12 @@ describe("C5: the log is kept apart by company", () => {
 
   it("DSOR-TEN-02a: inside org_456, every record there is to read is org_456's", async () => {
     // So the table surely holds a record of org_789 and one with no company.
-    await call(registry, log, USER_700, "invoice.get", { id: "INV-1008" });
-    await call(registry, log, { tenant: "org_456" }, "invoice.get", { id: "INV-1008" });
+    await call(registry, log, USER_700, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+    await call(registry, log, { tenant: "org_456" }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     const { rows } = await tryThenRollBack(
       observer,
       "SELECT DISTINCT tenant FROM dsor.audit",
@@ -326,9 +332,11 @@ describe("C5: the log is kept apart by company", () => {
   it("DSOR-TEN-02a: the program's log reads back one company's records only", async () => {
     const ours = requestId("c5-ours");
     const theirs = requestId("c5-theirs");
-    await call(registry, log, { ...AGENT, request_id: ours }, "invoice.get", { id: "INV-1008" });
+    await call(registry, log, { ...AGENT, request_id: ours }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     await call(registry, log, { ...USER_700, request_id: theirs }, "invoice.get", {
-      id: "INV-1008",
+      invoice: "dsor://org_789/invoice/INV-1008",
     });
     const read = await log.records("org_456");
     const ids = read.map((r) => r.correlation.request_id);
@@ -340,7 +348,7 @@ describe("C5: the log is kept apart by company", () => {
   it("DSOR-TEN-02a: a call with no login leaves its record, and only the owner can read it", async () => {
     const id = requestId("c5-no-login");
     const answer = await call(registry, log, { tenant: "org_456", request_id: id }, "invoice.get", {
-      id: "INV-1008",
+      invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
     expect(await rowsFor(observer, undefined, id)).toStrictEqual([]);
@@ -362,10 +370,10 @@ describe("C5: the log is kept apart by company", () => {
     try {
       const reg = dbRegistry(one);
       const oneLog = createDbLog(one);
-      await call(reg, oneLog, AGENT, "invoice.get", { id: "INV-1008" });
+      await call(reg, oneLog, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
       const id = requestId("c5-reused");
       const answer = await call(reg, oneLog, { tenant: "org_456", request_id: id }, "invoice.get", {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       });
       expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
       expect(ownerRowsFor(id)).toMatchObject([{ tenant: null, result: "AUTHENTICATION_REQUIRED" }]);

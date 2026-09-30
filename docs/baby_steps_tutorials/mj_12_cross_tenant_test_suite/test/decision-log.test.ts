@@ -44,7 +44,7 @@ const RECORDED_AS: Record<string, ["ALLOW" | "DENY", string | undefined]> = {
   "the agent calling invoice.issue, which no role of its grants": ["DENY", "invoice.issue@1"],
   "invoice.issue, which has no code yet": ["DENY", "invoice.issue@1"],
   "invoice.issue given code, because it is a command": ["DENY", "invoice.issue@1"],
-  "invoice.get without an id": ["DENY", "invoice.get@1"],
+  "invoice.get with no invoice": ["DENY", "invoice.get@1"],
   "invoice.get for INV-9999": ["ALLOW", "invoice.get@1"],
   "a bug in an operation's code": ["ALLOW", "test.run@1"],
 };
@@ -80,7 +80,7 @@ async function recorded(
 describe("C1: every answer call gives has a record in the log", () => {
   it("DSOR-EXE-02: a success leaves one record: ALLOW, the result ok, and no reason", async () => {
     const { answer, records } = await recorded((l) =>
-      call(registry, l, AGENT, "invoice.get", { id: "INV-1008" }),
+      call(registry, l, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
     );
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
     expect(records).toStrictEqual([
@@ -121,7 +121,7 @@ describe("C1: every answer call gives has a record in the log", () => {
   it("DSOR-EXE-02: the record names the caller and the caller's own request id", async () => {
     const { records } = await recorded((l) =>
       call(registry, l, { ...SUPERVISOR, request_id: "ap-desk-7" }, "invoice.get", {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       }),
     );
     expect(records).toMatchObject([
@@ -131,7 +131,9 @@ describe("C1: every answer call gives has a record in the log", () => {
 
   it("DSOR-EXE-02: a record's time is the time of the call", async () => {
     const start = new Date().toISOString();
-    const { records } = await recorded((l) => call(registry, l, AGENT, "invoice.get", { id: "X" }));
+    const { records } = await recorded((l) =>
+      call(registry, l, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/X" }),
+    );
     const end = new Date().toISOString();
     const { at } = records[0] as { at: string };
     expect(new Date(at).toISOString()).toBe(at);
@@ -147,9 +149,13 @@ describe("C1: each record has the time it was written", () => {
       vi.setSystemTime(new Date("2026-09-27T09:00:00.000Z"));
       const fresh = createLog();
       vi.setSystemTime(new Date("2026-09-27T09:00:01.000Z"));
-      await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+      await call(registry, fresh, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      });
       vi.setSystemTime(new Date("2026-09-27T09:00:06.000Z"));
-      await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+      await call(registry, fresh, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      });
       expect((await fresh.records()).map((r) => r.at)).toStrictEqual([
         "2026-09-27T09:00:01.000Z",
         "2026-09-27T09:00:06.000Z",
@@ -167,7 +173,7 @@ describe("C2: a failure between the decision and the answer still leaves a recor
       throw new Error("boom: the connection to 10.0.0.7 was reset");
     });
     const { answer, records } = await recorded((l) =>
-      call(broken, l, AGENT, "test.run", { id: "INV-1008" }),
+      call(broken, l, AGENT, "test.run", { invoice: "dsor://org_456/invoice/INV-1008" }),
     );
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
     expect(records).toStrictEqual([
@@ -187,9 +193,16 @@ describe("C2: a failure between the decision and the answer still leaves a recor
   // Here the failure comes before the code: something throws while line ⑥ starts.
   it("DSOR-EXE-02: a failure after line ⑤, before the code runs, is recorded as DENY", async () => {
     const { answer, records } = await recorded((l) =>
-      call(registry, l, AGENT, "invoice.get", { id: "INV-1008" }, (line) => {
-        if (line === 6) throw new Error("the checker crashed");
-      }),
+      call(
+        registry,
+        l,
+        AGENT,
+        "invoice.get",
+        { invoice: "dsor://org_456/invoice/INV-1008" },
+        (line) => {
+          if (line === 6) throw new Error("the checker crashed");
+        },
+      ),
     );
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
     expect(records).toMatchObject([
@@ -201,9 +214,16 @@ describe("C2: a failure between the decision and the answer still leaves a recor
   // the code never ran, so the record says DENY.
   it("DSOR-EXE-02: a failure at line ⑨, before the code runs, is recorded as DENY", async () => {
     const { records } = await recorded((l) =>
-      call(registry, l, AGENT, "invoice.get", { id: "INV-1008" }, (line) => {
-        if (line === 9) throw new Error("crashed before the code");
-      }),
+      call(
+        registry,
+        l,
+        AGENT,
+        "invoice.get",
+        { invoice: "dsor://org_456/invoice/INV-1008" },
+        (line) => {
+          if (line === 9) throw new Error("crashed before the code");
+        },
+      ),
     );
     expect(records).toMatchObject([{ authorization: "DENY", result: "INTERNAL_ERROR" }]);
   });
@@ -226,7 +246,7 @@ describe("C2: a failure between the decision and the answer still leaves a recor
       },
     };
     const { answer, records } = await recorded((l) =>
-      call(registry, l, request, "invoice.get", { id: "INV-1008" }),
+      call(registry, l, request, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
     );
     expect(answer).toStrictEqual({
       code: "INTERNAL_ERROR",
@@ -247,7 +267,7 @@ describe("C2: a failure between the decision and the answer still leaves a recor
       throw new Refusal("NOT_A_CODE" as ErrorCode, "refused on purpose");
     });
     const { answer, records } = await recorded((l) =>
-      call(odd, l, AGENT, "test.run", { id: "INV-1008" }),
+      call(odd, l, AGENT, "test.run", { invoice: "dsor://org_456/invoice/INV-1008" }),
     );
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
     expect(records).toMatchObject([{ result: "INTERNAL_ERROR", reason: UNEXPECTED }]);
@@ -256,18 +276,24 @@ describe("C2: a failure between the decision and the answer still leaves a recor
 
 describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UNAVAILABLE", () => {
   it("DSOR-EXE-03b: a call that would succeed is refused, and the invoice never returned", async () => {
-    expect(await call(registry, brokenLog, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual(
-      {
-        code: "EVIDENCE_STORE_UNAVAILABLE",
-        message: NOT_RECORDED,
-        retry: "safe_same_key",
-        correlation: correlationFor(THE_AGENT),
-      },
-    );
+    expect(
+      await call(registry, brokenLog, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toStrictEqual({
+      code: "EVIDENCE_STORE_UNAVAILABLE",
+      message: NOT_RECORDED,
+      retry: "safe_same_key",
+      correlation: correlationFor(THE_AGENT),
+    });
   });
 
   it("DSOR-EXE-03b: a call that would be refused hears the same", async () => {
-    expect(await call(registry, brokenLog, {}, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(
+      await call(registry, brokenLog, {}, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toStrictEqual({
       code: "EVIDENCE_STORE_UNAVAILABLE",
       message: NOT_RECORDED,
       retry: "safe_same_key",
@@ -278,7 +304,9 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
   it("DSOR-EXE-03b: the refusal keeps the caller's own request id and names the caller", async () => {
     const request = { ...SUPERVISOR, request_id: "ap-desk-7" };
     expect(
-      await call(registry, brokenLog, request, "invoice.get", { id: "INV-1008" }),
+      await call(registry, brokenLog, request, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
     ).toMatchObject({
       code: "EVIDENCE_STORE_UNAVAILABLE",
       correlation: { request_id: "ap-desk-7", principal_id: "user_123" },
@@ -291,7 +319,11 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
         throw "full";
       },
     };
-    expect(await call(registry, strange, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(registry, strange, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toMatchObject({
       code: "EVIDENCE_STORE_UNAVAILABLE",
     });
   });
@@ -312,7 +344,11 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
       contracts: new Map([...registry.contracts, ["invoice.get", badVersion]]),
     };
     const fresh = createLog();
-    expect(await call(handMade, fresh, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(handMade, fresh, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toMatchObject({
       code: "EVIDENCE_STORE_UNAVAILABLE",
     });
     expect(await fresh.records()).toStrictEqual([]);
@@ -321,12 +357,21 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
   // Found by the review: with a broken log, line ⑪ still runs, and the observer hears it.
   it("a call through a broken log still reaches line ⑪", async () => {
     const lines: number[] = [];
-    await call(registry, brokenLog, AGENT, "invoice.get", { id: "INV-1008" }, (n) => lines.push(n));
+    await call(
+      registry,
+      brokenLog,
+      AGENT,
+      "invoice.get",
+      { invoice: "dsor://org_456/invoice/INV-1008" },
+      (n) => lines.push(n),
+    );
     expect(lines).toStrictEqual([1, 2, 5, 6, 9, 11]);
   });
 
   it("the refusal passes the error envelope's schema", async () => {
-    const answer = await call(registry, brokenLog, AGENT, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, brokenLog, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(schemaProblems(answer)).toStrictEqual([]);
   });
 });
@@ -340,8 +385,12 @@ describe("C5: the log only grows", () => {
 
   it("two calls give two records, numbered 1 and 2, in the order of the calls", async () => {
     const fresh = createLog();
-    const first = await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
-    const second = await call(registry, fresh, AGENT, "invoice.get", { id: "INV-9999" });
+    const first = await call(registry, fresh, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    const second = await call(registry, fresh, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-9999",
+    });
     expect(await fresh.records()).toMatchObject([
       { sequence: 1, result: "ok", correlation: first.correlation },
       { sequence: 2, result: "RESOURCE_NOT_FOUND", correlation: second.correlation },
@@ -350,8 +399,12 @@ describe("C5: the log only grows", () => {
 
   it("every record has an id of its own", async () => {
     const fresh = createLog();
-    await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
-    await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+    await call(registry, fresh, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    await call(registry, fresh, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     const [a, b] = await fresh.records();
     expect(a!.record_id).toMatch(RECORD_ID);
     expect(b!.record_id).not.toBe(a!.record_id);
@@ -361,7 +414,9 @@ describe("C5: the log only grows", () => {
   // "req_forged" matches that too. Now it compares the exact id.
   it("changing a record read from the log does not change the log", async () => {
     const fresh = createLog();
-    const { correlation } = await call(registry, fresh, {}, "invoice.get", { id: "INV-1008" });
+    const { correlation } = await call(registry, fresh, {}, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     const read = await fresh.records();
     read[0]!.result = "ok";
     read[0]!.correlation.request_id = "req_forged";
@@ -373,7 +428,9 @@ describe("C5: the log only grows", () => {
 
   it("changing an answer after the call does not change its record", async () => {
     const fresh = createLog();
-    const answer = await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, fresh, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     const sent = answer.correlation.request_id;
     answer.correlation.request_id = "req_forged";
     expect((await fresh.records())[0]!.correlation.request_id).toBe(sent);
@@ -399,7 +456,9 @@ describe("C5: the log only grows", () => {
     expect(() => {
       (fresh as { add: unknown }).add = () => {};
     }).toThrow(TypeError);
-    await call(registry, fresh, AGENT, "invoice.get", { id: "INV-1008" });
+    await call(registry, fresh, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(await fresh.records()).toHaveLength(1);
   });
 

@@ -36,15 +36,25 @@ describe("C1: the principal is found first", () => {
   it.each([["invoice.delete"], ["invoice.issue"], ["invoice.get"]])(
     "DSOR-IDN-01: a call to %s with no login is refused with AUTHENTICATION_REQUIRED",
     async (name) => {
-      expect(await call(registry, log, {}, name, { id: "INV-1008" })).toStrictEqual(NO_LOGIN);
+      expect(
+        await call(registry, log, {}, name, { invoice: "dsor://org_456/invoice/INV-1008" }),
+      ).toStrictEqual(NO_LOGIN);
     },
   );
 
   // Found when the design was checked against the specification: the design first checked
   // the request id before the login (step 05's README, "Think it through").
   it.each([
-    ["a request id DSoR cannot use", { request_id: "" }, { id: "INV-1008" }],
-    ["cfo_100 named in the arguments", {}, { id: "INV-1008", principal: "cfo_100" }],
+    [
+      "a request id DSoR cannot use",
+      { request_id: "" },
+      { invoice: "dsor://org_456/invoice/INV-1008" },
+    ],
+    [
+      "cfo_100 named in the arguments",
+      {},
+      { invoice: "dsor://org_456/invoice/INV-1008", principal: "cfo_100" },
+    ],
   ])(
     "DSOR-IDN-01: with no login, %s still gets AUTHENTICATION_REQUIRED",
     async (_why, request, input) => {
@@ -80,7 +90,7 @@ describe("C2: a call with no login DSoR knows is refused", () => {
     "DSOR-IDN-01: %s is refused with AUTHENTICATION_REQUIRED",
     async (_why, request) => {
       const answer = await call(registry, log, request as RequestEnvelope, "invoice.get", {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       });
       expect(answer).toStrictEqual(NO_LOGIN);
     },
@@ -88,7 +98,7 @@ describe("C2: a call with no login DSoR knows is refused", () => {
 
   // Found by the review: no test put a login token in the arguments.
   it("DSOR-IDN-01: a login token inside the arguments is not a login", async () => {
-    const input = { id: "INV-1008", token: "tok_d4e8" };
+    const input = { invoice: "dsor://org_456/invoice/INV-1008", token: "tok_d4e8" };
     expect(await call(registry, log, {}, "invoice.get", input)).toStrictEqual(NO_LOGIN);
   });
 });
@@ -157,7 +167,11 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
     "DSOR-SRC-02a: the token %s is named in correlation as its own principal",
     async (token, caller) => {
       const request = { token, tenant: "org_456" };
-      expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+      expect(
+        await call(registry, log, request, "invoice.get", {
+          invoice: "dsor://org_456/invoice/INV-1008",
+        }),
+      ).toStrictEqual({
         data: expect.objectContaining({ id: "INV-1008" }),
         correlation: correlationFor(caller),
       });
@@ -166,17 +180,20 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
 
   // Some of these calls are refused. The refusal names the agent too.
   it.each([
-    ["an invoice id", { id: "INV-1008" }],
-    ["an invoice that does not exist", { id: "INV-9999" }],
+    ["an invoice id", { invoice: "dsor://org_456/invoice/INV-1008" }],
+    ["an invoice that does not exist", { invoice: "dsor://org_456/invoice/INV-9999" }],
     ["nothing", {}],
-    ["cfo_100 as the principal", { id: "INV-1008", principal: "cfo_100" }],
+    [
+      "cfo_100 as the principal",
+      { invoice: "dsor://org_456/invoice/INV-1008", principal: "cfo_100" },
+    ],
     [
       "cfo_100 in a correlation object",
-      { id: "INV-1008", correlation: { principal_id: "cfo_100" } },
+      { invoice: "dsor://org_456/invoice/INV-1008", correlation: { principal_id: "cfo_100" } },
     ],
     ["the text cfo_100 as the whole input", "cfo_100"],
     // Found by the review: no test put a login token in the arguments.
-    ["the CFO's login token", { id: "INV-1008", token: "tok_d4e8" }],
+    ["the CFO's login token", { invoice: "dsor://org_456/invoice/INV-1008", token: "tok_d4e8" }],
   ])("DSOR-SRC-02a: with %s in the arguments, the answer names the agent", async (_why, input) => {
     expect((await call(registry, log, AGENT, "invoice.get", input)).correlation).toStrictEqual(
       AS_AGENT,
@@ -188,7 +205,11 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
   // so the field is refused, and still never used (step 10's README, decision 11).
   it("DSOR-SRC-02a: a principal written in the envelope, beside the token, is refused, never used", async () => {
     const request = { ...AGENT, principal: "cfo_100" } as RequestEnvelope;
-    expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(
+      await call(registry, log, request, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: extraField("principal"),
       retry: "never",
@@ -224,7 +245,10 @@ const PLACES = [
 ];
 function naming(place: string, name: unknown): Record<string, unknown> {
   const [outer = "", inner] = place.split(".");
-  return { id: "INV-1008", [outer]: inner === undefined ? name : { [inner]: name } };
+  return {
+    invoice: "dsor://org_456/invoice/INV-1008",
+    [outer]: inner === undefined ? name : { [inner]: name },
+  };
 }
 
 describe("C5: a principal named in the arguments must be the caller", () => {
@@ -343,7 +367,11 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
   it("the caller's request id comes back in correlation", async () => {
     const request = { ...AGENT, request_id: "ap-run-0926-001" };
     expect(
-      (await call(registry, log, request, "invoice.get", { id: "INV-1008" })).correlation,
+      (
+        await call(registry, log, request, "invoice.get", {
+          invoice: "dsor://org_456/invoice/INV-1008",
+        })
+      ).correlation,
     ).toStrictEqual({
       request_id: "ap-run-0926-001",
       ...THE_AGENT,
@@ -364,7 +392,7 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     ["64 emoji, which JavaScript counts as 128", "😀".repeat(64)],
   ])("a request id of %s is used, exactly as sent", async (_why, id) => {
     const answer = await call(registry, log, { ...AGENT, request_id: id }, "invoice.get", {
-      id: "INV-1008",
+      invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect(answer.correlation.request_id).toBe(id);
   });
@@ -385,7 +413,9 @@ describe("C6: the caller's request id is used, and with none DSoR makes one", ()
     ["a new line inside it", "ap\ndesk"],
   ])("a request id that is %s is refused with VALIDATION_FAILED", async (_why, request_id) => {
     expect(
-      await call(registry, log, { ...AGENT, request_id }, "invoice.get", { id: "INV-1008" }),
+      await call(registry, log, { ...AGENT, request_id }, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
     ).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: BAD_REQUEST_ID,

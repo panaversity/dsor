@@ -57,14 +57,20 @@ describe("C1: every call runs the lines of the checklist in §21's order", () =>
   // No rule id: DSOR-EXE-01a is about commands. §21 says queries pass lines 1 to 6 too.
   // Found by the review: a query's code runs at line ⑨, and was not numbered.
   it("invoice.get, a query, runs lines ①, ②, ⑤, ⑥, ⑨, and ⑪, in that order", async () => {
-    const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", { id: "INV-1008" });
+    const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(lines).toStrictEqual([1, 2, 5, 6, 9, 11]);
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
   });
 
   // The observer is optional. Without it, the answer is the same.
   it("a call with no observer gets the same answer", async () => {
-    expect(await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(registry, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -127,7 +133,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
       handlers,
       rolesFile({ ...STARTING_ROLES, CFO: [] }),
     );
-    const { answer, lines } = await linesRun(grantsNothing, CFO, "invoice.get", { id: 1008 });
+    const { answer, lines } = await linesRun(grantsNothing, CFO, "invoice.get", { invoice: 1008 });
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
     expect(lines).toStrictEqual([1, 2, 5, 11]);
   });
@@ -135,8 +141,8 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
 
 describe("C3: line ⑥ checks the input against the operation's input schema", () => {
   it.each([
-    ["no id", {}, "must have required property 'id'"],
-    ["an id that is a number", { id: 1008 }, "/id must be string"],
+    ["no invoice", {}, "must have required property 'invoice'"],
+    ["an invoice that is a number", { invoice: 1008 }, "/invoice must be string"],
     ["a list", ["INV-1008"], "must be object"],
     ["null", null, "must be object"],
     ["text", "INV-1008", "must be object"],
@@ -144,14 +150,14 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     // (step 07's README, decision 3).
     [
       "as_user, a field the schema does not list",
-      { id: "INV-1008", as_user: "cfo_100" },
+      { invoice: "dsor://org_456/invoice/INV-1008", as_user: "cfo_100" },
       'must NOT have additional properties: "as_user"',
     ],
     // The agent names itself. It agrees with the login, and is still refused: the schema
     // does not list principal (step 07's README, decision 3).
     [
       "the agent's own id, in principal",
-      { id: "INV-1008", principal: "accounts-payable-fte" },
+      { invoice: "dsor://org_456/invoice/INV-1008", principal: "accounts-payable-fte" },
       'must NOT have additional properties: "principal"',
     ],
   ])("invoice.get refuses %s with VALIDATION_FAILED", async (_why, input, problem) => {
@@ -196,7 +202,11 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       ...registryWithGet(spy),
       inputs: new Map(),
     };
-    expect(await call(handMade, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual({
+    expect(
+      await call(handMade, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toStrictEqual({
       code: "VALIDATION_FAILED",
       message: notValid("invoice.get", "it has no input schema"),
       retry: "never",
@@ -208,7 +218,10 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
   // A field's name comes from the caller, so it may be anything, even something huge.
   it("a refusal shows only a short piece of a field's name", async () => {
     const huge = "x".repeat(10_000);
-    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008", [huge]: 1 });
+    const answer = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      [huge]: 1,
+    });
     expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
     expect(JSON.stringify(answer).length).toBeLessThan(500);
   });
@@ -217,11 +230,11 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
   // into a number, no field quietly deleted.
   it("checking the input leaves it exactly as it was sent", async () => {
     const spy = vi.fn<Handler>(() => "ran");
-    const input = { id: "INV-1008" };
+    const input = { invoice: "dsor://org_456/invoice/INV-1008" };
     await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
     // And the active company, which line ② checked.
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
-    expect(input).toStrictEqual({ id: "INV-1008" });
+    expect(spy).toHaveBeenCalledWith({ invoice: "dsor://org_456/invoice/INV-1008" }, "org_456");
+    expect(input).toStrictEqual({ invoice: "dsor://org_456/invoice/INV-1008" });
   });
 
   // Found by the review: ajv's useDefaults changes the input, and no test saw it.
@@ -230,8 +243,8 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       "InvoiceGetRequest.schema.json",
       JSON.stringify({
         type: "object",
-        properties: { id: { type: "string" }, note: { type: "string", default: "filled in" } },
-        required: ["id"],
+        properties: { invoice: { type: "string" }, note: { type: "string", default: "filled in" } },
+        required: ["invoice"],
         additionalProperties: false,
       }),
     );
@@ -242,27 +255,27 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       shippedRoles,
       withDefault,
     );
-    await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
+    await call(registry, log, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
+    expect(spy).toHaveBeenCalledWith({ invoice: "dsor://org_456/invoice/INV-1008" }, "org_456");
   });
 
-  // Found by the review: the check read the id once and the code read it again. A getter
+  // Found by the review: the check read the URI once and the code read it again. A getter
   // can answer differently each time (step 07's README, decision 9).
   it("the code gets the very value line ⑥ checked, even from a getter that changes", async () => {
     const spy = vi.fn<Handler>(() => "ran");
     let reads = 0;
     const input = {
-      get id(): string {
+      get invoice(): string {
         reads += 1;
-        return reads === 1 ? "INV-1008" : "INV-9999";
+        return reads === 1 ? "dsor://org_456/invoice/INV-1008" : "dsor://org_456/invoice/INV-9999";
       },
     };
     await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
+    expect(spy).toHaveBeenCalledWith({ invoice: "dsor://org_456/invoice/INV-1008" }, "org_456");
   });
 
   it("an input that JSON cannot copy is refused with VALIDATION_FAILED", async () => {
-    const loop: Record<string, unknown> = { id: "INV-1008" };
+    const loop: Record<string, unknown> = { invoice: "dsor://org_456/invoice/INV-1008" };
     loop["self"] = loop;
     expect(await call(registry, log, AGENT, "invoice.get", loop)).toStrictEqual({
       code: "VALIDATION_FAILED",
@@ -393,13 +406,17 @@ describe("C5: the code behind an operation is reached only through the checklist
   // The rows of C2 and C3, against code that records each time it runs. A refused call
   // never reaches it. Only a call that passed every line does.
   it.each([
-    ["no login, and a bad input", {}, { id: 1008 }],
-    ["a bad input", AGENT, { id: 1008 }],
-    ["as_user in the input", AGENT, { id: "INV-1008", as_user: "cfo_100" }],
+    ["no login, and a bad input", {}, { invoice: 1008 }],
+    ["a bad input", AGENT, { invoice: 1008 }],
+    [
+      "as_user in the input",
+      AGENT,
+      { invoice: "dsor://org_456/invoice/INV-1008", as_user: "cfo_100" },
+    ],
     [
       "the agent's own id in principal",
       AGENT,
-      { id: "INV-1008", principal: "accounts-payable-fte" },
+      { invoice: "dsor://org_456/invoice/INV-1008", principal: "accounts-payable-fte" },
     ],
   ])("DSOR-OPR-04a: %s never reaches invoice.get's code", async (_why, request, input) => {
     const spy = vi.fn<Handler>(() => "ran");
@@ -416,7 +433,11 @@ describe("C5: the code behind an operation is reached only through the checklist
       { ...handlers, "invoice.get": spy },
       rolesFile({ ...STARTING_ROLES, CFO: [] }),
     );
-    expect(await call(grantsNothing, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(grantsNothing, log, CFO, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toMatchObject({
       code: "AUTHORIZATION_DENIED",
     });
     expect(spy).not.toHaveBeenCalled();
@@ -425,7 +446,9 @@ describe("C5: the code behind an operation is reached only through the checklist
   it("DSOR-OPR-04a: a call that passes every line reaches the code, once", async () => {
     const spy = vi.fn<Handler>(() => "ran");
     expect(
-      await call(registryWithGet(spy), log, AGENT, "invoice.get", { id: "INV-1008" }),
+      await call(registryWithGet(spy), log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
     ).toMatchObject({
       data: "ran",
     });

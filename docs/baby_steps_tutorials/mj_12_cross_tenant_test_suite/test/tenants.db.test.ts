@@ -34,20 +34,28 @@ const log = createDbLog(pool);
 
 describe("C2: a read in the database looks only inside the active company", () => {
   it("DSOR-IDN-03b: org_456 reads INV-1008 from app.invoices: 31,400.00 USD", async () => {
-    const answer = await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect((answer as { data: unknown }).data).toStrictEqual(INV_1008_OF_456);
   });
 
   it("DSOR-IDN-03b: org_789 reads INV-1008 from app.invoices: 99,000.00 USD", async () => {
-    const answer = await call(registry, log, USER_700, "invoice.get", { id: "INV-1008" });
+    const answer = await call(registry, log, USER_700, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
     expect((answer as { data: unknown }).data).toStrictEqual(INV_1008_OF_789);
   });
 
   // The test U1 needs: with the company left out of the query, org_456 would find
   // org_789's INV-2001, because nothing else is called INV-2001.
   it("DSOR-IDN-03b: org_456 reading INV-2001 hears the same as for INV-9999", async () => {
-    const theirs = await call(registry, log, AGENT, "invoice.get", { id: "INV-2001" });
-    const nobodys = await call(registry, log, AGENT, "invoice.get", { id: "INV-9999" });
+    const theirs = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-2001",
+    });
+    const nobodys = await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-9999",
+    });
     expect(theirs).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
     const asSent = JSON.stringify(withoutRequestId(nobodys)).replaceAll("INV-9999", "INV-2001");
     expect(JSON.stringify(withoutRequestId(theirs))).toBe(asSent);
@@ -96,14 +104,16 @@ describe("C6: every invoice row and every audit record carries its company", () 
 
   it("DSOR-TEN-01a: a call's record in dsor.audit names its company", async () => {
     const id = requestId("c6-tenant");
-    await call(registry, log, { ...USER_700, request_id: id }, "invoice.get", { id: "INV-1008" });
+    await call(registry, log, { ...USER_700, request_id: id }, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
     expect(await tenantOf("org_789", id)).toStrictEqual([{ tenant: "org_789" }]);
   });
 
   it("DSOR-TEN-01a: a refusal with no login is recorded with no company", async () => {
     const id = requestId("c6-no-login");
     await call(registry, log, { tenant: "org_456", request_id: id }, "invoice.get", {
-      id: "INV-1008",
+      invoice: "dsor://org_456/invoice/INV-1008",
     });
     // No company, so only the owner can read it (step 11's README, decision 4).
     expect(ownerRowsFor(id)).toMatchObject([{ tenant: null }]);
@@ -118,7 +128,7 @@ describe("C6: every invoice row and every audit record carries its company", () 
       { token: "tok_7f3a", tenant: "org_789", request_id: id },
       "invoice.get",
       {
-        id: "INV-1008",
+        invoice: "dsor://org_789/invoice/INV-1008",
       },
     );
     // No company was checked, so only the owner can read it (step 11's README, decision 4).

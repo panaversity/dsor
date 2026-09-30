@@ -240,7 +240,9 @@ export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles)
 export function run(handler: Handler): Promise<Answer> {
   // As the agent, with its login token.
   // test.run takes invoice.get's input, and line ⑥ now checks it.
-  return call(registryWith(handler), log, AGENT, "test.run", { id: "INV-1008" });
+  return call(registryWith(handler), log, AGENT, "test.run", {
+    invoice: "dsor://org_456/invoice/INV-1008",
+  });
 }
 
 /** Calls "test.run", whose code refuses with this code. */
@@ -272,21 +274,28 @@ const issueHasCode = buildRegistry(
 export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller][] = [
   [
     "a call with no login",
-    () => call(registry, log, {}, "invoice.get", { id: "INV-1008" }),
+    () => call(registry, log, {}, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
     "AUTHENTICATION_REQUIRED",
     LOG_IN_FIRST,
     NOBODY,
   ],
   [
     "a request id that is empty",
-    () => call(registry, log, { ...AGENT, request_id: "" }, "invoice.get", { id: "INV-1008" }),
+    () =>
+      call(registry, log, { ...AGENT, request_id: "" }, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
     "VALIDATION_FAILED",
     BAD_REQUEST_ID,
     THE_AGENT,
   ],
   [
     "the agent naming cfo_100 in its arguments",
-    () => call(registry, log, AGENT, "invoice.get", { id: "INV-1008", principal: "cfo_100" }),
+    () =>
+      call(registry, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+        principal: "cfo_100",
+      }),
     "AUTHORIZATION_DENIED",
     notTheCaller("principal"),
     THE_AGENT,
@@ -325,15 +334,15 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
   ],
   [
     // Refused by line ⑥, the input schema, and no longer by invoice.get's code.
-    "invoice.get without an id",
+    "invoice.get with no invoice",
     () => call(registry, log, AGENT, "invoice.get", {}),
     "VALIDATION_FAILED",
-    notValid("invoice.get", "must have required property 'id'"),
+    notValid("invoice.get", "must have required property 'invoice'"),
     THE_AGENT,
   ],
   [
     "invoice.get for INV-9999",
-    () => call(registry, log, AGENT, "invoice.get", { id: "INV-9999" }),
+    () => call(registry, log, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }),
     "RESOURCE_NOT_FOUND",
     'no invoice "INV-9999"',
     THE_AGENT,

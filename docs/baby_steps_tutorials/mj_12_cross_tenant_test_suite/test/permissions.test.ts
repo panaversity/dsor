@@ -321,7 +321,9 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   it("building a second registry does not change what the first one grants", async () => {
     const first = buildRegistry(shipped, handlers, shippedRoles);
     buildRegistry(shipped, handlers, rolesFile({ ...STARTING_ROLES, CFO: [] }));
-    expect(await call(first, log, CFO, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(first, log, CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
+    ).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -346,7 +348,7 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       CFO,
       "invoice.get",
       {
-        id: "INV-1008",
+        invoice: "dsor://org_456/invoice/INV-1008",
       },
     );
     expect(answer).toStrictEqual(denied("invoice.get", "invoice:read", THE_CFO));
@@ -375,10 +377,16 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       authorization: { permission: "invoice:issue" },
     };
     const changed = buildRegistry(shippedWith(needsIssue), handlers, shippedRoles);
-    expect(await call(changed, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual(
-      denied("invoice.get", "invoice:issue", THE_AGENT),
-    );
-    expect(await call(changed, log, SUPERVISOR, "invoice.get", { id: "INV-1008" })).toMatchObject({
+    expect(
+      await call(changed, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toStrictEqual(denied("invoice.get", "invoice:issue", THE_AGENT));
+    expect(
+      await call(changed, log, SUPERVISOR, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    ).toMatchObject({
       data: { id: "INV-1008" },
     });
   });
@@ -445,7 +453,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
   ])(
     "DSOR-AUT-01b: a contract with %s, in a registry built by hand, is denied to everyone",
     async (_why, part) => {
-      const spy = vi.fn<Handler>(() => ({ id: "INV-1008" }));
+      const spy = vi.fn<Handler>(() => ({ invoice: "dsor://org_456/invoice/INV-1008" }));
       const bare = { ...without(contract("invoice.get"), "authorization"), ...part };
       const handMade: Registry = {
         contracts: new Map([["invoice.get", bare as Contract]]),
@@ -455,7 +463,9 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         inputs: registry.inputs,
       };
       expect(
-        await call(handMade, log, SUPERVISOR, "invoice.get", { id: "INV-1008" }),
+        await call(handMade, log, SUPERVISOR, "invoice.get", {
+          invoice: "dsor://org_456/invoice/INV-1008",
+        }),
       ).toStrictEqual({
         code: "AUTHORIZATION_DENIED",
         message: '"invoice.get" names no permission, so nobody may call it',
@@ -566,7 +576,7 @@ describe("C6: permissions never come from the caller", () => {
   // Line ⑥ now refuses the list itself, since invoice.get's input schema
   // does not name it. It is refused as a bad input, and not as a denied permission.
   it("an empty list of permissions in the input is refused as a bad input", async () => {
-    const input = { id: "INV-1008", permissions: [] };
+    const input = { invoice: "dsor://org_456/invoice/INV-1008", permissions: [] };
     expect(await call(registry, log, AGENT, "invoice.get", input)).toMatchObject({
       code: "VALIDATION_FAILED",
     });
