@@ -173,6 +173,9 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     const target = plant({
       id: "invoice.match",
       input: { name: "InvoiceMatchRequest", schema: uriFields(["invoice", "vendor"]) },
+      // invoice.get's code, which reads the invoice, so a same-company call answers with
+      // data, as a query's must (step 12's README, decision 8).
+      handler: handlers["invoice.get"]!,
       example: JSON.stringify({ invoice, vendor }),
     });
     const sent: unknown[] = [];

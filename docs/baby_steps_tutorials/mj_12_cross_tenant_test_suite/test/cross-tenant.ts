@@ -144,8 +144,15 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
   // refused as foreign. Then a TENANT_MISMATCH below can only come from the company that
   // changed (step 12's README, decision 8).
   const answer = await send(registry, log, request, operation, own);
+  const query = registry.contracts.get(operation)?.["kind"] === "query";
   if (!("data" in answer) && answer.code === "TENANT_MISMATCH") {
     report.findings.push(`${who}: its same-company call is answered TENANT_MISMATCH`);
+  } else if (query && !("data" in answer)) {
+    // A query's must answer with data. Then its example names a thing this company has,
+    // and the first way of the swap, the same id elsewhere, one the other company has
+    // (step 12's README, decision 8). Found by the sweep.
+    const said = `its same-company call is not answered with data: ${answer.code}`;
+    report.findings.push(`${who}: ${said}`);
   }
   // This is the only request that reaches the operation's own code, so the code's own
   // leaks show here: its answer may hold nothing of another company (C8).

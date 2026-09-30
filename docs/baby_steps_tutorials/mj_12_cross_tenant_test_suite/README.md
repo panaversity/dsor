@@ -230,7 +230,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    example asks for. And it knows two signs of a company, a `tenant_id` field and a URI:
    data that names a company another way passes. And a query's example must name a thing
    both companies hold, so the stored data must have one. A command is refused before its
-   code runs until step 22, so its same-company call cannot answer with data yet.
+   code runs until step 22, so its same-company call cannot answer with data yet. A query
+   with no code yet is a finding too: it cannot answer with data.
 9. **The suite works in both companies:** first in `org_456`, then in `org_789`. For
    `org_789`, the example's `org_456` URIs are rewritten to `org_789`, and the swaps go
    to `org_456`. So `firm-ap-fte`, who belongs to both, attacks each company from the
