@@ -15,20 +15,30 @@ import { withoutRequestId } from "./helpers.ts";
 /** A principal the suite attacks as: its id, and the login token DSoR gave it. */
 export type Attacker = { id: string; token: string };
 
-/** One URI of org_456 in an example, and the three requests that swap it. */
+/** One URI of the company in an example, and the three requests that swap it. */
 export type Swap = { uri: string; requests: unknown[] };
 
 /** What the suite did, and every problem it found. No findings means a pass. */
 export type Report = {
-  // The operations it attacked, in the registry's order.
+  // The operations it attacked from both companies, in the registry's order.
   attacked: string[];
-  // The request id of every attack, so a test can find the records they left.
-  attacks: string[];
+  // Every attack: the company it worked in, the operation, and the request id, so a test
+  // can find the record each one left.
+  attacks: { home: string; operation: string; request_id: string }[];
   findings: string[];
 };
 
-// Every attack works in org_456, the company of the running story.
-const HOME = "org_456";
+/** The call function the suite sends its requests through. */
+export type Send = typeof call;
+
+// The suite works in org_456, the company of the running story, then in org_789. From each
+// it reaches for the other, and for org_999, which does not exist (step 12's README,
+// decisions 3 and 9).
+const HOMES = ["org_456", "org_789"];
+const OTHER: Readonly<Record<string, string>> = { org_456: "org_789", org_789: "org_456" };
+const STRANGER = "org_999";
+// The examples are written in org_456. For org_789, their URIs are moved there.
+const WRITTEN_IN = "org_456";
 
 // The example requests this step ships, one file for each operation (step 12's README,
 // decision 2).
@@ -46,46 +56,74 @@ function permissionOf(registry: Registry, operation: string): unknown {
   return (authorization as { permission?: unknown } | undefined)?.permission;
 }
 
-/** Every principal whose roles in org_456 grant the operation's permission. */
-export function attackersOf(registry: Registry, operation: string): Attacker[] {
+/** Every principal whose roles in this company grant the operation's permission. */
+export function attackersOf(registry: Registry, operation: string, home: string): Attacker[] {
   const permission = permissionOf(registry, operation);
   const attackers: Attacker[] = [];
   // DSoR's own table of logins, in its order. A caller who may not call the operation
-  // would be refused at line ⑤, before the company is checked, and prove nothing
+  // would be refused at line ⑤, before the URI's company is checked, and prove nothing
   // (step 12's README, decision 4).
   for (const [token, principal] of logins) {
     if (typeof permission !== "string") continue;
-    if (permissionsOf(principal, registry.roles, HOME).has(permission)) {
+    if (permissionsOf(principal, registry.roles, home).has(permission)) {
       attackers.push({ id: principal.id, token });
     }
   }
   return attackers;
 }
 
-// The three ways a URI of org_456 is swapped (step 12's README, decision 3).
-const WAYS: { to: string; uri: (entity: string, id: string) => string }[] = [
-  { to: "org_789, where it exists", uri: (entity, id) => `dsor://org_789/${entity}/${id}` },
-  { to: "org_789, where it does not", uri: (entity) => `dsor://org_789/${entity}/NOPE` },
-  { to: "org_999, which does not exist", uri: (entity, id) => `dsor://org_999/${entity}/${id}` },
-];
+/** The three ways a URI of this company is swapped (step 12's README, decision 3). */
+function waysFrom(home: string): { to: string; uri: (entity: string, id: string) => string }[] {
+  const other = OTHER[home] ?? STRANGER;
+  return [
+    {
+      to: `${other}, with the same id`,
+      uri: (entity, id) => `dsor://${other}/${entity}/${id}`,
+    },
+    {
+      to: `${other}, with an id it does not have`,
+      uri: (entity) => `dsor://${other}/${entity}/NOPE`,
+    },
+    {
+      to: `${STRANGER}, which does not exist`,
+      uri: (entity, id) => `dsor://${STRANGER}/${entity}/${id}`,
+    },
+  ];
+}
 
-// A URI of org_456, cut into its entity and its id. Written here, and not imported from
-// src, so a mistake in src's parser is not copied into its own test.
-const HOME_URI = /^dsor:\/\/org_456\/([^/]+)\/([^/]+)$/;
+// A URI of this company, cut into its entity and its id. Written here, and not imported
+// from src, so a mistake in src's parser is not copied into its own test. A company id is
+// "org_" and digits, so it holds nothing a pattern would read as a rule.
+function uriOf(home: string): RegExp {
+  return new RegExp(`^dsor://${home}/([^/]+)/([^/]+)$`);
+}
 
-/** For each URI of org_456 in the example, the three requests that swap only it. */
-export function swaps(example: unknown): Swap[] {
+/** For each URI of this company in the example, the three requests that swap only it. */
+export function swaps(example: unknown, home: string): Swap[] {
   const found: Swap[] = [];
   for (const [path, text] of texts(example)) {
-    const match = HOME_URI.exec(text);
+    const match = uriOf(home).exec(text);
     if (match === null) continue;
     const [, entity = "", id = ""] = match;
-    // One URI at a time: the others stay in org_456, so each request carries exactly one
-    // foreign URI (step 12's README, decision 3).
-    const requests = WAYS.map((way) => replaced(example, path, way.uri(entity, id)));
+    // One URI at a time: the others stay in the company, so each request carries exactly
+    // one foreign URI (step 12's README, decision 3).
+    const requests = waysFrom(home).map((way) => replaced(example, path, way.uri(entity, id)));
     found.push({ uri: text, requests });
   }
   return found;
+}
+
+// The example moved to another company: each of its URIs of org_456 now names that
+// company, with the same entity and id (step 12's README, decision 9).
+function movedTo(home: string, example: unknown): unknown {
+  let moved = example;
+  for (const [path, text] of texts(example)) {
+    const match = uriOf(WRITTEN_IN).exec(text);
+    if (match === null) continue;
+    const [, entity = "", id = ""] = match;
+    moved = replaced(moved, path, `dsor://${home}/${entity}/${id}`);
+  }
+  return moved;
 }
 
 // Every text in a value, however deep, with the path of keys that leads to it.
@@ -125,68 +163,97 @@ export function compare(answers: Answer[]): string | undefined {
   return same ? undefined : "the three answers differ";
 }
 
+/** Another company's thing in the data, or undefined. A stub until C8's commit. */
+export function foreignIn(_data: unknown, _home: string): string | undefined {
+  return undefined;
+}
+
 /** Attacks every operation in the registry, and gives back what it found. */
 export async function crossTenantSuite(
   registry: Registry,
   log: DecisionLog,
   examples: ContractSource[],
+  // Used from decision 10's commit on.
+  _send: Send = call,
 ): Promise<Report> {
   const report: Report = { attacked: [], attacks: [], findings: [] };
   for (const operation of registry.contracts.keys()) {
     // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
-    // one in a green run (step 12's README, outcome 4). Both gaps are named.
-    const plan = planOf(registry, operation, examples, report.findings);
-    const attackers = attackersOf(registry, operation);
-    if (attackers.length === 0) {
-      const permission = String(permissionOf(registry, operation));
-      const why = `nobody in ${HOME} holds ${permission}, so nobody can attack it`;
-      report.findings.push(`${operation}: ${why}`);
-    }
-    if (plan === undefined || attackers.length === 0) continue;
-    for (const attacker of attackers) {
-      const request = { token: attacker.token, tenant: HOME };
-      // The control call: the example unchanged, in its own company. It must not be refused
-      // as foreign. Then a TENANT_MISMATCH below can only come from the company that changed
-      // (step 12's README, decision 8).
-      const control = await call(registry, log, request, operation, plan.example);
-      if (!("data" in control) && control.code === "TENANT_MISMATCH") {
-        const why = "its own company's example is answered TENANT_MISMATCH";
-        report.findings.push(`${operation} as ${attacker.id}: ${why}`);
+    // one when every test is green (step 12's README, outcome 5). Every gap is named.
+    const example = exampleOf(registry, operation, examples, report.findings);
+    let everywhere = example !== undefined;
+    for (const home of HOMES) {
+      const attackers = attackersOf(registry, operation, home);
+      if (attackers.length === 0) {
+        const permission = String(permissionOf(registry, operation));
+        const why = `nobody in ${home} holds ${permission}, so nobody can attack it there`;
+        report.findings.push(`${operation}: ${why}`);
+        everywhere = false;
       }
-      for (const swap of plan.swaps) {
-        const answers: Answer[] = [];
-        for (const [i, input] of swap.requests.entries()) {
-          // One at a time, so the records are written in the order of the attacks.
-          const answer = await call(registry, log, request, operation, input);
-          report.attacks.push(answer.correlation.request_id);
-          answers.push(answer);
-          const why = judge(answer);
-          const sent = `${swap.uri} sent to ${WAYS[i]!.to}`;
-          if (why !== undefined)
-            report.findings.push(`${operation} as ${attacker.id}, ${sent}: ${why}`);
-        }
-        const differ = compare(answers);
-        if (differ !== undefined) {
-          report.findings.push(`${operation} as ${attacker.id}, ${swap.uri}: ${differ}`);
-        }
+      if (example === undefined) continue;
+      const own = movedTo(home, example);
+      for (const attacker of attackers) {
+        await attackAs(attacker, { registry, log, operation, home, own }, report);
       }
     }
-    report.attacked.push(operation);
+    // Attacked from both companies, with nothing in the way.
+    if (everywhere) report.attacked.push(operation);
   }
   return report;
 }
 
+/** One operation, attacked from one company: what an attacker needs to know. */
+type Target = {
+  registry: Registry;
+  log: DecisionLog;
+  operation: string;
+  home: string;
+  // The operation's own request, its example moved into this company.
+  own: unknown;
+};
+
+// One caller's attacks on one operation, from one company. First the same-company call,
+// then each URI swapped, three ways.
+async function attackAs(attacker: Attacker, target: Target, report: Report): Promise<void> {
+  const { registry, log, operation, home, own } = target;
+  const who = `${operation} as ${attacker.id} in ${home}`;
+  const request = { token: attacker.token, tenant: home };
+  // The same-company call: the example unchanged, in its own company. It must not be
+  // refused as foreign. Then a TENANT_MISMATCH below can only come from the company that
+  // changed (step 12's README, decision 8).
+  const answer = await call(registry, log, request, operation, own);
+  if (!("data" in answer) && answer.code === "TENANT_MISMATCH") {
+    report.findings.push(`${who}: its same-company call is answered TENANT_MISMATCH`);
+  }
+  const ways = waysFrom(home);
+  for (const swap of swaps(own, home)) {
+    const answers: Answer[] = [];
+    for (const [i, input] of swap.requests.entries()) {
+      // One at a time, so the records are written in the order of the attacks.
+      const foreign = await call(registry, log, request, operation, input);
+      const { request_id } = foreign.correlation;
+      report.attacks.push({ home, operation, request_id });
+      answers.push(foreign);
+      const why = judge(foreign);
+      if (why !== undefined)
+        report.findings.push(`${who}, ${swap.uri} sent to ${ways[i]!.to}: ${why}`);
+    }
+    const differ = compare(answers);
+    if (differ !== undefined) report.findings.push(`${who}, ${swap.uri}: ${differ}`);
+  }
+}
+
 /**
- * The operation's example and its swaps, or undefined, with a finding that says why there are
- * none: no example, one that is not JSON, one that line ⑥ would refuse, or one that holds no
- * URI of org_456 to swap (step 12's README, decision 2).
+ * The operation's example, or undefined, with a finding that says why there is none to use:
+ * no example, one that is not JSON, one that line ⑥ would refuse, or one that holds no URI
+ * of org_456 to swap (step 12's README, decision 2).
  */
-function planOf(
+function exampleOf(
   registry: Registry,
   operation: string,
   examples: ContractSource[],
   findings: string[],
-): { example: unknown; swaps: Swap[] } | undefined {
+): unknown {
   const gap = (why: string): undefined => {
     findings.push(`${operation}: ${why}`);
     return undefined;
@@ -203,17 +270,11 @@ function planOf(
   // The check line ⑥ runs. An example it refuses would be refused there in every attack,
   // for its shape, and the company check would never run.
   const check = registry.inputs.get(operation);
-  if (check === undefined || !check(example))
+  if (check === undefined || !check(example)) {
     return gap("its example does not pass its input schema");
-  const found = swaps(example);
-  if (found.length === 0) return gap(`no URI of ${HOME} in its example`);
-  return { example, swaps: found };
-}
-
-/** The call function the suite sends its requests through. A stub for the red run. */
-export type Send = typeof call;
-
-/** Another company's thing in the data, or undefined. A stub for the red run. */
-export function foreignIn(_data: unknown, _home: string): string | undefined {
-  return undefined;
+  }
+  if (swaps(example, WRITTEN_IN).length === 0) {
+    return gap(`no URI of ${WRITTEN_IN} in its example`);
+  }
+  return example;
 }
