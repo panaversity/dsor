@@ -15,14 +15,13 @@ import {
   type Registry,
 } from "../src/registry.ts";
 import { parseUri } from "../src/uri.ts";
+import { foreignIn, swaps } from "./companies.ts";
 import {
   attackersOf,
   compare,
   crossTenantSuite,
-  foreignIn,
   judge,
   readExamples,
-  swaps,
   type Report,
   type Send,
 } from "./cross-tenant.ts";

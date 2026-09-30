@@ -10,13 +10,11 @@ import { permissionsOf } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import { readContracts, type ContractSource, type Registry } from "../src/registry.ts";
+import { HOMES, WRITTEN_IN, foreignIn, movedTo, swaps, waysFrom } from "./companies.ts";
 import { withoutRequestId } from "./helpers.ts";
 
 /** A principal the suite attacks as: its id, and the login token DSoR gave it. */
 export type Attacker = { id: string; token: string };
-
-/** One URI of the company in an example, and the three requests that swap it. */
-export type Swap = { uri: string; requests: unknown[] };
 
 /** What the suite did, and every problem it found. No findings means a pass. */
 export type Report = {
@@ -30,15 +28,6 @@ export type Report = {
 
 /** The call function the suite sends its requests through. */
 export type Send = typeof call;
-
-// The suite works in org_456, the company of the running story, then in org_789. From each
-// it reaches for the other, and for org_999, which does not exist (step 12's README,
-// decisions 3 and 9).
-const HOMES = ["org_456", "org_789"];
-const OTHER: Readonly<Record<string, string>> = { org_456: "org_789", org_789: "org_456" };
-const STRANGER = "org_999";
-// The examples are written in org_456. For org_789, their URIs are moved there.
-const WRITTEN_IN = "org_456";
 
 // The example requests this step ships, one file for each operation (step 12's README,
 // decision 2).
@@ -72,78 +61,6 @@ export function attackersOf(registry: Registry, operation: string, home: string)
   return attackers;
 }
 
-/** The three ways a URI of this company is swapped (step 12's README, decision 3). */
-function waysFrom(home: string): { to: string; uri: (entity: string, id: string) => string }[] {
-  const other = OTHER[home] ?? STRANGER;
-  return [
-    {
-      to: `${other}, with the same id`,
-      uri: (entity, id) => `dsor://${other}/${entity}/${id}`,
-    },
-    {
-      to: `${other}, with an id it does not have`,
-      uri: (entity) => `dsor://${other}/${entity}/NOPE`,
-    },
-    {
-      to: `${STRANGER}, which does not exist`,
-      uri: (entity, id) => `dsor://${STRANGER}/${entity}/${id}`,
-    },
-  ];
-}
-
-// A URI of this company, cut into its entity and its id. Written here, and not imported
-// from src, so a mistake in src's parser is not copied into its own test. A company id is
-// "org_" and digits, so it holds nothing a pattern would read as a rule.
-function uriOf(home: string): RegExp {
-  return new RegExp(`^dsor://${home}/([^/]+)/([^/]+)$`);
-}
-
-/** For each URI of this company in the example, the three requests that swap only it. */
-export function swaps(example: unknown, home: string): Swap[] {
-  const found: Swap[] = [];
-  for (const [path, text] of texts(example)) {
-    const match = uriOf(home).exec(text);
-    if (match === null) continue;
-    const [, entity = "", id = ""] = match;
-    // One URI at a time: the others stay in the company, so each request carries exactly
-    // one foreign URI (step 12's README, decision 3).
-    const requests = waysFrom(home).map((way) => replaced(example, path, way.uri(entity, id)));
-    found.push({ uri: text, requests });
-  }
-  return found;
-}
-
-// The example moved to another company: each of its URIs of org_456 now names that
-// company, with the same entity and id (step 12's README, decision 9).
-function movedTo(home: string, example: unknown): unknown {
-  let moved = example;
-  for (const [path, text] of texts(example)) {
-    const match = uriOf(WRITTEN_IN).exec(text);
-    if (match === null) continue;
-    const [, entity = "", id = ""] = match;
-    moved = replaced(moved, path, `dsor://${home}/${entity}/${id}`);
-  }
-  return moved;
-}
-
-// Every text in a value, however deep, with the path of keys that leads to it.
-function texts(value: unknown, path: string[] = []): [string[], string][] {
-  if (typeof value === "string") return [[path, value]];
-  if (typeof value !== "object" || value === null) return [];
-  // A list's keys are its positions, "0", "1", and so on.
-  return Object.entries(value).flatMap(([key, inner]) => texts(inner, [...path, key]));
-}
-
-// A copy of the example with the text at this path replaced. The example is left as it was.
-function replaced(example: unknown, path: string[], text: string): unknown {
-  if (path.length === 0) return text;
-  const copy = structuredClone(example);
-  let parent = copy as Record<string, unknown>;
-  for (const key of path.slice(0, -1)) parent = parent[key] as Record<string, unknown>;
-  parent[path[path.length - 1]!] = text;
-  return copy;
-}
-
 /** Why this answer to a foreign request is a finding, or undefined when it is a pass. */
 export function judge(answer: Answer): string | undefined {
   // Only TENANT_MISMATCH shows that the company check refused the call. Any other refusal
@@ -161,24 +78,6 @@ export function compare(answers: Answer[]): string | undefined {
   const [first, ...others] = answers.map(withoutRequestId);
   const same = others.every((other) => isDeepStrictEqual(other, first));
   return same ? undefined : "the three answers differ";
-}
-
-// The company a URI names, as the checklist reads it: "dsor://" may be in capitals
-// (step 10's README, decision 4).
-const URI_COMPANY = /^dsor:\/\/([^/]*)/i;
-
-/**
- * Another company's thing in the data, or undefined when it holds only this company's. Two
- * signs name a company: a tenant_id field, and a URI (step 12's README, decision 8).
- */
-export function foreignIn(data: unknown, home: string): string | undefined {
-  for (const [path, text] of texts(data)) {
-    const field = path[path.length - 1];
-    if (field === "tenant_id" && text !== home) return `tenant_id ${JSON.stringify(text)}`;
-    const company = URI_COMPANY.exec(text)?.[1];
-    if (company !== undefined && company !== home) return JSON.stringify(text);
-  }
-  return undefined;
 }
 
 /** Attacks every operation in the registry, and gives back what it found. */
