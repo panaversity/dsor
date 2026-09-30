@@ -3,13 +3,8 @@
 // test/masking.db.test.ts asks the same of the database.
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
-import {
-  checkClassifications,
-  clearanceOf,
-  readClassifications,
-  show,
-  type Kinds,
-} from "../src/classification.ts";
+import { checkClassifications, readClassifications, type Kinds } from "../src/labels.ts";
+import { clearanceOf, show } from "../src/masking.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import {

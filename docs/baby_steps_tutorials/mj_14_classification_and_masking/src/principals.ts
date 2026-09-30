@@ -1,7 +1,7 @@
 // Who is calling. DSoR finds the caller from the login token and its own
 // table, never from the arguments. DSOR-IDN-01 in specs/dsor/02-security.md, section 12,
 // and DSOR-SRC-02a and DSOR-SRC-02b in section 11.
-import type { Label } from "./classification.ts";
+import type { Label } from "./labels.ts";
 import { Refusal } from "./envelope.ts";
 import type { RequestEnvelope } from "./request.ts";
 

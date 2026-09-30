@@ -3,12 +3,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
-import {
-  checkClassifications,
-  readClassifications,
-  type ClassificationSource,
-  type Kinds,
-} from "./classification.ts";
+import { checkClassifications, readClassifications, type ClassificationSource, type Kinds } from "./labels.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { keysWrittenTwice } from "./json.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";

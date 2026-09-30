@@ -3,7 +3,7 @@
 // This file holds the log in memory, for the unit tests. The log the program uses is a
 // table in the database: createDbLog in postgres.ts.
 import { randomUUID } from "node:crypto";
-import type { Label } from "./classification.ts";
+import type { Label } from "./labels.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
 

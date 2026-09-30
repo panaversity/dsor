@@ -2,7 +2,8 @@
 // DSOR-ERR-01a in specs/dsor/03-execution.md, section 28.
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import type { Label, Redaction } from "./classification.ts";
+import type { Label } from "./labels.ts";
+import type { Redaction } from "./masking.ts";
 
 /** What an error tells the caller about trying again. */
 export type RetryClass =

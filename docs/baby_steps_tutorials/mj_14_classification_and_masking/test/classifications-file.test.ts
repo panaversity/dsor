@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { LABELS as FOUR, checkClassifications, readClassifications } from "../src/classification.ts";
+import { LABELS as FOUR, checkClassifications, readClassifications } from "../src/labels.ts";
 import { readInputs } from "../src/inputs.ts";
 import { buildRegistry } from "../src/registry.ts";
 import { handlers, refusal, shipped, shippedRoles } from "./helpers.ts";

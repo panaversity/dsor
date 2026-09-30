@@ -10,7 +10,7 @@
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
 import { fileURLToPath } from "node:url";
-import { readClassifications } from "./classification.ts";
+import { readClassifications } from "./labels.ts";
 import type { Answer } from "./envelope.ts";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import type { DecisionLog } from "./log.ts";

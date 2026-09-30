@@ -6,7 +6,7 @@ import { checkInput } from "./inputs.ts";
 import { decisionOf, type DecisionLog, type Read } from "./log.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
-import { clearanceOf, show } from "./classification.ts";
+import { clearanceOf, show } from "./masking.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import {

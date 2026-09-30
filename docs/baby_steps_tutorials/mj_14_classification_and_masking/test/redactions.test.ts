@@ -5,12 +5,8 @@ import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
-import {
-  checkClassifications,
-  readClassifications,
-  show,
-  type Kinds,
-} from "../src/classification.ts";
+import { checkClassifications, readClassifications, type Kinds } from "../src/labels.ts";
+import { show } from "../src/masking.ts";
 import { call } from "../src/pipeline.ts";
 import {
   AGENT,
