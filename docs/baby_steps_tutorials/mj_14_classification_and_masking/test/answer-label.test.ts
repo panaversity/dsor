@@ -69,9 +69,7 @@ describe("C4: every query's answer carries the highest label among the fields it
   // label can make it confidential (step 14's README, C1).
   it("DSOR-CLS-01: a field with no label makes a person's answer confidential", async () => {
     expect(labelOf(await runAs(SUPERVISOR, async () => ({ ...PLANTED })))).toBe("confidential");
-    expect(labelOf(await runAs(SUPERVISOR, async () => ({ ...PLANTED_MASKED })))).toBe(
-      "internal",
-    );
+    expect(labelOf(await runAs(SUPERVISOR, async () => ({ ...PLANTED_MASKED })))).toBe("internal");
   });
 
   // No shipped field is restricted, so a file of the test's own gives one.

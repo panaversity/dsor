@@ -94,8 +94,8 @@ export function show(
   }
   const shown = record(data, kind, "");
   // In order of field, so the same answer always lists them the same way.
-  const redactions = [...withheld].sort().map(
-    (field): Redaction => ({ field, reason: "clearance", treatment: "omitted" }),
-  );
+  const redactions = [...withheld]
+    .sort()
+    .map((field): Redaction => ({ field, reason: "clearance", treatment: "omitted" }));
   return { data: shown, classification: highest, redactions, resources };
 }

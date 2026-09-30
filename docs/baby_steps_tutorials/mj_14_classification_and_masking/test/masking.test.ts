@@ -149,13 +149,10 @@ describe("C2: where the masking happens", () => {
   it.each([
     ["an item that is not a record", { items: ["INV-1008 is 31,400.00 USD"] }],
     ["items that are not a list", { items: "INV-1008 is 31,400.00 USD" }],
-  ])(
-    "DSOR-CLS-02a: a page with %s is refused for an agent, never sent",
-    async (_what, page) => {
-      expect(await runAs(AGENT, async () => page, "InvoicePage")).toMatchObject({
-        code: "INTERNAL_ERROR",
-        message: UNEXPECTED,
-      });
-    },
-  );
+  ])("DSOR-CLS-02a: a page with %s is refused for an agent, never sent", async (_what, page) => {
+    expect(await runAs(AGENT, async () => page, "InvoicePage")).toMatchObject({
+      code: "INTERNAL_ERROR",
+      message: UNEXPECTED,
+    });
+  });
 });

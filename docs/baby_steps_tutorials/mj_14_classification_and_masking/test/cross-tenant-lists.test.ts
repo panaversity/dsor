@@ -118,7 +118,9 @@ describe("C5: a list, with no URI to swap, is checked by its rows", () => {
     const noRecord: Send = async (registry, log, request, name, input) =>
       name === "invoice.browse"
         ? {
-            data: { items: own(String(request.tenant)).map(({ tenant_id: _left_out, ...rest }) => rest) },
+            data: {
+              items: own(String(request.tenant)).map(({ tenant_id: _left_out, ...rest }) => rest),
+            },
             classification: "internal",
             correlation: { request_id: "req_fake" },
           }

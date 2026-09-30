@@ -73,9 +73,9 @@ describe("decision 1: classifications.json, checked at start-up", () => {
     [3, "3"],
     [null, "null"],
   ])("the label %j stops start-up", (label, shown) => {
-    expect(problemsIn({ ...LABELS, Invoice: { ...LABELS.Invoice, status: label } })).toStrictEqual(
-      [notALabel("Invoice.status", shown)],
-    );
+    expect(problemsIn({ ...LABELS, Invoice: { ...LABELS.Invoice, status: label } })).toStrictEqual([
+      notALabel("Invoice.status", shown),
+    ]);
   });
 
   it("a list of a kind the file does not have stops start-up", () => {
@@ -88,7 +88,8 @@ describe("decision 1: classifications.json, checked at start-up", () => {
   // JSON.parse keeps the last of two values and says nothing, so a second "amount" line
   // could quietly make amount public (step 06's lesson, for roles.json).
   it("a key written twice stops start-up", () => {
-    const text = '{ "Invoice": { "id": "internal", "amount": "confidential", "amount": "public" } }';
+    const text =
+      '{ "Invoice": { "id": "internal", "amount": "confidential", "amount": "public" } }';
     expect(checkClassifications(file(text)).problems).toStrictEqual([
       'classifications.json: "amount" is written twice in one object',
     ]);
@@ -111,7 +112,9 @@ describe("decision 1: classifications.json, checked at start-up", () => {
   });
 
   it("the registry names the file's problems with every other problem, and refuses to build", () => {
-    const bad = file(JSON.stringify({ ...LABELS, Invoice: { ...LABELS.Invoice, status: "secret" } }));
+    const bad = file(
+      JSON.stringify({ ...LABELS, Invoice: { ...LABELS.Invoice, status: "secret" } }),
+    );
     expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, readInputs(), bad))).toBe(
       `the registry refused to start:\n  ${notALabel("Invoice.status", '"secret"')}`,
     );

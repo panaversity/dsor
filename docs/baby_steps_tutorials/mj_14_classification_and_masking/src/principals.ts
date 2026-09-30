@@ -36,7 +36,10 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   // README, decision 5).
   // NEW IN STEP 14: internal, so amounts are masked. §19.2's example gives it
   // confidential (step 14's README, decision 2).
-  ["tok_7f3a", { ...principal("accounts-payable-fte", "agent", ["ap_agent"]), clearance: "internal" }],
+  [
+    "tok_7f3a",
+    { ...principal("accounts-payable-fte", "agent", ["ap_agent"]), clearance: "internal" },
+  ],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
   // An accounting firm's agent, working for two client companies, with
