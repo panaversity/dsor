@@ -188,6 +188,28 @@ function correlationFor(
   );
 }
 
+/**
+ * NEW IN STEP 08: how long a refusal's message may be.
+ *
+ * Every error envelope in this program is built here, which is why the cap lives here. A fuzz run of
+ * 20,412 hostile calls found two messages the caller had filled out: 200,026 characters from an
+ * invoice id, and 100,036 from a login name. Step 08 had already capped the *operation* id in
+ * `nameOf`, and that is exactly the trap — [lesson 13](../my_notes/lessons.md), a fix belongs
+ * everywhere its shape lives, and four different sites put caller text in a message. Capping each of
+ * them is how you miss the fifth.
+ *
+ * So the cap is at the choke point instead. Whatever a message says, and whoever wrote it, an
+ * envelope carries at most this much of it — and says how much was dropped, so a long message is
+ * shortened rather than silently misrepresented.
+ */
+const ROOM_FOR_A_MESSAGE = 300;
+
+function clipMessage(message: string): string {
+  return message.length <= ROOM_FOR_A_MESSAGE
+    ? message
+    : `${message.slice(0, ROOM_FOR_A_MESSAGE)}… (${message.length} characters, ${message.length - ROOM_FOR_A_MESSAGE} dropped)`;
+}
+
 export function refusal(
   code: string,
   message: string,
@@ -202,7 +224,7 @@ export function refusal(
 
   const envelope: ErrorEnvelope = Object.freeze({
     code,
-    message,
+    message: clipMessage(message),
     retry,
     correlation: correlationFor(requestId, principalId),
   });

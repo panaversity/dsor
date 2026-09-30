@@ -8,6 +8,7 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
+import { forgetTheLog, theLog } from "../src/audit.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(
@@ -209,6 +210,48 @@ describe("the pipeline", () => {
     expect((sawRefusal as { envelope: { code: string } }).envelope.code).toBe("first");
   });
 
+  /**
+   * The limit, pinned. Not a guarantee — the opposite: a door whose `record the decision` does nothing
+   * answers normally and keeps no evidence, and `assertPipeline` cannot tell, because it reads names
+   * and flags and never what a function does.
+   *
+   * No requirement id, because this asserts a hole rather than a rule. It is here so that the day a
+   * later step can close it — a stage that proves it wrote something, a store that counts — the test
+   * fails and somebody reads this comment.
+   */
+  it("a no-op recording stage is NOT caught, and this is the limit of a list check", () => {
+    forgetTheLog();
+
+    const blind = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+
+    // The list is accepted: the name is there, the flag is on, it applies to both kinds.
+    expect(assertPipeline(blind)).toBe(PIPELINE.length);
+
+    const answer = makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    // A perfectly good answer, and no evidence at all.
+    expect(answer.kind).toBe("data");
+    expect(theLog()).toHaveLength(0);
+
+    // What *is* guaranteed is that the real pipeline records — decision-first.test.ts proves that,
+    // and this is the same call through the real list, for the contrast.
+    expect(
+      callOperation({ loggedInAs: "user_123" }, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }).kind,
+    ).toBe("data");
+    expect(theLog()).toHaveLength(1);
+  });
+
   // NEW IN STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.
   it("DSOR-EXE-01a: an unnumbered stage may not float anywhere it likes", () => {
     const floating = fake(null, "do the side effect");
@@ -381,8 +424,11 @@ describe("the pipeline", () => {
       //   - `authorize` only refuses, so a no-op one lets the wrong caller through — that is
       //     deny-by-default, tested in deny-by-default.test.ts.
       //   - `record the decision` only writes, so a no-op one answers perfectly well and silently
-      //     stops keeping evidence. Nothing about the answer can catch that, which is the point:
-      //     it is caught in decision-first.test.ts by looking at the log.
+      //     stops keeping evidence. This comment used to say it was "caught in decision-first.test.ts
+      //     by looking at the log", and that overstated it: those tests walk the *real* PIPELINE, so
+      //     they prove the real stage records. A door built with a **substituted** no-op recorder is
+      //     not caught by anything, and cannot be — `assertPipeline` reads names and flags, never
+      //     what a function does. The test below pins that limit so a later step meets it on purpose.
       const fillsNothing = new Set(["authorize", "record the decision"]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 

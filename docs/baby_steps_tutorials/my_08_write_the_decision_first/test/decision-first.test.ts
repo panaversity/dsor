@@ -480,6 +480,54 @@ describe("the decision is written down first", () => {
     expect(theLog()[0]!.reason).toMatch(/not text/);
   });
 
+  /**
+   * Found by fuzzing, not by reading. A harness sent 20,412 hostile calls and checked invariants after
+   * each one; two envelopes came back with the caller's own text in them at full length — 200,026
+   * characters from an invoice id and 100,036 from a login name.
+   *
+   * Step 08 had already capped the **operation** id, in `nameOf`. That is exactly the trap
+   * [lesson 13](../../my_notes/lessons.md) describes: four different sites put caller text into a
+   * message, and capping them one at a time is how you miss the fifth. The cap now lives in
+   * `refusal()`, which every error envelope in this program is built by.
+   */
+  it("DSOR-ERR-01a: no caller can choose how long an error message is", () => {
+    const huge = "x".repeat(200_000);
+    const cases = [
+      // the login name, which reaches AUTHENTICATION_REQUIRED
+      { login: { loggedInAs: huge }, id: "invoice.get", args: { invoice: INV_1008 } },
+      // the invoice id, which reaches RESOURCE_NOT_FOUND
+      {
+        login: SUPERVISOR,
+        id: "invoice.get",
+        args: { invoice: `dsor://org_456/invoice/${huge}` },
+      },
+      // the whole URI, which reaches VALIDATION_FAILED
+      { login: SUPERVISOR, id: "invoice.get", args: { invoice: huge } },
+      // and the operation id, which reaches UNSUPPORTED_CAPABILITY
+      { login: SUPERVISOR, id: huge, args: {} },
+    ];
+
+    for (const { login, id, args } of cases) {
+      fresh();
+
+      const answer = callOperation(login, id, args);
+
+      if (answer.kind !== "error") {
+        throw new Error(`expected a refusal, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.message.length, answer.envelope.code).toBeLessThan(400);
+
+      // Shortened, not silently misrepresented: the message says how much was dropped.
+      expect(answer.envelope.message, answer.envelope.code).toMatch(/characters, \d+ dropped/);
+
+      // And nothing enormous reached the log either.
+      for (const record of theLog()) {
+        expect((record.reason ?? "").length, answer.envelope.code).toBeLessThan(700);
+      }
+    }
+  });
+
   // An authenticated caller cannot grow the log without bound, which is the half decision 53 missed.
   it("DSOR-AUD-01: an enormous operation id does not become an enormous record", () => {
     fresh();

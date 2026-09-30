@@ -284,26 +284,24 @@ export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 /**
  * The operation the caller named, as text that is safe to put in a message.
  *
- * Two things a caller controls, handled in one place:
+ * One job: it may not be text at all. `Door`'s types are erased before Node runs, so `id` can be a
+ * `Symbol`, and `${aSymbol}` **throws**. `resolveTheOperation` already knew that and guarded its own
+ * message; `recordTheDecision`, the one stage that still runs *after* that guard has fired,
+ * interpolated `context.id` anyway. A review sent a Symbol with the evidence store failing and got a
+ * stack trace where an envelope was owed — [lesson 13](../../my_notes/lessons.md), a fix belongs
+ * everywhere its shape lives, so four sites now share this one function.
  *
- *   - It may not be text at all. `Door`'s types are erased before Node runs, so `id` can be a
- *     `Symbol`, and `${aSymbol}` **throws**. `resolveTheOperation` already knew that and guarded its
- *     own message; `recordTheDecision`, the one stage that still runs *after* that guard has fired,
- *     interpolated `context.id` anyway. A review sent a Symbol with the evidence store failing and got
- *     a stack trace where an envelope was owed.
- *   - It may be enormous. A two-million-character id produced a two-million-character error message
- *     *and* a record to match. `audit` caps what it stores; this caps what is built, which is the
- *     caller's half of the same problem.
- *
- * Lesson 13 in the learner's notes: a fix belongs everywhere its shape lives. Four places read a
- * caller's operation id into a sentence, so there is one function that does it.
+ * It does **not** cap the length. It used to, and then a fuzz run found two *other* caller strings
+ * reaching a message at full length — so the cap moved to `refusal()` in `envelopes.ts`, which every
+ * error envelope is built by. Capping here as well would be the same rule written twice, with two
+ * different wordings, which is [lesson 17](../../my_notes/lessons.md).
  */
 function nameOf(id: unknown): string {
   if (typeof id !== "string") {
     return "an operation named by something that is not text";
   }
 
-  return id.length <= 200 ? id : `${id.slice(0, 200)}… (${id.length} characters)`;
+  return id;
 }
 
 const refuse = (askedBy: string, code: string, message: string, requestId: string): StageResult =>
@@ -656,11 +654,23 @@ export function makeDoor(stages: readonly Stage[]): Door {
         ? handlers[contract.id]
         : undefined;
 
-    // Every one of these is filled by a stage, and `assertPipeline` refuses a list that is missing
-    // the stage which fills it. What it cannot refuse is a stage that says it carried on without
-    // doing its job — so if the walk ends without something the execution needs, that is a bug in
-    // this program rather than anything the caller did, which is what INTERNAL_ERROR means. Retry
-    // `never`: asking again cannot fix a broken pipeline.
+    // NEW IN STEP 08: **this branch is unreachable, and it stays.** Worth the paragraph.
+    //
+    // It used to be the only completeness check, and it answered the caller with no record at all —
+    // or over a record already written saying ALLOW. So the check moved into `recordTheDecision`,
+    // where a refusal is recorded before it is returned. Nothing reaches here any more, and a
+    // systematic mutation sweep is how that was noticed: flipping every `||` below to `&&` changed
+    // no test. Measured, one no-op stage at a time:
+    //
+    //   authenticate lazied          -> authorize refuses: "without a principal and a contract"
+    //   resolve the operation lazied -> authorize refuses, same message
+    //   validate the input lazied    -> §21.11 refuses: "reached §21.11 without its arguments"
+    //
+    // It cannot simply be deleted, because TypeScript needs these five narrowed before
+    // `handler(given, contract, principal.id, hash, id_)` below. So it is a type guard that is also a
+    // belt: if a later step moves the §21.11 check, this is what stops the door calling a handler
+    // with `undefined`. A guard that provably changes nothing today is worth saying so, the way
+    // step 07 said it about `Object.hasOwn` on the handler lookup.
     if (
       principal === undefined ||
       contract === undefined ||

@@ -192,7 +192,7 @@ Eleven files, ignoring `node_modules`:
 | `test/audit.test.ts`, `test/decision-first.test.ts`, `test/request-id.test.ts` | new |
 | `test/pipeline.test.ts`, `test/login.test.ts` | the fifth stage, and the new signature |
 
-169 tests became 219, of which 45 were written *after* the step looked finished — see the review
+169 tests became 221, of which 47 were written *after* the step looked finished — see the review
 section at the bottom.
 
 ## One repair came first
@@ -321,8 +321,8 @@ export function verifyChain(records: readonly AuditRecord[], head?: Head): boole
 
 One test, and it is the one that drops the record holding a denial and checks that somebody notices.
 
-Restore each break and confirm `pnpm check` prints `219 passed` again — or
-`218 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
+Restore each break and confirm `pnpm check` prints `221 passed` again — or
+`220 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
 byte-for-byte schema comparison has nothing to compare against.
 
 ## Build it yourself with Claude Code
