@@ -95,4 +95,69 @@ describe("C2: no query's result is larger than 64 KiB", () => {
       },
     ]);
   });
+
+  // Found by the sweep: with `more = true` deleted from pageOf, the last page lost the rows
+  // it cut, and no cursor led to them.
+  it("DSOR-QRY-01: a last page cut for size still gives a cursor, so no row is lost", async () => {
+    // Three rows of 30 KiB: all that is left, so no row past the page was read.
+    const rows = [row(1, 30), row(2, 30), row(3, 30)];
+    const answer = await run(async () => pageOf(rows, undefined));
+    expect(idsIn(answer)).toStrictEqual({ items: ["ROW-01", "ROW-02"], next_cursor: "ROW-02" });
+  });
+
+  // Found by the sweep: pageOf measured the rows without the cursor, so a page that fits
+  // only without it was sent whole, then refused.
+  it("DSOR-QRY-01: the cursor's own bytes count: a page that fits only without its cursor loses its last row", async () => {
+    const rows = sized(LIMIT - 5);
+    expect(bytes({ items: rows.slice(0, 2) })).toBeLessThanOrEqual(LIMIT);
+    expect(bytes({ items: rows.slice(0, 2), next_cursor: "ROW-02" })).toBeGreaterThan(LIMIT);
+    const answer = await run(async () => pageOf(rows, undefined));
+    expect(idsIn(answer)).toStrictEqual({ items: ["ROW-01"], next_cursor: "ROW-01" });
+  });
+
+  it("DSOR-QRY-01: a page of exactly 64 KiB, its cursor included, keeps both its rows", async () => {
+    const rows = sized(LIMIT - bytes({ next_cursor: "ROW-02" }) + 1);
+    expect(bytes({ items: rows.slice(0, 2), next_cursor: "ROW-02" })).toBe(LIMIT);
+    const answer = await run(async () => pageOf(rows, undefined));
+    expect(idsIn(answer)).toStrictEqual({ items: ["ROW-01", "ROW-02"], next_cursor: "ROW-02" });
+  });
+
+  // capped is about the limit, not the size (step 13's README, decision 3). Found by the
+  // sweep: `max: items.length` passed every test.
+  it("DSOR-QRY-01: a page cut by its limit and then by size says capped at 10, and holds 6", async () => {
+    const rows = Array.from({ length: 11 }, (_, i) => row(i + 1, 10));
+    const answer = await run(async () => pageOf(rows, 50));
+    expect(idsIn(answer)).toStrictEqual({
+      items: ["ROW-01", "ROW-02", "ROW-03", "ROW-04", "ROW-05", "ROW-06"],
+      next_cursor: "ROW-06",
+      capped: { asked: 50, max: 10 },
+    });
+  });
+
+  // Found by the sweep: without `?? ""`, a result of nothing could not be measured, and the
+  // answer became INTERNAL_ERROR.
+  it("DSOR-QRY-01: a query whose code returns nothing is answered, as before this step", async () => {
+    expect(await run(async () => undefined)).toStrictEqual({
+      data: undefined,
+      correlation: correlationFor(THE_AGENT),
+    });
+  });
 });
+
+/** The answer's page with its items cut down to their ids, or the refusal as it is. */
+function idsIn(answer: unknown): unknown {
+  if (typeof answer !== "object" || answer === null || !("data" in answer)) return answer;
+  const { items, ...rest } = answer.data as { items: { id: string }[] };
+  return { items: items.map(({ id }) => id), ...rest };
+}
+
+/**
+ * Three rows. The first two, as a page with no cursor, take exactly `target` bytes. The
+ * third is small, and is there so that another page follows.
+ */
+function sized(target: number): { id: string; text: string }[] {
+  const empty = bytes({ items: [row(1, 0), row(2, 0)] });
+  const first = row(1, 20);
+  const second = { id: "ROW-02", text: "x".repeat(target - empty - first.text.length) };
+  return [first, second, row(3, 0)];
+}
