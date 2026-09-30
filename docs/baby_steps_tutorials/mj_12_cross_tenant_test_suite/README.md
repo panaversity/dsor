@@ -223,8 +223,8 @@ Run against the finished step. The learner's predictions were recorded before an
 | W3 | The suite accepts any refusal | C4's judge, handed a wrong-reason refusal | survives, unless a planted test (and there was none: C4 gained one) |
 | W4 | The rule "an example must hold a URI of org_456" is removed | C5, the planted `{ id }` door | red: example has no URI |
 | W5 | The suite compares the three answers with the request id left in | a false alarm: every operation is a finding | not asked |
-| W6 | The suite leaves out the control call | C7, the planted operation that refuses everything | asked before the first commit |
-| W7 | The swap changes every URI at once | C1's swap of a two-URI example | asked before the first commit |
+| W6 | The suite leaves out the control call | C7, the planted operation that refuses everything | only C7 |
+| W7 | The swap changes every URI at once | C1's swap of a two-URI example | only the two-URI swap test |
 
 ### Left open, and not this step's idea
 
