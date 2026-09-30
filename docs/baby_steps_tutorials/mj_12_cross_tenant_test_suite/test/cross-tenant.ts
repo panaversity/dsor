@@ -186,8 +186,9 @@ export async function crossTenantSuite(
   registry: Registry,
   log: DecisionLog,
   examples: ContractSource[],
-  // Used from decision 10's commit on.
-  _send: Send = call,
+  // Every request goes through this function: call, unless a test hands the suite a fake
+  // DSoR, to prove it would notice what the fake does (step 12's README, decision 10).
+  send: Send = call,
 ): Promise<Report> {
   const report: Report = { attacked: [], attacks: [], findings: [] };
   for (const operation of registry.contracts.keys()) {
@@ -206,7 +207,7 @@ export async function crossTenantSuite(
       if (example === undefined) continue;
       const own = movedTo(home, example);
       for (const attacker of attackers) {
-        await attackAs(attacker, { registry, log, operation, home, own }, report);
+        await attackAs(attacker, { registry, log, send, operation, home, own }, report);
       }
     }
     // Attacked from both companies, with nothing in the way.
@@ -219,6 +220,7 @@ export async function crossTenantSuite(
 type Target = {
   registry: Registry;
   log: DecisionLog;
+  send: Send;
   operation: string;
   home: string;
   // The operation's own request, its example moved into this company.
@@ -228,13 +230,13 @@ type Target = {
 // One caller's attacks on one operation, from one company. First the same-company call,
 // then each URI swapped, three ways.
 async function attackAs(attacker: Attacker, target: Target, report: Report): Promise<void> {
-  const { registry, log, operation, home, own } = target;
+  const { registry, log, send, operation, home, own } = target;
   const who = `${operation} as ${attacker.id} in ${home}`;
   const request = { token: attacker.token, tenant: home };
   // The same-company call: the example unchanged, in its own company. It must not be
   // refused as foreign. Then a TENANT_MISMATCH below can only come from the company that
   // changed (step 12's README, decision 8).
-  const answer = await call(registry, log, request, operation, own);
+  const answer = await send(registry, log, request, operation, own);
   if (!("data" in answer) && answer.code === "TENANT_MISMATCH") {
     report.findings.push(`${who}: its same-company call is answered TENANT_MISMATCH`);
   }
@@ -250,7 +252,7 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
     const answers: Answer[] = [];
     for (const [i, input] of swap.requests.entries()) {
       // One at a time, so the records are written in the order of the attacks.
-      const foreign = await call(registry, log, request, operation, input);
+      const foreign = await send(registry, log, request, operation, input);
       const { request_id } = foreign.correlation;
       report.attacks.push({ home, operation, request_id });
       answers.push(foreign);
