@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 import { Refusal, type Answer, type ErrorCode } from "../src/envelope.ts";
 import { invoices } from "../src/invoice.ts";
 import { createLog } from "../src/log.ts";
-import { buildRegistry, type ContractSource, type Handler, type Registry } from "../src/registry.ts";
+import {
+  buildRegistry,
+  type ContractSource,
+  type Handler,
+  type Registry,
+} from "../src/registry.ts";
 import {
   attackersOf,
   compare,
@@ -60,7 +65,12 @@ function plant(p: Plant): { registry: Registry; examples: ContractSource[] } {
       : [...shippedInputs, source(p.input.schema, `${p.input.name}.schema.json`)];
   const code = p.handler === undefined ? handlers : { ...handlers, [p.id]: p.handler };
   return {
-    registry: buildRegistry([...shipped, source(planted, `${p.id}.json`)], code, shippedRoles, inputs),
+    registry: buildRegistry(
+      [...shipped, source(planted, `${p.id}.json`)],
+      code,
+      shippedRoles,
+      inputs,
+    ),
     examples:
       p.example === undefined ? examples : [...examples, { file: `${p.id}.json`, text: p.example }],
   };
@@ -185,11 +195,14 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       plant({ id: "invoice.void", permission: "invoice:void", example: JSON.stringify(GOOD) }),
       "invoice.void: nobody in org_456 holds invoice:void, so nobody can attack it",
     ],
-  ])("DSOR-TEN-02b: %s is one finding, and the rest is still attacked", async (_gap, target, finding) => {
-    const report = await suiteOver(target);
-    expect(report.findings).toStrictEqual([finding]);
-    expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue"]);
-  });
+  ])(
+    "DSOR-TEN-02b: %s is one finding, and the rest is still attacked",
+    async (_gap, target, finding) => {
+      const report = await suiteOver(target);
+      expect(report.findings).toStrictEqual([finding]);
+      expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue"]);
+    },
+  );
 
   function refusal(code: ErrorCode): Answer {
     const correlation = { request_id: "req_1", principal_id: "user_123" };
