@@ -271,19 +271,191 @@ itself, this way:
 
 ## What changed since step 12
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `contracts/invoice.list.json` | **New.** A query that needs `invoice:read` (decision 1) |
+| `inputs/InvoiceListRequest.schema.json` | **New.** `limit`, a whole number of at least 1, and `cursor`, which looks like an id, at most 64 characters (decision 5) |
+| `examples/invoice.list.json` | **New.** `{ "limit": 10, "cursor": "INV-1000" }`, for the suite (decision 6) |
+| `migrations/006_more_invoices.sql` | **New.** `INV-1001` to `INV-1012` for `org_456`, `INV-2002` to `INV-2004` for `org_789` (decision 7) |
+| `src/pages.ts` | **New.** `MAX_ROWS` (10) and `MAX_BYTES` (64 KiB), `pageSize`, `pageOf`, which cuts a page by rows and then by bytes, and `checkResultSize` (decisions 2 and 3) |
+| `src/operations.ts` | `invoice.list`'s code: one row more than the page holds, after the cursor, inside the active company |
+| `src/invoice.ts` | The same new invoices in memory. The store gains `list(tenant, after, count)`, and `listInvoices` is its memory version |
+| `src/postgres.ts` | The list's SQL. `invoiceOf`, one row as an invoice, is now shared by `get` and `list` |
+| `src/pipeline.ts` | After line ⑨, `checkResultSize` measures every query's result |
+| `src/main.ts` | The agent asks for a million invoices, and the program prints the ten it gets |
+| `test/invoice-list.test.ts`, `test/invoice-list.db.test.ts` | **New.** C1, C3, and C4 on memory. C1, C3, C6, and C7 on the database |
+| `test/result-size.test.ts` | **New.** C2 |
+| `test/cross-tenant-lists.test.ts` | **New.** C5, with planted lists |
+| `test/cross-tenant.ts`, `test/companies.ts` | The suite's list check: `isPage`, `pageProblem`, the one question it asks a query with no URI, and the second, bare call |
+| `test/owner-store.ts`, `test/db.ts` | The owner's `list` mode, page after page, and `ownerList` (C7) |
+| `test/helpers.ts` | `idsOf`, a page on one line, and `walk`, a caller that follows the cursor |
+| every other test | Counts of two operations became three. Two earlier tests used `invoice.list` and `InvoiceListRequest` as made-up names. They now use `invoice.list_all` and `InvoiceSearchRequest`, which still do not exist. The program's log test counts 10 records of 13 calls |
+
+Every other file is step 12's, without its `NEW IN STEP` markers. No new dependency.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_12_cross_tenant_test_suite/src mj_13_bounded_queries/src
+git diff --no-index mj_12_cross_tenant_test_suite/test mj_13_bounded_queries/test
+git diff --no-index mj_12_cross_tenant_test_suite/inputs mj_13_bounded_queries/inputs
+```
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # runs migration 006, and sets dsor_runtime's password again
+pnpm check        # typecheck and the unit tests
+pnpm test:db      # the database tests
+pnpm start        # the program, against the database
+```
+
+Among the program's lines, on 2026-09-30:
+
+```text
+operations: [ 'invoice.get', 'invoice.issue', 'invoice.list' ]
+…
+INV-1001 INV-1002 INV-1003 INV-1004 INV-1005 INV-1006 INV-1007 INV-1008 INV-1009 INV-1010 { next_cursor: 'INV-1010', capped: { asked: 1000000, max: 10 } }
+…
+5362 invoice.list@1 ALLOW ok org_456
+13 calls answered, so 13 records were written. dsor_runtime reads 10 of them, in org_456 and org_789, and cannot read the other 3
+```
+
+The agent asked for a million invoices. It got ten, the answer says the limit was cut,
+and the cursor says where the next page starts. The call left its record, like every
+other.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break of the design's table, performed on 2026-09-30 and 2026-10-01, one at a time,
+in a copy of this folder, then put back from a backup and compared byte for byte. They ran
+twice: on the step before the review (commit `3498106`), and on the final code, after the
+review and the sweep. X2, X4, and X5 change what the database reads, so they also ran on
+the database tier.
+
+| # | The break | Learner's prediction | Before the review | On the final code |
+| --- | --- | --- | --- | --- |
+| X1 | The caller's `limit` is obeyed | not asked | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the store-count test |
+| X2 | No `limit` means every row | not asked | 1 unit, 1 database: the empty-input test | 2 unit: the empty-input test and the store-count test. 1 database: the empty-input test |
+| X3 | `capped` is left out | the million test | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the page cut by limit and by size |
+| X4 | The cursor uses `>=` instead of `>` | C3 | 1 unit, 2 database: the walks | 3 unit: the walk, the store after a cursor, and the copy test. 4 database: both walks, the store after a cursor, and C7, whose owner walks too |
+| X5 | The list forgets the company: in memory | red on memory | 30 unit | **33 unit**: every suite test over the shipped registry, C1, and C3 |
+| X5 | The list's SQL forgets the company | green on the database | 0 unit. On the database, **only C7**, 1 of 33 | 0 unit. On the database, **only C7**, 1 of 35 |
+| X6 | The suite accepts an item with no `tenant_id` | only the planted item test | 1 | 1, as predicted |
+
+**X1, the one this step is for.** In `src/pages.ts`, make `pageSize` return
+`limit ?? MAX_ROWS`, so the caller's limit is obeyed. Then:
+
+```text
+$ npx vitest run test/invoice-list.test.ts -t "1000000"
+ FAIL  test/invoice-list.test.ts > C1: a page holds at most 10 rows, whatever the caller asks, and says when it was cut down > DSOR-QRY-01: invoice.list { limit: 1000000 } gives 10 invoices, says the limit was capped, and gives a cursor
+AssertionError: expected { items: [ …(12) ], capped: { …(2) } } to strictly equal { items: [ …(10) ], …(2) }
+
+- Expected
++ Received
+
+@@ -12,8 +12,9 @@
+      "org_456/INV-1006",
+      "org_456/INV-1007",
+      "org_456/INV-1008",
+      "org_456/INV-1009",
+      "org_456/INV-1010",
++     "org_456/INV-1011",
++     "org_456/INV-1012",
+    ],
+-   "next_cursor": "INV-1010",
+  }
+```
+
+Every invoice of the company came back, and there is no cursor, because there is nothing
+left to read. With twelve invoices that looks harmless. With a whole ledger it is the
+failure of "Why it matters". Look at what the answer still says: `capped: { asked:
+1000000, max: 10 }`. It claims a cut it did not make. A flag that the code sets in one
+place and the cap applies in another can drift apart, and only a test that checks both
+at once notices.
+
+**X5, on the database, the second lock at work.** Take the company out of the list's SQL,
+and every database test but one stays green, 34 of 35 on the final code: row-level
+security hides the missing filter from every caller that logs in as `dsor_runtime`. Only
+C7 sees it, because the owner bypasses row-level security:
+
+```text
+- Expected
++ Received
+
+@@ -7,11 +7,16 @@
+      "org_456/INV-1004",
+      "org_456/INV-1005",
+      "org_456/INV-1006",
+      "org_456/INV-1007",
+      "org_456/INV-1008",
++     "org_789/INV-1008",
+      "org_456/INV-1009",
+      "org_456/INV-1010",
+      "org_456/INV-1011",
+      "org_456/INV-1012",
++     "org_789/INV-2001",
+```
+
+The learner predicted "green on the database" before C7 existed, and that is what would
+have happened. The design check added C7 for this break.
+
+**Two breaks the review found, and the tests that now catch them.** The SQL
+`WHERE tenant_id = $1 AND $2::text IS NULL OR id > $2`, with its brackets lost, keeps
+the company on the first page and drops it on every page after. It passed all 33
+database tests, because the owner read only one page. With the owner walking page after
+page, C7 names `org_789`'s five invoices. And a cursor that is looked up across companies
+(`id > the row whose id is the cursor`, in any company) passed the first foreign-cursor
+test, which compared two empty pages. The test from `org_789`, `INV-1010` against
+`INV-1099`, fails on it.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one |
+| 2 | Neon | A branch `step-13` from `step-12`, and `.env` written by a command, never shown ("Before you build"). `pnpm test:db` green before any change |
+| 3 | Check the design | Against every rule sentence, the contract schema, and step 12's suite. Four gaps: C7, what 64 KiB counts, one row per page, and the one question for an operation with no URI. The learner chose, and the design changed before any test |
+| 4 | Data | Migration `006`, and the same invoices in memory. No test changes |
+| 5 | Red, then green | One claim at a time: C5, C1, C4, C7, C3, C2, C6. Predict each red run before it runs |
+| 6 | Break it | X1 to X6, for real |
+| 7 | Review | Two reviewers who have not seen your conversation. One reads and attacks. One breaks the code a line at a time, in a copy with a Neon branch of its own |
+| 8 | Fix the review | The design first, then the red tests, then the code. Predict each |
+| 9 | Break it again | X1 to X6 on the final code, and each review finding's own break |
+
+The prompt that started this session:
+
+```text
+Set up, then build step 13 in learner mode.
+
+Setup: follow README "Before you build": branch step-13 from step-12 in project
+<your Neon project>; write .env only through commands whose output goes into the file,
+never print, fetch, or read a connection string or password; then pnpm migrate and
+pnpm test:db.
+
+Build: README's design is agreed. If the code proves it wrong, change the design section
+first and tell me. Red tests first, one commit per claim.
+```
+
+The learner's predictions, and what happened:
+
+| Moment | Prediction | Real |
+| --- | --- | --- |
+| C5's red run: a good list, a leaky list, a list with no `tenant_id`, and step 12's `invoice.peek` | all 4 fail | 3 failed. `invoice.peek` passed: step 12's code already said no to it |
+| C1's red run | not asked | 17 failed: the 7 new tests, and 10 older tests that counted two operations |
+| C1 on the database, before the store's `list` existed | an error envelope | right: `INTERNAL_ERROR`, "DSoR hit an unexpected error" |
+| C4's red run: limits 0, -1, 1.5, and `"10"` | all 4 fail | **2** failed. C1's `"type": "integer"` already refused 1.5 and `"10"` |
+| C3's red run: the walk, and a foreign cursor's two checks | the walk, and both checks | the walk, and **only the empty-page check**. The two cursors were refused in the same words, so "the same answer" already held |
+| C2's red run: seven tests | all 7 fail | **6**. "Exactly 64 KiB is answered" passed: a "yes" test passes before the code that says no |
+| C6's first run | green at once | right: every call has been recorded since step 08 |
+| The review's cursor form: 65 characters, NUL, a URI, and 64 characters | all 4 fail | **3**. The 64-character "yes" test passed |
+| The review's foreign-cursor test, from `org_789` | green at once | right |
+| The review's command and bare-call tests | both fail | right |
 
 ## Check yourself
 
@@ -300,7 +472,8 @@ _To be written when the code exists._
 1. Reading one invoice and reading a million need the same permission. The harm is in the
    amount, so the amount needs a limit of its own.
 2. The map asks that a million rows return one page. The limit is the caller's wish, and
-   DSoR answers it as far as its own maximum allows.
+   DSoR answers it as far as its own maximum allows. Here that is ten, this tutorial's
+   number.
 3. Otherwise ten rows look like "the company has ten invoices": a wrong answer that looks
    right.
 4. A row count misses one huge row. A size in bytes catches it, whatever the rows hold.
@@ -325,13 +498,86 @@ _To be written when the code exists._
   whose cursor sits past the end gets `{ items: [] }` from every list, a leaky one too.
   Step 12 closed the same hole for queries by asking for data.
 
-_The rest is written after the review, with the result of every break in the table above._
+**Found by the hostile review, and fixed** (each fix changed the design first, then a
+test, then the code):
+
+- **C7 read one page only.** The SQL after a cursor never ran as the owner, so the
+  bracket bug above passed. The owner now reads five rows at a time.
+- **The foreign-cursor test could not fail.** It compared two empty pages. Now it is
+  asked from `org_789`, between two of its invoices.
+- **"A page always holds at least one row" was false.** A cursor past the end gives an
+  empty page. Decision 3 now says what is true: a page that has a cursor is never empty.
+- **The cursor took any text.** A cursor of 5 MB was accepted, and a NUL character
+  reached PostgreSQL, which refuses it, so the answer was `INTERNAL_ERROR`. The cursor now
+  looks like an id (decision 5).
+- **The suite ran an operation to learn whether it answers with a page.** For a command
+  that would change something, once commands are built. Now it asks only a query.
+- **The suite asked a list only with its example,** which always holds a cursor. A list
+  that leaks only with no cursor passed. Now it also asks with only the required fields.
+- **Four sentences read as rules of DSoR** where they were this tutorial's choices: ten
+  rows, "must say so", and how a size is counted.
+
+**Found by the mutation sweep, and fixed.** The sweep made 96 small breaks on the code
+before the review. 69 were caught by the tests, 2 only by the typecheck, and 25
+survived. The review's fixes closed four of them: the bracket bug, a cursor of any type,
+the NUL cursor, and a URI as a cursor. Of the rest, these were real, and each now has a
+test that fails on it:
+
+- **The cap held only after the rows were read.** A handler that asked the store for the
+  caller's million, a store that ignored its count, and `LIMIT $3 + 1000` in the SQL all
+  gave the same pages, because `pageOf` cut them afterwards. Now the code must ask for
+  11, 11, and 4, and both stores must give exactly what they are asked for.
+- **A last page cut for size lost rows.** With one line of `pageOf` deleted, the rows it
+  cut had no cursor to reach them. Also tested now: the cursor's own bytes count, a page
+  of exactly 64 KiB keeps its rows, and `capped` says 10 after a cut by size.
+- **A listed invoice was not tested as a copy,** as `invoice.get`'s is since step 04.
+- **An order by the reader's language** instead of by character codes passed. It puts
+  `INV-a` before `INV-B`, and the database does not.
+- **The owner's helper could hide what it saw.** Filtered to `org_456`, it hid a SQL with
+  no company. It now lists both companies.
+- **Also:** a `null` cursor, a list that answers `org_789` with something that is not a
+  page, and a query whose code returns nothing.
+
+**Left open on purpose**, with the reason:
+
+- **Equivalent breaks**, which change nothing a caller can see: `limit ?? Infinity`
+  (`Math.min` still caps it), `after ?? ""` for no cursor, an example with `limit: 1`,
+  and the one question asked when nobody in `org_456` may call the operation (another
+  finding is raised anyway).
+- **The contract's `output.schema` and `tenancy.required` are read by nothing.** Changed,
+  every test stays green. That is true of every contract since step 03, not only this
+  one.
+- **The owner's `bypassrls` could be hard-coded to true** and pass on this branch. The
+  test would then check the policy instead of DSoR's own filter, without saying so. The
+  same holds for step 11's owner check.
+- **A lowercase cursor, such as `inv-1004`, sorts after every id** and gives an empty
+  page. It is a place in the order, as decided, not an error.
+- **Nothing limits the size of a whole request.** The cursor is capped at 64
+  characters, and `limit` is a number, but a request's size in general is not this
+  step's idea.
+- **A slow drain is still possible,** as "Not the outcome" says. The review's attack read
+  `org_456`'s twelve invoices in two calls, or in twelve calls of one row, each call
+  recorded. Nothing counts them.
+
+**What the predictions showed.** Four times a test passed before its code: C4's 1.5 and
+`"10"`, C2's "exactly 64 KiB is answered", the cursor of 64 characters, and step 12's
+`invoice.peek`. Each time the learner expected red. A "yes" test passes as long as
+nothing says no, and a "no" test passes as soon as some earlier code already says no.
+Neither proves the new code until a break shows it failing without it.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-QRY-01 | A server-side maximum page size and result size on every query | [§7.1 Queries](../../../specs/dsor/01-model.md#71-queries) | _to be counted_ |
+| DSOR-QRY-01 | A server-side maximum page size and result size on every query, whether or not the client asks for a limit | [§7.1 Queries](../../../specs/dsor/01-model.md#71-queries) | `test/invoice-list.test.ts` and `test/invoice-list.db.test.ts`: no limit, a limit of a million, 3, 10, and 11 (C1), and the cursor walked to the end (C3). `test/result-size.test.ts`: rows cut by bytes, a result over 64 KiB refused, exactly 64 KiB answered, one byte more refused, bytes not characters (C2) |
+
+Also advanced, first met in earlier steps: DSOR-TEN-02b, the suite checks a list by its
+rows, from both companies, asked with its example and bare (C5,
+`test/cross-tenant-lists.test.ts`), though a list takes no URI to send it ("What the
+specification asks", point 4). DSOR-TEN-01b, the list's own SQL without row-level
+security (C7, `test/invoice-list.db.test.ts`). DSOR-IDN-03b, another company's id as a
+cursor (C3). DSOR-EXE-02, one record for each page (C6, `test/invoice-list.db.test.ts`),
+and for a result refused for its size (`test/result-size.test.ts`).
 
 ## Next
 
