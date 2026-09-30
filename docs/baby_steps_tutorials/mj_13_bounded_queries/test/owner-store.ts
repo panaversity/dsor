@@ -29,7 +29,7 @@ try {
   let result: unknown;
   if (process.argv[2] === "list") {
     // More rows than both companies hold together, so a missing WHERE would show them all.
-    const listed = await invoices.list("org_456", 100);
+    const listed = await invoices.list("org_456", undefined, 100);
     result = { bypassrls, listed: listed.map(({ tenant_id, id }) => `${tenant_id}/${id}`) };
   } else {
     const records = await createDbLog(pool).records("org_456");

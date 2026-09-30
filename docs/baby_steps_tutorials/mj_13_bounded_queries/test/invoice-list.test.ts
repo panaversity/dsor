@@ -14,6 +14,8 @@ import {
   log,
   notValid,
   registry,
+  walk,
+  withoutRequestId,
 } from "./helpers.ts";
 
 // org_456's twelve invoices, in order of id, typed out from step 13's README, decision 7.
@@ -109,5 +111,25 @@ describe("C4: a limit must be a whole number of at least 1", () => {
       retry: "never",
       correlation: correlationFor(THE_AGENT),
     });
+  });
+});
+
+describe("C3: the cursor walks the whole list, once", () => {
+  it("DSOR-QRY-01: following next_cursor from { limit: 5 } gives org_456's 12 invoices as 5, 5, and 2, each once, in order, the last page with no cursor", async () => {
+    expect(await walk((input) => pageAsked(AGENT, input), 5)).toStrictEqual([
+      { items: ORG_456.slice(0, 5), next_cursor: "INV-1005" },
+      { items: ORG_456.slice(5, 10), next_cursor: "INV-1010" },
+      { items: ORG_456.slice(10) },
+    ]);
+  });
+
+  // The cursor is a place in the alphabet of the caller's own company. It tells nothing
+  // about another company's invoice of that name (step 13's README, decision 4).
+  it("DSOR-IDN-03b: org_789's INV-2001 as a cursor gives org_456 the same answer as the made-up INV-2000", async () => {
+    const theirs = await call(registry, log, AGENT, "invoice.list", { cursor: "INV-2001" });
+    const nobodys = await call(registry, log, AGENT, "invoice.list", { cursor: "INV-2000" });
+    expect(withoutRequestId(theirs)).toStrictEqual(withoutRequestId(nobodys));
+    // Every id of org_456 comes before INV-2000, so both are the empty page after the end.
+    expect(theirs).toMatchObject({ data: { items: [] } });
   });
 });

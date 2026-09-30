@@ -6,7 +6,7 @@ import { call } from "../src/pipeline.ts";
 import { createDbLog, openPool } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { RUNTIME_URL, dbRegistry, ownerList } from "./db.ts";
-import { AGENT, FIRM_IN_789, idsOf } from "./helpers.ts";
+import { AGENT, FIRM_IN_789, idsOf, walk } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
 afterAll(() => pool.end());
@@ -79,5 +79,23 @@ describe("C1: a page from the database holds at most 10 rows", () => {
 describe("C7: the list's own SQL keeps to the company, without the database's lock", () => {
   it("DSOR-TEN-01b: the owner lists org_456 through DSoR's store, and gets org_456's 12 invoices and nothing else", () => {
     expect(ownerList()).toStrictEqual({ bypassrls: true, listed: ORG_456 });
+  });
+});
+
+describe("C3: the cursor walks the whole list in the database, once", () => {
+  it("DSOR-QRY-01: following next_cursor from { limit: 5 } gives org_456's 12 invoices as 5, 5, and 2, the last page with no cursor", async () => {
+    expect(await walk((input) => pageAsked(AGENT, input), 5)).toStrictEqual([
+      { items: ORG_456.slice(0, 5), next_cursor: "INV-1005" },
+      { items: ORG_456.slice(5, 10), next_cursor: "INV-1010" },
+      { items: ORG_456.slice(10) },
+    ]);
+  });
+
+  it("DSOR-QRY-01: following next_cursor from { limit: 2 } gives org_789's 5 invoices as 2, 2, and 1", async () => {
+    expect(await walk((input) => pageAsked(FIRM_IN_789, input), 2)).toStrictEqual([
+      { items: ORG_789.slice(0, 2), next_cursor: "INV-2001" },
+      { items: ORG_789.slice(2, 4), next_cursor: "INV-2003" },
+      { items: ORG_789.slice(4) },
+    ]);
   });
 });

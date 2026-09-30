@@ -33,9 +33,10 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
     // is a wish, and DSoR's maximum wins (DSOR-QRY-01; step 13's README, decisions 1 and 2).
     "invoice.list": async (input, tenant) => {
       // Line ⑥ has checked the input against InvoiceListRequest.
-      const { limit } = input as { limit?: number };
-      // One row more than the page holds, to know whether another page follows.
-      const rows = await invoices.list(tenant, pageSize(limit) + 1);
+      const { limit, cursor } = input as { limit?: number; cursor?: string };
+      // One row more than the page holds, to know whether another page follows. The cursor
+      // is a place in this company's list, never a lookup (step 13's README, decision 4).
+      const rows = await invoices.list(tenant, cursor, pageSize(limit) + 1);
       return pageOf(rows, limit);
     },
     // invoice.issue has a contract but no code yet. Its success needs a

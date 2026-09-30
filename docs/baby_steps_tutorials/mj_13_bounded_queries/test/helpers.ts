@@ -366,3 +366,21 @@ export function idsOf(answer: Answer): unknown {
   const { items, ...rest } = answer.data as { items: { tenant_id: string; id: string }[] };
   return { items: items.map(({ tenant_id, id }) => `${tenant_id}/${id}`), ...rest };
 }
+
+// NEW IN STEP 13: a caller that follows the cursor to the end (step 13's README, C3).
+/** Every page `ask` gives, from the first, following next_cursor until a page has none. */
+export async function walk(
+  ask: (input: object) => Promise<unknown>,
+  limit: number,
+): Promise<unknown[]> {
+  const pages: unknown[] = [];
+  let cursor: string | undefined;
+  // At most 20 pages, so a cursor that never ends cannot hang the test.
+  for (let page = 0; page < 20; page++) {
+    const answer = await ask(cursor === undefined ? { limit } : { limit, cursor });
+    pages.push(answer);
+    cursor = (answer as { next_cursor?: string }).next_cursor;
+    if (cursor === undefined) break;
+  }
+  return pages;
+}

@@ -98,26 +98,33 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
 export type InvoiceStore = {
   /** Finds one invoice of one company: a copy of it, or `undefined` when there is none. */
   get: (tenant: string, id: string) => Promise<Invoice | undefined>;
-  // NEW IN STEP 13: a list reads rows in order of id, never more than it is asked for
-  // (step 13's README, decision 4).
-  /** Copies of the first `count` invoices of one company, in order of id. */
-  list: (tenant: string, count: number) => Promise<Invoice[]>;
+  // NEW IN STEP 13: a list reads rows in order of id, after the cursor, never more than
+  // it is asked for (step 13's README, decision 4).
+  /** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id. */
+  list: (tenant: string, after: string | undefined, count: number) => Promise<Invoice[]>;
 };
 
 /** The invoices above, held in memory, for the unit tests. */
 export function memoryInvoices(): InvoiceStore {
   return {
     get: async (tenant, id) => getInvoice(invoices, tenant, id),
-    list: async (tenant, count) => listInvoices(invoices, tenant, count),
+    list: async (tenant, after, count) => listInvoices(invoices, tenant, after, count),
   };
 }
 
 // NEW IN STEP 13: the memory version of the list's SQL (step 13's README, decision 4).
-/** Copies of the first `count` invoices of one company, in order of id. */
-export function listInvoices(list: Invoice[], tenant: string, count: number): Invoice[] {
+/** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id. */
+export function listInvoices(
+  list: Invoice[],
+  tenant: string,
+  after: string | undefined,
+  count: number,
+): Invoice[] {
   // < compares text by its character codes, as the database's C.UTF-8 does.
   const byId = (a: Invoice, b: Invoice): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  const own = list.filter((invoice) => invoice.tenant_id === tenant).sort(byId);
+  // After the cursor, never at it: the cursor's own row was the last of the page before.
+  const next = (invoice: Invoice): boolean => after === undefined || invoice.id > after;
+  const own = list.filter((invoice) => invoice.tenant_id === tenant && next(invoice)).sort(byId);
   return own.slice(0, count).map((invoice) => structuredClone(invoice));
 }
 

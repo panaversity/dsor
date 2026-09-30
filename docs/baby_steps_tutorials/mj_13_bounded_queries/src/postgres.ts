@@ -207,17 +207,19 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
       const row = rows[0];
       return row === undefined ? undefined : invoiceOf(row);
     },
-    // NEW IN STEP 13: the first `count` invoices of the company, in order of id (step 13's
-    // README, decision 4). The company is in the WHERE, DSoR's own lock, and the
+    // NEW IN STEP 13: the first `count` invoices of the company after the cursor, in order
+    // of id (step 13's README, decision 4). With no cursor, $2 is NULL, and the list starts
+    // at the first. The company is in the WHERE, DSoR's own lock, and the
     // transaction sets it for the database's lock, as for get. The order is the database's
     // C.UTF-8, which compares text by its character codes, as < does in memory.
-    list: async (tenant, count) => {
+    list: async (tenant, after, count) => {
       const { rows } = await inCompany(pool, tenant, (client) =>
         client.query<InvoiceRow>(
           `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
                   open_amount_value, open_amount_currency, status
-             FROM app.invoices WHERE tenant_id = $1 ORDER BY id LIMIT $2`,
-          [tenant, count],
+             FROM app.invoices WHERE tenant_id = $1 AND ($2::text IS NULL OR id > $2)
+            ORDER BY id LIMIT $3`,
+          [tenant, after ?? null, count],
         ),
       );
       return rows.map(invoiceOf);
