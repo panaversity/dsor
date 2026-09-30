@@ -237,8 +237,9 @@ Run against the finished step. The learner's predictions were recorded before an
   by `pnpm test:db`, which CI does not run. This step moves DSoR's own lock into CI for
   every operation. The database's lock still waits for a database in CI.
 - **An operation whose input holds no URI.** Step 13 adds `invoice.list`, whose input
-  may name no invoice at all. The suite will call that a finding, as outcome 4 says. Step 13 must decide how a list is attacked: its answer must hold no row
-  of another company, which no URI swap can test.
+  may name no invoice at all. The suite will call that a finding, as outcome 4 says.
+  Step 13 must decide how a list is attacked: its answer must hold no row of another
+  company, which no URI swap can test.
 
 ## Before you build: set up Neon
 
@@ -258,24 +259,169 @@ itself, this way:
 
 ## What changed since step 11
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `examples/invoice.get.json`, `examples/invoice.issue.json` | **New.** One example request for each operation (decision 2) |
+| `test/cross-tenant.ts` | **New.** The suite: `attackersOf`, `swaps`, `judge`, `compare`, and `crossTenantSuite`, which returns a report of what it attacked and what it found (decision 5) |
+| `test/cross-tenant.test.ts` | **New.** C1 to C5 and C7, over the shipped registry and over registries with a gap planted in each |
+| `test/cross-tenant.db.test.ts` | **New.** The suite on the database, and C6: the record of every attack |
+| `test/invoice-get.test.ts` | **New.** Decision 1 |
+| `inputs/InvoiceGetRequest.schema.json` | `{ invoice }`, an invoice's canonical URI, in place of `{ id }` (decision 1) |
+| `src/operations.ts` | `invoice.get`'s code reads the id out of the URI, and still reads inside the active company |
+| `src/main.ts` | Every call to `invoice.get` sends a URI. The firm's agent sends each company's own |
+| every other test | About 170 inputs `{ id: "INV-1008" }` became the URI of the caller's active company. Three tests changed more (see "Think it through") |
+| `.claude/skills/build-baby-step/SKILL.md` | Version 2.3.0, which the copy from step 11 had missed |
+
+Every other file is step 11's, without its `NEW IN STEP` markers. No new dependency.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_11_row_level_security/src mj_12_cross_tenant_test_suite/src
+git diff --no-index mj_11_row_level_security/test mj_12_cross_tenant_test_suite/test
+git diff --no-index mj_11_row_level_security/inputs mj_12_cross_tenant_test_suite/inputs
+```
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # no new migration: it only sets dsor_runtime's password again
+pnpm check        # typecheck and the unit tests, the suite on memory among them
+pnpm test:db      # the database tests, the suite on the database among them
+```
+
+To run only the suite and its tests, on memory:
+
+```bash
+npx vitest run test/cross-tenant.test.ts test/invoice-get.test.ts --reporter=verbose
+```
+
+On the branch `step-12`, made from `step-11`, on 2026-09-30:
+
+```text
+✓ DSOR-TEN-02b: the shipped registry: both operations attacked, 15 times, no findings
+✓ DSOR-TEN-02b: an example with two URIs is attacked one URI at a time, three ways each
+✓ DSOR-TEN-02b: a URI inside a list is found and swapped too, and the example is left as it was
+✓ DSOR-ERR-01b: three answers that differ only in their request ids are the same
+✓ DSOR-ERR-01b: three answers whose messages differ are a finding
+✓ DSOR-IDN-03b: invoice.get is attacked by all four readers in org_456, the firm's agent included
+✓ DSOR-IDN-03b: invoice.issue is attacked by user_123 alone, who may issue in org_456
+✓ DSOR-TEN-02b: no example file is one finding, and the rest is still attacked
+…
+✓ DSOR-TEN-02b: code that refuses every request as foreign, its own company's too, is a finding
+      Tests  22 passed (22)
+```
+
+Why 15 attacks: `invoice.get` has 4 callers in `org_456`, and `invoice.issue` has 1.
+Each example holds 1 URI, and each URI is sent 3 ways: (4 + 1) × 1 × 3 = 15. Each caller
+also sends one control call, which is not counted as an attack.
+
+`pnpm check` prints `599 passed`, and `pnpm test:db` prints `63 passed`. `pnpm start`
+prints what step 11's program printed, with every call sending a URI.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break of the design's table, performed on 2026-09-30, one at a time, on the
+finished code (commit `1e01b0a`), then put back from a copy and compared byte for byte.
+Only W1 changes the program, so only W1 was also run on the database.
+
+| # | The break | Learner's prediction | Caught by, for real |
+| --- | --- | --- | --- |
+| W1 | Step 10's URI check is taken out of the pipeline | red for every operation, in both tiers | **Both tiers.** Unit: 12 tests, the suite's shipped run with 19 findings for both operations, every planted registry (each also holds the shipped operations), and 4 of step 10's tests. Database: both tests |
+| W2 | The suite stops after the first operation | only the count | 8: the count, **and every planted test**, because each planted operation comes after the first |
+| W3 | The suite accepts any refusal | survives, unless a planted test | 3: the judge handed `AUTHORIZATION_DENIED`, `VALIDATION_FAILED`, and `RESOURCE_NOT_FOUND` |
+| W4 | The rule "an example must hold a URI of org_456" is removed | red: the example has no URI | 2: C5's `invoice.peek`, and C4's example whose only URI is `org_789`'s |
+| W5 | The three answers are compared with the request id left in | not asked | 9: a false alarm on the shipped run, on every planted registry, and on C2's "same" test |
+| W6 | The suite leaves out the control call | only C7 | 1: C7, as predicted |
+| W7 | The swap changes every URI at once | only the two-URI swap test | 1: the two-URI swap test, as predicted |
+
+**W1, the one this step is for.** In `src/pipeline.ts`, comment out
+`checkUrisInTenant(checked, tenant);`. Then:
+
+```text
+$ npx vitest run test/cross-tenant.test.ts -t "the shipped registry"
+AssertionError: expected [ …(19) ] to strictly equal []
++ [
++   "invoice.get as accounts-payable-fte, dsor://org_456/invoice/INV-1008 sent to org_789, where it exists: answered with data, not TENANT_MISMATCH",
++   "invoice.get as accounts-payable-fte, dsor://org_456/invoice/INV-1008 sent to org_789, where it does not: answered RESOURCE_NOT_FOUND, not TENANT_MISMATCH",
++   "invoice.get as accounts-payable-fte, dsor://org_456/invoice/INV-1008 sent to org_999, which does not exist: answered with data, not TENANT_MISMATCH",
++   "invoice.get as accounts-payable-fte, dsor://org_456/invoice/INV-1008: the three answers differ",
+    …the same four for user_123, cfo_100, and firm-ap-fte…
++   "invoice.issue as user_123, dsor://org_456/invoice/INV-1008 sent to org_789, where it exists: answered UNSUPPORTED_CAPABILITY, not TENANT_MISMATCH",
++   "invoice.issue as user_123, dsor://org_456/invoice/INV-1008 sent to org_789, where it does not: answered UNSUPPORTED_CAPABILITY, not TENANT_MISMATCH",
++   "invoice.issue as user_123, dsor://org_456/invoice/INV-1008 sent to org_999, which does not exist: answered UNSUPPORTED_CAPABILITY, not TENANT_MISMATCH",
++ ]
+```
+
+Every operation is named, with every caller and every way. Look at "answered with data":
+it is `org_456`'s own INV-1008. The code reads inside the active company, whatever
+company the URI names, so nothing of `org_789` leaked. The suite still calls it a
+finding, because a request that names another company must be refused, not answered
+with something else. The comparer notices too: the answers differ, because NOPE is not
+found and the other two are. That difference would tell a caller which company has
+which invoice.
+
+**W2, more than predicted.** The learner expected only the count to notice. But each
+planted test adds its operation after the two shipped ones, so a suite that stops after
+the first never reaches it, and every planted gap goes unnamed. Seven planted tests
+failed with the count.
+
+**W3, caught.** The learner expected W3 to survive, unless a planted test was added.
+It was added before any code (C4's judge), and it catches W3 alone.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one |
+| 2 | Neon | A branch `step-12` from `step-11`, and `.env` written by a command, never shown ("Before you build") |
+| 3 | Check the design | Against step 11's code. Three gaps, and the learner chose each answer, in the design before any test |
+| 4 | Mechanical | Step 11's `NEW IN STEP` markers removed |
+| 5 | Red | Every new test, beside a stub suite that attacks nothing. Predict how many pass |
+| 6 | Green | Decision 1, then C1, C2, C4, and C7, one commit each. Predict each |
+| 7 | Break it | W1 to W7, for real |
+| 8 | Review | Two reviewers who have not seen your conversation attack the step |
+| 9 | Fix the review | Change the design first, then the tests, then the code |
+
+The learner's predictions, and what happened:
+
+| Moment | Prediction | Real |
+| --- | --- | --- |
+| Red run, stub suite | every new test fails | 20 of 22 failed. The 2 that expect "no finding" passed: a stub that finds nothing says "fine" to everything |
+| After decision 1 | 5 pass | 5 |
+| After C1 | 3 more pass | **9**: `attackersOf` and `judge` are C1's own code, so C3's two tests and the four judge tests passed with it |
+| After C1, database | both pass | both |
+| After C4 | 5 more pass | **6**: C5's `{ id }` door is caught by the same check as C4's example with no URI of `org_456` |
+
+Build your own step 12 from a copy of your step 11. From `docs/baby_steps_tutorials`:
+
+```bash
+cp -R my_11_row_level_security my_12_cross_tenant_test_suite
+cd my_12_cross_tenant_test_suite
+rm -rf node_modules
+claude
+```
+
+Then paste:
+
+```text
+Use the build-baby-step skill in learner mode for step 12. Set up Neon as "Before you
+build" says: a branch from step-11, and secrets only from a command into .env, never
+through the chat. Check the design against step 11's code before any test, and change
+the design first when the code proves it wrong. Red tests first, one commit per claim.
+Before each run, ask me what I expect.
+```
 
 ## Check yourself
 
 1. Steps 10 and 11 already test the two locks. What does a generated suite add?
-2. Why must the suite accept only `TENANT_MISMATCH`, and not any refusal?
+2. Why must the suite accept only `TENANT_MISMATCH`, and not any refusal? And why does each
+   caller first send the example unchanged?
 3. Why is an operation with no example request a failure, and not a skip?
 4. Why does `invoice.get` take a URI from this step on?
 5. The suite runs in `pnpm check` on memory, and in `pnpm test:db` on the database. What
@@ -288,7 +434,10 @@ _To be written when the code exists._
    without anyone writing a test for it.
 2. Line ⑤ checks permission before the company is checked. A caller without the
    permission is refused there, and the company check never runs. Only
-   `TENANT_MISMATCH` shows the company check ran.
+   `TENANT_MISMATCH` shows the company check ran. The unchanged example is the control:
+   it must not be refused as foreign. Then the refusal of the swapped request can only
+   come from the company that changed. Without it, code that refuses everything as
+   foreign would pass.
 3. A skipped operation looks like a tested one in a green run. The suite must fail until
    the operation can be attacked.
 4. So there is a company inside every request to swap. With `{ id }`, there was nothing
