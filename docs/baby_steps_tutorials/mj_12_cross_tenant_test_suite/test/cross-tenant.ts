@@ -3,12 +3,14 @@
 // It walks the registry, so an operation added later is attacked the moment it is
 // registered, and nobody has to remember to write its test (step 12's README).
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import type { Answer } from "../src/envelope.ts";
 import type { DecisionLog } from "../src/log.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import { readContracts, type ContractSource, type Registry } from "../src/registry.ts";
+import { withoutRequestId } from "./helpers.ts";
 
 /** A principal the suite attacks as: its id, and the login token DSoR gave it. */
 export type Attacker = { id: string; token: string };
@@ -109,8 +111,13 @@ export function judge(answer: Answer): string | undefined {
 }
 
 /** Why these answers are a finding, or undefined when they are the same. */
-export function compare(_answers: Answer[]): string | undefined {
-  return undefined;
+export function compare(answers: Answer[]): string | undefined {
+  // Word for word, once the request id is set aside: DSoR makes a new one for every call.
+  // A difference would tell the caller something about the other company, such as
+  // whether it has the thing, or exists at all (DSOR-ERR-01b).
+  const [first, ...others] = answers.map(withoutRequestId);
+  const same = others.every((other) => isDeepStrictEqual(other, first));
+  return same ? undefined : "the three answers differ";
 }
 
 /** Attacks every operation in the registry, and gives back what it found. */
@@ -126,14 +133,20 @@ export async function crossTenantSuite(
     for (const attacker of attackersOf(registry, operation)) {
       const request = { token: attacker.token, tenant: HOME };
       for (const swap of swaps(example)) {
+        const answers: Answer[] = [];
         for (const [i, input] of swap.requests.entries()) {
           // One at a time, so the records are written in the order of the attacks.
           const answer = await call(registry, log, request, operation, input);
           report.attacks.push(answer.correlation.request_id);
+          answers.push(answer);
           const why = judge(answer);
           const sent = `${swap.uri} sent to ${WAYS[i]!.to}`;
           if (why !== undefined)
             report.findings.push(`${operation} as ${attacker.id}, ${sent}: ${why}`);
+        }
+        const differ = compare(answers);
+        if (differ !== undefined) {
+          report.findings.push(`${operation} as ${attacker.id}, ${swap.uri}: ${differ}`);
         }
       }
     }
