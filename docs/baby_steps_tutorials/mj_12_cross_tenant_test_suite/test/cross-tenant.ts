@@ -40,10 +40,15 @@ export function readExamples(dir: string = EXAMPLES): ContractSource[] {
   return readContracts(dir);
 }
 
+// The permission the operation's contract names, which start-up made sure it has.
+function permissionOf(registry: Registry, operation: string): unknown {
+  const authorization = registry.contracts.get(operation)?.["authorization"];
+  return (authorization as { permission?: unknown } | undefined)?.permission;
+}
+
 /** Every principal whose roles in org_456 grant the operation's permission. */
 export function attackersOf(registry: Registry, operation: string): Attacker[] {
-  const authorization = registry.contracts.get(operation)?.["authorization"];
-  const permission = (authorization as { permission?: unknown } | undefined)?.permission;
+  const permission = permissionOf(registry, operation);
   const attackers: Attacker[] = [];
   // DSoR's own table of logins, in its order. A caller who may not call the operation
   // would be refused at line ⑤, before the company is checked, and prove nothing
@@ -128,11 +133,19 @@ export async function crossTenantSuite(
 ): Promise<Report> {
   const report: Report = { attacked: [], attacks: [], findings: [] };
   for (const operation of registry.contracts.keys()) {
-    const source = examples.find(({ file }) => file === `${operation}.json`);
-    const example: unknown = JSON.parse(source!.text);
-    for (const attacker of attackersOf(registry, operation)) {
+    // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
+    // one in a green run (step 12's README, outcome 4). Both gaps are named.
+    const found = swapsOf(registry, operation, examples, report.findings);
+    const attackers = attackersOf(registry, operation);
+    if (attackers.length === 0) {
+      const permission = String(permissionOf(registry, operation));
+      const why = `nobody in ${HOME} holds ${permission}, so nobody can attack it`;
+      report.findings.push(`${operation}: ${why}`);
+    }
+    if (found === undefined || attackers.length === 0) continue;
+    for (const attacker of attackers) {
       const request = { token: attacker.token, tenant: HOME };
-      for (const swap of swaps(example)) {
+      for (const swap of found) {
         const answers: Answer[] = [];
         for (const [i, input] of swap.requests.entries()) {
           // One at a time, so the records are written in the order of the attacks.
@@ -153,4 +166,38 @@ export async function crossTenantSuite(
     report.attacked.push(operation);
   }
   return report;
+}
+
+/**
+ * The swaps of the operation's example, or undefined, with a finding that says why there are
+ * none: no example, one that is not JSON, one that line ⑥ would refuse, or one that holds no
+ * URI of org_456 to swap (step 12's README, decision 2).
+ */
+function swapsOf(
+  registry: Registry,
+  operation: string,
+  examples: ContractSource[],
+  findings: string[],
+): Swap[] | undefined {
+  const gap = (why: string): undefined => {
+    findings.push(`${operation}: ${why}`);
+    return undefined;
+  };
+  const file = `${operation}.json`;
+  const source = examples.find((example) => example.file === file);
+  if (source === undefined) return gap(`no example request in examples/${file}`);
+  let example: unknown;
+  try {
+    example = JSON.parse(source.text);
+  } catch {
+    return gap("its example is not valid JSON");
+  }
+  // The check line ⑥ runs. An example it refuses would be refused there in every attack,
+  // for its shape, and the company check would never run.
+  const check = registry.inputs.get(operation);
+  if (check === undefined || !check(example))
+    return gap("its example does not pass its input schema");
+  const found = swaps(example);
+  if (found.length === 0) return gap(`no URI of ${HOME} in its example`);
+  return found;
 }
