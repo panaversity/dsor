@@ -74,6 +74,14 @@ export function checkClassifications(source: ClassificationSource): {
   return { kinds, problems };
 }
 
+// DSOR-CLS-01. A field nobody labelled is confidential, never public, so a field added
+// next year and forgotten in the file is hidden, not shown. A kind the file does not have
+// is a kind nobody labelled. The maps are Maps, so "toString" finds nothing.
+/** What the file says a field holds: its label, or "Kind[]". With no line for it, confidential. */
+export function labelOf(kinds: Kinds, kind: string, field: string): string {
+  return kinds.get(kind)?.get(field) ?? "confidential";
+}
+
 /** True when the value is one of the four labels, written as the schema writes it. */
 export function isLabel(value: unknown): value is Label {
   return typeof value === "string" && (LABELS as readonly string[]).includes(value);
