@@ -42,7 +42,7 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_05_who_is_calling` | 124 | done |
 | `my_06_permissions_deny_by_default` | 146 | done, built a piece at a time |
 | `my_07_the_pipeline_skeleton` | 169 | done |
-| `my_08_write_the_decision_first` | 219 | done, and 21 of those tests came from the review |
+| `my_08_write_the_decision_first` | 223 | done, and 25 of those tests came from the review and the deep pass |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.

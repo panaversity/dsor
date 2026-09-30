@@ -192,7 +192,7 @@ Eleven files, ignoring `node_modules`:
 | `test/audit.test.ts`, `test/decision-first.test.ts`, `test/request-id.test.ts` | new |
 | `test/pipeline.test.ts`, `test/login.test.ts` | the fifth stage, and the new signature |
 
-169 tests became 221, of which 47 were written *after* the step looked finished — see the review
+169 tests became 223, of which 49 were written *after* the step looked finished — see the review
 section at the bottom.
 
 ## One repair came first
@@ -321,8 +321,8 @@ export function verifyChain(records: readonly AuditRecord[], head?: Head): boole
 
 One test, and it is the one that drops the record holding a denial and checks that somebody notices.
 
-Restore each break and confirm `pnpm check` prints `221 passed` again — or
-`220 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
+Restore each break and confirm `pnpm check` prints `223 passed` again — or
+`222 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
 byte-for-byte schema comparison has nothing to compare against.
 
 ## Build it yourself with Claude Code
@@ -502,6 +502,28 @@ had four checks and three could be removed one at a time with every test still p
 the tests were weak but because no test ever fed a check a case only that check could catch. Four
 checks were deleted across the step for that reason, including two added during this very review.
 Three new tests reach exactly one check each.
+
+### And one thing I had given up on
+
+A door built with a **no-op** `record the decision` passes every check `assertPipeline` can make — the
+name is there, in the right place, with the flag on, applying to both kinds. It then **issued
+INV-1009, answered `COMMITTED`, and wrote nothing.** A side effect with no evidence, which is the
+worst shape `DSOR-EXE-02` has.
+
+I wrote that up as a limit of list checking and added a test saying so. A list check genuinely cannot
+see what a function does — but that is not a reason to let a command run with no audit trail. So the
+stage now leaves a **receipt**: the id of the record it wrote, in the context, which the door checks
+before it calls any handler.
+
+```text
+invoice.issue finished the pipeline without a record of the decision
+```
+
+The invoice stays `draft`. The guarantee no longer rests on the stage being the right stage — it rests
+on a record existing. Two mutations made that honest: removing the receipt fails 36 tests, and
+replacing it with the literal `"pretend"` passed all 222, because the door was checking that
+*something* was there rather than that the something was real. A test now reads the receipt and
+asserts it is the id of the record in the log.
 
 ### Also fixed
 

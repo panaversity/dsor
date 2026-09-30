@@ -1,6 +1,6 @@
 # Step 08 · Write the decision first
 
-Folder: [`my_08_write_the_decision_first`](../my_08_write_the_decision_first/README.md) · 221 tests
+Folder: [`my_08_write_the_decision_first`](../my_08_write_the_decision_first/README.md) · 223 tests
 Spec: [§21](../../../specs/dsor/03-execution.md#21-command-pipeline),
 [§29](../../../specs/dsor/03-execution.md#29-audit-and-decision-evidence),
 [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) ·
@@ -49,7 +49,7 @@ the answer it was about.
 | 3b | 207 | six broken guarantees in `audit.ts` |
 | 3c | 219 | eight more, and every mis-titled test |
 | 4 | 219 | the README and these notes |
-| 5 | 221 | a deep pass: fuzzing, then systematic mutation |
+| 5 | 223 | a deep pass: fuzzing, then systematic mutation |
 
 ## What the review found
 
@@ -91,8 +91,7 @@ this shape has appeared, and I still had to be careful: the tell is the total, n
 | a query's success has no envelope, so its `request_id` never reaches the caller | step 19 |
 | the sequence is claimed by a read-then-write, safe only because nothing suspends | step 09: one atomic statement, a unique constraint, a real parallel test |
 | `applies` in positive form, and the walker's two `continue`s, are equivalent mutants | said in the code, not here only |
-| a door built with a **no-op** `record the decision` answers normally and keeps no evidence | nothing in this step. `assertPipeline` reads names and flags, never what a function does. A test pins the limit so a later step meets it on purpose |
-| the door's own `INTERNAL_ERROR` branch is unreachable since §21.11 gained the completeness check, and is kept because the types need the narrowing | a belt for the day that check moves |
+| five of the door's six narrowing clauses are unreachable, and kept because the types need them | a belt for the day §21.11's completeness check moves |
 
 ## The deep pass, after it was already done
 
@@ -107,7 +106,24 @@ fifth. The cap moved to `refusal()`, the one function every error envelope is bu
 `nameOf` came out — two caps with two different wordings is
 [lesson 17](lessons.md#17--a-guard-written-twice-can-be-half-broken).
 
-**A systematic mutation sweep**: 183 mutants generated mechanically — every `===`, `!==`, `&&`, `||`,
+**The receipt.** The probe above also showed something I had written off as unfixable: a door built
+with a **no-op** `record the decision` passed every check `assertPipeline` can make — right name,
+right place, right flag, applies to both kinds — and then **issued INV-1009, answered `COMMITTED`, and
+wrote nothing**. A side effect with no evidence, which is the worst shape `DSOR-EXE-02` has. I had
+called it a limit of list checking and pinned it with a test.
+
+It is a limit of *list* checking. It is not a limit of the pipeline. A list cannot see what a function
+does; a **receipt** can prove it did something. `recordTheDecision` now leaves the record's id in the
+context, and the door refuses to execute without one — so the guarantee no longer rests on the stage
+being the right stage, it rests on a record existing. The invoice stays `draft` and the caller is told
+`invoice.issue finished the pipeline without a record of the decision`.
+
+Two mutations were needed to make that honest. Removing the receipt fails 36 tests. Replacing it with
+the literal `"pretend"` passed all 222 — the door was checking that *something* was there, not that the
+something was real — so a stage placed after §21.11 now reads the receipt and a test asserts it is the
+id of the record in the log.
+
+**A systematic mutation sweep**: 190 mutants generated mechanically — every `===`, `!==`, `&&`, `||`,
 `<`, `>`, `??`, `return true/false` and `+= 1` in the four source files, flipped one at a time. 25
 survived, and reading them was the point:
 
@@ -115,18 +131,23 @@ survived, and reading them was the point:
 | --- | --- |
 | ~19 `?? -> \|\|` | equivalent. `a ?? b` and `a \|\| b` differ only when `a` is falsy-but-not-nullish, and no value in those positions can be `""` or `0` |
 | 1 `+= 1 -> += 0` | on a loop over `NOT_YET_IMPLEMENTED`, which is empty, so the line never runs |
-| 5 in the door's `INTERNAL_ERROR` guard | **the real finding.** The branch is unreachable |
+| 4 narrowing clauses in the door's guard, and 1 `&&` in the handler lookup | unreachable. They stay because TypeScript needs the narrowing before the handler call, and the comment says so |
+| 3 in `envelopes.ts` | two equivalent, one a load-time guard that needs a broken schema file to reach |
 
-The last one is worth the sweep on its own. Moving the completeness check into `recordTheDecision`
-during the review left the door's old guard with nothing to catch, and I had not noticed. Measured, one
+Reading the survivors was the finding. Moving the completeness check into `recordTheDecision` during
+the review had left the door's old guard with nothing to catch, and I had not noticed. Measured one
 no-op stage at a time: `authenticate` and `resolve the operation` are caught by `authorize`,
-`validate the input` by §21.11. It stays, because TypeScript needs those five narrowed before the
-handler call — a type guard that is also a belt, and the comment now says so.
+`validate the input` by §21.11's own check. The clauses stay because TypeScript needs them narrowed
+before the handler call — and the **sixth** clause, the receipt, is the one that earns its place.
 
-The same probe turned up the limit above: a door whose recorder is a no-op answers normally and keeps
-nothing, and a comment in `pipeline.test.ts` had claimed that case was "caught in
-decision-first.test.ts by looking at the log". It is not — those tests walk the *real* pipeline. The
-comment is corrected and the limit has a test of its own.
+The sweep also found duplication I had just written: a ternary chain picking the missing field's name
+*and* the same conditions again for the narrowing. Flipping either copy failed nothing. One `if` now,
+with the name worked out inside it — [lesson 17](lessons.md#17--a-guard-written-twice-can-be-half-broken)
+in code three hours old.
+
+And a comment that overstated itself: `pipeline.test.ts` claimed a no-op recorder was "caught in
+decision-first.test.ts by looking at the log". It was not — those tests walk the *real* pipeline. That
+comment is corrected, and the test that pinned the limit is now a test of the guarantee.
 
 ## What is claimed
 

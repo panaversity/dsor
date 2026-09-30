@@ -9,6 +9,7 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 import { forgetTheLog, theLog } from "../src/audit.ts";
+import { getInvoice, resetInvoices } from "../src/invoice.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(
@@ -211,16 +212,21 @@ describe("the pipeline", () => {
   });
 
   /**
-   * The limit, pinned. Not a guarantee — the opposite: a door whose `record the decision` does nothing
-   * answers normally and keeps no evidence, and `assertPipeline` cannot tell, because it reads names
-   * and flags and never what a function does.
+   * The hole a deep pass found, and the fix for it.
    *
-   * No requirement id, because this asserts a hole rather than a rule. It is here so that the day a
-   * later step can close it — a stage that proves it wrote something, a store that counts — the test
-   * fails and somebody reads this comment.
+   * `assertPipeline` checks that a stage called `record the decision` is in the list, in the right
+   * place, with the right flag, applying to both kinds. It cannot check what the function *does* —
+   * so a door built with a **no-op** recorder passed every check, issued INV-1009, answered
+   * `COMMITTED`, and wrote **nothing**. A side effect with no evidence, which is the worst shape
+   * `DSOR-EXE-02` has.
+   *
+   * A list check cannot close that, and this test used to say so and stop there. A **receipt** can:
+   * the stage leaves its record id in the context, and the door refuses to execute without one. So
+   * the guarantee no longer rests on the stage being the right stage — it rests on a record existing.
    */
-  it("a no-op recording stage is NOT caught, and this is the limit of a list check", () => {
+  it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", () => {
     forgetTheLog();
+    resetInvoices();
 
     const blind = PIPELINE.map((stage) =>
       stage.name === "record the decision"
@@ -234,22 +240,88 @@ describe("the pipeline", () => {
     // The list is accepted: the name is there, the flag is on, it applies to both kinds.
     expect(assertPipeline(blind)).toBe(PIPELINE.length);
 
+    const answer = makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.envelope.retry).toBe("never");
+    expect(answer.envelope.message).toContain("without a record of the decision");
+
+    // The point of the whole step: no evidence, so nothing happened.
+    expect(getInvoice("INV-1009")?.status).toBe("draft");
+    expect(theLog()).toHaveLength(0);
+
+    // And the real pipeline does the same call, records it, and issues the invoice.
+    const real = callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+    });
+
+    expect(real.kind).toBe("result");
+    expect(theLog()).toHaveLength(1);
+    expect(getInvoice("INV-1009")?.status).toBe("issued");
+  });
+
+  /**
+   * The receipt names a record that is actually in the log.
+   *
+   * Without this, replacing `recorded: written?.record_id` with any literal string passed the whole
+   * suite — the door was checking that *something* was there, not that the something was real. A stage
+   * placed after §21.11 reads the receipt, which is how a test can see a field that is otherwise
+   * private to the walk.
+   */
+  it("DSOR-EXE-02: the receipt names the record that was written", () => {
+    forgetTheLog();
+
+    let receipt: string | undefined;
+    const peek: Stage = Object.freeze({
+      at: 13,
+      name: "read the receipt",
+      applies: "both",
+      evenAfterARefusal: false,
+      run: (context: Context) => {
+        receipt = context.recorded;
+
+        return { kind: "carry_on" as const, context };
+      },
+    });
+
+    const answer = makeDoor([...PIPELINE, peek])({ loggedInAs: "user_123" }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    expect(answer.kind).toBe("data");
+    expect(theLog()).toHaveLength(1);
+
+    // Not merely present — the id of the record that exists.
+    expect(receipt).toBe(theLog()[0]!.record_id);
+    expect(receipt).toMatch(/^audit:org_456:\d+:0$/);
+  });
+
+  // A query too, because a read is the case where nothing would have looked wrong at all.
+  it("DSOR-EXE-02: a read without a record is refused as well", () => {
+    forgetTheLog();
+
+    const blind = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+
     const answer = makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
 
-    // A perfectly good answer, and no evidence at all.
-    expect(answer.kind).toBe("data");
+    // It used to come back as `data` with the invoice in it, and nothing written down.
+    expect(answer.kind).toBe("error");
     expect(theLog()).toHaveLength(0);
-
-    // What *is* guaranteed is that the real pipeline records — decision-first.test.ts proves that,
-    // and this is the same call through the real list, for the contrast.
-    expect(
-      callOperation({ loggedInAs: "user_123" }, "invoice.get", {
-        invoice: "dsor://org_456/invoice/INV-1008",
-      }).kind,
-    ).toBe("data");
-    expect(theLog()).toHaveLength(1);
   });
 
   // NEW IN STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.
@@ -477,6 +549,10 @@ describe("the pipeline", () => {
   // check a function's meaning from a list. What catches it is behaviour: cfo_100 does not hold
   // invoice:issue, and with that door she can issue.
   it("DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here", () => {
+    // INV-1009 is the story's only draft, and the test above issues it. Decision 59's seam is what
+    // stops this test depending on the order it happens to run in.
+    resetInvoices();
+
     const hollow = PIPELINE.map((stage) =>
       stage.name === "authorize"
         ? Object.freeze({

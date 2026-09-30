@@ -69,6 +69,20 @@ export interface Context {
    */
   readonly payloadHash?: string;
   /**
+   * NEW IN STEP 08: the id of the record §21.11 wrote, which is that stage's **proof of work**.
+   *
+   * It exists because of a hole a deep pass found. `assertPipeline` checks that a stage called
+   * `record the decision` is in the list, in the right place, with the right flag — and it cannot
+   * check what the function *does*. A door built with a no-op recorder therefore issued an invoice,
+   * answered `COMMITTED`, and wrote **nothing**: a side effect with no evidence, which is the worst
+   * shape `DSOR-EXE-02` has.
+   *
+   * A list check cannot close that. A *receipt* can: the stage leaves the record's id here, and the
+   * door refuses to execute without one. So the guarantee no longer rests on the stage being the
+   * right stage — it rests on a record existing.
+   */
+  readonly recorded?: string;
+  /**
    * NEW IN STEP 08: the refusal that has already happened, if one has.
    *
    * It is here because §21.11 must record a `DENY`, and the stage that records cannot record a

@@ -1141,3 +1141,26 @@ learner does not read the skip as a break.
 **Rejected:** dropping the comparison, and vendoring a hash of the spec's schema into the step. The
 first loses the only check that the schema was not quietly edited to fit the code; the second is a
 second copy of the same fact, which is the shape [lesson 17](lessons.md) is about.
+
+## 66 · The stage that records leaves a receipt, and nothing executes without it (2026-10-01)
+
+**What:** `recordTheDecision` puts the written record's id in `Context.recorded`, and `makeDoor`
+refuses with `INTERNAL_ERROR` — before calling any handler — if it is missing.
+**Why:** I had written this off as unfixable. `assertPipeline` checks that a stage called
+`record the decision` is in the list, in the right place, with the right flag, applying to both
+kinds — and it cannot check what the function *does*. So a door built with a **no-op** recorder
+passed every check, **issued INV-1009, answered `COMMITTED`, and wrote nothing**. A side effect with
+no evidence is the worst shape `DSOR-EXE-02` has, and I had pinned it as a limit with a test that
+said so.
+
+It is a limit of *list* checking. It is not a limit of the pipeline. A list cannot see what a function
+does; a **receipt** can prove it did something. The guarantee no longer rests on the stage being the
+right stage — it rests on a record existing.
+**Cost:** `Context` gains a field that is only ever read by the door, and a later step that adds a
+second evidence stage has to decide whether it leaves a receipt too. The door's refusal is
+`INTERNAL_ERROR` rather than `EVIDENCE_STORE_UNAVAILABLE`, because a missing record here is this
+program being wrong about itself, not a store being unavailable — and retry `never` says so.
+**Rejected:** documenting it as a limit, which is what I did first and what the test pinned. The
+reasoning was "a list check cannot catch this", which is true and is not a reason to leave a command
+executing with no audit trail. Also rejected: having the door read the log to confirm the record is
+there. A test asserts that instead, so the door stays a door.

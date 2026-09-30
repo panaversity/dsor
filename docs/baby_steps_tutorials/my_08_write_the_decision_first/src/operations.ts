@@ -493,8 +493,10 @@ const recordTheDecision: Stage["run"] = (context) => {
 
   const outcome = denial ?? shortfall;
 
+  let written;
+
   try {
-    audit({
+    written = audit({
       kind: "decision",
       subject: principal?.id,
       requestId: context.requestId,
@@ -539,7 +541,11 @@ const recordTheDecision: Stage["run"] = (context) => {
     });
   }
 
-  return carryOn(context);
+  // The receipt. `written` is the record `audit` kept, and the door will not execute without its id.
+  // On this path a record always exists — the shortfall check above refuses when there is no
+  // principal, and a principal is the only reason `audit` counts instead of recording — so an absent
+  // id here means the stage did not do its job, and the door says so rather than carrying on.
+  return carryOn({ ...context, recorded: written?.record_id });
 };
 
 const stage = (
@@ -648,36 +654,58 @@ export function makeDoor(stages: readonly Stage[]): Door {
     // review pointed out that there were two *sources* — every stage's refusal reads the context,
     // every handler's envelope read the closure — so the day a stage legitimately rewrites the id
     // (DSOR-COR-01b implies a caller may one day supply one) they would drift apart silently.
-    const { principal, contract, given, payloadHash: hash, requestId: id_ } = walked.context;
+    const {
+      principal,
+      contract,
+      given,
+      payloadHash: hash,
+      requestId: id_,
+      recorded,
+    } = walked.context;
     const handler =
       contract !== undefined && Object.hasOwn(handlers, contract.id)
         ? handlers[contract.id]
         : undefined;
 
-    // NEW IN STEP 08: **this branch is unreachable, and it stays.** Worth the paragraph.
+    // NEW IN STEP 08: nothing executes without the receipt from §21.11.
     //
-    // It used to be the only completeness check, and it answered the caller with no record at all —
-    // or over a record already written saying ALLOW. So the check moved into `recordTheDecision`,
-    // where a refusal is recorded before it is returned. Nothing reaches here any more, and a
-    // systematic mutation sweep is how that was noticed: flipping every `||` below to `&&` changed
-    // no test. Measured, one no-op stage at a time:
+    // The first five clauses are a type guard. A systematic mutation sweep showed they were also
+    // *unreachable*: flipping every `||` here to `&&` changed no test, because every way of arriving
+    // short is caught earlier — `authenticate` and `resolve the operation` by `authorize`,
+    // `validate the input` by §21.11's own completeness check.
     //
-    //   authenticate lazied          -> authorize refuses: "without a principal and a contract"
-    //   resolve the operation lazied -> authorize refuses, same message
-    //   validate the input lazied    -> §21.11 refuses: "reached §21.11 without its arguments"
+    // `recorded === undefined` is the sixth clause and it is the one that earns its place. A door
+    // built with a **no-op** `record the decision` passes every check `assertPipeline` can make — the
+    // name is there, the flag is on, it applies to both kinds — and used to issue an invoice, answer
+    // `COMMITTED`, and write nothing at all. A list check cannot see what a function does. A receipt
+    // can: the stage leaves its record id in the context, and this refuses without one.
     //
-    // It cannot simply be deleted, because TypeScript needs these five narrowed before
-    // `handler(given, contract, principal.id, hash, id_)` below. So it is a type guard that is also a
-    // belt: if a later step moves the §21.11 check, this is what stops the door calling a handler
-    // with `undefined`. A guard that provably changes nothing today is worth saying so, the way
-    // step 07 said it about `Object.hasOwn` on the handler lookup.
+    // So the rule is: **if there is no evidence, nothing happens.** That is `DSOR-EXE-03b`'s decision
+    // branch, and it now holds even when the stage that writes the evidence has been replaced.
     if (
       principal === undefined ||
       contract === undefined ||
       given === undefined ||
       hash === undefined ||
-      handler === undefined
+      handler === undefined ||
+      recorded === undefined
     ) {
+      // Named inside the block, not computed above it. Both existed for a while — a ternary chain
+      // that picked the name, *and* these clauses for the narrowing — and a mutation sweep found the
+      // duplication by flipping each copy with no test failing. One `if`, and the name is worked out
+      // only on the path that needs it.
+      const absent =
+        principal === undefined
+          ? "a principal"
+          : contract === undefined
+            ? "a contract"
+            : given === undefined
+              ? "its arguments"
+              : hash === undefined
+                ? "a payload hash"
+                : handler === undefined
+                  ? "any code to carry it out"
+                  : "a record of the decision";
       const askedBy = principal?.id ?? "(nobody)";
 
       return Object.freeze({
@@ -685,7 +713,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
         askedBy,
         envelope: refusal(
           "INTERNAL_ERROR",
-          `${nameOf(id)} finished the pipeline without everything a call needs`,
+          `${nameOf(id)} finished the pipeline without ${absent}`,
           id_,
           principal === undefined ? undefined : askedBy,
         ),
