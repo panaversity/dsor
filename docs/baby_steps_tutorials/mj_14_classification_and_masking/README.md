@@ -51,7 +51,8 @@ any code existed. Every sentence of the specification it relies on was read on
 example of `agent_registration` and `tenant_egress_policy`, DSOR-CLS-02a to DSOR-CLS-05),
 and §29's DSOR-AUD-05a. If the code finds the plan wrong, the plan changes here first.
 The same day, before the first test, it was checked against the specification's schemas,
-and five things changed. "Think it through" lists them.
+and five things changed. Two more cases came up while the tests were written. "Think it
+through" lists them all.
 
 ### The intent and the outcome
 
@@ -163,9 +164,13 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    be seen.
 3. **A withheld field is left out, never replaced.** The answer has no `amount` key at
    all. `{ value: "***" }` would break step 01's rule that a money value is a decimal
-   string, and code that trusted it would read a wrong value. *Downside:* the invoice an
-   agent gets no longer has the shape of an invoice, and the output schema must allow the
-   fields to be missing.
+   string, and code that trusted it would read a wrong value. What is not a record of its
+   kind, such as text, a number, nothing, or a list where one invoice was due, has no
+   fields to leave out. So an agent gets none of it: the call is refused with
+   `INTERNAL_ERROR`. A person gets it, labelled `confidential`, because nothing in it has
+   a label. *Downside:* the invoice an agent gets no longer has the shape of an invoice,
+   and the output schema must allow the fields to be missing. And step 13's size tests,
+   whose fake code returns text and pages of made-up rows, now ask as a person.
 4. **The answer grows two fields beside `data`, with the names and shapes of the
    result envelope:** `classification`, always, and `redactions`, only when something
    was left out. Each redaction is `{ field, reason: "clearance", treatment: "omitted" }`,
@@ -182,7 +187,12 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    boundary and a policy per company. *Downside:* a `RESTRICTED` field goes to an agent
    whose clearance is `RESTRICTED`, whatever the company's policy would say.
 7. **The record of a read uses the audit record's own fields:** `resources`, the
-   canonical URIs of the records the answer returned, and `row_count`, how many. The
+   canonical URIs of the records the answer returned, and `row_count`, how many. A row is
+   one record of a kind with no list in it, here one `Invoice`. Its URI is its
+   `tenant_id`, its kind in lower case, and its `id`: `dsor://org_456/invoice/INV-1008`.
+   A record with no `tenant_id` or no `id` has no URI, so DSoR could not say what was
+   read. The answer is refused with `INTERNAL_ERROR`, for a person too: no evidence, no
+   answer, as with DSOR-EXE-03b. The
    answer's label goes under `extensions`, as `"org.panaversity.steps": { classification }`,
    because the audit record has no field for it. Step 10 kept a claimed company there the
    same way. All three are written for every read that returns data, and DSOR-CLS-05
@@ -191,7 +201,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    each call leaves (step 08), so the schema's kind `classified_read` is not used.
    *Downside:* two more columns, `resources` and `row_count`, in `dsor.audit`, by
    migration `007`, and `dsor_runtime`'s list of `INSERT` columns grows by two words. A
-   reader who looks for classified reads looks inside `extensions`.
+   reader who looks for classified reads looks inside `extensions`. A kind whose name in
+   lower case is not its URI's entity needs a rule of its own. And step 13's page tests
+   give their made-up rows a `tenant_id`.
 
 ### The tests, by claim
 
@@ -207,6 +219,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   clearance written down is treated as `public`: every field of an invoice is withheld
   and listed. *Added before any code, 2026-10-01:* the learner's prediction for break Y6
   showed that without it, nothing would catch a missing clearance treated as a high one.
+  An answer that is not a record, and a page whose items are not, are refused for an
+  agent (decision 3). Masking comes before the 64 KiB check: a large field the agent
+  may not see does not refuse its answer, and does refuse a person's (decision 5).
 - **C3:** the agent's `invoice.get`: `redactions` names `amount`, then `open_amount`, each
   with `reason: "clearance"` and `treatment: "omitted"`. `invoice.list`:
   `items[].amount` and `items[].open_amount`, each once. Both pass the result envelope's
@@ -215,7 +230,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   page: `"public"`. Each passes the result envelope's schema for `classification`.
 - **C5:** on the database: the human's `invoice.get` leaves a record with
   `resources: ["dsor://org_456/invoice/INV-1008"]`, `row_count: 1`, and
-  `"confidential"` under `extensions`.
+  `"confidential"` under `extensions`. A page's record names each invoice it returned. A
+  refused read's record names none. An answer whose invoice has no `id` is refused, for
+  a person too (decision 7).
 - **C6:** `cfo_100` and `user_123` get `amount` and `open_amount` with the values of step
   13.
 - **Start-up:** `classifications.json` with the label `secret`, the label `INTERNAL` in
@@ -327,6 +344,10 @@ checked against the specification's schemas, not only its sentences:
 - **C1's human half could not fail.** `amount` alone makes a human's `INV-1008`
   `confidential`, so a planted field beside it proved nothing. The fake answer now holds
   no `amount`.
+- **Two cases the design had not named,** found while writing the tests. An answer that
+  is not a record of its kind has no fields to mask (decision 3), and a record with no
+  `id` has no URI to record (decision 7). The learner chose to refuse both: the first for
+  an agent, the second for everyone.
 
 _The rest is written after the review, with the result of every break in the table
 above._
