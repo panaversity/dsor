@@ -52,6 +52,29 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
     });
   });
 
+  // Found by the sweep. Without the specification's pattern, a URI with a fourth part got
+  // past line ⑥ and was refused later, as foreign. And "/invoice" without its last "/"
+  // let a kind named "invoices" through.
+  it.each([
+    [
+      "a URI with a fourth part",
+      "dsor://org_456/invoice/INV-1008/extra",
+      '/invoice must match pattern "^dsor://[A-Za-z0-9_\\-]+/[a-z][a-z0-9_]*/[A-Za-z0-9_.\\-]+$"',
+    ],
+    [
+      "a URI of the kind invoices",
+      "dsor://org_456/invoices/INV-1008",
+      '/invoice must match pattern "^dsor://[^/]+/invoice/"',
+    ],
+  ])("invoice.get refuses %s at line ⑥", async (_what, invoice, problem) => {
+    expect(await call(registry, log, AGENT, "invoice.get", { invoice })).toStrictEqual({
+      code: "VALIDATION_FAILED",
+      message: notValid("invoice.get", problem),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+  });
+
   // The checklist refuses a foreign URI before the code runs, so no call can show this.
   // The code is asked directly. Found by the review: code that read the URI's company
   // passed every test.

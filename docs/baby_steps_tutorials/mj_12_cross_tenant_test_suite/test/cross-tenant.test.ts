@@ -131,6 +131,15 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     for (const finding of report.findings) {
       expect(finding).toMatch(/: answered with data, not TENANT_MISMATCH$/);
     }
+    // The wording is part of the test (decision 5), so the first caller's three are typed
+    // out. Found by the sweep: a finding that named the wrong way passed every test.
+    const first = "invoice.get as accounts-payable-fte in org_456, dsor://org_456/invoice/INV-1008";
+    const said = "answered with data, not TENANT_MISMATCH";
+    expect(report.findings.slice(0, 3)).toStrictEqual([
+      `${first} sent to org_789, with the same id: ${said}`,
+      `${first} sent to org_789, with an id it does not have: ${said}`,
+      `${first} sent to org_999, which does not exist: ${said}`,
+    ]);
   });
 
   it("DSOR-TEN-02b: an example with two URIs is attacked one URI at a time, three ways each", () => {
@@ -211,9 +220,36 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     });
   });
 
-  // Found by the review: without the "^" in the suite's pattern, every test stayed green.
-  it("DSOR-TEN-02b: a text that only contains a URI is not a URI, and is not swapped", () => {
-    expect(swaps({ note: "see dsor://org_456/invoice/INV-1008" }, "org_456")).toStrictEqual([]);
+  // Found by the review and the sweep: without the "^", the "$", or with any text allowed as
+  // the kind, the suite's pattern swapped these, and every test stayed green.
+  it.each([
+    ["a text that only contains a URI", "see dsor://org_456/invoice/INV-1008"],
+    ["a URI with a fourth part", "dsor://org_456/invoice/INV-1008/x"],
+    ["a kind with a slash in it", "dsor://org_456/a/b/c"],
+  ])("DSOR-TEN-02b: %s is not a URI, and is not swapped", (_what, text) => {
+    expect(swaps({ note: text }, "org_456")).toStrictEqual([]);
+  });
+
+  // Found by the sweep: a search that stopped at the first text that is not a URI passed,
+  // because every example put its URI first.
+  it("DSOR-TEN-02b: a text before a URI does not stop the search", () => {
+    const own = "dsor://org_456/invoice/INV-1008";
+    const found = swaps({ note: "rush", invoice: own }, "org_456");
+    expect(found.map((swap) => swap.uri)).toStrictEqual([own]);
+  });
+
+  it("DSOR-TEN-02b: an example that is a bare URI is swapped as a whole", () => {
+    const own = "dsor://org_456/invoice/INV-1008";
+    expect(swaps(own, "org_456")).toStrictEqual([
+      {
+        uri: own,
+        requests: [
+          "dsor://org_789/invoice/INV-1008",
+          "dsor://org_789/invoice/NOPE",
+          "dsor://org_999/invoice/INV-1008",
+        ],
+      },
+    ]);
   });
 });
 
@@ -227,10 +263,17 @@ describe("C2: the three foreign answers are the same, apart from the request id"
     expect(compare([refused("req_1"), refused("req_2"), refused("req_3")])).toBeUndefined();
   });
 
-  it("DSOR-ERR-01b: three answers whose messages differ are a finding", () => {
-    const tells = refused("req_2", "org_789 has no invoice NOPE");
-    expect(compare([refused("req_1"), tells, refused("req_3")])).toBe("the three answers differ");
-  });
+  // Wherever the answer that differs stands. Found by the sweep: a comparer that skipped
+  // the first answer, or the last, passed when the one that differed stood in the middle.
+  it.each([[0], [1], [2]])(
+    "DSOR-ERR-01b: three answers where answer %i differs are a finding",
+    (odd) => {
+      const answers = [0, 1, 2].map((i) =>
+        refused(`req_${i}`, i === odd ? "org_789 has no invoice NOPE" : FOREIGN_URI),
+      );
+      expect(compare(answers)).toBe("the three answers differ");
+    },
+  );
 
   // A fake DSoR that tells the three apart: each refusal names what was sent. Found by the
   // review: with the suite's call to its comparer deleted, every test stayed green.
@@ -327,6 +370,19 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     },
   );
 
+  // Found by the sweep: an example found by a name that only starts with the operation's
+  // passed every test.
+  it("DSOR-TEN-02b: an example whose name only starts with the operation's is not its example", async () => {
+    const others = examples.filter(({ file }) => file !== "invoice.get.json");
+    const lookalike = { file: "invoice.get_all.json", text: JSON.stringify(GOOD) };
+    const report = await suiteOver({ registry, examples: [...others, lookalike] });
+    expect(report.findings).toStrictEqual([
+      "examples/invoice.get_all.json: no operation has this name",
+      "invoice.get: no example request in examples/invoice.get.json",
+    ]);
+    expect(report.attacked).toStrictEqual(["invoice.issue"]);
+  });
+
   function refusal(code: ErrorCode): Answer {
     const correlation = { request_id: "req_1", principal_id: "user_123" };
     return { code, message: "refused", retry: "never", correlation };
@@ -384,6 +440,57 @@ describe("C7: the refusal is for the company, and for nothing else", () => {
       ...READERS_456.map((who) => `invoice.refuse_all as ${who} in org_456: ${said}`),
       ...READERS_789.map((who) => `invoice.refuse_all as ${who} in org_789: ${said}`),
     ]);
+  });
+
+  // Found by the sweep: with invoice.get's example changed to INV-2001 or INV-9999, every
+  // test stayed green, and C2 compared "not found" with "not found" (decision 8).
+  it.each([
+    ["INV-2001, which only org_789 has", "INV-2001", READERS_456.map((who) => ["org_456", who])],
+    [
+      "INV-9999, which nobody has",
+      "INV-9999",
+      [
+        ...READERS_456.map((who) => ["org_456", who]),
+        ...READERS_789.map((who) => ["org_789", who]),
+      ],
+    ],
+  ])(
+    "DSOR-TEN-02b: a query whose example names %s is a finding where it is missing",
+    async (_what, id, where) => {
+      const lookup = plant({
+        id: "invoice.lookup",
+        handler: handlers["invoice.get"]!,
+        example: JSON.stringify({ invoice: `dsor://org_456/invoice/${id}` }),
+      });
+      const report = await suiteOver(lookup);
+      const said = "its same-company call is not answered with data: RESOURCE_NOT_FOUND";
+      expect(report.findings).toStrictEqual(
+        where.map(([home, who]) => `invoice.lookup as ${who} in ${home}: ${said}`),
+      );
+    },
+  );
+});
+
+describe("C6: every attack leaves its record in the caller's company", () => {
+  // Found by the sweep: a suite that wrote to a log of its own passed every unit test, and
+  // only the database tier looked at the records.
+  it("DSOR-EXE-02: the suite's log holds one record for each attack, in the company it worked in", async () => {
+    const fresh = createLog();
+    const report = await crossTenantSuite(registry, fresh, examples);
+    expect(report.attacks).toHaveLength(27);
+    const records = await fresh.records();
+    for (const { home, operation, request_id } of report.attacks) {
+      const its = records.filter((record) => record.correlation.request_id === request_id);
+      expect(its).toMatchObject([
+        {
+          operation: `${operation}@1`,
+          authorization: "DENY",
+          result: "TENANT_MISMATCH",
+          reason: FOREIGN_URI,
+          tenant: home,
+        },
+      ]);
+    }
   });
 });
 
