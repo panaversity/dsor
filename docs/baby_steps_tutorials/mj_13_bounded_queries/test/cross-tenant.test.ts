@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the cross-tenant suite, by claim (C1 to C8 in step 12's README). It runs
+// The cross-tenant suite, by claim (C1 to C8 in step 12's README). It runs
 // over the shipped registry, over registries with one fake operation planted in each, and
 // with fake DSoRs. The invoices are in memory, so `pnpm check`, and CI, run it on every
 // push. test/cross-tenant.db.test.ts runs it again on the database.

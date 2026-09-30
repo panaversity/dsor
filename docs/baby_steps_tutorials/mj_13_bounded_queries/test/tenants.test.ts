@@ -307,7 +307,7 @@ describe("C4: a company in the arguments that is not the active one is refused",
   });
 
   // The whole input is searched, not only the fields a schema calls URIs (step 10's
-  // README, decision 4). NEW IN STEP 12: invoice.get's input is a URI now, so no shipped
+  // README, decision 4). invoice.get's input is a URI now, so no shipped
   // operation has a field of any text left, and the search is asked directly (step 12's
   // README, decision 1).
   it.each([["dsor://org_789/invoice/INV-1008"], ["DSOR://org_789/invoice/INV-1008"]])(

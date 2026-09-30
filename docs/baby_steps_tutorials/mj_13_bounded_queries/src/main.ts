@@ -101,7 +101,7 @@ const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 
 // The answer is an envelope. A success carries the invoice as its data,
 // and the request id DSoR made for this call.
-// NEW IN STEP 12: invoice.get takes the invoice's canonical URI, as invoice.issue does
+// invoice.get takes the invoice's canonical URI, as invoice.issue does
 // (step 12's README, decision 1).
 const answer = await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
 console.log(answer);
@@ -148,7 +148,7 @@ console.log(await ask(USER_123, "invoice.issue", { invoice: "INV-1008" }));
 // Asked for INV-1008, each company gets its own invoice (step 10's README, outcome 2).
 const FIRM_IN_456: RequestEnvelope = { token: "tok_9b52", tenant: "org_456" };
 const FIRM_IN_789: RequestEnvelope = { token: "tok_9b52", tenant: "org_789" };
-// NEW IN STEP 12: each company's INV-1008 has a URI of its own, which names the company.
+// Each company's INV-1008 has a URI of its own, which names the company.
 const READS = [
   [FIRM_IN_456, "dsor://org_456/invoice/INV-1008"],
   [FIRM_IN_789, "dsor://org_789/invoice/INV-1008"],

@@ -15,7 +15,7 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
       // Line ⑥ of the checklist has checked the input against
       // InvoiceGetRequest. The code no longer checks it in its own way (step 07's README,
       // outcome 2).
-      // NEW IN STEP 12: the input is { invoice }, an invoice's canonical URI, and the code
+      // The input is { invoice }, an invoice's canonical URI, and the code
       // reads the id out of it. The URI's company is the active one, because the checklist
       // refused any other before the code runs. The code still reads inside the company it is
       // given, never the one the URI names (step 12's README, decision 1).

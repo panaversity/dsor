@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the cross-tenant suite with the database's store and log (step 12's
+// The cross-tenant suite with the database's store and log (step 12's
 // README, outcome 8), and the record each attack leaves (C6). No attack reaches the
 // database's own lock: a foreign URI is refused before any read (step 12's README, "What
 // the specification asks", point 5).

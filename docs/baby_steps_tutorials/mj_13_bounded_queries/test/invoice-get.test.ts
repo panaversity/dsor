@@ -1,4 +1,4 @@
-// NEW IN STEP 12: invoice.get takes the invoice's canonical URI, as invoice.issue does, so
+// invoice.get takes the invoice's canonical URI, as invoice.issue does, so
 // every request holds a company the suite can swap (step 12's README, decision 1).
 import { describe, expect, it } from "vitest";
 import { memoryInvoices } from "../src/invoice.ts";

@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the cross-tenant suite (DSOR-TEN-02b). Not a test file itself: the
+// The cross-tenant suite (DSOR-TEN-02b). Not a test file itself: the
 // tests in cross-tenant.test.ts and cross-tenant.db.test.ts run it.
 // It walks the registry, so an operation added later is attacked the moment it is
 // registered, and nobody has to remember to write its test (step 12's README).

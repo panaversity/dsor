@@ -64,7 +64,7 @@ describe("C6: invoices come from the database, and money stays a string", () => 
 
   // Found by the review: pasting the id into the SQL passed every test. The id travels
   // to Postgres as a value ($1), never as part of the SQL text.
-  // NEW IN STEP 12: invoice.get now takes a URI, whose pattern refuses a quote at line ⑥,
+  // invoice.get now takes a URI, whose pattern refuses a quote at line ⑥,
   // so this id can no longer reach the store through a call. The test asks the store itself
   // (step 12's README, decision 1).
   it("an id written as SQL finds nothing: the id is a value, never SQL", async () => {

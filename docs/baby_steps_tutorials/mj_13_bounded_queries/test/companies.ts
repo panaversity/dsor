@@ -1,4 +1,4 @@
-// NEW IN STEP 12: where the cross-tenant suite finds a company inside a request or an
+// Where the cross-tenant suite finds a company inside a request or an
 // answer, and changes it. Not a test file itself: test/cross-tenant.ts uses it. Split from
 // that file when it passed 300 lines.
 
