@@ -5,11 +5,16 @@ import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbLog, openPool } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { RUNTIME_URL, dbRegistry, ownerList } from "./db.ts";
+import { RUNTIME_URL, dbRegistry, newPool, ownerList, requestId, rowsFor } from "./db.ts";
 import { AGENT, FIRM_IN_789, idsOf, walk } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
-afterAll(() => pool.end());
+// A connection of its own, to read the records the program's pool wrote.
+const observer = newPool();
+afterAll(async () => {
+  await pool.end();
+  await observer.end();
+});
 const registry = dbRegistry(pool);
 const log = createDbLog(pool);
 
@@ -97,5 +102,27 @@ describe("C3: the cursor walks the whole list in the database, once", () => {
       { items: ORG_789.slice(2, 4), next_cursor: "INV-2003" },
       { items: ORG_789.slice(4) },
     ]);
+  });
+});
+
+// Following the cursor to the end reads everything, a page at a time. Each page is a call
+// of its own, so the drain is visible in the log (step 13's README, "Not the outcome").
+describe("C6: each page is its own call, with its own record", () => {
+  it("DSOR-EXE-02: three pages leave three records in org_456, each ALLOW and ok, and none in org_789", async () => {
+    const ids = [requestId("c6-page-1"), requestId("c6-page-2"), requestId("c6-page-3")];
+    let cursor: string | undefined;
+    for (const id of ids) {
+      const input = cursor === undefined ? { limit: 5 } : { limit: 5, cursor };
+      const answer = await call(registry, log, { ...AGENT, request_id: id }, "invoice.list", input);
+      cursor = "data" in answer ? (answer.data as { next_cursor?: string }).next_cursor : undefined;
+    }
+    // The third page was the last.
+    expect(cursor).toBeUndefined();
+    for (const id of ids) {
+      expect(await rowsFor(observer, "org_456", id)).toMatchObject([
+        { operation: "invoice.list@1", authorization: "ALLOW", result: "ok" },
+      ]);
+      expect(await rowsFor(observer, "org_789", id)).toStrictEqual([]);
+    }
   });
 });
