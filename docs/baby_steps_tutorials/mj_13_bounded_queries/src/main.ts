@@ -171,6 +171,14 @@ console.log(
 // TENANT_MISMATCH, before DSoR asks whether invoice.issue is built.
 console.log(await ask(USER_123, "invoice.issue", { invoice: "dsor://org_789/invoice/INV-1008" }));
 
+// NEW IN STEP 13: the agent asks for a million invoices. DSoR's maximum wins: ten, a note
+// that the limit was cut, and a cursor for the rest (step 13's README, outcome 2).
+const listed = await ask(AGENT, "invoice.list", { limit: 1000000 });
+if ("data" in listed) {
+  const { items, ...rest } = listed.data as { items: Invoice[] };
+  console.log(items.map(({ id }) => id).join(" "), rest);
+}
+
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
 // record with no company (step 11's README, decisions 4 and 6). So the program reads the
