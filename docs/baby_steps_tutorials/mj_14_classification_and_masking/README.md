@@ -1,250 +1,194 @@
-# Step 13 · Bounded queries
+# Step 14 · Classification and masking
 
-**New in this step:** `invoice.list`, the first query that returns many rows. DSoR
-decides how much one answer may hold, by rows and by size, whatever the caller asks for
-(DSOR-QRY-01).
+**New in this step:** every field carries a sensitivity label, and every agent a
+clearance. What is above an agent's clearance is left out of the answer before it leaves
+DSoR, and the answer lists what was left out (DSOR-CLS-01, DSOR-CLS-02a, DSOR-CLS-02b,
+DSOR-CLS-03, DSOR-CLS-05).
 
 ## In plain words
 
-Until now every query returned one thing: `invoice.get` gives one invoice. This step
-adds `invoice.list`, "show me my company's invoices". A list can be long, so its answer
-comes in **pages**: a few rows at a time. Each page carries a **cursor**, a short note
-that says where the page stopped. The caller sends the cursor back to get the next page.
+Follow an answer one step further than before. DSoR answers the agent. The agent puts
+that answer into its prompt, and the prompt goes to the **model provider**, the company
+that runs the AI model, on its own servers. So everything DSoR returns to an agent leaves
+the company. §19.2 calls this line the **model boundary**.
 
-The caller may ask for a page size, `limit`. DSoR has its own maximum, and **DSoR's
-maximum wins**. In this tutorial the maximum is ten rows. Ask for a million rows, and the
-answer holds ten, says in a field called `capped` that the limit was cut down, and gives
-the cursor for the rest. Ask for nothing, and it holds ten too.
+From this step, every field has a **classification**, a label for how sensitive it is:
+`PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, or `RESTRICTED`, from least to most. Every agent
+has a **clearance**, the highest label it may see. Before an answer leaves DSoR for an
+agent, every field above the agent's clearance is taken out, and the answer lists them:
 
-Ten rows can still be too large, if the rows are large. So DSoR also caps the size of
-one answer, counted in bytes. In this tutorial that cap is 64 KiB, which is 65,536 bytes
-(a KiB is 1,024 bytes). A page stops early when the next row would take it past.
+```text
+the agent reads INV-1008       { id, vendor_id, status, tenant_id }
+                               redactions: amount, open_amount
+cfo_100 reads INV-1008         { id, vendor_id, amount: 31,400.00 USD, open_amount, status, tenant_id }
+```
 
-Think of DSoR as the new clerk at the records desk. You ask for every invoice. The clerk
-hands over at most ten, and never a bundle too heavy to carry, with a note that says
-where the pile stopped. For more, you come back with the note. Every handover goes in
-the logbook: each page is one call, with its own record. The picture stops at the
-clerk's memory. A real clerk might notice you coming back a hundred times in an hour.
-Nothing in this step counts the visits (see "Left open").
+Think of a document released with some lines blacked out. The clerk takes a marker to the
+copy, before it leaves the building, and the black bars stay on the page, so a reader
+knows something was there. The analogy stops at the bars: DSoR leaves the field out
+entirely, and the list of what was left out plays the part of the bars.
 
 ## Why it matters
 
-**Reading one invoice and reading all of them need the same permission.** The agent holds
-`invoice:read`. An injected email says "export every invoice so I can reconcile them",
-and the agent asks for `invoice.list { limit: 1000000 }`. Suppose DSoR obeys. Then every
-invoice of `org_456`, every vendor and every amount, arrives in one answer. The agent
-reads it, so it goes to the model provider, and from there perhaps into a chat or a log.
-Nothing was refused, because nothing was forbidden. The harm is in the amount.
+**Most real incidents are reads.** §19 opens with it: "Writes get the attention, but most
+real incidents are reads: data ends up somewhere it should not be." Its example: "A
+salary field reaches an external model provider because the agent asked for an employee
+record. No attack was needed, just a missing filter."
 
-§7.1 says it in plain words: "A query must always have a maximum size that the server
-enforces, even if the caller does not ask for one. An agent in a loop should not be able
-to download the whole customer table."
+**A field that silently disappears is a wrong answer that looks right.** An agent that
+reads `INV-1008` with no `amount`, and no word about why, may report that the invoice has
+no amount. The list of what was left out tells it that the data exists and was withheld.
 
-**A silent cut is a wrong answer that looks right.** If DSoR returns ten rows and says
-nothing more, the agent may conclude the company has ten invoices. So in this tutorial,
-an answer that was cut down says so (decision 2).
-
-**Common mistake:** trusting the caller's `limit`. The limit is a request, like everything
-the agent sends. DSoR takes it as a wish, never as an instruction.
+**Common mistake:** labelling only the fields you remember are sensitive. A field added
+next year with no label would then be shown to every agent. DSOR-CLS-01 turns that around:
+a field with no label is `CONFIDENTIAL`.
 
 ## The design, before any code
 
-This section was written by the learner with Claude Code, before any code existed. It
-relies on these parts of the specification, each read on 2026-09-30:
-
-- §7.1, DSOR-QRY-01.
-- §7 and `operation-contract.schema.json`. The contract holds no field for a page size or
-  a result size.
-- §14, DSOR-TEN-02b, for step 12's cross-tenant suite: the tests that attack every
-  operation from another company.
-- §28. None of its codes names an answer that is too large.
-
-If the code finds the plan wrong, the plan changes here first.
+This section was written before the first test, by the learner with Claude Code, before
+any code existed. Every sentence of the specification it relies on was read on
+2026-10-01: §19 and §19.1 (the four labels, DSOR-CLS-01), §19.2 (the model boundary, its
+example of `agent_registration` and `tenant_egress_policy`, DSOR-CLS-02a to DSOR-CLS-05),
+and §29's DSOR-AUD-05a. If the code finds the plan wrong, the plan changes here first.
 
 ### The intent and the outcome
 
 Written first, before the rules were split into claims.
 
-**Intent.** No single call can read a whole table. DSoR, not the caller, decides how many
-rows and how many bytes one answer holds, and says so when it cuts the limit down. The
-analogy is the new clerk's handover: ten at most, never too heavy, and a note for the
-rest.
+**Intent.** Data above an agent's clearance never crosses the model boundary, a field
+nobody labelled is treated as sensitive, and the agent is told what was withheld. The
+analogy is the blacked-out copy.
 
 **Outcome.** What is true when this step is done:
 
-1. `invoice.list` with no `limit` returns at most 10 invoices of the caller's company.
-2. `invoice.list { limit: 1000000 }` returns 10 invoices, says it was capped, and gives a
-   cursor for the next page.
-3. Following the cursor, page after page, visits every invoice of the caller's company
-   exactly once, in order, and the last page has no cursor.
-4. No query's result, the data in its answer, is larger than 64 KiB. A page stops early,
-   before the next row would take it past, and its cursor continues from there.
-5. A `limit` of 0, a negative one, a fraction, or text is refused.
-6. Step 12's suite checks `invoice.list` from both companies, and finds only the caller's
-   company's rows in each answer.
+1. `accounts-payable-fte`, with clearance `INTERNAL`, reads `INV-1008` and gets it without
+   `amount` and `open_amount`, and with `redactions` naming both.
+2. `invoice.list` does the same for every item of the page, and names each field once.
+3. A field with no label is left out for every agent whose clearance is below
+   `CONFIDENTIAL`.
+4. Every query's answer carries `classification`, the highest label among the fields it
+   still contains.
+5. A human, `cfo_100` or `user_123`, gets every field, and the answer's label says
+   `CONFIDENTIAL`.
+6. A read that returns `CONFIDENTIAL` or `RESTRICTED` data leaves a record with the
+   principal, the operation, what was read, and how many rows.
 
-**Not the outcome of this step.** Stopping a slow read of everything. An agent that
-follows the cursor page after page can still read every invoice, one call at a time. Each
-call is recorded, so it is visible. The specification's answer is a row budget: a limit
-on the rows one agent may read over a time window (DSOR-CLS-04b, an L2 rule). No step in
-the map (the list of all steps, in `../readme.md`) builds it yet (see "Left open"). Also
-not the outcome: filters and sorting chosen by the caller.
+**Not the outcome of this step.** The tenant's egress policy, the second half of
+DSOR-CLS-02a (decision 6). Tokens in place of masked values, which let an agent pass a
+value it cannot see into a command (DSOR-CLS-02c, L2). Row budgets over time (DSOR-CLS-04b,
+L2). Minimum group sizes for aggregations (DSOR-CLS-04a).
 
 **The success signals**, each a test that fails if this step's code is deleted:
 
-- `invoice.list { limit: 1000000 }` returns exactly 10 rows, `capped`, and a cursor, while
-  the company has more than 10 invoices.
-- `invoice.list {}` returns 10 rows, not all of them.
-- A fake query whose answer would be larger than 64 KiB is cut down or refused, never
-  sent whole.
+- The agent's `INV-1008` has no `amount`, and its `redactions` name `amount` and
+  `open_amount`.
+- A field added to an invoice with no label is left out of the agent's answer.
+- The agent's answer carries `classification: "INTERNAL"`.
+
+**A guard, not a signal.** `cfo_100` gets the amount. That test passes with or without
+this step's code. It proves the masking does not reach too far: an approver in step 29
+must see what they approve.
 
 ### What the specification asks, and what this step can honestly give
 
-Checked on 2026-09-30:
+Checked on 2026-10-01:
 
-1. **DSOR-QRY-01 asks for "a server-side maximum page size and maximum result size on
-   every query".** It does not say what a result size is, and the contract schema holds
-   no field for either. This step's page size counts rows, and its result size counts the
-   bytes of one result: the data in the answer, written as JSON text (decisions 2 and 3).
-   Both are this tutorial's numbers, written in DSoR's code, not in the contract. Both are
-   recorded as questions for the specification.
-2. **"Every query"** includes `invoice.get`. Its answer is one invoice, so its page size is
-   one by nature, and the size limit of decision 3 applies to it as to every query.
-3. **§28 has no code for "this answer is too large to give".** Decision 3 picks one, and
-   the choice is recorded as a question.
-4. **DSOR-TEN-02b asks the suite to exercise "every operation with a foreign-tenant
-   URI".** `invoice.list` takes no URI, and its cursor cannot hold one (decision 5). So
-   the suite checks the list's rows instead (decision 6). Found by the review, and
-   recorded as a question: what does the rule ask of an operation that takes no URI?
+1. **DSOR-CLS-02a has two triggers:** a field above the agent's clearance, or one the
+   tenant's model-egress policy bars. This step builds the first. The second is recorded
+   as not built (decision 6).
+2. **DSOR-CLS-02a allows three ways to withhold:** omit, mask, or tokenize. This step omits
+   (decision 3). Tokens are DSOR-CLS-02c, an L2 rule.
+3. **§19.2's example gives `accounts-payable-fte` the clearance `confidential`,** which
+   would let it see `amount`. The map's "done when" needs the agent to see a masked
+   `amount`. This step gives the agent `INTERNAL` (decision 2), so the two differ.
+4. **DSOR-CLS-03 says "the highest classification among the fields it contains".** This
+   step reads that as the fields the answer still contains after masking. Someone could
+   read it as the fields of the record the answer came from. Recorded as a question for
+   the specification.
+5. **DSOR-CLS-05 asks for the principal, actor chain, operation, resource scope, and row
+   count.** The actor chain is the caller alone until step 18.
 
 ### What each rule really says
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-QRY-01 | **C1.** A page holds at most DSoR's maximum of rows, whatever the caller asks. The maximum is 10, and the page says when the limit was cut down: both our decision 2 | No `limit`: 10 rows. `limit: 1000000`: 10 rows, `capped`, a cursor. `limit: 3`: 3 rows, not capped |
-| DSOR-QRY-01 | **C2.** No query's result is larger than DSoR's maximum size, 64 KiB here (our decision 3) | A page stops before the row that would take it past, with a cursor. A query whose one result is larger is refused |
-| DSOR-QRY-01 | **C3.** The cursor walks the whole list, once | Pages followed to the end visit every invoice of the company exactly once, in order, and the last has no cursor. Another company's id as a cursor is only a position in the sorted list of ids |
-| (our decision) | **C4.** A `limit` must be a whole number of at least 1, and a `cursor` must look like an id | 0, -1, 1.5, and `"10"` are refused with `VALIDATION_FAILED` at line ⑥, the input check. So are a cursor of 65 characters, one with a NUL (the character whose code is 0), and one that is a `dsor://` URI |
-| DSOR-TEN-02b | **C5.** Step 12's suite checks a list from both companies | Every row in `invoice.list`'s answer, for `org_456` and for `org_789`, asked with its example and with nothing, carries the caller's company. A planted list that leaks a row, returns a row with no company, or leaks only when asked with nothing, is a finding |
-| DSOR-EXE-02 | **C6.** Each page is its own call, with its own record | Three pages leave three records |
-| DSOR-TEN-01b | **C7.** The list's own SQL keeps to the company, without the database's lock | The owner, the database user that made the tables, lists each company through DSoR's store, page after page, and every row is that company's. Row-level security, the database's own company filter from step 11, does not stop the owner, so only DSoR's SQL is tested |
+| DSOR-CLS-01 | **C1.** A field with no label is `CONFIDENTIAL` | A field added to the answer, with no label, is left out for an `INTERNAL` agent, and makes a human's answer `CONFIDENTIAL` |
+| DSOR-CLS-02a | **C2.** For an agent, every field above its clearance is left out before the answer leaves | `invoice.get` and `invoice.list` as `accounts-payable-fte` and as `firm-ap-fte` have no `amount` and no `open_amount`, on memory and on the database |
+| DSOR-CLS-02b | **C3.** An answer from which fields were left out lists them | `redactions` names each field once, as a path: `amount` for `invoice.get`, `items[].amount` for `invoice.list` |
+| DSOR-CLS-03 | **C4.** Every query's answer carries the highest label among the fields it contains | The agent's answer: `INTERNAL`. A human's: `CONFIDENTIAL`. An empty page: `PUBLIC` |
+| DSOR-CLS-05 | **C5.** A read that returns `CONFIDENTIAL` or `RESTRICTED` data is recorded with who, what, and how many | The human's read of `INV-1008` leaves a record with its principal, the operation, the invoice's URI, one row, and `CONFIDENTIAL` |
+| (our decision) | **C6.** Masking is for agents only | `cfo_100` gets every field, with the same values as before this step |
 
 ### Decisions the specification leaves to us
 
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
-1. **`invoice.list` is a query, with the permission `invoice:read`.** Its input is
-   `{ limit?, cursor? }`, and nothing else. Its answer is
-   `{ items, next_cursor?, capped? }`, where `capped` is `{ asked, max }` when the
-   `limit` was cut down. *Downside:* every caller who may read one invoice may list them
-   all, a page at a time. A permission of its own for listing would be stricter, and the
-   specification does not ask for one.
-2. **The page size is at most 10 rows, and 10 when no `limit` is given.** A `limit` above
-   10 becomes 10, and the answer says `capped: { asked, max: 10 }`. The number is small
-   so that a test, and a learner, can see the cap work with a dozen invoices. *Downside:*
-   a real deployment would choose a larger number, and this one lives in the code, not in
-   the contract, because the contract schema has no field for it.
-3. **No query's result may be larger than 64 KiB.**
-   - The result is the data in the answer, written as JSON text, and counted in bytes.
-     The correlation beside it, the request id and the caller's name, is DSoR's own and
-     small. It is not counted.
-   - A list stops adding rows before the row that would take its result past the limit,
-     and gives the cursor from there.
-   - It never drops the first row. So a page that has a cursor always holds at least one
-     row, and the cursor always moves forward. A page with no rows and a cursor would
-     send the caller back to the same place forever.
-   - A page can still be empty. A cursor past the last invoice gives `{ items: [] }`,
-     with no cursor.
-   - A cut by size adds nothing of its own. `capped` still appears when the `limit` was
-     above 10, and it still says `max: 10`, because it is about the limit. The
-     `next_cursor` says that more rows follow.
-   - After line ⑨, where the operation's code runs, the pipeline measures every query's
-     result. One that is still too large, such as a page whose one row is larger than
-     64 KiB, is refused with `UNSUPPORTED_CAPABILITY`, "the answer is larger than DSoR
-     gives in one call".
+1. **The labels live in a file, `classifications.json`,** one entry for each kind of
+   record, and one label for each field:
 
-   *Downside:* §28 has no code for this. `UNSUPPORTED_CAPABILITY` with retry `never` is
-   the closest: asking again gets the same answer. It is a question for the
-   specification. And a row that is too large blocks every row after it, because no page
-   can step over it.
-4. **The list is in order of invoice id, and the cursor is the last id of the page.** The
-   next page is `WHERE tenant_id = <the company> AND id > <cursor> ORDER BY id`, one row
-   more than the page needs, to know whether another page follows. The cursor is a
-   position in the caller's own company only. A cursor that names another company's
-   invoice id is only a position in the sorted list of ids. It tells nothing about that
-   invoice.
-   The order is the database's: text compared by its character codes (`C.UTF-8`,
-   checked live on 2026-09-30), the same order JavaScript's `<` gives these ids in memory.
-   The SQL does not name that order itself (see "Left open").
-   *Downside:* an invoice added behind the cursor while a caller is paging is missed by
-   that walk.
-5. **A `limit` must be a whole number of at least 1, and a `cursor` must look like an
-   id,** both checked by `invoice.list`'s input schema at line ⑥. The schema sets no
-   maximum for `limit`, so a large one passes line ⑥ and is cut down, as the map's "done
-   when" asks, instead of refused. The rule would allow a refusal too: cutting is this
-   tutorial's choice. A cursor holds only letters, digits, `_`, `.`, and `-`,
-   the characters the specification's `resourceUri` allows in an id, and at most 64 of
-   them. So a cursor cannot carry a URI, a NUL character, or five megabytes of text.
-   Found by the review: before this, a NUL cursor reached PostgreSQL, which refuses NUL in
-   text, and the answer was `INTERNAL_ERROR`. *Downside:* a caller that asks for a
-   million is not told "no". It is told "here are ten, and you asked for a million". And
-   64 characters is this tutorial's number: an invoice id longer than that could not be a
-   cursor.
-6. **Step 12's suite learns a second check, for lists.**
-   - A list names no single thing. Its input is a page size and a cursor, and a cursor
-     cannot hold a URI (decision 5). So there is nothing to swap.
-   - Its example still holds every field its input schema lists, as step 12 asks:
-     `{ "limit": 10, "cursor": "INV-1000" }`.
-   - A query whose example holds no URI is accepted only when its answer is a page,
-     `{ items: [...] }`. The suite asks once, as the first caller of `org_456` who may
-     call it. It asks only a query, because a command would run.
-   - If that answer is a page, the suite calls the list as every such caller of both
-     companies, twice. First with its example. Then with only the fields its input schema
-     requires, `{}` here, because a list may leak on a path its example does not take.
-   - Every item must carry `tenant_id` equal to the caller's company. An item with no
-     `tenant_id` is a finding, because it cannot be checked. A page with no items is a
-     finding too, because it checks nothing: a list with no company filter at all would
-     pass it.
-   - If the first answer is not a page, or the operation is a command, it gets step 12's
-     finding, once, word for word.
+   ```json
+   { "Invoice": { "id": "INTERNAL", "tenant_id": "INTERNAL", "vendor_id": "INTERNAL",
+                  "status": "INTERNAL", "amount": "CONFIDENTIAL", "open_amount": "CONFIDENTIAL" } }
+   ```
 
-   *Downside:* the suite counts `invoice.list` as attacked without sending it a foreign
-   URI, because there is no place for one (see "What the specification asks", point 4).
-   And it trusts an operation that answers with a page to return items that carry their
-   company. A single-thing operation that returns a one-item page would be checked by its
-   rows, not by a swap.
-7. **More invoices, so that there is more than one page.** A migration, `006`, adds
-   `INV-1001` to `INV-1012` to `org_456`, keeping `INV-1008` as it is, and `INV-2002` to
-   `INV-2004` to `org_789`. The invoices in memory, for the unit tests, are the same.
-   *Downside:* the running example gains invoices the specification does not name.
+   Start-up checks it as it checks `roles.json`: a label that is not one of the four, or a
+   key written twice, stops the program. Each contract's output names its kind:
+   `invoice.get` returns an `Invoice`, and `invoice.list` returns a page whose items are
+   `Invoice`. *Downside:* the labels sit apart from the input and output schemas, so a new
+   field needs a line in two places. Missing the second is safe: the field is
+   `CONFIDENTIAL`.
+2. **Every agent has a clearance, in DSoR's table of principals:** `accounts-payable-fte`
+   and `firm-ap-fte` have `INTERNAL`. An agent with no clearance written down has
+   `PUBLIC`, the lowest, never a default that shows more. Humans have none, because
+   masking is not applied to them (decision 5). *Downside:* §19.2's example gives the
+   agent `confidential`. This step chose `INTERNAL` so that the map's masked `amount` can
+   be seen.
+3. **A withheld field is left out, never replaced.** The answer has no `amount` key at
+   all. `{ value: "***" }` would break step 01's rule that a money value is a decimal
+   string, and code that trusted it would read a wrong value. *Downside:* the invoice an
+   agent gets no longer has the shape of an invoice, and the output schema must allow the
+   fields to be missing.
+4. **The answer grows two fields beside `data`:** `classification`, always, and
+   `redactions`, a sorted list of paths, only when something was left out. A path is the
+   field's name, with `items[].` in front for a page's items. *Downside:* the query
+   answer's shape, step 04's decision, changes again.
+5. **Masking is for agent principals, and is applied right after line ⑨,** before the
+   64 KiB check of step 13 and before line ⑪ records the decision, so the size measured
+   and the answer given are what leaves. Humans are not masked. *Downside:* a human who
+   pastes an answer into an AI assistant of their own carries it across a model boundary
+   DSoR cannot see.
+6. **The tenant's egress policy is not built.** DSOR-CLS-02a also withholds a field that
+   the tenant's policy bars from a kind of model provider. It needs each agent's model
+   boundary and a policy per company. *Downside:* a `RESTRICTED` field goes to an agent
+   whose clearance is `RESTRICTED`, whatever the company's policy would say.
+7. **The record of a read grows:** `read: { classification, rows, scope }`, where `scope`
+   is the list of URIs returned. It is written for every read, and DSOR-CLS-05 needs it
+   for `CONFIDENTIAL` and above. It holds URIs and counts, never the values read, as
+   DSOR-AUD-05a asks. *Downside:* one more column, `read`, in `dsor.audit`, by migration
+   `007`, and `dsor_runtime`'s list of `INSERT` columns grows by one word.
 
 ### The tests, by claim
 
-- **C1:** on memory and on the database: `invoice.list {}` gives 10 items and a cursor.
-  `{ limit: 1000000 }` gives 10 items, `capped: { asked: 1000000, max: 10 }`, and a
-  cursor. `{ limit: 3 }` gives 3 items, no `capped`, and a cursor.
-- **C2:** a fake list whose rows are 10 KiB each stops at 6 rows, under 64 KiB, with a
-  cursor. A fake query whose one answer is 100 KiB is refused with
-  `UNSUPPORTED_CAPABILITY`. The real answers pass the same check: C1's tests are
-  answered with data.
-- **C3:** following `next_cursor` from `{ limit: 5 }` gives 5, 5, and 2 items for
-  `org_456`'s 12 invoices, each id once, in order, and the last page has no cursor. As
-  `org_789`, the cursor `INV-1010`, which only `org_456` has, and the made-up cursor
-  `INV-1099` both give `INV-2001` to `INV-2004`, apart from the request id. A cursor that
-  looked the id up, across companies, would answer the two differently.
-- **C4:** `{ limit: 0 }`, `{ limit: -1 }`, `{ limit: 1.5 }`, and `{ limit: "10" }` are each
-  `VALIDATION_FAILED`. So are a cursor of 65 characters, a cursor holding a NUL, and the
-  cursor `dsor://org_789/invoice/INV-2001`. A cursor of 64 characters is accepted.
-- **C5:** the suite over the shipped registry gives no findings and counts 3 operations.
-  Planted: a list that behaves gives no finding. A list that returns one `org_789` row to
-  `org_456`, a list whose items have no `tenant_id`, and a list that answers an empty
-  page, or a list that leaks only when asked with nothing, each give their finding. A
-  single-thing operation with no URI whose answer is not a page is step 12's
-  `invoice.peek` test, kept word for word. A command with no URI in its example is a
-  finding, and is never called.
-- **C6:** in the database tier, three pages leave three records in the caller's company.
-- **C7:** in the database tier, the owner lists `org_456`'s invoices through DSoR's store,
-  page after page, and gets `org_456`'s 12 invoices, and nothing of `org_789`'s.
+- **C1:** a planted field, `vendor_bank_account`, added to the answer of a fake
+  `invoice.get` with no label: left out for the agent and listed, and it makes the
+  human's answer `CONFIDENTIAL`.
+- **C2:** as each agent, on memory and on the database: `invoice.get` for `INV-1008` has
+  no `amount` and no `open_amount`, and every other field is as before. `invoice.list`:
+  no item has either. A planted agent with no clearance written down gets `PUBLIC`: every
+  field of an invoice is withheld and listed. *Added before any code, 2026-10-01:* the
+  learner's prediction for break Y6 showed that without it, nothing would catch a missing
+  clearance treated as a high one.
+- **C3:** the agent's `invoice.get`: `redactions: ["amount", "open_amount"]`.
+  `invoice.list`: `["items[].amount", "items[].open_amount"]`, each once. The human's
+  answers: no `redactions` key.
+- **C4:** the agent's `INV-1008`: `INTERNAL`. The human's: `CONFIDENTIAL`. An empty page:
+  `PUBLIC`.
+- **C5:** on the database: the human's `invoice.get` leaves a record with
+  `read: { classification: "CONFIDENTIAL", rows: 1, scope: ["dsor://org_456/invoice/INV-1008"] }`.
+- **C6:** `cfo_100` and `user_123` get `amount` and `open_amount` with the values of step
+  13.
+- **Start-up:** `classifications.json` with the label `SECRET`, or a key written twice,
+  stops the program and names the problem.
 
 ### Breaks we will try, and what we expect
 
@@ -252,377 +196,96 @@ Run against the finished step. The learner's predictions were recorded before an
 
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
-| X1 | The caller's `limit` is obeyed | C1's million test | not asked; the expectation stands |
-| X2 | No `limit` means every row | C1's empty-input test | not asked; the expectation stands |
-| X3 | A cut-down page says nothing (`capped` left out) | C1's million test | the million test |
-| X4 | The cursor query uses `>=` instead of `>` | C3: the cursor's own row comes back again | C3 |
-| X5 | The list's SQL forgets the company | the suite's list check on memory. On the database, only C7's owner test: the second lock, row-level security, hides it from every other | red on memory, green on the database (predicted before C7 was added) |
-| X6 | The suite's list check accepts an item with no `tenant_id` | only C5's planted item | only the planted item test |
+| Y1 | Humans are masked too | only C6, the guard | not asked; the expectation stands |
+| Y2 | A field with no label is `PUBLIC` | only C1's planted field | only the planted field test |
+| Y3 | `redactions` is left out | C3, and the map's "done when" | not asked; the expectation stands |
+| Y4 | Only the top level is masked, not a page's items | C2's and C3's `invoice.list` tests | the `invoice.list` tests |
+| Y5 | The label is taken from the whole record, before masking | C4: the agent's answer says `CONFIDENTIAL` | C4 |
+| Y6 | An agent with no clearance gets `CONFIDENTIAL` | only C2's planted agent with no clearance | only a planted agent (and there was none: C2 gained one) |
 
-The review also attacks the step with the threat that is its reason: bulk extraction by
-an allowed caller, through a large `limit`, a forged cursor, or a loop.
+The review also attacks the step with the threat that is its reason: data that crosses
+the model boundary through an allowed read, by a field, a list, an error message, or a
+record.
 
 ### Left open, and not this step's idea
 
-- **Stopping a slow read of everything.** Each call is bounded, but a caller can call
-  again and again. §19.2 answers it with row budgets: DSoR MUST enforce budgets on rows
-  returned per agent principal and per delegation over a time window (DSOR-CLS-04b), and a
-  budget MUST NOT be keyed on an identifier the caller can mint (DSOR-CLS-04c). Both are
-  L2 rules, and no step in the map names them. Found after the build, on 2026-10-01: this
-  line first said only that §28 has `RATE_LIMITED`. Step 25's emergency brake can stop an
-  agent by hand. The missing step is proposed in `../mj_notes.md`, for a maintainer.
-- **The page size and result size in the contract**, per operation, instead of in code.
-  The contract schema has no field for them.
-- **Filters and sorting** chosen by the caller.
-- **Listing by vendor,** once vendors are records of their own (step 17).
-- **The order in the SQL.** The list's SQL does not say `COLLATE "C"`. It relies on the
-  database's default, `C.UTF-8`, to order ids as memory does. A database made with
-  another default could order them differently, and the cursor would still walk every
-  row once, in that database's order.
-- **`pageOf` trusts its `limit`.** Line ⑥ refuses a limit below 1, so `pageOf` never
-  gets one from `invoice.list`. Another operation that used `pageOf` without that check
-  would have to check it too.
+- **The tenant's egress policy** (decision 6), the other half of DSOR-CLS-02a.
+- **Tokens for masked values** (DSOR-CLS-02c, L2), so an agent can pay an amount it
+  cannot see.
+- **Row budgets over time** (DSOR-CLS-04b, L2), which the map places in no step yet.
+- **A `purpose` on each query,** which §19.2 recommends.
 
 ## Before you build: set up Neon
 
 The rule is: **a secret never passes through a chat.** Claude Code may do this setup
 itself, this way:
 
-1. Create a branch `step-13` **from `step-12`**, with the Neon MCP server or with
+1. Create a branch `step-14` **from `step-13`**, with the Neon MCP server or with
    `neonctl branches create`.
 2. Write `.env` with `neonctl connection-string`, its output redirected into the file,
    never printed: the owner's string as `DSOR_MIGRATION_URL`, and the same string with
    the user `dsor_runtime` and a new random password (letters and digits) as
    `DSOR_DB_URL`. Both with `sslmode=verify-full`.
 3. Run `pnpm migrate`. It sets `dsor_runtime`'s password from `DSOR_DB_URL`, and runs
-   migration `006`.
+   migration `007`.
 4. Check without looking: `pnpm test:db` passes, and the transcript holds no
    `postgresql://` with a password in it.
 
-## What changed since step 12
+## What changed since step 13
 
-| File | What changed |
-| --- | --- |
-| `contracts/invoice.list.json` | **New.** A query that needs `invoice:read` (decision 1) |
-| `inputs/InvoiceListRequest.schema.json` | **New.** `limit`, a whole number of at least 1, and `cursor`, which looks like an id, at most 64 characters (decision 5) |
-| `examples/invoice.list.json` | **New.** `{ "limit": 10, "cursor": "INV-1000" }`, for the suite (decision 6) |
-| `migrations/006_more_invoices.sql` | **New.** `INV-1001` to `INV-1012` for `org_456`, `INV-2002` to `INV-2004` for `org_789` (decision 7) |
-| `src/pages.ts` | **New.** `MAX_ROWS` (10) and `MAX_BYTES` (64 KiB), `pageSize`, `pageOf`, which cuts a page by rows and then by bytes, and `checkResultSize` (decisions 2 and 3) |
-| `src/operations.ts` | `invoice.list`'s code: one row more than the page holds, after the cursor, inside the active company |
-| `src/invoice.ts` | The same new invoices in memory. The store gains `list(tenant, after, count)`, and `listInvoices` is its memory version |
-| `src/postgres.ts` | The list's SQL. `invoiceOf`, one row as an invoice, is now shared by `get` and `list` |
-| `src/pipeline.ts` | After line ⑨, `checkResultSize` measures every query's result |
-| `src/main.ts` | The agent asks for a million invoices, and the program prints the ten it gets |
-| `test/invoice-list.test.ts`, `test/invoice-list.db.test.ts` | **New.** C1, C3, and C4 on memory. C1, C3, C6, and C7 on the database |
-| `test/result-size.test.ts` | **New.** C2 |
-| `test/cross-tenant-lists.test.ts` | **New.** C5, with planted lists |
-| `test/cross-tenant.ts`, `test/companies.ts` | The suite's list check: `isPage`, `pageProblem`, the one question it asks a query with no URI, and the second, bare call |
-| `test/owner-store.ts`, `test/db.ts` | The owner's `list` mode, page after page, and `ownerList` (C7) |
-| `test/helpers.ts` | `idsOf`, a page on one line, and `walk`, a caller that follows the cursor |
-| every other test | Counts of two operations became three. Two earlier tests used `invoice.list` and `InvoiceListRequest` as made-up names. They now use `invoice.list_all` and `InvoiceSearchRequest`, which still do not exist. The program's log test counts 10 records of 13 calls |
-
-Every other file is step 12's, without its `NEW IN STEP` markers. No new dependency.
-
-To see every line, from `docs/baby_steps_tutorials`:
-
-```bash
-git diff --no-index mj_12_cross_tenant_test_suite/src mj_13_bounded_queries/src
-git diff --no-index mj_12_cross_tenant_test_suite/test mj_13_bounded_queries/test
-git diff --no-index mj_12_cross_tenant_test_suite/inputs mj_13_bounded_queries/inputs
-```
+_To be written when the code exists._
 
 ## Run it
 
-Set up Neon first ("Before you build" above). Then, in this folder:
-
-```bash
-pnpm install
-pnpm migrate      # runs migration 006, and sets dsor_runtime's password again
-pnpm check        # typecheck and the unit tests
-pnpm test:db      # the database tests
-pnpm start        # the program, against the database
-```
-
-Among the program's lines, on 2026-09-30:
-
-```text
-operations: [ 'invoice.get', 'invoice.issue', 'invoice.list' ]
-…
-INV-1001 INV-1002 INV-1003 INV-1004 INV-1005 INV-1006 INV-1007 INV-1008 INV-1009 INV-1010 { next_cursor: 'INV-1010', capped: { asked: 1000000, max: 10 } }
-…
-5362 invoice.list@1 ALLOW ok org_456
-13 calls answered, so 13 records were written. dsor_runtime reads 10 of them, in org_456 and org_789, and cannot read the other 3
-```
-
-The agent asked for a million invoices. It got ten, the answer says the limit was cut,
-and the cursor says where the next page starts. The call left its record, like every
-other.
+_To be written when the code exists._
 
 ## Break it
 
-Every break of the design's table, performed on 2026-09-30 and 2026-10-01, one at a time,
-in a copy of this folder, then put back from a backup and compared byte for byte. They ran
-twice: on the step before the review (commit `3498106`), and on the final code, after the
-review and the sweep. X2, X4, and X5 change what the database reads, so they also ran on
-the database tier.
-
-| # | The break | Learner's prediction | Before the review | On the final code |
-| --- | --- | --- | --- | --- |
-| X1 | The caller's `limit` is obeyed | not asked | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the store-count test |
-| X2 | No `limit` means every row | not asked | 1 unit, 1 database: the empty-input test | 2 unit: the empty-input test and the store-count test. 1 database: the empty-input test |
-| X3 | `capped` is left out | the million test | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the page cut by limit and by size |
-| X4 | The cursor uses `>=` instead of `>` | C3 | 1 unit, 2 database: the walks | 3 unit: the walk, the store after a cursor, and the copy test. 4 database: both walks, the store after a cursor, and C7, whose owner walks too |
-| X5 | The list forgets the company: in memory | red on memory | 30 unit | **33 unit**: every suite test over the shipped registry, C1, and C3 |
-| X5 | The list's SQL forgets the company | green on the database | 0 unit. On the database, **only C7**, 1 of 33 | 0 unit. On the database, **only C7**, 1 of 35 |
-| X6 | The suite accepts an item with no `tenant_id` | only the planted item test | 1 | 1, as predicted |
-
-**X1, the one this step is for.** In `src/pages.ts`, make `pageSize` return
-`limit ?? MAX_ROWS`, so the caller's limit is obeyed. Then:
-
-```text
-$ npx vitest run test/invoice-list.test.ts -t "1000000"
- FAIL  test/invoice-list.test.ts > C1: a page holds at most 10 rows, whatever the caller asks, and says when it was cut down > DSOR-QRY-01: invoice.list { limit: 1000000 } gives 10 invoices, says the limit was capped, and gives a cursor
-AssertionError: expected { items: [ …(12) ], capped: { …(2) } } to strictly equal { items: [ …(10) ], …(2) }
-
-- Expected
-+ Received
-
-@@ -12,8 +12,9 @@
-      "org_456/INV-1006",
-      "org_456/INV-1007",
-      "org_456/INV-1008",
-      "org_456/INV-1009",
-      "org_456/INV-1010",
-+     "org_456/INV-1011",
-+     "org_456/INV-1012",
-    ],
--   "next_cursor": "INV-1010",
-  }
-```
-
-Every invoice of the company came back, and there is no cursor, because there is nothing
-left to read. With twelve invoices that looks harmless. With a whole ledger it is the
-failure of "Why it matters". Look at what the answer still says: `capped: { asked:
-1000000, max: 10 }`. It claims a cut it did not make. The code sets `capped` in one place
-and applies the cap in another. The two can drift apart, and only a test that checks both
-at once notices.
-
-**X5, on the database, the second lock at work.** Take the company out of the list's SQL,
-and every database test but one stays green, 34 of 35 on the final code: row-level
-security hides the missing filter from every caller that logs in as `dsor_runtime`. Only
-C7 sees it, because the owner bypasses row-level security:
-
-```text
-- Expected
-+ Received
-
-@@ -7,11 +7,16 @@
-      "org_456/INV-1004",
-      "org_456/INV-1005",
-      "org_456/INV-1006",
-      "org_456/INV-1007",
-      "org_456/INV-1008",
-+     "org_789/INV-1008",
-      "org_456/INV-1009",
-      "org_456/INV-1010",
-      "org_456/INV-1011",
-      "org_456/INV-1012",
-+     "org_789/INV-2001",
-```
-
-The learner predicted "green on the database" before C7 existed, and that is what would
-have happened. The design check added C7 for this break.
-
-**Two breaks the review found, and the tests that now catch them.** The SQL
-`WHERE tenant_id = $1 AND $2::text IS NULL OR id > $2`, with its brackets lost, keeps
-the company on the first page and drops it on every page after. It passed all 33
-database tests, because the owner read only one page. With the owner walking page after
-page, C7 names `org_789`'s five invoices. And a cursor that is looked up across companies
-(`id > the row whose id is the cursor`, in any company) passed the first foreign-cursor
-test, which compared two empty pages. The test from `org_789`, `INV-1010` against
-`INV-1099`, fails on it.
+_To be written when the code exists, with real output._
 
 ## Build it yourself with Claude Code
 
-This is how the step was built:
-
-| # | Move | What you do |
-|---|---|---|
-| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one |
-| 2 | Neon | A branch `step-13` from `step-12`, and `.env` written by a command, never shown ("Before you build"). `pnpm test:db` green before any change |
-| 3 | Check the design | Against every rule sentence, the contract schema, and step 12's suite. Four gaps: C7, what 64 KiB counts, one row per page, and the one question for an operation with no URI. The learner chose, and the design changed before any test |
-| 4 | Data | Migration `006`, and the same invoices in memory. No test changes |
-| 5 | Red, then green | One claim at a time: C5, C1, C4, C7, C3, C2, C6. Predict each red run before it runs |
-| 6 | Break it | X1 to X6, for real |
-| 7 | Review | Two reviewers who have not seen your conversation. One reads and attacks. One breaks the code a line at a time, in a copy with a Neon branch of its own |
-| 8 | Fix the review | The design first, then the red tests, then the code. Predict each |
-| 9 | Break it again | X1 to X6 on the final code, and each review finding's own break |
-
-The prompt that started this session:
-
-```text
-Set up, then build step 13 in learner mode.
-
-Setup: follow README "Before you build": branch step-13 from step-12 in project
-<your Neon project>; write .env only through commands whose output goes into the file,
-never print, fetch, or read a connection string or password; then pnpm migrate and
-pnpm test:db.
-
-Build: README's design is agreed. If the code proves it wrong, change the design section
-first and tell me. Red tests first, one commit per claim.
-```
-
-The learner's predictions, and what happened:
-
-| Moment | Prediction | Real |
-| --- | --- | --- |
-| C5's red run: a good list, a leaky list, a list with no `tenant_id`, and step 12's `invoice.peek` | all 4 fail | 3 failed. `invoice.peek` passed: step 12's code already said no to it |
-| C1's red run | not asked | 17 failed: the 7 new tests, and 10 older tests that counted two operations |
-| C1 on the database, before the store's `list` existed | an error envelope | right: `INTERNAL_ERROR`, "DSoR hit an unexpected error" |
-| C4's red run: limits 0, -1, 1.5, and `"10"` | all 4 fail | **2** failed. C1's `"type": "integer"` already refused 1.5 and `"10"` |
-| C3's red run: the walk, and a foreign cursor's two checks | the walk, and both checks | the walk, and **only the empty-page check**. The two cursors were refused in the same words, so "the same answer" already held |
-| C2's red run: seven tests | all 7 fail | **6**. "Exactly 64 KiB is answered" passed: a "yes" test passes before the code that says no |
-| C6's first run | green at once | right: every call has been recorded since step 08 |
-| The review's cursor form: 65 characters, NUL, a URI, and 64 characters | all 4 fail | **3**. The 64-character "yes" test passed |
-| The review's foreign-cursor test, from `org_789` | green at once | right |
-| The review's command and bare-call tests | both fail | right |
+_To be written when the code exists._
 
 ## Check yourself
 
-1. The agent holds `invoice:read`. Why is that not enough to stop it reading every
-   invoice in one call?
-2. For `limit: 1000000`, this tutorial answers ten rows and `capped`. Why not refuse, and
-   why not ten rows with nothing more?
-3. `org_789` sends `INV-1010`, an id only `org_456` has, as its cursor. What comes back,
-   and why does it tell `org_789` nothing about `org_456`?
-4. Why does this tutorial count a page in rows and a result in bytes, both?
-5. Can an agent still read every invoice? What does this step change about how?
+1. Why does everything DSoR returns to an agent count as leaving the company?
+2. Why is a field with no label treated as `CONFIDENTIAL`, and not `PUBLIC`?
+3. Why does the answer list what was left out?
+4. Why is `cfo_100` not masked?
+5. The accounts-payable agent cannot see amounts. How could it still pay an invoice, in a
+   later step?
 
 <details>
 <summary>Answers</summary>
 
-1. Reading one invoice and reading a million need the same permission. The harm is in the
-   amount, so the amount needs a limit of its own.
-2. The limit is the caller's wish, and DSoR answers it as far as its own maximum
-   allows. The rule would allow a refusal too. Cutting is this tutorial's choice
-   (decision 5), and the map asks that a million rows return one page. Without
-   `capped`, ten rows look like "the company has ten invoices": a wrong answer that
-   looks right.
-3. `INV-2001` to `INV-2004`, the same as for the made-up cursor `INV-1099`. The cursor is
-   only a position in the caller's own sorted list of ids. DSoR never looks it up, so
-   whether `org_456` has that invoice changes nothing.
-4. A row count misses one huge row. A size in bytes catches it, whatever the rows hold.
-   And the byte cap alone would let a million tiny rows through.
-5. Yes, a page at a time, following the cursor. Each page is a separate call with its own
-   record, so reading everything is slow and visible. Nothing in this step stops it. The
-   specification's answer is a row budget per agent over a time window (DSOR-CLS-04b), an
-   L2 rule that no step builds yet.
+1. The agent puts the answer into its prompt, and the prompt goes to the model provider's
+   servers, outside the company.
+2. A field added later and forgotten would otherwise go to every agent. With
+   `CONFIDENTIAL`, forgetting a label hides the field, never shows it.
+3. Without the list, a missing field looks like missing data, and the agent may act on a
+   wrong belief, such as "this invoice has no amount".
+4. Masking guards the model boundary, which an agent's answer crosses and a human's does
+   not. And an approver must see what they approve.
+5. With a token (DSOR-CLS-02c): DSoR gives a stand-in for the value, the agent passes the
+   token into a command, and DSoR puts the real value back on its own side.
 
 </details>
 
 ## Think it through
 
-**Changed by the design check, before the first test (2026-09-30).**
-
-- **C7 was added.** Break X5 would have survived every test. The unit tests never run the
-  list's SQL, and on the database row-level security hides a missing company filter.
-  Step 11 closed the same gap for `invoice.get` by letting the owner, whom row-level
-  security does not stop, run DSoR's store. The list gets the same test.
-- **The 64 KiB counts the result, not the whole answer** (decision 3). The list's code
-  builds the data and cannot see the correlation that the pipeline adds after it.
-- **A page never drops its first row for size** (decision 3). The review later found
-  that this was first worded as "a page always holds a row", which is false. And the
-  suite asks a no-URI operation once before it attacks it (decision 6).
-- **An empty page is a finding** (decision 6). Found while writing C5's check: an example
-  whose cursor sits past the end gets `{ items: [] }` from every list, a leaky one too.
-  Step 12 closed the same hole for queries by asking for data.
-
-**Found by the hostile review, and fixed** (each fix changed the design first, then a
-test, then the code):
-
-- **C7 read one page only.** The SQL after a cursor never ran as the owner, so the
-  bracket bug above passed. The owner now reads five rows at a time.
-- **The foreign-cursor test could not fail.** It compared two empty pages. Now it is
-  asked from `org_789`, between two of its invoices.
-- **"A page always holds at least one row" was false.** A cursor past the end gives an
-  empty page. Decision 3 now says what is true: a page that has a cursor is never empty.
-- **The cursor took any text.** A cursor of 5 MB was accepted, and a NUL character
-  reached PostgreSQL, which refuses it, so the answer was `INTERNAL_ERROR`. The cursor now
-  looks like an id (decision 5).
-- **The suite ran an operation to learn whether it answers with a page.** For a command
-  that would change something, once commands are built. Now it asks only a query.
-- **The suite asked a list only with its example,** which always holds a cursor. A list
-  that leaks only with no cursor passed. Now it also asks with only the required fields.
-- **Sentences read as rules of DSoR** where they were this tutorial's choices: ten rows,
-  "must say so", and how a size is counted.
-
-**Found by the mutation sweep, and fixed.** The sweep made 96 small breaks on the code
-before the review. 69 were caught by the tests, 2 only by the typecheck, and 25
-survived. The review's fixes closed four of them: the bracket bug, a cursor of any type,
-the NUL cursor, and a URI as a cursor. Of the rest, these were real, and each now has a
-test that fails on it:
-
-- **The cap held only after the rows were read.** A handler that asked the store for the
-  caller's million, a store that ignored its count, and `LIMIT $3 + 1000` in the SQL all
-  gave the same pages, because `pageOf` cut them afterwards. Now the code must ask the
-  store for 11 rows for no limit, 11 for a million, and 4 for a limit of 3: one more
-  than the page. And both stores must give exactly what they are asked for.
-- **A last page cut for size lost rows.** With one line of `pageOf` deleted, the rows it
-  cut had no cursor to reach them. Also tested now: the cursor's own bytes count, a page
-  of exactly 64 KiB keeps its rows, and `capped` says 10 after a cut by size.
-- **A listed invoice was not tested as a copy,** as `invoice.get`'s is since step 04.
-- **An order by the reader's language** instead of by character codes passed. It puts
-  `INV-a` before `INV-B`, and the database does not.
-- **The owner's helper could hide what it saw.** Filtered to `org_456`, it hid a SQL with
-  no company. It now lists both companies.
-- **Also:** a `null` cursor, a list that answers `org_789` with something that is not a
-  page, and a query whose code returns nothing.
-
-**Left open on purpose**, with the reason:
-
-- **Equivalent breaks**, which change nothing a caller can see: `limit ?? Infinity`
-  (`Math.min` still caps it), `after ?? ""` for no cursor, an example with `limit: 1`,
-  and the one question asked when nobody in `org_456` may call the operation (another
-  finding is raised anyway).
-- **The contract's `output.schema` and `tenancy.required` are read by nothing.** Changed,
-  every test stays green. That is true of every contract since step 03, not only this
-  one.
-- **The owner's `bypassrls` could be hard-coded to true** and pass on this branch.
-  `bypassrls` is the owner's power to skip row-level security. If the owner lost it, the
-  test would check the database's filter instead of DSoR's own, without saying so. The
-  same holds for step 11's owner check.
-- **A lowercase cursor, such as `inv-1004`, sorts after every id** and gives an empty
-  page. It is a place in the order, as decided, not an error.
-- **Nothing limits the size of a whole request.** The cursor is capped at 64
-  characters, and `limit` is a number, but a request's size in general is not this
-  step's idea.
-- **A slow read of everything is still possible,** as "Not the outcome" says. The
-  review's attack read `org_456`'s twelve invoices in two calls, or in twelve calls of
-  one row, each call recorded. Nothing counts them yet: that is DSOR-CLS-04b's row
-  budget.
-
-**What the predictions showed.** Four times a test passed before its code: C4's 1.5 and
-`"10"`, C2's "exactly 64 KiB is answered", the cursor of 64 characters, and step 12's
-`invoice.peek`. Each time the learner expected red. A "yes" test passes as long as
-nothing says no, and a "no" test passes as soon as some earlier code already says no.
-Neither proves the new code until a break shows it failing without it.
+_To be written after the review, with the result of every break in the table above._
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-QRY-01 | A server-side maximum page size and result size on every query, whether or not the client asks for a limit | [§7.1 Queries](../../../specs/dsor/01-model.md#71-queries) | `test/invoice-list.test.ts` and `test/invoice-list.db.test.ts`: no limit, a limit of a million, 3, 10, and 11 (C1), and the cursor walked to the end (C3). `test/result-size.test.ts`: rows cut by bytes, a result over 64 KiB refused, exactly 64 KiB answered, one byte more refused, bytes not characters (C2) |
-
-Also advanced, first met in earlier steps: DSOR-TEN-02b, the suite checks a list by its
-rows, from both companies, asked with its example and bare (C5,
-`test/cross-tenant-lists.test.ts`), though a list takes no URI to send it ("What the
-specification asks", point 4). DSOR-TEN-01b, the list's own SQL without row-level
-security (C7, `test/invoice-list.db.test.ts`). DSOR-IDN-03b, another company's id as a
-cursor (C3). DSOR-EXE-02, one record for each page (C6, `test/invoice-list.db.test.ts`),
-and for a result refused for its size (`test/result-size.test.ts`).
+| DSOR-CLS-01 | A field with no declared classification is `CONFIDENTIAL` | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
+| DSOR-CLS-02a | For agents, fields above their clearance are withheld before the response leaves | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_, the clearance half |
+| DSOR-CLS-02b | A response with withheld fields lists the redactions | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
+| DSOR-CLS-03 | Every query response carries the highest classification among its fields | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
+| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
 
 ## Next
 
-Step 14 · Classification and masking: each field gets a sensitivity label, and a field
-above the caller's clearance, such as an invoice's `amount` for the agent, is hidden
-before the answer leaves, with a list of what was hidden.
+Step 15 · Freshness labels: every answer says how old the data behind it is.
