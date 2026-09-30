@@ -85,9 +85,10 @@ rest.
 
 **Not the outcome of this step.** Stopping a slow read of everything. An agent that
 follows the cursor page after page can still read every invoice, one call at a time. Each
-call is recorded, so it is visible. But no step in the map (the list of all steps, in
-`../readme.md`) counts calls or slows them down (see "Left open"). Also not the outcome:
-filters and sorting chosen by the caller.
+call is recorded, so it is visible. The specification's answer is a row budget: a limit
+on the rows one agent may read over a time window (DSOR-CLS-04b, an L2 rule). No step in
+the map (the list of all steps, in `../readme.md`) builds it yet (see "Left open"). Also
+not the outcome: filters and sorting chosen by the caller.
 
 **The success signals**, each a test that fails if this step's code is deleted:
 
@@ -264,9 +265,12 @@ an allowed caller, through a large `limit`, a forged cursor, or a loop.
 ### Left open, and not this step's idea
 
 - **Stopping a slow read of everything.** Each call is bounded, but a caller can call
-  again and again.
-  §28 has `RATE_LIMITED`, and no step in the map counts calls. Step 25's emergency brake
-  can stop an agent by hand. Recorded as a gap in the map.
+  again and again. §19.2 answers it with row budgets: DSoR MUST enforce budgets on rows
+  returned per agent principal and per delegation over a time window (DSOR-CLS-04b), and a
+  budget MUST NOT be keyed on an identifier the caller can mint (DSOR-CLS-04c). Both are
+  L2 rules, and no step in the map names them. Found after the build, on 2026-10-01: this
+  line first said only that §28 has `RATE_LIMITED`. Step 25's emergency brake can stop an
+  agent by hand. The missing step is proposed in `../mj_notes.md`, for a maintainer.
 - **The page size and result size in the contract**, per operation, instead of in code.
   The contract schema has no field for them.
 - **Filters and sorting** chosen by the caller.
@@ -510,7 +514,9 @@ The learner's predictions, and what happened:
 4. A row count misses one huge row. A size in bytes catches it, whatever the rows hold.
    And the byte cap alone would let a million tiny rows through.
 5. Yes, a page at a time, following the cursor. Each page is a separate call with its own
-   record, so reading everything is slow and visible. Nothing in this step stops it.
+   record, so reading everything is slow and visible. Nothing in this step stops it. The
+   specification's answer is a row budget per agent over a time window (DSOR-CLS-04b), an
+   L2 rule that no step builds yet.
 
 </details>
 
@@ -590,9 +596,10 @@ test that fails on it:
 - **Nothing limits the size of a whole request.** The cursor is capped at 64
   characters, and `limit` is a number, but a request's size in general is not this
   step's idea.
-- **A slow read of everything is still possible,** as "Not the outcome" says. The review's attack read
-  `org_456`'s twelve invoices in two calls, or in twelve calls of one row, each call
-  recorded. Nothing counts them.
+- **A slow read of everything is still possible,** as "Not the outcome" says. The
+  review's attack read `org_456`'s twelve invoices in two calls, or in twelve calls of
+  one row, each call recorded. Nothing counts them yet: that is DSOR-CLS-04b's row
+  budget.
 
 **What the predictions showed.** Four times a test passed before its code: C4's 1.5 and
 `"10"`, C2's "exactly 64 KiB is answered", the cursor of 64 characters, and step 12's
