@@ -71,7 +71,10 @@ checklist refuses every foreign URI before any operation's code runs. The learne
 three changes. The same-company call's answer is searched for another company's data
 (claim C8). The suite works in both companies, `org_456` and `org_789` (decision 9). And
 it takes the call function as an argument, so a test can hand it a fake DSoR (decision
-10). The analogy changed too, from a hotel inspector to the bank's mystery shopper.
+10). The analogy changed too, from a hotel inspector to the bank's mystery shopper. The
+mutation sweep, which changed the code in 103 small ways, then showed that an example
+naming an invoice its company lacks made the suite prove less, silently. So a query's
+same-company call must now answer with data (decision 8).
 
 ### The intent and the outcome
 
@@ -94,8 +97,9 @@ the bank's mystery shopper.
    `firm-ap-fte`, who belongs to both, attacks in each direction.
 4. Before its attacks, each caller sends the example unchanged, in its own company: a
    **same-company call**. Its answer is not `TENANT_MISMATCH`, so the refusals come from
-   the company that changed. And its answer holds nothing of another company: no
-   `tenant_id` and no URI of another company.
+   the company that changed. A query's same-company call is answered with data, so the
+   example names a thing that exists, in both companies. And its answer holds nothing of
+   another company: no `tenant_id` and no URI of another company.
 5. Nothing is skipped. These turn the suite red: an operation with no example, an
    example with no URI of its company, an example that leaves out a field its input
    schema lists, and an operation that nobody in the company may call.
@@ -163,7 +167,7 @@ Checked on 2026-09-30:
 | DSOR-TEN-02b | **C4.** Nothing is skipped: every gap in an example, or no caller allowed, is a finding | A registry with each gap planted gives each finding |
 | DSOR-TEN-02b | **C5.** The suite notices an operation that takes a bare id | The planted `invoice.peek { id }` gives a finding |
 | DSOR-EXE-02 | **C6.** Every attack leaves its record in the caller's company, with its operation, result, and reason | One record per attack, in the company it worked in, and none in the other |
-| DSOR-TEN-02b | **C7.** The refusal is for the company, and for nothing else: the same-company call is not answered `TENANT_MISMATCH` | A planted operation that refuses everything as foreign gives a finding |
+| DSOR-TEN-02b | **C7.** The refusal is for the company, and for nothing else: the same-company call is not answered `TENANT_MISMATCH`, and a query's is answered with data | A planted operation that refuses everything as foreign, and a query whose example names a missing invoice, each give findings |
 | DSOR-IDN-03b | **C8.** An operation's own code answers a same-company call with nothing of another company | The planted `invoice.dump`, `invoice.theirs`, and `invoice.cached` each give a finding |
 
 ### Decisions the specification leaves to us
@@ -216,12 +220,17 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    projects. *Downside:* the map's "fresh branch" is not done, and the branch's log grows
    with every run.
 8. **Each attacker first sends the example unchanged, in its own company: a
-   same-company call.** Its answer must not be `TENANT_MISMATCH` (C7). If it holds data,
+   same-company call.** Its answer must not be `TENANT_MISMATCH` (C7). For a query, it
+   must be data: then the example names a thing its company has, and, moved to the other
+   company with the same id, a thing that company has too. So the first way of the swap
+   really names something that exists. If it holds data,
    the data may hold no `tenant_id` and no URI of another company (C8). This is the only
    request that reaches an operation's code, so it is where the code's own mistakes
    show. *Downside:* one more call for each operation and caller. It sees only what the
    example asks for. And it knows two signs of a company, a `tenant_id` field and a URI:
-   data that names a company another way passes.
+   data that names a company another way passes. And a query's example must name a thing
+   both companies hold, so the stored data must have one. A command is refused before its
+   code runs until step 22, so its same-company call cannot answer with data yet.
 9. **The suite works in both companies:** first in `org_456`, then in `org_789`. For
    `org_789`, the example's `org_456` URIs are rewritten to `org_789`, and the swaps go
    to `org_456`. So `firm-ap-fte`, who belongs to both, attacks each company from the
@@ -267,7 +276,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   attack made in it: `DENY`, `TENANT_MISMATCH`, the operation, and the reason. The other
   company holds none of them.
 - **C7:** a planted operation whose code refuses every request with `TENANT_MISMATCH`
-  gives one finding for each caller, in each company.
+  gives one finding for each caller, in each company. A planted query whose example names
+  `INV-2001`, which only `org_789` has, gives a finding for each caller in `org_456`.
+  One whose example names `INV-9999`, which nobody has, gives one for each caller in both.
+  *Added after the sweep.*
 - **C8:** the planted `invoice.dump`, which answers with every company's invoices,
   `invoice.theirs`, which answers with the other company's, and `invoice.cached`, which
   keeps invoices in a cache keyed by id alone, each give findings. The data search,
@@ -314,9 +326,10 @@ they break.
   like `INV-` and digits refuses `NOPE` at line ⑥, and the suite calls that a finding.
   The easy way to green is to loosen the schema, which is wrong. The example could name
   a missing id of its own.
-- **"The same id" is not checked to exist in `org_789`.** It does for `INV-1008`. For a
-  vendor or a payment, both `org_789` ways may name nothing, and the comparison of the
-  three answers then proves less.
+- **"The same id" is checked to exist for queries only.** A query's same-company call must
+  answer with data in both companies (decision 8). A command's cannot yet, so for a
+  command the first way of the swap may name nothing, and the comparison of the three
+  answers then proves less. Step 22, which gives commands code, can close this.
 
 ## Before you build: set up Neon
 
