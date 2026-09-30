@@ -10,7 +10,16 @@ import { permissionsOf } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import { readContracts, type ContractSource, type Registry } from "../src/registry.ts";
-import { HOMES, WRITTEN_IN, foreignIn, movedTo, swaps, waysFrom } from "./companies.ts";
+import {
+  HOMES,
+  WRITTEN_IN,
+  foreignIn,
+  isPage,
+  movedTo,
+  pageProblem,
+  swaps,
+  waysFrom,
+} from "./companies.ts";
 import { withoutRequestId } from "./helpers.ts";
 
 /** A principal the suite attacks as: its id, and the login token DSoR gave it. */
@@ -101,7 +110,16 @@ export async function crossTenantSuite(
   for (const operation of registry.contracts.keys()) {
     // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
     // one when every test is green (step 12's README, outcome 5). Every gap is named.
-    const example = exampleOf(registry, operation, examples, report.findings);
+    let example = exampleOf(registry, operation, examples, report.findings);
+    // NEW IN STEP 13: an example with no URI of org_456 has nothing to swap. It is kept
+    // only when the operation answers with a page, whose rows are checked instead. If not,
+    // it is step 12's finding, word for word (step 13's README, decision 6).
+    if (example !== undefined && swaps(example, WRITTEN_IN).length === 0) {
+      if (!(await answersWithPage(registry, log, send, operation, example))) {
+        report.findings.push(`${operation}: no URI of ${WRITTEN_IN} in its example`);
+        example = undefined;
+      }
+    }
     let everywhere = example !== undefined;
     for (const home of HOMES) {
       const attackers = attackersOf(registry, operation, home);
@@ -161,6 +179,12 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
     const said = "its same-company call answered with another company's data";
     if (what !== undefined) report.findings.push(`${who}: ${said}: ${what}`);
   }
+  // NEW IN STEP 13: a list has no URI to swap. Every item of its page must carry this
+  // company instead (step 13's README, decision 6). A refusal is a finding above already.
+  if (swaps(own, home).length === 0 && "data" in answer) {
+    const why = pageProblem(answer.data, home);
+    if (why !== undefined) report.findings.push(`${who}: ${why}`);
+  }
   const ways = waysFrom(home);
   for (const swap of swaps(own, home)) {
     const answers: Answer[] = [];
@@ -181,8 +205,9 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
 
 /**
  * The operation's example, or undefined, with a finding that says why there is none to use:
- * no example, one that is not JSON, one that line ⑥ would refuse, or one that holds no URI
- * of org_456 to swap (step 12's README, decision 2).
+ * no example, one that is not JSON, or one that line ⑥ would refuse (step 12's README,
+ * decision 2). One that holds no URI of org_456 is decided by the operation's answer
+ * (step 13's README, decision 6).
  */
 function exampleOf(
   registry: Registry,
@@ -217,8 +242,23 @@ function exampleOf(
     const fields = left.map((field) => JSON.stringify(field)).join(", ");
     return gap(`its example leaves out ${fields}, which its input schema lists`);
   }
-  if (swaps(example, WRITTEN_IN).length === 0) {
-    return gap(`no URI of ${WRITTEN_IN} in its example`);
-  }
   return example;
+}
+
+// NEW IN STEP 13: asked once, as the first caller of org_456 who may call it, with the
+// example as it is (step 13's README, decision 6). With no such caller, nobody can ask, and
+// the answer is no.
+/** Whether the operation answers its example with a page. */
+async function answersWithPage(
+  registry: Registry,
+  log: DecisionLog,
+  send: Send,
+  operation: string,
+  example: unknown,
+): Promise<boolean> {
+  const first = attackersOf(registry, operation, WRITTEN_IN)[0];
+  if (first === undefined) return false;
+  const request = { token: first.token, tenant: WRITTEN_IN };
+  const answer = await send(registry, log, request, operation, example);
+  return "data" in answer && isPage(answer.data);
 }

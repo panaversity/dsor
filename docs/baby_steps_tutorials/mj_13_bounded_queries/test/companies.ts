@@ -105,3 +105,26 @@ export function foreignIn(data: unknown, home: string): string | undefined {
   }
   return undefined;
 }
+
+// NEW IN STEP 13: a list names no single thing, so it has no URI to swap. Its rows are
+// checked instead (step 13's README, decision 6).
+/** Whether this is a page of a list: an object whose items are a list. */
+export function isPage(data: unknown): boolean {
+  return typeof data === "object" && data !== null && Array.isArray((data as { items?: unknown }).items);
+}
+
+/** Why this page is a finding, or undefined when every item carries this company. */
+export function pageProblem(data: unknown, home: string): string | undefined {
+  if (!isPage(data)) return "its answer is not a page";
+  const { items } = data as { items: unknown[] };
+  // An empty page checks nothing. A list with no company filter would pass it.
+  if (items.length === 0) return "its answer is a page with no items, so it checks nothing";
+  for (const [i, item] of items.entries()) {
+    const tenant = (item as { tenant_id?: unknown } | null)?.tenant_id;
+    if (tenant === undefined) return `items[${i}] has no tenant_id, so its company cannot be checked`;
+    if (tenant !== home) {
+      return `items[${i}] carries tenant_id ${JSON.stringify(tenant)}, not ${JSON.stringify(home)}`;
+    }
+  }
+  return undefined;
+}
