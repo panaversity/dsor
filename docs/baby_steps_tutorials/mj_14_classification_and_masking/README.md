@@ -50,6 +50,8 @@ any code existed. Every sentence of the specification it relies on was read on
 2026-10-01: §19 and §19.1 (the four labels, DSOR-CLS-01), §19.2 (the model boundary, its
 example of `agent_registration` and `tenant_egress_policy`, DSOR-CLS-02a to DSOR-CLS-05),
 and §29's DSOR-AUD-05a. If the code finds the plan wrong, the plan changes here first.
+The same day, before the first test, it was checked against the specification's schemas,
+and five things changed. "Think it through" lists them.
 
 ### The intent and the outcome
 
@@ -83,7 +85,7 @@ L2). Minimum group sizes for aggregations (DSOR-CLS-04a).
 - The agent's `INV-1008` has no `amount`, and its `redactions` name `amount` and
   `open_amount`.
 - A field added to an invoice with no label is left out of the agent's answer.
-- The agent's answer carries `classification: "INTERNAL"`.
+- The agent's answer carries `classification: "internal"`.
 
 **A guard, not a signal.** `cfo_100` gets the amount. That test passes with or without
 this step's code. It proves the masking does not reach too far: an approver in step 29
@@ -107,16 +109,27 @@ Checked on 2026-10-01:
    the specification.
 5. **DSOR-CLS-05 asks for the principal, actor chain, operation, resource scope, and row
    count.** The actor chain is the caller alone until step 18.
+6. **The schemas say how these are written.** In JSON the four labels are lower case:
+   `"public"`, `"internal"`, `"confidential"`, `"restricted"`
+   (`common.schema.json#/$defs/classification`). The result envelope, the specification's
+   shape for an answer, has `classification` and `redactions`, and each redaction is an
+   object: `{ field, reason, treatment }`. The audit record has `resources`, a list of
+   URIs, and `row_count`. It also has a kind of record, `classified_read`, that this step
+   does not use (decision 7).
+7. **A refusal carries no label.** The error envelope's schema allows no field besides
+   its own, and `classification` is not one of them. This step reads DSOR-CLS-03's "every
+   query response" as every answer that carries data. Recorded as a question for the
+   specification.
 
 ### What each rule really says
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
 | DSOR-CLS-01 | **C1.** A field with no label is `CONFIDENTIAL` | A field added to the answer, with no label, is left out for an `INTERNAL` agent, and makes a human's answer `CONFIDENTIAL` |
-| DSOR-CLS-02a | **C2.** For an agent, every field above its clearance is left out before the answer leaves | `invoice.get` and `invoice.list` as `accounts-payable-fte` and as `firm-ap-fte` have no `amount` and no `open_amount`, on memory and on the database |
-| DSOR-CLS-02b | **C3.** An answer from which fields were left out lists them | `redactions` names each field once, as a path: `amount` for `invoice.get`, `items[].amount` for `invoice.list` |
-| DSOR-CLS-03 | **C4.** Every query's answer carries the highest label among the fields it contains | The agent's answer: `INTERNAL`. A human's: `CONFIDENTIAL`. An empty page: `PUBLIC` |
-| DSOR-CLS-05 | **C5.** A read that returns `CONFIDENTIAL` or `RESTRICTED` data is recorded with who, what, and how many | The human's read of `INV-1008` leaves a record with its principal, the operation, the invoice's URI, one row, and `CONFIDENTIAL` |
+| DSOR-CLS-02a | **C2.** For an agent, every field above its clearance is left out before the answer leaves | `invoice.get` and `invoice.list` as `accounts-payable-fte` and as `firm-ap-fte` have no `amount` and no `open_amount`, on memory and on the database. The page keeps its `next_cursor` |
+| DSOR-CLS-02b | **C3.** An answer from which fields were left out lists them | `redactions` holds one entry for each field, `{ field, reason: "clearance", treatment: "omitted" }`, with the field as a path: `amount` for `invoice.get`, `items[].amount` for `invoice.list` |
+| DSOR-CLS-03 | **C4.** Every query's answer carries the highest label among the fields it contains | The agent's answer: `"internal"`. A human's: `"confidential"`. An empty page: `"public"` |
+| DSOR-CLS-05 | **C5.** A read that returns `CONFIDENTIAL` or `RESTRICTED` data is recorded with who, what, and how many | The human's read of `INV-1008` leaves a record with its principal, the operation, `resources` holding the invoice's URI, `row_count: 1`, and the label `"confidential"` |
 | (our decision) | **C6.** Masking is for agents only | `cfo_100` gets every field, with the same values as before this step |
 
 ### Decisions the specification leaves to us
@@ -124,19 +137,24 @@ Checked on 2026-10-01:
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
 1. **The labels live in a file, `classifications.json`,** one entry for each kind of
-   record, and one label for each field:
+   answer, and one label for each field, written in lower case as the schema writes them:
 
    ```json
-   { "Invoice": { "id": "INTERNAL", "tenant_id": "INTERNAL", "vendor_id": "INTERNAL",
-                  "status": "INTERNAL", "amount": "CONFIDENTIAL", "open_amount": "CONFIDENTIAL" } }
+   { "Invoice": { "id": "internal", "tenant_id": "internal", "vendor_id": "internal",
+                  "status": "internal", "amount": "confidential", "open_amount": "confidential" },
+     "InvoicePage": { "items": "Invoice[]", "next_cursor": "internal", "capped": "public" } }
    ```
 
-   Start-up checks it as it checks `roles.json`: a label that is not one of the four, or a
-   key written twice, stops the program. Each contract's output names its kind:
-   `invoice.get` returns an `Invoice`, and `invoice.list` returns a page whose items are
-   `Invoice`. *Downside:* the labels sit apart from the input and output schemas, so a new
-   field needs a line in two places. Missing the second is safe: the field is
-   `CONFIDENTIAL`.
+   Each contract's output already names its kind: `invoice.get` returns an `Invoice`, and
+   `invoice.list` an `InvoicePage`. `"Invoice[]"` means a list whose every item is an
+   `Invoice`. The page's own fields have labels too. `next_cursor` is an invoice's id, so
+   it is `internal`, like `id`. `capped` holds the caller's own number and DSoR's
+   maximum, so it is `public`. Start-up checks the file as it checks `roles.json`: a value
+   that is neither one of the four labels nor a list of a kind the file has, or a key
+   written twice, stops the program. *Downside:* the labels sit apart from the input and
+   output schemas, so a new field needs a line in two places. Missing the second is safe:
+   the field is `confidential`. And a value in the file is either a label or a list, so
+   start-up checks two kinds of value.
 2. **Every agent has a clearance, in DSoR's table of principals:** `accounts-payable-fte`
    and `firm-ap-fte` have `INTERNAL`. An agent with no clearance written down has
    `PUBLIC`, the lowest, never a default that shows more. Humans have none, because
@@ -148,10 +166,12 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    string, and code that trusted it would read a wrong value. *Downside:* the invoice an
    agent gets no longer has the shape of an invoice, and the output schema must allow the
    fields to be missing.
-4. **The answer grows two fields beside `data`:** `classification`, always, and
-   `redactions`, a sorted list of paths, only when something was left out. A path is the
-   field's name, with `items[].` in front for a page's items. *Downside:* the query
-   answer's shape, step 04's decision, changes again.
+4. **The answer grows two fields beside `data`, with the names and shapes of the
+   result envelope:** `classification`, always, and `redactions`, only when something
+   was left out. Each redaction is `{ field, reason: "clearance", treatment: "omitted" }`,
+   in order of `field`. A field is written as a path: its name, with `items[].` in front
+   for a page's items. *Downside:* the query answer's shape, step 04's decision, changes
+   again, and is still not a result envelope, because it has no `outcome`.
 5. **Masking is for agent principals, and is applied right after line ⑨,** before the
    64 KiB check of step 13 and before line ⑪ records the decision, so the size measured
    and the answer given are what leaves. Humans are not masked. *Downside:* a human who
@@ -161,34 +181,46 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    the tenant's policy bars from a kind of model provider. It needs each agent's model
    boundary and a policy per company. *Downside:* a `RESTRICTED` field goes to an agent
    whose clearance is `RESTRICTED`, whatever the company's policy would say.
-7. **The record of a read grows:** `read: { classification, rows, scope }`, where `scope`
-   is the list of URIs returned. It is written for every read, and DSOR-CLS-05 needs it
-   for `CONFIDENTIAL` and above. It holds URIs and counts, never the values read, as
-   DSOR-AUD-05a asks. *Downside:* one more column, `read`, in `dsor.audit`, by migration
-   `007`, and `dsor_runtime`'s list of `INSERT` columns grows by one word.
+7. **The record of a read uses the audit record's own fields:** `resources`, the
+   canonical URIs of the records the answer returned, and `row_count`, how many. The
+   answer's label goes under `extensions`, as `"org.panaversity.steps": { classification }`,
+   because the audit record has no field for it. Step 10 kept a claimed company there the
+   same way. All three are written for every read that returns data, and DSOR-CLS-05
+   needs them for `confidential` and above. They hold URIs, a count, and a label, never
+   the values read, as DSOR-AUD-05a asks. The read stays part of the one decision record
+   each call leaves (step 08), so the schema's kind `classified_read` is not used.
+   *Downside:* two more columns, `resources` and `row_count`, in `dsor.audit`, by
+   migration `007`, and `dsor_runtime`'s list of `INSERT` columns grows by two words. A
+   reader who looks for classified reads looks inside `extensions`.
 
 ### The tests, by claim
 
-- **C1:** a planted field, `vendor_bank_account`, added to the answer of a fake
-  `invoice.get` with no label: left out for the agent and listed, and it makes the
-  human's answer `CONFIDENTIAL`.
+- **C1:** a planted field, `vendor_bank_account`, with no label, in the answer of a fake
+  `invoice.get` that returns only `id`, `status`, and the planted field: left out for the
+  agent and listed, and it makes the human's answer `"confidential"`. The fake answer has
+  no `amount`, so only the planted field can make it `confidential`. *Changed by the
+  design check:* with `amount` in it, the human's answer is `confidential` with or
+  without DSOR-CLS-01's code.
 - **C2:** as each agent, on memory and on the database: `invoice.get` for `INV-1008` has
   no `amount` and no `open_amount`, and every other field is as before. `invoice.list`:
-  no item has either. A planted agent with no clearance written down gets `PUBLIC`: every
-  field of an invoice is withheld and listed. *Added before any code, 2026-10-01:* the
-  learner's prediction for break Y6 showed that without it, nothing would catch a missing
-  clearance treated as a high one.
-- **C3:** the agent's `invoice.get`: `redactions: ["amount", "open_amount"]`.
-  `invoice.list`: `["items[].amount", "items[].open_amount"]`, each once. The human's
-  answers: no `redactions` key.
-- **C4:** the agent's `INV-1008`: `INTERNAL`. The human's: `CONFIDENTIAL`. An empty page:
-  `PUBLIC`.
+  no item has either, and the page keeps its `next_cursor`. A planted agent with no
+  clearance written down is treated as `public`: every field of an invoice is withheld
+  and listed. *Added before any code, 2026-10-01:* the learner's prediction for break Y6
+  showed that without it, nothing would catch a missing clearance treated as a high one.
+- **C3:** the agent's `invoice.get`: `redactions` names `amount`, then `open_amount`, each
+  with `reason: "clearance"` and `treatment: "omitted"`. `invoice.list`:
+  `items[].amount` and `items[].open_amount`, each once. Both pass the result envelope's
+  schema for `redactions`. The human's answers: no `redactions` key.
+- **C4:** the agent's `INV-1008`: `"internal"`. The human's: `"confidential"`. An empty
+  page: `"public"`. Each passes the result envelope's schema for `classification`.
 - **C5:** on the database: the human's `invoice.get` leaves a record with
-  `read: { classification: "CONFIDENTIAL", rows: 1, scope: ["dsor://org_456/invoice/INV-1008"] }`.
+  `resources: ["dsor://org_456/invoice/INV-1008"]`, `row_count: 1`, and
+  `"confidential"` under `extensions`.
 - **C6:** `cfo_100` and `user_123` get `amount` and `open_amount` with the values of step
   13.
-- **Start-up:** `classifications.json` with the label `SECRET`, or a key written twice,
-  stops the program and names the problem.
+- **Start-up:** `classifications.json` with the label `secret`, the label `INTERNAL` in
+  capitals, a list of a kind the file does not have, or a key written twice, stops the
+  program and names the problem.
 
 ### Breaks we will try, and what we expect
 
@@ -200,7 +232,7 @@ Run against the finished step. The learner's predictions were recorded before an
 | Y2 | A field with no label is `PUBLIC` | only C1's planted field | only the planted field test |
 | Y3 | `redactions` is left out | C3, and the map's "done when" | not asked; the expectation stands |
 | Y4 | Only the top level is masked, not a page's items | C2's and C3's `invoice.list` tests | the `invoice.list` tests |
-| Y5 | The label is taken from the whole record, before masking | C4: the agent's answer says `CONFIDENTIAL` | C4 |
+| Y5 | The label is taken from the whole record, before masking | C4: the agent's answer says `"confidential"` | C4 |
 | Y6 | An agent with no clearance gets `CONFIDENTIAL` | only C2's planted agent with no clearance | only a planted agent (and there was none: C2 gained one) |
 
 The review also attacks the step with the threat that is its reason: data that crosses
@@ -274,7 +306,30 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+**Changed by the design check, before the first test (2026-10-01).** The design was
+checked against the specification's schemas, not only its sentences:
+
+- **The labels are lower case in JSON** (decision 1). The copied `common.schema.json`
+  writes them `"public"` to `"restricted"`, and §19.2's example writes
+  `clearance: confidential`. The design had `"INTERNAL"`, which the schema refuses.
+- **A redaction is an object, not a path** (decision 4). The result envelope's schema
+  requires `field`, `reason`, and `treatment` in each one. The design had a list of
+  paths, a shape of its own for a field the specification already shapes.
+- **The page's own fields needed labels** (decision 1). With none, `next_cursor` would be
+  `confidential` under DSOR-CLS-01, and an agent could never read page 2 of
+  `invoice.list`. The learner chose an `InvoicePage` entry in the same file, over labels
+  written in code.
+- **The record of a read uses the audit record's names** (decision 7). The design had
+  `read: { classification, rows, scope }`. The audit record's schema already has
+  `resources` and `row_count`, and step 08's decision 5 uses the record's own names where
+  the step can fill them honestly. The learner chose these, over a second record of the
+  kind `classified_read`.
+- **C1's human half could not fail.** `amount` alone makes a human's `INV-1008`
+  `confidential`, so a planted field beside it proved nothing. The fake answer now holds
+  no `amount`.
+
+_The rest is written after the review, with the result of every break in the table
+above._
 
 ## The rules this step meets
 
