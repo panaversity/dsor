@@ -368,7 +368,9 @@ describe("C4: a company in the arguments that is not the active one is refused",
   // Found by the review: every test above works in the caller's first company, so a check
   // against the first membership, not the active company, passed them all.
   it("DSOR-SRC-02b: the firm's agent in org_789 naming org_456 in its arguments is refused", async () => {
-    const input = { invoice: "dsor://org_456/invoice/INV-1008", tenant: "org_456" };
+    // Its own company's URI, so the tenant field is the one foreign thing. Found by step
+    // 12's review: step 12's change to URIs had put org_456's here.
+    const input = { invoice: "dsor://org_789/invoice/INV-1008", tenant: "org_456" };
     expect(await call(registry, log, FIRM_IN_789, "invoice.get", input)).toStrictEqual(
       refused("TENANT_MISMATCH", otherTenant("tenant"), THE_FIRM),
     );
@@ -461,15 +463,18 @@ describe("C6: every invoice and every record carries its company", () => {
     expect(invoiceUri(INV_1008_OF_789 as never)).toBe("dsor://org_789/invoice/INV-1008");
   });
 
+  // Each reads its own company's INV-1008, and succeeds. Found by step 12's review: step
+  // 12's change to URIs had sent org_456's URI from org_789, a refusal, and the test
+  // still passed, because a refusal after line ② names the company too.
   it.each([
     ["the agent in org_456", AGENT, "org_456"],
     ["the firm's agent in org_789", FIRM_IN_789, "org_789"],
   ])("DSOR-TEN-01a: a call by %s is recorded with its company", async (_who, request, tenant) => {
     const fresh = createLog();
     await call(registry, fresh, request, "invoice.get", {
-      invoice: "dsor://org_456/invoice/INV-1008",
+      invoice: `dsor://${tenant}/invoice/INV-1008`,
     });
-    expect(await fresh.records()).toMatchObject([{ tenant }]);
+    expect(await fresh.records()).toMatchObject([{ tenant, result: "ok" }]);
   });
 
   it("DSOR-TEN-01a: a mismatch is recorded with the active company, not the one it named", async () => {
