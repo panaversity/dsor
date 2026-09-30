@@ -135,17 +135,25 @@ export async function crossTenantSuite(
   for (const operation of registry.contracts.keys()) {
     // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
     // one in a green run (step 12's README, outcome 4). Both gaps are named.
-    const found = swapsOf(registry, operation, examples, report.findings);
+    const plan = planOf(registry, operation, examples, report.findings);
     const attackers = attackersOf(registry, operation);
     if (attackers.length === 0) {
       const permission = String(permissionOf(registry, operation));
       const why = `nobody in ${HOME} holds ${permission}, so nobody can attack it`;
       report.findings.push(`${operation}: ${why}`);
     }
-    if (found === undefined || attackers.length === 0) continue;
+    if (plan === undefined || attackers.length === 0) continue;
     for (const attacker of attackers) {
       const request = { token: attacker.token, tenant: HOME };
-      for (const swap of found) {
+      // The control call: the example unchanged, in its own company. It must not be refused
+      // as foreign. Then a TENANT_MISMATCH below can only come from the company that changed
+      // (step 12's README, decision 8).
+      const control = await call(registry, log, request, operation, plan.example);
+      if (!("data" in control) && control.code === "TENANT_MISMATCH") {
+        const why = "its own company's example is answered TENANT_MISMATCH";
+        report.findings.push(`${operation} as ${attacker.id}: ${why}`);
+      }
+      for (const swap of plan.swaps) {
         const answers: Answer[] = [];
         for (const [i, input] of swap.requests.entries()) {
           // One at a time, so the records are written in the order of the attacks.
@@ -169,16 +177,16 @@ export async function crossTenantSuite(
 }
 
 /**
- * The swaps of the operation's example, or undefined, with a finding that says why there are
+ * The operation's example and its swaps, or undefined, with a finding that says why there are
  * none: no example, one that is not JSON, one that line ⑥ would refuse, or one that holds no
  * URI of org_456 to swap (step 12's README, decision 2).
  */
-function swapsOf(
+function planOf(
   registry: Registry,
   operation: string,
   examples: ContractSource[],
   findings: string[],
-): Swap[] | undefined {
+): { example: unknown; swaps: Swap[] } | undefined {
   const gap = (why: string): undefined => {
     findings.push(`${operation}: ${why}`);
     return undefined;
@@ -199,5 +207,5 @@ function swapsOf(
     return gap("its example does not pass its input schema");
   const found = swaps(example);
   if (found.length === 0) return gap(`no URI of ${HOME} in its example`);
-  return found;
+  return { example, swaps: found };
 }
