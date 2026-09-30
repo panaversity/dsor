@@ -159,8 +159,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    is a page, `{ items: [...] }`. The suite asks once, as the first caller of `org_456`
    who may call it. If that answer is a page, the suite then calls it as every such
    caller of both companies, and every item must carry `tenant_id` equal to the caller's
-   company. An item with no `tenant_id` is a finding, because it cannot be checked. If
-   that first answer is not a page, the operation gets step 12's finding, once, word for
+   company. An item with no `tenant_id` is a finding, because it cannot be checked. A
+   page with no items is a finding too, because it checks nothing: a list with no company
+   filter at all would pass it. If that first answer is not a page, the operation gets step 12's finding, once, word for
    word, and is not called again. *Downside:* the suite now trusts an operation that says it is a list to
    return items that carry their company. A single-thing operation dressed as a
    one-item page would be checked by its rows, not by a swap.
@@ -185,7 +186,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   `VALIDATION_FAILED`.
 - **C5:** the suite over the shipped registry gives no findings and counts 3 operations.
   Planted: a list that behaves gives no finding. A list that returns one `org_789` row to
-  `org_456`, and a list whose item has no `tenant_id`, each give their finding. A
+  `org_456`, a list whose items have no `tenant_id`, and a list that answers an empty
+  page, each give their finding. A
   single-thing operation with no URI whose answer is not a page is step 12's
   `invoice.peek` test, kept word for word.
 - **C6:** in the database tier, three pages leave three records in the caller's company.
@@ -286,6 +288,9 @@ _To be written when the code exists._
   builds the data and cannot see the correlation that the pipeline adds after it.
 - **A page always holds at least one row** (decision 3), and the suite asks a no-URI
   operation once before it attacks it (decision 6).
+- **An empty page is a finding** (decision 6). Found while writing C5's check: an example
+  whose cursor sits past the end gets `{ items: [] }` from every list, a leaky one too.
+  Step 12 closed the same hole for queries by asking for data.
 
 _The rest is written after the review, with the result of every break in the table above._
 
