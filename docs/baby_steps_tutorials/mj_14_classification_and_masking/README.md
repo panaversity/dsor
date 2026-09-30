@@ -282,19 +282,191 @@ itself, this way:
 
 ## What changed since step 13
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `classifications.json` | **New.** Each kind of answer, `Invoice` and `InvoicePage`, with a label for each field (decision 1) |
+| `src/labels.ts` | **New.** The four labels, lowest first, reading and checking `classifications.json`, and `labelOf`, which gives `confidential` to a field with no line (decision 1, C1) |
+| `src/masking.ts` | **New.** `clearanceOf`, and `show`, which walks an answer by its kind: it leaves out what is above the clearance, lists it, labels the answer, and names each row by its URI (C2 to C5) |
+| `migrations/007_read_records.sql` | **New.** The columns `resources` and `row_count` in `dsor.audit`, and two more `INSERT` columns for `dsor_runtime` (decision 7) |
+| `schemas/result-envelope.schema.json` | **New.** The specification's own, copied byte for byte. The tests check `classification` and `redactions` against it (decision 4) |
+| `src/principals.ts` | Both agents have the clearance `internal` (decision 2) |
+| `src/pipeline.ts` | Right after line ⑨, `show`, before step 13's 64 KiB check. The answer gains `classification` and, when something was left out, `redactions`. What the read returned goes to line ⑪'s record |
+| `src/envelope.ts`, `src/log.ts`, `src/postgres.ts` | A query's answer gains the two fields. A decision gains `resources`, `row_count`, and the label under `extensions`, and the database log writes and reads them |
+| `src/registry.ts`, `src/main.ts` | Start-up checks `classifications.json` with the contracts. A file of your own can be named as the fifth argument. `pnpm start` shows `cfo_100` reading `INV-1008` whole, after the agent |
+| `test/classifications-file.test.ts` | **New.** Decision 1: the shipped labels, and every way the file can be wrong |
+| `test/unlabelled.test.ts` | **New.** C1 |
+| `test/masking.test.ts`, `test/masking.db.test.ts` | **New.** C2, on memory and on the database |
+| `test/redactions.test.ts`, `test/answer-label.test.ts` | **New.** C3 and C4 |
+| `test/read-record.test.ts`, `test/read-record.db.test.ts` | **New.** C5 |
+| `test/humans-unmasked.test.ts` | **New.** C6, the guard |
+| `test/helpers.ts` | `runAs`, a fake operation called by anyone, with an output kind of its choice. The agent's `INV-1008` typed out without amounts, and its redactions |
+| every other test | C2 broke 30 older unit tests and 4 database tests, C3 broke 4, C4 broke 8, and C5 broke 9 unit tests and 1 database test. A test about money now asks as a person, such as `cfo_100`. A test about which company or which caller keeps the agent, and expects the invoice without amounts, with its redactions and its label. A planted list names `InvoicePage` as its output. Step 13's size tests ask as `user_123`, and their made-up rows carry a company. The principal table has clearances. The program's log test counts 11 records of 14 calls |
+
+Every other file is step 13's, without its `NEW IN STEP` markers. No new dependency.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_13_bounded_queries/src mj_14_classification_and_masking/src
+git diff --no-index mj_13_bounded_queries/test mj_14_classification_and_masking/test
+```
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # runs migration 007, and sets dsor_runtime's password again
+pnpm check        # typecheck and the unit tests
+pnpm test:db      # the database tests
+pnpm start        # the program, against the database
+```
+
+The program's first two answers, on 2026-10-01. First the agent reads `INV-1008`, then
+`cfo_100` reads the same invoice:
+
+```text
+{
+  data: {
+    tenant_id: 'org_456',
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    status: 'issued'
+  },
+  classification: 'internal',
+  redactions: [
+    { field: 'amount', reason: 'clearance', treatment: 'omitted' },
+    { field: 'open_amount', reason: 'clearance', treatment: 'omitted' }
+  ],
+  correlation: {
+    request_id: 'req_70f8701e-52d7-4f3d-8620-40ee8e9ad9eb',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+{
+  tenant_id: 'org_456',
+  id: 'INV-1008',
+  vendor_id: 'VENDOR-44',
+  amount: { value: '31400.00', currency: 'USD' },
+  open_amount: { value: '31400.00', currency: 'USD' },
+  status: 'issued'
+}
+```
+
+The agent's answer has no `amount` key at all, says why, and is labelled `internal`,
+because nothing higher is left in it. `cfo_100` sees the 31,400.00 USD. Further down, the
+record of the agent's read:
+
+```text
+{
+  …
+  operation: 'invoice.get@1',
+  authorization: 'ALLOW',
+  result: 'ok',
+  …
+  extensions: { 'org.panaversity.steps': { classification: 'internal' } },
+  resources: [ 'dsor://org_456/invoice/INV-1008' ],
+  row_count: 1
+}
+…
+14 calls answered, so 14 records were written. dsor_runtime reads 11 of them, in org_456 and org_789, and cannot read the other 3
+```
+
+The record names the invoice by its URI, and holds no value that was read.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break of the design's table, performed on 2026-10-01, one at a time, in a copy of
+this folder outside the repository, then put back and compared byte for byte. They ran on
+the unit tests, which run on memory: each break changes what DSoR does with an answer,
+not how it reads the database.
+
+| # | The break | Learner's prediction | Real, before the review |
+| --- | --- | --- | --- |
+| Y1 | People are masked too: a person's clearance is `internal` | not asked. The design expected only C6 | **26 tests**: C6's four, the person's side of C3, C4, and C5, and the older tests that now read money as a person |
+| Y2 | A field with no label is `public` | only the planted field test | 7, and each one plants a field or a kind the file does not have |
+| Y3 | `redactions` is left out of the answer | not asked | 7: C3's four, and three older tests that expect the agent's invoice with its redactions |
+| Y4 | Only the top level is masked, not a page's items | the `invoice.list` tests | 8, every one a page test: C2, C3, C4, and C5 for a page, a page whose item is not a record, and a planted list |
+| Y5 | The label is taken from the whole record, before masking | C4 | 8: C4's three, C5's agent record, and four older tests that compare the agent's whole answer |
+| Y6 | An agent with no clearance gets `confidential` | only a planted agent | **1**: the planted agent, as predicted |
+
+**Y2, the common mistake.** In `src/labels.ts`, make `labelOf` end with `?? "public"`.
+The planted field, a vendor's bank account that nobody wrote in `classifications.json`,
+goes to the agent:
+
+```text
+ FAIL  test/masking.test.ts > C2: for an agent, every field above its clearance is left out > DSOR-CLS-01: a field with no label is left out of the agent's answer
+AssertionError: expected { tenant_id: 'org_456', …(3) } to strictly equal { tenant_id: 'org_456', …(2) }
+
+- Expected
++ Received
+
+  {
+    "id": "INV-1008",
+    "status": "issued",
+    "tenant_id": "org_456",
++   "vendor_bank_account": "PK36SCBL0000001123456702",
+  }
+```
+
+No shipped invoice has such a field, so every test that reads real invoices stays green.
+Only a planted field shows the break. That is why C1's tests plant one.
+
+**Y6, one test alone.** In `src/masking.ts`, make `clearanceOf` give an agent with no
+clearance `confidential`:
+
+```text
+ FAIL  test/masking.test.ts > C2: each agent's clearance > DSOR-CLS-02a: an agent with no clearance written down is treated as public, the lowest
+
+Expected: "public"
+Received: "confidential"
+```
+
+Both agents in the table have a clearance written down, so no call through the pipeline
+can see this break. The learner's prediction for Y6, "only a planted agent", is why that
+test exists: it was added to the design before any code.
+
+**Y1 was expected to be caught only by C6.** It is caught by 26 tests. C2 moved every
+older test that reads money to a person, because an agent no longer gets money. So each
+of those tests now guards the person's side too.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one |
+| 2 | Neon | A branch `step-14` from `step-13`, and `.env` written by a command, never shown ("Before you build"). `pnpm test:db` green before any change |
+| 3 | Check the design | Against every rule sentence and against the schemas: the result envelope, the audit record, and `common.schema.json`. Five changes, listed in "Think it through". The learner chose, and the design changed before any test |
+| 4 | Red | Every new test, written before any code. Two cases the design had not named came up here, and the learner chose. Predict the red run |
+| 5 | Green | One claim at a time: decision 1, C1, C2, C3, C4, C5, C6. Predict how many older tests each claim breaks |
+| 6 | Break it | Y1 to Y6, for real, in a copy |
+| 7 | Review | Two reviewers who have not seen your conversation. One reads and attacks. One breaks the code a line at a time, in a copy with a Neon branch of its own |
+
+The prompt that started this session:
+
+```text
+Set up, then build step 14 in learner mode.
+
+Setup: follow README "Before you build": branch step-14 from step-13 in project
+<your Neon project>; write .env only through commands whose output goes into the file,
+never print, fetch, or read a connection string or password; then pnpm migrate and
+pnpm test:db.
+
+Build: README's design is agreed. If the code proves it wrong, change the design section
+first and tell me. Red tests first, one commit per claim.
+```
+
+The learner's predictions, and what happened:
+
+| Moment | Prediction | Real |
+| --- | --- | --- |
+| The red run: 63 new unit tests, before any code | 0 pass | **10 pass**: C6's four guards, three "no redactions" tests, "a refusal carries no label", and two record tests that expect something to be absent |
+| C2 lands: how many of the 687 passing tests break | 0 | **30**: tests that compare the agent's invoice whole, step 13's size tests, which ran as the agent, planted lists whose contract named an `Invoice`, and the principal table |
+| C4 lands: how many of the 715 passing tests break | 0 | **8**, and two fake answers that no longer typechecked: every test that compares a whole success answer |
+| Y2, Y4, Y5, Y6 | as in "Break it" | right, all four |
 
 ## Check yourself
 
@@ -349,18 +521,41 @@ checked against the specification's schemas, not only its sentences:
   `id` has no URI to record (decision 7). The learner chose to refuse both: the first for
   an agent, the second for everyone.
 
-_The rest is written after the review, with the result of every break in the table
-above._
+**Found while building.**
+
+- **The contract's output kind is read, for the first time.** Step 13 left open that
+  `output.schema` was read by nothing. Now it chooses the labels. So an operation whose
+  contract names the wrong kind is masked by the wrong labels. Three planted operations
+  in older tests named `Invoice` and answered a page. They now name `InvoicePage`.
+- **An agent no longer reads money, so older tests that read money ask as a person.** A
+  test about which company or which caller keeps the agent, and expects the invoice
+  without amounts. That choice is also why break Y1 is caught by 26 tests, not only by
+  C6.
+- **A planted list with no `tenant_id` is now refused by DSoR itself,** before step 12's
+  suite looks at it. Its step 13 test was split in two: one shows the refusal, and one
+  hands the suite a fake DSoR that answers anyway, so the suite's own check keeps a test.
+- **`src/classification.ts` reached 202 lines,** so it became `labels.ts` and
+  `masking.ts`, one idea each. Older files grew past 150 lines by a few lines each:
+  `pipeline.ts` (215), `postgres.ts` (298), `main.ts` (232), `registry.ts` (163), and
+  `envelope.ts` (165). Splitting them is not this step's idea.
+
+_The review's findings are written here when the reviewers report._
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-CLS-01 | A field with no declared classification is `CONFIDENTIAL` | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
-| DSOR-CLS-02a | For agents, fields above their clearance are withheld before the response leaves | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_, the clearance half |
-| DSOR-CLS-02b | A response with withheld fields lists the redactions | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
-| DSOR-CLS-03 | Every query response carries the highest classification among its fields | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
-| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19 Classification and read-side governance](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) | _to be counted_ |
+| DSOR-CLS-01 | A field with no declared classification is `CONFIDENTIAL` | [§19.1 Risk and data classification](../../../specs/dsor/02-security.md#191-risk-and-data-classification) | `test/unlabelled.test.ts`: a field or a kind the file does not name (C1). The planted field: left out of the agent's answer (`test/masking.test.ts`), listed (`test/redactions.test.ts`), and a person's answer made `confidential` (`test/answer-label.test.ts`) |
+| DSOR-CLS-02a | For agents, fields above their clearance are withheld before the response leaves | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/masking.test.ts` and `test/masking.db.test.ts`: both agents' `invoice.get` and `invoice.list`, each clearance, the agent with none, masking before the 64 KiB check, and what is not a record (C2). The clearance half only: the egress policy is not built (decision 6) |
+| DSOR-CLS-02b | A response with withheld fields lists the redactions | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/redactions.test.ts`: each field once, as a path, in the result envelope's shape, and no list when nothing was left out (C3) |
+| DSOR-CLS-03 | Every query response carries the highest classification among its fields | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/answer-label.test.ts`: `internal` for the agent, `confidential` for a person, `public` for an empty page, `restricted` when one field is (C4) |
+| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/read-record.test.ts` and `test/read-record.db.test.ts`: the URIs, the row count, and the label of every read that returns data, nothing for a refusal, and no value read (C5). The actor chain is the caller alone until step 18 |
+
+Also advanced, first met in earlier steps: DSOR-AUD-05a, a record holds URIs, a count,
+and a label, never a value read (`test/read-record.test.ts`). DSOR-EXE-02, the record of a
+read, written before the answer, as every record since step 08. DSOR-TEN-02b, a planted
+list whose items have no company is now refused by DSoR itself
+(`test/cross-tenant-lists.test.ts`).
 
 ## Next
 
