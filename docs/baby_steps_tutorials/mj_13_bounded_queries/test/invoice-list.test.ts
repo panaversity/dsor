@@ -5,7 +5,16 @@
 import { describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, FIRM_IN_789, idsOf, log, registry } from "./helpers.ts";
+import {
+  AGENT,
+  FIRM_IN_789,
+  THE_AGENT,
+  correlationFor,
+  idsOf,
+  log,
+  notValid,
+  registry,
+} from "./helpers.ts";
 
 // org_456's twelve invoices, in order of id, typed out from step 13's README, decision 7.
 const ORG_456 = [
@@ -85,3 +94,20 @@ describe("C1: a page holds at most 10 rows, whatever the caller asks, and says w
   });
 });
 
+// Our decision, not a rule of DSoR: a limit below 1 or not whole cannot be cut down to a
+// page. A large one can, so it passes line ⑥ and is capped (step 13's README, decision 5).
+describe("C4: a limit must be a whole number of at least 1", () => {
+  it.each([
+    ["0", 0, "/limit must be >= 1"],
+    ["-1", -1, "/limit must be >= 1"],
+    ["1.5", 1.5, "/limit must be integer"],
+    ['"10", written as text', "10", "/limit must be integer"],
+  ])("decision 5: a limit of %s is refused at line ⑥", async (_what, limit, problem) => {
+    expect(await call(registry, log, AGENT, "invoice.list", { limit })).toStrictEqual({
+      code: "VALIDATION_FAILED",
+      message: notValid("invoice.list", problem),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+  });
+});

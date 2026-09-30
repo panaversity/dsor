@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "InvoiceListRequest",
-  "description": "The input of invoice.list: how many rows the caller would like. This tutorial's own schema (step 13's README, decision 1). The limit is a wish: DSoR cuts it down to its own maximum (decision 2).",
+  "description": "The input of invoice.list: how many rows the caller would like. This tutorial's own schema (step 13's README, decision 1). The limit is a wish: DSoR cuts it down to its own maximum (decision 2). NEW IN STEP 13, C4: a whole number of at least 1, and no maximum here, so a large limit is cut down, not refused (decision 5).",
   "type": "object",
   "properties": {
-    "limit": { "type": "integer" }
+    "limit": { "type": "integer", "minimum": 1 }
   },
   "additionalProperties": false
 }
