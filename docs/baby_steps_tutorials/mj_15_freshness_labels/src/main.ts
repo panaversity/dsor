@@ -213,7 +213,8 @@ const records = readable.filter(
   (r) => ids.has(r.correlation.request_id) && r.sequence >= (first?.sequence ?? Infinity),
 );
 // The first record in full, then one line for each, with the company it was made in.
-console.log(records[0]);
+// NEW IN STEP 15: to every depth, so the read's freshness under extensions shows.
+console.dir(records[0], { depth: null });
 for (const { sequence, operation, authorization, result, tenant } of records) {
   console.log(sequence, operation ?? "(no contract)", authorization, result, tenant);
 }

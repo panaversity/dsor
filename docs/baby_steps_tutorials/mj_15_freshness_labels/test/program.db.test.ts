@@ -54,6 +54,9 @@ describe("the program", () => {
       expect(output).toMatch(/^\s+open_amount: \{ value: '31400\.00', currency: 'USD' \}/m);
       expect(output).toMatch(/request_id: 'req_/);
       expect(output).toMatch("agent_id: 'accounts-payable-fte'");
+      // NEW IN STEP 15: the first answer's label, and its record's (step 15's README, C1 and C7).
+      expect(output).toMatch(/^\s+connector: 'postgres'$/m);
+      expect(output).toMatch(/freshness: \{ mode: 'current', observed_at: '20\d\d-/);
       expect(output).toMatch("dsor://org_456/invoice/INV-1008");
       expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
       expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
