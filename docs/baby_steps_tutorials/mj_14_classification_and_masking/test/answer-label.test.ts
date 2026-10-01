@@ -95,8 +95,9 @@ describe("C4: every query's answer carries the highest label among the fields it
   });
 
   // The error envelope's schema has no field for a label (step 14's README, what the
-  // specification asks, 7).
-  it("DSOR-CLS-03: a refusal carries no label", async () => {
+  // specification asks, 7). A guard: it passes with or without step 14's code, so its
+  // title names the reading, not the rule. Found by the review.
+  it("reading 7 of DSOR-CLS-03: a refusal carries no label", async () => {
     const refused = await call(registry, log, CFO, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-9999",
     });

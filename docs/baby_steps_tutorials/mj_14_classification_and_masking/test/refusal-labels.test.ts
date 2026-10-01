@@ -22,7 +22,9 @@ async function refusedBy(
 ): Promise<{ answer: unknown; records: string }> {
   const kept = createLog();
   const registry = registryWith(() => {
-    throw label === undefined ? new Refusal("CONFLICT", message) : new Refusal("CONFLICT", message, label);
+    throw label === undefined
+      ? new Refusal("CONFLICT", message)
+      : new Refusal("CONFLICT", message, label);
   });
   const answer = await call(registry, kept, who, "test.run", GET_1008);
   return { answer, records: JSON.stringify(await kept.records()) };

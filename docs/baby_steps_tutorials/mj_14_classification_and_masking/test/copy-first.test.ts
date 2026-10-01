@@ -25,7 +25,13 @@ describe("decision 3: DSoR walks its own copy of the answer", () => {
       enumerable: true,
     });
     const log = createLog();
-    const answer = await call(registryWith(async () => shifting), log, AGENT, "test.run", GET_1008);
+    const answer = await call(
+      registryWith(async () => shifting),
+      log,
+      AGENT,
+      "test.run",
+      GET_1008,
+    );
     const { id } = dataOf(answer) as { id: string };
     const [record] = await log.records();
     expect(record?.resources).toStrictEqual([`dsor://org_456/invoice/${id}`]);
@@ -45,7 +51,11 @@ describe("decision 3: DSoR walks its own copy of the answer", () => {
     ["a function, toJSON, that could print anything", { toJSON: () => "31400.00 USD" }],
     ["a Proxy", new Proxy({ tenant_id: "org_456", id: "INV-1008" }, {})],
   ])("decision 3: an answer holding %s is refused, never sent", async (_what, value) => {
-    const answer = await runAs(AGENT, async () => ({ tenant_id: "org_456", id: "INV-1008", status: value }));
+    const answer = await runAs(AGENT, async () => ({
+      tenant_id: "org_456",
+      id: "INV-1008",
+      status: value,
+    }));
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
   });
 });

@@ -19,7 +19,13 @@ describe("decision 3: what is not a record never leaves, for a person too", () =
     "DSOR-CLS-05: an answer that is not a record, %s, is refused for user_123, and its record names no read",
     async (_what, value) => {
       const log = createLog();
-      const answer = await call(registryWith(async () => value), log, SUPERVISOR, "test.run", GET_1008);
+      const answer = await call(
+        registryWith(async () => value),
+        log,
+        SUPERVISOR,
+        "test.run",
+        GET_1008,
+      );
       expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
       const [record] = await log.records();
       expect(record).toMatchObject({ authorization: "ALLOW", result: "INTERNAL_ERROR" });

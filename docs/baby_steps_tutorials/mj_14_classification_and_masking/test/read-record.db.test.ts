@@ -78,8 +78,9 @@ describe("C5 on the database: a read of confidential data leaves a row with who,
     ]);
   });
 
-  // A refusal read nothing, so its row names nothing.
-  it("DSOR-CLS-05: on the database, a refused read leaves no resources and no row count", async () => {
+  // A refusal read nothing, so its row names nothing. A guard: it passes with or without
+  // step 14's code, so its title names the decision. Found by the review.
+  it("decision 7: on the database, a refused read leaves no resources and no row count", async () => {
     const request_id = requestId("cls-05-refused");
     await call(registry, log, { ...CFO, request_id }, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-9999",

@@ -79,15 +79,17 @@ describe("C5: a read that returns data is recorded with who, what, and how many"
     ]);
   });
 
-  // URIs, a count, and a label. Never the values read (DSOR-AUD-05a).
-  it("DSOR-CLS-05: the record holds no value that was read", async () => {
+  // URIs, a count, and a label. Never the values read (DSOR-AUD-05a). A guard, like the
+  // next: it passes with or without step 14's code, so its title names the decision.
+  // test/refusal-labels.test.ts holds DSOR-AUD-05a's test that can fail. Found by the review.
+  it("decision 7: the record holds no value that was read", async () => {
     const log = createLog();
     await call(registry, log, CFO, "invoice.get", GET_1008);
     const text = JSON.stringify(await log.records());
     for (const value of ["31400.00", "VENDOR-44", "issued"]) expect(text).not.toContain(value);
   });
 
-  it("DSOR-CLS-05: a refused read records no resources, no row count, and no label", async () => {
+  it("decision 7: a refused read records no resources, no row count, and no label", async () => {
     const log = createLog();
     await call(registry, log, CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" });
     const [record] = await log.records();

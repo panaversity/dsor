@@ -28,7 +28,8 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
       const invoice = await invoices.get(tenant, id);
       // NEW IN STEP 14: internal, because it repeats only the id the caller sent (step 14's
       // README, decision 8).
-      if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`, "internal");
+      if (!invoice)
+        throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`, "internal");
       return invoice;
     },
     // A page of the company's invoices, in order of id. The caller's limit
