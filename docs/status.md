@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-09-30.
+2026-10-01.
 
 ## Specification
 
@@ -54,15 +54,15 @@ one before it:
 
 | Step | Tests | The one new idea |
 | --- | --- | --- |
-| `00_foundation` | 2 | the toolchain, one pure function |
-| `my_01_one_invoice_in_memory` | 15 | an entity, frozen, in an array |
-| `my_02_canonical_uris` | 30 | every record has one permanent address |
-| `my_03_operations_and_contracts` | 65 | a caller names an operation; every operation has a contract |
-| `my_04_result_and_error_envelopes` | 95 | every answer has the same outer shape, with a retry class |
-| `my_05_who_is_calling` | 124 | who you are comes from the login, never from the arguments |
-| `my_06_permissions_deny_by_default` | 146 | deny by default, and "may you" is asked before "does it exist" |
-| `my_07_the_pipeline_skeleton` | 169 | the order of the checks becomes a list a test can read |
-| `my_08_write_the_decision_first` | 219 | every decision is recorded before the answer, refusals included, in a hash chain |
+| `00_foundation` | 4 | the toolchain, one pure function |
+| `my_01_one_invoice_in_memory` | 19 | an entity, frozen, in an array |
+| `my_02_canonical_uris` | 36 | every record has one permanent address |
+| `my_03_operations_and_contracts` | 71 | a caller names an operation; every operation has a contract |
+| `my_04_result_and_error_envelopes` | 104 | every answer has the same outer shape, with a retry class |
+| `my_05_who_is_calling` | 132 | who you are comes from the login, never from the arguments |
+| `my_06_permissions_deny_by_default` | 156 | deny by default, and "may you" is asked before "does it exist" |
+| `my_07_the_pipeline_skeleton` | 179 | the order of the checks becomes a list a test can read |
+| `my_08_write_the_decision_first` | 232 | every decision is recorded before the answer, refusals included, in a hash chain |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -70,17 +70,19 @@ are true of all of them:
 - **The tutorial's tests are not run by this repository's CI.** The root
   `vitest.config.ts` collects `packages/*/src/**/*.test.ts` only. `oxlint` and `oxfmt`
   do cover the tutorial, so style is checked and behaviour is not. Each step is
-  verified by `pnpm --dir docs/baby_steps_tutorials/<step> check`, by hand.
+  verified by `pnpm --dir docs/baby_steps_tutorials/<step> check`, by hand. Every step
+  now also has a `test/main.test.ts` that runs its demo program as a subprocess, so the
+  output each README pastes as proof is checked rather than asserted.
 - **Nothing is durable, and nothing is authenticated.** There is no database until
   step 09 and no real login until steps 43 and 44. The invoice store and the audit log
   are arrays in one process, so a restart loses both.
 - **A requirement id in a step's test title is a claim about that step, not about
-  DSoR.** Step 08's 219 tests name 23 ids in their titles, and each step's README has a
+  DSoR.** Step 08's 232 tests name 23 ids in their titles, and each step's README has a
   table saying which halves of which rules it does *not* meet. No L1, L2 or L3
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 65 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 66 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 18 lessons, several of them about tests that passed while proving nothing.
 

@@ -4,7 +4,7 @@ Folder: [`my_06_permissions_deny_by_default`](../my_06_permissions_deny_by_defau
 piece at a time with the learner. Copy of `my_05_who_is_calling` plus one new idea: **anything
 nobody granted is refused.**
 
-Decisions [33 to 38](decisions.md). Tests: 146.
+Decisions [33 to 38](decisions.md). Tests: 156.
 
 ## What it does
 
