@@ -28,6 +28,7 @@ import {
 } from "./cross-tenant.ts";
 import {
   A_MEMORY_READ,
+  afterARead,
   contract,
   FOREIGN_URI,
   handlers,
@@ -785,7 +786,10 @@ describe("C8: an operation's own code answers a same-company call with nothing o
     const dump = plant({
       id: "invoice.dump",
       output: "InvoicePage",
-      handler: async () => ({ items: invoices }),
+      // NEW IN STEP 15: it reads its own company first, as the plants below do. A query that
+      // reads nothing is refused anyway, and that refusal hid step 10's answer check: with that
+      // check deleted, this test still passed. Found by the review (step 15's README, decision 6).
+      handler: afterARead(async () => ({ items: invoices })),
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(dump);
@@ -798,12 +802,12 @@ describe("C8: an operation's own code answers a same-company call with nothing o
   it("DSOR-IDN-03b: invoice.theirs, which answers with the other company's invoice, is a finding", async () => {
     const theirs = plant({
       id: "invoice.theirs",
-      handler: async (input, company) => {
+      handler: afterARead(async (input, company) => {
         const { id } = parseUri((input as { invoice: string }).invoice);
         return invoices.find(
           (invoice) => invoice.id === id && invoice.tenant_id !== company.tenant,
         );
-      },
+      }),
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(theirs);
@@ -819,24 +823,24 @@ describe("C8: an operation's own code answers a same-company call with nothing o
   });
 
   // The cache is filled in org_456, so only the suite's second company can see it.
-  // NEW IN STEP 15: a call the cache answers reads nothing, so it is refused, in org_456 too
-  // (step 15's README, decision 6). Only the agent, the first caller, read INV-1008.
+  // NEW IN STEP 15: every call reads first, so no call is refused for reading nothing, and the
+  // cache's copy is labelled current. That is the review's finding F1, which step 15 records
+  // and does not fix: the label covers the reads, not the data (step 15's README, the intent).
   it("DSOR-IDN-03b: invoice.cached, which keeps invoices by id alone, is a finding from org_789", async () => {
     const cache = new Map<string, Invoice | undefined>();
     const cached = plant({
       id: "invoice.cached",
-      handler: async (input, company) => {
+      handler: afterARead(async (input, company) => {
         const { id } = parseUri((input as { invoice: string }).invoice);
         if (!cache.has(id)) cache.set(id, await company.invoices.get(id));
         return cache.get(id);
-      },
+      }),
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(cached);
-    expect(report.findings).toStrictEqual([
-      ...READERS_456.slice(1).map((who) => refusedAsBug("invoice.cached", who, "org_456")),
-      ...READERS_789.map((who) => refusedAsBug("invoice.cached", who, "org_789")),
-    ]);
+    expect(report.findings).toStrictEqual(
+      READERS_789.map((who) => refusedAsBug("invoice.cached", who, "org_789")),
+    );
   });
 
   // Found by the Stage 2 review: each of these passed the suite with no finding. Its search
