@@ -1,9 +1,9 @@
 # Step 15 · Freshness labels
 
 **New in this step:** every query's answer says how old its data is: when it was read,
-from which connector, and how fresh a read that was (DSOR-FRS-01a). The label comes from
-the store that served the read, never from the operation's code, and a cached value is never
-labelled `current` (DSOR-FRS-01b). **Stage 2 is complete.**
+from which connector, and how fresh a read that was (DSOR-FRS-01a). A cached value is never
+labelled `current` (DSOR-FRS-01b). In this tutorial, the label comes from the store that
+served the read, never from the operation's code. **Stage 2 is complete.**
 
 ## In plain words
 
@@ -15,7 +15,7 @@ query's answer carries a label, like the sticker on a loaf of bread:
 freshness: { mode: "current", observed_at: "2026-10-01T09:00:00.123Z", connector: "postgres" }
 ```
 
-`current` means read from the real system within this request. The other modes mean older:
+`current` means read from the real system within this request. The other three promise less:
 `bounded_staleness` (no older than a stated number of seconds), `observational` (cached or
 remembered, with no promise), and `connector_defined` (the connector documents its own
 guarantee).
@@ -66,6 +66,12 @@ Written first, before the rules were split into claims.
 label comes from whatever served the read, not from the code that answers. The analogy is the
 bakery's sticker that never says "this morning" on yesterday's bread.
 
+*Narrowed by the review, 2026-10-02:* the label covers the reads this call made through the
+bound store, not the data itself. Code that keeps an old copy of `INV-1008` from an earlier
+call, makes one fresh read of anything, and answers with the old copy, gets `current`. To
+check that every row in an answer is a row read in this call is a second idea, left for a step
+of its own ("Think it through").
+
 **Outcome.** What is true when this step is done:
 
 1. Every successful query answer, from `invoice.get` and `invoice.list`, carries
@@ -73,7 +79,9 @@ bakery's sticker that never says "this morning" on yesterday's bread.
 2. A read from PostgreSQL within the request is `current`. Its `observed_at` comes from the
    database's clock, in the transaction that read it. Its connector is `postgres`.
 3. The label comes from the store that served the read, through the bound store. The
-   operation's code never writes it, and cannot change it.
+   operation's code never writes it, and cannot change it. One boundary, found by the review:
+   the code runs inside DSoR's own program, so code that rewrites JavaScript's own built-ins,
+   such as `Array.prototype.push`, can defeat this check, and every earlier step's too.
 4. An answer built from several reads carries the stalest of them: the weakest mode and the
    oldest `observed_at`.
 5. A read served by a cache is never `current`. A cache planted in the tests gives
@@ -158,8 +166,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    connector schemas use that definition. *Downside:* §27's table, its rule DSOR-FRS-01b, and
    `decision-bundle.schema.json` say `CURRENT`, so a reader sees both spellings.
 4. **No resource version yet.** DSOR-FRS-01a asks for one "where one exists", and invoices
-   have none. A version that is always 1 would teach nothing. Step 21 adds versions, along
-   with the writes that move them. *Downside:* the label cannot yet say which version of
+   have none. A version that is always 1 would teach nothing. The map plans versions for step
+   21, with the writes that move them. *Downside:* the label cannot yet say which version of
    `INV-1008` was read.
 5. **The label travels from the store to DSoR, never through the code.** It works in three
    parts:
@@ -172,10 +180,13 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
      masking, and the 64 KiB check. None of those waits, so no read can be noted after the
      answer was copied. And an answer one of them refuses is refused for that reason, not
      for reading nothing, so decision 6 never hides an earlier step's check.
+   - *Added by the review, 2026-10-02:* the bound store closes when line ⑨ ends. A `Company`
+     the code kept from an earlier call reads nothing more: its reads throw. Before, such a
+     read worked, and its label went into the earlier call's list, which nobody read again.
 
-   This is the Stage 2 review's lesson again: DSoR does not take its own operation code's word
-   for anything that it can check. *Downside:* `companyOf` grows a second job, and the raw
-   store's read functions change shape.
+   This follows the Stage 2 review's lesson: where DSoR can check something itself, it does
+   not take its operation code's word for it. *Downside:* `companyOf` grows a second job, and
+   the raw store's read functions change shape.
 6. **Several reads give the stalest label.** The mode is the weakest, in this order:
    `current` before `bounded_staleness`, before `connector_defined`, before `observational`.
    The `observed_at` is the oldest. The connector is the one that served the oldest read.
@@ -187,6 +198,11 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
      modes, or has no time, or names no connector, is refused with `INTERNAL_ERROR` too. An
      unknown mode has no place in the order, and guessing one could rank it above
      `current`. The bound store keeps only the three fields, so a store cannot add a fourth.
+   - *Added by the review, 2026-10-02:* one label that fails its check refuses the whole
+     call, even when the code catches the error and reads again. And the label is small: a
+     connector is named by a short id, 1 to 64 lowercase letters, digits, `.`, `_`, or `-`,
+     starting with a letter, and a time has at most 9 digits after the second. Both are this
+     tutorial's choices: `connector.schema.json` gives a connector's id no pattern.
 
    *Downside:* a query that reads a fresh invoice and an old vendor is labelled old as a
    whole. A query that will one day compute an answer without reading needs a rule of its
@@ -208,9 +224,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    - its mode becomes `observational`;
    - its `observed_at` stays the time of the first read, never "now".
 
-   A real cache, when a step needs one, must follow the same two rules. It must be keyed by
-   company (DSOR-TEN-02a). It must sit below the bound store, so that the company check,
-   masking, and the 64 KiB check run on every answer it serves. *Downside:* FRS-01b is proven
+   A real cache, when a step needs one, follows the same two rules. It is keyed by company,
+   as DSOR-TEN-02a requires. And, as this tutorial's choice, it sits below the bound store, so
+   that the company check, masking, and the 64 KiB check run on every answer it serves. *Downside:* FRS-01b is proven
    against a cache the program does not have.
 9. **A fresh Neon branch, as decided after the Stage 2 review.** Step 15 runs on a branch
    built from `main`, which is empty, with every migration run. So "every record carries its
@@ -227,7 +243,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   `SELECT now()` after. `observed_at` lies between the two. On memory, it lies between two
   readings of the program's clock. *Added while writing the tests, 2026-10-01:* the same
   database test again, with the program's clock set to 2001 during the call. A label from
-  the program's clock would say 2001.
+  the program's clock would say 2001. *Added by the review, 2026-10-02:* the statements the
+  store sends on its one connection, in order: `BEGIN`, the company, `now()`, the
+  invoices, `COMMIT`. A `now()` from another transaction, or taken after the rows, fails.
 - **C3.** A planted cache under the bound store. The first `invoice.get` is `current`. The
   second is `observational`, with the first read's `observed_at`. The cache is keyed by
   company: `org_789`'s first read of `INV-1008` is `current`, not `org_456`'s cached copy.
@@ -250,6 +268,11 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   A planted store whose label has an unknown mode, no time, or no connector gives
   `INTERNAL_ERROR`. One that adds a fourth field gives a label of three. *Added before any
   code, 2026-10-01,* with decision 6's second point.
+
+  *Added by the review, 2026-10-02:* code that keeps its `Company` and reads through it in a
+  later call gets an error, and that call fails. Code that catches a bad label's error and
+  reads again still gets `INTERNAL_ERROR`. A connector of 65 characters, or with a space, and
+  a time with 10 digits after the second, give `INTERNAL_ERROR`.
 - **C5.** A planted operation that reads twice, through a planted store whose second read is
   `observational`. The answer is `observational`, with the older `observed_at`. The same in
   the other order. And two reads where the weakest mode and the oldest time are different
@@ -351,7 +374,8 @@ _To be written when the code exists._
    part.
 5. The database's clock gives one clock for every server running DSoR, as step 09 chose for
    the log. Read inside the transaction, it is never younger than the data. A cache that
-   said "now" would make old data look new, which is the lie DSOR-FRS-01b forbids.
+   said "now" would make old data look new: its `observed_at` would be false, which breaks
+   DSOR-FRS-01a.
 
 </details>
 
