@@ -334,7 +334,7 @@ itself, this way:
 | `schemas/result-envelope.schema.json` | **New.** The specification's own, copied byte for byte. The tests check `classification` and `redactions` against it (decision 4) |
 | `src/principals.ts` | Both agents have the clearance `internal` (decision 2) |
 | `src/pipeline.ts` | Right after line ⑨, `show`, before step 13's 64 KiB check. The answer gains `classification` and, when something was left out, `redactions`. What the read returned goes to line ⑪'s record |
-| `src/envelope.ts`, `src/log.ts`, `src/postgres.ts` | A query's answer gains the two fields. A decision gains `resources`, `row_count`, and the label under `extensions`, and the database log writes and reads them |
+| `src/envelope.ts`, `src/log.ts`, `src/postgres.ts` | A refusal carries a label (decision 8). A query's answer gains the two fields. A decision gains `resources`, `row_count`, and the label under `extensions`, and the database log writes and reads them |
 | `src/registry.ts`, `src/main.ts` | Start-up checks `classifications.json` with the contracts. A file of your own can be named as the fifth argument. `pnpm start` shows `cfo_100` reading `INV-1008` whole, after the agent |
 | `test/classifications-file.test.ts` | **New.** Decision 1: the shipped labels, and every way the file can be wrong |
 | `test/unlabelled.test.ts` | **New.** C1 |
@@ -342,6 +342,9 @@ itself, this way:
 | `test/redactions.test.ts`, `test/answer-label.test.ts` | **New.** C3 and C4 |
 | `test/read-record.test.ts`, `test/read-record.db.test.ts` | **New.** C5 |
 | `test/humans-unmasked.test.ts` | **New.** C6, the guard |
+| `test/not-a-record.test.ts`, `test/copy-first.test.ts`, `test/size-after-masking.test.ts`, `test/refusal-labels.test.ts` | **New, from the review.** Decisions 3, 5, and 8 |
+| `test/sweep-gaps.test.ts` | **New, from the sweep.** One test for each break that survived and was real |
+| `src/pages.ts`, `src/operations.ts` | From the review: the 64 KiB counts the list of what was withheld, and `invoice.get`'s not-found is labelled `internal` |
 | `test/helpers.ts` | `runAs`, a fake operation called by anyone, with an output kind of its choice. The agent's `INV-1008` typed out without amounts, and its redactions |
 | every other test | C2 broke 30 older unit tests and 4 database tests, C3 broke 4, C4 broke 8, and C5 broke 9 unit tests and 1 database test. A test about money now asks as a person, such as `cfo_100`. A test about which company or which caller keeps the agent, and expects the invoice without amounts, with its redactions and its label. A planted list names `InvoicePage` as its output. Step 13's size tests ask as `user_123`, and their made-up rows carry a company. The principal table has clearances. The program's log test counts 11 records of 14 calls |
 
@@ -425,14 +428,14 @@ this folder outside the repository, then put back and compared byte for byte. Th
 the unit tests, which run on memory: each break changes what DSoR does with an answer,
 not how it reads the database.
 
-| # | The break | Learner's prediction | Real, before the review |
-| --- | --- | --- | --- |
-| Y1 | People are masked too: a person's clearance is `internal` | not asked. The design expected only C6 | **26 tests**: C6's four, the person's side of C3, C4, and C5, and the older tests that now read money as a person |
-| Y2 | A field with no label is `public` | only the planted field test | 7, and each one plants a field or a kind the file does not have |
-| Y3 | `redactions` is left out of the answer | not asked | 7: C3's four, and three older tests that expect the agent's invoice with its redactions |
-| Y4 | Only the top level is masked, not a page's items | the `invoice.list` tests | 8, every one a page test: C2, C3, C4, and C5 for a page, a page whose item is not a record, and a planted list |
-| Y5 | The label is taken from the whole record, before masking | C4 | 8: C4's three, C5's agent record, and four older tests that compare the agent's whole answer |
-| Y6 | An agent with no clearance gets `confidential` | only a planted agent | **1**: the planted agent, as predicted |
+| # | The break | Learner's prediction | Before the review | On the final code |
+| --- | --- | --- | --- | --- |
+| Y1 | People are masked too: a person's clearance is `internal` | not asked. The design expected only C6 | **26 tests**: C6's four, the person's side of C3, C4, and C5, and the older tests that now read money as a person | 29 |
+| Y2 | A field with no label is `public` | only the planted field test | 7, and each one plants a field or a kind the file does not have | 11, each one planted: the review's size tests plant unlabelled fields too |
+| Y3 | `redactions` is left out of the answer | not asked | 7: C3's four, and three older tests that expect the agent's invoice with its redactions | 8 |
+| Y4 | Only the top level is masked, not a page's items | the `invoice.list` tests | 8, every one a page test: C2, C3, C4, and C5 for a page, a page whose item is not a record, and a planted list | 12, every one a page test |
+| Y5 | The label is taken from the whole record, before masking | C4 | 8: C4's three, C5's agent record, and four older tests that compare the agent's whole answer | 9 |
+| Y6 | An agent with no clearance gets `confidential` | only a planted agent | **1**: the planted agent, as predicted | **2**: the planted agent, and the same agent sent through the real pipeline, which the review added |
 
 **Y2, the common mistake.** In `src/labels.ts`, make `labelOf` end with `?? "public"`.
 The planted field, a vendor's bank account that nobody wrote in `classifications.json`,
@@ -456,8 +459,8 @@ AssertionError: expected { tenant_id: 'org_456', …(3) } to strictly equal { te
 No shipped invoice has such a field, so every test that reads real invoices stays green.
 Only a planted field shows the break. That is why C1's tests plant one.
 
-**Y6, one test alone.** In `src/masking.ts`, make `clearanceOf` give an agent with no
-clearance `confidential`:
+**Y6, caught by a planted agent only.** In `src/masking.ts`, make `clearanceOf` give an
+agent with no clearance `confidential`. Before the review, one test failed:
 
 ```text
  FAIL  test/masking.test.ts > C2: each agent's clearance > DSOR-CLS-02a: an agent with no clearance written down is treated as public, the lowest
@@ -466,9 +469,12 @@ Expected: "public"
 Received: "confidential"
 ```
 
-Both agents in the table have a clearance written down, so no call through the pipeline
-can see this break. The learner's prediction for Y6, "only a planted agent", is why that
-test exists: it was added to the design before any code.
+Both agents in the table have a clearance written down, so no call with a real token can
+see this break. The learner's prediction for Y6, "only a planted agent", is why that test
+exists: it was added to the design before any code. The review found the same gap one
+level up: a pipeline that read `caller.clearance` itself, skipping `clearanceOf`, gave
+an agent with none every field. So a second test plants the agent in DSoR's table for
+one call, and takes it out again.
 
 **Y1 was expected to be caught only by C6.** It is caught by 26 tests. C2 moved every
 older test that reads money to a person, because an agent no longer gets money. So each
@@ -487,6 +493,8 @@ This is how the step was built:
 | 5 | Green | One claim at a time: decision 1, C1, C2, C3, C4, C5, C6. Predict how many older tests each claim breaks |
 | 6 | Break it | Y1 to Y6, for real, in a copy |
 | 7 | Review | Two reviewers who have not seen your conversation. One reads and attacks. One breaks the code a line at a time, in a copy with a Neon branch of its own |
+| 8 | Fix the review | Decide each finding: fix it or record it. The design first, then the red tests, then the code, one finding per commit. Predict each |
+| 9 | Break it again | Y1 to Y6 on the final code, and each review finding's own break, so every new test is seen failing once |
 
 The prompt that started this session:
 
@@ -510,6 +518,9 @@ The learner's predictions, and what happened:
 | C2 lands: how many of the 687 passing tests break | 0 | **30**: tests that compare the agent's invoice whole, step 13's size tests, which ran as the agent, planted lists whose contract named an `Invoice`, and the principal table |
 | C4 lands: how many of the 715 passing tests break | 0 | **8**, and two fake answers that no longer typechecked: every test that compares a whole success answer |
 | Y2, Y4, Y5, Y6 | as in "Break it" | right, all four |
+| The review's red run: 26 new tests | not asked: the run came first, by mistake | 15 failed. The 11 that passed were 7 tests for surviving breaks, and 4 "yes" tests |
+| The size fix lands: older tests broken | 0 | **right**: 0 |
+| The refusal fix lands: older tests broken | 0 | **right**: 0 |
 
 ## Check yourself
 
@@ -582,20 +593,82 @@ checked against the specification's schemas, not only its sentences:
   `pipeline.ts` (215), `postgres.ts` (298), `main.ts` (232), `registry.ts` (163), and
   `envelope.ts` (165). Splitting them is not this step's idea.
 
-_The review's findings are written here when the reviewers report._
+**Found by the hostile review, and fixed.** Each fix changed the design first, then a
+test, then the code. The learner chose each one.
+
+- **A refusal's message was never masked.** An operation's code that refused with
+  "INV-1008 still has 31400.00 USD open" sent the amount to the agent and into the
+  record. Now a refusal from the code carries a label, `confidential` unless the code
+  gives one, and an agent below it hears a fixed message. A `restricted` message is
+  replaced for everyone, so no record holds one (decision 8, DSOR-AUD-05a).
+- **The 64 KiB missed the list of what was withheld.** 2,000 unlabelled fields gave the
+  agent 241,105 bytes. The list counts now (decision 5).
+- **A person's read of text was recorded as reading nothing:** `row_count: 0` for an
+  answer that held an amount. What is not a record is now refused for everyone
+  (decision 3).
+- **No size test asked as an agent any more,** and **no test sent a planted agent with
+  no clearance through the real pipeline.** Each break left every test green. Both have
+  tests now.
+- **Seven tests passed with step 14's code deleted** but were titled by a rule, so they
+  read as proof of it. They are guards, and their titles now name the decision they keep.
+- **The analogy gave the marker to the wrong person.** In the established analogy the new
+  clerk is the agent. Now the records office blacks out the copy before it hands it to
+  the clerk. The blacked-out copy itself is a new analogy, not on the established list,
+  and the review checked it only where it is used.
+- **DSOR-CLS-05 is met only in part.** The record has no actor chain until step 18. The
+  rules table says so now.
+
+**Found by the mutation sweep, and fixed.** The sweep made 88 small breaks on the code
+before the review: 74 were caught, 5 of them only by the database tests, and 14 survived.
+These were real:
+
+- **A field the agent may see was passed by reference.** A getter gave the record
+  `INV-1008` and the agent `INV-1009`. A live object could change after DSoR had looked,
+  and a `toJSON` function ran again when the answer was printed. Masking now walks a deep
+  copy, and refuses what cannot be copied (decision 3).
+- **The database log's own reader could drop `resources` and `row_count`,** and all 81
+  database tests stayed green: they read `dsor.audit` with their own SQL. A test now
+  reads them back through the log.
+- **Also:** a size refusal recorded with rows, an answer of an unknown kind not named,
+  one invoice twice counted once, an unknown label shown, and a list inside a list that
+  lost its path. Each has a test that fails on it.
+
+**Left open on purpose**, with the reason:
+
+- **Wrong data in a correctly labelled field.** Code that puts an amount inside `status`,
+  `next_cursor`, or `capped` sends it to the agent. The sweep did all three. A label says
+  what a field should hold. Checking that a value fits its field is the output schema's
+  job (DSOR-SCH-01, for results), and that is a step of its own.
+- **The page cut before masking** tells an agent roughly how large the fields it cannot
+  see are, never their values (decision 5).
+- **Refusals from lines ① to ⑥ are not masked.** They are DSoR's own sentences about the
+  caller's own input.
+- **A planted `org_789` row in an `org_456` answer** is masked, sent, and recorded by its
+  `org_789` URI. Finding such a leak is the job of step 12's suite.
+- **Equivalent breaks,** which change nothing a caller can see: an unknown label ranked
+  `restricted` instead of above it, masking every caller that is not a person (no
+  application or system caller exists yet), and `>=` for `>` where the label climbs.
+
+**What the predictions showed.** Twice the learner predicted that adding or removing a
+field breaks no older test, and 30, then 8, broke. A test that compares a whole answer
+exactly is a test of its shape too. For the review's two code fixes, the learner
+predicted 0 broken, and was right both times: neither fix changes an answer that an older
+test compares.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
 | DSOR-CLS-01 | A field with no declared classification is `CONFIDENTIAL` | [§19.1 Risk and data classification](../../../specs/dsor/02-security.md#191-risk-and-data-classification) | `test/unlabelled.test.ts`: a field or a kind the file does not name (C1). The planted field: left out of the agent's answer (`test/masking.test.ts`), listed (`test/redactions.test.ts`), and a person's answer made `confidential` (`test/answer-label.test.ts`) |
-| DSOR-CLS-02a | For agents, fields above their clearance are withheld before the response leaves | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/masking.test.ts` and `test/masking.db.test.ts`: both agents' `invoice.get` and `invoice.list`, each clearance, the agent with none, masking before the 64 KiB check, and what is not a record (C2). The clearance half only: the egress policy is not built (decision 6) |
+| DSOR-CLS-02a | For agents, fields above their clearance are withheld before the response leaves | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/masking.test.ts` and `test/masking.db.test.ts`: both agents' `invoice.get` and `invoice.list`, each clearance, the agent with none, masking before the 64 KiB check, and what is not a record (C2). `test/refusal-labels.test.ts`: a refusal from the code (decision 8). `test/copy-first.test.ts` and `test/sweep-gaps.test.ts`: the copy, and the agent with none through the real pipeline. The clearance half only: the egress policy is not built (decision 6) |
 | DSOR-CLS-02b | A response with withheld fields lists the redactions | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/redactions.test.ts`: each field once, as a path, in the result envelope's shape, and no list when nothing was left out (C3) |
 | DSOR-CLS-03 | Every query response carries the highest classification among its fields | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/answer-label.test.ts`: `internal` for the agent, `confidential` for a person, `public` for an empty page, `restricted` when one field is (C4) |
-| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/read-record.test.ts` and `test/read-record.db.test.ts`: the URIs, the row count, and the label of every read that returns data, nothing for a refusal, and no value read (C5). **Partly:** the actor chain is the caller alone until step 18 |
+| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/read-record.test.ts` and `test/read-record.db.test.ts`: the URIs, the row count, and the label of every read that returns data, and the log's own reader (C5). `test/not-a-record.test.ts`, `test/copy-first.test.ts`, and `test/sweep-gaps.test.ts`: what cannot be named is refused, the record names what left. **Partly:** the actor chain is the caller alone until step 18 |
 
 Also advanced, first met in earlier steps: DSOR-AUD-05a, a record holds URIs, a count,
-and a label, never a value read (`test/read-record.test.ts`). DSOR-EXE-02, the record of a
+and a label, never a value read, and never a `restricted` refusal message
+(`test/refusal-labels.test.ts`). DSOR-QRY-01, the 64 KiB counts what leaves for an agent,
+its redactions too (`test/size-after-masking.test.ts`). DSOR-EXE-02, the record of a
 read, written before the answer, as every record since step 08. DSOR-TEN-02b, a planted
 list whose items have no company is now refused by DSoR itself
 (`test/cross-tenant-lists.test.ts`).

@@ -15,7 +15,7 @@ function dataOf(answer: Answer): unknown {
 }
 
 describe("decision 3: DSoR walks its own copy of the answer", () => {
-  // Found by the sweep: the URI was read from the code's object, and the answer copied from
+  // Found by the sweep: the URI was read from the code's object, and the answer made from
   // it again. A getter gave INV-1008 to the record and INV-1009 to the agent.
   it("DSOR-CLS-05: the record names the id the answer carries, even when the code's object gives a different id each time it is read", async () => {
     let reads = 0;
