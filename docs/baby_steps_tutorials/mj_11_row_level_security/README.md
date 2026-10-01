@@ -844,15 +844,16 @@ folder carries the fixes. Three began here.
     `ROLLBACK` must take the record away. So the break "`COMMIT` instead of `ROLLBACK`
     after an error", left open here before, now fails it: the record was kept.
 - **The start-up check's database facts were proven only with hand-made facts.** Fixed
-  from step 11 on. With the SQL in `runtimeRoleProblems` changed to read `rolbypassrls`
-  as `false` and the count of roles as `0`, every test passed. Run again here, the
-  owner's test passed too.
-  - **Fixed:** the test that starts the program as the owner requires `holds BYPASSRLS`
-    and `belongs to … other role…, which SET ROLE can switch to`, as `problemsOf` says
-    them (decision 7).
+  from step 09 on, with the membership of roles from step 11 on. With the SQL in
+  `runtimeRoleProblems` changed to read `rolbypassrls`, the membership of
+  `pg_write_all_data`, the count of tables owned, or the count of roles as false or `0`,
+  every test passed. Run again here, the owner's test passed too.
+  - **Fixed:** the test that starts the program as the owner requires `holds BYPASSRLS`,
+    `is a member of pg_write_all_data`, `owns … tables`, and `belongs to … other role…,
+    which SET ROLE can switch to`, as `problemsOf` says them (decision 7).
   - **Caught by** `DSOR-AUD-04a: refuses to run as the owner, names why, and makes no
-    call`, in `test/program.db.test.ts`. With that change to the SQL, it fails at `holds
-    BYPASSRLS`. With only the count read as `0`, it fails at the membership.
+    call`, in `test/program.db.test.ts`. Each of the four changes to the SQL turns it
+    red.
 - **The catalog guard missed a kind of schema name, and every view and function.**
   Fixed from step 11 on. It skipped schemas with `NOT LIKE 'pg_%'`, so `pgcrm` was
   skipped. And it looked at tables only. On a local PostgreSQL, the review made a view, a
@@ -889,12 +890,6 @@ folder carries the fixes. Three began here.
   made, not when it runs, so taking `EXECUTE` from `dsor_runtime` does not stop it. No
   test looks for triggers on the tenant tables. Found by a hostile pass on the Stage 2
   review's fix. The database holds no definer function today.
-- **The start-up check's other two facts from the database.** With `owns` read as `0` in
-  `runtimeRoleProblems`, no test would fail, and the same holds for the membership of
-  `pg_write_all_data`. The owner's refusal prints both, `owns 14 tables` and `is a member
-  of pg_write_all_data`, and no test asks for them. This began in step 09, so its fix
-  belongs there first. Checked by reading, and found by a hostile pass on the Stage 2
-  review's fix.
 - **The third layer**, carried from step 10. An answer whose `tenant_id` was rewritten
   to the caller's company, or removed, passes step 10's decision 14, and so does another
   company's name in a `tenant` field, a URI, or a sentence. The Stage 2 review's plan

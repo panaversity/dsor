@@ -138,6 +138,12 @@ describe("the program's start-up check", () => {
       expect(run.stderr).toMatch("DSOR_DB_URL must log in as dsor_runtime. Refused:");
       expect(run.stderr).toMatch("not dsor_runtime");
       expect(run.stderr).toMatch("can change or remove records in dsor.audit");
+      // Every fact the start-up check reads is proven on the real database: the owner
+      // holds each one. Hand-made facts in runtime-role.test.ts prove only the wording.
+      // Found by the Stage 2 review, and fixed from step 09 on.
+      expect(run.stderr).toMatch("holds BYPASSRLS");
+      expect(run.stderr).toMatch("is a member of pg_write_all_data");
+      expect(run.stderr).toMatch(/owns \d+ tables/);
       // No call was made, so nothing was answered.
       expect(run.stdout).not.toMatch("data: {");
       // The refusal names the problems, never the secret.

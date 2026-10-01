@@ -748,6 +748,19 @@ back after.
     and nothing is recorded. Each break turned at least one of these tests red. The
     tenth turned five red, the record test among them.
 
+- **The start-up check's facts were proven only with facts made by hand.** Fixed from
+  step 09 on. The check refuses a login that holds `BYPASSRLS`, belongs to
+  `pg_write_all_data`, or owns tables. Only `test/runtime-role.test.ts` proved those
+  refusals, and it hands `problemsOf` facts written in the test. With the SQL in
+  `runtimeRoleProblems` changed to read any one of the three as false, every test passed.
+  - **Fixed:** the test that starts the program as the owner now requires all three, as
+    `problemsOf` words them: `holds BYPASSRLS`, `is a member of pg_write_all_data`, and
+    `owns … tables`. On Neon the owner holds each one, so the real database proves each
+    fact.
+  - **Caught by** `DSOR-AUD-04a: refuses to run as the owner, names why, and makes no
+    call`, in `test/program.db.test.ts`. Each of the three changes to the SQL turns it
+    red. Found by a hostile pass on the Stage 2 review's fix in step 11.
+
 **Left open on purpose:**
 
 - **A database failure while reading an invoice** (at line ⑨) becomes
