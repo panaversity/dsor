@@ -59,6 +59,25 @@ describe("C5 on the database: a read of confidential data leaves a row with who,
     ]);
   });
 
+  // Found by the sweep: every test above reads dsor.audit with its own SQL, so a log that
+  // wrote both columns and lost them when it read them back passed.
+  it("DSOR-CLS-05: on the database, the log's own reader gives resources and row_count back", async () => {
+    const request_id = requestId("cls-05-reader");
+    await call(registry, log, { ...CFO, request_id }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    const mine = (await log.records("org_456")).filter(
+      (record) => record.correlation.request_id === request_id,
+    );
+    expect(mine).toMatchObject([
+      {
+        resources: ["dsor://org_456/invoice/INV-1008"],
+        row_count: 1,
+        extensions: { [OUR_EXTENSIONS]: { classification: "confidential" } },
+      },
+    ]);
+  });
+
   // A refusal read nothing, so its row names nothing.
   it("DSOR-CLS-05: on the database, a refused read leaves no resources and no row count", async () => {
     const request_id = requestId("cls-05-refused");
