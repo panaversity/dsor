@@ -22,9 +22,11 @@ try {
   if (power.rows[0]?.["rolbypassrls"] !== true) {
     throw new Error("the owner does not hold BYPASSRLS, so it cannot read every record");
   }
+  // And each whole record's size in bytes, for the test of a flood (step 10's README,
+  // decision 12). Found by the Stage 2 review, and fixed from step 10 on.
   const { rows } = await client.query(
-    `SELECT tenant, extensions, "authorization", result
-       FROM dsor.audit WHERE correlation->>'request_id' = $1 ORDER BY sequence`,
+    `SELECT tenant, extensions, "authorization", result, octet_length(a::text) AS bytes
+       FROM dsor.audit a WHERE correlation->>'request_id' = $1 ORDER BY sequence`,
     [process.argv[2]],
   );
   process.stdout.write(redact(JSON.stringify(rows), { "<owner URL>": owner }));

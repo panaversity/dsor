@@ -68,6 +68,16 @@ export function memoryInvoices(): InvoiceStore {
   return { get: async (tenant, id) => getInvoice(invoices, tenant, id) };
 }
 
+// The store of a registry built without one. Every read is a bug, so the call fails with
+// INTERNAL_ERROR: when the store is missing, the answer is no (step 10's README, decision
+// 13). Found by the Stage 2 review, and fixed from step 10 on.
+/** A store that reads nothing: each read throws. */
+export const NO_STORE: InvoiceStore = Object.freeze({
+  get: async (): Promise<Invoice | undefined> => {
+    throw new Error("this registry was built without a store of invoices");
+  },
+});
+
 // Every invoice has its canonical URI (DSOR-RID-01a). The URI names the
 // invoice's own company, which the invoice carries. Step 01's constant TENANT is gone
 // (step 10's README, decision 10).

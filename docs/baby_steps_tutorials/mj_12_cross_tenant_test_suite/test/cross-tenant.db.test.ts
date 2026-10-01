@@ -3,7 +3,8 @@
 // database's own lock: a foreign URI is refused before any read (step 12's README, "What
 // the specification asks", point 5).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDbLog } from "../src/postgres.ts";
+import { createDbInvoices, createDbLog } from "../src/postgres.ts";
+import { HOMES, ROWS } from "./companies.ts";
 import { crossTenantSuite, readExamples, type Report } from "./cross-tenant.ts";
 import { dbRegistry, newPool, tryThenRollBack } from "./db.ts";
 import { FOREIGN_URI } from "./helpers.ts";
@@ -11,8 +12,10 @@ import { FOREIGN_URI } from "./helpers.ts";
 const pool = newPool();
 afterAll(() => pool.end());
 
-// One run of the suite, which the tests below look at. About 36 calls, each waiting for
-// the database, so it gets more time than one test.
+// One run of the suite, which the tests below look at. 44 calls, each waiting for the
+// database, so it gets more time than one test: 36 for the attacks and the same-company
+// calls, and 8 for the in-company pairs. Found by the Stage 2 review, and fixed from step
+// 12 on.
 let report: Report;
 beforeAll(async () => {
   report = await crossTenantSuite(dbRegistry(pool), createDbLog(pool), readExamples());
@@ -35,7 +38,30 @@ describe("the suite, on the database", () => {
     expect(report.findings).toStrictEqual([]);
     expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue"]);
     expect(report.attacks).toHaveLength(27);
+    // And the in-company pair, from org_456's four readers, through the database's store.
+    // Found by the Stage 2 review, and fixed from step 12 on.
+    expect(report.pairs).toHaveLength(4);
   });
+
+  // The canaries and the in-company pair come from the invoices in memory. So the database
+  // must hold exactly those, or a row only it holds could leak with no canary to show it
+  // (step 12's README, decision 8). Each company is read inside itself, through the
+  // program's own store. Found by the Stage 2 review, and fixed from step 12 on.
+  it.each(HOMES.map((home) => [home]))(
+    "step 12's decision 8: %s holds exactly the invoices the suite's canaries come from",
+    async (home) => {
+      const { rows } = await tryThenRollBack(
+        pool,
+        "SELECT id FROM app.invoices WHERE tenant_id = $1 ORDER BY id",
+        home,
+        [home],
+      );
+      const store = createDbInvoices(pool);
+      const held = await Promise.all(rows.map((row) => store.get(home, String(row["id"]))));
+      const expected = (ROWS["invoice"] ?? []).filter((row) => row.tenant_id === home);
+      expect(held).toStrictEqual([...expected].sort((a, b) => a.id.localeCompare(b.id)));
+    },
+  );
 
   it.each([
     ["org_456", "org_789"],

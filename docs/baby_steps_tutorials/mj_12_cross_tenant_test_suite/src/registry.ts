@@ -3,7 +3,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
+import type { Company } from "./company.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
+import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { logins } from "./principals.ts";
@@ -15,9 +17,11 @@ export type ContractSource = { file: string; text: string };
 export type Contract = { readonly id: string; readonly [field: string]: unknown };
 
 // The code is given the active company, which line ② checked. It never
-// takes one from the input (step 10's README, decision 3).
+// takes one from the input (step 10's README, decision 3). It gets that company's invoices
+// only, never the store itself (step 10's README, decision 13). Found by the Stage 2
+// review, and fixed from step 10 on.
 /** The code that runs an operation, inside one company. */
-export type Handler = (input: unknown, tenant: string) => unknown;
+export type Handler = (input: unknown, company: Company) => unknown;
 
 /** Every operation this program knows, each with its contract, and code for some. */
 export type Registry = {
@@ -27,6 +31,10 @@ export type Registry = {
   roles: Roles;
   // The check for each operation's input (step 07's README, decision 2).
   inputs: InputChecks;
+  // The store the operations read. Only the pipeline uses it, to give the code the active
+  // company's invoices (step 10's README, decision 13). Found by the Stage 2 review, and
+  // fixed from step 10 on.
+  invoices: InvoiceStore;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -72,6 +80,10 @@ export function buildRegistry(
   roleSource: RoleSource,
   // The input schemas. This step's own, unless the caller gives others.
   inputSources: InputSource[] = readInputs(),
+  // The store the operations read: the database for the program, memory for the unit
+  // tests. Without one, every read fails (step 10's README, decision 13). Found by the
+  // Stage 2 review, and fixed from step 10 on.
+  invoices: InvoiceStore = NO_STORE,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -132,7 +144,7 @@ export function buildRegistry(
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles, inputs };
+  return { contracts, handlers: code, roles, inputs, invoices };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

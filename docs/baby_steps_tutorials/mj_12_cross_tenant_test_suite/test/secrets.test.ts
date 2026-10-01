@@ -1,6 +1,7 @@
-// The unit tests of this step. They need no database: the secrets stay
+// The unit tests of step 09. They need no database: the secrets stay
 // out of git (C7), the database tests fail loudly without one (decision 8), and the
-// invoices have a store in memory for every other unit test (decision 12).
+// invoices have a store in memory for every other unit test (decision 12). The claim and
+// the decisions are step 09's README's. Step 10 has a decision 12 of its own.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -130,7 +131,7 @@ describe("decision 8: with no database named, the database tests fail and never 
   );
 });
 
-describe("decision 12: the invoices in memory, for the unit tests", () => {
+describe("step 09's decision 12: the invoices in memory, for the unit tests", () => {
   it("DSOR-MON-01: the store in memory gives INV-1008, its money a string", async () => {
     expect(await memoryInvoices().get("org_456", "INV-1008")).toStrictEqual({
       tenant_id: "org_456",

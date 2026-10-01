@@ -15,10 +15,11 @@ import {
   type Registry,
 } from "../src/registry.ts";
 import { parseUri } from "../src/uri.ts";
-import { foreignIn, swaps } from "./companies.ts";
+import { canariesOf, foreignIn, swaps } from "./companies.ts";
 import {
   attackersOf,
   compare,
+  comparePair,
   crossTenantSuite,
   judge,
   readExamples,
@@ -78,6 +79,9 @@ function plant(p: Plant): { registry: Registry; examples: ContractSource[] } {
       code,
       shippedRoles,
       inputs,
+      // The invoices in memory: the registry holds the store (step 10's README, decision 13).
+      // Found by the Stage 2 review, and fixed from step 10 on.
+      memoryInvoices(),
     ),
     examples:
       p.example === undefined ? examples : [...examples, { file: `${p.id}.json`, text: p.example }],
@@ -102,6 +106,32 @@ function uriFields(required: string[], optional: string[] = []): object {
     required,
     additionalProperties: false,
   };
+}
+
+/** The other of the two companies, seen from inside this one. */
+function otherOf(home: string): string {
+  return home === "org_456" ? "org_789" : "org_456";
+}
+
+/** A copy of the other company's INV-1008: the invoice with this company's id, and not its own. */
+function theirs1008(home: string): Invoice {
+  return structuredClone(invoices.find((i) => i.id === "INV-1008" && i.tenant_id !== home)!);
+}
+
+/** The two findings for a caller in org_456 whose pair answers both held this sign. */
+function pairLeaks(operation: string, who: string, what: string): string[] {
+  const said = `answered with another company's data: ${what}`;
+  const named = "dsor://org_456/invoice/INV-2001, which only org_789 has";
+  const nobody = "dsor://org_456/invoice/NOPE, which nobody has";
+  const where = `${operation} as ${who} in org_456`;
+  return [`${where}, ${named}: ${said}`, `${where}, ${nobody}: ${said}`];
+}
+
+/** The finding for a caller in org_456 whose in-company pair got two different answers. */
+function pairDiffers(operation: string, who: string): string {
+  const named = "dsor://org_456/invoice/INV-2001, which only org_789 has";
+  const nobody = "dsor://org_456/invoice/NOPE, which nobody has";
+  return `${operation} as ${who} in org_456, ${named}, and ${nobody}: the two answers differ`;
 }
 
 describe("C1: every operation in the registry is attacked with foreign URIs, and refused", () => {
@@ -166,8 +196,10 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
   });
 
   // Found by the review: with only the first URI of each example attacked, every test
-  // stayed green, because swaps() was tested and the suite's use of it was not.
-  it("DSOR-TEN-02b: the suite sends all six swaps of a two-URI example, after the same-company call", async () => {
+  // stayed green, because swaps() was tested and the suite's use of it was not. Since the
+  // Stage 2 review, the in-company pair follows, for the invoice's URI only: no company
+  // holds a vendor row (step 12's README, decision 3).
+  it("DSOR-TEN-02b: the suite sends all six swaps of a two-URI example, after the same-company call and before the in-company pair", async () => {
     const invoice = "dsor://org_456/invoice/INV-1008";
     const vendor = "dsor://org_456/vendor/VENDOR-44";
     const target = plant({
@@ -193,6 +225,8 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
       { invoice, vendor: "dsor://org_789/vendor/VENDOR-44" },
       { invoice, vendor: "dsor://org_789/vendor/NOPE" },
       { invoice, vendor: "dsor://org_999/vendor/VENDOR-44" },
+      { invoice: "dsor://org_456/invoice/INV-2001", vendor },
+      { invoice: "dsor://org_456/invoice/NOPE", vendor },
     ]);
   });
 
@@ -290,6 +324,83 @@ describe("C2: the three foreign answers are the same, apart from the request id"
     // One for each caller and URI: 4 + 1 in org_456, and 2 + 2 in org_789.
     expect(report.findings).toHaveLength(9);
     for (const finding of report.findings) expect(finding).toMatch(/: the three answers differ$/);
+  });
+
+  // An answer may repeat the id it was sent, so each answer's own id is set aside too. Found
+  // by the Stage 2 review, and fixed from step 12 on.
+  it("DSOR-ERR-01b: two answers that differ only in their request ids and the ids they were sent are the same", () => {
+    const notFound = (request_id: string, id: string, more = ""): Answer => {
+      const correlation = { request_id, principal_id: "user_123" };
+      const message = `no invoice "${id}"${more}`;
+      return { code: "RESOURCE_NOT_FOUND", message, retry: "never", correlation };
+    };
+    const ids = ["INV-2001", "NOPE"];
+    const same = [notFound("req_1", "INV-2001"), notFound("req_2", "NOPE")];
+    expect(comparePair(same, ids)).toBeUndefined();
+    const told = [notFound("req_1", "INV-2001", ": it exists in another company"), same[1]!];
+    expect(comparePair(told, ids)).toBe("the two answers differ");
+    // An answer cannot hide by writing the mask itself: it repeats the id only when another
+    // company holds it. Found by a hostile pass on the Stage 2 review's fix.
+    const masked = [notFound("req_1", "INV-2001"), notFound("req_2", "<id>")];
+    expect(comparePair(masked, ids)).toBe("the two answers differ");
+  });
+
+  // The three answers above all come from the checklist, which refuses every foreign URI
+  // before any code runs. An operation's own "not found" was never compared. So for a query,
+  // each caller also sends the in-company pair: a URI of its own company naming an id only
+  // the other company has, and one naming an id nobody has. Only org_789 holds an id that
+  // the other company lacks, INV-2001, so the pair runs in org_456 only (step 12's README,
+  // C2). Found by the Stage 2 review, and fixed from step 12 on.
+  it("DSOR-ERR-01b: in org_456, each reader also sends invoice.get the in-company pair, and org_789 has no id for one", async () => {
+    const report = await crossTenantSuite(registry, createLog(), examples);
+    const pair = {
+      home: "org_456",
+      operation: "invoice.get",
+      uri: "dsor://org_456/invoice/INV-1008",
+    };
+    expect(report.pairs).toStrictEqual(READERS_456.map(() => pair));
+    expect(report.findings).toStrictEqual([]);
+  });
+
+  it("DSOR-ERR-01b: invoice.hint, whose 'not found' says the invoice exists in another company, is a finding in org_456", async () => {
+    const hint = plant({
+      id: "invoice.hint",
+      // A "not found" that says too much: whether another company holds the id.
+      handler: async (input, company) => {
+        const { id } = parseUri((input as { invoice: string }).invoice);
+        const own = await company.invoices.get(id);
+        if (own !== undefined) return own;
+        const elsewhere = invoices.some((invoice) => invoice.id === id);
+        const why = elsewhere
+          ? `no invoice "${id}": it exists in another company`
+          : `no invoice "${id}"`;
+        throw new Refusal("RESOURCE_NOT_FOUND", why);
+      },
+      example: JSON.stringify(GOOD),
+    });
+    const report = await suiteOver(hint);
+    expect(report.findings).toStrictEqual(
+      READERS_456.map((who) => pairDiffers("invoice.hint", who)),
+    );
+  });
+
+  // Both requests of the pair reach the code, so their answers are searched too, as the
+  // same-company call's is. This fallback answers both alike, so comparing them shows
+  // nothing. Found by a hostile pass on the Stage 2 review's fix.
+  it("DSOR-IDN-03b: invoice.fallback, which answers an id it lacks with the other company's invoice, is a finding in org_456", async () => {
+    const fallback = plant({
+      id: "invoice.fallback",
+      handler: async (input, company) => {
+        const { id } = parseUri((input as { invoice: string }).invoice);
+        const own = await company.invoices.get(id);
+        return own ?? { ...theirs1008(company.tenant), tenant_id: company.tenant };
+      },
+      example: JSON.stringify(GOOD),
+    });
+    const report = await suiteOver(fallback);
+    expect(report.findings).toStrictEqual(
+      READERS_456.flatMap((who) => pairLeaks("invoice.fallback", who, '"VENDOR-77"')),
+    );
   });
 });
 
@@ -403,6 +514,39 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
   it("DSOR-TEN-02b: the judge passes TENANT_MISMATCH, with no data", () => {
     expect(judge(refusal("TENANT_MISMATCH"))).toBeUndefined();
   });
+
+  // The tests above hand the judge one answer at a time. Through the suite, it met only a
+  // fake DSoR that answers with data, so a suite whose check flagged only data passed every
+  // test. These fakes refuse every foreign request, but for the wrong reason: as if another
+  // line of the checklist came before the URI check. One for each wrong code, so a suite
+  // that lets any one of them pass fails here (step 12's README, decision 4). Found by the
+  // Stage 2 review, and fixed from step 12 on.
+  it.each<[ErrorCode, string]>([
+    ["UNSUPPORTED_CAPABILITY", "is not built yet"],
+    ["AUTHORIZATION_DENIED", "needs a permission the caller does not hold"],
+    ["VALIDATION_FAILED", "has an input that is not valid"],
+    ["RESOURCE_NOT_FOUND", "names nothing"],
+  ])(
+    "DSOR-TEN-02b: handed a fake DSoR that refuses every foreign request with %s, the suite names each of the 27 attacks",
+    async (code, why) => {
+      const wrongReason: Send = async (reg, log, request, name, input) => {
+        const answer = await call(reg, log, request, name, input);
+        if ("data" in answer || answer.code !== "TENANT_MISMATCH") return answer;
+        return { ...answer, code, message: `"${name}" ${why}` };
+      };
+      const report = await crossTenantSuite(registry, createLog(), examples, wrongReason);
+      expect(report.findings).toHaveLength(27);
+      const said = `answered ${code}, not TENANT_MISMATCH`;
+      for (const finding of report.findings) expect(finding.endsWith(`: ${said}`)).toBe(true);
+      const first =
+        "invoice.get as accounts-payable-fte in org_456, dsor://org_456/invoice/INV-1008";
+      expect(report.findings.slice(0, 3)).toStrictEqual([
+        `${first} sent to org_789, with the same id: ${said}`,
+        `${first} sent to org_789, with an id it does not have: ${said}`,
+        `${first} sent to org_999, which does not exist: ${said}`,
+      ]);
+    },
+  );
 });
 
 describe("C5: the suite notices an operation that takes a bare id", () => {
@@ -472,6 +616,34 @@ describe("C7: the refusal is for the company, and for nothing else", () => {
       );
     },
   );
+
+  // An answer of { data: undefined } counted as data, so a query that finds nothing and
+  // says so with an empty answer passed, and its example could name a thing that does not
+  // exist (step 12's README, decision 8). Found by the Stage 2 review, and fixed from step 12
+  // on.
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    // Empty too. Found by a hostile pass on the Stage 2 review's fix: `?? {}` passed.
+    ["{}", {}],
+    ["[]", []],
+    ['""', ""],
+  ])(
+    "DSOR-TEN-02b: a query whose code answers with data that is %s is a finding, in both companies",
+    async (what, value) => {
+      const empty = plant({
+        id: "invoice.empty",
+        handler: async () => value,
+        example: JSON.stringify(GOOD),
+      });
+      const report = await suiteOver(empty);
+      const said = `its same-company call is not answered with data: the data is ${what}`;
+      expect(report.findings).toStrictEqual([
+        ...READERS_456.map((who) => `invoice.empty as ${who} in org_456: ${said}`),
+        ...READERS_789.map((who) => `invoice.empty as ${who} in org_789: ${said}`),
+      ]);
+    },
+  );
 });
 
 describe("C6: every attack leaves its record in the caller's company", () => {
@@ -506,6 +678,17 @@ describe("C8: an operation's own code answers a same-company call with nothing o
     return `${operation} as ${who} in ${home}: ${said}: ${what}`;
   }
 
+  // The three leaks below answer with a row whose tenant_id is another company's. Since the
+  // Stage 2 review, the pipeline itself refuses such an answer with INTERNAL_ERROR, before
+  // the caller sees it (step 10's README, decision 14). So the suite names them because a
+  // query's same-company call must answer with data (step 12's README, decision 8), and the
+  // leak never reaches its data search. Found by the Stage 2 review, and fixed from step 10
+  // on.
+  /** The finding for a caller whose same-company call the pipeline refused as a bug. */
+  function refusedAsBug(operation: string, who: string, home: string): string {
+    return `${operation} as ${who} in ${home}: its same-company call is not answered with data: INTERNAL_ERROR`;
+  }
+
   it("DSOR-IDN-03b: invoice.dump, which answers with every company's invoices, is a finding", async () => {
     const dump = plant({
       id: "invoice.dump",
@@ -514,44 +697,179 @@ describe("C8: an operation's own code answers a same-company call with nothing o
     });
     const report = await suiteOver(dump);
     expect(report.findings).toStrictEqual([
-      ...READERS_456.map((who) => leaked("invoice.dump", who, "org_456", 'tenant_id "org_789"')),
-      ...READERS_789.map((who) => leaked("invoice.dump", who, "org_789", 'tenant_id "org_456"')),
+      ...READERS_456.map((who) => refusedAsBug("invoice.dump", who, "org_456")),
+      ...READERS_789.map((who) => refusedAsBug("invoice.dump", who, "org_789")),
     ]);
   });
 
   it("DSOR-IDN-03b: invoice.theirs, which answers with the other company's invoice, is a finding", async () => {
     const theirs = plant({
       id: "invoice.theirs",
-      handler: async (input, tenant) => {
+      handler: async (input, company) => {
         const { id } = parseUri((input as { invoice: string }).invoice);
-        return invoices.find((invoice) => invoice.id === id && invoice.tenant_id !== tenant);
+        return invoices.find(
+          (invoice) => invoice.id === id && invoice.tenant_id !== company.tenant,
+        );
       },
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(theirs);
+    // In org_456, the in-company pair names it too: org_789's INV-2001 fails as a bug, and
+    // NOPE, which nobody has, is answered with no data (C2).
     expect(report.findings).toStrictEqual([
-      ...READERS_456.map((who) => leaked("invoice.theirs", who, "org_456", 'tenant_id "org_789"')),
-      ...READERS_789.map((who) => leaked("invoice.theirs", who, "org_789", 'tenant_id "org_456"')),
+      ...READERS_456.flatMap((who) => [
+        refusedAsBug("invoice.theirs", who, "org_456"),
+        pairDiffers("invoice.theirs", who),
+      ]),
+      ...READERS_789.map((who) => refusedAsBug("invoice.theirs", who, "org_789")),
     ]);
   });
 
   // The cache is filled in org_456, so only the suite's second company can see it.
   it("DSOR-IDN-03b: invoice.cached, which keeps invoices by id alone, is a finding from org_789", async () => {
     const cache = new Map<string, Invoice | undefined>();
-    const store = memoryInvoices();
     const cached = plant({
       id: "invoice.cached",
-      handler: async (input, tenant) => {
+      handler: async (input, company) => {
         const { id } = parseUri((input as { invoice: string }).invoice);
-        if (!cache.has(id)) cache.set(id, await store.get(tenant, id));
+        if (!cache.has(id)) cache.set(id, await company.invoices.get(id));
         return cache.get(id);
       },
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(cached);
     expect(report.findings).toStrictEqual(
-      READERS_789.map((who) => leaked("invoice.cached", who, "org_789", 'tenant_id "org_456"')),
+      READERS_789.map((who) => refusedAsBug("invoice.cached", who, "org_789")),
     );
+  });
+
+  // Found by the Stage 2 review: each of these passed the suite with no finding. Its search
+  // knew two signs of a company, a field named exactly tenant_id and a text that starts with
+  // dsor://. The pipeline's own answer check passes them too: no tenant_id in them names
+  // another company (step 10's README, decision 14). Now the search looks for every value
+  // of the other company's rows that its own rows never hold, in every key and every text,
+  // and for any key with "tenant" in its name (step 12's README, decision 8). Found by the
+  // Stage 2 review, and fixed from step 12 on.
+  it.each([
+    [
+      "invoice.rewritten",
+      "the other company's invoice, its tenant_id rewritten to the caller's",
+      (async (_input, company) => ({
+        ...theirs1008(company.tenant),
+        tenant_id: company.tenant,
+      })) as Handler,
+      ['"VENDOR-77"', '"VENDOR-44"'],
+    ],
+    [
+      "invoice.projection",
+      "the other company's id, vendor, and amount, with no tenant_id",
+      (async (_input, company) => {
+        const { id, vendor_id, amount } = theirs1008(company.tenant);
+        return { id, vendor_id, amount };
+      }) as Handler,
+      ['"VENDOR-77"', '"VENDOR-44"'],
+    ],
+    [
+      "invoice.keyed",
+      "the other company's URI as a key",
+      (async (_input, company) => ({
+        [`dsor://${otherOf(company.tenant)}/invoice/INV-1008`]: "seen",
+      })) as Handler,
+      ['the key "dsor://org_789/invoice/INV-1008"', 'the key "dsor://org_456/invoice/INV-1008"'],
+    ],
+    [
+      "invoice.sentence",
+      "the other company's URI inside a sentence",
+      (async (_input, company) => ({
+        note: `see dsor://${otherOf(company.tenant)}/invoice/INV-1008`,
+      })) as Handler,
+      ['"see dsor://org_789/invoice/INV-1008"', '"see dsor://org_456/invoice/INV-1008"'],
+    ],
+    [
+      "invoice.camel",
+      "its own invoice, and tenantId naming the other company",
+      (async (_input, company) => ({
+        ...(await company.invoices.get("INV-1008")),
+        tenantId: otherOf(company.tenant),
+      })) as Handler,
+      ['tenantId "org_789"', 'tenantId "org_456"'],
+    ],
+  ])(
+    "DSOR-IDN-03b: %s, which answers with %s, is a finding in both companies",
+    async (id, _what, handler, [in456, in789]) => {
+      const report = await suiteOver(plant({ id, handler, example: JSON.stringify(GOOD) }));
+      // In org_456, the pair's two answers leak alike, and each is named too.
+      expect(report.findings).toStrictEqual([
+        ...READERS_456.flatMap((who) => [
+          leaked(id, who, "org_456", in456!),
+          ...pairLeaks(id, who, in456!),
+        ]),
+        ...READERS_789.map((who) => leaked(id, who, "org_789", in789!)),
+      ]);
+    },
+  );
+
+  // Only the ids the request names in its own URIs are excused. A canary anywhere else in
+  // the request, such as in a note, still counts: one note that held them all switched the
+  // search off. Found by a hostile pass on the Stage 2 review's fix.
+  it("DSOR-IDN-03b: invoice.noted, whose example's note holds every canary, is still a finding in both companies", async () => {
+    const noted = plant({
+      id: "invoice.noted",
+      input: {
+        name: "InvoiceNotedRequest",
+        schema: {
+          type: "object",
+          properties: {
+            invoice: { $ref: "urn:dsor:schema:1.3:common#/$defs/resourceUri" },
+            note: { type: "string" },
+          },
+          required: ["invoice"],
+          additionalProperties: false,
+        },
+      },
+      // For an invoice its company has, the other company's, its tenant_id rewritten.
+      handler: async (input, company) => {
+        const { id } = parseUri((input as { invoice: string }).invoice);
+        if ((await company.invoices.get(id)) === undefined) {
+          throw new Refusal("RESOURCE_NOT_FOUND", `no invoice "${id}"`);
+        }
+        return { ...theirs1008(company.tenant), tenant_id: company.tenant };
+      },
+      example: JSON.stringify({
+        ...GOOD,
+        note: "VENDOR-77 99000.00 12500.00 INV-2001 org_789 VENDOR-44 31400.00 org_456",
+      }),
+    });
+    const report = await suiteOver(noted);
+    expect(report.findings).toStrictEqual([
+      ...READERS_456.map((who) => leaked("invoice.noted", who, "org_456", '"VENDOR-77"')),
+      ...READERS_789.map((who) => leaked("invoice.noted", who, "org_789", '"VENDOR-44"')),
+    ]);
+  });
+
+  // The whole answer is searched, a refusal's message too. No shipped query refuses its
+  // own same-company call, so a fake DSoR does: it adds the other company's vendor to
+  // invoice.issue's "not built yet". Found by a hostile pass on the Stage 2 review's fix:
+  // a search of the data alone passed every test.
+  it("DSOR-IDN-03b: a same-company refusal that names another company's data is a finding", async () => {
+    const vendorOf = (home: string): string => (home === "org_456" ? "VENDOR-77" : "VENDOR-44");
+    const talks: Send = async (reg, log, request, name, input) => {
+      const answer = await call(reg, log, request, name, input);
+      if (name !== "invoice.issue" || "data" in answer || answer.code === "TENANT_MISMATCH") {
+        return answer;
+      }
+      const message = `${answer.message}, and ${vendorOf(String(request.tenant))} is waiting`;
+      return { ...answer, message };
+    };
+    const report = await crossTenantSuite(registry, createLog(), examples, talks);
+    const what = (home: string): string => {
+      const message = `"invoice.issue" is not built yet, and ${vendorOf(home)} is waiting`;
+      return `${JSON.stringify(vendorOf(home))} in ${JSON.stringify(message)}`;
+    };
+    expect(report.findings).toStrictEqual([
+      leaked("invoice.issue", "user_123", "org_456", what("org_456")),
+      ...READERS_789.map((who) => leaked("invoice.issue", who, "org_789", what("org_789"))),
+    ]);
   });
 
   it.each([
@@ -562,12 +880,87 @@ describe("C8: an operation's own code answers a same-company call with nothing o
       '"dsor://org_789/invoice/INV-1008"',
     ],
     ["a URI in capitals", { see: "DSOR://org_999/invoice/X" }, '"DSOR://org_999/invoice/X"'],
+    // Each of these, one sign alone. Found by the Stage 2 review, and fixed from step 12 on.
+    ["a value only the other company's rows hold", { vendor: "VENDOR-77" }, '"VENDOR-77"'],
+    [
+      "one inside a text, in small letters",
+      { note: "paid to vendor-77 on time" },
+      '"VENDOR-77" in "paid to vendor-77 on time"',
+    ],
+    ["one used as a key", { "INV-2001": true }, 'the key "INV-2001"'],
+    ["the other company's id, alone in a text", { note: "org_789" }, '"org_789"'],
+    [
+      "a key named tenantId, naming a company with no rows",
+      { tenantId: "org_999" },
+      'tenantId "org_999"',
+    ],
+    ["a key with tenant in its name, naming no company", { tenant_name: null }, "tenant_name null"],
+    [
+      "a URI of a company with no rows, inside a sentence",
+      { note: "see dsor://org_999/invoice/X" },
+      '"see dsor://org_999/invoice/X"',
+    ],
+    [
+      "a URI of a company with no rows, as a key",
+      { "dsor://org_999/invoice/X": 1 },
+      'the key "dsor://org_999/invoice/X"',
+    ],
+    // Each rule at its edge. Found by a hostile pass on the Stage 2 review's fix: a rule
+    // for keys that start with tenant, or are written in small letters only, or hold text
+    // only, passed every test, and so did a URI rule that read only the first URI, read a
+    // company that only starts like this one's as this one, or skipped an empty company.
+    ["a key named activeTenantId", { activeTenantId: "org_999" }, 'activeTenantId "org_999"'],
+    ["a key named TENANT, in capitals", { TENANT: "org_999" }, 'TENANT "org_999"'],
+    [
+      "a key with tenant in its name, holding an object",
+      { tenant: { id: "org_999" } },
+      'tenant {"id":"org_999"}',
+    ],
+    [
+      "a URI of a company whose id starts like this one's",
+      { see: "dsor://org_4567/invoice/X" },
+      '"dsor://org_4567/invoice/X"',
+    ],
+    [
+      "a second URI in a text, of another company",
+      { see: "dsor://org_456/invoice/INV-1008, then dsor://org_999/invoice/X" },
+      '"dsor://org_456/invoice/INV-1008, then dsor://org_999/invoice/X"',
+    ],
+    ["a URI that names no company", { see: "dsor:///invoice/X" }, '"dsor:///invoice/X"'],
   ])("DSOR-IDN-03b: the data search names %s", (_what, data, found) => {
     expect(foreignIn(data, "org_456")).toBe(found);
   });
 
-  it("DSOR-IDN-03b: the data search passes data that holds only its own company", () => {
-    const own = { ...INV_1008_OF_456, link: "dsor://org_456/invoice/INV-1008", note: "org_789" };
+  // The canaries, typed out: every value of the other company's rows that this company's
+  // rows never hold. Found by the Stage 2 review, and fixed from step 12 on.
+  it("DSOR-IDN-03b: org_456's canaries are org_789's values it never holds, and org_789's the other way", () => {
+    expect(canariesOf("org_456")).toStrictEqual([
+      "12500.00",
+      "99000.00",
+      "INV-2001",
+      "VENDOR-77",
+      "org_789",
+    ]);
+    expect(canariesOf("org_789")).toStrictEqual(["31400.00", "VENDOR-44", "org_456"]);
+  });
+
+  // A canary the caller sent itself is not counted. invoice.get's own "not found" repeats
+  // the id it was asked for. Found by the Stage 2 review, and fixed from step 12 on.
+  it("DSOR-IDN-03b: a canary the request itself holds is not counted", () => {
+    const answer = { code: "RESOURCE_NOT_FOUND", message: 'no invoice "INV-2001"' };
+    const sent = { invoice: "dsor://org_456/invoice/INV-2001" };
+    expect(foreignIn(answer, "org_456", sent)).toBeUndefined();
+    expect(foreignIn(answer, "org_456")).toBe('"INV-2001" in "no invoice \\"INV-2001\\""');
+  });
+
+  // The whole answer is searched, its correlation too, and the company's own data passes.
+  // Found by the Stage 2 review: a note naming org_789 passed here before, and now names
+  // the other company.
+  it("DSOR-IDN-03b: the data search passes an answer that holds only its own company", () => {
+    const own = {
+      data: { ...INV_1008_OF_456, link: "dsor://org_456/invoice/INV-1008", note: "rush" },
+      correlation: { request_id: "req_1", agent_id: "accounts-payable-fte", tenant: "org_456" },
+    };
     expect(foreignIn(own, "org_456")).toBeUndefined();
   });
 });
