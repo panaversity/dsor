@@ -24,12 +24,12 @@ export type Decision = {
   // non-member asked for (step 10's README, decision 6), or the label of what a read
   // returned (step 14's README, decision 7).
   extensions?: { [namespace: string]: { requested_tenant?: string; classification?: Label } };
-  // NEW IN STEP 14: what a read returned, in the audit record's own fields (DSOR-CLS-05).
+  // What a read returned, in the audit record's own fields (DSOR-CLS-05).
   resources?: string[];
   row_count?: number;
 };
 
-// NEW IN STEP 14: what a query's answer returned, for its record (step 14's README,
+// What a query's answer returned, for its record (step 14's README,
 // decision 7).
 /** The URIs a read returned, and the label of its answer. */
 export type Read = { resources: string[]; classification: Label };
@@ -81,7 +81,7 @@ export function decisionOf(
   tenant: string | undefined,
   // The well-formed company the caller named, checked or not.
   claimed: string | undefined,
-  // NEW IN STEP 14: what the answer returned, when it returned data.
+  // What the answer returned, when it returned data.
   read?: Read,
 ): Decision {
   const refused = "code" in answer;
@@ -102,7 +102,7 @@ export function decisionOf(
     ...(tenant === undefined && claimed !== undefined
       ? { extensions: { [OURS]: { requested_tenant: claimed } } }
       : {}),
-    // NEW IN STEP 14: who, what, and how many (DSOR-CLS-05). URIs, a count, and a label,
+    // Who, what, and how many (DSOR-CLS-05). URIs, a count, and a label,
     // never a value read (DSOR-AUD-05a). A read returns data only after line ②, so a
     // claimed company is never beside it.
     ...(read === undefined

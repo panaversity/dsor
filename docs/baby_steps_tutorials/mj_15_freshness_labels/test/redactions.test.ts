@@ -1,4 +1,4 @@
-// NEW IN STEP 14: an answer from which fields were left out lists them, so the agent does
+// An answer from which fields were left out lists them, so the agent does
 // not take a missing field for missing data (DSOR-CLS-02b; step 14's README, C3). Each
 // entry has the result envelope's shape: { field, reason, treatment }.
 import { readFileSync } from "node:fs";

@@ -1,4 +1,4 @@
-// NEW IN STEP 14: what leaves DSoR for one caller. For an agent, every field above its
+// What leaves DSoR for one caller. For an agent, every field above its
 // clearance is left out, and the answer lists what was (DSOR-CLS-02a, DSOR-CLS-02b). Every
 // answer carries its label (DSOR-CLS-03), and the rows it returns are named for its record
 // (DSOR-CLS-05). specs/dsor/02-security.md, section 19.2. The labels are src/labels.ts.

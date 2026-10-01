@@ -1,4 +1,4 @@
-// NEW IN STEP 14: masking is for agents only (step 14's README, C6 and decision 5). A
+// Masking is for agents only (step 14's README, C6 and decision 5). A
 // guard, not a signal: these pass with or without this step's code. They prove the
 // masking does not reach too far, because an approver must see what they approve.
 import { describe, expect, it } from "vitest";

@@ -1,4 +1,4 @@
--- NEW IN STEP 11: the second lock, on the company's data. `pnpm migrate` runs this file
+-- The second lock, on the company's data. `pnpm migrate` runs this file
 -- once, as the owner, after 003 (step 11's README, decision 1).
 
 -- Row-level security: PostgreSQL adds the policy below to every query on this table, by

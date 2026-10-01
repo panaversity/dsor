@@ -45,7 +45,7 @@ const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.m
 // Start-up checks the input schemas too. A folder of them can be named after
 // the role table, so a test can start without one. With none named, the step's own is read.
 const INPUTS: string | undefined = process.argv[4];
-// NEW IN STEP 14: start-up checks the labels too (step 14's README, decision 1). A file of
+// Start-up checks the labels too (step 14's README, decision 1). A file of
 // them can be named after the inputs folder, so a test can start with a broken one.
 const CLASSIFICATIONS: string | undefined = process.argv[5];
 // The pool is made before the checks, because the registry holds the store
@@ -117,7 +117,7 @@ const AGENT: RequestEnvelope = { token: "tok_7f3a", tenant: "org_456" };
 // (step 12's README, decision 1).
 const answer = await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
 console.log(answer);
-// NEW IN STEP 14: the agent's INV-1008 above has no amount and no open_amount. cfo_100, a
+// The agent's INV-1008 above has no amount and no open_amount. cfo_100, a
 // person, asks for the same invoice and gets it whole (step 14's README, outcome 5).
 const CFO: RequestEnvelope = { token: "tok_d4e8", tenant: "org_456" };
 const whole = await ask(CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
@@ -172,7 +172,7 @@ const READS = [
 ] as const;
 for (const [firm, invoice] of READS) {
   const read = await ask(firm, "invoice.get", { invoice });
-  // NEW IN STEP 14: the firm's agent gets no amount. The vendor says whose invoice it is.
+  // The firm's agent gets no amount. The vendor says whose invoice it is.
   if ("data" in read) {
     const { tenant_id, id, vendor_id } = read.data as Invoice;
     console.log(tenant_id, id, vendor_id);

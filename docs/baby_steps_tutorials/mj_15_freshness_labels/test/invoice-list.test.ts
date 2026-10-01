@@ -103,7 +103,7 @@ describe("C1: a page holds at most 10 rows, whatever the caller asks, and says w
     });
   });
 
-  // NEW IN STEP 14: cfo_100 asks, a person. An agent's items have no money (step 14's
+  // Cfo_100 asks, a person. An agent's items have no money (step 14's
   // README, decision 5).
   it("decision 1: each item is a whole invoice, with its company, its money as text", async () => {
     const answer = await call(registry, log, CFO, "invoice.list", { limit: 1 });

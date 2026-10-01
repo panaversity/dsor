@@ -1,4 +1,4 @@
--- NEW IN STEP 10: a second company moves in. `pnpm migrate` runs this file once, as the
+-- A second company moves in. `pnpm migrate` runs this file once, as the
 -- owner, after 001 (step 10's README, decision 8). 001 is never edited: it has run, so it
 -- is history.
 

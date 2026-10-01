@@ -1,4 +1,4 @@
-// NEW IN STEP 14, from the review: what is not a record of its kind never leaves, for
+// From step 14's review: what is not a record of its kind never leaves, for
 // anyone. A person given text would be recorded as reading nothing, while the text held
 // an amount (DSOR-CLS-05; step 14's README, decision 3).
 import { describe, expect, it } from "vitest";

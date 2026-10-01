@@ -89,7 +89,7 @@ describe("C4: every answer carries a request_id that DSoR made", () => {
 
 // No rule id: this shape is step 04's decision 3, and it does not meet DSOR-SCH-01.
 describe("C6: a query's success is { data, correlation }", () => {
-  // NEW IN STEP 14: asked by cfo_100, a person, so the whole invoice is the data. The
+  // Asked by cfo_100, a person, so the whole invoice is the data. The
   // agent's has no amounts (step 14's README, decision 5).
   it("invoice.get for INV-1008 answers with the invoice as its data", async () => {
     expect(
@@ -106,7 +106,7 @@ describe("C6: a query's success is { data, correlation }", () => {
         open_amount: { value: "31400.00", currency: "USD" },
         status: "issued",
       },
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "confidential",
       correlation: correlationFor(THE_CFO),
     });
@@ -114,7 +114,7 @@ describe("C6: a query's success is { data, correlation }", () => {
 
   // No rule id: a read never writes. Found by step 04's review: a caller that changed the
   // data of its answer changed INV-1008 for every caller after it.
-  // NEW IN STEP 14: user_123 asks, a person, whose answer holds open_amount.
+  // User_123 asks, a person, whose answer holds open_amount.
   it("changing an answer's data does not change the stored invoice", async () => {
     const answer = (await call(registry, log, SUPERVISOR, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",

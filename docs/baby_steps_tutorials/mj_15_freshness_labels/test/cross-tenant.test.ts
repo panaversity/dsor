@@ -61,7 +61,7 @@ type Plant = {
   handler?: Handler;
   // The text of its example file. None means the file is missing.
   example?: string;
-  // NEW IN STEP 14: the kind its answer is. An Invoice, as invoice.get's, unless the test
+  // The kind its answer is. An Invoice, as invoice.get's, unless the test
   // names another (step 14's README, decision 1).
   output?: string;
 };
@@ -177,7 +177,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
         ? call(reg, log, request, name, input)
         : {
             data: { tenant_id: request.tenant, id: "INV-1008" },
-            // NEW IN STEP 14: every answer carries its label.
+            // Every answer carries its label.
             classification: "internal" as const,
             correlation: { request_id: `req_${randomUUID()}` },
           };
@@ -543,7 +543,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     ["AUTHORIZATION_DENIED", refusal("AUTHORIZATION_DENIED")],
     ["VALIDATION_FAILED", refusal("VALIDATION_FAILED")],
     ["RESOURCE_NOT_FOUND", refusal("RESOURCE_NOT_FOUND")],
-    // NEW IN STEP 14: every answer carries its label.
+    // Every answer carries its label.
     [
       "with data",
       {
@@ -770,7 +770,7 @@ describe("C8: an operation's own code answers a same-company call with nothing o
   }
 
   it("DSOR-IDN-03b: invoice.dump, which answers with every company's invoices, is a finding", async () => {
-    // NEW IN STEP 14: a page of them, as its contract says. A bare list is not a record of
+    // A page of them, as its contract says. A bare list is not a record of
     // any kind, so an agent would be refused it, and the leak would hide behind the refusal
     // (step 14's README, decision 3). Masking leaves tenant_id, so the leak still shows.
     const dump = plant({

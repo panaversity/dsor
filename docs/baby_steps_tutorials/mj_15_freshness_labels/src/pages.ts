@@ -20,7 +20,7 @@ export function resultBytes(data: unknown): number {
 // The pipeline's check, after line ⑨, for every query whoever wrote its code. §28 has no
 // code for "too large": UNSUPPORTED_CAPABILITY is the closest, and asking again gets the
 // same answer (step 13's README, decision 3).
-// NEW IN STEP 14: the list of what was withheld counts too. It holds field names taken
+// The list of what was withheld counts too. It holds field names taken
 // from the data, so code could make it as large as it likes (step 14's README, decision 5).
 /** Refuses a result larger than DSoR gives in one call: its data, and the list of what was withheld. */
 export function checkResultSize(data: unknown, redactions: unknown[] = []): void {

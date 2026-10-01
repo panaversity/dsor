@@ -179,7 +179,7 @@ describe("C1: each request works in exactly one company, which the caller belong
     expect(answer).toStrictEqual(refused("AUTHORIZATION_DENIED", NOT_A_MEMBER, THE_AGENT));
   });
 
-  // NEW IN STEP 14: the agent's invoice comes without its amounts. Its company and vendor
+  // The agent's invoice comes without its amounts. Its company and vendor
   // still say whose invoice it is (step 14's README, outcome 1).
   it("DSOR-IDN-03a: the firm's agent works in org_456, and reads org_456's INV-1008", async () => {
     expect(
@@ -188,7 +188,7 @@ describe("C1: each request works in exactly one company, which the caller belong
       }),
     ).toStrictEqual({
       data: MASKED_1008_OF_456,
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
@@ -202,7 +202,7 @@ describe("C1: each request works in exactly one company, which the caller belong
       }),
     ).toStrictEqual({
       data: MASKED_1008_OF_789,
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
@@ -227,7 +227,7 @@ describe("C1: each request works in exactly one company, which the caller belong
 });
 
 describe("C2: a read looks only inside the active company", () => {
-  // NEW IN STEP 14: read by cfo_100, a person, as org_789's by user_700. The agent's answer
+  // Read by cfo_100, a person, as org_789's by user_700. The agent's answer
   // has no amount (step 14's README, decision 5).
   it("DSOR-IDN-03b: org_456 reads INV-1008 and gets 31,400.00 USD from VENDOR-44", async () => {
     const answer = await call(registry, log, CFO, "invoice.get", {
@@ -235,7 +235,7 @@ describe("C2: a read looks only inside the active company", () => {
     });
     expect(answer).toStrictEqual({
       data: INV_1008_OF_456,
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "confidential",
       correlation: correlationFor(THE_CFO),
     });
@@ -247,7 +247,7 @@ describe("C2: a read looks only inside the active company", () => {
     });
     expect(answer).toStrictEqual({
       data: INV_1008_OF_789,
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "confidential",
       correlation: correlationFor(THE_789_SUPERVISOR),
     });
@@ -570,7 +570,7 @@ describe("C7: an envelope carries exactly one company, and nothing DSoR does not
         invoice: "dsor://org_456/invoice/INV-1008",
       }),
     ).toMatchObject({
-      // NEW IN STEP 14: without its amounts, because the agent asks.
+      // Without its amounts, because the agent asks.
       data: MASKED_1008_OF_456,
     });
   });

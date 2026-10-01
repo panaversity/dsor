@@ -19,7 +19,7 @@ describe("the schema copies", () => {
     },
   );
 
-  // NEW IN STEP 14: the result envelope's schema is a copy too. The tests check an answer's
+  // The result envelope's schema is a copy too. The tests check an answer's
   // classification and redactions against it (step 14's README, decision 4).
   it.skipIf(!existsSync(ORIGINALS))(
     "DSOR-CLS-02b: schemas/result-envelope.schema.json equals the specification's own",

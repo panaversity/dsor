@@ -109,7 +109,7 @@ type AuditRow = {
   correlation: DecisionRecord["correlation"];
   tenant: string | null;
   extensions: DecisionRecord["extensions"] | null;
-  // NEW IN STEP 14: what a read returned. NULL on every other record.
+  // What a read returned. NULL on every other record.
   resources: string[] | null;
   row_count: number | null;
 };
@@ -146,7 +146,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
             // A company a non-member claimed (step 10's README, decision 6), or the
             // label of what a read returned (step 14's README, decision 7).
             decision.extensions ?? null,
-            // NEW IN STEP 14: the URIs a read returned, and how many (DSOR-CLS-05).
+            // The URIs a read returned, and how many (DSOR-CLS-05).
             decision.resources ?? null,
             decision.row_count ?? null,
           ],

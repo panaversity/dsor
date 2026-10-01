@@ -1,4 +1,4 @@
-// NEW IN STEP 14: every query's answer carries a label, the highest among the fields it
+// Every query's answer carries a label, the highest among the fields it
 // still contains after masking (DSOR-CLS-03; step 14's README, C4).
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";

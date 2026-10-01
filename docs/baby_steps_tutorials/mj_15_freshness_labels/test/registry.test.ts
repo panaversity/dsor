@@ -101,7 +101,7 @@ describe("C1: nothing can be called without a contract", () => {
       roles: new Map(),
       // A registry holds the check for each input too. This one has none.
       inputs: new Map(),
-      // NEW IN STEP 14: and the labels. This one has none.
+      // And the labels. This one has none.
       classifications: new Map(),
       // And the store its operations read. This one reads nothing (step 10's README,
       // decision 13).

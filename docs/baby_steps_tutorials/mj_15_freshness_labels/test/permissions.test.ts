@@ -486,7 +486,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         roles: registry.roles,
         // The shipped check for each operation's input.
         inputs: registry.inputs,
-        // NEW IN STEP 14: and the shipped labels.
+        // And the shipped labels.
         classifications: registry.classifications,
         // The invoices in memory (step 10's README, decision 13).
         invoices: registry.invoices,

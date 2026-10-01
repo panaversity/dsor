@@ -29,7 +29,7 @@ const NOT_AGENTS: ReadonlySet<string> = new Set(["human", "application", "system
 /** A company the principal belongs to, and its roles there. */
 export type Membership = { tenant_id: string; roles: string[] };
 
-// NEW IN STEP 14: an agent's clearance, the highest label it may see. A person has none,
+// An agent's clearance, the highest label it may see. A person has none,
 // because a person's answer is not masked (step 14's README, decisions 2 and 5).
 /** Who is calling. */
 export type Principal = {
@@ -51,7 +51,7 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   // The agent holds a stand-in role of its own, ap_agent. It may read, and
   // nothing more. Step 18 should replace it with a person's permission slip (step 06's
   // README, decision 5).
-  // NEW IN STEP 14: internal, so amounts are masked. §19.2's example gives it
+  // Internal, so amounts are masked. §19.2's example gives it
   // confidential (step 14's README, decision 2).
   [
     "tok_7f3a",
@@ -66,7 +66,7 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
     {
       id: "firm-ap-fte",
       type: "agent",
-      // NEW IN STEP 14: the firm's agent sees what our own agent sees.
+      // The firm's agent sees what our own agent sees.
       clearance: "internal",
       memberships: [
         { tenant_id: "org_456", roles: ["ap_agent"] },

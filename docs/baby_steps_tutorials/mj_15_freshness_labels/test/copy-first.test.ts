@@ -1,4 +1,4 @@
-// NEW IN STEP 14, from the review: DSoR walks its own deep copy of what the operation's
+// From step 14's review: DSoR walks its own deep copy of what the operation's
 // code returned. So nothing can change after DSoR has looked, and the record and the answer
 // come from the same copy (step 14's README, decision 3).
 import { describe, expect, it } from "vitest";

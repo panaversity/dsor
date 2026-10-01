@@ -1,4 +1,4 @@
-// NEW IN STEP 14, from the review and the mutation sweep: each test fails on a break that
+// From step 14's review and mutation sweep: each test fails on a break that
 // left every other test green (step 14's README, "Think it through").
 import { describe, expect, it } from "vitest";
 import { checkClassifications, readClassifications, type Kinds } from "../src/labels.ts";

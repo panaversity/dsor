@@ -42,7 +42,7 @@ const registry = dbRegistry(pool);
 const log = createDbLog(pool);
 
 describe("C2: a read in the database looks only inside the active company", () => {
-  // NEW IN STEP 14: cfo_100 asks, a person, as user_700 does below. An agent's answer has
+  // Cfo_100 asks, a person, as user_700 does below. An agent's answer has
   // no amount (step 14's README, decision 5).
   it("DSOR-IDN-03b: org_456 reads INV-1008 from app.invoices: 31,400.00 USD", async () => {
     const answer = await call(registry, log, CFO, "invoice.get", {

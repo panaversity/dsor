@@ -1,4 +1,4 @@
-// NEW IN STEP 14, from the review: the 64 KiB is measured on what leaves for the caller:
+// From step 14's review: the 64 KiB is measured on what leaves for the caller:
 // the data after masking, and the list of what was withheld, which holds field names
 // taken from the data (DSOR-QRY-01; step 14's README, decision 5).
 import { describe, expect, it } from "vitest";

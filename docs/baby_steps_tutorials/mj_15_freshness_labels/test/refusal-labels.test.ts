@@ -1,4 +1,4 @@
-// NEW IN STEP 14, from the review: a refusal from the operation's code is masked too. Its
+// From step 14's review: a refusal from the operation's code is masked too. Its
 // message is text, and the code can put company data in it (DSOR-CLS-02a, DSOR-AUD-05a;
 // step 14's README, decision 8).
 import { describe, expect, it } from "vitest";

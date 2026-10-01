@@ -261,7 +261,7 @@ export function notGranted(name: string, permission: string): string {
 }
 
 /** A real registry: the shipped operations, plus "test.run", whose code the test writes. */
-// NEW IN STEP 14: test.run returns an Invoice, as invoice.get does, unless the test names
+// Test.run returns an Invoice, as invoice.get does, unless the test names
 // another kind for its output (step 14's README, decision 1). And the shipped labels, unless
 // the test gives others. Found by the Stage 2 review.
 export function registryWith(
@@ -310,7 +310,7 @@ export function run(handler: Handler): Promise<Answer> {
   });
 }
 
-// NEW IN STEP 14: an agent's answer is masked and a person's is not, so a test says who
+// An agent's answer is masked and a person's is not, so a test says who
 // asks (step 14's README, decision 5).
 /** Calls "test.run" as this caller. Its code is the handler, and its output this kind. */
 export function runAs(
@@ -324,7 +324,7 @@ export function runAs(
   });
 }
 
-// NEW IN STEP 14: what an agent with clearance internal sees of each company's INV-1008,
+// What an agent with clearance internal sees of each company's INV-1008,
 // typed out again rather than made from src (step 14's README, outcome 1).
 export const MASKED_1008_OF_456 = {
   tenant_id: "org_456",
@@ -339,7 +339,7 @@ export const MASKED_1008_OF_789 = {
   status: "issued",
 };
 
-// NEW IN STEP 14: an invoice's answer with a field that classifications.json does not
+// An invoice's answer with a field that classifications.json does not
 // name. Only internal fields beside it and no amount, so only the planted field can make
 // a person's answer confidential (step 14's README, C1).
 export const PLANTED = {
@@ -356,7 +356,7 @@ export function omitted(field: string): { field: string; reason: string; treatme
   return { field, reason: "clearance", treatment: "omitted" };
 }
 
-// NEW IN STEP 14: what an agent with clearance internal is told was left out of an invoice
+// What an agent with clearance internal is told was left out of an invoice
 // (step 14's README, C3).
 export const MASKED_REDACTIONS: { field: string; reason: string; treatment: string }[] = [
   omitted("amount"),

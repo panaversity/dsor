@@ -60,7 +60,7 @@ export async function call(
   // A well-formed company the caller named. If line ② refuses it, the record
   // keeps it as a claim, never as its tenant (step 10's README, decision 6).
   let claimedTenant: string | undefined;
-  // NEW IN STEP 14: what the answer returned, set only when it returns data. Its record
+  // What the answer returned, set only when it returns data. Its record
   // says so (DSOR-CLS-05; step 14's README, decision 7).
   let read: Read | undefined;
 
@@ -168,7 +168,7 @@ export async function call(
       try {
         return await handler(copy, companyOf(registry.invoices, tenant));
       } catch (thrown) {
-        // NEW IN STEP 14: a refusal the code throws is masked as its answer would be
+        // A refusal the code throws is masked as its answer would be
         // (DSOR-CLS-02a; step 14's README, decision 8).
         throw maskRefusal(thrown, clearanceOf(caller));
       }
@@ -179,7 +179,7 @@ export async function call(
     // check reads DSoR's own copy of the answer, and the caller gets that copy (step 10's
     // README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
     const data = checkAnswerInTenant(returned, tenant);
-    // NEW IN STEP 14: ours, not §21's. For an agent, every field above its clearance is
+    // Ours, not §21's. For an agent, every field above its clearance is
     // left out before the answer leaves (DSOR-CLS-02a). The contract names the kind of its
     // answer. Masking walks the copy the company check made, so the answer, its record, and
     // the check all read one copy (step 14's README, decision 3). Found by the Stage 2
@@ -195,7 +195,7 @@ export async function call(
     //   27, and 30.
 
     // A query's answer is { data, correlation } (step 04's README, decision 3).
-    // NEW IN STEP 14: with its label (DSOR-CLS-03), and the fields left out, when there are
+    // With its label (DSOR-CLS-03), and the fields left out, when there are
     // any (DSOR-CLS-02b).
     const { classification, redactions, resources } = shown;
     const listed = redactions.length > 0 ? { redactions } : {};

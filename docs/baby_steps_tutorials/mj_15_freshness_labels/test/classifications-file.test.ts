@@ -1,4 +1,4 @@
-// NEW IN STEP 14: classifications.json gives every field its label, and start-up checks
+// Classifications.json gives every field its label, and start-up checks
 // it as it checks roles.json (step 14's README, decision 1). No rule id: a label that is
 // not one of the four stops the program, which is this tutorial's choice.
 import { spawnSync } from "node:child_process";

@@ -1,4 +1,4 @@
-// NEW IN STEP 14: a read that returns confidential data is recorded with who, what, and how
+// A read that returns confidential data is recorded with who, what, and how
 // many (DSOR-CLS-05; step 14's README, C5). The record uses the audit record's own fields,
 // resources and row_count, and keeps the answer's label under extensions (decision 7).
 // test/read-record.db.test.ts asks the same of dsor.audit.

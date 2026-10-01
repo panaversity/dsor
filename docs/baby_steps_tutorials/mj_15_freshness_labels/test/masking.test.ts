@@ -1,4 +1,4 @@
-// NEW IN STEP 14: for an agent, every field above its clearance is left out before the
+// For an agent, every field above its clearance is left out before the
 // answer leaves DSoR (DSOR-CLS-02a; step 14's README, C2). The invoices are in memory.
 // test/masking.db.test.ts asks the same of the database.
 import { describe, expect, it } from "vitest";

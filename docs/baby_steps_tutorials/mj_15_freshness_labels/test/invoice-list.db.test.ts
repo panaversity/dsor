@@ -70,7 +70,7 @@ describe("C1: a page from the database holds at most 10 rows", () => {
     expect(await pageAsked(FIRM_IN_789, { limit: 5 })).toStrictEqual({ items: ORG_789 });
   });
 
-  // NEW IN STEP 14: cfo_100 asks, a person. An agent's items have no money (step 14's
+  // Cfo_100 asks, a person. An agent's items have no money (step 14's
   // README, decision 5).
   it("DSOR-MON-01: each item is a whole invoice from app.invoices, its money exactly as stored", async () => {
     const answer = await call(registry, log, CFO, "invoice.list", { limit: 1 });

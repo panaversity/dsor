@@ -1,4 +1,4 @@
-// NEW IN STEP 14: the agent's answers from the database are masked too (DSOR-CLS-02a;
+// The agent's answers from the database are masked too (DSOR-CLS-02a;
 // step 14's README, C2). The same claims as test/masking.test.ts, asked of app.invoices.
 import { afterAll, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";

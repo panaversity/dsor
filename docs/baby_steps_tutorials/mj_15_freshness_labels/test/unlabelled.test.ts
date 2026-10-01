@@ -1,4 +1,4 @@
-// NEW IN STEP 14: a field with no label is confidential (DSOR-CLS-01; step 14's README,
+// A field with no label is confidential (DSOR-CLS-01; step 14's README,
 // C1). These ask the lookup itself. What an agent and a person get when an answer holds
 // such a field is asked in masking, redactions, and answer-label tests.
 import { describe, expect, it } from "vitest";

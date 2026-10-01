@@ -49,7 +49,7 @@ function suiteWithList(
   handler: Handler,
   kind: "query" | "command" = "query",
   log: MemoryLog = createLog(),
-  // NEW IN STEP 14: DSoR itself, unless the test hands the suite a fake one.
+  // DSoR itself, unless the test hands the suite a fake one.
   send: Send = call,
 ): Promise<Report> {
   // A query that needs invoice:read, as invoice.get does, or a command that needs
@@ -58,7 +58,7 @@ function suiteWithList(
     ...contract(kind === "query" ? "invoice.get" : "invoice.issue"),
     id: "invoice.browse",
     input: { schema: "InvoiceBrowseRequest" },
-    // NEW IN STEP 14: a list answers a page, and its contract says so, as invoice.list's
+    // A list answers a page, and its contract says so, as invoice.list's
     // does. Each field of the page is then masked by its own label (step 14's README,
     // decision 1).
     output: { schema: "InvoicePage" },
@@ -177,7 +177,7 @@ describe("C5: a list, with no URI to swap, is checked by its rows", () => {
     ]);
   });
 
-  // NEW IN STEP 14: DSoR itself refuses this answer now, to everyone. With no tenant_id, an
+  // DSoR itself refuses this answer now, to everyone. With no tenant_id, an
   // item has no URI for the record of the read (step 14's README, decision 7). The suite
   // hears no page, and says so: still a finding, step 12's, word for word.
   it("DSOR-TEN-02b: a list whose items carry no tenant_id is a finding: DSoR refuses its answer", async () => {
@@ -187,7 +187,7 @@ describe("C5: a list, with no URI to swap, is checked by its rows", () => {
     expect(report.findings).toStrictEqual(["invoice.browse: no URI of org_456 in its example"]);
   });
 
-  // NEW IN STEP 14: the suite's own check, which DSoR no longer lets such a page reach. A
+  // The suite's own check, which DSoR no longer lets such a page reach. A
   // fake DSoR answers the page anyway, as a DSoR without step 14's record would.
   it("DSOR-TEN-02b: a list whose items carry no tenant_id is a finding: their company cannot be checked", async () => {
     const noRecord: Send = async (registry, log, request, name, input) =>

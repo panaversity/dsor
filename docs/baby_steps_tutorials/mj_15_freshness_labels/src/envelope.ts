@@ -61,7 +61,7 @@ export type ErrorEnvelope = {
   correlation: Correlation;
 };
 
-// NEW IN STEP 14: its label, always, and what was withheld, only when something was, with
+// Its label, always, and what was withheld, only when something was, with
 // the result envelope's names and shapes (step 14's README, decision 4).
 /** A query's answer. This shape is step 04's decision 3, not the specification's. */
 export type Success = {
@@ -118,7 +118,7 @@ export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {
 /** A refusal, as a handler throws it: a code from the table and a message for people. */
 export class Refusal extends Error {
   readonly code: ErrorCode;
-  // NEW IN STEP 14: how sensitive the message is. A message is text that may hold company
+  // How sensitive the message is. A message is text that may hold company
   // data, so it is confidential unless the code that refuses says otherwise (step 14's
   // README, decision 8).
   readonly label: Label;

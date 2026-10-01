@@ -38,7 +38,7 @@ export type Registry = {
   roles: Roles;
   // The check for each operation's input (step 07's README, decision 2).
   inputs: InputChecks;
-  // NEW IN STEP 14: each field's label (step 14's README, decision 1).
+  // Each field's label (step 14's README, decision 1).
   classifications: Kinds;
   // The store the operations read. Only the pipeline uses it, to give the code the active
   // company's invoices (step 10's README, decision 13). Found by the Stage 2 review, and
@@ -89,7 +89,7 @@ export function buildRegistry(
   roleSource: RoleSource,
   // The input schemas. This step's own, unless the caller gives others.
   inputSources: InputSource[] = readInputs(),
-  // NEW IN STEP 14: the labels. This step's own, unless the caller gives others.
+  // The labels. This step's own, unless the caller gives others.
   classificationSource: ClassificationSource = readClassifications(),
   // The store the operations read: the database for the program, memory for the unit
   // tests. Without one, every read fails (step 10's README, decision 13). Found by the
@@ -156,7 +156,7 @@ export function buildRegistry(
   const { inputs, problems: inputProblems } = checkInputs(contracts.values(), inputSources);
   problems.push(...inputProblems);
 
-  // NEW IN STEP 14: a label that is not one of the four stops start-up, with the rest.
+  // A label that is not one of the four stops start-up, with the rest.
   const { kinds, problems: labelProblems } = checkClassifications(classificationSource);
   problems.push(...labelProblems);
   // Every contract's output kind must have its lines, or its answer would be masked by

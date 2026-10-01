@@ -1,7 +1,7 @@
 // No query's result is larger than 64 KiB (DSOR-QRY-01; step 13's README,
 // C2 and decision 3). The result is the answer's data, as JSON text, counted in bytes.
 // Each test plants a fake query, test.run, whose code the test writes.
-// NEW IN STEP 14: user_123 asks, a person. An agent's answer is masked before it is
+// User_123 asks, a person. An agent's answer is masked before it is
 // measured, and the fields these fake rows carry have no label, so an agent would get none
 // of them (step 14's README, decisions 3 and 5).
 import { describe, expect, it } from "vitest";
@@ -21,7 +21,7 @@ const TOO_LARGE = {
   correlation: correlationFor(THE_SUPERVISOR),
 };
 
-// NEW IN STEP 14: a row carries its company, so its record can name it by its URI (step
+// A row carries its company, so its record can name it by its URI (step
 // 14's README, decision 7).
 /** A row of about `kib` KiB: its company, an id, and text to make it large. */
 function row(n: number, kib: number): { tenant_id: string; id: string; text: string } {
@@ -29,7 +29,7 @@ function row(n: number, kib: number): { tenant_id: string; id: string; text: str
   return { tenant_id: "org_456", id, text: "x".repeat(kib * 1024) };
 }
 
-// NEW IN STEP 14: a page's code answers an InvoicePage, as invoice.list's does, so each row
+// A page's code answers an InvoicePage, as invoice.list's does, so each row
 // is walked as an invoice (step 14's README, decision 1).
 /** Calls test.run as user_123, with code that answers a page of these rows. */
 function askPage(rows: object[], limit?: number): ReturnType<typeof runAs> {
@@ -90,7 +90,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     expect(await askPage(rows, 1000000)).toStrictEqual(TOO_LARGE);
   });
 
-  // NEW IN STEP 14: an invoice whose text field brings it to exactly 64 KiB. Text alone is
+  // An invoice whose text field brings it to exactly 64 KiB. Text alone is
   // not a record, and is refused for everyone (step 14's README, decision 3).
   it("DSOR-QRY-01: a result of exactly 64 KiB is answered", async () => {
     const exact = sizedInvoice(LIMIT);
@@ -98,7 +98,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     const answer = await runAs(SUPERVISOR, async () => exact);
     expect(answer).toStrictEqual({
       data: exact,
-      // NEW IN STEP 14: text has no label, so it is confidential (DSOR-CLS-01).
+      // Text has no label, so it is confidential (DSOR-CLS-01).
       classification: "confidential",
       correlation: correlationFor(THE_SUPERVISOR),
     });
@@ -121,7 +121,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   // README, decision 5).
   it("DSOR-EXE-02: a result refused for its size is recorded like every other answer", async () => {
     const log = createLog();
-    // NEW IN STEP 14: an invoice too large to send. Text alone is refused for being text.
+    // An invoice too large to send. Text alone is refused for being text.
     const registry = registryWith(async () => sizedInvoice(LIMIT + 1));
     const input = { invoice: "dsor://org_456/invoice/INV-1008" };
     const answer = await call(registry, log, SUPERVISOR, "test.run", input);
@@ -175,7 +175,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   });
 
   // Found by step 13's sweep: without `?? ""`, a result of nothing could not be measured.
-  // NEW IN STEP 14: nothing is not a record, so it is refused before it is measured, for
+  // Nothing is not a record, so it is refused before it is measured, for
   // everyone (step 14's README, decision 3).
   it("DSOR-QRY-01: a query whose code returns nothing is refused as not a record, never measured", async () => {
     expect(await runAs(SUPERVISOR, async () => undefined)).toMatchObject({
@@ -185,7 +185,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   });
 });
 
-// NEW IN STEP 14: a record, because text alone is refused (step 14's README, decision 3).
+// A record, because text alone is refused (step 14's README, decision 3).
 /** INV-1008 of org_456 with a text field that brings its JSON to exactly `target` bytes. */
 function sizedInvoice(target: number): { tenant_id: string; id: string; text: string } {
   const empty = { tenant_id: "org_456", id: "INV-1008", text: "" };
@@ -206,7 +206,7 @@ function idsIn(answer: unknown): unknown {
 function sized(target: number): { id: string; text: string }[] {
   const empty = bytes({ items: [row(1, 0), row(2, 0)] });
   const first = row(1, 20);
-  // NEW IN STEP 14: from row(), so it carries its company as the others do.
+  // From row(), so it carries its company as the others do.
   const second = { ...row(2, 0), text: "x".repeat(target - empty - first.text.length) };
   return [first, second, row(3, 0)];
 }

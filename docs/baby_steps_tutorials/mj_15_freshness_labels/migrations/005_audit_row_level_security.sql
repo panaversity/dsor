@@ -1,4 +1,4 @@
--- NEW IN STEP 11: the second lock, on DSoR's own log. `pnpm migrate` runs this file once,
+-- The second lock, on DSoR's own log. `pnpm migrate` runs this file once,
 -- as the owner, after 004 (step 11's README, decisions 1 and 4).
 ALTER TABLE dsor.audit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dsor.audit FORCE ROW LEVEL SECURITY;

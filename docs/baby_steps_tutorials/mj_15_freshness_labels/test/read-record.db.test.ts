@@ -1,4 +1,4 @@
-// NEW IN STEP 14: the record of a read, in dsor.audit (DSOR-CLS-05; step 14's README, C5
+// The record of a read, in dsor.audit (DSOR-CLS-05; step 14's README, C5
 // and decision 7). Migration 007 adds the columns resources and row_count.
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";

@@ -144,7 +144,7 @@ describe("C3: every principal has a type and at least one tenant membership", ()
 
   // Found by the review: the test above checks the table, not what a call finds in it.
   // The agent holds one role, ap_agent (step 06's README, decision 5).
-  // NEW IN STEP 14: the agent has a clearance too, and a person none (step 14's README,
+  // The agent has a clearance too, and a person none (step 14's README,
   // decision 2).
   const FOUND: [string, string, string, string[], object][] = [
     ["tok_7f3a", "accounts-payable-fte", "agent", ["ap_agent"], { clearance: "internal" }],
@@ -161,7 +161,7 @@ describe("C3: every principal has a type and at least one tenant membership", ()
 
   // No rule id: the story's three principals are step 05's decision 3. The
   // agent's role is step 06's decision 5. The firm's agent and user_700,
-  // step 10's decision 7. NEW IN STEP 14: each agent's clearance, step 14's decision 2.
+  // step 10's decision 7. Each agent's clearance, step 14's decision 2.
   it("the table holds the story's principals, each with its own token", async () => {
     const inOrg456 = (roles: string[]) => [{ tenant_id: "org_456", roles }];
     expect(Object.fromEntries(logins)).toStrictEqual({
@@ -203,7 +203,7 @@ describe("C4: who is calling comes only from the token and DSoR's own table", ()
       const answer = await call(registry, log, request, "invoice.get", {
         invoice: "dsor://org_456/invoice/INV-1008",
       });
-      // NEW IN STEP 14: the agent's answer also lists what was left out, and a person's does
+      // The agent's answer also lists what was left out, and a person's does
       // not, so this test looks at the data and the correlation only.
       expect(answer).toMatchObject({ data: { id: "INV-1008" } });
       expect(answer.correlation).toStrictEqual(correlationFor(caller));

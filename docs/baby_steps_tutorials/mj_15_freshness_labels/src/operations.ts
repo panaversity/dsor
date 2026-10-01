@@ -27,7 +27,7 @@ export function handlersFor(): Record<string, Handler> {
       // "not found", word for word as an invoice nobody has (DSOR-IDN-03b, DSOR-ERR-01b).
       // The store takes an id and nothing more: the company is already bound to it.
       const invoice = await company.invoices.get(id);
-      // NEW IN STEP 14: internal, because it repeats only the id the caller sent (step 14's
+      // Internal, because it repeats only the id the caller sent (step 14's
       // README, decision 8).
       if (!invoice)
         throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`, "internal");

@@ -1,4 +1,4 @@
--- NEW IN STEP 14: what a read returned, in its record. `pnpm migrate` runs this file once,
+-- What a read returned, in its record. `pnpm migrate` runs this file once,
 -- as the owner, after 006 (DSOR-CLS-05; step 14's README, decision 7).
 
 -- The audit record's own fields: the canonical URIs of the records the answer returned,

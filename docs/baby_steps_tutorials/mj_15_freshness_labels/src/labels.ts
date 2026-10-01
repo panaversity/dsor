@@ -1,4 +1,4 @@
-// NEW IN STEP 14: every field has a sensitivity label. DSOR-CLS-01 in
+// Every field has a sensitivity label. DSOR-CLS-01 in
 // specs/dsor/02-security.md, section 19.1. The labels live in classifications.json, one
 // entry for each kind of answer, and start-up checks the file (step 14's README, decision 1).
 // What leaves DSoR for each caller is src/masking.ts.

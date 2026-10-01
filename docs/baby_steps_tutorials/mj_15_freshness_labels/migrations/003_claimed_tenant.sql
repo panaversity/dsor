@@ -1,4 +1,4 @@
--- NEW IN STEP 10: added after the review. `pnpm migrate` runs it once, after 002.
+-- Added after the review. `pnpm migrate` runs it once, after 002.
 -- 002 has run, so it is history and is not edited (step 10's README, decision 8).
 
 -- Fields this tutorial adds to a record sit under extensions, keyed by a reverse domain

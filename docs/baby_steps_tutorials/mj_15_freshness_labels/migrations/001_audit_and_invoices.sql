@@ -1,4 +1,4 @@
--- NEW IN STEP 09: the first migration. `pnpm migrate` runs it as the owner, never as
+-- The first migration. `pnpm migrate` runs it as the owner, never as
 -- dsor_runtime, and it is safe to run twice (step 09's README, decision 13).
 -- dsor_runtime itself is created by src/migrate.ts just before this file runs, because
 -- its password comes from .env and must never be written in a file that git keeps.

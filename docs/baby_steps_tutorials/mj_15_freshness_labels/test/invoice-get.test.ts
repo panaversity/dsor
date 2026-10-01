@@ -30,13 +30,13 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
     });
   });
 
-  // NEW IN STEP 14: both callers are agents, so neither answer has amounts. The company and
+  // Both callers are agents, so neither answer has amounts. The company and
   // the vendor say whose invoice it is (step 14's README, outcome 1).
   it("DSOR-IDN-03b: invoice.get with a URI gives INV-1008 of the active company", async () => {
     const in456 = { invoice: "dsor://org_456/invoice/INV-1008" };
     expect(await call(registry, log, AGENT, "invoice.get", in456)).toStrictEqual({
       data: MASKED_1008_OF_456,
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_AGENT),
@@ -44,7 +44,7 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
     const in789 = { invoice: "dsor://org_789/invoice/INV-1008" };
     expect(await call(registry, log, FIRM_IN_789, "invoice.get", in789)).toStrictEqual({
       data: MASKED_1008_OF_789,
-      // NEW IN STEP 14: its label (DSOR-CLS-03).
+      // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
       correlation: correlationFor(THE_FIRM),
