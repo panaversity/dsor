@@ -40,6 +40,13 @@ serves many client organizations". The firm's agent may only read for one client
 issue invoices for another. If DSoR adds up its roles from every company, power granted
 by one company is used inside another.
 
+**A lock must not trust the code it guards.** *Changed by the Stage 2 review,
+2026-10-01:* DSoR's lock, built here, and the database's lock, in step 11, both filtered
+by the company that an operation's code asked for. So one line of code that asked for
+another company was enough. In step 14, a fallback for an invoice that was not found,
+`?? await invoices.get("org_456", id)`, let `user_700` of `org_789` read an invoice of
+`org_456`, and every test passed. Decisions 13 and 14 close it.
+
 **Common mistake:** §14 names it: "Telling the AI 'only look at org_456' and calling that
 isolation. The agent is not a lock." A second mistake is close to it: taking the company
 from the arguments. An argument is text the agent wrote.
@@ -77,11 +84,15 @@ never uses authority another company gave. The analogy is the bank teller.
 6. Every invoice row and every audit record carries its company. A record of a refusal
    made before DSoR has checked a company has none. When a caller named a well-formed
    company it is not a member of, the record keeps that name, marked as a claim.
+7. *Changed by the Stage 2 review, 2026-10-01:* an operation's code can read only the
+   active company, and an answer that holds another company's row never leaves.
 
 **Not the outcome of this step.** The second lock: PostgreSQL filtering rows by company
 itself, row-level security (step 11). The suite that calls every operation with another
-company's URI (step 12). Creating a company through an operation. Here the two companies
-are written by a migration.
+company's URI (step 12). Creating a company through an operation. Here no table holds a
+company. The two companies exist as memberships in DSoR's table of logins, and as the
+`tenant_id` on rows. *Changed by the Stage 2 review, 2026-10-01:* this said a migration
+writes the companies. Migration `002` writes only `org_789`'s invoices.
 
 **The success signals**, each a test that fails if this step's code is deleted:
 
@@ -113,8 +124,10 @@ Checked on 2026-09-29:
    partitions, and the other stores that rule names, come with
    those stores.
 5. **Step 02's open note** asked that whatever creates tenants never make an id out of a
-   name (DSOR-RID-01b). Here tenants are written by a migration, with fixed ids. No
-   operation creates one yet, so the note stays open.
+   name (DSOR-RID-01b). Here no table holds a tenant: the two companies exist as
+   memberships in DSoR's table of logins and as ids on rows, all fixed. No operation
+   creates one yet, so the note stays open. (*Changed by the Stage 2 review, 2026-10-01:*
+   this said the tenants are written by a migration.)
 6. **`audit-record.schema.json` makes `tenant` required, on every record.** A refusal
    made before line ② has no company that DSoR has checked. Writing the company the
    caller *claimed* would put a stranger's record in another company's log. So this step
@@ -138,6 +151,13 @@ Checked on 2026-09-29:
 | DSOR-ERR-01b | **C5.** A refusal never tells whether another company, or its invoice, exists | Pairs of answers compared word for word: `org_789` and `org_999`, `INV-1008` of `org_789` and `NOPE` of `org_789` |
 | DSOR-TEN-01a | **C6.** Every invoice row and every audit record carries its company | `app.invoices.tenant_id` is `NOT NULL` and part of the key. `dsor.audit.tenant` is the active company, and empty only for a refusal before line ② has checked one |
 | DSOR-IDN-03a | **C7.** An envelope carries exactly one company, and nothing DSoR does not read | An envelope with `tenant` and also `tenant_id`, or any other field besides `token`, `tenant`, and `request_id`, is refused with `VALIDATION_FAILED` (decision 11) |
+| DSOR-IDN-03b for the reach, and decision 14 for the answer | **C8.** The operation's code can reach only the active company, and its answer must belong to it. Changed by the Stage 2 review, 2026-10-01 | The code gets the active company's invoices, never the store, and a second argument changes nothing (decision 13). An answer holding `org_789`'s row, in `org_456`, fails with `INTERNAL_ERROR`, recorded as `ALLOW` (decision 14) |
+
+*Changed by the Stage 2 review, 2026-10-01:* C6's "empty only for a refusal before line
+② has checked one" holds for every record this step's code writes. It does not hold for
+the whole log on the branch `step-10`. The review counted 1,128 records from before
+migration `002`, and 30 `ALLOW` records written while break U6 ran against the database,
+all with no tenant. The log never changes a record, so they stay.
 
 ### Decisions the specification leaves to us
 
@@ -156,6 +176,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    refused with `AUTHORIZATION_DENIED`, with one message for "no such company" and "not a
    member". *Downside:* a caller who typed a real company's id wrongly and one who has no
    right to it get the same message, so the refusal helps an honest caller less.
+
+   *Changed by the Stage 2 review, 2026-10-01:* the form is now `org_` and 1 to 18 digits
+   (decision 12).
 3. *(Moved to the claims after the review.)* Counting only the active company's roles
    at line ⑤ is not ours to decide: DSOR-IDN-03a and §12 require it. It is claim C3. The
    number stays, so that references to it still point here.
@@ -170,13 +193,22 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
      active company, or it is refused with `TENANT_MISMATCH`. The whole input is
      searched, the names of its fields too, not only the fields a schema calls URIs, so a
      new operation cannot forget the check.
-   *Downside:* a free-text field that mentions another company's URI is refused too. And
-   the list of field names is fixed: another spelling, such as `company`, is refused only
-   by line ⑥, as `VALIDATION_FAILED`, because no input schema lists it.
+   *Downside:* a field whose whole text is another company's URI is refused, even when
+   the caller meant it as a note. A URI inside a longer text, such as a sentence, is not
+   looked at: only a text that starts with `dsor://` is read as a URI. And the list of
+   field names is fixed: another spelling, such as `company`, is refused only by line ⑥,
+   as `VALIDATION_FAILED`, because no input schema lists it.
 
    *Changed after the review, on 2026-09-29:* the first version knew only `tenant` and
    `tenant_id`, so §12's own spelling `tenantId` got `VALIDATION_FAILED`, which
    DSOR-SRC-02b does not allow.
+
+   *Changed by the Stage 2 review, 2026-10-01:* the downside said that a free-text field
+   that mentions another company's URI is refused too. Only a text that starts with
+   `dsor://` is. And both checks now read line ①'s one copy of the input (step 07's
+   decision 9, changed by the same review). Before, line ② read the input as it was
+   sent. So a field that read `org_456` the first time and `org_789` the second passed
+   line ②, and reached the code as `org_789`.
 5. **Invoices move to a key of (company, id).** A new migration, `002`, adds
    `tenant_id` to `app.invoices`, fills it with `org_456` for the rows already there, and
    makes `(tenant_id, id)` the key. It adds `org_789`'s two invoices: `INV-1008` for
@@ -186,8 +218,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    They are this step's own.
 6. **Each audit record carries its company, in a new column `tenant`.** It is empty
    when no company was checked: a refusal at line ①, such as "no login", or at line ②
-   itself. `dsor_runtime` gets `INSERT` on that one column too, so the list of
-   privileges from step 09 grows by one word. **When line ② refuses a well-formed
+   itself. `dsor_runtime` gets `INSERT` on that one column too. With `extensions` below,
+   the list of privileges from step 09 grows by two words. **When line ② refuses a well-formed
    company the caller is not a member of, the record keeps the name the caller sent**,
    under `extensions`, as `{ "org.panaversity.steps": { "requested_tenant": "org_789" } }`.
    DSOR-SCH-02 says a field an implementation adds goes under `extensions`, keyed by a
@@ -200,6 +232,11 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    *Changed after the review, on 2026-09-29:* the first version kept nothing, so an
    agent trying `org_789`, `org_790`, and so on left records that did not say which
    companies it tried.
+
+   *Changed by the Stage 2 review, 2026-10-01:* this said the list "grows by one word". It
+   was written before migration `003` added `extensions`. And a claim now has a size: it
+   is kept only when it is an id of at most 18 digits, and the column refuses more than
+   1,024 bytes (decision 12).
 7. **Three new principals, in DSoR's own table.**
    - `firm-ap-fte`, an agent of an accounting firm: `ap_agent` in `org_456`, and
      `ap_supervisor` in `org_789`.
@@ -257,6 +294,59 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
     *Added after the review, on 2026-09-29:* the envelope
     `{ token, tenant: "org_456", tenant_id: "org_789" }` worked in `org_456`, and the
     second company was ignored without a word.
+12. **A company id has at most 18 digits, and the log refuses a large claim.**
+    *Changed by the Stage 2 review, 2026-10-01:* step 02's form, `org_` and digits, set
+    no length. A non-member's claim is kept whole under `extensions` (decision 6), and
+    migration `003` put no limit on that column. In step 14, the review sent an envelope
+    with `tenant: "org_"` and a million digits. The refusal the caller heard was 212
+    bytes. The record it left was 1,000,433 bytes, and `dsor_runtime` can never remove it.
+    §10.2 calls this threat T12, audit flooding: a caller fills the log with records it
+    chose. Now a tenant id has 1 to 18 digits (`TENANT_ID` in `src/uri.ts`). Eighteen
+    digits are enough for a billion billion companies. A million digits is a malformed id:
+    refused with `VALIDATION_FAILED`, and never kept. And migration `003b` makes the
+    database refuse an `extensions` larger than 1,024 bytes, in case the code ever keeps a
+    large claim again. The largest claim the code can keep is 73 bytes. *Downside:*
+    a company id of 19 or more digits cannot exist. Every field this tutorial adds under
+    `extensions` must fit in 1,024 bytes, together. And the database checks new records
+    only. `003b` does not read the records already kept (`NOT VALID`), because the log
+    never changes a record, and a branch that already holds a large one would refuse the
+    migration.
+13. **The code of an operation gets one company's invoices, never the store.**
+    *Changed by the Stage 2 review, 2026-10-01:* until then, the code held the whole
+    store. `handlersFor(store)` built the operations with it, and the code named the
+    company at each read: `invoices.get(tenant, id)`. So the lock trusted the company the
+    code asked for ("Why it matters"). Now the registry holds the store, and
+    `handlersFor()` takes none. At line ⑨, the pipeline gives the code a `Company` with
+    two fields. `tenant` is the active company's id, for code that must name its company,
+    such as in a URI. `invoices` has one function, `get(id)`, which takes an id and
+    nothing more. `companyOf(store, tenant)` binds the store to the company, so every read
+    is that company's, whatever the code passes. Both are frozen, so the code cannot swap
+    them. The review's fallback line cannot be written: the type check refuses a second
+    argument, and a second argument changes nothing when it runs ("Break it"). A registry
+    built without a store reads no invoice: each read fails with `INTERNAL_ERROR`.
+    *Downside:* a bigger change to the code's shape. Every operation's code takes a
+    `Company`, and every test that builds a registry for real reads must give
+    `buildRegistry` a store. And code that makes a store of its own can still name any
+    company. Decision 14 catches what it returns.
+14. **Every `tenant_id` in the code's answer must be the active company's.** *Changed by
+    the Stage 2 review, 2026-10-01:* right after line ⑨, before anything else reads the
+    answer, `checkAnswerInTenant` makes DSoR's own copy of it, through JSON text, as line
+    ① does for the input (step 07's decision 9). It walks the copy to any depth, through
+    objects and lists. A `tenant_id` that is not the active company's id is a bug in the
+    code. The call fails with `INTERNAL_ERROR` and DSoR's fixed message for a bug, so
+    nothing of the row leaks. Its record says `ALLOW` with result `INTERNAL_ERROR`: DSoR's
+    checks let the call reach the code, and the code failed. Otherwise the caller gets the
+    copy that was checked, never the code's own object. So a row the code changes after
+    it returns, a field that reads differently the second time, or a `toJSON` cannot
+    carry another company's row past the check. An answer that JSON cannot carry fails
+    too. This is the second of three layers. The first is decision 13. The review's plan
+    puts the third in step 12's suite. *Downside:* this trusts a field the code fills
+    in. Code that rewrites `tenant_id` to the caller's company, or leaves it out, passes.
+    Only `tenant_id` is read: a `tenant` or `tenantId` field, a URI, or a sentence that
+    names another company passes. The third layer looks for the other company's data
+    itself. And when a bug reads another company's row, the caller hears
+    `INTERNAL_ERROR` where it would hear "not found", so the difference tells it that the
+    id exists somewhere. A leak of a whole row becomes a leak of one fact.
 
 ### The tests, by claim
 
@@ -277,13 +367,32 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C5:** the pairs of C1 and C4, compared word for word, apart from the request id.
 - **C6:** in the database: `app.invoices.tenant_id` is `NOT NULL` and in the key. A
   call's audit record has `tenant = 'org_456'`. A call with no login has `tenant` empty.
-  `dsor_runtime`'s privileges are step 09's list plus `tenant` in the `INSERT` columns,
-  and none on `dsor.migrations`.
+  `dsor_runtime`'s privileges are step 09's list plus `tenant` and `extensions` in the
+  `INSERT` columns, and none on `dsor.migrations`. (*Changed by the Stage 2 review,
+  2026-10-01:* this said "plus `tenant`", written before migration `003`.)
 - **C7:** `{ ...AGENT, tenant_id: "org_789" }` → `VALIDATION_FAILED`. So does any other
   extra field. A call with no login and an extra field hears about the login first.
+- **C8**, *changed by the Stage 2 review, 2026-10-01:* the code is handed exactly
+  `tenant` and `invoices`. `companyOf(store, "org_456")` finds no `INV-2001`, given one
+  argument or two, in memory and in `app.invoices`. A planted operation that returns
+  `org_789`'s row, or reads it through a store of its own, gets `INTERNAL_ERROR` in
+  `org_456`, recorded as `ALLOW`, in memory and in the database. A row changed after it
+  returns, a getter, and a `toJSON` reach the caller as they were checked, or fail. A
+  registry built without a store reads no invoice. An envelope whose tenant reads
+  differently the second time works in the company line ② read. The answer's tests are
+  titled by decision 14, not by DSOR-IDN-03b: they show that nothing is disclosed, not
+  that nothing is read.
 - **Decision 6's claim:** the agent in `org_789` leaves a record with no `tenant` and
   `requested_tenant: "org_789"`. With `acme`, or with no login, the record keeps no claim.
 - **Decision 8, not a rule:** a second `pnpm migrate` runs no file, and succeeds.
+- **Decision 12**, *changed by the Stage 2 review, 2026-10-01:* a company of 19 digits,
+  or a million, is `VALIDATION_FAILED`, and its record keeps no claim. 18 digits is still
+  an id. `parseUri` refuses a URI whose company has 19 digits. As `dsor_runtime`, an
+  `INSERT` with an `extensions` of 2 KB fails with `23514`, PostgreSQL's code for a
+  broken `CHECK`.
+- **Step 07's decision 9**, *changed by the Stage 2 review, 2026-10-01:* a `principal`
+  or a `tenant_id` that reads differently the second time reaches the code exactly as
+  the checks saw it, or is refused.
 
 ### Breaks we will try, and what we expect
 
@@ -345,23 +454,29 @@ paste the file, and never ask for a connection string.
 | File | What changed |
 | --- | --- |
 | `src/tenants.ts` | **New.** Line ②: `activeTenant` checks the envelope's company against the caller's memberships. `checkNamedTenants` refuses another company in the arguments' fields. `checkUrisInTenant` refuses a URI outside the company, anywhere in the checked input |
-| `src/pipeline.ts` | Line ② runs right after line ①. The URI check runs right after line ⑥. The code, line ⑤, and the record all get the active company |
+| `src/company.ts` | **New, after the Stage 2 review.** `companyOf` binds the store to the active company, and `checkAnswerInTenant` checks every `tenant_id` in the code's answer (decisions 13 and 14) |
+| `src/pipeline.ts` | Line ② runs right after line ①. The URI check runs right after line ⑥. The code, line ⑤, and the record all get the active company. Since the Stage 2 review: line ① makes the one copy of the input, the code gets `companyOf(store, tenant)`, and its answer is checked right after line ⑨ |
+| `src/inputs.ts` | Since the Stage 2 review: `jsonCopy` makes line ①'s copy, and `checkInput` checks it without making another (step 07's decision 9) |
 | `src/permissions.ts` | `permissionsOf` and `checkPermission` take the company. Step 06's constant `COMPANY` is gone |
-| `src/invoice.ts` | An invoice carries its `tenant_id`, and `invoiceUri` reads it. Step 01's constant `TENANT` is gone. `org_789`'s two invoices, in memory |
+| `src/invoice.ts` | An invoice carries its `tenant_id`, and `invoiceUri` reads it. Step 01's constant `TENANT` is gone. `org_789`'s two invoices, in memory. Since the Stage 2 review: `NO_STORE`, for a registry built without a store |
 | `src/principals.ts` | `firm-ap-fte`, in two companies with a different role in each, and `user_700` |
 | `src/postgres.ts` | The invoice query filters by `tenant_id`. The log writes and reads `tenant` and `extensions` |
-| `src/log.ts`, `src/registry.ts`, `src/operations.ts` | A decision has an optional `tenant`, and a non-member's claimed company under `extensions`. The code of an operation is given the company |
-| `src/request.ts`, `src/uri.ts` | The envelope has a `tenant`, and is closed: `checkEnvelopeFields` (decision 11). `isTenantId` checks step 02's form |
+| `src/log.ts`, `src/registry.ts`, `src/operations.ts` | A decision has an optional `tenant`, and a non-member's claimed company under `extensions`. The code of an operation is given the company. Since the Stage 2 review, that is a `Company`: the active company's invoices only. The registry holds the store, and `handlersFor()` takes none (decision 13) |
+| `src/request.ts`, `src/uri.ts` | The envelope has a `tenant`, and is closed: `checkEnvelopeFields` (decision 11). `isTenantId` checks step 02's form, with at most 18 digits since the Stage 2 review (decision 12) |
 | `src/migrate.ts` | Runs each file in `migrations/` once, and remembers it in `dsor.migrations` (decision 8) |
 | `migrations/002_tenants.sql` | **New.** `tenant_id` on invoices, the key (company, id), `org_789`'s invoices, `tenant` on the log, and one more `INSERT` column for `dsor_runtime` |
 | `migrations/003_claimed_tenant.sql` | **New, after the review.** `extensions` on the log, and `INSERT` on it for `dsor_runtime` (decision 6) |
-| `src/main.ts` | Four more calls: the firm's agent in each company, a stranger to `org_789`, a foreign URI. Each log line ends with its company |
-| `test/tenants.test.ts`, `test/tenants.db.test.ts` | **New.** C1 to C7, and decisions 6 and 8 |
+| `migrations/003b_bounded_claims.sql` | **New, after the Stage 2 review.** The log refuses an `extensions` larger than 1,024 bytes (decision 12) |
+| `src/main.ts` | Four more calls: the firm's agent in each company, a stranger to `org_789`, a foreign URI. Each log line ends with its company. Since the Stage 2 review, the registry is given the database's store |
+| `test/tenants.test.ts`, `test/tenants.db.test.ts` | **New.** C1 to C8, and decisions 6, 8, and 12 |
+| `test/company.test.ts` | **New, after the Stage 2 review.** C8: the store bound to one company, and the check of the answer |
 | `vitest.db.config.ts` | Database test files run one at a time (see "Think it through") |
-| every other test | Every envelope names `org_456`. Invoices and records carry their company. Line ② is in the expected order. Step 05's and step 06's envelope tests now expect a refusal (decision 11) |
+| every other test | Every envelope names `org_456`. Invoices and records carry their company. Line ② is in the expected order. Step 05's and step 06's envelope tests now expect a refusal (decision 11). Since the Stage 2 review: a registry whose code reads invoices is given a store, and the code is handed a `Company` |
 
 Both tenant columns also refuse any text that is not `org_` and digits, a database
-`CHECK`. That is this tutorial's decision, from step 02's form. No new dependency.
+`CHECK`. That is this tutorial's decision, from step 02's form. Their form sets no
+length. Since the Stage 2 review, the code's form allows at most 18 digits (decision 12).
+No new dependency.
 
 To see every line, from `docs/baby_steps_tutorials`:
 
@@ -386,7 +501,7 @@ pnpm start        # the program, against the same branch
 `pnpm migrate` on the branch `step-10`, made from `step-09`, on 2026-09-29, as the step
 was built. The first run of the new runner found no table of migrations, so it ran
 `001` again, once; it could, because `002` was not there yet. Then `002`, and after the
-review `003`. Then nothing:
+review `003`. Then nothing. And on 2026-10-01, after the Stage 2 review, `003b`:
 
 ```text
 dsor_runtime: password set again from DSOR_DB_URL
@@ -400,12 +515,16 @@ migration 003_claimed_tenant: done
 
 dsor_runtime: password set again from DSOR_DB_URL
 no migration to run
+
+dsor_runtime: password set again from DSOR_DB_URL
+migration 003b_bounded_claims: done
 ```
 
-On your own branch made from `step-09`, one `pnpm migrate` prints all three
-`migration … done` lines at once. `pnpm check` prints `576 passed` here, inside the
-repository. Outside it, three tests that compare the schemas with the repository's
-originals are skipped: `573 passed | 3 skipped`.
+On your own branch made from `step-09`, one `pnpm migrate` prints all four
+`migration … done` lines at once. `003b` comes after `003_`, because `_` sorts before
+`b`. `pnpm check` prints `628 passed` here, inside the repository. Outside it, three
+tests that compare the schemas with the repository's originals are skipped:
+`625 passed | 3 skipped`. `pnpm test:db` prints `45 passed`.
 
 The new part of `pnpm start`. The same id, two invoices. Then a stranger, and a URI
 from another company. The record numbers come from the database:
@@ -464,36 +583,75 @@ for all six, the database tests for U1 and U6.
 | U5 | "No such company" gets its own message | C5 only | 2: C5, and **C1's `org_999` test** |
 | U6 | The audit record's tenant is left empty | not asked | 12 unit tests, 2 database tests |
 
+U1 and U5 below were run again after the Stage 2 review, on 2026-10-01, on the code as
+it stands now. The table keeps the first run's counts.
+
 **U1**, the one to try yourself. In `src/postgres.ts`, change the invoice query to
 `WHERE id = $1` with `[id]`. Then:
 
 ```text
-$ pnpm check
-      Tests  552 passed (552)
+$ pnpm typecheck
+src/postgres.ts(149,17): error TS6133: 'tenant' is declared but its value is never read.
+
+$ pnpm test
+      Tests  628 passed (628)
 
 $ pnpm test:db
-    × DSOR-IDN-03b: org_456 reading INV-2001 hears the same as for INV-9999
-    × DSOR-IDN-03b: org_789 reads INV-1008 from app.invoices: 99,000.00 USD
-    × DSOR-IDN-03b: the store finds an invoice by company and id together
     × starts, reads INV-1008 through invoice.get, and prints every answer as an envelope
-      Tests  4 failed | 33 passed (37)
+    × DSOR-EXE-02: prints one record for each of its twelve calls, in order
+    × DSOR-IDN-03b: org_789 reads INV-1008 from app.invoices: 99,000.00 USD
+    × DSOR-IDN-03b: org_456 reading INV-2001 hears the same as for INV-9999
+    × DSOR-IDN-03b: the store finds an invoice by company and id together
+    × DSOR-IDN-03b: the store the code gets reads only its own company in app.invoices, whatever it is given
+      Tests  6 failed | 39 passed (45)
 ```
 
-`pnpm check` stays green: the unit tests read the invoices in memory, which never met
-the broken query. Only a test against the real table sees a bug in the real query.
-`org_456`'s own INV-1008 test stays green too. Both rows answer to `INV-1008`, and the
-code takes the first row. Without `ORDER BY`, PostgreSQL promises no order; in this run
-the first row was `org_456`'s. So `org_789` got `org_456`'s 31,400.00 USD. That is the leak §14 warns about, and step 11's second lock is for this
-very bug.
+The type check sees that `tenant` is no longer used, so `pnpm check` stops there. (The
+first run's text showed `pnpm check` green. With this break, it is `pnpm test` that
+stays green.) The unit tests read the invoices in memory, which never met the broken
+query. Only a test against the real table sees a bug in the real query. `org_456`'s own
+INV-1008 test stays green. Both rows answer to `INV-1008`, and the code takes the first
+row. Without `ORDER BY`, PostgreSQL promises no order; in both runs the first row was
+`org_456`'s. In the first run, `org_789` got `org_456`'s 31,400.00 USD. That is the leak
+§14 warns about. Now the answer check of decision 14 sees `org_456`'s `tenant_id` in an
+answer for `org_789`, and the call fails with `INTERNAL_ERROR`. The bug still breaks the
+call, and only the database tests see it, but nothing leaks. Step 11's second lock is
+for this very bug.
 
 **U5.** In `activeTenant`, answer `"no such tenant"` for a company outside a list of
 known ones:
 
 ```text
-    × DSOR-ERR-01b: org_789 and org_999 get the same refusal, word for word
+    × DSOR-IDN-03a: a company of 18 digits is still an id, and the agent is no member of it
     × DSOR-IDN-03a: the agent asking to work in org_999, which does not exist, is denied
-      Tests  2 failed | 550 passed (552)
+    × DSOR-ERR-01b: org_789 and org_999 get the same refusal, word for word
+      Tests  3 failed | 625 passed (628)
 ```
+
+The 18-digit test of decision 12 catches it too: that company does not exist either.
+
+**The Stage 2 review's break.** In `src/operations.ts`, give `invoice.get` the review's
+fallback: when an invoice is not found, ask another company.
+
+```ts
+const invoice = (await company.invoices.get(id)) ?? (await company.invoices.get("org_789", id));
+```
+
+```text
+$ pnpm typecheck
+src/operations.ts(23,98): error TS2554: Expected 1 arguments, but got 2.
+
+$ pnpm test
+      Tests  628 passed (628)
+```
+
+The store the code holds takes an id and nothing more, so the type check refuses the
+line. Run anyway, the line asks the active company twice. Nothing leaks, so every test
+passes. Now write the fallback with a store of its own,
+`memoryInvoices().get("org_789", id)`. The type check passes, and the answer check
+catches it: `org_456` asking for `INV-2001` hears `INTERNAL_ERROR`, not `org_789`'s
+invoice. Two tests fail, the two that ask for `INV-2001` from `org_456`. Put the line
+back, and `pnpm check` is green again.
 
 ## Build it yourself with Claude Code
 
@@ -603,7 +761,8 @@ another company's data, use its authority, or put a record in its part of the lo
 3. **Probing left no trace of which company was tried.** Fixed: the claim is kept under
    `extensions` (decision 6, migration `003`).
 4. **Seven breaks survived every test**, and tests were added that catch each: the URI
-   check reading the input again instead of line ⑥'s copy; the argument check using the
+   check reading the input again instead of line ⑥'s copy (since the Stage 2 review,
+   line ①'s copy, which line ⑥ checks); the argument check using the
    caller's first company instead of the active one; field names not searched; long
    texts skipped; `dsor:` instead of `dsor://`; a store matching only the start of a
    company's id; and the C5 tests, which passed with the check they guard deleted,
@@ -613,15 +772,115 @@ another company's data, use its authority, or put a record in its part of the lo
    hotel for "booking the last room". Terms are defined where they first appear, and
    idioms are gone.
 
+**Found by the Stage 2 review (2026-10-01), and fixed.** Six reviewers audited steps 10
+to 14 and the seams between them (`../mj_notes.md`). They found no live leak, and one
+high finding, here.
+
+- **A check and the code could see two different inputs.** Fixed from step 07 on. Lines
+  ① and ② read the input itself, to check the principals and the companies it names.
+  Line ⑥ then made its own copy, for the schema check and for the code. A getter, a field
+  that runs code each time it is read, can answer the second read differently. The red
+  tests plant an input schema that lists `principal` and `tenant_id`. The code was handed
+  `principal: "cfo_100"` after line ① saw the caller, and `tenant_id: "org_789"` after
+  line ② saw `org_456`.
+  - **Fixed:** line ① makes the one copy, right after it finds who is calling. Line ①'s
+    principal check, line ②'s company check, line ⑥, the URI check, and the code all read
+    it (step 07's decision 9). An input that JSON cannot copy is still refused with
+    `VALIDATION_FAILED`. Before that, line ① checks the principals it names and line ②
+    the companies it names, on the input as sent. So `cfo_100` inside it is
+    `AUTHORIZATION_DENIED`, and `org_789` is `TENANT_MISMATCH`. One difference from step
+    07: there, the refusal comes at line ①. Here it comes at the end of line ②, which
+    must first find the active company.
+  - **Caught by** `DSOR-SRC-02b: a principal that reads as the caller first, then as
+    cfo_100, …` and `DSOR-SRC-02b: a tenant_id that reads as org_456 first, then as
+    org_789, …` in `test/pipeline.test.ts`. Beside them: the opposite cases, a count of
+    every read of the input, and nine inputs that JSON cannot copy. In
+    `test/who-is-calling.test.ts`, with no login, the input is not read at all.
+  - **Broken on purpose, nine ways:** line ① or line ② reading the input itself, the code
+    given the input itself, the URI check reading it again, line ⑥ copying again, and the
+    copy made before the login. And, when the copy fails: the companies left unchecked,
+    the call let through, or the active company refused too. Each turned at least one of
+    these tests red.
+  - **A hostile pass on the fix** found three more breaks that every test let through,
+    and a test now catches each: refusing an input that JSON cannot copy before the
+    membership check, and two ways of mistaking "JSON leaves this out" for "JSON cannot
+    copy this". A stranger to `org_789` now hears that it is no member first, and an input
+    of nothing at all, or a function, is refused by line ⑥ as "must be object".
+- **A company id had no length, and the log kept a claim of any size.** In step 14, an
+  envelope naming `org_` and a million digits got a refusal of 212 bytes, and left a
+  record of 1,000,433 bytes. Here, in the red run, 19 digits and a million digits were
+  refused as `AUTHORIZATION_DENIED`, and the record kept the claim. `parseUri` took a
+  company of 19 digits. As `dsor_runtime`, an `INSERT` with an `extensions` of 2 KB went
+  in.
+  - **Fixed:** a tenant id has 1 to 18 digits, and migration `003b` refuses an
+    `extensions` over 1,024 bytes (decision 12). With the migration run and the code not
+    yet changed, the million-digit call already failed closed:
+    `EVIDENCE_STORE_UNAVAILABLE`, and no record.
+  - **Caught by** the 19-digit and million-digit cases of C1, and the tests titled `step
+    10's decision 12: …`, in `test/tenants.test.ts`, `test/uri.test.ts`, and
+    `test/tenants.db.test.ts`.
+  - **Broken on purpose:** with no limit, 4 tests fail. With a limit of 17 digits, the 2
+    tests of an 18-digit id fail. A hostile pass on the fix noted that 2 KB alone would
+    let a limit of 4,096 bytes pass. A test now measures the edge: 1,024 bytes is kept,
+    and 1,025 is refused by `audit_extensions_size`, the CHECK's name. That break was not
+    run: the limit lives in the database, and a break must not change Neon.
+- **The code could name another company.** The high finding. The lock filtered by the
+  company the code asked for, and step 11's lock does the same ("Why it matters"). Here,
+  in the red run, the code was handed a bare company id, and an answer holding
+  `org_789`'s row reached a caller in `org_456`, in memory and in `app.invoices`.
+  - **Fixed, in two layers:** the code gets one company's invoices, never the store
+    (decision 13). Every `tenant_id` in its answer must be the active company's
+    (decision 14). The third layer, in the review's plan, is step 12's suite.
+  - **Caught by** C8, in `test/company.test.ts`, `test/tenants.test.ts`, and
+    `test/tenants.db.test.ts`.
+  - **Broken on purpose, eight ways:** the review's fallback, written against the store
+    the code holds, fails the type check, and leaks nothing when run anyway ("Break it").
+    Written with a store of its own, the answer check catches it. And each of these
+    turned a test red: the store passing a second argument through, no freeze, the
+    answer check deleted, reading only the top of the answer, reading only text, and the
+    code given the caller's first company. Break U1, run again, now ends in
+    `INTERNAL_ERROR` instead of `org_456`'s invoice.
+  - **A hostile pass on the fix** found that the answer check read the code's live
+    answer, and the caller got that same object. A row the code changed 5 ms after
+    returning it, while the log took 20 ms, reached the caller as `org_789`'s `VENDOR-77`
+    and 99,000.00. A getter and a `toJSON` did the same. Now the check makes DSoR's own
+    copy, and the caller gets that copy (decision 14). The pass also found that nothing
+    tested that the code's company comes from line ②. Reading the envelope's tenant again
+    for the store passed every test, and an envelope whose tenant read `org_456` first
+    and `org_789` after then read `org_789`'s `INV-2001`. It found that a check of the
+    company's visible keys missed a hidden store, and that the answer's tests claimed
+    DSOR-IDN-03b, which forbids reading, while they only show that nothing is disclosed.
+    Each has a test or a new title now. Four more breaks, each caught: the live answer
+    sent, the tenant read again, a hidden store, and the store behind `invoices`.
+- **Sentences that said more than the code.** The URI check refuses only a text that
+  starts with `dsor://`, not one that mentions a URI (decision 4). No table holds a
+  company. "Grows by one word" and "plus `tenant`" were written before `extensions`. C6
+  holds for the records this code writes, not for the whole branch (below the claims).
+  A comment in `test/program.db.test.ts` called itself the only test that touches the
+  owner's key, but the migrate test runs `migrate.ts` too.
+
 **Left open, on purpose:**
 
 - **The subject, not the caller.** DSOR-IDN-03a says the *subject* holds the membership.
   Until delegations (step 18), the subject is the caller. Then line ② must check the
   subject.
-- **Only DSoR's code keeps companies apart.** Break U1 shows one query is enough to leak.
-  Step 11 adds the database's own check.
-- **`src/pipeline.ts` is 194 lines**, past this tutorial's guide of about 150. Splitting
-  it is a step of its own.
+- **Only DSoR's code keeps companies apart.** Break U1 shows one query is enough to break
+  a call. Since the Stage 2 review, the answer check turns it into `INTERNAL_ERROR`
+  instead of a leak, but only because the row carries its `tenant_id`. Step 11 adds the
+  database's own check.
+- **The third layer.** An answer with `tenant_id` rewritten to the caller's company
+  passes decision 14, and so does another company's name in a `tenant` field, a URI, or a
+  sentence. The Stage 2 review's plan closes it in step 12's suite, which is to look for
+  the other company's data itself.
+- **A refusal the operation's code throws is not checked.** Its message could name
+  another company's data. The review's plan has step 12's suite check an operation's own
+  "not found".
+- **`reason` has no size limit in the database.** The code keeps every refusal message
+  short, and the largest record a hostile pass could make was 480 bytes. Only
+  `extensions` has a limit of its own (decision 12).
+- **`src/pipeline.ts` is 228 lines**, past this tutorial's guide of about 150, and
+  `src/registry.ts` is 161. The Stage 2 review's fixes added 34 and 12, most of it
+  comments. Splitting them is a step of its own.
 - **Analogies to add to the house list, or to change:** "tenants of one building" and
   the bank teller who does not say who banks there. "Lock" here is §14's own word for
   one independent check, not the list's "lock that stays locked when the power fails".
@@ -635,8 +894,8 @@ another company's data, use its authority, or put a record in its part of the lo
 | --- | --- | --- | --- |
 | DSOR-TEN-01a | Every tenant-owned resource carries its `tenant_id` | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/tenants.test.ts` (C6), `test/tenants.db.test.ts` (C6: `NOT NULL`, the key, the log's `tenant`) |
 | DSOR-IDN-03a | Each request resolves to exactly one active tenant in which the subject holds a membership | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C1, C3, C7). Until step 18, the subject is the caller |
-| DSOR-IDN-03b | An operation does not read or write across tenants | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C2), `test/tenants.db.test.ts` (C2). Reading only: no operation writes yet |
-| DSOR-SRC-02b | A tenant or principal in the arguments that disagrees with the security context is refused | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | `test/tenants.test.ts` (C4), the tenant half: `tenant`, `tenant_id`, `tenantId`, `activeTenantId`, and URIs. Any other spelling is refused by line ⑥ as `VALIDATION_FAILED`. The principal half is step 05's |
+| DSOR-IDN-03b | An operation does not read or write across tenants | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tenants.test.ts` (C2, C8), `test/company.test.ts` (C8), `test/tenants.db.test.ts` (C2, C8). Reading only: no operation writes yet |
+| DSOR-SRC-02b | A tenant or principal in the arguments that disagrees with the security context is refused | [§11 Source trust and the instruction boundary](../../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary) | `test/tenants.test.ts` (C4), the tenant half: `tenant`, `tenant_id`, `tenantId`, `activeTenantId`, and URIs. Any other spelling is refused by line ⑥ as `VALIDATION_FAILED`. The principal half is step 05's. `test/pipeline.test.ts`: a field that reads differently the second time, and an input that JSON cannot copy (step 07's decision 9) |
 | DSOR-ERR-01b | An error does not reveal a resource the caller may not read | [§28 Result and error envelopes](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | `test/tenants.test.ts` (C5, and C2's `INV-2001`), for other companies and their invoices |
 
 Not met here, and why: DSOR-TEN-01b, whose second lock is step 11. DSOR-TEN-02a, whose

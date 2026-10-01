@@ -129,8 +129,10 @@ describe("the program's log", () => {
 
 // The program refuses to run as a login that could change the log (step
 // 09's README, decision 17). Found by the second review: with the check deleted from
-// main.ts, every test stayed green. This is the only test that touches the owner's key,
-// and it only hands it to the program; the test never logs in as the owner.
+// main.ts, every test stayed green. Two tests make a program use the owner's key: this
+// one, which hands it to the program, and the migrate test in test/tenants.db.test.ts,
+// whose migrate.ts reads it from .env itself. No test logs in as the owner. Found by the
+// Stage 2 review: this comment still said "the only test".
 describe("the program's start-up check", () => {
   it(
     "DSOR-AUD-04a: refuses to run as the owner, names why, and makes no call",

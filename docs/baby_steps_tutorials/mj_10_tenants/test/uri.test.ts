@@ -132,13 +132,23 @@ describe("the tenant part is an id, never a name", () => {
   // A leading zero is allowed on purpose. The id is opaque, which means code never reads
   // meaning out of it. So "org_0456" is a different id from "org_456". Nothing here
   // reads the digits as a number.
-  it.each([["org_456"], ["org_1"], ["org_0456"]])(
+  // The last one has 18 digits, the most an id may have (step 10's README, decision 12).
+  it.each([["org_456"], ["org_1"], ["org_0456"], ["org_123456789012345678"]])(
     "DSOR-RID-01b: an id of the form org_ and digits is accepted: %s",
     (tenant) => {
       const uri = `dsor://${tenant}/invoice/INV-1008`;
       expect(parseUri(uri).tenant_id).toBe(tenant);
     },
   );
+
+  // A company id with no limit on its length let one refused call leave a record of a
+  // megabyte (step 10's README, decision 12). Found by the Stage 2 review, and fixed from
+  // step 10 on.
+  it("step 10's decision 12: a URI whose company has 19 digits is refused, by parseUri and formatUri", () => {
+    const tenant = "org_1234567890123456789";
+    expect(() => parseUri(`dsor://${tenant}/invoice/INV-1008`)).toThrow(/tenant_id must be an id/);
+    expect(() => formatUri({ ...INVOICE_PARTS, tenant_id: tenant })).toThrow(TypeError);
+  });
 
   it("DSOR-RID-01b: the refusal says the tenant must be an id", () => {
     expect(() => parseUri("dsor://acme/invoice/INV-1008")).toThrow(/tenant_id must be an id/);

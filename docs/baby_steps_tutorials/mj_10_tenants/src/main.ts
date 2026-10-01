@@ -39,8 +39,8 @@ const ROLES = process.argv[3] ?? fileURLToPath(new URL("../roles.json", import.m
 // Start-up checks the input schemas too. A folder of them can be named after
 // the role table, so a test can start without one. With none named, the step's own is read.
 const INPUTS: string | undefined = process.argv[4];
-// The pool is made before the checks, because the operations are built
-// with the invoices it reads. It connects only at its first query, after every check.
+// The pool is made before the checks, because the registry holds the store
+// of invoices it reads. It connects only at its first query, after every check.
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
 loadDotEnv(["DSOR_DB_URL"]);
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
@@ -48,9 +48,12 @@ let registry: Registry;
 try {
   registry = buildRegistry(
     readContracts(CONTRACTS),
-    handlersFor(createDbInvoices(pool)),
+    handlersFor(),
     readRoles(ROLES),
     readInputs(INPUTS),
+    // The registry holds the store, and the code gets only the active company's invoices
+    // (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
+    createDbInvoices(pool),
   );
 } catch (error) {
   console.error((error as Error).message);

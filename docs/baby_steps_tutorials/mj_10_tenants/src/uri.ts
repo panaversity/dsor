@@ -22,7 +22,10 @@ const SCHEME = "dsor://";
 // digits are never read as a number, so org_0456 is a different id from org_456.
 // not copied: this tutorial's own form for a tenant id, stricter than the schema's
 // (step 02's README).
-const TENANT_ID = /^org_[0-9]+$/;
+// At most 18 digits. With no limit, a non-member's claim of a million digits was kept whole
+// in its record, a megabyte the log can never remove: audit flooding, threat T12 in §10.2
+// (step 10's README, decision 12). Found by the Stage 2 review, and fixed from step 10 on.
+const TENANT_ID = /^org_[0-9]{1,18}$/;
 
 // NEW IN STEP 10: the request envelope's company must have this form too (step 10's
 // README, decision 2).

@@ -199,6 +199,14 @@ export function correlationFor(caller: Caller): Record<string, unknown> {
   return { request_id: expect.stringMatching(REQUEST_ID), ...caller };
 }
 
+/**
+ * What an operation's code is handed as its company: the active one, with its invoices
+ * (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
+ */
+export function companyNamed(tenant: string): unknown {
+  return expect.objectContaining({ tenant });
+}
+
 // The messages of step 05's refusals, typed out rather than imported.
 export const LOG_IN_FIRST = "log in first: the call has no login token that DSoR gave";
 // Well-formed, with no control characters (step 09's README, decision 16).
@@ -223,18 +231,29 @@ export function registryWith(handler: Handler): Registry {
     { ...handlers, "test.run": handler },
     // test.run needs invoice:read, as invoice.get does. The agent holds it.
     shippedRoles,
+    shippedInputs,
+    memoryInvoices(),
   );
 }
 
 /** A log for the tests that do not read it. Each test that reads one makes its own. */
 export const log: DecisionLog = createLog();
 
-// The shipped operations, reading the invoices in memory, so the unit tests
-// need no database (step 09's README, decision 12).
-export const handlers: Record<string, Handler> = handlersFor(memoryInvoices());
+// The shipped operations. They hold no store: the registry does (step 10's README, decision
+// 13). Found by the Stage 2 review, and fixed from step 10 on.
+export const handlers: Record<string, Handler> = handlersFor();
 
-/** The shipped operations, their code, and the role table, as start-up builds them. */
-export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles);
+/**
+ * The shipped operations, their code, and the role table, as start-up builds them, reading
+ * the invoices in memory, so the unit tests need no database (step 09's README, decision 12).
+ */
+export const registry: Registry = buildRegistry(
+  shipped,
+  handlers,
+  shippedRoles,
+  shippedInputs,
+  memoryInvoices(),
+);
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
 export function run(handler: Handler): Promise<Answer> {

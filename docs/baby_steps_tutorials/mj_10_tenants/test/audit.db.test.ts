@@ -18,7 +18,7 @@ import {
   rowsFor,
   tryThenRollBack,
 } from "./db.ts";
-import { AGENT, shipped, shippedRoles } from "./helpers.ts";
+import { AGENT, shipped, shippedInputs, shippedRoles } from "./helpers.ts";
 
 // The test's own window into the database: a pool the code under test never uses.
 const observer = newPool();
@@ -252,7 +252,13 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
   // Invoices come through a working pool, so the only thing that fails is the log.
   const invoices = openPool(RUNTIME_URL);
   afterAll(() => invoices.end());
-  const registry = buildRegistry(shipped, handlersFor(createDbInvoices(invoices)), shippedRoles);
+  const registry = buildRegistry(
+    shipped,
+    handlersFor(),
+    shippedRoles,
+    shippedInputs,
+    createDbInvoices(invoices),
+  );
 
   it("DSOR-EXE-03b: a log whose pool is closed gives no invoice, and no record", async () => {
     const closed = openPool(RUNTIME_URL);

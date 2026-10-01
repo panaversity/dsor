@@ -2,6 +2,7 @@
 // README). From step 04, call answers with an envelope instead of throwing.
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
+import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
@@ -13,6 +14,7 @@ import {
   log,
   refusal,
   shipped,
+  shippedInputs,
   shippedRoles,
   shippedWith,
   source,
@@ -24,7 +26,8 @@ import {
 // decision 1).
 
 describe("C1: nothing can be called without a contract", () => {
-  const registry = buildRegistry(shipped, handlers, shippedRoles);
+  // With the invoices in memory: the registry holds the store (step 10's README, decision 13).
+  const registry = buildRegistry(shipped, handlers, shippedRoles, shippedInputs, memoryInvoices());
 
   // The invoice comes back as the envelope's data.
   it("DSOR-OPR-01: invoice.get runs by its name", async () => {
@@ -82,6 +85,9 @@ describe("C1: nothing can be called without a contract", () => {
       roles: new Map(),
       // A registry holds the check for each input too. This one has none.
       inputs: new Map(),
+      // And the store its operations read. This one reads nothing (step 10's README,
+      // decision 13).
+      invoices: NO_STORE,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
