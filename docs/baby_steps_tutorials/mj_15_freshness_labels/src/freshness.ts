@@ -11,6 +11,46 @@ export type FreshnessMode = "current" | "bounded_staleness" | "connector_defined
 /** How fresh one read was: its mode, when it was read, and which connector served it. */
 export type Freshness = { mode: FreshnessMode; observed_at: string; connector: string };
 
+const MODES: readonly string[] = ["current", "bounded_staleness", "connector_defined", "observational"];
+
+// not copied: common.schema.json's timestamp says only "format": "date-time". This is that
+// format, RFC 3339's date-time, typed out: a date, a time, and Z or an offset.
+const DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+
+/**
+ * The label a store gave, checked, with its three fields only: one of the four modes, a real
+ * date and time with its time zone, and a connector. Anything else is a bug in the store.
+ */
+export function checkedLabel(label: unknown): Freshness {
+  // Each field is read once, so what is checked is what is kept. A mode DSoR does not know
+  // has no place in the order of decision 6, and a guess could rank it above current (step
+  // 15's README, decision 6).
+  const { mode, observed_at, connector } = (label ?? {}) as Record<string, unknown>;
+  if (typeof mode !== "string" || !MODES.includes(mode)) {
+    throw new Error("a read's label has no mode DSoR knows");
+  }
+  if (typeof observed_at !== "string" || !isDateTime(observed_at)) {
+    throw new Error("a read's label has no date and time");
+  }
+  if (typeof connector !== "string" || connector === "") {
+    throw new Error("a read's label names no connector");
+  }
+  return { mode: mode as FreshnessMode, observed_at, connector };
+}
+
+/** Whether the text is an RFC 3339 date-time that names a real day. */
+function isDateTime(text: string): boolean {
+  const parts = DATE_TIME.exec(text);
+  if (parts === null) return false;
+  // JavaScript reads 30 February as 2 March, without a word. So the day is built and read
+  // back: a day that does not exist comes back as another.
+  const [year, month, day] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
 /** The label of an answer built from these reads. A query that read nothing has none. */
 export function stalest(reads: Freshness[]): Freshness {
   // A label for an answer that read nothing would be invented (step 15's README, decision 6).
