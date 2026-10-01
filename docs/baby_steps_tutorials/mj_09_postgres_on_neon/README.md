@@ -702,6 +702,52 @@ back after.
     18), and the key is read into the test's own variable, not into the environment
     that later programs inherit.
 
+**Found by the Stage 2 review (2026-10-01), and fixed.**
+
+- **A check and the code could see two different inputs.** Line ① read the input
+  itself, to check the principals it names. Line ⑥ then made its own copy, for the
+  schema check and for the code. A getter, a field that runs code each time it is read,
+  can answer the second read differently. The review proved it in step 14: line ① let
+  the call through, and the code was handed `cfo_100`. Here no shipped input schema
+  lists `principal`, so line ⑥ refused the field, and the hole stayed hidden. The red
+  test plants a schema that lists it. The agent's `principal` reads as
+  `accounts-payable-fte` first and as `cfo_100` after, and the code was handed
+  `principal: "cfo_100"`.
+  - **Fixed from step 07 on**, and ported from step 07's fix with the same names,
+    comments, and test titles. Line ① makes the one copy, right after it finds who is
+    calling. Every check after that, and the code, read only that copy (step 07's
+    README, decision 9). An input that JSON cannot copy is refused there. Before that
+    refusal, line ① checks the principals it names on the input as sent, so `cfo_100`
+    inside it is still `AUTHORIZATION_DENIED`. In this step, every answer is recorded
+    at line ⑪, so this refusal is recorded too. Only lines ① and ⑪ run.
+  - **Caught by** `DSOR-SRC-02b: a principal that reads as the caller first, then as
+    cfo_100, …` in `test/pipeline.test.ts`. The other new tests:
+    - In `test/pipeline.test.ts`, ported from step 07: the opposite case, refused. A
+      Proxy, an object that runs code on every read, counts the reads of every field:
+      the copy reads each field once, and nothing else reads an input it can copy. Four
+      tests pin where an input that JSON cannot copy is refused: at line ①, and only
+      line ⑪ after it. Two more name `cfo_100` in one, once as plain JSON 100,000
+      levels deep, and expect `AUTHORIZATION_DENIED`. They replace the old test of an
+      input that contains itself.
+    - In `test/who-is-calling.test.ts`, ported from step 07: with no login, an input
+      that JSON cannot copy still gets `AUTHENTICATION_REQUIRED`, and the input is not
+      read at all.
+    - Not in step 07, which has no log. In `test/decision-log.test.ts`: `DSOR-EXE-02:
+      … is refused at line ①, and leaves one record`, twice. The record says
+      `VALIDATION_FAILED`, or `AUTHORIZATION_DENIED` when the input names `cfo_100`.
+      These use the log in memory, as every unit test does (decision 8). The database
+      tests do not change, and all 28 still pass.
+  - **Red first:** 7 of the 13 new tests failed before the code changed. The code was
+    handed `cfo_100`, line ① read eight fields of the input as sent, and the refusals
+    ran lines ①, ⑤, ⑥, and ⑪. The other 6 passed, as they should. They guard the new
+    code: the opposite case, `cfo_100` named in an input that cannot be copied, and no
+    login. 501 tests became 513.
+  - **Broken on purpose, ten ways**, in a copy of this folder: the nine breaks in step
+    07's README, and one more for this step. The tenth answers the refusal of an input
+    that JSON cannot copy at once, from inside the `try` block, so line ⑪ never runs
+    and nothing is recorded. Each break turned at least one of these tests red. The
+    tenth turned five red, the record test among them.
+
 **Left open on purpose:**
 
 - **A database failure while reading an invoice** (at line ⑨) becomes
@@ -721,6 +767,8 @@ back after.
   close that.
 - **The Neon MCP server has the owner's power** (see "Before you build"). This is a
   choice for development, not a gap in DSoR.
+- **`src/pipeline.ts` is 168 lines.** The Stage 2 fix added 22 lines to the 146 it
+  had, past the 150 where a file wants splitting. Splitting it is a step of its own.
 
 ## The rules this step meets
 

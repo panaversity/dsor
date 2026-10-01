@@ -14,6 +14,8 @@ import {
   UNEXPECTED,
   correlationFor,
   log,
+  notTheCaller,
+  notValid,
   registry,
   registryWith,
   schemaProblems,
@@ -106,6 +108,50 @@ describe("C1: every answer call gives has a record in the log", () => {
       }),
     );
   });
+
+  // Line ① now makes the one copy of the input, and refuses there an input that JSON cannot
+  // copy (step 07's README, decision 9). That refusal reaches line ⑪ like every other. When
+  // such an input names cfo_100, the record says AUTHORIZATION_DENIED, as the caller heard
+  // it, and not VALIDATION_FAILED. Found by the Stage 2 review, and fixed from step 07 on.
+  it.each([
+    [
+      "an input that JSON cannot copy",
+      { id: "INV-1008", count: 1n },
+      "VALIDATION_FAILED",
+      notValid("invoice.get", "it cannot be copied as JSON"),
+    ],
+    [
+      "cfo_100 named in an input that JSON cannot copy",
+      { id: "INV-1008", principal: "cfo_100", count: 1n },
+      "AUTHORIZATION_DENIED",
+      notTheCaller("principal"),
+    ],
+  ])(
+    "DSOR-EXE-02: %s is refused at line ①, and leaves one record",
+    async (_why, input, code, message) => {
+      const lines: number[] = [];
+      const { answer, records } = await recorded((l) =>
+        call(registry, l, AGENT, "invoice.get", input, (n) => lines.push(n)),
+      );
+      // Refused at line ①, and recorded at line ⑪. Nothing ran between them.
+      expect(lines).toStrictEqual([1, 11]);
+      expect(answer).toStrictEqual({
+        code,
+        message,
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+      expect(records).toStrictEqual([
+        recordOf(1, {
+          operation: "invoice.get@1",
+          authorization: "DENY",
+          result: code,
+          reason: message,
+          correlation: answer.correlation,
+        }),
+      ]);
+    },
+  );
 
   it("DSOR-EXE-02: the record names the caller and the caller's own request id", async () => {
     const { records } = await recorded((l) =>
