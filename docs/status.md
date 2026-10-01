@@ -113,3 +113,12 @@ Two things the tutorial has turned up that belong here rather than in a step's n
 - `DSOR-EXE-03b`'s sentence covers "the decision **or** intent record", so it is two
   behaviours joined by an `or` and they become buildable many steps apart. It is the
   one place in the spec where a single id could not be met in one piece of work.
+- `common.schema.json`'s `correlation.request_id` is a bare `{"type": "string"}` with no
+  `minLength`, so an envelope carrying `request_id: ""` validates. `DSOR-COR-01b` says
+  DSoR MUST generate a `request_id` when the caller supplies none, and a blank string
+  is none — but the schema cannot enforce that half, so every implementation has to
+  decide for itself that blank means absent. Found in the tutorial on 2026-10-01: a
+  caller passing `""` obtained a `COMMITTED` receipt for a state change with no usable
+  correlation id, and the envelope was schema-valid. A `minLength: 1` on that `$def`
+  would close it for everyone. The same argument applies to `record_id`, `chain` and
+  `result` on `audit-record.schema.json`, which are also bare strings.
