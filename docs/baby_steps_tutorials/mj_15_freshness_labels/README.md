@@ -120,6 +120,14 @@ Checked on 2026-10-01:
 6. **The decision bundle (DSOR-AUD-03a, L2) records `observed_at` and `freshness` for every
    state it read.** Decision 7 keeps the same facts in the record of a read. This is an early
    piece of it, not a claim of the rule.
+7. **No schema has a place for the label in a query's answer, or in a record.**
+   *Found before any code, 2026-10-01, by reading the schemas whole:*
+   - `result-envelope.schema.json` allows no field it does not list, and `freshness` is not
+     listed. A query's answer is already this tutorial's own shape (step 04's decision 3),
+     so decision 1 still stands.
+   - `audit-record.schema.json` allows no field it does not list either. It has a field
+     `connector` of its own, and none for the mode or `observed_at`. So decision 7 changed:
+     see there.
 
 ### What each rule really says
 
@@ -166,17 +174,31 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    store's read functions change shape.
 6. **Several reads give the stalest label.** The mode is the weakest, in this order:
    `current` before `bounded_staleness`, before `connector_defined`, before `observational`.
-   The `observed_at` is the oldest. The connector is the one that served that read.
+   The `observed_at` is the oldest. The connector is the one that served the oldest read.
+   The weakest mode and the oldest time can come from two different reads. The label then
+   takes each from its own read, because each is the worst of its kind.
    - A successful query whose code read nothing is refused with `INTERNAL_ERROR`, because a
      label for it would be invented, and DSOR-FRS-01a asks for one.
+   - *Added before any code, 2026-10-01:* a label from a store that is not one of the four
+     modes, or has no time, or names no connector, is refused with `INTERNAL_ERROR` too. An
+     unknown mode has no place in the order, and guessing one could rank it above
+     `current`. The bound store keeps only the three fields, so a store cannot add a fourth.
 
    *Downside:* a query that reads a fresh invoice and an old vendor is labelled old as a
-   whole. And a query that will one day compute an answer without reading needs a rule of its
-   own.
-7. **The record of a read keeps its label.** It sits beside `resources` and `row_count`, in a
-   new column `freshness` of `dsor.audit`. Migration `008` adds the column, and `dsor_runtime`
-   gets `INSERT` on it. So the log can answer "what did DSoR know when it answered?".
-   *Downside:* one more column, and `dsor_runtime`'s list of privileges grows by one word.
+   whole. A query that will one day compute an answer without reading needs a rule of its
+   own. And every test that plants code returning data without a read must now read once.
+7. **The record of a read keeps its label,** split the way step 14 split the classification:
+   the audit record's own field where the schema has one, and this tutorial's `extensions`
+   where it has none (DSOR-SCH-02).
+   - The connector goes in the record's own field `connector`. Migration `008` adds the
+     column, and `dsor_runtime` gets `INSERT` on it.
+   - The mode and `observed_at` go under `extensions`, `org.panaversity.steps`, as
+     `freshness`, beside step 14's `classification`.
+
+   So the log can answer "what did DSoR know when it answered?". *Changed before any code,
+   2026-10-01:* the design first put all three in a new column `freshness`. The record's
+   schema allows no such field (point 7 above). *Downside:* one label, kept in two places,
+   and `dsor_runtime`'s list of privileges grows by one word.
 8. **No real cache. The tests plant one.** It wraps the raw store, below the bound store. It
    is keyed by company and id, and keeps the label of the read it copied:
    - its mode becomes `observational`;
@@ -213,12 +235,19 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   prototype included, and by changing the rows it got back. *Added before any code,
   2026-10-01:* the learner's prediction for break Z6 ("only a test that tries to") showed the
   design had no such test, so Z6 would have survived.
+
+  A planted store whose label has an unknown mode, no time, or no connector gives
+  `INTERNAL_ERROR`. One that adds a fourth field gives a label of three. *Added before any
+  code, 2026-10-01,* with decision 6's second point.
 - **C5.** A planted operation that reads twice, through a planted store whose second read is
-  `observational`. The answer is `observational`, with the older `observed_at`.
+  `observational`. The answer is `observational`, with the older `observed_at`. The same in
+  the other order. And two reads where the weakest mode and the oldest time are different
+  reads: the label takes each from its own read.
 - **C6.** Answers of `RESOURCE_NOT_FOUND`, `TENANT_MISMATCH`, and `AUTHORIZATION_DENIED`
   have no `freshness`. A planted query that returns data without a read gets `INTERNAL_ERROR`.
-- **C7.** On the database, the record of C1's call has the same `freshness` as the answer.
-  `dsor_runtime`'s privileges are step 14's list plus `freshness` in the `INSERT` columns.
+- **C7.** The record of C1's call holds the answer's connector in `connector`, and its mode
+  and `observed_at` under `extensions`. On memory and on the database. `dsor_runtime`'s
+  privileges are step 14's list plus `connector` in the `INSERT` columns.
 
 ### Breaks we will try, and what we expect
 
