@@ -211,16 +211,20 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
     // lock, DSoR's own. The query runs inside the company's transaction, so
     // the database's lock filters the rows too (DSOR-TEN-01b).
     get: async (tenant, id) => {
-      const { rows } = await inCompany(pool, tenant, (client) =>
-        client.query<InvoiceRow>(
-          `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
-                  open_amount_value, open_amount_currency, status
-             FROM app.invoices WHERE tenant_id = $1 AND id = $2`,
-          [tenant, id],
-        ),
-      );
+      const { observed, rows } = await inCompany(pool, tenant, async (client) => ({
+        observed: await databaseNow(client),
+        rows: (
+          await client.query<InvoiceRow>(
+            `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
+                    open_amount_value, open_amount_currency, status
+               FROM app.invoices WHERE tenant_id = $1 AND id = $2`,
+            [tenant, id],
+          )
+        ).rows,
+      }));
       const row = rows[0];
-      return { invoice: row === undefined ? undefined : invoiceOf(row), freshness: fromPostgres() };
+      const invoice = row === undefined ? undefined : invoiceOf(row);
+      return { invoice, freshness: fromPostgres(observed) };
     },
     // The first `count` invoices of the company after the cursor, in order
     // of id (step 13's README, decision 4). With no cursor, $2 is NULL, and the list starts
@@ -228,24 +232,37 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
     // transaction sets it for the database's lock, as for get. The order is the database's
     // C.UTF-8, which compares text by its character codes, as < does in memory.
     list: async (tenant, after, count) => {
-      const { rows } = await inCompany(pool, tenant, (client) =>
-        client.query<InvoiceRow>(
-          `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
-                  open_amount_value, open_amount_currency, status
-             FROM app.invoices WHERE tenant_id = $1 AND ($2::text IS NULL OR id > $2)
-            ORDER BY id LIMIT $3`,
-          [tenant, after ?? null, count],
-        ),
-      );
-      return { rows: rows.map(invoiceOf), freshness: fromPostgres() };
+      const { observed, rows } = await inCompany(pool, tenant, async (client) => ({
+        observed: await databaseNow(client),
+        rows: (
+          await client.query<InvoiceRow>(
+            `SELECT tenant_id, id, vendor_id, amount_value, amount_currency,
+                    open_amount_value, open_amount_currency, status
+               FROM app.invoices WHERE tenant_id = $1 AND ($2::text IS NULL OR id > $2)
+              ORDER BY id LIMIT $3`,
+            [tenant, after ?? null, count],
+          )
+        ).rows,
+      }));
+      return { rows: rows.map(invoiceOf), freshness: fromPostgres(observed) };
     },
   };
 }
 
 // NEW IN STEP 15: a read from PostgreSQL, within this request, is current (DSOR-FRS-01a).
-/** The label of a read from PostgreSQL. */
-function fromPostgres(): Freshness {
-  return { mode: "current", observed_at: new Date().toISOString(), connector: "postgres" };
+/** The label of a read from PostgreSQL, made at this moment of the database's clock. */
+function fromPostgres(observed: Date): Freshness {
+  return { mode: "current", observed_at: observed.toISOString(), connector: "postgres" };
+}
+
+// NEW IN STEP 15: the database's clock, in the transaction that reads the rows. now() is the
+// moment the transaction began, a moment before the rows are read, so the label is never
+// younger than the data. One clock for every server, as the log's times are (step 15's
+// README, decision 2; step 09's README, decision 6).
+/** The database's now(), in this client's transaction. */
+async function databaseNow(client: pg.PoolClient): Promise<Date> {
+  const { rows } = await client.query<{ now: Date }>("SELECT now() AS now");
+  return rows[0]!.now;
 }
 
 // One row as an invoice. Shared by get and list.
