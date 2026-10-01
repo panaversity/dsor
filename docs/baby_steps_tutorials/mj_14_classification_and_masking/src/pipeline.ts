@@ -162,7 +162,7 @@ export async function call(
     // Ours, not §21's. No query's result leaves larger than DSoR gives in
     // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
     // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
-    checkResultSize(shown.data);
+    checkResultSize(shown.data, shown.redactions);
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
 
