@@ -294,7 +294,9 @@ for a human. An agent may gather evidence; it does not settle these alone.
     UTF-8, at most 64 KiB, with the correlation not counted. A row count misses one huge
     row, and a byte count alone lets a million tiny rows through. Is a result size
     counted in bytes, in rows, or both? Measured on the data, the envelope, or what
-    leaves on the wire? And before masking (§19) or after it?
+    leaves on the wire? And before masking (§19) or after it? Step 14's learner build
+    answers the last part one way: after masking, counting the data and the list of what
+    was withheld, because that list holds field names taken from the data.
 44. **Which code answers "this result is too large to give"?** §28 has none. Step 13's
     learner build refuses with `UNSUPPORTED_CAPABILITY`, retry `never`, because asking
     again gets the same answer. The same refusal comes when one row alone is larger than
@@ -306,3 +308,32 @@ for a human. An agent may gather evidence; it does not settle these alone.
     for either. Step 13's learner build writes one pair in code for every query: 10 rows
     and 64 KiB. Should a query's contract carry its own maxima, under a ceiling DSoR sets,
     so that a contract can lower its cap but never raise it past the server's?
+46. **Does DSOR-CLS-03 cover refusals and empty answers?** "Every query response MUST
+    carry a classification label." The error envelope's schema allows no
+    `classification`, so a refusal cannot carry one. Step 14's learner build reads "every
+    query response" as every answer that carries data. An answer that holds no field,
+    such as an empty page, has no "highest classification among the fields it contains":
+    the build calls it `public`. Should §19.2 say whether a refusal is a query response,
+    and how an answer with no field is labelled?
+47. **Is the label taken after masking, or from the whole record?** DSOR-CLS-03 says "the
+    highest classification among the fields it contains". Step 14's learner build takes
+    the fields the answer still contains after masking, so the agent's `INV-1008` is
+    `internal` and `cfo_100`'s is `confidential`. Read as the fields of the record the
+    answer came from, both would be `confidential`, and the label would tell the agent
+    about data it was not given. Which is meant?
+48. **Which clearance does `accounts-payable-fte` hold?** §19.2's example gives it
+    `confidential`, which lets it see `amount`. The map's step 14 "done when" asks for
+    the agent to see a masked `amount`. Step 14's learner build gives it `internal`.
+    Should the example change, or the map?
+49. **What is the audit record's kind `classified_read` for?** The audit-record schema
+    lists it, and no prose names it. Step 14's learner build records a read's
+    `resources` and `row_count` on the one decision record each call leaves, and puts the
+    answer's label under `extensions`, because the audit record has no field for a
+    classification. Is a classified read meant to be a second record? Should the audit
+    record carry the read's classification?
+50. **Should a label say anything about a field's value?** A classification belongs to a
+    field. Step 14's learner build found that an operation's code can put an amount
+    inside `status`, `next_cursor`, or `capped`, fields an agent may see, and the agent
+    gets it. Masking cannot see this. Only a check of each result against its output
+    schema could. Should DSOR-CLS-02a, or DSOR-SCH-01 for results, say that a query's
+    result is checked against its output schema before masking?

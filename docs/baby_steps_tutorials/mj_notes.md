@@ -262,6 +262,14 @@ the official tutorial's. A learner build does not change either. A maintainer de
   note that says where the pile stopped, and every handover goes in the logbook. It
   covers both caps, the cursor, and the record, and it stops at the clerk's memory:
   nothing counts the visits.
+- **Analogy, from step 14: the blacked-out copy.** A document released with some lines
+  blacked out: the bars stay on the page, so the reader knows something was there. It
+  fits DSOR-CLS-02b exactly, with the list of what was withheld playing the bars, and it
+  stops there: DSoR leaves a field out, it does not cover it. It is not on the house
+  list. The hostile review caught a slip in the first wording, "the clerk takes a
+  marker": on the house list the new clerk is the agent, so the agent would do the
+  hiding. It now reads: the records office blacks out the copy before it hands it to
+  the new clerk. A candidate for the list, beside the new clerk.
 - **A step for row budgets.** Step 13 leaves the slow read open: a caller can follow the
   cursor to the end, one recorded page at a time. The specification's answer is §19.2's
   row budget: DSOR-CLS-04b, budgets on rows returned per agent principal and per
