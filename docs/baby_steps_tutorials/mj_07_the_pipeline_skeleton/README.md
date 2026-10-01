@@ -184,6 +184,25 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    call. And a value JSON leaves out, such as `undefined`, is gone before the check
    sees it. The interfaces of steps 42 and 46 will receive JSON anyway.
 
+   *Changed by the Stage 2 review, 2026-10-01:* the copy is now made once, at line ①,
+   right after DSoR finds who is calling. Line ①'s check of the principals the input
+   names, line ⑥'s schema check, and the code all read that one copy. Before, line ①
+   read the input itself, so a getter could show the caller to line ① and `cfo_100` to
+   the code. An input that JSON cannot copy is refused inside line ①, with the same code
+   and message as before. So line ① holds the copy beside its three checks (decision 6).
+   JSON can carry such an input: nesting that `JSON.parse` reads and `JSON.stringify`
+   cannot write. So before that refusal, line ① checks the principals the input names,
+   on the input as it was sent. An attempt to act as `cfo_100` is still refused as one,
+   with `AUTHORIZATION_DENIED`, and is not hidden behind a bad input. Step 05 refused to
+   let a bad request id hide it, for the same reason. This is the only second read of
+   the input as it was sent, and it only chooses the refusal. The call is refused either
+   way, so nothing read there reaches the code. *Downside:* the refusal of an input that
+   JSON cannot copy comes before "may you?" and before "which operation?". It is the
+   same whether or not the operation exists, so it tells the caller nothing about what
+   exists or what an input should look like. And a principal that JSON leaves out, such
+   as one whose value is a function, is now seen by neither line ① nor the code.
+   Before, line ① refused it.
+
 ### The tests, by claim
 
 - **C1:** the lines that ran match §21's order: ①, ⑤, ⑥ for `invoice.issue`, and ①,
@@ -211,7 +230,7 @@ Run against the finished step. The learner's predictions were recorded before an
 | # | The break | Expected to be caught by | Learner's prediction | What happened |
 | --- | --- | --- | --- | --- |
 | R1 | Lines ⑤ and ⑥ are swapped: the input is checked before the permission | C1, C2 | survives | Caught: 20 tests fail |
-| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 441 pass. Written as `line(2, …)`, it is caught by 7 tests, because the order tests see a line ② |
+| R2 | Line ② becomes a real function, `checkTenant()`, that does nothing | only a reader: no answer changes | survives | Survives: all 451 pass. Written as `line(2, …)`, it is caught by 7 tests, because the order tests see a line ② |
 | R3 | An input schema allows fields it does not list | C3, and C4 after the review | survives | Caught at start-up: the program refuses to start and names the file. 8 of the 12 test files cannot load, because their shared helpers build the shipped registry |
 | R4 | A contract whose input schema file is missing loads, and its input is never checked | C4 | survives | Caught: 4 tests fail |
 
@@ -249,8 +268,8 @@ src/pipeline.ts                NEW: call(), moved here from registry.ts. It is n
                                line(n, check), which tells an optional observer its number
 src/inputs.ts                  NEW: readInputs() and checkInputs() find, check, and
                                compile each contract's input schema at start-up.
-                               checkInput() is line ⑥: it checks a JSON copy of the
-                               input, and returns the copy
+                               checkInput() is line ⑥: it checks the copy of the input
+                               that line ① made with jsonCopy()
 src/registry.ts                changed: buildRegistry() takes the input schemas, and
                                names their problems with the others. call() moved out
 src/operations.ts              changed: invoice.get's code no longer checks its input.
@@ -271,6 +290,11 @@ test/contract.test.ts,         program refuses to start when an input schema has
 test/startup.test.ts           file, and when the inputs folder is missing
 src/pipeline.ts,               fixed from step 05 on: the caller's request id is read
 test/call.test.ts              inside the try, so call never throws
+src/pipeline.ts,               fixed from step 07 on, by the Stage 2 review: line ①
+src/inputs.ts,                 makes the one copy of the input, and every check after
+test/pipeline.test.ts,         it, and the code, read only that copy. An input it
+test/who-is-calling.test.ts    cannot copy is refused there, after the principals it
+                               names are checked (decision 9)
 src/, test/                    step 06's NEW IN STEP markers are now plain comments
 ```
 
@@ -296,9 +320,11 @@ Four choices in the code are worth a look:
   `removeAdditional: false`, `coerceTypes: false`, and `useDefaults: false`. With
   `removeAdditional` on, `as_user` would be quietly deleted, and the call would go on.
   Refused is the only safe answer.
-- **The code gets the copy that was checked.** `checkInput()` copies the input through
-  JSON text, checks the copy, and returns it. Line ⑨ hands that copy to the code. So an
-  input cannot show one id to the check and another to the code (decision 9).
+- **One copy of the input, made once.** Line ① copies the input through JSON text with
+  `jsonCopy()`, right after it finds who is calling. Line ①'s own check, line ⑥, and
+  the code at line ⑨ all read that copy. Only when JSON cannot copy the input does line ①
+  read it again, in `refuseUncopyable()`, to choose which refusal to give. So an input
+  cannot show one value to a check and another to the code (decision 9).
 
 ## Run it
 
@@ -389,18 +415,18 @@ pnpm test -t "in §21's order"
 
 ```text
  Test Files  1 passed | 11 skipped (12)
-      Tests  3 passed | 438 skipped (441)
+      Tests  3 passed | 448 skipped (451)
 ```
 
-`pnpm check` runs the type check, then 441 tests:
+`pnpm check` runs the type check, then 451 tests:
 
 ```text
  Test Files  12 passed (12)
-      Tests  441 passed (441)
+      Tests  451 passed (451)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `438 passed | 3 skipped`.
+original to compare with, so they are skipped: `448 passed | 3 skipped`.
 
 ## Break it
 
@@ -410,7 +436,7 @@ original to compare with, so they are skipped: `438 passed | 3 skipped`.
 ```ts
     line(5, () => checkPermission(caller, contract, registry.roles));
     …
-    line(6, () => checkInput(name, registry.inputs, input));
+    line(6, () => checkInput(name, registry.inputs, copy));
 ```
 
 Swap the two statements, so the input is checked first. Run `pnpm start`. The output
@@ -439,7 +465,7 @@ AssertionError: expected { code: 'VALIDATION_FAILED', …(3) } to strictly equal
     "retry": "never",
   }
 …
-      Tests  20 failed | 421 passed (441)
+      Tests  20 failed | 431 passed (451)
 ```
 
 `cfo_100` may not issue. Still, the answer now tells the CFO what a valid
@@ -454,7 +480,7 @@ refuses. They had passed only because line ⑤ answered first. Put the two lines
 and `pnpm check` is green again.
 
 **Now try R2.** Add a function `checkTenant()` that does nothing, and call it where the
-comment for line ② is. Run `pnpm test`: all 441 pass. No test can see a check that
+comment for line ② is. Run `pnpm test`: all 451 pass. No test can see a check that
 changes no answer. Only a reader can, which is why decision 1 forbids it.
 
 ## Build it yourself with Claude Code
@@ -580,20 +606,52 @@ What the hostile review found, and what was fixed:
   defined where it first appears. The fail-closed analogy was written backwards. URN,
   payload hash, breaker, and request security context are now defined.
 
+**Found by the Stage 2 review (2026-10-01), and fixed.**
+
+- **A check and the code could see two different inputs.** Line ① read the input
+  itself, to check the principals it names. Line ⑥ then made its own copy, for the
+  schema check and for the code. A getter can answer the second read differently. The
+  review proved it in step 14: line ① let the call through, and the code was handed
+  `cfo_100`. Here no shipped input schema lists `principal`, so line ⑥ refused the
+  field, and the hole stayed hidden. The red test plants a schema that lists it. The
+  agent's `principal` reads as `accounts-payable-fte` first and as `cfo_100` after, and
+  the code was handed `principal: "cfo_100"`.
+  - **Fixed:** line ① makes the one copy, right after it finds who is calling. Every
+    check after that, and the code, read only that copy (decision 9). An input that JSON
+    cannot copy is refused there. Before that refusal, line ① checks the principals it
+    names on the input as sent, so `cfo_100` inside it is still `AUTHORIZATION_DENIED`.
+    Found by the Stage 2 review, and fixed from step 07 on.
+  - **Caught by** `DSOR-SRC-02b: a principal that reads as the caller first, then as
+    cfo_100, …` in `test/pipeline.test.ts`. Beside it, the opposite case is refused. A
+    Proxy, an object that runs code on every read, counts the reads of every field: the
+    copy reads each field once, and nothing else reads an input it can copy. Five tests
+    pin where an input that JSON cannot copy is refused: inside line ①, and never before
+    the login. Two more name `cfo_100` in one, once as plain JSON 100,000 levels deep,
+    and expect `AUTHORIZATION_DENIED`. One more shows that with no login, the input is
+    not read at all.
+  - **Broken on purpose, nine ways:** the copy made before the login, line ① checking the
+    input itself, the code given the input itself, line ⑥ copying again, the copy read
+    before the login but refused after it, and line ① reading `correlation` from the
+    input itself. And, when the copy fails: the claims left unchecked, every named
+    principal refused, or the call let through. Each one turned at least one of these
+    tests red. A hostile pass on the fix found the fifth and the sixth. It also found
+    that JSON can carry an input too deep to copy. That hid `cfo_100` behind
+    `VALIDATION_FAILED`, until line ① checked the claims first.
+
 Left open on purpose:
 
 - **DSOR-OPR-04a has one interface to test today.** A second interface that ran the
   code directly would fail no test. Three of the six OPR-04a tests already passed in the
   red run, before this step's code. The rule gets a real test when step 42 adds a second interface.
-- **Line ① holds three checks in one `line(1, …)`.** The observer sees line ① start.
-  Moving `checkNamedPrincipals` out of it, to the same place, changes nothing that a
-  test can see (decision 6).
+- **Line ① holds three checks and the copy in one `line(1, …)`.** The observer sees
+  line ① start. Moving `checkNamedPrincipals` out of it, to the same place, changes
+  nothing that a test can see (decision 6).
 - **One test was not written red first.** "An operation with no input check… refuses
   every input" was added with the code, because nothing had tested that branch.
 - **`registry.ts` and `inputs.ts` import each other.** It works, because neither uses
   the other while it loads. It is still one more thing for a reader to hold.
-- **`envelope.ts` is 150 lines, and `inputs.ts` 148.** The next line in either one is a
-  reason to split it.
+- **`envelope.ts` is 157 lines, and `inputs.ts` 148.** Each is at about 150 lines, where
+  a file wants splitting. The next line in either one is a reason to split it.
 
 ## The rules this step meets
 
