@@ -324,6 +324,9 @@ this way:
    database (decision 9).
 2. **Stop. A person resets `neondb_owner`'s password on `step-15` in the Neon console.**
    `main` still has the original password, the one that appeared in step 09's transcript.
+   *In this build, 2026-10-01,* the learner asked Claude Code to do the reset. It called
+   Neon's API from a script that printed only the status. Neon's MCP tool for a reset gives
+   back the new password, so it would have put the password in the chat.
 3. Write `.env` with `neonctl connection-string`, sending its output into the file and
    never printing it:
    - `DSOR_MIGRATION_URL`: the owner's string.
@@ -338,19 +341,180 @@ this way:
 
 ## What changed since step 14
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `src/freshness.ts` | **New.** The four modes, the label `{ mode, observed_at, connector }`, `checkedLabel` (decision 6's checks), the notebook `Reads` of one call, and `stalest` (decision 6) |
+| `src/invoice.ts` | Each read of the raw store comes back as `{ invoice, freshness }` or `{ rows, freshness }`. Memory labels each read `current`, with the program's clock, connector `memory` |
+| `src/postgres.ts` | Each read asks for `now()` in its own transaction, before the rows, and is labelled `current`, connector `postgres`. The log writes and reads the column `connector` |
+| `src/company.ts` | The bound store checks and notes each read's label in the call's notebook, and hands the code the rows only. It reads nothing once line ⑨ has ended |
+| `src/pipeline.ts` | The notebook for each call. Line ⑨ closes it. After the company check, masking, and the 64 KiB check, the answer gets `freshness`, and the record gets the label |
+| `src/envelope.ts`, `src/log.ts` | A query's answer has `freshness`. A read's record has `connector`, and `freshness` under `extensions` |
+| `migrations/008_read_freshness.sql` | **New.** The column `connector` in `dsor.audit`, and `INSERT` on it for `dsor_runtime` (decision 7) |
+| `src/main.ts` | Prints the first record to every depth, so its freshness shows |
+| `test/stores.ts` | **New.** The stores the tests plant under the bound store: `relabelled`, and the cache `cacheOver` (decision 8) |
+| `test/freshness-label*.ts`, `test/observed-at*.ts`, `test/cached-reads*.ts` | **New.** C1, C2, and C3, on memory and on the database |
+| `test/label-from-store.test.ts`, `test/stalest-label.test.ts`, `test/no-label-on-refusal.test.ts`, `test/label-in-record*.ts` | **New.** C4, C5, C6, and C7 |
+| `test/helpers.ts` | `registryWith` makes planted code read `INV-1008` first (`afterARead`). `registryRunning` keeps the code as the test wrote it. `forComparing` (was `withoutRequestId`) sets aside the read's time too. `FROM_MEMORY` |
+| every other test | C1 broke 65 older unit tests: answers compared whole now carry their label, raw-store calls take `.invoice` or `.rows`, and planted code that answered without reading now reads. C7 broke 3: records compared whole. Step 12's suite compares two answers without their read times, and its planted `rewritten`, `dump`, `theirs`, and `cached` read first. Step 11's owner-store test writes its own records |
+
+Every other file is step 14's, without its `NEW IN STEP` markers. No new dependency.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_14_classification_and_masking/src mj_15_freshness_labels/src
+git diff --no-index mj_14_classification_and_masking/test mj_15_freshness_labels/test
+```
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # on an empty branch: every migration, 001 to 008
+pnpm check        # typecheck and the unit tests
+pnpm test:db      # the database tests
+pnpm start        # the program, against the database
+```
+
+The program's first answer, on 2026-10-02. The agent reads `INV-1008`:
+
+```text
+{
+  data: {
+    tenant_id: 'org_456',
+    id: 'INV-1008',
+    vendor_id: 'VENDOR-44',
+    status: 'issued'
+  },
+  classification: 'internal',
+  redactions: [
+    { field: 'amount', reason: 'clearance', treatment: 'omitted' },
+    { field: 'open_amount', reason: 'clearance', treatment: 'omitted' }
+  ],
+  freshness: {
+    mode: 'current',
+    observed_at: '2026-10-01T20:05:33.056Z',
+    connector: 'postgres'
+  },
+  correlation: {
+    request_id: 'req_b63723bb-5ad5-4783-8d6f-b1a5244fa2d3',
+    agent_id: 'accounts-payable-fte'
+  }
+}
+```
+
+The time is in UTC, the database's own clock: 01:05 on 2 October in Pakistan. Further down,
+the record of the same read:
+
+```text
+{
+  …
+  at: '2026-10-01T20:05:34.194Z',
+  operation: 'invoice.get@1',
+  authorization: 'ALLOW',
+  result: 'ok',
+  …
+  extensions: {
+    'org.panaversity.steps': {
+      freshness: { mode: 'current', observed_at: '2026-10-01T20:05:33.056Z' },
+      classification: 'internal'
+    }
+  },
+  resources: [ 'dsor://org_456/invoice/INV-1008' ],
+  row_count: 1,
+  connector: 'postgres'
+}
+```
+
+The record was written about a second after the read: `at` is later than `observed_at`. The
+label says when the data was read. The record says when DSoR answered.
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break of the design's table, performed on 2026-10-02, one at a time, in a copy of this
+folder outside the repository, then put back. First on the code before the review, then
+again on the final code. Z2 changes how the database is read, so it ran on the database
+tests. The others ran on the unit tests.
+
+| # | The break | Learner's prediction | Before the review | On the final code |
+| --- | --- | --- | --- | --- |
+| Z1 | The checklist writes `current` itself, ignoring the recorded reads | caught by the planted stores | **17 tests**, every one a planted store or planted code: C3, C4, C5, C6's "read nothing", and C7's slower store | 22: the same, and the review's planted stores |
+| Z2 | `observed_at` is the program's clock on the database | not asked | **1**: C2's test with the program's clock in 2001. The test between two readings of the database's clock passed, as expected | 2: the same test, and the review's one for `invoice.list` |
+| Z3 | Refusals carry `freshness` too | not asked. The design expected C6 | **229**: C6, and every test since step 04 that compares a refusal whole, and the error envelope's schema, which allows no extra field | 229 |
+| Z4 | Several reads give the freshest label, not the stalest | only the two-read test | **7**, all C5's: right | 9: C5's, the tie, and the record of two reads |
+| Z5 | The planted cache gives `observed_at` as "now" | only C3's time check | **1** in memory and 1 on the database, C3's time check: right | the same |
+| Z6 | The code is handed the list of recorded reads | only a test that tries to | **2**: C4's tamper test, and step 10's test of the company's exact keys | the same |
+
+**Z2, the clock.** In `src/postgres.ts`, make `fromPostgres` use `new Date()` instead of the
+time the database gave. One test fails:
+
+```text
+ × DSOR-FRS-01a: on the database, observed_at does not follow the program's clock
+AssertionError: expected 978307200000 to be greater than or equal to 1790884842753
+```
+
+978307200000 is 1 January 2001, the time the test gave the program's clock. A label from the
+program's clock says what that clock says. The other C2 test, "between two readings of the
+database's clock", passed with the break: the program's clock and the database's clock were
+close enough. That is why C2 has a test that moves the program's clock.
+
+**Z6, caught by an older test too.** Hand the code the notebook, `Object.freeze({ tenant,
+invoices, reads })`. C4's tamper test finds the list and rewrites it. And step 10's test,
+which checks that the company has exactly the keys `tenant` and `invoices`, fails too. The
+learner's "only a test that tries to" was half right: a test of the company's shape tries
+too, without knowing it.
+
+**Z3 was expected to be caught by C6.** It is caught by 229 tests. Every test since step 04
+compares refusals whole, so a field added to every refusal shows everywhere.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one |
+| 2 | Neon | A branch `step-15` from `main`, empty. The owner's password reset before `.env` is written, and `.env` written by a command, never shown ("Before you build"). `pnpm migrate` runs every migration, and `pnpm test:db` is green before any change |
+| 3 | Check the design | Against every rule sentence and every schema it names, read whole. Two changes before any test: the record's own `connector` field, and the answer's shape |
+| 4 | Red | Every new test, before any code. Predict the red run |
+| 5 | Green | One claim at a time, C1 to C7. Predict what each claim turns green, and how many older tests it breaks |
+| 6 | Break it | Z1 to Z6, for real, in a copy |
+| 7 | Review | Two reviewers who have not seen your conversation. One reads and attacks. One breaks the code a line at a time, in a copy with a Neon branch of its own |
+| 8 | Fix the review | Decide each finding: fix it or record it. The design first, then the red tests, then the code, one finding per commit. Show each new test failing on the break it was written for |
+| 9 | Break it again | Z1 to Z6 on the final code |
+
+The prompt that started this session:
+
+```text
+Set up, then build step 15 in learner mode.
+
+Setup: follow README "Before you build" exactly. Create branch step-15 FROM main (not from
+step-14) in project <your Neon project>, then STOP and tell me, so I reset neondb_owner's
+password on step-15 in the console. After I say "reset", write .env only through commands
+whose output goes into the file: never print, fetch, or read a connection string or
+password. Then pnpm migrate (it runs every migration on the empty branch) and pnpm test:db.
+
+Build: README's design is agreed. If the code proves it wrong, change the design section
+first and tell me. Red tests first, one commit per claim. Before you finish, ask the
+requirement-reviewer for a hostile pass and fix what it finds, red first.
+```
+
+The learner's predictions, and what happened:
+
+| Moment | Prediction | Real |
+| --- | --- | --- |
+| The red run: 43 new unit tests, before any code | 0 pass | **15 pass**: 4 guards, 1 that step 14's rule makes true, and 10 "a broken label gives `INTERNAL_ERROR`" tests that passed for step 14's reason, not this step's |
+| The red run on the database: the guard "a refused read leaves no connector" | passes | **fails**: `column "connector" does not exist`. Its own SQL names the column migration 008 adds |
+| C1 lands: which claims' tests are all green | C2, C3, C4, C5 | C2 and C3. C4 partly: the 10 tests that passed for the wrong reason turned **red**. C5 red: several reads were refused until C5 |
+| C1 lands: how many of the 924 older unit tests break | 0 | **65** |
+| C4 lands: which of its 13 red tests turn green | all 13 | **right** |
+| C5: times compared as text would leave how many of 7 tests green | 6 | **right**: only the time-zone test fails |
+| C7 lands: how many older tests break | 0 | **3**: records compared whole |
+| The review's red run: 8 new unit tests | all 8 fail | **7**: the "a 64-character connector is kept" test passed. It says yes, and nothing said no yet |
+| The review's statement-order tests on the database | both pass | **right**: C2's code was right, and nothing tested it |
+| Z1, Z4, Z5 | as in "Break it" | right. Z6: half |
 
 ## Check yourself
 
@@ -383,14 +547,87 @@ _To be written when the code exists._
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+**What the review found, and fixed.** A hostile reviewer read the step and attacked it. A
+second one broke the code 80 times, one line at a time. Each finding below was shown red
+first, then fixed:
+
+- **A `Company` kept from an earlier call still read** (F2). Its label went into the old
+  call's list, which nobody read again. So a later answer could carry a cached row,
+  labelled `current`. The bound store now closes when line ⑨ ends (decision 5).
+- **Code could catch a bad label's error, read again, and succeed** (F7). Now one bad label
+  refuses the call (decision 6).
+- **A label had no size limit** (F9). A connector is now a short id, and a time has at most 9
+  digits after the second (decision 6).
+- **Nothing tested "in the reading transaction"** (F6). A test now watches the statements the
+  store sends on its connection, in order.
+- **Three of step 12's planted operations read nothing** (F5). Decision 6 refused them before
+  step 10's answer check mattered, so deleting that check left their tests green. They read
+  first now.
+- **The sweep's 34 surviving breaks.** 21 were real. Each now has a test that fails on it:
+  every part of the time's pattern, a list's label, a store that rewrites a label it handed
+  over, the label taken last, the record of two reads and of code that writes its own label,
+  the list's clock in memory and on the database, and another connector in the database's
+  record. 13 could not change what DSoR does, and one showed the design said nothing about
+  a tie. It does now (decision 6).
+- **The wording.** Decision 5 was stated beside DSOR-FRS-01b as if it were a rule.
+  `connector_defined` is not "older". Step 21 is planned, not built. A real cache below the
+  bound store is this tutorial's choice. And a cache that says "now" breaks DSOR-FRS-01a's
+  `observed_at`, not DSOR-FRS-01b.
+
+**Left open on purpose.** The learner chose each of these:
+
+- **The label covers the reads, not the data** (F1). Code that keeps an old copy of
+  `INV-1008` from an earlier call, reads anything fresh, and answers with the copy, gets
+  `current`. To check that every row in an answer equals a row read in this call is a second
+  idea: it would refuse every older test that answers with rows it made, and step 12's
+  planted leaks before its suite could see them. Step 12's `invoice.cached` shows the gap.
+- **DSoR believes its stores** (F4). A cache that passes on the `current` label it copied,
+  or a label dated 2099, is accepted. A store is DSoR's own connector, not the agent.
+  DSOR-FRS-01b holds as honestly as the connectors label their reads. To check a `current`
+  label's time against the call would compare two machines' clocks, which decision 2
+  avoided.
+- **JavaScript's built-ins** (F3). The code runs inside DSoR's own program. Code that rewrites
+  `Array.prototype.push` can rewrite a label as it is noted, and can defeat every earlier
+  step's checks the same way. The defense is reviewing the code, or running it apart.
+- **One connector for several reads** (F8). A current read from `postgres` and an
+  observational one from a cache give `{ observational, postgres }`, and the record hides
+  the cache. The specification's place for each read's own label is the decision bundle
+  (DSOR-AUD-03a, L2).
+- **Years 0000 to 0099** are refused as times, because JavaScript reads them as 1900 to 1999.
+  No store writes them.
+
+**Found while building.**
+
+- **Step 11's owner-store test needed records that other tests had left.** On this step's
+  empty branch it failed. It writes its own records now. Steps 11 to 14 still carry the old
+  test. One run also took 45 s, where it takes 11, so its limit is now 60 s, the limit of the
+  program it starts.
+- **Every query must read now.** Planted code in older tests that answered with data it made
+  now reads `INV-1008` first (`afterARead`). The label is taken last, so a planted answer
+  that an earlier check refuses is still refused for that check's reason.
+- **Two answers now differ by their read's time.** Step 12's suite compared two answers word
+  for word, and found differences of one millisecond. It now sets the time aside, as it does
+  the request id.
+
+**Questions for the specification:**
+
+- §27 and DSOR-FRS-01b write `CURRENT`. `common.schema.json` writes `current`.
+- §27 does not rank `connector_defined` against the other modes.
+- `result-envelope.schema.json` and `audit-record.schema.json` have no place for a read's
+  mode or `observed_at`.
+- DSOR-FRS-01a names "the connector", one, for a query that may read from several.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-FRS-01a | Every query result states `observed_at`, the version where one exists, the connector, and the mode delivered | [§27 Freshness and consistency](../../../specs/dsor/03-execution.md#27-freshness-and-consistency) | _to be counted_ |
-| DSOR-FRS-01b | A cached value is never labelled `CURRENT` | [§27 Freshness and consistency](../../../specs/dsor/03-execution.md#27-freshness-and-consistency) | _to be counted_, against a cache planted in the tests |
+| DSOR-FRS-01a | Every query result states `observed_at`, the version where one exists, the connector, and the mode delivered | [§27 Freshness and consistency](../../../specs/dsor/03-execution.md#27-freshness-and-consistency) | `test/freshness-label.test.ts` and `test/freshness-label.db.test.ts`: `invoice.get` and `invoice.list`, for the agent and for `cfo_100`, carry exactly the three (C1). `test/observed-at.test.ts` and `test/observed-at.db.test.ts`: the time is the store's clock, the database's in the reading transaction, for `get` and for `list` (C2). `test/label-from-store.test.ts`: the mode delivered is the store's (C4). **Partly:** invoices have no version yet (decision 4) |
+| DSOR-FRS-01b | A cached value is never labelled `CURRENT` | [§27 Freshness and consistency](../../../specs/dsor/03-execution.md#27-freshness-and-consistency) | `test/cached-reads.test.ts` and `test/cached-reads.db.test.ts`: the planted cache's answer is `observational`, with the first read's time (C3). **Against a cache planted in the tests:** DSoR has none (decision 8), and believes what its stores say ("Think it through", F4) |
+
+Also built, as this tutorial's decisions: the label travels through the bound store, which
+the code cannot reach, and closes when line ⑨ ends (C4, decision 5); several reads give the
+stalest (C5); a query that read nothing is refused (C6); and the record keeps the label
+(C7).
 
 ## Next
 
