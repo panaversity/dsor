@@ -25,6 +25,8 @@ import {
   notValid,
   registry,
   shipped,
+  shippedInputs,
+  shippedLabels,
   shippedRoles,
   walk,
   withoutRequestId,
@@ -200,7 +202,16 @@ describe("C1: the store is asked for one row more than the page, and reads no mo
         return memory.list(tenant, after, count);
       },
     };
-    const counted = buildRegistry(shipped, handlersFor(counting), shippedRoles);
+    // The registry holds the store (step 10's README, decision 13). Found by the Stage 2
+    // review, and fixed from step 10 on.
+    const counted = buildRegistry(
+      shipped,
+      handlersFor(),
+      shippedRoles,
+      shippedInputs,
+      shippedLabels,
+      counting,
+    );
     for (const input of [{}, { limit: 1000000 }, { limit: 3 }]) {
       await call(counted, log, AGENT, "invoice.list", input);
     }

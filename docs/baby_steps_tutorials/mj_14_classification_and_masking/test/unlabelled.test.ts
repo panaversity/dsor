@@ -19,9 +19,13 @@ describe("C1: a field with no label is confidential", () => {
   });
 
   // So "confidential for everything" cannot pass the two tests above.
+  // Since the Stage 2 review, a field that holds an object names its kind after its own
+  // label (step 14's README, decision 1).
   it("DSOR-CLS-01: a field the file names keeps its own label", () => {
     expect(labelOf(shippedKinds(), "Invoice", "status")).toBe("internal");
-    expect(labelOf(shippedKinds(), "InvoicePage", "capped")).toBe("public");
+    expect(labelOf(shippedKinds(), "Invoice", "amount")).toBe("confidential Money");
+    expect(labelOf(shippedKinds(), "Money", "value")).toBe("confidential");
+    expect(labelOf(shippedKinds(), "InvoicePage", "capped")).toBe("public Capped");
     expect(labelOf(shippedKinds(), "InvoicePage", "items")).toBe("Invoice[]");
   });
 

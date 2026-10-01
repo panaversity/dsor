@@ -7,9 +7,11 @@ import type { Answer, ErrorCode } from "../src/envelope.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
 import { Refusal } from "../src/envelope.ts";
 import { memoryInvoices } from "../src/invoice.ts";
+import { readClassifications, type ClassificationSource } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
+import { logins, type Principal } from "../src/principals.ts";
 import {
   buildRegistry,
   readContracts,
@@ -32,6 +34,41 @@ export const shippedRoles: RoleSource = readRoles(ROLES);
 // them (step 07's README, decision 2).
 const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
 export const shippedInputs: ContractSource[] = readContracts(INPUTS);
+
+// The labels this step ships, read from disk the way start-up reads them (step 14's README,
+// decision 1). A registry with a store of invoices names them first: the store is the last
+// thing buildRegistry takes (step 10's README, decision 13).
+export const shippedLabels: ClassificationSource = readClassifications();
+
+/**
+ * The shipped labels, with these kinds added, or these fields added to a kind the file has.
+ * Found by the Stage 2 review, for its tests of labels at every depth (step 14's README,
+ * decisions 1 and 7).
+ */
+export function labelsWith(changes: Record<string, Record<string, string>>): ClassificationSource {
+  const table = JSON.parse(shippedLabels.text) as Record<string, Record<string, string>>;
+  for (const [kind, fields] of Object.entries(changes)) table[kind] = { ...table[kind], ...fields };
+  return { file: shippedLabels.file, text: JSON.stringify(table) };
+}
+
+/**
+ * Runs `run` with one more principal in DSoR's table of logins, then takes it out again,
+ * however `run` ends. The table holds two agents, both internal, so a test of another
+ * clearance plants its own agent. Found by the Stage 2 review (step 14's README, decision 2).
+ */
+export async function withPlanted<T>(
+  token: string,
+  principal: Principal,
+  run: () => T | Promise<T>,
+): Promise<T> {
+  const table = logins as Map<string, Principal>;
+  table.set(token, principal);
+  try {
+    return await run();
+  } finally {
+    table.delete(token);
+  }
+}
 
 /** The shipped input schemas, with one file's text replaced, or removed. */
 export function inputsWith(file: string, text: string | undefined): ContractSource[] {
@@ -199,6 +236,14 @@ export function correlationFor(caller: Caller): Record<string, unknown> {
   return { request_id: expect.stringMatching(REQUEST_ID), ...caller };
 }
 
+/**
+ * What an operation's code is handed as its company: the active one, with its invoices
+ * (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
+ */
+export function companyNamed(tenant: string): unknown {
+  return expect.objectContaining({ tenant });
+}
+
 // The messages of step 05's refusals, typed out rather than imported.
 export const LOG_IN_FIRST = "log in first: the call has no login token that DSoR gave";
 // Well-formed, with no control characters (step 09's README, decision 16).
@@ -217,26 +262,44 @@ export function notGranted(name: string, permission: string): string {
 
 /** A real registry: the shipped operations, plus "test.run", whose code the test writes. */
 // NEW IN STEP 14: test.run returns an Invoice, as invoice.get does, unless the test names
-// another kind for its output (step 14's README, decision 1).
-export function registryWith(handler: Handler, output = "Invoice"): Registry {
+// another kind for its output (step 14's README, decision 1). And the shipped labels, unless
+// the test gives others. Found by the Stage 2 review.
+export function registryWith(
+  handler: Handler,
+  output = "Invoice",
+  labels: ClassificationSource = shippedLabels,
+): Registry {
   const testRun = { ...contract("invoice.get"), id: "test.run", output: { schema: output } };
   return buildRegistry(
     [...shipped, source(testRun, "test.run.json")],
     { ...handlers, "test.run": handler },
     // test.run needs invoice:read, as invoice.get does. The agent holds it.
     shippedRoles,
+    shippedInputs,
+    labels,
+    memoryInvoices(),
   );
 }
 
 /** A log for the tests that do not read it. Each test that reads one makes its own. */
 export const log: MemoryLog = createLog();
 
-// The shipped operations, reading the invoices in memory, so the unit tests
-// need no database (step 09's README, decision 12).
-export const handlers: Record<string, Handler> = handlersFor(memoryInvoices());
+// The shipped operations. They hold no store: the registry does (step 10's README, decision
+// 13). Found by the Stage 2 review, and fixed from step 10 on.
+export const handlers: Record<string, Handler> = handlersFor();
 
-/** The shipped operations, their code, and the role table, as start-up builds them. */
-export const registry: Registry = buildRegistry(shipped, handlers, shippedRoles);
+/**
+ * The shipped operations, their code, and the role table, as start-up builds them, reading
+ * the invoices in memory, so the unit tests need no database (step 09's README, decision 12).
+ */
+export const registry: Registry = buildRegistry(
+  shipped,
+  handlers,
+  shippedRoles,
+  shippedInputs,
+  shippedLabels,
+  memoryInvoices(),
+);
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
 export function run(handler: Handler): Promise<Answer> {
@@ -250,8 +313,13 @@ export function run(handler: Handler): Promise<Answer> {
 // NEW IN STEP 14: an agent's answer is masked and a person's is not, so a test says who
 // asks (step 14's README, decision 5).
 /** Calls "test.run" as this caller. Its code is the handler, and its output this kind. */
-export function runAs(who: RequestEnvelope, handler: Handler, output = "Invoice"): Promise<Answer> {
-  return call(registryWith(handler, output), log, who, "test.run", {
+export function runAs(
+  who: RequestEnvelope,
+  handler: Handler,
+  output = "Invoice",
+  labels: ClassificationSource = shippedLabels,
+): Promise<Answer> {
+  return call(registryWith(handler, output, labels), log, who, "test.run", {
     invoice: "dsor://org_456/invoice/INV-1008",
   });
 }

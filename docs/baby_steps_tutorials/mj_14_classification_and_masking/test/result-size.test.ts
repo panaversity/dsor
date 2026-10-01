@@ -74,6 +74,22 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     expect(await askPage(rows)).toStrictEqual(TOO_LARGE);
   });
 
+  // The result is the whole page, its cursor and capped included, not its items alone.
+  // pageOf keeps the one row it must keep, and that row's page fits in 64 KiB without its
+  // cursor and capped, but not with them (step 13's README, decision 3). Found by the Stage
+  // 2 review: with the pipeline measuring a page's items alone, a result of 65,585 bytes
+  // left, and every test stayed green. Fixed from step 13 on.
+  it("DSOR-QRY-01: a one-row page whose items fit, but whose cursor and capped take it past 64 KiB, is refused, not sent", async () => {
+    const first = { ...row(1, 0), text: "x".repeat(LIMIT - bytes({ items: [row(1, 0)] })) };
+    const rows = [first, row(2, 0)];
+    const page = pageOf(rows, 1000000);
+    expect(page).toMatchObject({ next_cursor: "ROW-01", capped: { asked: 1000000, max: 10 } });
+    expect(page.items).toStrictEqual([first]);
+    expect(bytes({ items: page.items })).toBe(LIMIT);
+    expect(bytes(page)).toBeGreaterThan(LIMIT);
+    expect(await askPage(rows, 1000000)).toStrictEqual(TOO_LARGE);
+  });
+
   // NEW IN STEP 14: an invoice whose text field brings it to exactly 64 KiB. Text alone is
   // not a record, and is refused for everyone (step 14's README, decision 3).
   it("DSOR-QRY-01: a result of exactly 64 KiB is answered", async () => {

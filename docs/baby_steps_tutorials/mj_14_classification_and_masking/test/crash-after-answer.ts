@@ -4,6 +4,8 @@
 // Run by the test as:  node test/crash-after-answer.ts <request id>
 import { writeSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readInputs } from "../src/inputs.ts";
+import { readClassifications } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { readRoles } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
@@ -16,8 +18,11 @@ const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
 const pool = openPool(requireEnv("DSOR_DB_URL"));
 const registry = buildRegistry(
   readContracts(CONTRACTS),
-  handlersFor(createDbInvoices(pool)),
+  handlersFor(),
   readRoles(ROLES),
+  readInputs(),
+  readClassifications(),
+  createDbInvoices(pool),
 );
 // The agent's login token, as in main.ts, and the request id the test chose.
 const request = { token: "tok_7f3a", tenant: "org_456", request_id: process.argv[2] };

@@ -103,31 +103,36 @@ function compile(
   return problems.length === before ? check : undefined;
 }
 
-/** Refuses the call unless its input passes the operation's input schema. Returns the copy it checked. */
-export function checkInput(name: string, inputs: InputChecks, input: unknown): unknown {
+/** Refuses the call unless its input passes the operation's input schema. */
+export function checkInput(name: string, inputs: InputChecks, copy: unknown): void {
   const check = inputs.get(name);
   // Start-up gives every contract its check. If one ever had none, nothing would pass:
   // when the answer is missing, the answer is no.
-  if (check === undefined) refuse(name, "it has no input schema");
-  // The copy is checked, and the copy goes on to the code. So the value checked is the value
-  // the code gets (step 07's README, decision 9). Found by the review.
-  const copy = jsonCopy(input);
-  if (copy === NOT_JSON) refuse(name, "it cannot be copied as JSON");
+  if (check === undefined) refuseInput(name, "it has no input schema");
+  // It checks line ①'s copy and makes none, so the value checked is the value the code gets
+  // (step 07's README, decision 9). Found by the Stage 2 review, and fixed from step 07 on.
   if (!check(copy)) {
     const problem = check.errors?.[0];
-    refuse(name, problem === undefined ? "it does not pass its input schema" : explain(problem));
+    const why = problem === undefined ? "it does not pass its input schema" : explain(problem);
+    refuseInput(name, why);
   }
-  return copy;
 }
 
 // Marks an input that JSON cannot copy. No JSON value can be equal to it.
-const NOT_JSON = Symbol("not JSON");
+export const NOT_JSON: unique symbol = Symbol("not JSON");
 
-// A copy made through JSON text. It holds plain values only, so nothing in it can answer
-// differently the second time it is read.
-function jsonCopy(input: unknown): unknown {
+/** What JSON.stringify calls for each value it writes: it may refuse the value by throwing. */
+export type Replacer = (this: unknown, key: string, value: unknown) => unknown;
+
+/** Line ①'s one copy of the input, through JSON text, or NOT_JSON (step 07's README, decision 9). */
+export function jsonCopy(input: unknown, replacer?: Replacer): unknown {
+  // A copy holds plain values only, so nothing in it can answer differently the second time
+  // it is read. Found by the Stage 2 review, and fixed from step 07 on.
+  // The copy of an answer passes a replacer that refuses code (src/company.ts). The input
+  // passes none: line ⑥'s schema refuses what is not plain data (step 14's README,
+  // decision 3). Found by the Stage 2 review, and fixed from step 14 on.
   try {
-    const text = JSON.stringify(input);
+    const text = JSON.stringify(input, replacer);
     return text === undefined ? undefined : (JSON.parse(text) as unknown);
   } catch {
     // A value that contains itself, a BigInt, or nesting too deep to write out.
@@ -135,7 +140,8 @@ function jsonCopy(input: unknown): unknown {
   }
 }
 
-function refuse(name: string, why: string): never {
+/** Refuses the call because its input is not valid, and says why. */
+export function refuseInput(name: string, why: string): never {
   throw new Refusal("VALIDATION_FAILED", `the input of ${preview(name)} is not valid: ${why}`);
 }
 

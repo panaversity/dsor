@@ -15,9 +15,22 @@ export type Label = "public" | "internal" | "confidential" | "restricted";
 /** The labels, lowest first. */
 export const LABELS: readonly Label[] = ["public", "internal", "confidential", "restricted"];
 
-// For each kind, each field's label, or "Kind[]": a list whose every item is that kind.
+// For each kind, each field's line, as the file writes it: a label, a label and a kind, or
+// "Kind[]", a list whose every item is that kind (readLine below).
 /** Every kind of answer, and what each of its fields holds. */
 export type Kinds = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
+// Changed by the Stage 2 review: a field that holds an object names the kind of that object
+// as well as its own label, so every key at every depth has a line (step 14's README,
+// decision 1). Found by the Stage 2 review, and fixed from step 14 on.
+/** What one line of the file says a field holds. */
+export type Line =
+  // "internal": text, a number, true, false, or null.
+  | { holds: "value"; label: string }
+  // "confidential Money": an object of that kind, with a label of its own for the whole.
+  | { holds: "record"; label: string; kind: string }
+  // "Invoice[]": a list whose every item is an object of that kind.
+  | { holds: "list"; kind: string };
 
 /** The classifications file, as it was read from disk: its file name and its text. */
 export type ClassificationSource = { file: string; text: string };
@@ -60,14 +73,16 @@ export function checkClassifications(source: ClassificationSource): {
       problems.push(`${file}: the kind ${JSON.stringify(kind)} ${what}`);
       continue;
     }
-    // Each value is a label, or a list of a kind the file has.
+    // Each value is a label, a label and a kind the file has, or a list of a kind the file
+    // has.
     const checked = new Map<string, string>();
     for (const [field, value] of Object.entries(fields)) {
-      if (isLabel(value) || isListOfKnownKind(value, known)) {
+      if (isLine(value, known)) {
         checked.set(field, value);
         continue;
       }
-      const what = "which is neither a label nor a list of a kind the file has";
+      const what =
+        "which is not a label, a label and a kind the file has, or a list of a kind the file has";
       problems.push(`${file}: ${kind}.${field} is ${JSON.stringify(value)}, ${what}`);
     }
     kinds.set(kind, checked);
@@ -78,9 +93,19 @@ export function checkClassifications(source: ClassificationSource): {
 // DSOR-CLS-01. A field nobody labelled is confidential, never public, so a field added
 // next year and forgotten in the file is hidden, not shown. A kind the file does not have
 // is a kind nobody labelled. The maps are Maps, so "toString" finds nothing.
-/** What the file says a field holds: its label, or "Kind[]". With no line for it, confidential. */
+/** What the file says a field holds: its line. With no line for it, confidential. */
 export function labelOf(kinds: Kinds, kind: string, field: string): string {
   return kinds.get(kind)?.get(field) ?? "confidential";
+}
+
+/** What a line says a field holds: a plain value, an object of a kind, or a list of one. */
+export function readLine(line: string): Line {
+  if (line.endsWith("[]")) return { holds: "list", kind: line.slice(0, -2) };
+  const [label = "", kind, ...more] = line.split(" ");
+  if (kind !== undefined && more.length === 0) return { holds: "record", label, kind };
+  // Anything else is a label. Start-up lets only the four in, and rank() puts any other
+  // text above them all.
+  return { holds: "value", label: line };
 }
 
 // Where a label sits among the four: public 0, restricted 3. Start-up lets no other label
@@ -96,9 +121,14 @@ export function isLabel(value: unknown): value is Label {
   return typeof value === "string" && (LABELS as readonly string[]).includes(value);
 }
 
-// "Invoice[]", when the file has the kind Invoice.
-function isListOfKnownKind(value: unknown, known: ReadonlySet<string>): value is string {
-  return typeof value === "string" && value.endsWith("[]") && known.has(value.slice(0, -2));
+// "internal", "confidential Money" when the file has the kind Money, or "Invoice[]" when it
+// has the kind Invoice.
+function isLine(value: unknown, known: ReadonlySet<string>): value is string {
+  if (typeof value !== "string") return false;
+  const line = readLine(value);
+  if (line.holds === "list") return known.has(line.kind);
+  if (line.holds === "record") return isLabel(line.label) && known.has(line.kind);
+  return isLabel(line.label);
 }
 
 // A list and null are objects in JavaScript too. Neither one gives a field a label.

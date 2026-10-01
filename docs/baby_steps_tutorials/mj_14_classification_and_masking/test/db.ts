@@ -8,7 +8,7 @@ import pg from "pg";
 import { createDbInvoices, requireEnv } from "../src/postgres.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Registry } from "../src/registry.ts";
-import { shipped, shippedRoles } from "./helpers.ts";
+import { shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
 
 // dsor_runtime's connection string. test/db-setup.ts has already stopped the run if it
 // is missing (step 09's README, decision 8).
@@ -21,7 +21,15 @@ export function newPool(url: string = RUNTIME_URL): pg.Pool {
 
 /** The shipped operations, reading invoices through this pool. */
 export function dbRegistry(pool: pg.Pool): Registry {
-  return buildRegistry(shipped, handlersFor(createDbInvoices(pool)), shippedRoles);
+  // The registry holds the store (step 10's README, decision 13).
+  return buildRegistry(
+    shipped,
+    handlersFor(),
+    shippedRoles,
+    shippedInputs,
+    shippedLabels,
+    createDbInvoices(pool),
+  );
 }
 
 /** A request id no other test run has used, so each test finds only its own rows. */

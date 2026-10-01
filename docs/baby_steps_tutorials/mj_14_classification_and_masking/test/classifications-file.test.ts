@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { LABELS as FOUR, checkClassifications, readClassifications } from "../src/labels.ts";
 import { readInputs } from "../src/inputs.ts";
 import { buildRegistry } from "../src/registry.ts";
-import { handlers, refusal, shipped, shippedRoles } from "./helpers.ts";
+import { contract, handlers, refusal, shipped, shippedRoles, source } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
@@ -18,17 +18,22 @@ const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
 const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
 
 // The labels, typed out again from step 14's README, decision 1, rather than read from
-// the file, so a mistake in the file is not copied into the test.
+// the file, so a mistake in the file is not copied into the test. Changed by the Stage 2
+// review: amount, open_amount, and capped hold objects, so each names its kind beside its
+// own label, and each kind has lines of its own. invoice.issue's result has a kind too.
 const LABELS = {
   Invoice: {
     id: "internal",
     tenant_id: "internal",
     vendor_id: "internal",
     status: "internal",
-    amount: "confidential",
-    open_amount: "confidential",
+    amount: "confidential Money",
+    open_amount: "confidential Money",
   },
-  InvoicePage: { items: "Invoice[]", next_cursor: "internal", capped: "public" },
+  Money: { value: "confidential", currency: "confidential" },
+  InvoicePage: { items: "Invoice[]", next_cursor: "internal", capped: "public Capped" },
+  Capped: { asked: "public", max: "public" },
+  InvoiceIssueResult: {},
 };
 
 /** A classifications file, as start-up would read it from disk. */
@@ -41,9 +46,9 @@ function problemsIn(table: unknown): string[] {
   return checkClassifications(file(JSON.stringify(table))).problems;
 }
 
-/** The problem a value that is neither a label nor a list of a known kind gets. */
+/** The problem a value that is not a label, a label and a known kind, or a list of one gets. */
 function notALabel(where: string, value: string): string {
-  return `classifications.json: ${where} is ${value}, which is neither a label nor a list of a kind the file has`;
+  return `classifications.json: ${where} is ${value}, which is not a label, a label and a kind the file has, or a list of a kind the file has`;
 }
 
 describe("decision 1: classifications.json, checked at start-up", () => {
@@ -83,6 +88,48 @@ describe("decision 1: classifications.json, checked at start-up", () => {
     expect(problemsIn({ ...LABELS, InvoicePage: page })).toStrictEqual([
       notALabel("InvoicePage.items", '"Vendor[]"'),
     ]);
+  });
+
+  // A field that holds an object names its kind after its own label. Each part is checked,
+  // as a label alone is. Found by the Stage 2 review, and fixed from step 14 on.
+  it.each([
+    ["a kind the file does not have", "confidential Vendor"],
+    ["a label that is not one of the four", "secret Money"],
+    ["the label in capitals", "CONFIDENTIAL Money"],
+    ["the kind with no label", "Money"],
+    ["three words", "confidential Money now"],
+    ["a list with a label", "confidential Money[]"],
+  ])("a label and a kind with %s stops start-up", (_what, line) => {
+    const invoice = { ...LABELS.Invoice, amount: line };
+    expect(problemsIn({ ...LABELS, Invoice: invoice })).toStrictEqual([
+      notALabel("Invoice.amount", JSON.stringify(line)),
+    ]);
+  });
+
+  // Every contract's output kind must have its lines, or its answer would be masked by
+  // "confidential" alone, and name no row in its record (step 14's README, decisions 1
+  // and 7). Found by the Stage 2 review, and fixed from step 14 on.
+  it("a contract whose output kind the file does not have stops start-up, naming the contract", () => {
+    const payment = {
+      ...contract("invoice.get"),
+      id: "payment.get",
+      output: { schema: "Payment" },
+    };
+    expect(
+      refusal(() => buildRegistry([...shipped, source(payment)], handlers, shippedRoles)),
+    ).toBe(
+      'the registry refused to start:\n  payment.get: its output kind "Payment" has no entry in classifications.json',
+    );
+  });
+
+  it("the shipped contracts' three output kinds are each in the file: invoice.issue's too", () => {
+    const { InvoiceIssueResult: _left_out, ...without } = LABELS;
+    const labels = file(JSON.stringify(without));
+    expect(
+      refusal(() => buildRegistry(shipped, handlers, shippedRoles, readInputs(), labels)),
+    ).toBe(
+      'the registry refused to start:\n  invoice.issue: its output kind "InvoiceIssueResult" has no entry in classifications.json',
+    );
   });
 
   // JSON.parse keeps the last of two values and says nothing, so a second "amount" line

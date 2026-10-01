@@ -9,8 +9,11 @@ import {
   type ClassificationSource,
   type Kinds,
 } from "./labels.ts";
+import type { Company } from "./company.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
+import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
+import { maskingProblems } from "./masking.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { logins } from "./principals.ts";
 
@@ -21,9 +24,11 @@ export type ContractSource = { file: string; text: string };
 export type Contract = { readonly id: string; readonly [field: string]: unknown };
 
 // The code is given the active company, which line ② checked. It never
-// takes one from the input (step 10's README, decision 3).
+// takes one from the input (step 10's README, decision 3). It gets that company's invoices
+// only, never the store itself (step 10's README, decision 13). Found by the Stage 2
+// review, and fixed from step 10 on.
 /** The code that runs an operation, inside one company. */
-export type Handler = (input: unknown, tenant: string) => unknown;
+export type Handler = (input: unknown, company: Company) => unknown;
 
 /** Every operation this program knows, each with its contract, and code for some. */
 export type Registry = {
@@ -35,6 +40,10 @@ export type Registry = {
   inputs: InputChecks;
   // NEW IN STEP 14: each field's label (step 14's README, decision 1).
   classifications: Kinds;
+  // The store the operations read. Only the pipeline uses it, to give the code the active
+  // company's invoices (step 10's README, decision 13). Found by the Stage 2 review, and
+  // fixed from step 10 on.
+  invoices: InvoiceStore;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -82,6 +91,10 @@ export function buildRegistry(
   inputSources: InputSource[] = readInputs(),
   // NEW IN STEP 14: the labels. This step's own, unless the caller gives others.
   classificationSource: ClassificationSource = readClassifications(),
+  // The store the operations read: the database for the program, memory for the unit
+  // tests. Without one, every read fails (step 10's README, decision 13). Found by the
+  // Stage 2 review, and fixed from step 10 on.
+  invoices: InvoiceStore = NO_STORE,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -133,6 +146,10 @@ export function buildRegistry(
   // problems are named with the contracts' problems (DSOR-AUT-01a).
   const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
   problems.push(...roleProblems);
+  // And every clearance in the table must be one of the four labels, or none, and every
+  // type one of the four kinds of caller (step 14's README, decisions 2 and 5). Found by the
+  // Stage 2 review, and fixed from step 14 on.
+  problems.push(...maskingProblems(logins.values()));
 
   // Every contract's input schema must have a file, and compile. A contract
   // with no check for its input would let anything through line ⑥.
@@ -142,11 +159,21 @@ export function buildRegistry(
   // NEW IN STEP 14: a label that is not one of the four stops start-up, with the rest.
   const { kinds, problems: labelProblems } = checkClassifications(classificationSource);
   problems.push(...labelProblems);
+  // Every contract's output kind must have its lines, or its answer would be masked by
+  // "confidential" alone and name no row in its record (step 14's README, decisions 1 and
+  // 7). Found by the Stage 2 review, and fixed from step 14 on.
+  for (const contract of contracts.values()) {
+    const kind = (contract["output"] as { schema: string }).schema;
+    if (!kinds.has(kind)) {
+      const where = "has no entry in classifications.json";
+      problems.push(`${contract.id}: its output kind ${JSON.stringify(kind)} ${where}`);
+    }
+  }
 
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles, inputs, classifications: kinds };
+  return { contracts, handlers: code, roles, inputs, classifications: kinds, invoices };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

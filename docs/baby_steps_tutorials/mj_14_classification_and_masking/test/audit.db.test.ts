@@ -20,7 +20,7 @@ import {
   rowsFor,
   tryThenRollBack,
 } from "./db.ts";
-import { AGENT, shipped, shippedRoles } from "./helpers.ts";
+import { AGENT, shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
 
 // The test's own window into the database: a pool the code under test never uses.
 const observer = newPool();
@@ -267,7 +267,14 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
   // Invoices come through a working pool, so the only thing that fails is the log.
   const invoices = openPool(RUNTIME_URL);
   afterAll(() => invoices.end());
-  const registry = buildRegistry(shipped, handlersFor(createDbInvoices(invoices)), shippedRoles);
+  const registry = buildRegistry(
+    shipped,
+    handlersFor(),
+    shippedRoles,
+    shippedInputs,
+    shippedLabels,
+    createDbInvoices(invoices),
+  );
 
   it("DSOR-EXE-03b: a log whose pool is closed gives no invoice, and no record", async () => {
     const closed = openPool(RUNTIME_URL);
@@ -310,6 +317,46 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
       expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
     } finally {
       await readOnly.end();
+    }
+  });
+
+  // A COMMIT that fails, by fault injection around the real client (§47). The database is
+  // real, and so is the work: the record is written inside its transaction. Then the first
+  // COMMIT never leaves the client. The client hears that it failed, and the transaction
+  // stays open on the database, record and all, until inCompany's own ROLLBACK ends it.
+  // With the COMMIT not awaited, every test passed (step 11's README, decision 10). Found
+  // by the Stage 2 review, and fixed from step 11 on.
+  it("DSOR-EXE-03b: a log whose COMMIT fails gives no invoice, and no record", async () => {
+    const failing = new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });
+    // How many COMMITs reached the fault, so the test knows it fired, and fired once.
+    let commits = 0;
+    failing.on("connect", (client) => {
+      const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+      // Every statement goes to the database as it was written, except the first COMMIT.
+      client.query = ((...args: unknown[]) => {
+        if (args[0] === "COMMIT" && ++commits === 1) {
+          return Promise.reject(new Error("fault injected: the COMMIT failed"));
+        }
+        return query(...args);
+      }) as typeof client.query;
+    });
+    try {
+      const id = requestId("c4-commit-fails");
+      const answer = await call(
+        registry,
+        createDbLog(failing),
+        { ...AGENT, request_id: id },
+        "invoice.get",
+        { invoice: "dsor://org_456/invoice/INV-1008" },
+      );
+      expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
+      expect(answer).not.toHaveProperty("data");
+      // The record was written, and inCompany's ROLLBACK took it away. A COMMIT sent in its
+      // place would keep it here. Found by a hostile pass on the Stage 2 review's fix.
+      expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
+      expect(commits).toBe(1);
+    } finally {
+      await failing.end();
     }
   });
 

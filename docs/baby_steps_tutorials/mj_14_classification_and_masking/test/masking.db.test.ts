@@ -45,4 +45,19 @@ describe("C2 on the database: for an agent, every field above its clearance is l
     }
     expect(page.next_cursor).toBe("INV-1010");
   });
+
+  // The rules table claimed both agents' invoice.list on the database, and only
+  // accounts-payable-fte's was asked here. Found by the Stage 2 review.
+  it("DSOR-CLS-02a: on the database, no item of firm-ap-fte's page in org_789 has amount or open_amount", async () => {
+    const page = dataOf(await call(registry, log, FIRM_IN_789, "invoice.list", {})) as {
+      items: object[];
+      next_cursor?: string;
+    };
+    // org_789's five invoices fit on one page, so there is no cursor.
+    expect(page.items).toHaveLength(5);
+    for (const item of page.items) {
+      expect(Object.keys(item).sort()).toStrictEqual(["id", "status", "tenant_id", "vendor_id"]);
+    }
+    expect(page.next_cursor).toBeUndefined();
+  });
 });

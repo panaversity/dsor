@@ -60,10 +60,13 @@ describe("C3: an answer with fields left out lists them", () => {
     ]);
   });
 
-  it("DSOR-CLS-01: a field with no label, left out of the agent's answer, is listed", async () => {
+  // Listed as <unlabelled>, never by its own key, which the code chose and could fill with
+  // data (step 14's README, decision 4). Changed by the Stage 2 review: it was listed as
+  // vendor_bank_account. Fixed from step 14 on.
+  it("DSOR-CLS-01: a field with no label, left out of the agent's answer, is listed as <unlabelled>", async () => {
     const answer = await runAs(AGENT, async () => ({ ...PLANTED }));
     expect(answer).toMatchObject({ data: PLANTED_MASKED });
-    expect(redactionsOf(answer)).toStrictEqual([omitted("vendor_bank_account")]);
+    expect(redactionsOf(answer)).toStrictEqual([omitted("<unlabelled>")]);
   });
 
   it("DSOR-CLS-02b: at public, every field of INV-1008 is listed, in order of field", () => {

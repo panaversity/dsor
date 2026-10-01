@@ -8,9 +8,11 @@ import { call } from "../src/pipeline.ts";
 import {
   AGENT,
   CFO,
+  INV_1008_OF_456,
   OUR_EXTENSIONS,
   SUPERVISOR,
   UNEXPECTED,
+  labelsWith,
   registry,
   registryWith,
 } from "./helpers.ts";
@@ -110,6 +112,105 @@ describe("C5: what DSoR cannot record, it does not send", () => {
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
     expect(await log.records()).toMatchObject([
       { authorization: "ALLOW", result: "INTERNAL_ERROR" },
+    ]);
+  });
+});
+
+describe("C5: a row is a kind that labels both tenant_id and id", () => {
+  // The shipped labels, with a list of lines on an invoice. A line has no company and no id.
+  const LINES = labelsWith({
+    Invoice: { lines: "Line[]" },
+    Line: { sku: "internal", qty: "internal" },
+  });
+
+  // A row was a kind with no list in it. The review gave an invoice a list of lines, and a
+  // person's read of it was recorded as reading nothing: resources [] and row_count 0. Now a
+  // row is any kind that labels both tenant_id and id, with lists in it or not (step 14's
+  // README, decision 7). Found by the Stage 2 review, and fixed from step 14 on.
+  // The review's run: only the labels changed, and INV-1008 itself has no lines.
+  it("DSOR-CLS-05: once Invoice has a line for a list of lines, a person's read of INV-1008 still names it", async () => {
+    const log = createLog();
+    const lines = registryWith(async () => ({ ...INV_1008_OF_456 }), "Invoice", LINES);
+    await call(lines, log, SUPERVISOR, "test.run", GET_1008);
+    expect(await log.records()).toMatchObject([
+      { resources: ["dsor://org_456/invoice/INV-1008"], row_count: 1 },
+    ]);
+  });
+
+  // With lines in it. A line that labels no tenant_id and no id is no row: it is part of
+  // its invoice, and has no URI of its own.
+  it("DSOR-CLS-05: an invoice with a list of lines is still a row, and its read names it", async () => {
+    const withLines = { ...INV_1008_OF_456, lines: [{ sku: "PAPER-A4", qty: 10 }] };
+    const log = createLog();
+    const lines = registryWith(async () => withLines, "Invoice", LINES);
+    expect(await call(lines, log, SUPERVISOR, "test.run", GET_1008)).toMatchObject({
+      data: withLines,
+    });
+    expect(await log.records()).toMatchObject([
+      { resources: ["dsor://org_456/invoice/INV-1008"], row_count: 1 },
+    ]);
+  });
+
+  // A line that labels tenant_id and id is a row of its own, and is named too.
+  it("DSOR-CLS-05: a line that labels tenant_id and id is a row of its own, named after its invoice", async () => {
+    const labels = labelsWith({
+      Invoice: { lines: "Line[]" },
+      Line: { tenant_id: "internal", id: "internal", sku: "internal" },
+    });
+    const line = { tenant_id: "org_456", id: "LINE-1", sku: "PAPER-A4" };
+    const log = createLog();
+    const lines = registryWith(
+      async () => ({ ...INV_1008_OF_456, lines: [line] }),
+      "Invoice",
+      labels,
+    );
+    await call(lines, log, SUPERVISOR, "test.run", GET_1008);
+    expect(await log.records()).toMatchObject([
+      {
+        resources: ["dsor://org_456/invoice/INV-1008", "dsor://org_456/line/LINE-1"],
+        row_count: 2,
+      },
+    ]);
+  });
+
+  // Each test below guards code that is right: a one-line break of it left every other test
+  // green. Found by a hostile pass on the Stage 2 review's fix, and fixed from step 14 on.
+  // A row inside a field the caller may not see did not leave, so its record does not name
+  // it. A person, who sees it, has it named.
+  it("DSOR-CLS-05: the record names only the rows the caller was given", async () => {
+    const labels = labelsWith({ Invoice: { related: "restricted Invoice" } });
+    const related = { ...INV_1008_OF_456, id: "INV-1009" };
+    const withRelated = { ...INV_1008_OF_456, related };
+    const named = async (who: typeof AGENT): Promise<unknown> => {
+      const log = createLog();
+      const registry = registryWith(async () => structuredClone(withRelated), "Invoice", labels);
+      await call(registry, log, who, "test.run", GET_1008);
+      return (await log.records())[0]?.resources;
+    };
+    expect(await named(AGENT)).toStrictEqual(["dsor://org_456/invoice/INV-1008"]);
+    expect(await named(SUPERVISOR)).toStrictEqual([
+      "dsor://org_456/invoice/INV-1008",
+      "dsor://org_456/invoice/INV-1009",
+    ]);
+  });
+
+  // Both fields, not id alone: a line with an id and no company is part of its invoice.
+  it("DSOR-CLS-05: a kind that labels id but not tenant_id is no row", async () => {
+    const labels = labelsWith({
+      Invoice: { lines: "Line[]" },
+      Line: { id: "internal", sku: "internal" },
+    });
+    const withLines = { ...INV_1008_OF_456, lines: [{ id: "LINE-1", sku: "PAPER-A4" }] };
+    const log = createLog();
+    await call(
+      registryWith(async () => withLines, "Invoice", labels),
+      log,
+      SUPERVISOR,
+      "test.run",
+      GET_1008,
+    );
+    expect(await log.records()).toMatchObject([
+      { resources: ["dsor://org_456/invoice/INV-1008"], row_count: 1 },
     ]);
   });
 });

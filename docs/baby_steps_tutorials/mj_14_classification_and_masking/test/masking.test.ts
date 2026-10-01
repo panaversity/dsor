@@ -6,7 +6,8 @@ import type { Answer } from "../src/envelope.ts";
 import { checkClassifications, readClassifications, type Kinds } from "../src/labels.ts";
 import { clearanceOf, show } from "../src/masking.ts";
 import { call } from "../src/pipeline.ts";
-import { logins } from "../src/principals.ts";
+import { logins, type Principal } from "../src/principals.ts";
+import { buildRegistry } from "../src/registry.ts";
 import {
   AGENT,
   FIRM_IN_456,
@@ -18,9 +19,14 @@ import {
   PLANTED_MASKED,
   SUPERVISOR,
   UNEXPECTED,
+  handlers,
   log,
+  refusal,
   registry,
   runAs,
+  shipped,
+  shippedRoles,
+  withPlanted,
 } from "./helpers.ts";
 
 /** The shipped labels, read the way start-up reads them. */
@@ -105,6 +111,82 @@ describe("C2: each agent's clearance", () => {
   it("DSOR-CLS-02a: at confidential, a field labelled confidential is shown: amount", () => {
     expect(show(INV_1008_OF_456, "Invoice", shippedKinds(), "confidential").data).toStrictEqual(
       INV_1008_OF_456,
+    );
+  });
+
+  // Found by the Stage 2 review: rank() puts any text it does not know above restricted,
+  // which is safe for a field and unsafe for a clearance. An agent whose clearance was
+  // written INTERNAL, in capitals, got amount, with no redactions. Now any clearance that is
+  // not exactly one of the four labels is public (step 14's README, decision 2). Fixed from
+  // step 14 on.
+  it.each([["INTERNAL"], ["Internal"], [" internal"], ["secret"], [""], [3]])(
+    "DSOR-CLS-02a: an agent whose clearance is written %j is treated as public",
+    (clearance) => {
+      const agent = { id: "intake-fte", type: "agent", memberships: [], clearance };
+      expect(clearanceOf(agent as unknown as Principal)).toBe("public");
+    },
+  );
+
+  // The same through the real pipeline. The registry was built before the agent is planted,
+  // because start-up refuses such a clearance (below).
+  it("DSOR-CLS-02a: an agent whose clearance is spelled INTERNAL gets no amount, through the real pipeline", async () => {
+    const memberships = [{ tenant_id: "org_456", roles: ["ap_agent"] }];
+    const intake = { id: "intake-fte", type: "agent", memberships, clearance: "INTERNAL" };
+    const answer = await withPlanted("tok_intake", intake as unknown as Principal, () =>
+      call(registry, log, { token: "tok_intake", tenant: "org_456" }, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      }),
+    );
+    expect(JSON.stringify(answer)).not.toContain("31400.00");
+    expect(answer).toMatchObject({ data: {}, classification: "public" });
+  });
+
+  // Start-up checks every clearance in DSoR's table, beside the role check, so a
+  // misspelling stops the program and is fixed there (step 14's README, decision 2).
+  it("step 14's decision 2: a clearance that is not one of the four labels stops start-up, naming the principal", async () => {
+    const intake = { id: "intake-fte", type: "agent", memberships: [], clearance: "INTERNAL" };
+    const message = await withPlanted("tok_intake", intake as unknown as Principal, () =>
+      refusal(() => buildRegistry(shipped, handlers, shippedRoles)),
+    );
+    expect(message).toBe(
+      'the registry refused to start:\n  principal "intake-fte" has the clearance "INTERNAL", which is not one of the four labels',
+    );
+    // And with it taken out again, the table starts.
+    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles))).toBe("");
+  });
+
+  // Found by a hostile pass on the Stage 2 review's fix: the same hole one field over. A
+  // type DSoR does not know, such as Agent in capitals, meant "not masked", and start-up
+  // never checked it. Now only a known type that is not an agent goes unmasked, and
+  // start-up refuses any other type, naming the principal (step 14's README, decision 5).
+  // Fixed from step 14 on.
+  it.each([["Agent"], ["AGENT"], ["ai_agent"]])(
+    "DSOR-CLS-02a: a caller whose type is written %j is masked as an agent: it gets no amount",
+    async (type) => {
+      const memberships = [{ tenant_id: "org_456", roles: ["ap_agent"] }];
+      const odd = { id: "intake-fte", type, memberships, clearance: "internal" };
+      const answer = await withPlanted("tok_intake", odd as unknown as Principal, () =>
+        call(registry, log, { token: "tok_intake", tenant: "org_456" }, "invoice.get", {
+          invoice: "dsor://org_456/invoice/INV-1008",
+        }),
+      );
+      expect(answer).toMatchObject({ data: MASKED_1008_OF_456, classification: "internal" });
+      // And its answer names it as an agent, by the same rule. Found by a second hostile
+      // pass on the Stage 2 review's fix: it was masked as an agent and named as a person.
+      expect(answer.correlation).toStrictEqual({
+        request_id: expect.any(String),
+        agent_id: "intake-fte",
+      });
+    },
+  );
+
+  it("step 14's decision 5: a type that is not one of the four kinds of caller stops start-up, naming the principal", async () => {
+    const odd = { id: "intake-fte", type: "Agent", memberships: [], clearance: "internal" };
+    const message = await withPlanted("tok_intake", odd as unknown as Principal, () =>
+      refusal(() => buildRegistry(shipped, handlers, shippedRoles)),
+    );
+    expect(message).toBe(
+      'the registry refused to start:\n  principal "intake-fte" has the type "Agent", which is not one of the four kinds of caller',
     );
   });
 

@@ -1,12 +1,16 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
-// The program checks every contract, and the role table, then calls operations by name.
-// It prints one success and six refusals, each an envelope, and the correlation of a call
-// by user_123. Then the firm's agent reads INV-1008 in each of its two
-// companies, and two calls cross from one company into another and are refused. Then it
-// prints the log: the records it can read, one company at a time, and how
-// many have no company. Last, it shows that a log which cannot take a record turns a
-// "yes" into a refusal.
+// The program checks every contract, the role table, the input schemas, and the labels,
+// then calls operations by name. The agent reads INV-1008 and gets it without its amounts,
+// with a list of what was left out and a label. cfo_100, a person, reads the same invoice
+// whole. Then it prints the invoice's URI, six refusals, each an envelope, and the
+// correlation of a call by user_123. Then the firm's agent reads INV-1008 in each of its
+// two companies, without amounts, and two calls cross from one company into another and
+// are refused. Then the agent asks invoice.list for a million invoices, and gets ten, a
+// note that its limit was cut, and a cursor. Then it prints the log: the records it can
+// read, one company at a time, and how many it cannot read. Last, it shows that a log which
+// cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
+// header described step 13's program, and left out the masking and cfo_100's read.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
 import { fileURLToPath } from "node:url";
@@ -44,8 +48,8 @@ const INPUTS: string | undefined = process.argv[4];
 // NEW IN STEP 14: start-up checks the labels too (step 14's README, decision 1). A file of
 // them can be named after the inputs folder, so a test can start with a broken one.
 const CLASSIFICATIONS: string | undefined = process.argv[5];
-// The pool is made before the checks, because the operations are built
-// with the invoices it reads. It connects only at its first query, after every check.
+// The pool is made before the checks, because the registry holds the store
+// of invoices it reads. It connects only at its first query, after every check.
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
 loadDotEnv(["DSOR_DB_URL"]);
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
@@ -53,10 +57,13 @@ let registry: Registry;
 try {
   registry = buildRegistry(
     readContracts(CONTRACTS),
-    handlersFor(createDbInvoices(pool)),
+    handlersFor(),
     readRoles(ROLES),
     readInputs(INPUTS),
     readClassifications(CLASSIFICATIONS),
+    // The registry holds the store, and the code gets only the active company's invoices
+    // (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
+    createDbInvoices(pool),
   );
 } catch (error) {
   console.error((error as Error).message);

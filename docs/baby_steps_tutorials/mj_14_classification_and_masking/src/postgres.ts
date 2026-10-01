@@ -79,7 +79,12 @@ export async function inCompany<T>(
     // the review (step 11's README, decision 3).
     await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company ?? ""]);
     const result = await work(client);
-    await client.query("COMMIT");
+    // A COMMIT can roll back without an error: after a failed statement, even one the work
+    // caught, PostgreSQL ends the transaction with ROLLBACK and says so in its answer. So
+    // the answer is read, and anything but COMMIT takes the error path below (step 11's
+    // README, decision 10). Found by the Stage 2 review, and fixed from step 11 on.
+    const committed = await client.query("COMMIT");
+    if (committed.command !== "COMMIT") throw new Error("the transaction was rolled back");
     client.release();
     return result;
   } catch (error) {

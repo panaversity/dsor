@@ -8,6 +8,23 @@ import type { RequestEnvelope } from "./request.ts";
 /** The four kinds of caller that §12 lists. */
 export type PrincipalType = "human" | "agent" | "application" | "system";
 
+// The same four, for start-up to check DSoR's table against (step 14's README, decision 5).
+// Found by a hostile pass on the Stage 2 review's fix, and fixed from step 14 on.
+/** The four kinds of caller, as text. */
+export const PRINCIPAL_TYPES: readonly PrincipalType[] = [
+  "human",
+  "agent",
+  "application",
+  "system",
+];
+
+// The kinds of caller that are not agents: a person, an application, the system. Every
+// other caller acts as an agent: its answers are masked, and an answer names it in
+// agent_id. A type DSoR does not know, such as Agent in capitals, acts as an agent, and is
+// never shown more (step 14's README, decision 5). One rule, for both. Found by a hostile
+// pass on the Stage 2 review's fix, and fixed from step 14 on.
+const NOT_AGENTS: ReadonlySet<string> = new Set(["human", "application", "system"]);
+
 // The roles say what the principal may do there (step 06's README, decision 1).
 /** A company the principal belongs to, and its roles there. */
 export type Membership = { tenant_id: string; roles: string[] };
@@ -85,7 +102,14 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
 /** The ids that name the caller in an answer's correlation (step 05's README, decision 9). */
 export function callerIds(caller: Principal): { agent_id: string } | { principal_id: string } {
   // The specification's examples put an agent in agent_id. Anyone else goes in principal_id.
-  return caller.type === "agent" ? { agent_id: caller.id } : { principal_id: caller.id };
+  // By the rule masking uses (actsAsAgent below), so the two never disagree. Found by a
+  // hostile pass on the Stage 2 review's fix, and fixed from step 14 on.
+  return actsAsAgent(caller) ? { agent_id: caller.id } : { principal_id: caller.id };
+}
+
+/** True for a caller DSoR treats as an agent: masked, and named in agent_id. */
+export function actsAsAgent(principal: Principal): boolean {
+  return !NOT_AGENTS.has(principal.type);
 }
 
 // The places where the arguments may name a principal (step 05's README, decision 4). A new

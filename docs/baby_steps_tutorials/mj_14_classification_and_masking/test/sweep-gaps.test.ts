@@ -12,6 +12,7 @@ import {
   OUR_EXTENSIONS,
   PLANTED,
   SUPERVISOR,
+  labelsWith,
   omitted,
   registry,
   registryWith,
@@ -92,11 +93,16 @@ describe("C5, from the sweep: the record names exactly what left", () => {
     expect(record).not.toHaveProperty("row_count");
   });
 
-  // A kind with no line in the file: every field is confidential, and each row still has a
-  // URI, its kind in lower case.
-  it("DSOR-CLS-05: an answer of a kind the file does not have is still named in its record", async () => {
+  // Each row's URI names its kind in lower case. Since the Stage 2 review, a kind must be in
+  // the file to start at all, and a row is a kind that labels tenant_id and id (step 14's
+  // README, decisions 1 and 7). So this kind is declared, and the answer's field with no
+  // line still makes it confidential. Found by the Stage 2 review, and fixed from step 14 on.
+  it("DSOR-CLS-05: an answer of another kind the file has is named in its record by that kind", async () => {
     const log = createLog();
-    const registry = registryWith(async () => ({ ...PLANTED }), "Payment");
+    const payment = labelsWith({
+      Payment: { tenant_id: "internal", id: "internal", status: "internal" },
+    });
+    const registry = registryWith(async () => ({ ...PLANTED }), "Payment", payment);
     await call(registry, log, SUPERVISOR, "test.run", GET_1008);
     expect(await log.records()).toMatchObject([
       {
