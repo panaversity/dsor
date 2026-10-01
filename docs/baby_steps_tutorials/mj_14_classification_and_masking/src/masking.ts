@@ -28,7 +28,6 @@ export type Shown = {
 
 // DSOR-CLS-02a. The answer is walked by the kind its contract names, field by field. A
 // field above the clearance is left out, never replaced (step 14's README, decision 3).
-// The answer is copied, never changed, so nothing withheld stays reachable in it.
 /** The answer, as this clearance may see it. With no clearance, nothing is left out. */
 export function show(
   data: unknown,
@@ -91,7 +90,11 @@ export function show(
   function isRow(kind: string): boolean {
     return ![...(kinds.get(kind)?.values() ?? [])].some((value) => value.endsWith("[]"));
   }
-  const shown = record(data, kind, "");
+  // A deep copy first, and only the copy is walked. A getter is read once, a value cannot
+  // change after DSoR has looked, and the record and the answer come from the same copy.
+  // A function or a Proxy cannot be copied, so it throws, and the caller hears
+  // INTERNAL_ERROR. Added by the review (step 14's README, decision 3).
+  const shown = record(structuredClone(data), kind, "");
   // In order of field, so the same answer always lists them the same way.
   const redactions = [...withheld]
     .sort()
