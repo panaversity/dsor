@@ -1,5 +1,6 @@
 // What a caller may do, by claim (C1 to C6 in step 06's README).
 import { describe, expect, it, vi } from "vitest";
+import { memoryInvoices } from "../src/invoice.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
 import { call } from "../src/pipeline.ts";
@@ -319,7 +320,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   // No rule id. Found by the review: one table shared by every registry passed, because
   // the tests happened to build their registries in a harmless order.
   it("building a second registry does not change what the first one grants", async () => {
-    const first = buildRegistry(shipped, handlers, shippedRoles);
+    const first = buildRegistry(shipped, handlers, shippedRoles, shippedInputs, memoryInvoices());
     buildRegistry(shipped, handlers, rolesFile({ ...STARTING_ROLES, CFO: [] }));
     expect(
       await call(first, log, CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
@@ -377,7 +378,13 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       ...contract("invoice.get"),
       authorization: { permission: "invoice:issue" },
     };
-    const changed = buildRegistry(shippedWith(needsIssue), handlers, shippedRoles);
+    const changed = buildRegistry(
+      shippedWith(needsIssue),
+      handlers,
+      shippedRoles,
+      shippedInputs,
+      memoryInvoices(),
+    );
     expect(
       await call(changed, log, AGENT, "invoice.get", {
         invoice: "dsor://org_456/invoice/INV-1008",
@@ -462,6 +469,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         roles: registry.roles,
         // The shipped check for each operation's input.
         inputs: registry.inputs,
+        // The invoices in memory (step 10's README, decision 13).
+        invoices: registry.invoices,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

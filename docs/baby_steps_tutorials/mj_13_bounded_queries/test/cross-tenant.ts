@@ -10,6 +10,7 @@ import { permissionsOf } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import { readContracts, type ContractSource, type Registry } from "../src/registry.ts";
+import type { RequestEnvelope } from "../src/request.ts";
 import {
   HOMES,
   WRITTEN_IN,
@@ -17,6 +18,7 @@ import {
   isPage,
   movedTo,
   pageProblem,
+  pairsFor,
   swaps,
   waysFrom,
 } from "./companies.ts";
@@ -32,11 +34,19 @@ export type Report = {
   // Every attack: the company it worked in, the operation, and the request id, so a test
   // can find the record each one left.
   attacks: { home: string; operation: string; request_id: string }[];
+  // Every in-company pair it sent: the company, the operation, and the URI whose id it
+  // changed (step 12's README, C2). Found by the Stage 2 review, and fixed from step 12 on.
+  pairs: { home: string; operation: string; uri: string }[];
   findings: string[];
 };
 
 /** The call function the suite sends its requests through. */
 export type Send = typeof call;
+
+// The most pages the suite reads from one call of a list, the first one included. A list
+// whose cursor never ends would keep the suite asking forever (step 13's README, decision
+// 6). Found by the Stage 2 review, and fixed from step 13 on.
+const MAX_PAGES = 10;
 
 // The example requests this step ships, one file for each operation (step 12's README,
 // decision 2).
@@ -89,6 +99,23 @@ export function compare(answers: Answer[]): string | undefined {
   return same ? undefined : "the three answers differ";
 }
 
+/**
+ * Why the two answers of an in-company pair are a finding, or undefined when they are the
+ * same apart from the request id and the id each request named. An answer may repeat the id
+ * it was sent, as "no invoice" does, and that tells the caller nothing new (DSOR-ERR-01b).
+ * Found by the Stage 2 review, and fixed from step 12 on.
+ */
+export function comparePair(answers: Answer[], ids: string[]): string | undefined {
+  // Each id as it is written inside JSON text, so it is found there.
+  const [named, nobody] = ids.map((id) => JSON.stringify(id).slice(1, -1));
+  const [first, second] = answers.map((answer) => JSON.stringify(withoutRequestId(answer)));
+  // The second answer is written as if it had been asked for the first id, and must then
+  // be the first answer, word for word. Masking both ids with one mark let an answer that
+  // wrote the mark itself pass. Found by a hostile pass on the Stage 2 review's fix.
+  const asked = (second ?? "").split(nobody ?? "").join(named ?? "");
+  return first === asked ? undefined : "the two answers differ";
+}
+
 /** Attacks every operation in the registry, and gives back what it found. */
 export async function crossTenantSuite(
   registry: Registry,
@@ -98,7 +125,7 @@ export async function crossTenantSuite(
   // DSoR, to prove it would notice what the fake does (step 12's README, decision 10).
   send: Send = call,
 ): Promise<Report> {
-  const report: Report = { attacked: [], attacks: [], findings: [] };
+  const report: Report = { attacked: [], attacks: [], pairs: [], findings: [] };
   // An example that no operation names is most likely a name spelled wrong, and the
   // operation it was meant for has none (step 12's README, decision 2).
   for (const { file } of examples) {
@@ -153,7 +180,7 @@ type Target = {
 };
 
 // One caller's attacks on one operation, from one company. First the same-company call,
-// then each URI swapped, three ways.
+// then each URI swapped, three ways, then the in-company pair.
 async function attackAs(attacker: Attacker, target: Target, report: Report): Promise<void> {
   const { registry, log, send, operation, home, own } = target;
   const who = `${operation} as ${attacker.id} in ${home}`;
@@ -163,22 +190,29 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
   // changed (step 12's README, decision 8).
   const answer = await send(registry, log, request, operation, own);
   const query = registry.contracts.get(operation)?.["kind"] === "query";
-  if (!("data" in answer) && answer.code === "TENANT_MISMATCH") {
-    report.findings.push(`${who}: its same-company call is answered TENANT_MISMATCH`);
-  } else if (query && !("data" in answer)) {
-    // A query's must answer with data. Then its example names a thing this company has,
-    // and the first way of the swap, the same id elsewhere, one the other company has
-    // (step 12's README, decision 8). Found by the sweep.
-    const said = `its same-company call is not answered with data: ${answer.code}`;
-    report.findings.push(`${who}: ${said}`);
+  const not = "its same-company call is not answered with data";
+  if (!("data" in answer)) {
+    if (answer.code === "TENANT_MISMATCH") {
+      report.findings.push(`${who}: its same-company call is answered TENANT_MISMATCH`);
+    } else if (query) {
+      // A query's must answer with data. Then its example names a thing this company has,
+      // and the first way of the swap, the same id elsewhere, one the other company has
+      // (step 12's README, decision 8). Found by the sweep.
+      report.findings.push(`${who}: ${not}: ${answer.code}`);
+    }
+  } else if (query && isEmpty(answer.data)) {
+    // { data: undefined } is no data either, nor {}, [], or "". Found by the Stage 2 review,
+    // and fixed from step 12 on.
+    const data = JSON.stringify(answer.data) ?? String(answer.data);
+    report.findings.push(`${who}: ${not}: the data is ${data}`);
   }
-  // This is the only request that reaches the operation's own code, so the code's own
-  // leaks show here: its answer may hold nothing of another company (C8).
-  if ("data" in answer) {
-    const what = foreignIn(answer.data, home);
-    const said = "its same-company call answered with another company's data";
-    if (what !== undefined) report.findings.push(`${who}: ${said}: ${what}`);
-  }
+  // This request reaches the operation's own code, and so do the in-company pair's below,
+  // so the code's own leaks show here: the answer may hold nothing of another company (C8).
+  // The whole answer, a refusal's message too (step 12's README, decision 8). Found by the
+  // Stage 2 review, and fixed from step 12 on.
+  const what = foreignIn(answer, home, own);
+  const said = "its same-company call answered with another company's data";
+  if (what !== undefined) report.findings.push(`${who}: ${said}: ${what}`);
   // NEW IN STEP 13: a list has no URI to swap. Every item of its page must carry this
   // company instead (step 13's README, decision 6). A refusal is a finding above already.
   if (swaps(own, home).length === 0) {
@@ -186,19 +220,16 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
       const why = pageProblem(answer.data, home);
       if (why !== undefined) report.findings.push(`${who}: ${why}`);
     }
+    // Then every page after the first. Found by the Stage 2 review, and fixed from step 13
+    // on.
+    await walk({ ...target, input: own, first: answer, where: who }, request, report);
     // Asked again with only the fields its input schema requires, because a list may leak
     // on a path its example does not take, such as no cursor. Found by the review.
-    const bare = await send(
-      registry,
-      log,
-      request,
-      operation,
-      requiredOf(registry, operation, own),
-    );
-    const why =
-      "data" in bare ? pageProblem(bare.data, home) : `it is not answered with data: ${bare.code}`;
-    if (why !== undefined)
-      report.findings.push(`${who}, asked with only its required fields: ${why}`);
+    const input = requiredOf(registry, operation, own);
+    const bare = await send(registry, log, request, operation, input);
+    const where = `${who}, asked with only its required fields`;
+    checkPage(bare, input, home, where, report);
+    await walk({ ...target, input, first: bare, where }, request, report);
   }
   const ways = waysFrom(home);
   for (const swap of swaps(own, home)) {
@@ -215,6 +246,86 @@ async function attackAs(attacker: Attacker, target: Target, report: Report): Pro
     }
     const differ = compare(answers);
     if (differ !== undefined) report.findings.push(`${who}, ${swap.uri}: ${differ}`);
+  }
+  // The in-company pair, for a query: each URI of this company, named with an id only the
+  // other company holds, then with one nobody holds. Both reach the code, so its own "not
+  // found" must not tell them apart (DSOR-ERR-01b; step 12's README, C2). Found by the Stage
+  // 2 review, and fixed from step 12 on.
+  if (!query) return;
+  for (const pair of pairsFor(own, home)) {
+    report.pairs.push({ home, operation, uri: pair.uri });
+    const named = `${pair.named}, which only ${pair.other} has`;
+    const nobody = `${pair.nobody}, which nobody has`;
+    const answers: Answer[] = [];
+    for (const [i, input] of pair.requests.entries()) {
+      const answer = await send(registry, log, request, operation, input);
+      answers.push(answer);
+      // Each answer is searched, as the same-company call's is: a fallback that answers
+      // both alike with another company's data shows nothing in the comparison. Found by
+      // a hostile pass on the Stage 2 review's fix.
+      const what = foreignIn(answer, home, input);
+      const sent = i === 0 ? named : nobody;
+      const said = `answered with another company's data: ${what}`;
+      if (what !== undefined) report.findings.push(`${who}, ${sent}: ${said}`);
+    }
+    const differ = comparePair(answers, pair.ids);
+    if (differ !== undefined) report.findings.push(`${who}, ${named}, and ${nobody}: ${differ}`);
+  }
+}
+
+// Data that holds nothing: none at all, or an empty object, list, or text.
+function isEmpty(data: unknown): boolean {
+  if (data === undefined || data === null || data === "") return true;
+  return typeof data === "object" && Object.keys(data).length === 0;
+}
+
+// NEW IN STEP 13: one page of a list, and what is wrong with it: anything of another
+// company in it, then a refusal, or an item that does not carry this company (step 13's
+// README, decision 6).
+function checkPage(
+  page: Answer,
+  input: unknown,
+  home: string,
+  where: string,
+  report: Report,
+): void {
+  // The whole page is searched, as the same-company call is: every key and every text, for
+  // the other company's canaries (step 12's README, decision 8). The bare call's page was
+  // checked only for its items. Found by the Stage 2 review, and fixed from step 13 on.
+  const what = foreignIn(page, home, input);
+  const said = "answered with another company's data";
+  if (what !== undefined) report.findings.push(`${where}: ${said}: ${what}`);
+  const why =
+    "data" in page ? pageProblem(page.data, home) : `it is not answered with data: ${page.code}`;
+  if (why !== undefined) report.findings.push(`${where}: ${why}`);
+}
+
+/** One call of a list to follow: what was sent, its first page, and how a finding names it. */
+type Walk = Target & { input: unknown; first: Answer; where: string };
+
+/**
+ * Follows a list's next_cursor from its first page, and checks every page after it as the
+ * first is checked, until a page has no cursor (step 13's README, decision 6). The cursor goes
+ * back as the input's cursor, as invoice.list takes it (decisions 1 and 4). After MAX_PAGES
+ * pages, the first included, the walk stops and names the list: the pages after them were
+ * not checked. The suite read page 1 only, so a row slipped onto page 2 gave no finding.
+ * Found by the Stage 2 review, and fixed from step 13 on.
+ */
+async function walk(list: Walk, request: RequestEnvelope, report: Report): Promise<void> {
+  const { registry, log, send, operation, home, input, where } = list;
+  let page = list.first;
+  for (let number = 2; ; number++) {
+    const data = "data" in page ? (page.data as { next_cursor?: unknown } | null) : null;
+    const cursor = data?.next_cursor;
+    if (cursor === undefined) return;
+    if (number > MAX_PAGES) {
+      const said = `its cursor had not ended after ${MAX_PAGES} pages`;
+      report.findings.push(`${where}: ${said}, so the pages after them were not checked`);
+      return;
+    }
+    const next = { ...(input as object), cursor };
+    page = await send(registry, log, request, operation, next);
+    checkPage(page, next, home, `${where}, page ${number}`, report);
   }
 }
 

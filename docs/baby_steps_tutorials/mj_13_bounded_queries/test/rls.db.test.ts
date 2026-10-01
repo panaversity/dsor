@@ -5,7 +5,7 @@
 import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
-import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
+import { createDbInvoices, createDbLog, inCompany, openPool } from "../src/postgres.ts";
 import {
   NO_PRIVILEGE,
   RUNTIME_URL,
@@ -31,6 +31,13 @@ afterAll(async () => {
 const registry = dbRegistry(pool);
 const log = createDbLog(pool);
 
+// The schemas the catalog checks: every schema but PostgreSQL's own. Those are
+// information_schema and every name that starts with pg_, such as pg_catalog and pg_toast,
+// a prefix no one else may use. A regular expression, because in LIKE an _ matches any one
+// character, so NOT LIKE 'pg_%' also skipped a schema named pgcrm (step 11's README,
+// decision 1). Found by the Stage 2 review, and fixed from step 11 on.
+const OUTSIDE_SYSTEM = "n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'";
+
 // Every table, in any schema that is not PostgreSQL's own, with a column that names a
 // company, and what row-level security says about it.
 const TENANT_TABLES = `
@@ -38,12 +45,58 @@ const TENANT_TABLES = `
          c.relforcerowsecurity AS forced,
          (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE c.relkind IN ('r', 'p')
-     AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_%'
+   WHERE c.relkind IN ('r', 'p') AND ${OUTSIDE_SYSTEM}
      AND EXISTS (SELECT 1 FROM pg_attribute a
                   WHERE a.attrelid = c.oid AND NOT a.attisdropped
                     AND a.attname IN ('tenant_id', 'tenant'))
    ORDER BY 1`;
+
+// Every relation in the database, with its schema, its kind, and its options: r is a
+// table, v a view, m a materialized view, f a foreign table. Found by the Stage 2 review,
+// and fixed from step 11 on.
+const RELATIONS = `
+  (SELECT c.oid::regclass::text AS relation, s.nspname, c.relkind::text AS relkind, c.reloptions
+     FROM pg_class c JOIN pg_namespace s ON s.oid = c.relnamespace)`;
+
+/**
+ * The relations among these rows that no policy can stand behind. A view reads with its
+ * owner's rights unless it is made WITH (security_invoker = true), and the owner holds
+ * BYPASSRLS. A materialized view is a stored copy of rows, and no policy filters a copy. A
+ * foreign table reads another table through a connection of its own, and can carry no
+ * policy. The rows are RELATIONS, or a planted list in a test of this filter (step 11's
+ * README, decision 1). Found by the Stage 2 review, and fixed from step 11 on; the foreign
+ * table by a hostile pass on that fix.
+ */
+function relationsAroundPolicies(rows: string): string {
+  return `
+    SELECT n.relation FROM ${rows} AS n
+     WHERE ${OUTSIDE_SYSTEM}
+       AND (n.relkind IN ('m', 'f')
+            OR (n.relkind = 'v'
+                AND NOT coalesce('security_invoker=true' = ANY (n.reloptions), false)))
+     ORDER BY 1`;
+}
+
+// Every function in the database, with its schema, whether it runs with the rights of the
+// role that made it, and whether the user of this test, dsor_runtime, may run it. Found
+// by the Stage 2 review, and fixed from step 11 on.
+const FUNCTIONS = `
+  (SELECT p.oid::regprocedure::text AS signature, s.nspname, p.prosecdef,
+          has_function_privilege(p.oid, 'EXECUTE') AS executable
+     FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace)`;
+
+/**
+ * The SECURITY DEFINER functions among these rows that dsor_runtime may run. Such a
+ * function runs with the rights of the role that made it, so the owner's BYPASSRLS comes
+ * with it (step 11's README, decision 1). Found by the Stage 2 review, and fixed from step
+ * 11 on.
+ */
+function definersRuntimeMayRun(rows: string): string {
+  return `
+    SELECT n.signature FROM ${rows} AS n
+     WHERE ${OUTSIDE_SYSTEM} AND n.prosecdef AND n.executable
+     ORDER BY 1`;
+}
 
 describe("C1: every table with a company column has its lock", () => {
   // A new table with a company column changes this list, so it fails here until it has
@@ -90,6 +143,105 @@ describe("C1: every table with a company column has its lock", () => {
         using: null,
         check: `(NOT (tenant IS DISTINCT FROM ${company}))`,
       },
+    ]);
+  });
+
+  // A table is not the only way to reach a row. On a local PostgreSQL, the review made a
+  // view, a materialized view, and a SECURITY DEFINER function as the owner, and each
+  // showed both companies' rows from inside org_456. None may exist, in any schema but
+  // PostgreSQL's own (step 11's README, decision 1). Found by the Stage 2 review, and
+  // fixed from step 11 on.
+  it("step 11's decision 1: no view reads with its owner's rights, and there is no materialized view or foreign table", async () => {
+    const { rows } = await observer.query(relationsAroundPolicies(RELATIONS));
+    expect(rows).toStrictEqual([]);
+  });
+
+  it("step 11's decision 1: dsor_runtime may run no SECURITY DEFINER function", async () => {
+    const { rows } = await observer.query(definersRuntimeMayRun(FUNCTIONS));
+    expect(rows).toStrictEqual([]);
+  });
+});
+
+// The catalog's filters themselves, each on planted rows that PostgreSQL reads inside one
+// query. Nothing is created in the database, so each filter is shown catching what the
+// database does not hold today (step 11's README, decision 1). Found by the Stage 2 review,
+// and fixed from step 11 on.
+describe("C1's filters, on planted catalog rows", () => {
+  // The guards above expect no rows, so an empty source would pass them too. Each source
+  // reads the real catalog: here a table, two of PostgreSQL's own views, one of them with
+  // an option, and a function, with every column the filters read. Whether a function runs
+  // as its definer is read as it is: no function in the database does today, so no real
+  // row can show it. Found by the Stage 2 review, and fixed from step 11 on.
+  it("step 11's decision 1: the guards read the real catalog", async () => {
+    const relations = await observer.query(
+      `SELECT n.relation, n.nspname, n.relkind, n.reloptions FROM ${RELATIONS} AS n
+        WHERE n.relation IN ('app.invoices', 'pg_roles', 'pg_stats') ORDER BY 1`,
+    );
+    expect(relations.rows).toStrictEqual([
+      { relation: "app.invoices", nspname: "app", relkind: "r", reloptions: null },
+      { relation: "pg_roles", nspname: "pg_catalog", relkind: "v", reloptions: null },
+      {
+        relation: "pg_stats",
+        nspname: "pg_catalog",
+        relkind: "v",
+        reloptions: ["security_barrier=true"],
+      },
+    ]);
+    const functions = await observer.query(
+      `SELECT n.signature, n.nspname, n.prosecdef, n.executable FROM ${FUNCTIONS} AS n
+        WHERE n.signature = 'now()'`,
+    );
+    expect(functions.rows).toStrictEqual([
+      { signature: "now()", nspname: "pg_catalog", prosecdef: false, executable: true },
+    ]);
+  });
+
+  // NOT LIKE 'pg_%' skipped pgcrm: in LIKE, _ matches any one character. Found by the
+  // Stage 2 review, and fixed from step 11 on.
+  it("step 11's decision 1: PostgreSQL's own schemas are skipped, and every other is checked, pgcrm too", async () => {
+    const { rows } = await observer.query(
+      `SELECT n.nspname
+         FROM unnest(ARRAY['pg_catalog', 'pg_toast', 'pg_temp_1', 'information_schema',
+                           'app', 'dsor', 'public', 'pgcrm']) WITH ORDINALITY AS n(nspname, place)
+        WHERE ${OUTSIDE_SYSTEM} ORDER BY n.place`,
+    );
+    expect(rows.map((row) => row["nspname"])).toStrictEqual(["app", "dsor", "public", "pgcrm"]);
+  });
+
+  it("step 11's decision 1: the relation filter finds a view without security_invoker=true, every materialized view, and every foreign table", async () => {
+    const planted = `(SELECT * FROM (VALUES
+        ('app.open_invoices', 'app', 'v', NULL::text[]),
+        ('app.invoice_copy', 'app', 'm', NULL),
+        ('app.as_owner', 'app', 'v', ARRAY['security_invoker=false']),
+        ('app.as_reader', 'app', 'v', ARRAY['security_invoker=true']),
+        ('app.invoices', 'app', 'r', NULL),
+        ('app.remote_invoices', 'app', 'f', NULL),
+        ('pgcrm.contacts', 'pgcrm', 'v', NULL),
+        ('pg_catalog.pg_roles', 'pg_catalog', 'v', NULL),
+        ('information_schema.tables', 'information_schema', 'v', NULL)
+      ) AS planted(relation, nspname, relkind, reloptions))`;
+    const { rows } = await observer.query(relationsAroundPolicies(planted));
+    expect(rows.map((row) => row["relation"])).toStrictEqual([
+      "app.as_owner",
+      "app.invoice_copy",
+      "app.open_invoices",
+      "app.remote_invoices",
+      "pgcrm.contacts",
+    ]);
+  });
+
+  it("step 11's decision 1: the function filter finds a SECURITY DEFINER function that dsor_runtime may run", async () => {
+    const planted = `(SELECT * FROM (VALUES
+        ('app.all_invoices()', 'app', true, true),
+        ('app.my_invoices()', 'app', false, true),
+        ('dsor.repair()', 'dsor', true, false),
+        ('pgcrm.export()', 'pgcrm', true, true),
+        ('pg_catalog.planted()', 'pg_catalog', true, true)
+      ) AS planted(signature, nspname, prosecdef, executable))`;
+    const { rows } = await observer.query(definersRuntimeMayRun(planted));
+    expect(rows.map((row) => row["signature"])).toStrictEqual([
+      "app.all_invoices()",
+      "pgcrm.export()",
     ]);
   });
 });
@@ -273,6 +425,30 @@ describe("C4: the company lasts one transaction, even when a pool lends the conn
     const next = await one.query("SELECT pg_backend_pid() AS connection");
     expect(next.rows[0]!["connection"]).not.toBe(rows[0]!["connection"]);
   });
+
+  // When a statement fails, PostgreSQL aborts the whole transaction. A COMMIT sent after
+  // that raises no error: PostgreSQL rolls the work back and answers ROLLBACK. So work that
+  // catches its own failure must not look kept, and inCompany reported it as success
+  // (step 11's README, decision 10). Found by the Stage 2 review, and fixed from step 11
+  // on.
+  it("step 11's decision 10: work that swallows its own failed statement makes inCompany reject, and nothing is kept", async () => {
+    const id = requestId("c4-swallowed");
+    const work = async (client: pg.PoolClient): Promise<string> => {
+      // A real record of org_456, written inside org_456's transaction...
+      await client.query(
+        `INSERT INTO dsor.audit (record_id, kind, "authorization", result, correlation, tenant)
+         VALUES ($1, 'decision', 'DENY', 'AUTHORIZATION_DENIED', $2, 'org_456')`,
+        [`aud_${id}`, { request_id: id }],
+      );
+      // ...then a statement that fails, and the work catches the failure and goes on.
+      await client.query("SELECT 1 / 0").catch(() => {});
+      return "done";
+    };
+    await expect(inCompany(pool, "org_456", work)).rejects.toThrow(
+      "the transaction was rolled back",
+    );
+    expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
+  });
 });
 
 describe("C5: the log is kept apart by company", () => {
@@ -359,12 +535,18 @@ describe("C5: the log is kept apart by company", () => {
         extensions: null,
         authorization: "DENY",
         result: "AUTHENTICATION_REQUIRED",
+        // The owner's reader gives each record's size too (test/owner-reads.ts). Found by
+        // the Stage 2 review, and fixed from step 10 on.
+        bytes: expect.any(Number),
       },
     ]);
   });
 
-  // The only test that can catch break V7: a connection that has held a company reads an
-  // unset company as '', not NULL (step 11's README, decision 2).
+  // Written for break V7: a connection that has held a company reads an unset company as
+  // '', not NULL (step 11's README, decision 2). Since step 11's review, a call with no
+  // company sets '' itself. So without nullif, every record with no company that the
+  // program writes is refused, on any connection, and many tests catch V7. Found by the
+  // Stage 2 review: this comment said it was the only test that could.
   it("DSOR-TEN-02a: on a pool of one connection, a call with no login after a call in org_456 is still recorded", async () => {
     const one = poolOfOne();
     try {

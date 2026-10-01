@@ -17,8 +17,9 @@ answer holds ten, says in a field called `capped` that the limit was cut down, a
 the cursor for the rest. Ask for nothing, and it holds ten too.
 
 Ten rows can still be too large, if the rows are large. So DSoR also caps the size of
-one answer, counted in bytes. In this tutorial that cap is 64 KiB, which is 65,536 bytes
-(a KiB is 1,024 bytes). A page stops early when the next row would take it past.
+the data in one answer, counted in bytes. In this tutorial that cap is 64 KiB, which is
+65,536 bytes (a KiB is 1,024 bytes). A page stops early when the next row would take it
+past.
 
 Think of DSoR as the new clerk at the records desk. You ask for every invoice. The clerk
 hands over at most ten, and never a bundle too heavy to carry, with a note that says
@@ -61,6 +62,17 @@ relies on these parts of the specification, each read on 2026-09-30:
 
 If the code finds the plan wrong, the plan changes here first.
 
+*Changed by the Stage 2 review, 2026-10-01.* Six reviewers audited steps 10 to 14. In
+this step they found two gaps. The cross-tenant suite read only the first page of a list:
+a planted list that slipped one row of `org_789` onto page 2 gave no finding. And the
+64 KiB limit was never tested at its edge: with the pipeline measuring a page's `items`
+alone, a result of 65,585 bytes left, and every test stayed green. Two changes follow. The
+suite follows a list's `next_cursor`, page after page, and checks every page as it checks
+the first (decision 6). And a test sends a page of one row whose items fit, but whose
+cursor and `capped` take it past 64 KiB (C2). Two sentences of decision 3 said more than
+the code, and are corrected there. The review's fixes from steps 07 to 12 are carried
+here too ("Think it through").
+
 ### The intent and the outcome
 
 Written first, before the rules were split into claims.
@@ -81,7 +93,8 @@ rest.
    before the next row would take it past, and its cursor continues from there.
 5. A `limit` of 0, a negative one, a fraction, or text is refused.
 6. Step 12's suite checks `invoice.list` from both companies, and finds only the caller's
-   company's rows in each answer.
+   company's rows in each answer. *Changed by the Stage 2 review, 2026-10-01:* in every
+   page of each answer, not only the first.
 
 **Not the outcome of this step.** Stopping a slow read of everything. An agent that
 follows the cursor page after page can still read every invoice, one call at a time. Each
@@ -122,10 +135,10 @@ Checked on 2026-09-30:
 | Rule | Claim | How we know |
 | --- | --- | --- |
 | DSOR-QRY-01 | **C1.** A page holds at most DSoR's maximum of rows, whatever the caller asks. The maximum is 10, and the page says when the limit was cut down: both our decision 2 | No `limit`: 10 rows. `limit: 1000000`: 10 rows, `capped`, a cursor. `limit: 3`: 3 rows, not capped |
-| DSOR-QRY-01 | **C2.** No query's result is larger than DSoR's maximum size, 64 KiB here (our decision 3) | A page stops before the row that would take it past, with a cursor. A query whose one result is larger is refused |
+| DSOR-QRY-01 | **C2.** No query's result is larger than DSoR's maximum size, 64 KiB here (our decision 3) | A page stops before the row that would take it past, with a cursor. A query whose one result is larger is refused. *Changed by the Stage 2 review, 2026-10-01:* so is a page of one row whose items fit, but whose cursor and `capped` take it past: the result is the whole page |
 | DSOR-QRY-01 | **C3.** The cursor walks the whole list, once | Pages followed to the end visit every invoice of the company exactly once, in order, and the last has no cursor. Another company's id as a cursor is only a position in the sorted list of ids |
 | (our decision) | **C4.** A `limit` must be a whole number of at least 1, and a `cursor` must look like an id | 0, -1, 1.5, and `"10"` are refused with `VALIDATION_FAILED` at line ⑥, the input check. So are a cursor of 65 characters, one with a NUL (the character whose code is 0), and one that is a `dsor://` URI |
-| DSOR-TEN-02b | **C5.** Step 12's suite checks a list from both companies | Every row in `invoice.list`'s answer, for `org_456` and for `org_789`, asked with its example and with nothing, carries the caller's company. A planted list that leaks a row, returns a row with no company, or leaks only when asked with nothing, is a finding |
+| DSOR-TEN-02b | **C5.** Step 12's suite checks a list from both companies | Every row in `invoice.list`'s answer, for `org_456` and for `org_789`, asked with its example and with nothing, carries the caller's company. A planted list that leaks a row, returns a row with no company, or leaks only when asked with nothing, is a finding. *Changed by the Stage 2 review, 2026-10-01:* every page, by its cursor, up to 10 pages. A planted list that slips a row of `org_789` onto page 2 is a finding, and so is a list whose cursor never ends |
 | DSOR-EXE-02 | **C6.** Each page is its own call, with its own record | Three pages leave three records |
 | DSOR-TEN-01b | **C7.** The list's own SQL keeps to the company, without the database's lock | The owner, the database user that made the tables, lists each company through DSoR's store, page after page, and every row is that company's. Row-level security, the database's own company filter from step 11, does not stop the owner, so only DSoR's SQL is tested |
 
@@ -147,7 +160,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 3. **No query's result may be larger than 64 KiB.**
    - The result is the data in the answer, written as JSON text, and counted in bytes.
      The correlation beside it, the request id and the caller's name, is DSoR's own and
-     small. It is not counted.
+     small. It is not counted. *Changed by the Stage 2 review, 2026-10-01:* not all of it
+     is DSoR's own. The request id may be the caller's, up to 128 characters (step 05's
+     decision 6). It is still small and still not counted, so a whole answer can be a few
+     hundred bytes larger than 64 KiB.
    - A list stops adding rows before the row that would take its result past the limit,
      and gives the cursor from there.
    - It never drops the first row. So a page that has a cursor always holds at least one
@@ -166,7 +182,11 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    *Downside:* §28 has no code for this. `UNSUPPORTED_CAPABILITY` with retry `never` is
    the closest: asking again gets the same answer. It is a question for the
    specification. And a row that is too large blocks every row after it, because no page
-   can step over it.
+   can step over it. *Changed by the Stage 2 review, 2026-10-01:* that is true of the
+   pages DSoR hands out, and not of a caller. Every page ends before such a row, and the
+   page that starts at it is refused, so a walk that follows DSoR's cursors stops there.
+   But a cursor is only a place in the order (decision 4). A caller that sends a cursor of
+   its own, such as that row's id, steps past it and reads the rows after it.
 4. **The list is in order of invoice id, and the cursor is the last id of the page.** The
    next page is `WHERE tenant_id = <the company> AND id > <cursor> ORDER BY id`, one row
    more than the page needs, to know whether another page follows. The cursor is a
@@ -213,6 +233,26 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    And it trusts an operation that answers with a page to return items that carry their
    company. A single-thing operation that returns a one-item page would be checked by its
    rows, not by a swap.
+
+   *Changed by the Stage 2 review, 2026-10-01:* the suite read only the first page of each
+   call. A planted list that slipped one row of `org_789` onto page 2 gave no finding.
+   - Now, after each call's first page, the suite follows `next_cursor`. It sends the same
+     input again, with `cursor` set to that value, as `invoice.list` takes it (decisions 1
+     and 4).
+   - It checks every page as it checks the first. A refusal is a finding. Every item must
+     carry the caller's company. And the whole page is searched for the other company's
+     **canaries**, values that only the other company's rows hold, such as `VENDOR-77`
+     for `org_456`. That search is step 12's, carried here (step 12's decision 8). The bare
+     call's first page is searched that way too. Before the review, only its items were
+     checked.
+   - The walk stops at a page with no cursor, or after 10 pages, the first included. A
+     cursor that has not ended by then is a finding: the pages after them were not checked.
+
+   *Downside:* more calls, 8 more for the shipped list, because `org_456`'s twelve
+   invoices take two pages. An honest list longer than 10 pages is named too, so its
+   example must keep the walk short. And the suite assumes the cursor goes back as
+   `cursor`. A list that names it otherwise gets its page 2 refused: a finding, never a
+   silent pass.
 7. **More invoices, so that there is more than one page.** A migration, `006`, adds
    `INV-1001` to `INV-1012` to `org_456`, keeping `INV-1008` as it is, and `INV-2002` to
    `INV-2004` to `org_789`. The invoices in memory, for the unit tests, are the same.
@@ -226,7 +266,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C2:** a fake list whose rows are 10 KiB each stops at 6 rows, under 64 KiB, with a
   cursor. A fake query whose one answer is 100 KiB is refused with
   `UNSUPPORTED_CAPABILITY`. The real answers pass the same check: C1's tests are
-  answered with data.
+  answered with data. *Changed by the Stage 2 review, 2026-10-01:* a page of one row is
+  refused when its items take exactly 64 KiB as `{ items }`, and its cursor and `capped`
+  take the whole page to 65,595 bytes.
 - **C3:** following `next_cursor` from `{ limit: 5 }` gives 5, 5, and 2 items for
   `org_456`'s 12 invoices, each id once, in order, and the last page has no cursor. As
   `org_789`, the cursor `INV-1010`, which only `org_456` has, and the made-up cursor
@@ -241,7 +283,15 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   page, or a list that leaks only when asked with nothing, each give their finding. A
   single-thing operation with no URI whose answer is not a page is step 12's
   `invoice.peek` test, kept word for word. A command with no URI in its example is a
-  finding, and is never called.
+  finding, and is never called. *Changed by the Stage 2 review, 2026-10-01:* a list that
+  slips `org_789`'s `INV-2001` onto `org_456`'s page 2 is a finding from both calls, as the
+  row is and with its `tenant_id` rewritten, and so is a row with no `tenant_id` there.
+  So is a list of one row a page whose last page, page 10, holds `org_789`'s row. A
+  list whose cursor never ends is read for 10 pages from each call, then named, and each
+  page after the first is asked with the same input and the new cursor. A list that hands each company the other's
+  `INV-1008`, its `tenant_id` rewritten, is a finding on both calls, through the search for
+  canaries. And a fake DSoR that slips `org_789`'s invoice into `org_456`'s pages, after the
+  pipeline has checked them, is named by the suite's own check of the items.
 - **C6:** in the database tier, three pages leave three records in the caller's company.
 - **C7:** in the database tier, the owner lists `org_456`'s invoices through DSoR's store,
   page after page, and gets `org_456`'s 12 invoices, and nothing of `org_789`'s.
@@ -295,7 +345,8 @@ itself, this way:
    the user `dsor_runtime` and a new random password (letters and digits) as
    `DSOR_DB_URL`. Both with `sslmode=verify-full`.
 3. Run `pnpm migrate`. It sets `dsor_runtime`'s password from `DSOR_DB_URL`, and runs
-   migration `006`.
+   migration `006`. *Changed by the Stage 2 review, 2026-10-01:* and migration `003b`, if
+   the branch it was made from has not run it.
 4. Check without looking: `pnpm test:db` passes, and the transcript holds no
    `postgresql://` with a password in it.
 
@@ -308,20 +359,36 @@ itself, this way:
 | `examples/invoice.list.json` | **New.** `{ "limit": 10, "cursor": "INV-1000" }`, for the suite (decision 6) |
 | `migrations/006_more_invoices.sql` | **New.** `INV-1001` to `INV-1012` for `org_456`, `INV-2002` to `INV-2004` for `org_789` (decision 7) |
 | `src/pages.ts` | **New.** `MAX_ROWS` (10) and `MAX_BYTES` (64 KiB), `pageSize`, `pageOf`, which cuts a page by rows and then by bytes, and `checkResultSize` (decisions 2 and 3) |
-| `src/operations.ts` | `invoice.list`'s code: one row more than the page holds, after the cursor, inside the active company |
+| `src/operations.ts` | `invoice.list`'s code: one row more than the page holds, after the cursor, inside the active company. Since the Stage 2 review, it reads through the list bound to that company, `company.invoices.list(after, count)` |
 | `src/invoice.ts` | The same new invoices in memory. The store gains `list(tenant, after, count)`, and `listInvoices` is its memory version |
 | `src/postgres.ts` | The list's SQL. `invoiceOf`, one row as an invoice, is now shared by `get` and `list` |
 | `src/pipeline.ts` | After line ⑨, `checkResultSize` measures every query's result |
 | `src/main.ts` | The agent asks for a million invoices, and the program prints the ten it gets |
 | `test/invoice-list.test.ts`, `test/invoice-list.db.test.ts` | **New.** C1, C3, and C4 on memory. C1, C3, C6, and C7 on the database |
-| `test/result-size.test.ts` | **New.** C2 |
-| `test/cross-tenant-lists.test.ts` | **New.** C5, with planted lists |
-| `test/cross-tenant.ts`, `test/companies.ts` | The suite's list check: `isPage`, `pageProblem`, the one question it asks a query with no URI, and the second, bare call |
+| `test/result-size.test.ts` | **New.** C2. Since the Stage 2 review, a page of one row whose cursor and `capped` take it past 64 KiB |
+| `test/cross-tenant-lists.test.ts` | **New.** C5, with planted lists. Since the Stage 2 review, lists that leak on page 2 or never end, a row with its `tenant_id` rewritten, and a fake DSoR that slips a row in after the pipeline |
+| `test/cross-tenant.ts`, `test/companies.ts` | The suite's list check: `isPage`, `pageProblem`, the one question it asks a query with no URI, and the second, bare call. Since the Stage 2 review, `checkPage`, which also searches a page for canaries, and `walk`, which follows `next_cursor` for up to 10 pages (decision 6) |
 | `test/owner-store.ts`, `test/db.ts` | The owner's `list` mode, page after page, and `ownerList` (C7) |
 | `test/helpers.ts` | `idsOf`, a page on one line, and `walk`, a caller that follows the cursor |
 | every other test | Counts of two operations became three. Two earlier tests used `invoice.list` and `InvoiceListRequest` as made-up names. They now use `invoice.list_all` and `InvoiceSearchRequest`, which still do not exist. The program's log test counts 10 records of 13 calls |
 
 Every other file is step 12's, without its `NEW IN STEP` markers. No new dependency.
+
+*Changed by the Stage 2 review, 2026-10-01:* that review fixed seven findings that began in
+earlier steps, and this folder carries them too. Line ① makes the one copy of the input
+(step 07's decision 9). A company id has 1 to 18 digits, and migration
+`003b_bounded_claims.sql` makes the log refuse a large claim (step 10's decision 12). The
+operation's code gets only the active company's invoices, from `src/company.ts`, and its
+answer must hold no other company's row (step 10's decisions 13 and 14). From this step,
+that company's store lists too: `list(after, count)`, with no company to name.
+`inCompany` checks that its `COMMIT` really committed (step 11's decision 10). The program
+started as the owner must name every fact the start-up check reads from the database (step
+09's decision 17, and step 11's decision 7). The catalog guard looks at every schema, view,
+and function (step 11's decision 1). And the suite searches whole answers for canaries,
+sends the in-company pair, and tests its judge through fake DSoRs (step 12's decisions 4
+and 8, and its C2). Step 12's folder holds these too, so the commands below show them
+only where this step changed the same lines. New files: `src/company.ts`,
+`test/company.test.ts`, and `migrations/003b_bounded_claims.sql`.
 
 To see every line, from `docs/baby_steps_tutorials`:
 
@@ -337,7 +404,7 @@ Set up Neon first ("Before you build" above). Then, in this folder:
 
 ```bash
 pnpm install
-pnpm migrate      # runs migration 006, and sets dsor_runtime's password again
+pnpm migrate      # runs 003b and 006 if your branch has not, and sets dsor_runtime's password again
 pnpm check        # typecheck and the unit tests
 pnpm test:db      # the database tests
 pnpm start        # the program, against the database
@@ -358,6 +425,17 @@ The agent asked for a million invoices. It got ten, the answer says the limit wa
 and the cursor says where the next page starts. The call left its record, like every
 other.
 
+*Changed by the Stage 2 review, 2026-10-01:* on this folder's branch `step-13`, `pnpm
+migrate` also ran `003b`, which that review added in step 10:
+
+```text
+dsor_runtime: password set again from DSOR_DB_URL
+migration 003b_bounded_claims: done
+```
+
+On the code after that review, `pnpm check` prints `774 passed`, and `pnpm test:db` prints
+`92 passed`. Before it, they printed `669 passed` and `75 passed`.
+
 ## Break it
 
 Every break of the design's table, performed on 2026-09-30 and 2026-10-01, one at a time,
@@ -366,15 +444,25 @@ twice: on the step before the review (commit `3498106`), and on the final code, 
 review and the sweep. X2, X4, and X5 change what the database reads, so they also ran on
 the database tier.
 
-| # | The break | Learner's prediction | Before the review | On the final code |
-| --- | --- | --- | --- | --- |
-| X1 | The caller's `limit` is obeyed | not asked | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the store-count test |
-| X2 | No `limit` means every row | not asked | 1 unit, 1 database: the empty-input test | 2 unit: the empty-input test and the store-count test. 1 database: the empty-input test |
-| X3 | `capped` is left out | the million test | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the page cut by limit and by size |
-| X4 | The cursor uses `>=` instead of `>` | C3 | 1 unit, 2 database: the walks | 3 unit: the walk, the store after a cursor, and the copy test. 4 database: both walks, the store after a cursor, and C7, whose owner walks too |
-| X5 | The list forgets the company: in memory | red on memory | 30 unit | **33 unit**: every suite test over the shipped registry, C1, and C3 |
-| X5 | The list's SQL forgets the company | green on the database | 0 unit. On the database, **only C7**, 1 of 33 | 0 unit. On the database, **only C7**, 1 of 35 |
-| X6 | The suite accepts an item with no `tenant_id` | only the planted item test | 1 | 1, as predicted |
+*Changed by the Stage 2 review, 2026-10-01:* every break ran again on the code after that
+review, in this folder, each put back from a backup and compared byte for byte. The last
+column holds those runs, over all 774 unit tests and all 92 database tests. The database
+totals in the earlier columns, "1 of 33" and "1 of 35", counted three of the seven
+database files. Each break was written this way: X1, `pageSize` returns `limit ??
+MAX_ROWS`; X2, it returns `Number.MAX_SAFE_INTEGER` for no limit; X3, the line that sets
+`capped` is deleted; X4, `>` becomes `>=` in memory and in the SQL; X5 in memory, the
+filter drops `invoice.tenant_id === tenant`; X5 in SQL, `tenant_id = $1` becomes `$1::text
+IS NOT NULL`; X6, an item with no `tenant_id` is skipped.
+
+| # | The break | Learner's prediction | Before the review | On the final code | After the Stage 2 review |
+| --- | --- | --- | --- | --- | --- |
+| X1 | The caller's `limit` is obeyed | not asked | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the store-count test | 3 unit, the same |
+| X2 | No `limit` means every row | not asked | 1 unit, 1 database: the empty-input test | 2 unit: the empty-input test and the store-count test. 1 database: the empty-input test | 5 unit: the same two, and the three page-2 tests: the bare call's page holds every row, so there is no page 2 to reach. 1 database, the same |
+| X3 | `capped` is left out | the million test | 2 unit: the million test, and 10 against 11 | 3 unit: the same two, and the page cut by limit and by size | 4 unit: the same three, and the one-row page at the 64 KiB edge, which expects `capped` |
+| X4 | The cursor uses `>=` instead of `>` | C3 | 1 unit, 2 database: the walks | 3 unit: the walk, the store after a cursor, and the copy test. 4 database: both walks, the store after a cursor, and C7, whose owner walks too | 5 unit: the same three, the page-2 row with no `tenant_id`, which lands one place later, and the leak on page 10, which a cursor that repeats its own row never reaches. 4 database, the same |
+| X5 | The list forgets the company: in memory | red on memory | 30 unit | **33 unit**: every suite test over the shipped registry, C1, and C3 | **62 unit**. The pipeline refuses the page that mixes the companies, with `INTERNAL_ERROR` (step 10's decision 14), so every suite test over the shipped registry fails, and so do C1, C3, and the tests of the bound list |
+| X5 | The list's SQL forgets the company | green on the database | 0 unit. On the database, **only C7**, 1 of 33 | 0 unit. On the database, **only C7**, 1 of 35 | 0 unit. On the database, **only C7**, 1 of 92 |
+| X6 | The suite accepts an item with no `tenant_id` | only the planted item test | 1 | 1, as predicted | 2: the planted item test, and the page-2 row with no `tenant_id` |
 
 **X1, the one this step is for.** In `src/pages.ts`, make `pageSize` return
 `limit ?? MAX_ROWS`, so the caller's limit is obeyed. Then:
@@ -410,7 +498,9 @@ at once notices.
 **X5, on the database, the second lock at work.** Take the company out of the list's SQL,
 and every database test but one stays green, 34 of 35 on the final code: row-level
 security hides the missing filter from every caller that logs in as `dsor_runtime`. Only
-C7 sees it, because the owner bypasses row-level security:
+C7 sees it, because the owner bypasses row-level security. *Changed by the Stage 2 review,
+2026-10-01:* "34 of 35" counted three of the seven database files. Over all seven, after
+that review, it is 91 of 92:
 
 ```text
 - Expected
@@ -436,11 +526,42 @@ have happened. The design check added C7 for this break.
 **Two breaks the review found, and the tests that now catch them.** The SQL
 `WHERE tenant_id = $1 AND $2::text IS NULL OR id > $2`, with its brackets lost, keeps
 the company on the first page and drops it on every page after. It passed all 33
-database tests, because the owner read only one page. With the owner walking page after
+database tests that the review ran, in three of the seven files, because the owner read
+only one page. With the owner walking page after
 page, C7 names `org_789`'s five invoices. And a cursor that is looked up across companies
 (`id > the row whose id is the cursor`, in any company) passed the first foreign-cursor
 test, which compared two empty pages. The test from `org_789`, `INV-1010` against
 `INV-1099`, fails on it.
+
+**The Stage 2 review's breaks, run on 2026-10-01.** Two checks of this step were right,
+and no test proved it. So each was broken on purpose, before and after its new tests.
+
+First, in `test/cross-tenant.ts`, the suite's two calls of `walk` are deleted, so it reads
+only page 1 again. Before the review's tests, every test passed. Now the five tests of
+the walk fail, and every other test passes:
+
+```text
+× DSOR-IDN-03b: a list that slips org_789's INV-2001 onto org_456's page 2 is a finding, from both calls
+× DSOR-IDN-03b: a list that slips org_789's INV-2001, its tenant_id rewritten, onto org_456's page 2 is a finding, from both calls
+× DSOR-IDN-03b: a list that slips org_789's INV-2001 onto page 10, its last, is a finding, from both calls
+× DSOR-TEN-02b: a list that slips a row with no tenant_id onto org_456's page 2 is a finding, from both calls
+× DSOR-TEN-02b: a list whose cursor never ends is read for 10 pages from each call, then named
+AssertionError: expected [] to strictly equal [ …(8) ]
+      Tests  5 failed | 769 passed (774)
+```
+
+Second, in `src/pipeline.ts`, the size check measures a page's items alone:
+`checkResultSize((data as { items?: unknown } | null)?.items ?? data)`. Before the new
+test, every test passed: 771. Now:
+
+```text
+× DSOR-QRY-01: a one-row page whose items fit, but whose cursor and capped take it past 64 KiB, is refused, not sent
+AssertionError: expected { data: { …(3) }, …(1) } to strictly equal { Object (code, message, ...) }
+      Tests  1 failed | 773 passed (774)
+```
+
+The page left as data: one row, its cursor, and `capped`, 65,595 bytes. The items alone
+measured 65,526 bytes, under the limit.
 
 ## Build it yourself with Claude Code
 
@@ -578,6 +699,150 @@ test that fails on it:
 - **Also:** a `null` cursor, a list that answers `org_789` with something that is not a
   page, and a query whose code returns nothing.
 
+**Found by the Stage 2 review (2026-10-01), and fixed.** Six reviewers audited steps 10
+to 14 and the seams between them (`../mj_notes.md`). They found no live leak. Seven of
+their findings began in earlier steps, and this folder carries the fixes. One began here,
+in the suite's check of a list.
+
+- **A check and the code could see two different inputs.** Fixed from step 07 on. Lines
+  ① and ② read the input itself, to check the principals and the companies it names.
+  Line ⑥ then made its own copy, for the schema check and for the code. A getter, a
+  field that runs code each time it is read, can answer the second read differently. In
+  the red run here, the code was handed `principal: "cfo_100"` after line ① saw the
+  caller, and `tenant_id: "org_789"` after line ② saw `org_456`.
+  - **Fixed:** line ① makes the one copy, right after it finds who is calling. Every
+    check and the code read that copy (step 07's decision 9). An input that JSON cannot
+    copy is still refused with `VALIDATION_FAILED`, at the end of line ②, once the
+    principals and the companies it names are checked.
+  - **Caught by** step 07's and step 10's tests, carried here, in `test/pipeline.test.ts`
+    and `test/who-is-calling.test.ts`. Eight of them failed in the red run.
+- **A company id had no length, and the log kept a claim of any size.** Fixed from step
+  10 on. In step 14, an envelope naming `org_` and a million digits got a refusal of 212
+  bytes, and left a record of 1,000,433 bytes that `dsor_runtime` can never remove. In
+  the red run here, four unit tests failed: 19 digits and a million digits passed the
+  form check, the record kept the claim, and `parseUri` took a company of 19 digits.
+  - **Fixed:** a tenant id has 1 to 18 digits, and migration `003b` makes the log refuse
+    an `extensions` over 1,024 bytes (step 10's decision 12). It ran on the branch
+    `step-13` on 2026-10-01. Before it ran, its two database tests failed: as
+    `dsor_runtime`, an `extensions` of 2 KB went in, and so did one of 1,025 bytes, each
+    in a transaction that was rolled back.
+  - **Caught by** the 19-digit and million-digit cases, and the tests titled `step 10's
+    decision 12: …`, in `test/tenants.test.ts`, `test/uri.test.ts`, and
+    `test/tenants.db.test.ts`.
+- **The code could name another company, and both locks trusted it.** Fixed from step 10
+  on. The high finding. The operation's code named the company at each read, and the
+  store set that company for the database's policy too. In the red run here, the
+  review's one-line fallback in `invoice.get`, `?? await invoices.get("org_456", id)`,
+  let `user_700`, in `org_789`, read `org_456`'s `INV-1001`, and all 693 unit tests
+  passed.
+  - **Fixed, in two layers:** the code gets `companyOf(store, tenant)`, the active
+    company's invoices only (step 10's decision 13). From this step, that store lists
+    too, with `list(after, count)`: a place and a count, and no company to name. Every
+    `tenant_id` in the code's answer, on every item of a page too, must be the active
+    company's, or the call fails with `INTERNAL_ERROR` (step 10's decision 14).
+  - **Caught by** step 10's C8, in `test/company.test.ts`, `test/tenants.test.ts`, and
+    `test/tenants.db.test.ts`, with tests of their own for the list. The fallback no
+    longer passes `pnpm typecheck`, "Expected 1 arguments, but got 2", and at run time
+    `user_700` hears `RESOURCE_NOT_FOUND`. With the code handed a bare company id again,
+    73 unit tests failed. With the answer check taken out, 11 failed, and on the
+    database, code that made a store of its own read `org_789`'s `INV-2001` for a caller
+    in `org_456`.
+  - **What it changed here:** two of this step's planted lists answer with a row of
+    another company. One hands `org_456` one of `org_789`'s invoices. One forgets the
+    company when asked with nothing. The pipeline now refuses their pages with
+    `INTERNAL_ERROR` before the suite sees them. The first now gets step 12's finding, "no
+    URI of org_456 in its example", because decision 6's one question gets no page. To
+    keep the suite's own check of the items proven, a fake DSoR now slips the row into
+    `org_456`'s pages after the pipeline has checked them. And break X5, in memory, now
+    ends in `INTERNAL_ERROR` ("Break it").
+- **A transaction counted as kept when it was not.** Fixed from step 11 on. In the red
+  run here, with the answer to `COMMIT` not read, work that swallowed its own failed
+  statement looked kept: "promise resolved 'done' instead of rejecting". With the
+  `COMMIT` not awaited at all, both tests failed, and the log's caller got the invoice.
+  - **Fixed:** `inCompany` reads the answer to its `COMMIT`. Anything but `COMMIT` is the
+    error "the transaction was rolled back" (step 11's decision 10).
+  - **Caught by** `step 11's decision 10: …` in `test/rls.db.test.ts`, and `DSOR-EXE-03b:
+    a log whose COMMIT fails gives no invoice, and no record`, in `test/audit.db.test.ts`.
+    That second test uses **fault injection**, an error planted on purpose (§47): it
+    wraps the real client, so every statement reaches the real database except the first
+    `COMMIT`, which fails.
+- **The start-up check's database facts were proven only with hand-made facts.** Fixed
+  from step 09 on, with the membership of roles from step 11 on. In the red run here,
+  each of four changes to the SQL in `runtimeRoleProblems` turned the owner's test red:
+  `rolbypassrls` and the membership of `pg_write_all_data` read as `false`, and the
+  counts of tables owned and of roles read as `0`.
+  - **Fixed:** the test that starts the program as the owner requires `holds BYPASSRLS`,
+    `is a member of pg_write_all_data`, `owns … tables`, and `belongs to … other role…,
+    which SET ROLE can switch to`.
+  - **Caught by** `DSOR-AUD-04a: refuses to run as the owner, names why, and makes no
+    call`, in `test/program.db.test.ts`.
+- **The catalog guard missed a kind of schema name, and every view and function.** Fixed
+  from step 11 on. The catalog guard is step 11's test that reads PostgreSQL's own list of
+  tables, its **catalog**, to find every table with a company column. It skipped any
+  schema whose name starts with `pg`, and it looked at tables only. In the red run here,
+  the old filter, `NOT LIKE 'pg_%'`, dropped `pgcrm` from all three planted lists.
+  - **Fixed:** step 11's decision 1 widens to the other ways around a policy: a view, a
+    saved query that reads with its owner's rights; a materialized view, a stored copy of
+    rows; a foreign table, read from another server; and a `SECURITY DEFINER` function,
+    which runs with its owner's rights. Three guards check that none exists.
+  - **Caught by** the C1 tests in `test/rls.db.test.ts`, each filter shown on planted
+    rows.
+- **The mystery shopper missed leaks that do not label themselves.** Fixed from step 12
+  on. In step 14, an operation answered `cfo_100`, in `org_456`, with `org_789`'s
+  invoice, its `tenant_id` rewritten to `org_456`. `cfo_100` got `VENDOR-77` and
+  `99000.00`, and step 12's suite reported no finding. In the red run here, 34 tests
+  failed against the old suite, every planted leak the review named among them.
+  - **Fixed, as in step 12:** the whole answer is searched for canaries, tenant keys, and
+    URIs of another company. Fake DSoRs test the judge through the suite. The in-company
+    pair compares a query's own "not found" for an id only the other company holds with
+    its answer for `NOPE`. Empty data is no data. And a planted `test.free` proves through
+    a call that the checklist searches the whole input.
+  - **Adapted to this step's data.** The canaries are worked out from the rows, as in
+    step 12. With decision 7's invoices, `org_456` has 11 of them, and `org_789` has 28,
+    `cancelled` among them, because only `org_456` holds a cancelled invoice. The
+    in-company pair runs from both companies now, not from `org_456` only: `org_456`
+    holds `INV-1001`, which `org_789` lacks. So `org_789`'s readers send `INV-1001` and
+    `NOPE`, and every test of the pair expects its findings in both companies. And the
+    suite's list check searches its pages for canaries too, the bare call's page included
+    (decision 6).
+  - **Caught by** C2, C4, C7, and C8 in `test/cross-tenant.test.ts`, C5 in
+    `test/cross-tenant-lists.test.ts`, the database suite's check of the canaries' rows,
+    and the `test.free` tests in `test/tenants.test.ts`.
+  - **Broken on purpose:** the fakes and `test.free` guard code that is right, so they
+    cannot be red before a break. With the suite's judge replaced by a check that flags
+    only data, only the four fakes failed. With the checklist handing its URI search only
+    the input's top-level texts, only the two `test.free` tests failed.
+- **The mystery shopper read only page 1 of a list, and the 64 KiB limit was never tested
+  at its edge.** Found here. In the red run, three new tests failed against the suite as
+  it was: a list that slips `org_789`'s `INV-2001` onto `org_456`'s page 2, as the row is
+  and with its `tenant_id` rewritten, gave no finding, and so did a list whose cursor
+  never ends. And with the pipeline measuring a page's `items` alone, all 771 unit tests
+  passed.
+  - **Fixed:** the suite follows `next_cursor` from both of a list's calls, and checks
+    every page as it checks the first, for up to 10 pages (decision 6). And a test sends
+    a page of one row: 65,536 bytes as `{ items }`, 65,595 bytes with its cursor and
+    `capped`. It is refused (C2).
+  - **Caught by** C5's new tests in `test/cross-tenant-lists.test.ts`, and C2's new test
+    in `test/result-size.test.ts`, which fails with the pipeline measuring `items` alone
+    ("Break it").
+  - **A check of this fix** found two more holes, each closed red first: a walk that left
+    the items of page 2 unchecked, and a walk that sent the cursor alone, without the
+    rest of the input, each passed every test. A page-2 row with no `tenant_id`, and the
+    exact inputs of the agent's two walks, now catch them.
+  - **Found by the orchestrator's hostile check:** every planted leak sat on page 2, so a
+    walk that checked only pages 1 and 2 passed all 773 tests. A list that holds one row
+    a page now ends on page 10, the last page the walk reads, with `org_789`'s `INV-2001`
+    there. A check that stops at any page before it fails that test, page 3 and page 10
+    both shown red. So do a walk limited to 3 pages and one that quietly stops after
+    page 3. `pnpm check` now prints `774 passed`.
+- **Sentences that said more than the code.** "In plain words" said DSoR caps "the size
+  of one answer": it caps the data, and not the correlation beside it. Decision 3 called
+  the correlation "DSoR's own", but its request id may be the caller's. Decision 3 also
+  said no page can step over a row that is too large, but a cursor the caller makes up
+  can. Two database counts in "Break it", "34 of 35" and "all 33", counted three of the
+  seven database files. And the header of `src/main.ts` left out the list this step
+  added. Each is corrected where it stands.
+
 **Left open on purpose**, with the reason:
 
 - **Equivalent breaks**, which change nothing a caller can see: `limit ?? Infinity`
@@ -600,6 +865,16 @@ test that fails on it:
   review's attack read `org_456`'s twelve invoices in two calls, or in twelve calls of
   one row, each call recorded. Nothing counts them yet: that is DSOR-CLS-04b's row
   budget.
+- **The walk reaches two calls, and 10 pages of each.** The suite follows the cursor from
+  the example and from the bare call only. A list that leaks only for some other
+  `limit`, such as `limit: 1`, is not reached. And an honest list longer than 10 pages is
+  named, a false finding: noisy, never silent. Found by the Stage 2 review.
+- **"Canary" is step 12's word, carried here:** a value whose appearance shows that
+  something leaked. It is not on the house list of analogies, and step 12 flags it for
+  review.
+- **`test/cross-tenant.ts` is 401 lines** after the Stage 2 review, and
+  `test/companies.ts` is 260, far above the 150 this tutorial aims for. The list check,
+  with its walk, could move to a file of its own. That is a change of its own, so it waits.
 
 **What the predictions showed.** Four times a test passed before its code: C4's 1.5 and
 `"10"`, C2's "exactly 64 KiB is answered", the cursor of 64 characters, and step 12's
@@ -611,15 +886,17 @@ Neither proves the new code until a break shows it failing without it.
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-QRY-01 | A server-side maximum page size and result size on every query, whether or not the client asks for a limit | [§7.1 Queries](../../../specs/dsor/01-model.md#71-queries) | `test/invoice-list.test.ts` and `test/invoice-list.db.test.ts`: no limit, a limit of a million, 3, 10, and 11 (C1), and the cursor walked to the end (C3). `test/result-size.test.ts`: rows cut by bytes, a result over 64 KiB refused, exactly 64 KiB answered, one byte more refused, bytes not characters (C2) |
+| DSOR-QRY-01 | A server-side maximum page size and result size on every query, whether or not the client asks for a limit | [§7.1 Queries](../../../specs/dsor/01-model.md#71-queries) | `test/invoice-list.test.ts` and `test/invoice-list.db.test.ts`: no limit, a limit of a million, 3, 10, and 11 (C1), and the cursor walked to the end (C3). `test/result-size.test.ts`: rows cut by bytes, a result over 64 KiB refused, exactly 64 KiB answered, one byte more refused, bytes not characters (C2). *Changed by the Stage 2 review, 2026-10-01:* and a page of one row whose cursor and `capped` take it past 64 KiB, refused, so the result is the whole page (C2) |
 
 Also advanced, first met in earlier steps: DSOR-TEN-02b, the suite checks a list by its
 rows, from both companies, asked with its example and bare (C5,
 `test/cross-tenant-lists.test.ts`), though a list takes no URI to send it ("What the
-specification asks", point 4). DSOR-TEN-01b, the list's own SQL without row-level
+specification asks", point 4). *Changed by the Stage 2 review, 2026-10-01:* every page,
+by its cursor, and each page searched for the other company's canaries. DSOR-TEN-01b, the list's own SQL without row-level
 security (C7, `test/invoice-list.db.test.ts`). DSOR-IDN-03b, another company's id as a
 cursor (C3). DSOR-EXE-02, one record for each page (C6, `test/invoice-list.db.test.ts`),
-and for a result refused for its size (`test/result-size.test.ts`).
+and for a result refused for its size (`test/result-size.test.ts`). The fixes this folder
+carries from steps 07 to 12 keep their rows in those steps' READMEs.
 
 ## Next
 
