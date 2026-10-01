@@ -220,6 +220,12 @@ src/pipeline.ts             changed: call() takes the log as its second argument
 src/envelope.ts,            fixed from step 04 on: toEnvelope never throws, so no throw
 test/call.test.ts           in lines ① to ⑩ can skip line ⑪. Two rows in the table of
                             bugs throw values that throw again when inspected
+src/pipeline.ts,            fixed from step 07 on, by the Stage 2 review: line ① makes
+src/inputs.ts,              the one copy of the input, and every check after it, and
+test/pipeline.test.ts,      the code, read only that copy. An input it cannot copy is
+test/who-is-calling.test.ts refused there, after the principals it names are checked
+test/decision-log.test.ts   (step 07's README, decision 9). Line ⑪ records that
+                            refusal like any other
 src/main.ts                 changed: prints the log, one line per record, and calls
                             through a log that cannot write
 test/decision-log.test.ts   NEW: the log, by claim (C1 to C5)
@@ -313,11 +319,11 @@ pnpm check
 ```
 
 ```text
-      Tests  477 passed (477)
+      Tests  489 passed (489)
 ```
 
 Outside the dsor repository, the three tests that compare the schema copies have no
-original to compare with, so they are skipped: `474 passed | 3 skipped`.
+original to compare with, so they are skipped: `486 passed | 3 skipped`.
 
 ## Break it
 
@@ -374,7 +380,7 @@ AssertionError: expected [] to strictly equal [ { …(9) } ]
 - ]
 + []
 …
-      Tests  31 failed | 446 passed (477)
+      Tests  39 failed | 450 passed (489)
 ```
 
 Line ⑤ said yes, and then the code threw. The caller heard `INTERNAL_ERROR`, and the
@@ -382,7 +388,7 @@ log is empty. Put line ⑪ back, and `pnpm check` is green again.
 
 **Now try S2, §21's common mistake.** Put the line ⑪ block inside a `finally` after
 the `catch`, and return the answer from the `try` and from the `catch`. Run
-`pnpm test`: all 477 pass. Here, returning is how the answer leaves, and a `finally`
+`pnpm test`: all 489 pass. Here, returning is how the answer leaves, and a `finally`
 runs before the returned answer reaches the caller. So no test in this step can see a
 difference. The difference appears when the answer leaves another way: a server writes
 it to the network inside the `try`, and the `finally` comes after. If the program stops
@@ -413,8 +419,8 @@ learner predicted about 5 would pass, expecting the C4 tests to pass because the
 the 5 C4 tests failed, as the learner predicted, and `call` threw
 `disk full at /var/dsor/log` at the caller. Move 9 fixed two holes the review found and
 closed five gaps in the tests. Its first fix then moved into step 04's `toEnvelope`,
-and was carried into every build after it: 477 tests in the end. All of it is under "Think it
-through".
+and was carried into every build after it: 477 tests. The Stage 2 review's fix, ported
+from step 07, brought them to 489. All of it is under "Think it through".
 
 Build your own step 08 from a copy of your step 07. From `docs/baby_steps_tutorials`:
 
@@ -527,17 +533,50 @@ time, in a copy outside the repository.
   a new analogy, and is now a hash chain, defined. The success signal, the decision
   bundle, identity mode, L2, and T12 are now defined where they first appear.
 
+**Found by the Stage 2 review (2026-10-01), and fixed.**
+
+- **A check and the code could see two different inputs.** Line ① read the input
+  itself, to check the principals it names. Line ⑥ then made its own copy, for the
+  schema check and for the code. A getter, a field that runs code each time it is read,
+  can answer the second read differently. The review proved it in step 14. Here the red
+  test plants an input schema that lists `principal`. The agent's `principal` reads as
+  `accounts-payable-fte` first and as `cfo_100` after. The code was handed
+  `principal: "cfo_100"`, and the log recorded `ALLOW ok` for the agent. So the
+  evidence showed nothing wrong.
+  - **Fixed from step 07 on, and ported here** with step 07's names, comments, and
+    tests. Line ① makes the one copy, right after it finds who is calling. Every check
+    after that, and the code, read only that copy (step 07's README, decision 9). An
+    input that JSON cannot copy is refused there, with the same code and message as
+    before. Before that refusal, line ① checks the principals the input names, on the
+    input as sent. So `cfo_100` inside such an input is still `AUTHORIZATION_DENIED`.
+  - **Caught by** `DSOR-SRC-02b: a principal that reads as the caller first, then as
+    cfo_100, …` in `test/pipeline.test.ts`, and the ten other tests step 07 added. In
+    this step a refused call also runs line ⑪, so their order tests expect lines ① and
+    ⑪. Two new tests in `test/decision-log.test.ts` read the record. An input that JSON
+    cannot copy is refused at line ① and leaves one record, `DENY` with
+    `VALIDATION_FAILED`, like any other refusal. With `cfo_100` named in it, the record
+    says `AUTHORIZATION_DENIED`.
+  - **Red first:** of the 13 new tests, 7 failed before the code changed. The other 6
+    passed, because the old code gave those inputs the same answers. They guard the
+    fix against later breaks. One old test, of an input that contains itself, gave way
+    to four sharper ones among the 13. So 477 tests became 489. Step 07's nine breaks
+    (step 07's README, "Think it through") were run again here, and each turned at
+    least one test red. Leaving the claims unchecked when the copy fails also turned
+    the `AUTHORIZATION_DENIED` record test red.
+
 ### The breaks, run for real
 
 | # | The break | Learner's prediction | Real result |
 | --- | --- | --- | --- |
-| S1 | The log line at the end of the `try` | caught easily | caught by 31 tests |
-| S2 | Line ⑪ in a `finally` block | survives | survives: all 477 pass |
-| S3 | Only a success is recorded | caught by many | caught by 27 tests |
+| S1 | The log line at the end of the `try` | caught easily | caught by 39 tests |
+| S2 | Line ⑪ in a `finally` block | survives | survives: all 489 pass |
+| S3 | Only a success is recorded | caught by many | caught by 35 tests |
 | S4 | A broken log, and the answer given anyway | caught by C4 | caught by 7 tests: C4, and the program's log |
 
 All four predictions were right. In the red run, the learner predicted about 5 of the
-29 new tests would pass before any code, and 2 did.
+29 new tests would pass before any code, and 2 did. The four breaks were run again on
+2026-10-01, after the Stage 2 review's fix. Its tests of refused inputs added 8 to S1
+and to S3, which were caught by 31 and 27 tests before.
 
 ### Left open on purpose
 
@@ -563,12 +602,15 @@ All four predictions were right. In the red run, the learner predicted about 5 o
 - **Five tests were not written red first.** The five that close the review's
   surviving breaks passed at once, because they guard against breaks that were not in
   the code. Each was shown to fail with its break in place.
+- **`pipeline.ts` is 162 lines, and `envelope.ts` 157.** Both are past the 150 lines
+  where a file wants splitting. `refuseUncopyable()`, from the Stage 2 review's fix,
+  took `pipeline.ts` past it. The next line in either one is a reason to split it.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-EXE-02 | The decision is durably recorded before the response is returned | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 19 tests in `test/decision-log.test.ts`, C1 and C2, and 1 in `test/startup.test.ts`. Before the response only: not durable until step 09 |
+| DSOR-EXE-02 | The decision is durably recorded before the response is returned | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 21 tests in `test/decision-log.test.ts`, C1 and C2, and 1 in `test/startup.test.ts`. Before the response only: not durable until step 09 |
 | DSOR-EXE-03b | If the store cannot accept the decision record, DSoR does not execute, and the caller receives `EVIDENCE_STORE_UNAVAILABLE` | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | 5 tests in `test/decision-log.test.ts`, C4. An L2 rule built early. The caller's half only: no command runs yet |
 
 Not met, and why: DSOR-AUD-01, whose record needs a hash chain (step 39) and an identity

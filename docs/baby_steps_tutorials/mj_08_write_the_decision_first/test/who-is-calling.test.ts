@@ -44,12 +44,33 @@ describe("C1: the principal is found first", () => {
   it.each([
     ["a request id DSoR cannot use", { request_id: "" }, { id: "INV-1008" }],
     ["cfo_100 named in the arguments", {}, { id: "INV-1008", principal: "cfo_100" }],
+    // The input is copied inside line ①, and only after the login is found (step 07's
+    // README, decision 9). Found by the Stage 2 review, and fixed from step 07 on.
+    ["an input that JSON cannot copy", {}, { id: "INV-1008", count: 1n }],
   ])(
     "DSOR-IDN-01: with no login, %s still gets AUTHENTICATION_REQUIRED",
     (_why, request, input) => {
       expect(call(registry, log, request, "invoice.get", input)).toStrictEqual(NO_LOGIN);
     },
   );
+
+  // Copying the input before the login, and refusing only after it, kept every test green.
+  // With no login, DSoR does not read the input at all (step 07's README, decision 9).
+  // Found by the Stage 2 review, and fixed from step 07 on.
+  it("DSOR-IDN-01: with no login, the input is never read", () => {
+    let reads = 0;
+    const input = new Proxy(
+      { id: "INV-1008" },
+      {
+        get: (target, key) => {
+          reads += 1;
+          return Reflect.get(target, key);
+        },
+      },
+    );
+    expect(call(registry, log, {}, "invoice.get", input)).toStrictEqual(NO_LOGIN);
+    expect(reads).toBe(0);
+  });
 
   it("DSOR-IDN-01: with no login, the operation's code never runs", () => {
     const spy = vi.fn<Handler>(() => "ran");

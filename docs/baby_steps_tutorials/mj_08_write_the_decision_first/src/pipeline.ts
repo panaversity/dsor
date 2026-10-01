@@ -2,10 +2,10 @@
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
 import { randomUUID } from "node:crypto";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
-import { checkInput } from "./inputs.ts";
+import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { decisionOf, type DecisionLog } from "./log.ts";
 import { checkPermission } from "./permissions.ts";
-import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
+import { callerIds, checkNamedPrincipals, whoIsCalling, type Principal } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import { checkRequestId, usableRequestId, type RequestEnvelope } from "./request.ts";
 
@@ -52,7 +52,7 @@ export function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
-    const caller = line(1, () => {
+    const { caller, copy } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
@@ -60,9 +60,16 @@ export function call(
       correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
       const found = whoIsCalling(request);
       correlation = { ...correlation, ...callerIds(found) };
-      checkNamedPrincipals(input, found);
+      // One copy of the input, made here, once, after the login is found. Every check from
+      // here on, and the operation's code, reads this copy. So no check can see a value that
+      // the code does not get. Only an input that cannot be copied is read again, by
+      // refuseUncopyable, to choose its refusal (step 07's README, decision 9). Found by the
+      // Stage 2 review, and fixed from step 07 on.
+      const copy = jsonCopy(input);
+      if (copy === NOT_JSON) refuseUncopyable(name, input, found);
+      checkNamedPrincipals(copy, found);
       checkRequestId(request);
-      return found;
+      return { caller: found, copy };
     });
 
     // Ours, not §21's: which operation? Lines ③ to ⑤ need its contract (step 07's
@@ -82,9 +89,9 @@ export function call(
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
     //   computing its payload hash: not built yet, step 29.
-    //   From here on, only the copy that line ⑥ checked is used (step 07's README,
-    //   decision 9).
-    const checked = line(6, () => checkInput(name, registry.inputs, input));
+    //   It checks line ①'s copy, the one the code gets (step 07's README, decision 9).
+    //   Found by the Stage 2 review, and fixed from step 07 on.
+    line(6, () => checkInput(name, registry.inputs, copy));
 
     // Ours, not §21's: is it built? Never before ⑤, so "not allowed" is never answered as
     // "not built yet" (step 06's README, C5), and never before ⑥ (step 07's README,
@@ -102,9 +109,11 @@ export function call(
     // ⑧ Create the proposal, or load it. Commands only. Not built yet: step 22.
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
     //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
+    //   The code gets line ①'s copy, the one every check read (step 07's README, decision
+    //   9). Found by the Stage 2 review, and fixed from step 07 on.
     const data = line(9, () => {
       reachedCode = true;
-      return handler(checked);
+      return handler(copy);
     });
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
@@ -137,4 +146,17 @@ export function call(
   // ⑬ to ⑰ Write the intent record, execute, finalize, commit, and seal the evidence.
   //   Commands only. Not built yet: steps 21, 24, 33, 34, 36, 37, and 40.
   return answer;
+}
+
+/** Refuses an input that JSON cannot copy, after checking the claims it makes. */
+function refuseUncopyable(name: string, input: unknown, caller: Principal): never {
+  // JSON can carry such an input: nesting that JSON.parse reads and JSON.stringify cannot
+  // write. The principals it names are checked first, on the input as sent, so an attempt
+  // to act as someone else is refused as one, and never hidden behind a bad input. Step 05
+  // refused to let a bad request id hide it, for the same reason. The input is read here
+  // only to choose the refusal. The call is refused either way, so nothing read here can
+  // reach the code (step 07's README, decision 9). Found by the Stage 2 review, and fixed
+  // from step 07 on.
+  checkNamedPrincipals(input, caller);
+  refuseInput(name, "it cannot be copied as JSON");
 }

@@ -22,6 +22,7 @@ import {
   inputsWith,
   log,
   notGranted,
+  notTheCaller,
   notValid,
   refusal,
   registry,
@@ -32,6 +33,10 @@ import {
   shippedWith,
   source,
 } from "./helpers.ts";
+
+// JSON text for a list nested 100,000 levels deep. JSON.parse reads it, but JSON.stringify
+// stops at about 7,700 levels, so a copy made through JSON text fails.
+const DEEP = "[".repeat(100_000) + "]".repeat(100_000);
 
 /** Calls an operation and records the numbers of the checklist's lines that ran, in order. */
 function linesRun(
@@ -260,16 +265,111 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     expect(spy).toHaveBeenCalledWith({ id: "INV-1008" });
   });
 
-  it("an input that JSON cannot copy is refused with VALIDATION_FAILED", () => {
-    const loop: Record<string, unknown> = { id: "INV-1008" };
-    loop["self"] = loop;
-    expect(call(registry, log, AGENT, "invoice.get", loop)).toStrictEqual({
-      code: "VALIDATION_FAILED",
-      message: notValid("invoice.get", "it cannot be copied as JSON"),
-      retry: "never",
-      correlation: correlationFor(THE_AGENT),
-    });
+  // Line ① read the input itself, and line ⑥ then made its own copy. So an input could show
+  // the caller to line ① and cfo_100 to the code. Now line ① makes the one copy, and line ①,
+  // line ⑥, and the code all read it (step 07's README, decision 9). Found by the Stage 2
+  // review, and fixed from step 07 on.
+  it("DSOR-SRC-02b: a principal that reads as the caller first, then as cfo_100, reaches the code as the caller", () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const { input, reads } = changesAfterOneRead("principal", "accounts-payable-fte", "cfo_100");
+    const answer = call(registryListing("principal", spy), log, AGENT, "invoice.get", input);
+    // The code gets exactly the values the checks saw.
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008", principal: "accounts-payable-fte" });
+    expect(answer).toStrictEqual({ data: "ran", correlation: correlationFor(THE_AGENT) });
+    // The input, as the caller sent it, is read once: to make the copy.
+    expect(reads()).toBe(1);
   });
+
+  it("DSOR-SRC-02b: a principal that reads as cfo_100 first, then as the caller, is refused before the code runs", () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const { input, reads } = changesAfterOneRead("principal", "cfo_100", "accounts-payable-fte");
+    expect(call(registryListing("principal", spy), log, AGENT, "invoice.get", input)).toStrictEqual(
+      {
+        code: "AUTHORIZATION_DENIED",
+        message: notTheCaller("principal"),
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      },
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(reads()).toBe(1);
+  });
+
+  // The tests above count the reads of principal only. Here every field is counted: the copy
+  // reads each one once, and nothing else reads the input as it was sent (step 07's README,
+  // decision 9). Found by the Stage 2 review, and fixed from step 07 on.
+  it("step 07's decision 9: an input JSON can copy is read once, by the copy, and by nothing else", () => {
+    const reads: Record<string, number> = {};
+    const input = new Proxy(
+      { id: "INV-1008" },
+      {
+        get: (target, key) => {
+          reads[String(key)] = (reads[String(key)] ?? 0) + 1;
+          return Reflect.get(target, key);
+        },
+      },
+    );
+    expect(call(registry, log, AGENT, "invoice.get", input)).toMatchObject({
+      data: { id: "INV-1008" },
+    });
+    // JSON asks once whether the input has a toJSON of its own, then reads each field once.
+    expect(reads).toStrictEqual({ toJSON: 1, id: 1 });
+  });
+
+  // The copy is made inside line ①, after the login is found. So an input that JSON cannot
+  // copy is refused there, with line ⑥'s message, and lines ⑤ and ⑥ never run (step 07's
+  // README, decision 9). Only line ⑪ runs after it, and records the refusal (step 08's
+  // README, decision 1). Found by the Stage 2 review, and fixed from step 07 on.
+  it.each([
+    ["contains itself", selfContaining()],
+    ["holds a BigInt", { id: "INV-1008", count: 1n }],
+    // JSON can carry these two: JSON.parse reads them, and only JSON.stringify fails.
+    [
+      "is nested too deep to write out, though JSON can carry it",
+      JSON.parse(`{"id":"INV-1008","pad":${DEEP}}`) as unknown,
+    ],
+    // The principal it names is the caller, so the check on the input as sent passes.
+    [
+      "names the caller, and is nested too deep to write out",
+      JSON.parse(`{"id":"INV-1008","principal":"accounts-payable-fte","pad":${DEEP}}`) as unknown,
+    ],
+  ])(
+    "step 07's decision 9: an input that %s is refused with VALIDATION_FAILED, at line ①",
+    (_why, input) => {
+      const { answer, lines } = linesRun(registry, AGENT, "invoice.get", input);
+      expect(answer).toStrictEqual({
+        code: "VALIDATION_FAILED",
+        message: notValid("invoice.get", "it cannot be copied as JSON"),
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+      expect(lines).toStrictEqual([1, 11]);
+    },
+  );
+
+  // When the copy fails, line ① checks the principals on the input as sent before it
+  // refuses. So an attempt to act as cfo_100 is refused as one, and is not hidden behind a
+  // bad input (step 07's README, decision 9). Found by the Stage 2 review, and fixed from
+  // step 07 on.
+  it.each([
+    [
+      "too deep to copy, sent as plain JSON",
+      JSON.parse(`{"id":"INV-1008","principal":"cfo_100","pad":${DEEP}}`) as unknown,
+    ],
+    ["that contains itself", selfContaining({ principal: "cfo_100" })],
+  ])(
+    "DSOR-SRC-02b: cfo_100 named in an input %s is refused with AUTHORIZATION_DENIED, at line ①",
+    (_why, input) => {
+      const { answer, lines } = linesRun(registry, AGENT, "invoice.get", input);
+      expect(answer).toStrictEqual({
+        code: "AUTHORIZATION_DENIED",
+        message: notTheCaller("principal"),
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+      expect(lines).toStrictEqual([1, 11]);
+    },
+  );
 });
 
 describe("C4: start-up is refused for an input schema that is missing, broken, or not strict", () => {
@@ -386,6 +486,42 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
 /** The shipped registry, with invoice.get's code replaced by the test's. */
 function registryWithGet(handler: Handler): Registry {
   return buildRegistry(shipped, { ...handlers, "invoice.get": handler }, shippedRoles);
+}
+
+/**
+ * The same, with an input schema for invoice.get that lists one more text field. No shipped
+ * schema lists a principal, so line ⑥ would refuse it before a test of line ① could see it.
+ */
+function registryListing(field: string, handler: Handler): Registry {
+  const schema = {
+    type: "object",
+    properties: { id: { type: "string" }, [field]: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  };
+  const inputs = inputsWith("InvoiceGetRequest.schema.json", JSON.stringify(schema));
+  return buildRegistry(shipped, { ...handlers, "invoice.get": handler }, shippedRoles, inputs);
+}
+
+/** An input whose field reads as `first` the first time, and as `later` every time after. */
+function changesAfterOneRead(field: string, first: string, later: string) {
+  let reads = 0;
+  const input = {
+    id: "INV-1008",
+    get [field](): string {
+      reads += 1;
+      return reads === 1 ? first : later;
+    },
+  };
+  // How many times the field has been read so far.
+  return { input, reads: () => reads };
+}
+
+/** An input that contains itself, beside any fields given. JSON cannot write it out. */
+function selfContaining(fields: Record<string, unknown> = {}): Record<string, unknown> {
+  const input: Record<string, unknown> = { id: "INV-1008", ...fields };
+  input["self"] = input;
+  return input;
 }
 
 describe("C5: the code behind an operation is reached only through the checklist", () => {
