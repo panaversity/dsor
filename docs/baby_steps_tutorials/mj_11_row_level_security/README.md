@@ -81,7 +81,11 @@ locked when the power fails: no company set, no rows.
 **Outcome.** What is true when this step is done:
 
 1. Every table with a company column has row-level security enabled and forced, and a
-   policy. A new table without them fails a test.
+   policy. A new table without them fails a test. *Changed by the Stage 2 review,
+   2026-10-01:* and the other ways around the policies that this step knows are closed.
+   In any schema but PostgreSQL's own, there is no view that reads with its owner's
+   rights, no materialized view, no foreign table, and no `SECURITY DEFINER` function
+   that `dsor_runtime` may run (decision 1).
 2. As `dsor_runtime`, a query that forgets the company returns only the active company's
    rows. Step 10's break U1 becomes harmless.
 3. With no company set, every query on those tables returns no rows.
@@ -109,7 +113,7 @@ business table yet (see decision 9). Reading the log as an auditor (DSOR-AUD-05b
 or a company left on a connection. It does not stop a program that holds
 `dsor_runtime`'s login and means harm. Such a program can set any company it likes, and
 then read that company's rows. §36 says so: "RLS is defense in depth. It does not replace
-DSoR authorization." Two more limits:
+DSoR authorization." More limits:
 
 - `neondb_owner` holds `BYPASSRLS`, so it sees every row whatever this step does. Nothing
   inside a table can stop such a role. The program never runs as it: step 09's start-up
@@ -118,6 +122,13 @@ DSoR authorization." Two more limits:
   value, the call's company. So the write policy cannot catch the program filing a
   record under the wrong company. It catches a company that is missing, or left over
   from another request.
+- *Changed by the Stage 2 review, 2026-10-01:* the same holds for a read. The store sets
+  the company the operation's code asks it for. So code that asks for another company
+  passes both locks, because DSoR's `WHERE` and the policy filter by that same company.
+  Step 10's decisions 13 and 14, carried here, narrow this: the code gets a store bound
+  to the active company, and an answer whose `tenant_id` is another company's fails. Code
+  that makes a store of its own and removes or rewrites that `tenant_id` still passes.
+  Step 12's suite is the review's third layer for it.
 
 ### What the specification asks, and what this step can honestly give
 
@@ -145,12 +156,12 @@ Checked on 2026-09-29:
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-RP-01b | **C1.** Every tenant table uses `FORCE ROW LEVEL SECURITY` | A catalog query finds every table outside PostgreSQL's own schemas with a `tenant_id` or `tenant` column, and each one has row-level security enabled and forced, and at least one policy |
+| DSOR-RP-01b | **C1.** Every tenant table uses `FORCE ROW LEVEL SECURITY` | A catalog query finds every table outside PostgreSQL's own schemas with a `tenant_id` or `tenant` column, and each one has row-level security enabled and forced, and at least one policy. *Changed by the Stage 2 review, 2026-10-01:* PostgreSQL's own schemas are `information_schema` and every name that starts with `pg_`, found with a regular expression. Two more catalog queries: no view without `security_invoker=true`, no materialized view, and no foreign table, and no `SECURITY DEFINER` function that `dsor_runtime` may run, outside those schemas (decision 1) |
 | DSOR-TEN-01b | **C2.** The store keeps companies apart when DSoR's query forgets to | As `dsor_runtime`, inside `org_456`, SQL with no company returns only `org_456`'s rows, and inside `org_789` only `org_789`'s |
 | DSOR-RP-01d | **C3.** No company set, no rows | A fresh connection, and a reused one, with no company set: no invoice rows and no audit rows |
 | DSOR-RP-01c | **C4.** The company lasts one transaction | A pool of one connection: after a request for `org_456` ends, the next request, which sets nothing, reads nothing |
 | DSOR-TEN-02a, the audit part | **C5.** The log is kept apart by company | `dsor_runtime` in `org_456` cannot write a record for `org_789` and cannot read one. A record with no company is written when no company is set, and `dsor_runtime` cannot read it back |
-| DSOR-RP-01a | **C6.** `dsor_runtime` holds no power that skips the policies | Step 09's checks: not a superuser, no `BYPASSRLS`, owns no table. And it belongs to no role, so `SET ROLE` cannot reach one that has such a power |
+| DSOR-RP-01a | **C6.** `dsor_runtime` holds no power that skips the policies | Step 09's checks: not a superuser, no `BYPASSRLS`, owns no table. And it belongs to no role, so `SET ROLE` cannot reach one that has such a power. *Changed by the Stage 2 review, 2026-10-01:* the program started as the owner must name both facts it reads from the database for this, `holds BYPASSRLS` and the role membership (decision 7) |
 
 ### Decisions the specification leaves to us
 
@@ -165,6 +176,31 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    now needs `BYPASSRLS`: an owner without it would read no row, and a migration's
    `UPDATE` would change no row, with no error. Neon's `neondb_owner` holds it, and the
    owner's test programs check that first (found by the review).
+
+   *Changed by the Stage 2 review, 2026-10-01:* a table is not the only way to reach a
+   row, so the rule widens to the other relations and to functions. A **view** is a
+   saved query that looks like a table. It reads with its owner's rights, unless it is
+   made `WITH (security_invoker = true)`. The owner holds `BYPASSRLS`, so such a view sees
+   every company's rows. A **materialized view** is a stored copy of a query's rows, and
+   no policy filters the copy. A **`SECURITY DEFINER` function** runs with the rights of
+   the role that owns it, so the owner's `BYPASSRLS` comes with it. On a local
+   PostgreSQL, the review made each of these three as the owner, and each showed both
+   companies' rows from inside `org_456`. A hostile pass on the fix added a fourth: a
+   **foreign table** reads a table through a connection of its own, and can carry no
+   policy. None of the four exists on Neon. Now, in any schema but PostgreSQL's own,
+   there must be no view without `security_invoker=true`, no materialized view, no
+   foreign table, and no `SECURITY DEFINER` function that `dsor_runtime` may run. Three
+   catalog tests check it: one for tables, one for the other relations, one for
+   functions. And PostgreSQL's own schemas were found with `NOT LIKE 'pg_%'`. In `LIKE`,
+   `_` matches any one character, so a schema named `pgcrm` was skipped. Now they are
+   `information_schema` and every name that matches the regular expression `^pg_`.
+   *Downside:* a view that DSoR wants one day, such as the "controlled views" §36 lists,
+   must be made with `security_invoker = true`, written exactly that way. A definer
+   function must have its `EXECUTE` taken from `dsor_runtime`, or the tests fail. And
+   that is not enough for a definer function that runs as a **trigger**, a function
+   PostgreSQL runs by itself when a row changes. `EXECUTE` is checked when the trigger is
+   made, not when it runs, so it runs for whoever changes the row. No test looks for
+   triggers yet ("Think it through").
 2. **The company is read as `nullif(current_setting('dsor.tenant_id', true), '')`.** On
    a fresh connection an unset value is `NULL`. On a connection that has held a
    transaction-local value, it is `''` after that transaction ends. This was run on a
@@ -208,6 +244,21 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    `GRANT neondb_owner TO dsor_runtime`, every one of those checks stayed green, and
    `SET ROLE neondb_owner` then skipped every policy. *Downside:* a deployment that wants
    `dsor_runtime` in a harmless group role must change the check.
+
+   *Changed by the Stage 2 review, 2026-10-01:* two corrections. First, the history above
+   is wrong on Neon. `pg_has_role(…, 'pg_write_all_data', 'MEMBER')` follows a chain of
+   memberships, and the program started as the owner names `is a member of
+   pg_write_all_data` (run on 2026-10-01). So a `dsor_runtime` that belonged to
+   `neondb_owner` would have failed that check too. The `GRANT` was not run again,
+   because it changes the database. Refusing every membership is still right: `SET ROLE`
+   can switch to any role a login belongs to, with that role's powers. Second, the two
+   facts this check reads from the database for row-level security, `BYPASSRLS` and the
+   number of roles a login belongs to, were proven only with hand-made facts. With the
+   SQL in `runtimeRoleProblems` changed to read `false` and `0`, every test passed. Now
+   the test that starts the program as the owner requires both problems, word for word
+   as `problemsOf` says them: `holds BYPASSRLS`, and `belongs to … other role…, which
+   SET ROLE can switch to`. On Neon, the owner holds `BYPASSRLS` and belongs to two
+   roles, `neon_superuser` among them, so both must appear.
 8. **The pooling test uses the program's own pool, `pg.Pool`, with one connection.**
    That is deterministic. Neon's pooled address, which hands a connection to another
    program after each transaction, is shown in "Break it" by `test/pooler-demo.ts`, run
@@ -223,6 +274,21 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    invoice gave an error instead. There is only one business table yet, so this step
    writes the rule and tests nothing for it. *Downside:* a rule with no test waits for the
    step that adds a second table.
+10. **A transaction counts only when it really committed.** *Changed by the Stage 2
+    review, 2026-10-01:* `inCompany` sent `COMMIT` and took any answer as success. But
+    when a statement inside a transaction fails, PostgreSQL aborts the whole transaction.
+    A `COMMIT` sent after that raises no error. PostgreSQL rolls the work back and answers
+    with the word `ROLLBACK`. So work that caught its own failed statement looked kept,
+    and nothing was. And when the review changed `await client.query("COMMIT")` to
+    `client.query("COMMIT").catch(() => {})`, a `COMMIT` that nobody waits for or checks,
+    all 574 unit tests and 60 database tests passed. A record whose `COMMIT` failed would
+    then still let the answer out, which DSOR-EXE-03b forbids. Now `inCompany` reads the
+    answer to its `COMMIT`. Anything but `COMMIT` throws "the transaction was rolled
+    back", so the work takes the error path: the connection is closed, and the error goes
+    back to the code that called `inCompany`. A call whose record was not kept then
+    answers `EVIDENCE_STORE_UNAVAILABLE`, and a read whose transaction rolled back fails
+    with `INTERNAL_ERROR`. *Downside:* the error says only that the transaction was rolled
+    back. Which statement failed is lost, because the work swallowed it.
 
 ### The tests, by claim
 
@@ -231,7 +297,17 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   company column and no policy fails it. And every policy is exactly as written: its
   command, its roles, and its rule, as PostgreSQL prints them, the way step 09 lists every
   privilege. Found by the review: a policy limited to `SELECT`, or given to one role
-  only, passed every test.
+  only, passed every test. *Changed by the Stage 2 review, 2026-10-01:* the catalog
+  holds no view without `security_invoker=true`, no materialized view, no foreign table,
+  and no `SECURITY DEFINER` function that `dsor_runtime` may run, outside PostgreSQL's
+  own schemas. Each filter is also tested on planted rows that PostgreSQL reads inside
+  one query, so nothing is created in the database. The schema filter checks `pgcrm` and
+  skips `pg_catalog`, `pg_toast`, and `information_schema`. The relation filter finds a
+  view without `security_invoker=true`, a materialized view, and a foreign table. The
+  function filter finds a definer function that `dsor_runtime` may run. A last test pins
+  real catalog rows, column by column, so the guards' empty answers come from the real
+  catalog. Whether a function runs as its definer cannot be pinned that way: no function
+  in the database does today. That part was checked by reading.
 - **C2:** as `dsor_runtime`, inside `org_456`, `SELECT tenant_id, id FROM app.invoices
   WHERE id = 'INV-1008'` gives exactly `org_456`'s row. Inside `org_789`, exactly
   `org_789`'s. `SELECT DISTINCT tenant_id FROM app.invoices` inside `org_456` gives
@@ -254,7 +330,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   connection, a call with no login right after a call in `org_456` is still recorded: it
   answers `AUTHENTICATION_REQUIRED`, not `EVIDENCE_STORE_UNAVAILABLE`.
 - **C6:** step 09's role checks, now titled DSOR-RP-01a, and one more: `dsor_runtime`
-  belongs to no role. The start-up check refuses a login that belongs to one.
+  belongs to no role. The start-up check refuses a login that belongs to one. *Changed
+  by the Stage 2 review, 2026-10-01:* the program started as the owner names `holds
+  BYPASSRLS` and `belongs to … other role…, which SET ROLE can switch to`, read from the
+  real database.
 - **The program as a whole:** every step 10 test still passes, now through the
   transactions of decision 3, with three changes. A test that reads `dsor.audit` as
   `dsor_runtime` reads inside the record's company, because without one an empty answer
@@ -263,6 +342,15 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   DSOR-EXE-03b tests gain a case: a log whose `INSERT` fails inside its transaction. The
   two older cases fail before the transaction begins. Found by the review: with the error
   swallowed inside `inCompany`, the caller got the invoice and no record was kept.
+- **Decision 10**, *changed by the Stage 2 review, 2026-10-01:* work that writes a record
+  of `org_456`, then catches a failed statement of its own, makes `inCompany` reject with
+  "the transaction was rolled back", and the record is not kept. A log whose `COMMIT`
+  fails gives the caller `EVIDENCE_STORE_UNAVAILABLE` and leaves no record. That `COMMIT`
+  fails by **fault injection**, an error planted on purpose (§47). The test wraps the
+  real client, so every statement reaches the real database, except the first `COMMIT`:
+  it never leaves the client, which hears that it failed. The record stays in the open
+  transaction until `inCompany`'s own `ROLLBACK` takes it away, and the test counts that
+  the fault fired exactly once.
 
 ### Breaks we will try, and what we expect
 
@@ -314,19 +402,29 @@ itself, this way:
 | --- | --- |
 | `migrations/004_invoices_row_level_security.sql` | **New.** `app.invoices`: row-level security enabled and forced, and the policy `tenant_isolation` |
 | `migrations/005_audit_row_level_security.sql` | **New.** `dsor.audit`: enabled and forced, `audit_write` for `INSERT` and `audit_read` for `SELECT` (decision 4) |
-| `src/postgres.ts` | `inCompany` runs the work in one transaction that sets the company first, `''` when there is none (decision 3). The invoice read and the record's `INSERT` go through it. The database log reads one company: `records(tenant)`. The start-up check also refuses a login that belongs to any role (decision 7) |
+| `src/postgres.ts` | `inCompany` runs the work in one transaction that sets the company first, `''` when there is none (decision 3). The invoice read and the record's `INSERT` go through it. The database log reads one company: `records(tenant)`. The start-up check also refuses a login that belongs to any role (decision 7). Since the Stage 2 review, `inCompany` reads the answer to its `COMMIT`, and anything but `COMMIT` is an error (decision 10) |
 | `src/log.ts` | `DecisionLog` is only `add`. The memory log is a `MemoryLog`, which keeps `records()` (decision 6) |
 | `src/main.ts` | The log is read for `org_456` and `org_789`, merged by number. The last line says how many records it read, and how many it knows were written |
-| `test/rls.db.test.ts` | **New.** C1 to C5 |
-| `test/owner-reads.ts` | **New.** A child program that reads records as the owner, for the tests of records with no company |
+| `test/rls.db.test.ts` | **New.** C1 to C5. Since the Stage 2 review: the catalog guards for views, materialized views, and definer functions, each filter tested on planted rows, and decision 10's test |
+| `test/owner-reads.ts` | **New.** A child program that reads records as the owner, for the tests of records with no company. Since the Stage 2 review, it gives each record's size in bytes too |
 | `test/owner-store.ts` | **New, after the review.** A child program that runs DSoR's store as the owner, whom no policy stops, so DSoR's own `WHERE` is tested alone |
 | `test/runtime-role.test.ts` | The start-up check refuses a role membership |
 | `test/pooler-demo.ts` | **New, after the review.** Not a test: a demonstration of Neon's pooler, run by hand (decision 8) |
 | `test/db.ts` | `rowsFor` and `tryThenRollBack` take a company. `ownerRowsFor` and `poolOfOne` are new |
-| other database tests | They read `dsor.audit` inside the record's company, or through the owner. The program's log shows 9 lines. Step 09's role test is DSOR-RP-01a |
-| `test/helpers.ts`, `test/decision-log.test.ts` | The memory log's type, and two stand-in logs that no longer need `records` |
+| other database tests | They read `dsor.audit` inside the record's company, or through the owner. The program's log shows 9 lines. Step 09's role test is DSOR-RP-01a. Since the Stage 2 review: a log whose `COMMIT` fails, in `test/audit.db.test.ts`, and the owner refused for `BYPASSRLS` and its roles, in `test/program.db.test.ts` |
+| `test/helpers.ts`, `test/decision-log.test.ts`, `test/tenants.test.ts` | The memory log's type, and the stand-in logs that no longer need `records`: two, and a third since the Stage 2 review |
 
 Every other file is step 10's, without its `NEW IN STEP` markers. No new dependency.
+
+*Changed by the Stage 2 review, 2026-10-01:* that review fixed three findings in step 10,
+and this folder carries them too. Line ① makes the one copy of the input (step 07's
+decision 9). A company id has 1 to 18 digits, and migration `003b_bounded_claims.sql`
+makes the log refuse a large claim (step 10's decision 12). The operation's code gets only
+the active company's invoices, from `src/company.ts`, and its answer must hold no other
+company's row (step 10's decisions 13 and 14). Both folders hold these, so the commands
+below do not show them. Two kinds of change in this folder do show: step 10's new
+database tests read `dsor.audit` inside a company or through the owner, and decisions 1,
+7, and 10 bring this step's own fixes.
 
 To see every line, from `docs/baby_steps_tutorials`:
 
@@ -342,7 +440,7 @@ Set up Neon first ("Before you build" above). Then, in this folder:
 
 ```bash
 pnpm install
-pnpm migrate      # runs only the migrations that have not run yet: 004 and 005
+pnpm migrate      # runs only the migrations that have not run yet: 004 and 005, and 003b
 pnpm check        # typecheck and the unit tests: no database needed
 pnpm test:db      # the database tests, against the branch in .env
 pnpm start        # the program, against the same branch
@@ -359,10 +457,20 @@ dsor_runtime: password set again from DSOR_DB_URL
 migration 005_audit_row_level_security: done
 ```
 
-On your own branch made from `step-10`, one `pnpm migrate` prints both lines at once.
-`pnpm check` prints `577 passed`, and `pnpm test:db` prints `61 passed`. Outside the
+And on 2026-10-01, after the Stage 2 review, `003b`, which that review added in step 10.
+It ran although `004` and `005` had run already, because the runner runs every file it
+has not run yet, in name order:
+
+```text
+dsor_runtime: password set again from DSOR_DB_URL
+migration 003b_bounded_claims: done
+```
+
+On your own branch made from `step-10`, one `pnpm migrate` prints a line for each file
+that branch has not run: `004` and `005`, with `003b` first if your step 10 did not run
+it. `pnpm check` prints `629 passed`, and `pnpm test:db` prints `75 passed`. Outside the
 repository, three tests that compare the schemas with the repository's originals are
-skipped: `574 passed | 3 skipped`.
+skipped: `626 passed | 3 skipped`.
 
 The new part of `pnpm start`, the log. The numbers come from the database:
 
@@ -467,6 +575,32 @@ these five calls work again, and only the pool tests catch V1.
 **V7, as predicted, and more often.** Only a connection that has held a company reads
 the unset setting as `''`. The pool test builds that case on purpose. The other five
 tests met it by chance, because a pool reuses its connections all the time.
+
+*Changed by the Stage 2 review, 2026-10-01:* that paragraph is true of the code before
+the review. Since the review, a call with no company sets `''` itself (decision 3). So
+without `nullif`, every record with no company that the program writes is refused, on a
+fresh connection too, and far more than six tests would fail. This was checked by
+reading the code. V7 was not run again: it changes the policies, and the database is
+never changed to make a test fail.
+
+**The Stage 2 review's break, run on 2026-10-01.** In `inCompany`, replace the two lines
+that send `COMMIT` and read its answer with a `COMMIT` that nobody waits for:
+`client.query("COMMIT").catch(() => {});`. Then:
+
+```text
+$ pnpm test
+      Tests  629 passed (629)
+
+$ pnpm test:db
+    × step 11's decision 10: work that swallows its own failed statement makes inCompany reject, and nothing is kept
+    × DSOR-EXE-03b: a log whose COMMIT fails gives no invoice, and no record
+      Tests  2 failed | 73 passed (75)
+```
+
+Before that review, this break passed every test. The unit tests never meet the database,
+so they stay green. The two tests of decision 10 fail: the work that swallowed its
+failure looked kept, and the log's caller got the invoice although its record's `COMMIT`
+had failed. Put the lines back, and both pass.
 
 **Neon's pooled address, shown by hand (decision 8).** `test/pooler-demo.ts` connects
 six separate programs, one after another, to the pooled address of the branch in `.env`,
@@ -599,7 +733,9 @@ and the code, and one changed the code in small ways to find changes no test cat
 - **A role membership skipped every check.** After `GRANT neondb_owner TO dsor_runtime`,
   every check of step 09 stayed green, and `SET ROLE neondb_owner` then skipped every
   policy. The start-up check and the DSOR-RP-01a test now refuse any role membership
-  (decision 7).
+  (decision 7). *Changed by the Stage 2 review, 2026-10-01:* "every check stayed green"
+  is wrong on Neon: the check for `pg_write_all_data` would have failed. Refusing every
+  membership is still right (decision 7).
 - **A call with no company set nothing.** It then ran with whatever company the
   connection still carried, behind a shared pooler even another program's. Now it sets
   `''` (decision 3). The cost: break V1 is caught only by the pool tests now.
@@ -631,14 +767,143 @@ test. On the fixed code:
 dropping or adding a policy, a function in `app` or `public`, and the audit table's
 number sequence. A temporary view, and a temporary `SECURITY DEFINER` function, both saw
 no rows with no company. Two companies in one setting, or a company with SQL in it, saw
-nothing. Other sessions' queries are hidden. Setting another company, and writing a record
-there, worked, as "What this lock does not stop" says.
+nothing. Setting another company, and writing a record there, worked, as "What this lock
+does not stop" says. *Changed by the Stage 2 review, 2026-10-01:* this paragraph also said
+that other sessions' queries are hidden. On Neon they are not. One `dsor_runtime` session
+can read the text of another session's query in `pg_stat_activity`, PostgreSQL's list of
+sessions. Today that text holds only placeholders such as `$1`, never the values sent with
+them.
+
+**Found by the Stage 2 review (2026-10-01), and fixed.** Six reviewers audited steps 10
+to 14 and the seams between them (`../mj_notes.md`). They found no live leak. Three of
+their findings began in earlier steps, one in step 07 and two in step 10, and this
+folder carries the fixes. Three began here.
+
+- **A check and the code could see two different inputs.** Fixed from step 07 on. Lines
+  ① and ② read the input itself, to check the principals and the companies it names.
+  Line ⑥ then made its own copy, for the schema check and for the code. A getter, a
+  field that runs code each time it is read, can answer the second read differently. In
+  the red run here, the code was handed `principal: "cfo_100"` after line ① saw the
+  caller, and `tenant_id: "org_789"` after line ② saw `org_456`.
+  - **Fixed:** line ① makes the one copy, right after it finds who is calling. Every
+    check and the code read that copy (step 07's decision 9). An input that JSON cannot
+    copy is still refused with `VALIDATION_FAILED`, at the end of line ②, once the
+    principals and the companies it names are checked.
+  - **Caught by** step 10's tests, the same here, in `test/pipeline.test.ts` and
+    `test/who-is-calling.test.ts`. Eight of them failed in the red run.
+- **A company id had no length, and the log kept a claim of any size.** Fixed from step
+  10 on. In step 14, an envelope naming `org_` and a million digits got a refusal of 212
+  bytes, and left a record of 1,000,433 bytes that `dsor_runtime` can never remove. In
+  the red run here, 19 digits and a million digits were refused as
+  `AUTHORIZATION_DENIED`, and the record kept the claim. `parseUri` took a company of 19
+  digits. As `dsor_runtime`, an `extensions` of 2 KB went in, in a transaction that was
+  rolled back.
+  - **Fixed:** a tenant id has 1 to 18 digits, and migration `003b` makes the log refuse
+    an `extensions` over 1,024 bytes (step 10's decision 12). It ran on the branch
+    `step-11` on 2026-10-01. With it run and the code not yet changed, the million-digit
+    call already failed closed: `EVIDENCE_STORE_UNAVAILABLE`, and no record. The
+    database test of that call was first run only then, so the red run left no record
+    of a megabyte.
+  - **Caught by** the 19-digit and million-digit cases, and the tests titled `step 10's
+    decision 12: …`, in `test/tenants.test.ts`, `test/uri.test.ts`, and
+    `test/tenants.db.test.ts`. Here a record with no company can be read only by the
+    owner, so that test reads it through `test/owner-reads.ts`, which now gives each
+    record's size too.
+- **The code could name another company, and both locks trusted it.** Fixed from step 10
+  on. The high finding. The operation's code named the company at each read, and the
+  store set that company for the policy too. So the database's lock filtered by the
+  company the code asked for, not the one line ② checked ("What this lock does not
+  stop"). In the red run here, the code was handed a bare company id. And with
+  row-level security on, code that made a store of its own read `org_789`'s `INV-2001`
+  for a caller in `org_456`. That store set `org_789` for its own read, so the policy
+  showed `org_789`'s row, and the caller got `VENDOR-77`.
+  - **Fixed, in two layers:** the code gets `companyOf(store, tenant)`, the active
+    company's invoices only, and each read runs inside that company's transaction (step
+    10's decision 13). Every `tenant_id` in its answer must be the active company's, or
+    the call fails with `INTERNAL_ERROR` (step 10's decision 14). The third layer, in
+    the review's plan, is step 12's suite.
+  - **Caught by** C8, in `test/company.test.ts`, `test/tenants.test.ts`, and
+    `test/tenants.db.test.ts`. The database tests pass with row-level security on: the
+    one record they read is read inside `org_456`.
+- **A transaction counted as kept when it was not.** Fixed from step 11 on. With `await
+  client.query("COMMIT")` changed to `client.query("COMMIT").catch(() => {})`, every
+  test passed. And work that catches its own failed statement leaves a transaction that
+  PostgreSQL has aborted. Its `COMMIT` answers `ROLLBACK`, with no error, and `inCompany`
+  returned success. In the red run here: "promise resolved 'done' instead of rejecting".
+  - **Fixed:** `inCompany` reads the answer to its `COMMIT`. Anything but `COMMIT` is the
+    error "the transaction was rolled back" (decision 10).
+  - **Caught by** `step 11's decision 10: work that swallows its own failed statement
+    makes inCompany reject, and nothing is kept`, in `test/rls.db.test.ts`, and
+    `DSOR-EXE-03b: a log whose COMMIT fails gives no invoice, and no record`, in
+    `test/audit.db.test.ts`, by fault injection around the real client.
+  - **Broken on purpose:** with the `COMMIT` not awaited, both fail. The log's caller
+    gets the invoice instead of `EVIDENCE_STORE_UNAVAILABLE` ("Break it").
+  - **A hostile pass on the fix** found that the second test never showed its fault
+    fired: any failed `INSERT` would also pass it. Its first `COMMIT` now never leaves
+    the client, the test counts that the fault fired once, and `inCompany`'s own
+    `ROLLBACK` must take the record away. So the break "`COMMIT` instead of `ROLLBACK`
+    after an error", left open here before, now fails it: the record was kept.
+- **The start-up check's database facts were proven only with hand-made facts.** Fixed
+  from step 11 on. With the SQL in `runtimeRoleProblems` changed to read `rolbypassrls`
+  as `false` and the count of roles as `0`, every test passed. Run again here, the
+  owner's test passed too.
+  - **Fixed:** the test that starts the program as the owner requires `holds BYPASSRLS`
+    and `belongs to … other role…, which SET ROLE can switch to`, as `problemsOf` says
+    them (decision 7).
+  - **Caught by** `DSOR-AUD-04a: refuses to run as the owner, names why, and makes no
+    call`, in `test/program.db.test.ts`. With that change to the SQL, it fails at `holds
+    BYPASSRLS`. With only the count read as `0`, it fails at the membership.
+- **The catalog guard missed a kind of schema name, and every view and function.**
+  Fixed from step 11 on. It skipped schemas with `NOT LIKE 'pg_%'`, so `pgcrm` was
+  skipped. And it looked at tables only. On a local PostgreSQL, the review made a view, a
+  materialized view, and a `SECURITY DEFINER` function as the owner, and each showed
+  both companies' rows from inside `org_456`. None exists on Neon.
+  - **Fixed:** decision 1 widens to views, materialized views, foreign tables, and
+    definer functions, with three guards.
+  - **Caught by** the C1 tests in `test/rls.db.test.ts`. The database is never changed
+    to make a test fail, so each filter is shown red on planted rows that PostgreSQL
+    reads inside one query. In the red run, the old schema filter dropped `pgcrm` from
+    all three planted lists. Four more breaks of the filters were each caught: the view
+    filter leaving out materialized views, or checking only views with no options at
+    all, and the function filter ignoring who may run a function, or whether it is a
+    definer. The guards on the real catalog pass, because Neon holds none of these today.
+    No function in the database runs as its definer at all. That the guards would fail
+    on a real one was checked by reading, never by making one.
+  - **A hostile pass on the fix** found three more gaps. A foreign table carries no
+    policy and was not looked for: the relation filter now finds it, red on a planted row
+    first. The test of the real catalog read too few columns, so a source with a
+    constant schema name, or with every view's options set to `security_invoker=true`,
+    passed it: it now pins those columns, and both of those breaks fail it. And a
+    definer function that runs as a trigger is left open (below).
+- **Sentences that said more than the code.** Other sessions' queries are not hidden on
+  Neon (above). Break V7 is no longer caught by one test only ("Break it", and the
+  comment in `test/rls.db.test.ts`). Decision 7's story of a role membership is wrong on
+  Neon. A comment in `test/program.db.test.ts` called itself the only test that touches
+  the owner's key. And "the start-up check refuses each" was proven with hand-made facts
+  only. For `BYPASSRLS` and role membership it is now proven on the real database too
+  (the rules table).
 
 **Left open on purpose:**
 
-- **`COMMIT` instead of `ROLLBACK` after an error** passes every test. Each transaction
-  holds one statement, so there is nothing to roll back yet. A test waits for the first
-  transaction with two.
+- **A definer function that runs as a trigger.** `EXECUTE` is checked when a trigger is
+  made, not when it runs, so taking `EXECUTE` from `dsor_runtime` does not stop it. No
+  test looks for triggers on the tenant tables. Found by a hostile pass on the Stage 2
+  review's fix. The database holds no definer function today.
+- **The start-up check's other two facts from the database.** With `owns` read as `0` in
+  `runtimeRoleProblems`, no test would fail, and the same holds for the membership of
+  `pg_write_all_data`. The owner's refusal prints both, `owns 14 tables` and `is a member
+  of pg_write_all_data`, and no test asks for them. This began in step 09, so its fix
+  belongs there first. Checked by reading, and found by a hostile pass on the Stage 2
+  review's fix.
+- **The third layer**, carried from step 10. An answer whose `tenant_id` was rewritten
+  to the caller's company, or removed, passes step 10's decision 14, and so does another
+  company's name in a `tenant` field, a URI, or a sentence. The Stage 2 review's plan
+  closes it in step 12's suite, which is to look for the other company's data itself.
+- **A refusal the operation's code throws is not checked**, carried from step 10. Its
+  message could name another company's data. The review's plan has step 12's suite check
+  an operation's own "not found".
+- **`reason` has no size limit in the database**, carried from step 10. Only
+  `extensions` has a limit of its own (step 10's decision 12).
 - **The program's filter for its own records** could let other runs' records in, and no
   test sees it, because nothing else writes while the program test runs. It changes only
   what the program prints.
@@ -659,16 +924,18 @@ there, worked, as "What this lock does not stop" says.
 - **`dsor.principal_id`**, which §36's example also sets, waits until something reads it.
 - **Decision 9's rule for joins and foreign keys** waits for a second business table.
 - **Neon's pooler is shown, not tested** (decision 8).
-- **`src/postgres.ts` is 268 lines,** far past the 150 at which a file wants splitting.
-  Splitting it is a step of its own.
+- **`src/postgres.ts` is 273 lines,** far past the 150 at which a file wants splitting.
+  It was 268 before the Stage 2 review, whose decision 10 added 5. And `src/pipeline.ts`
+  is 228 lines and `src/registry.ts` 161, since that review's fixes from step 10.
+  Splitting them is a step of its own.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
 | DSOR-TEN-01b | Tenant isolation is enforced in at least two independent layers | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/rls.db.test.ts` (C2): the database's lock alone, with SQL that leaves the company out, and DSoR's lock alone, with the store run by the owner, whom no policy stops. And (C1) every policy exactly as written |
-| DSOR-RP-01a | `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, and owns no tenant table | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/audit.db.test.ts` (the role's facts, and no role membership), `test/runtime-role.test.ts` (the start-up check refuses each) |
-| DSOR-RP-01b | Tenant tables use `FORCE ROW LEVEL SECURITY` | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C1): every table with a company column, found in the catalog |
+| DSOR-RP-01a | `dsor_runtime` is not a superuser, does not hold `BYPASSRLS`, and owns no tenant table | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/audit.db.test.ts` (the role's facts, and no role membership), `test/runtime-role.test.ts` (the start-up check refuses each, from hand-made facts). Since the Stage 2 review, `test/program.db.test.ts` too: the program started as the owner is refused for holding `BYPASSRLS` and for its role membership, facts read from the real database |
+| DSOR-RP-01b | Tenant tables use `FORCE ROW LEVEL SECURITY` | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C1): every table with a company column, found in the catalog. Since the Stage 2 review, the catalog holds no view, materialized view, foreign table, or definer function that goes around the policies, and each filter is tested on planted rows. Those guards keep decision 1, which reaches past this rule's tables |
 | DSOR-RP-01c | The tenant setting is transaction-local | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C4): a pool of one connection, through the program's own store and log |
 | DSOR-RP-01d | A query with no tenant setting yields no rows | [§36 PostgreSQL reference connector](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | `test/rls.db.test.ts` (C3): a fresh connection, and one that has just held `org_456`, for both tables |
 

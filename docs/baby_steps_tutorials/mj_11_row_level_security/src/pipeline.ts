@@ -1,8 +1,9 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
 import { randomUUID } from "node:crypto";
+import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
-import { checkInput } from "./inputs.ts";
+import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { decisionOf, type DecisionLog } from "./log.ts";
 import { checkPermission } from "./permissions.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
@@ -67,7 +68,7 @@ export async function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
-    const caller = line(1, () => {
+    const { caller, copy } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
@@ -75,12 +76,18 @@ export async function call(
       correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
       const found = whoIsCalling(request);
       correlation = { ...correlation, ...callerIds(found) };
-      checkNamedPrincipals(input, found);
+      // One copy of the input, made here, once, after the login is found. Every check from
+      // here on, and the operation's code, reads this copy. So no check can see a value that
+      // the code does not get. Only an input that cannot be copied is read again, to check
+      // the claims it makes before line ② refuses it (step 07's README, decision 9). Found
+      // by the Stage 2 review, and fixed from step 07 on.
+      const copy = jsonCopy(input);
+      checkNamedPrincipals(copy === NOT_JSON ? input : copy, found);
       checkRequestId(request);
       // And nothing in the envelope that DSoR does not read (step 10's
       // README, decision 11).
       checkEnvelopeFields(request);
-      return found;
+      return { caller: found, copy };
     });
 
     // ② Resolve tenant. The company comes from the envelope, and DSoR checks
@@ -94,7 +101,10 @@ export async function call(
       if (isTenantId(named)) claimedTenant = named;
       const active = activeTenant(named, caller);
       tenantOfRecord = active;
-      checkNamedTenants(input, active);
+      // Line ①'s copy, never the input again (step 07's README, decision 9). Found by the
+      // Stage 2 review, and fixed from step 07 on.
+      if (copy === NOT_JSON) refuseUncopyable(name, input, active);
+      checkNamedTenants(copy, active);
       return active;
     });
 
@@ -115,15 +125,15 @@ export async function call(
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
     //   computing its payload hash: not built yet, step 29.
-    //   From here on, only the copy that line ⑥ checked is used (step 07's README,
-    //   decision 9).
-    const checked = line(6, () => checkInput(name, registry.inputs, input));
+    //   It checks line ①'s copy, the one the code gets (step 07's README, decision 9).
+    //   Found by the Stage 2 review, and fixed from step 07 on.
+    line(6, () => checkInput(name, registry.inputs, copy));
 
     // Ours, not §21's: every URI in the checked input must name the active
-    // company (DSOR-SRC-02b). After ⑥, so it reads the checked copy, and before "is it
-    // built", so a foreign URI is never answered as "not built yet" (step 10's README,
-    // decision 4).
-    checkUrisInTenant(checked, tenant);
+    // company (DSOR-SRC-02b). After ⑥, so it reads the copy that line ⑥ checked, and before
+    // "is it built", so a foreign URI is never answered as "not built yet" (step 10's
+    // README, decision 4).
+    checkUrisInTenant(copy, tenant);
 
     // Ours, not §21's: is it built? Never before ⑤, so "not allowed" is never answered as
     // "not built yet" (step 06's README, C5), and never before ⑥ (step 07's README,
@@ -143,11 +153,21 @@ export async function call(
     //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
     // The code may read the database, so call waits for it. A refusal it
     // throws while waiting is caught below, like any other.
-    const data = await line(9, () => {
+    const returned = await line(9, () => {
       reachedCode = true;
-      // The code works inside the active company only.
-      return handler(checked, tenant);
+      // The code works inside the active company only. It gets line ①'s copy, the one
+      // every check read (step 07's README, decision 9). Found by the Stage 2 review, and
+      // fixed from step 07 on. And it gets that company's invoices, never the store
+      // itself, so it cannot name another company (step 10's README, decision 13). Found
+      // by the Stage 2 review, and fixed from step 10 on.
+      return handler(copy, companyOf(registry.invoices, tenant));
     });
+    // Ours, not §21's: every tenant_id in the code's answer must be the active company's.
+    // Right after ⑨, before anything else reads the answer. Another company's row is a bug
+    // in the code, so the call fails with INTERNAL_ERROR, and its record says ALLOW. The
+    // check reads DSoR's own copy of the answer, and the caller gets that copy (step 10's
+    // README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
+    const data = checkAnswerInTenant(returned, tenant);
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
 
@@ -191,4 +211,18 @@ export async function call(
   // ⑬ to ⑰ Write the intent record, execute, finalize, commit, and seal the evidence.
   //   Commands only. Not built yet: steps 21, 24, 33, 34, 36, 37, and 40.
   return answer;
+}
+
+/** Refuses an input that JSON cannot copy, after checking the claims it makes. */
+function refuseUncopyable(name: string, input: unknown, tenant: string): never {
+  // JSON can carry such an input: nesting that JSON.parse reads and JSON.stringify cannot
+  // write. Line ① checked the principals it names, and line ② checks the companies it
+  // names here, both on the input as sent. So an attempt to act as someone else, or inside
+  // another company, is refused as one, and never hidden behind a bad input. Step 05
+  // refused to let a bad request id hide it, for the same reason. The input is read here
+  // only to choose the refusal. The call is refused either way, so nothing read here can
+  // reach the code (step 07's README, decision 9). Found by the Stage 2 review, and fixed
+  // from step 07 on.
+  checkNamedTenants(input, tenant);
+  refuseInput(name, "it cannot be copied as JSON");
 }

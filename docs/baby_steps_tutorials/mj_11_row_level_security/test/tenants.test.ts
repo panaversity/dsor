@@ -1,13 +1,15 @@
 // Every request works inside exactly one company, by claim (C1 to C6 in
 // step 10's README). The unit tests read the invoices in memory. test/tenants.db.test.ts
 // asks the same of the database.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { Company } from "../src/company.ts";
 import { Refusal, type Answer } from "../src/envelope.ts";
 import { invoiceUri, invoices, memoryInvoices } from "../src/invoice.ts";
-import { createLog } from "../src/log.ts";
+import { createLog, type DecisionLog } from "../src/log.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { whoIsCalling } from "../src/principals.ts";
+import { buildRegistry, type Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { checkUrisInTenant } from "../src/tenants.ts";
 import {
@@ -28,14 +30,19 @@ import {
   THE_AGENT,
   THE_FIRM,
   THE_SUPERVISOR,
+  UNEXPECTED,
   USER_700,
   correlationFor,
   extraField,
+  handlers,
   log,
   notGranted,
   notValid,
   otherTenant,
   registry,
+  registryWith,
+  shipped,
+  shippedRoles,
   withoutRequestId,
   type Caller,
 } from "./helpers.ts";
@@ -80,11 +87,25 @@ describe("C1: each request works in exactly one company, which the caller belong
     ["the number 456", 456],
     ["a list that holds the id", ["org_456"]],
     ["null", null],
+    // An id has at most 18 digits (step 10's README, decision 12). Found by the Stage 2
+    // review, and fixed from step 10 on.
+    ["19 digits, one more than an id may have", `org_${"1".repeat(19)}`],
+    ["a million digits", `org_${"9".repeat(1_000_000)}`],
   ])("DSOR-IDN-03a: %s in the envelope is refused with VALIDATION_FAILED", async (_why, tenant) => {
     const request = tenant === undefined ? { token: "tok_7f3a" } : agentIn(tenant);
     expect(await call(registry, log, request, "invoice.get", { id: "INV-1008" })).toStrictEqual(
       refused("VALIDATION_FAILED", BAD_TENANT, THE_AGENT),
     );
+  });
+
+  // 18 digits is still an id, so it is refused as a company the caller is no member of. With
+  // the limit set one lower, this test fails (step 10's README, decision 12). Found by the
+  // Stage 2 review, and fixed from step 10 on.
+  it("DSOR-IDN-03a: a company of 18 digits is still an id, and the agent is no member of it", async () => {
+    const answer = await call(registry, log, agentIn(`org_${"1".repeat(18)}`), "invoice.get", {
+      id: "INV-1008",
+    });
+    expect(answer).toStrictEqual(refused("AUTHORIZATION_DENIED", NOT_A_MEMBER, THE_AGENT));
   });
 
   it("DSOR-IDN-03a: the agent asking to work in org_789, where it is no member, is denied", async () => {
@@ -313,9 +334,9 @@ describe("C4: a company in the arguments that is not the active one is refused",
     expect(() => checkUrisInTenant({ note: "dsor:notes" }, "org_456")).not.toThrow();
   });
 
-  // The URI check reads the copy line ⑥ checked, never the input again (step 07's README,
-  // decision 9). Found by the review: checking the input a second time passed every test.
-  // This input names org_789 the first time it is read, and org_456 after that.
+  // The URI check reads line ①'s copy, which line ⑥ checked, never the input again (step 07's
+  // README, decision 9). Found by the review: checking the input a second time passed every
+  // test. This input names org_789 the first time it is read, and org_456 after that.
   it("DSOR-SRC-02b: the URI check reads the copy line ⑥ checked, not the input again", async () => {
     let reads = 0;
     const input = {
@@ -439,6 +460,21 @@ describe("C6: every invoice and every record carries its company", () => {
     },
   );
 
+  // A company of a million digits was a well-formed id, so the record kept it whole: a record
+  // of 1,000,433 bytes that dsor_runtime can never remove. Threat T12 in §10.2, audit
+  // flooding (step 10's README, decision 12). Found by the Stage 2 review, and fixed from
+  // step 10 on.
+  it("step 10's decision 12: a company of a million digits leaves a small record, with no claim", async () => {
+    const fresh = createLog();
+    await call(registry, fresh, agentIn(`org_${"9".repeat(1_000_000)}`), "invoice.get", {
+      id: "INV-1008",
+    });
+    const [record] = await fresh.records();
+    expect(record).toMatchObject({ result: "VALIDATION_FAILED" });
+    expect(record).not.toHaveProperty("extensions");
+    expect(JSON.stringify(record).length).toBeLessThan(1024);
+  });
+
   // A malformed id is text the caller wrote, and could be anything, so it is not kept. A
   // refusal at line ①, or a call line ② let through, keeps no claim either.
   it.each([
@@ -466,5 +502,146 @@ describe("C6: every invoice and every record carries its company", () => {
     const [record] = await fresh.records();
     expect(record).toBeDefined();
     expect(record).not.toHaveProperty("tenant");
+  });
+});
+
+describe("C8: the code can reach only the active company, and its answer must belong to it", () => {
+  // The code was given the whole store and a bare company id, and named the company at each
+  // read. So the lock trusted the company the code asked for. Now it gets one company's
+  // store (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step
+  // 10 on.
+  it("DSOR-IDN-03b: the code is given only the active company: its id, and its invoices to read by id", async () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    await call(registryWith(spy), log, FIRM_IN_789, "test.run", { id: "INV-1008" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const company = spy.mock.calls[0]?.[1] as Company;
+    // Every key, even a hidden one or a symbol, and nothing behind the objects either.
+    // Found by a hostile pass on the Stage 2 review's fix: a hidden store, or the store as
+    // the prototype of invoices, passed a check of the visible keys.
+    expect(Reflect.ownKeys(company)).toStrictEqual(["tenant", "invoices"]);
+    expect(Object.getPrototypeOf(company)).toBe(Object.prototype);
+    expect(company.tenant).toBe("org_789");
+    expect(Reflect.ownKeys(company.invoices)).toStrictEqual(["get"]);
+    expect(Object.getPrototypeOf(company.invoices)).toBe(Object.prototype);
+    expect(await company.invoices.get("INV-1008")).toStrictEqual(INV_1008_OF_789);
+  });
+
+  // A row of another company in the answer is a bug in the code. The call fails with the
+  // fixed message for a bug, so nothing of the row leaks. The checks let the call reach the
+  // code, so the record says ALLOW (step 10's README, decision 14). Found by the Stage 2
+  // review, and fixed from step 10 on.
+  it("step 10's decision 14: an answer that holds org_789's row fails with INTERNAL_ERROR in org_456, and nothing of it leaks", async () => {
+    const fresh = createLog();
+    const theirs = registryWith(() => structuredClone(INV_1008_OF_789));
+    const answer = await call(theirs, fresh, AGENT, "test.run", { id: "INV-1008" });
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
+    expect(JSON.stringify(answer)).not.toMatch(/VENDOR-77|99000|org_789/);
+    expect(await fresh.records()).toMatchObject([
+      { authorization: "ALLOW", result: "INTERNAL_ERROR", reason: UNEXPECTED, tenant: "org_456" },
+    ]);
+  });
+
+  // Code that makes a store of its own can still name any company. Its answer gives it away
+  // (step 10's README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
+  it("step 10's decision 14: code that reads org_789 through a store of its own is caught by its answer", async () => {
+    const itsOwn = memoryInvoices();
+    const reachesAround: Handler = (input) => itsOwn.get("org_789", (input as { id: string }).id);
+    const answer = await call(registryWith(reachesAround), log, AGENT, "test.run", {
+      id: "INV-2001",
+    });
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
+  });
+
+  // The check read the code's live answer, and the caller got that same object. So a row the
+  // code changed after the check, a field that reads differently the second time, or a
+  // toJSON got org_789's row past it. Now DSoR checks its own copy and sends that copy, as
+  // line ① does for the input (step 10's README, decision 14). Found by a hostile pass on
+  // the Stage 2 review's fix, and fixed from step 10 on.
+  it("step 10's decision 14: a row the code changes after it returns reaches the caller as it was checked", async () => {
+    const row = { ...INV_1008_OF_456 };
+    const changesLater: Handler = () => {
+      setTimeout(() => Object.assign(row, INV_1008_OF_789), 5);
+      return row;
+    };
+    // A log that takes 20 ms to keep a record, as a database can. It only adds: a log the
+    // pipeline is given needs nothing more (step 11's README, decision 6).
+    const slow: DecisionLog = {
+      add: () => new Promise<void>((done) => setTimeout(done, 20)),
+    };
+    const answer = await call(registryWith(changesLater), slow, AGENT, "test.run", {
+      id: "INV-1008",
+    });
+    expect(answer).toStrictEqual({ data: INV_1008_OF_456, correlation: correlationFor(THE_AGENT) });
+  });
+
+  it("step 10's decision 14: a tenant_id that reads org_456 first and org_789 after reaches the caller as org_456", async () => {
+    let reads = 0;
+    const row: Record<string, unknown> = { ...INV_1008_OF_456 };
+    Object.defineProperty(row, "tenant_id", {
+      enumerable: true,
+      get: () => (reads++ === 0 ? "org_456" : "org_789"),
+    });
+    const answer = await call(
+      registryWith(() => row),
+      log,
+      AGENT,
+      "test.run",
+      { id: "INV-1008" },
+    );
+    expect(JSON.stringify(answer)).not.toMatch(/org_789/);
+    expect(answer).toStrictEqual({ data: INV_1008_OF_456, correlation: correlationFor(THE_AGENT) });
+  });
+
+  it("step 10's decision 14: an answer whose toJSON shows org_789's row fails with INTERNAL_ERROR", async () => {
+    const disguised = { toJSON: () => INV_2001_OF_789 };
+    const answer = await call(
+      registryWith(() => disguised),
+      log,
+      AGENT,
+      "test.run",
+      {
+        id: "INV-1008",
+      },
+    );
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
+  });
+
+  it("step 10's decision 14: an answer that JSON cannot carry fails with INTERNAL_ERROR", async () => {
+    const answer = await call(
+      registryWith(() => ({ count: 1n })),
+      log,
+      AGENT,
+      "test.run",
+      {
+        id: "INV-1008",
+      },
+    );
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
+  });
+
+  // The code's store and the answer check get the company line ② read, once. Found by a
+  // hostile pass on the Stage 2 review's fix: reading the envelope's tenant again for them
+  // passed every test, and this envelope then read org_789's INV-2001 (step 10's README,
+  // decisions 2 and 13).
+  it("DSOR-IDN-03a: an envelope whose tenant reads org_456 first and org_789 after works in org_456 only", async () => {
+    let reads = 0;
+    const shifty = {
+      token: "tok_7f3a",
+      get tenant(): string {
+        return reads++ === 0 ? "org_456" : "org_789";
+      },
+    };
+    expect(await call(registry, log, shifty, "invoice.get", { id: "INV-2001" })).toStrictEqual(
+      refused("RESOURCE_NOT_FOUND", 'no invoice "INV-2001"', THE_AGENT),
+    );
+  });
+
+  // When the store is missing, the answer is no (step 10's README, decision 13). Found by
+  // the Stage 2 review, and fixed from step 10 on.
+  it("step 10's decision 13: a registry built without a store reads no invoice, and fails with INTERNAL_ERROR", async () => {
+    const noStore = buildRegistry(shipped, handlers, shippedRoles);
+    expect(await call(noStore, log, AGENT, "invoice.get", { id: "INV-1008" })).toStrictEqual(
+      refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT),
+    );
   });
 });

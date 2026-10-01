@@ -11,18 +11,22 @@ import {
   CFO,
   GOOD_ISSUE,
   LOG_IN_FIRST,
+  NOT_A_MEMBER,
   STARTING_ROLES,
   SUPERVISOR,
   THE_AGENT,
   THE_CFO,
   THE_SUPERVISOR,
+  companyNamed,
   contract,
   correlationFor,
   handlers,
   inputsWith,
   log,
   notGranted,
+  notTheCaller,
   notValid,
+  otherTenant,
   refusal,
   registry,
   rolesFile,
@@ -32,6 +36,10 @@ import {
   shippedWith,
   source,
 } from "./helpers.ts";
+
+// JSON text for a list nested 100,000 levels deep. JSON.parse reads it, but JSON.stringify
+// stops at about 7,700 levels, so a copy made through JSON text fails.
+const DEEP = "[".repeat(100_000) + "]".repeat(100_000);
 
 /** Calls an operation and records the numbers of the checklist's lines that ran, in order. */
 async function linesRun(
@@ -140,6 +148,11 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     ["a list", ["INV-1008"], "must be object"],
     ["null", null, "must be object"],
     ["text", "INV-1008", "must be object"],
+    // JSON leaves these out, and the copy is undefined: not an input it cannot copy. Found by
+    // a hostile pass on the Stage 2 review's fix: a NOT_JSON that was undefined passed every
+    // test (step 07's README, decision 9).
+    ["nothing at all", undefined, "must be object"],
+    ["a function", () => "INV-1008", "must be object"],
     // Step 05 accepted as_user and never used it. Now it is refused, as a bad input
     // (step 07's README, decision 3).
     [
@@ -219,8 +232,9 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
     const spy = vi.fn<Handler>(() => "ran");
     const input = { id: "INV-1008" };
     await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
-    // And the active company, which line ② checked.
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
+    // And the active company, which line ② checked. From the Stage 2 review,
+    // with its invoices bound to it (step 10's README, decision 13).
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, companyNamed("org_456"));
     expect(input).toStrictEqual({ id: "INV-1008" });
   });
 
@@ -243,7 +257,7 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       withDefault,
     );
     await call(registry, log, AGENT, "invoice.get", { id: "INV-1008" });
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, companyNamed("org_456"));
   });
 
   // Found by the review: the check read the id once and the code read it again. A getter
@@ -258,19 +272,193 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       },
     };
     await call(registryWithGet(spy), log, AGENT, "invoice.get", input);
-    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, "org_456");
+    expect(spy).toHaveBeenCalledWith({ id: "INV-1008" }, companyNamed("org_456"));
   });
 
-  it("an input that JSON cannot copy is refused with VALIDATION_FAILED", async () => {
-    const loop: Record<string, unknown> = { id: "INV-1008" };
-    loop["self"] = loop;
-    expect(await call(registry, log, AGENT, "invoice.get", loop)).toStrictEqual({
-      code: "VALIDATION_FAILED",
-      message: notValid("invoice.get", "it cannot be copied as JSON"),
+  // Line ① read the input itself, and line ⑥ then made its own copy. So an input could show
+  // the caller to line ① and cfo_100 to the code. Now line ① makes the one copy, and line ①,
+  // line ⑥, and the code all read it (step 07's README, decision 9). Found by the Stage 2
+  // review, and fixed from step 07 on.
+  it("DSOR-SRC-02b: a principal that reads as the caller first, then as cfo_100, reaches the code as the caller", async () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const { input, reads } = changesAfterOneRead("principal", "accounts-payable-fte", "cfo_100");
+    const answer = await call(registryListing("principal", spy), log, AGENT, "invoice.get", input);
+    // The code gets exactly the values the checks saw.
+    expect(spy).toHaveBeenCalledWith(
+      { id: "INV-1008", principal: "accounts-payable-fte" },
+      companyNamed("org_456"),
+    );
+    expect(answer).toStrictEqual({ data: "ran", correlation: correlationFor(THE_AGENT) });
+    // The input, as the caller sent it, is read once: to make the copy.
+    expect(reads()).toBe(1);
+  });
+
+  it("DSOR-SRC-02b: a principal that reads as cfo_100 first, then as the caller, is refused before the code runs", async () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const { input, reads } = changesAfterOneRead("principal", "cfo_100", "accounts-payable-fte");
+    expect(
+      await call(registryListing("principal", spy), log, AGENT, "invoice.get", input),
+    ).toStrictEqual({
+      code: "AUTHORIZATION_DENIED",
+      message: notTheCaller("principal"),
       retry: "never",
       correlation: correlationFor(THE_AGENT),
     });
+    expect(spy).not.toHaveBeenCalled();
+    expect(reads()).toBe(1);
   });
+
+  // Line ② read the input itself too, to check the companies it names. So an input could
+  // show org_456 to line ② and org_789 to the code. It reads line ①'s copy now (step 07's
+  // README, decision 9). Found by the Stage 2 review, and fixed from step 07 on.
+  it("DSOR-SRC-02b: a tenant_id that reads as org_456 first, then as org_789, reaches the code as org_456", async () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const { input, reads } = changesAfterOneRead("tenant_id", "org_456", "org_789");
+    const answer = await call(registryListing("tenant_id", spy), log, AGENT, "invoice.get", input);
+    expect(spy).toHaveBeenCalledWith(
+      { id: "INV-1008", tenant_id: "org_456" },
+      companyNamed("org_456"),
+    );
+    expect(answer).toStrictEqual({ data: "ran", correlation: correlationFor(THE_AGENT) });
+    expect(reads()).toBe(1);
+  });
+
+  it("DSOR-SRC-02b: a tenant_id that reads as org_789 first, then as org_456, is refused before the code runs", async () => {
+    const spy = vi.fn<Handler>(() => "ran");
+    const { input, reads } = changesAfterOneRead("tenant_id", "org_789", "org_456");
+    expect(
+      await call(registryListing("tenant_id", spy), log, AGENT, "invoice.get", input),
+    ).toStrictEqual({
+      code: "TENANT_MISMATCH",
+      message: otherTenant("tenant_id"),
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+    expect(spy).not.toHaveBeenCalled();
+    expect(reads()).toBe(1);
+  });
+
+  // The tests above count the reads of one field only. Here every field is counted: the copy
+  // reads each one once, and nothing else reads the input as it was sent (step 07's README,
+  // decision 9). Found by the Stage 2 review, and fixed from step 07 on.
+  it("step 07's decision 9: an input JSON can copy is read once, by the copy, and by nothing else", async () => {
+    const reads: Record<string, number> = {};
+    const input = new Proxy(
+      { id: "INV-1008" },
+      {
+        get: (target, key) => {
+          reads[String(key)] = (reads[String(key)] ?? 0) + 1;
+          return Reflect.get(target, key);
+        },
+      },
+    );
+    expect(await call(registry, log, AGENT, "invoice.get", input)).toMatchObject({
+      data: { id: "INV-1008" },
+    });
+    // JSON asks once whether the input has a toJSON of its own, then reads each field once.
+    expect(reads).toStrictEqual({ toJSON: 1, id: 1 });
+  });
+
+  // The copy is made inside line ①, after the login is found. An input that JSON cannot copy
+  // is refused at the end of line ②, with line ⑥'s message, once the principals and the
+  // companies it names are checked. Lines ⑤ and ⑥ never run (step 07's README, decision 9).
+  // Found by the Stage 2 review, and fixed from step 07 on.
+  it.each([
+    ["contains itself", selfContaining()],
+    ["holds a BigInt", { id: "INV-1008", count: 1n }],
+    // JSON can carry these three: JSON.parse reads them, and only JSON.stringify fails.
+    [
+      "is nested too deep to write out, though JSON can carry it",
+      JSON.parse(`{"id":"INV-1008","pad":${DEEP}}`) as unknown,
+    ],
+    // The principal it names is the caller, so the check on the input as sent passes.
+    [
+      "names the caller, and is nested too deep to write out",
+      JSON.parse(`{"id":"INV-1008","principal":"accounts-payable-fte","pad":${DEEP}}`) as unknown,
+    ],
+    // The company it names is the active one, so the check on the input as sent passes.
+    [
+      "names the active company, and is nested too deep to write out",
+      JSON.parse(`{"id":"INV-1008","tenant_id":"org_456","pad":${DEEP}}`) as unknown,
+    ],
+  ])(
+    "step 07's decision 9: an input that %s is refused with VALIDATION_FAILED, at line ②",
+    async (_why, input) => {
+      const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", input);
+      expect(answer).toStrictEqual({
+        code: "VALIDATION_FAILED",
+        message: notValid("invoice.get", "it cannot be copied as JSON"),
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+      expect(lines).toStrictEqual([1, 2, 11]);
+    },
+  );
+
+  // Line ② finds the company first, as for any input, so a caller who is no member of the
+  // company it names hears that (step 07's README, decision 9). Found by a hostile pass on
+  // the Stage 2 review's fix: refusing such an input before the membership check passed
+  // every test.
+  it("DSOR-IDN-03a: a stranger to org_789 hears that it is no member, even with an input JSON cannot copy", async () => {
+    const stranger = { ...AGENT, tenant: "org_789" };
+    const input = { id: "INV-1008", count: 1n };
+    const { answer, lines } = await linesRun(registry, stranger, "invoice.get", input);
+    expect(answer).toStrictEqual({
+      code: "AUTHORIZATION_DENIED",
+      message: NOT_A_MEMBER,
+      retry: "never",
+      correlation: correlationFor(THE_AGENT),
+    });
+    expect(lines).toStrictEqual([1, 2, 11]);
+  });
+
+  // When the copy fails, line ① checks the principals on the input as sent before the call
+  // goes on. So an attempt to act as cfo_100 is refused as one, and is not hidden behind a
+  // bad input (step 07's README, decision 9). Found by the Stage 2 review, and fixed from
+  // step 07 on.
+  it.each([
+    [
+      "too deep to copy, sent as plain JSON",
+      JSON.parse(`{"id":"INV-1008","principal":"cfo_100","pad":${DEEP}}`) as unknown,
+    ],
+    ["that contains itself", selfContaining({ principal: "cfo_100" })],
+  ])(
+    "DSOR-SRC-02b: cfo_100 named in an input %s is refused with AUTHORIZATION_DENIED, at line ①",
+    async (_why, input) => {
+      const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", input);
+      expect(answer).toStrictEqual({
+        code: "AUTHORIZATION_DENIED",
+        message: notTheCaller("principal"),
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+      expect(lines).toStrictEqual([1, 11]);
+    },
+  );
+
+  // The same for a company: line ② checks the companies the input names, on the input as
+  // sent, before it refuses an input JSON cannot copy. So an attempt to reach org_789 is
+  // refused as one (step 07's README, decision 9). Found by the Stage 2 review, and fixed
+  // from step 07 on.
+  it.each([
+    [
+      "too deep to copy, sent as plain JSON",
+      JSON.parse(`{"id":"INV-1008","tenant_id":"org_789","pad":${DEEP}}`) as unknown,
+    ],
+    ["that contains itself", selfContaining({ tenant_id: "org_789" })],
+  ])(
+    "DSOR-SRC-02b: org_789 named in an input %s is refused with TENANT_MISMATCH, at line ②",
+    async (_why, input) => {
+      const { answer, lines } = await linesRun(registry, AGENT, "invoice.get", input);
+      expect(answer).toStrictEqual({
+        code: "TENANT_MISMATCH",
+        message: otherTenant("tenant_id"),
+        retry: "never",
+        correlation: correlationFor(THE_AGENT),
+      });
+      expect(lines).toStrictEqual([1, 2, 11]);
+    },
+  );
 });
 
 describe("C4: start-up is refused for an input schema that is missing, broken, or not strict", () => {
@@ -387,6 +575,43 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
 /** The shipped registry, with invoice.get's code replaced by the test's. */
 function registryWithGet(handler: Handler): Registry {
   return buildRegistry(shipped, { ...handlers, "invoice.get": handler }, shippedRoles);
+}
+
+/**
+ * The same, with an input schema for invoice.get that lists one more text field. No shipped
+ * schema lists a principal or a company, so line ⑥ would refuse it before a test of lines ①
+ * and ② could see it.
+ */
+function registryListing(field: string, handler: Handler): Registry {
+  const schema = {
+    type: "object",
+    properties: { id: { type: "string" }, [field]: { type: "string" } },
+    required: ["id"],
+    additionalProperties: false,
+  };
+  const inputs = inputsWith("InvoiceGetRequest.schema.json", JSON.stringify(schema));
+  return buildRegistry(shipped, { ...handlers, "invoice.get": handler }, shippedRoles, inputs);
+}
+
+/** An input whose field reads as `first` the first time, and as `later` every time after. */
+function changesAfterOneRead(field: string, first: string, later: string) {
+  let reads = 0;
+  const input = {
+    id: "INV-1008",
+    get [field](): string {
+      reads += 1;
+      return reads === 1 ? first : later;
+    },
+  };
+  // How many times the field has been read so far.
+  return { input, reads: () => reads };
+}
+
+/** An input that contains itself, beside any fields given. JSON cannot write it out. */
+function selfContaining(fields: Record<string, unknown> = {}): Record<string, unknown> {
+  const input: Record<string, unknown> = { id: "INV-1008", ...fields };
+  input["self"] = input;
+  return input;
 }
 
 describe("C5: the code behind an operation is reached only through the checklist", () => {

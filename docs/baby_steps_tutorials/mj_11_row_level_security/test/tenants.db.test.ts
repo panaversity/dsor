@@ -4,8 +4,10 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { companyOf } from "../src/company.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
+import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
   RUNTIME_URL,
   dbRegistry,
@@ -19,7 +21,11 @@ import {
   INV_1008_OF_456,
   INV_1008_OF_789,
   INV_2001_OF_789,
+  UNEXPECTED,
   USER_700,
+  shipped,
+  shippedInputs,
+  shippedRoles,
   withoutRequestId,
 } from "./helpers.ts";
 
@@ -140,6 +146,122 @@ describe("C6: every invoice row and every audit record carries its company", () 
         "acme",
       ),
     ).rejects.toMatchObject({ code: "23514" });
+  });
+
+  /** An INSERT dsor_runtime may make, whose extensions keep this company as a claim. */
+  function claimOf(tenantSql: string): string {
+    return `INSERT INTO dsor.audit (record_id, kind, "authorization", result, correlation, extensions)
+            VALUES ('aud_check', 'decision', 'DENY', 'ok', '{}',
+                    jsonb_build_object('org.panaversity.steps',
+                                       jsonb_build_object('requested_tenant', ${tenantSql})))`;
+  }
+
+  // The second guard, if the code ever keeps a large claim again: migration 003b. The test
+  // is rolled back, so it never adds to the log (step 10's README, decision 12). With no
+  // company set, as the program writes a claim, so the policy lets the row through and only
+  // the CHECK can refuse it (step 11's README, decision 4). Found by the Stage 2 review, and
+  // fixed from step 10 on.
+  it("step 10's decision 12: dsor.audit refuses an extensions larger than 1 KiB, with 23514", async () => {
+    await expect(
+      tryThenRollBack(observer, claimOf(`'org_' || repeat('9', 2048)`)),
+    ).rejects.toMatchObject({ code: "23514", constraint: "audit_extensions_size" });
+  });
+
+  // The limit itself, measured as the CHECK measures it: 1,024 bytes is kept, 1,025 is not.
+  // Found by a hostile pass on the Stage 2 review's fix: 2 KB alone would let a limit of
+  // 4,096 pass.
+  it("step 10's decision 12: an extensions of 1,024 bytes is kept, and one of 1,025 is refused", async () => {
+    const claim = (digits: number): string => `'org_' || repeat('9', ${digits})`;
+    const size = async (digits: number): Promise<unknown> => {
+      const { rows } = await observer.query(
+        `SELECT octet_length(jsonb_build_object('org.panaversity.steps',
+                  jsonb_build_object('requested_tenant', ${claim(digits)}))::text) AS bytes`,
+      );
+      return rows[0].bytes;
+    };
+    expect([await size(969), await size(970)]).toStrictEqual([1024, 1025]);
+    await expect(tryThenRollBack(observer, claimOf(claim(969)))).resolves.toMatchObject({
+      rowCount: 1,
+    });
+    await expect(tryThenRollBack(observer, claimOf(claim(970)))).rejects.toMatchObject({
+      code: "23514",
+      constraint: "audit_extensions_size",
+    });
+  });
+
+  it("step 10's decision 12: the largest claim the code can keep, 18 digits, fits", async () => {
+    await expect(
+      tryThenRollBack(observer, claimOf(`'org_' || repeat('9', 18)`)),
+    ).resolves.toMatchObject({ rowCount: 1 });
+  });
+
+  // The review's run: a refusal of 212 bytes left a record of 1,000,433 bytes. The record
+  // has no company, so only the owner can read it, and the owner measures it as the CHECK
+  // does (step 11's README, decision 4). Found by the Stage 2 review, and fixed from step
+  // 10 on.
+  it("step 10's decision 12: a company of a million digits leaves a small record in dsor.audit, with no claim", async () => {
+    const id = requestId("f2-flood");
+    const request = { token: "tok_7f3a", tenant: `org_${"9".repeat(1_000_000)}`, request_id: id };
+    const answer = await call(registry, log, request, "invoice.get", { id: "INV-1008" });
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    const rows = ownerRowsFor(id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tenant: null, extensions: null });
+    expect(rows[0]!["bytes"]).toBeLessThan(1024);
+  });
+});
+
+describe("C8: in the database, the code reaches only the active company, and its answer must belong to it", () => {
+  // The store the code gets, against app.invoices. A second argument changes nothing (step
+  // 10's README, decision 13). Each read runs inside the bound company's transaction, so
+  // the database's lock filters by that company too (step 11's README, decision 3). Found
+  // by the Stage 2 review, and fixed from step 10 on.
+  it("DSOR-IDN-03b: the store the code gets reads only its own company in app.invoices, whatever it is given", async () => {
+    const store = createDbInvoices(pool);
+    const in456 = companyOf(store, "org_456");
+    expect(await companyOf(store, "org_789").invoices.get("INV-2001")).toStrictEqual(
+      INV_2001_OF_789,
+    );
+    expect(await in456.invoices.get("INV-2001")).toBeUndefined();
+    // @ts-expect-error: get takes an id and nothing more.
+    expect(await in456.invoices.get("INV-2001", "org_789")).toBeUndefined();
+    // @ts-expect-error: the other way round, too.
+    expect(await in456.invoices.get("org_789", "INV-2001")).toBeUndefined();
+  });
+
+  // Code that makes a store of its own reads org_789's INV-2001 from inside org_456. The
+  // database's lock does not stop it: that store sets org_789 for its own read, so the
+  // policy shows org_789's rows. Its answer gives it away: INTERNAL_ERROR, recorded as
+  // ALLOW, and nothing of the row leaks (step 10's README, decision 14). Found by the
+  // Stage 2 review, and fixed from step 10 on.
+  it("step 10's decision 14: code that reads org_789 through a store of its own fails with INTERNAL_ERROR, recorded as ALLOW", async () => {
+    const itsOwn = createDbInvoices(pool);
+    const reachesAround: Handler = (input) => itsOwn.get("org_789", (input as { id: string }).id);
+    const planted = buildRegistry(
+      shipped,
+      { "invoice.get": reachesAround },
+      shippedRoles,
+      shippedInputs,
+      createDbInvoices(pool),
+    );
+    const id = requestId("c8-foreign-row");
+    const answer = await call(planted, log, { ...AGENT, request_id: id }, "invoice.get", {
+      id: "INV-2001",
+    });
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+    expect(JSON.stringify(answer)).not.toMatch(/VENDOR-77|12500|org_789/);
+    // Read inside org_456: dsor_runtime reads only the company it has set (step 11's
+    // README, decision 4).
+    const { rows } = await tryThenRollBack(
+      observer,
+      `SELECT "authorization", result, tenant FROM dsor.audit
+        WHERE correlation->>'request_id' = $1`,
+      "org_456",
+      [id],
+    );
+    expect(rows).toStrictEqual([
+      { authorization: "ALLOW", result: "INTERNAL_ERROR", tenant: "org_456" },
+    ]);
   });
 });
 

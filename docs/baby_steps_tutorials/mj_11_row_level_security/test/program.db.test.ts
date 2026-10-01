@@ -136,8 +136,12 @@ describe("the program's log", () => {
 
 // The program refuses to run as a login that could change the log (step
 // 09's README, decision 17). Found by the second review: with the check deleted from
-// main.ts, every test stayed green. This is the only test that touches the owner's key,
-// and it only hands it to the program; the test never logs in as the owner.
+// main.ts, every test stayed green. Several tests make a program use the owner's key: this
+// one, which hands it to the program; the migrate test in test/tenants.db.test.ts, whose
+// migrate.ts reads it from .env itself; and, from step 11 on, the tests that start
+// test/owner-reads.ts or test/owner-store.ts, which read it from .env too. No test logs in
+// as the owner itself: only those child programs do. Found by the Stage 2 review: this
+// comment still said "the only test".
 describe("the program's start-up check", () => {
   it(
     "DSOR-AUD-04a: refuses to run as the owner, names why, and makes no call",
@@ -155,6 +159,14 @@ describe("the program's start-up check", () => {
       expect(run.stderr).toMatch("DSOR_DB_URL must log in as dsor_runtime. Refused:");
       expect(run.stderr).toMatch("not dsor_runtime");
       expect(run.stderr).toMatch("can change or remove records in dsor.audit");
+      // The two facts the check reads from the database for row-level security, word for
+      // word as problemsOf says them. On Neon, the owner holds BYPASSRLS and belongs to
+      // neon_superuser; the number of its roles is Neon's to choose. With rolbypassrls read
+      // as false and the count of roles as 0 in runtimeRoleProblems, every test passed
+      // (step 11's README, decision 7). Found by the Stage 2 review, and fixed from step 11
+      // on.
+      expect(run.stderr).toMatch("holds BYPASSRLS");
+      expect(run.stderr).toMatch(/belongs to \d+ other roles?, which SET ROLE can switch to/);
       // No call was made, so nothing was answered.
       expect(run.stdout).not.toMatch("data: {");
       // The refusal names the problems, never the secret.
