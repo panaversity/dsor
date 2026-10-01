@@ -11,6 +11,9 @@ export type FreshnessMode = "current" | "bounded_staleness" | "connector_defined
 /** How fresh one read was: its mode, when it was read, and which connector served it. */
 export type Freshness = { mode: FreshnessMode; observed_at: string; connector: string };
 
+// Strongest first. §27 does not rank connector_defined. This tutorial puts it below
+// bounded_staleness, because its promise is the connector's, not DSoR's (step 15's README,
+// decision 6).
 const MODES: readonly string[] = ["current", "bounded_staleness", "connector_defined", "observational"];
 
 // not copied: common.schema.json's timestamp says only "format": "date-time". This is that
@@ -51,11 +54,21 @@ function isDateTime(text: string): boolean {
   );
 }
 
-/** The label of an answer built from these reads. A query that read nothing has none. */
+/**
+ * The label of an answer built from these reads: the weakest mode, and the oldest time with
+ * the connector that read it. A query that read nothing has none.
+ */
 export function stalest(reads: Freshness[]): Freshness {
   // A label for an answer that read nothing would be invented (step 15's README, decision 6).
   if (reads.length === 0) throw new Error("the query's code returned data without a read");
-  // Several reads, the stalest of them: not built yet, so refused rather than guessed.
-  if (reads.length > 1) throw new Error("an answer from several reads has no label yet");
-  return reads[0]!;
+  // An answer is only as fresh as its stalest part. The weakest mode and the oldest time can
+  // come from two reads, and each is taken from its own (step 15's README, decision 6).
+  let weakest = reads[0]!.mode;
+  let oldest = reads[0]!;
+  for (const read of reads) {
+    if (MODES.indexOf(read.mode) > MODES.indexOf(weakest)) weakest = read.mode;
+    // As moments, never as text: 09:00 at +05:00 is earlier than 05:00 in UTC.
+    if (Date.parse(read.observed_at) < Date.parse(oldest.observed_at)) oldest = read;
+  }
+  return { mode: weakest, observed_at: oldest.observed_at, connector: oldest.connector };
 }
