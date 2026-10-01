@@ -1,6 +1,6 @@
 # Step 06 · Permissions, denied by default
 
-Folder: `my_06_permissions_deny_by_default`. Built 2026-09-28, deleted, and rebuilt 2026-09-29 a
+Folder: [`my_06_permissions_deny_by_default`](../my_06_permissions_deny_by_default/README.md). Built 2026-09-28, deleted, and rebuilt 2026-09-29 a
 piece at a time with the learner. Copy of `my_05_who_is_calling` plus one new idea: **anything
 nobody granted is refused.**
 
