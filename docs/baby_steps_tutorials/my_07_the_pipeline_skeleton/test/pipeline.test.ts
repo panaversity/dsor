@@ -198,10 +198,16 @@ describe("the pipeline", () => {
     expect(assertPipeline(inOrder)).toBe(5);
   });
 
-  // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
-  // *same* pipeline, so a door is built from a list and the list is checked as the door is built —
+  // A door is how an interface gets the pipeline, and the list is checked as the door is built —
   // not on the first request, and not by trusting whoever builds it.
-  it("DSOR-OPR-04a: a door cannot be built from a list that does not pass the check", () => {
+  //
+  // Titled DSOR-EXE-01b, not DSOR-OPR-04a. OPR-04a's sentence is "every interface MUST invoke the
+  // same DSoR pipeline", and this step has **one** interface, so nothing here can show two of them
+  // sharing a list — the README says exactly that in its table of rules this step does not claim,
+  // and a title may not claim what the README gives up. What the test does show is EXE-01b's own
+  // sentence: a door built from a list that is missing `authorize` would skip that step on every
+  // call, so the door is refused instead of built.
+  it("DSOR-EXE-01b: a door cannot be built from a list that does not pass the check", () => {
     expect(() => makeDoor([fake(1, "authenticate")])).toThrow(/missing/);
     expect(() => makeDoor([])).toThrow(/is empty/);
   });

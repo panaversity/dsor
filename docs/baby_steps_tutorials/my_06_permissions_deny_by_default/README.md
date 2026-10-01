@@ -130,6 +130,7 @@ my_06_permissions_deny_by_default/
   src/permissions.ts           NEW  the roles, the shape check, and may-you
   test/permissions.test.ts     NEW  12 tests: the table on its own
   test/deny-by-default.test.ts NEW  10 tests: cfo_100 can read and cannot issue
+  test/main.test.ts            NEW  7 tests: the demo program's own output, run as a subprocess
   src/people.ts            CHANGED  every principal carries a role
   src/operations.ts        CHANGED  the may-you gate, after the lookup and before the arguments
   src/login.ts             CHANGED  every caller-supplied read goes through one helper
@@ -137,15 +138,34 @@ my_06_permissions_deny_by_default/
   test/who-is-calling.test.ts CHANGED two tests issued as cfo_100 and now ask as the agent
   package.json             CHANGED  name and description only
   src/envelopes.ts         CHANGED  step 05's NEW IN STEP markers removed, nothing else
-  test/login.test.ts       CHANGED  the same
-  test/operations.test.ts  CHANGED  the same
+  test/login.test.ts       CHANGED  one wrong rule id in a title, and the markers
+  test/operations.test.ts  CHANGED  one comment that contradicted its own title, and the markers
+  test/arguments.test.ts   CHANGED  one wrong rule id in a title
+  test/invoice.test.ts     CHANGED  one wrong rule id in a title
 ```
 
-That last test change is worth a moment. Two of its tests issued an invoice as `cfo_100`. She
-may not any more, so they ask as the agent instead. Nothing about what they test changed. **A new
-gate in front of the program changing which caller a test needs is exactly what it looks like
-when permissions start working.** If adding permissions had broken nothing, nothing was being
-checked.
+The test change to `who-is-calling.test.ts` is worth a moment. Two of its tests issued an invoice
+as `cfo_100`. She may not any more, so they ask as the agent instead. Nothing about what they
+test changed. **A new gate in front of the program changing which caller a test needs is exactly
+what it looks like when permissions start working.** If adding permissions had broken nothing,
+nothing was being checked.
+
+The "wrong rule id" changes are the other kind. Every test title here starts with the id of the
+rule it proves, and that title is how this project counts coverage — so an id on a test that does
+not prove that rule's own sentence is a wrong number, not a cosmetic slip. Eight titles were
+corrected, each with a comment beside it saying which sentence was read and why the id moved:
+
+- **Five moved from `DSOR-AUT-01b` to `DSOR-AUT-01a`.** 01b is one sentence — "MUST deny any
+  operation for which no permission is granted" — and all five showed a caller being *allowed*.
+  That is 01a's sentence, "role-based access control using the `<resource>:<action>` permission
+  format". The step needs both halves, because a program that denied everything would satisfy
+  01b's words and be useless.
+- **One moved from `DSOR-IDN-01` to `DSOR-COR-01b`.** It asserts that a refused login's envelope
+  got a generated request id; IDN-01 is about normalizing a caller into a principal with a type
+  and memberships, and a refused login has no principal to assert anything about.
+- **Two lost their id entirely**, one that carried `DSOR-MON-01` while asserting only that an
+  invoice is frozen, and one that carried `DSOR-SCH-01` while asserting nothing about schema
+  validation. A test that proves no rule and claims none is a correct answer, not a gap.
 
 To see every difference yourself:
 
@@ -161,7 +181,7 @@ diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
 cd docs/baby_steps_tutorials/my_06_permissions_deny_by_default
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 146 tests pass
+pnpm check                 # typecheck, then test. 156 tests pass
 ```
 
 ```text
@@ -192,6 +212,12 @@ asked.
 And the last two lines are the same refusal twice: once for an invoice that exists, once for
 `INV-9999`, which does not. A caller who may not act learns nothing about what is there.
 
+That block is not a transcript somebody pasted and hoped stayed true. `test/main.test.ts` runs
+the real program as a subprocess, reads those lines back out of **this file**, and compares them
+character for character, so the program and the README cannot drift apart. It then asserts the
+three claims above separately, because a block that matches proves only that the README is
+honest — not that the lines mean what the prose says they mean.
+
 ## Break it
 
 Five breaks. Change the code back after each. Every number below was produced by running it.
@@ -204,21 +230,34 @@ Five breaks. Change the code back after each. Every number below was produced by
      × DSOR-AUT-01b: the refusal does not say which permission was missing
      × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
-     × DSOR-AUT-01b: the supervisor may issue, and does
+     × DSOR-AUT-01a: the supervisor may issue, and does
+     × prints exactly the output the README pastes
+     × DSOR-AUT-01b: the CFO is refused the invoice the agent issues one line later
+     × DSOR-AUT-01b: a denied caller cannot tell a real invoice from one that does not exist
 AssertionError: expected 'INV-1009 is issued, and only a draft …' to contain 'cfo_100'
-      Tests  5 failed | 141 passed (146)
+AssertionError: expected 'cfo_100               COMMITTED      …' to contain 'AUTHORIZATION_DENIED'
+      Tests  8 failed | 148 passed (156)
 ```
 
-Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The last
-test then failed because the draft she was never allowed to touch had already been used up.
+Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The
+`supervisor may issue` test then failed because the draft she was never allowed to touch had
+already been used up.
+
+The last three are the demo program, run for real. `cfo_100  COMMITTED` is the line a learner
+would have seen on their screen while every other test stayed green, until `test/main.test.ts`
+existed.
+
+One note on doing this break by hand: deleting the block leaves the `holds` import unused, so
+`pnpm typecheck` stops with `error TS6133: 'holds' is declared but its value is never read`.
+`pnpm test` does not typecheck, so it still runs — delete the import too if you want `pnpm check`.
 
 **2. Say yes to everything.** Make `holds` return `true`. Run `pnpm test`:
 
 ```text
-      Tests  9 failed | 137 passed (146)
+      Tests  12 failed | 144 passed (156)
 ```
 
-Nine. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
+Twelve. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
 prefix now counts as a match, an empty permission is held by everybody. Remember this break,
 because "just allow it while I debug" is a real thing people type.
 
@@ -232,8 +271,11 @@ because "just allow it while I debug" is a real thing people type.
      × DSOR-AUT-01b: the refusal does not say which permission was missing
      × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
-     × DSOR-AUT-01b: the supervisor may issue, and does
-      Tests  7 failed | 139 passed (146)
+     × DSOR-AUT-01a: the supervisor may issue, and does
+     × prints exactly the output the README pastes
+     × DSOR-AUT-01b: the CFO is refused the invoice the agent issues one line later
+     × DSOR-AUT-01b: a denied caller cannot tell a real invoice from one that does not exist
+      Tests  10 failed | 146 passed (156)
 ```
 
 No code was touched. One word in a table, and the separation between approving a payment and
@@ -246,7 +288,7 @@ it is `DSOR-SOD-01a`, in step 30.
 ```text
      × DSOR-AUT-01b: a permission is matched whole, never by prefix
 AssertionError: "invoice:i": expected true to be false // Object.is equality
-      Tests  1 failed | 145 passed (146)
+      Tests  1 failed | 155 passed (156)
 ```
 
 **A prefix is not a match.** Asking for `invoice:i` succeeds, because `invoice:issue` starts with
@@ -263,7 +305,7 @@ yourself.
 ```text
      × DSOR-AUT-01b: a role nobody granted anything holds nothing
 AssertionError: "toString": expected [Function toString] to deeply equal []
-      Tests  1 failed | 145 passed (146)
+      Tests  1 failed | 155 passed (156)
 ```
 
 This one was a real bug in this step, found by a hostile review rather than by me. `ROLES[role]`
@@ -340,7 +382,8 @@ And when it is green, ask for the part that finds real bugs:
 3. So that being refused tells you nothing about the data. If the address were read first,
    `cfo_100` could compare `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED` and count invoices
    she has no permission to see. Order is part of the guarantee, and it is testable — moving the
-   gate below the address parse turns tests red.
+   gate below the point where the arguments are read prints `Tests  1 failed | 155 passed (156)`,
+   and the one failure is "being refused for authority tells the caller nothing about the data".
 4. `INVOICE:READ` matches nothing, so the role silently grants less than its author meant. That
    fails *closed*, which is the safe direction, but silently — nobody notices until a person
    cannot do their job. The table is checked against the specification's own pattern when the
@@ -413,12 +456,36 @@ name, which cannot tell a real answer from that one string.
 The reason this is in the README rather than quietly fixed: **a green suite and a completed
 mutation sweep were not enough**, and that is worth knowing before you trust your own.
 
+### And what a second review found, later still
+
+A nine-reviewer pass over every step found two more, and both are about what a test *claims*
+rather than what the code does.
+
+- **`src/main.ts` was imported by no test in any step.** It is the one file this README tells you
+  to run, and the block under "Run it" is its output pasted in as proof. Change the first `===` in
+  `show` to `!==` and the suite printed `Tests  149 passed (149)` while `pnpm start` died on its
+  third line with a `TypeError`. Not a wrong number on a screen — a crash, in the first thing a
+  learner does.
+
+  `test/main.test.ts` now runs the real program as a subprocess and reads what it printed. Twenty
+  mutations of `src/main.ts` were then tried one at a time: eighteen now fail a test. The two
+  survivors are equivalent — printing the literal `"never"` instead of the envelope's retry
+  class, and the literal `"issued"` instead of the invoice's status. This step's data makes both
+  indistinguishable, because every refusal here is `never` and the only committed invoice is
+  issued. A survivor whose output genuinely cannot differ is not a gap; a second command, or a
+  refusal that is retryable, is what would separate them.
+- **Eight test titles named the wrong rule.** Listed under "What changed since step 05" above.
+  Coverage in this project is counted from those titles, so a wrong id is a wrong number.
+
+The lesson of the first review was that a green suite is not enough. The lesson of this one is
+narrower and sharper: **a test suite can be green, thorough, and still not run the program.**
+
 ### Why `DSOR-ERR-01b` is not claimed, although the mechanism is here
 
 The machinery the rule needs is built and tested: authority is settled before any data is
 touched, so a denial reveals nothing about what exists. That is the "being refused for authority
-tells the caller nothing about the data" test, and moving the gate below the address parse turns
-it red.
+tells the caller nothing about the data" test. Moving the gate below the point where the
+arguments are read prints `Tests  1 failed | 155 passed (156)`, and that test is the one failure.
 
 The rule itself is about a caller who may not **read** a resource. All three roles here hold
 `invoice:read`, so there is no such caller in this step to test it with. Claiming it would mean

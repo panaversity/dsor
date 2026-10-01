@@ -238,7 +238,12 @@ describe("the result envelope", () => {
     expect(envelope.semantics).toBe("atomic");
   });
 
-  it("DSOR-SCH-01: the same payload hashes the same, a different one does not", () => {
+  // No rule id, and it used to carry DSOR-SCH-01. That rule is about an artifact validating
+  // against its JSON Schema, and nothing here validates anything: the subject is
+  // `payloadHash`, a sha256 over text. The rule that governs a payload hash is
+  // DSOR-APR-02b, which requires RFC 8785 canonical JSON — and this hash is over ordinary
+  // `JSON.stringify`, so the step cannot claim it. Canonical JSON is step 29.
+  it("the same payload hashes the same, a different one does not", () => {
     const a = success({
       data: {},
       semantics: "atomic",

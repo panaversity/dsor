@@ -121,19 +121,22 @@ describe("callOperation", () => {
 
     expect(ids).toEqual(["invoice.get", "invoice.issue"]);
 
-    // Each id either runs, or refuses for the single allowed reason. A contract nobody
-    // had thought about would refuse with "no contract for", which cannot happen for an
-    // id the registry just handed us — and that is the pairing, seen from the outside.
+    // Each id either runs, or refuses for a reason of its own. A contract nobody had
+    // thought about would come back UNSUPPORTED_CAPABILITY — "no contract for it" — which
+    // cannot happen for an id the registry just handed us. That is the pairing, seen from
+    // the outside.
+    //
+    // This half of the test used to call callOperation inside a try/catch and assert on
+    // the caught message. Step 03 threw; step 04 returns an envelope instead, so nothing
+    // was ever caught and the assertion compared "" against a pattern it could never
+    // match. It passed whatever the program did. The answer has to be read, not caught.
     for (const id of ids) {
-      let refusal = "";
+      const answer = callOperation(id, { invoice: INV_1008 });
 
-      try {
-        callOperation(id, { invoice: INV_1008 });
-      } catch (error) {
-        refusal = (error as Error).message;
+      if (answer.kind === "error") {
+        expect(answer.envelope.code, id).not.toBe("UNSUPPORTED_CAPABILITY");
+        expect(answer.envelope.message, id).not.toMatch(/no contract for it/);
       }
-
-      expect(refusal).not.toMatch(/no contract for it/);
     }
   });
 
@@ -160,7 +163,12 @@ describe("callOperation", () => {
     });
 
     // Step 02's README promised the entity segment stops being trusted text in step 03.
-    // No rule id: this keeps that promise, it is not DSOR-RID-01b.
+    //
+    // The id is DSOR-ERR-01a and not DSOR-RID-01b. The comment here used to say "no rule
+    // id", which was true in step 03 and stopped being true when step 04 put every refusal
+    // in an envelope: what this test now checks is the envelope — a §28 code, its retry
+    // class, and the schema, through refusalFrom. Keeping the entity promise is why the
+    // refusal happens; the envelope is what is asserted.
     it("DSOR-ERR-01a: an address whose entity no operation is named for is VALIDATION_FAILED", () => {
       const envelope = refusalFrom(
         callOperation("invoice.get", { invoice: "dsor://org_456/vendor/VENDOR-44" }),

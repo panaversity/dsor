@@ -65,8 +65,9 @@ const read = (path: string): object =>
 // gives "can't resolve reference urn:dsor:schema:1.3:common#/$defs/operationId".
 //
 // `strict: false` is what packages/spec uses, and it is needed: under `strict: true`
-// thirteen of the specification's fourteen schemas refuse to compile, because the
-// if/then blocks declare `required` without repeating `type`. It has a cost, and the
+// thirteen of the specification's fourteen schemas refuse to compile — nine of them over
+// an if/then block that requires a property not listed beside it, and four over an
+// unknown `format`, a union type, or a block with no `type`. It has a cost, and the
 // README's Break it section shows it: a misspelled keyword is silently ignored.
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 ajv.addSchema(read("./schemas/common.schema.json"));

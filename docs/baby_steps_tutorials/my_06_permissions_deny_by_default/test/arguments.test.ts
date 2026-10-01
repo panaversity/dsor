@@ -73,7 +73,13 @@ describe("the caller's arguments", () => {
   // and again to fingerprint the receipt. A caller could make those two reads disagree, so the
   // receipt described a request that never happened. Here the getter hands back a decoy on any
   // read after the first, and the fingerprint must still be of INV-1009.
-  it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", () => {
+  //
+  // No rule id, and it used to carry DSOR-SCH-01. That rule says every artifact must validate
+  // against its JSON Schema where it crosses an interface; this test asserts an outcome and a
+  // payload hash, and would pass unchanged if `success()` validated nothing. The tests that do
+  // prove SCH-01 call `validateEnvelope` and live in test/envelopes.test.ts. Its twin in
+  // test/who-is-calling.test.ts has carried no id for the same reason.
+  it("the arguments are read once, so the receipt describes what was done", () => {
     resetRequestIds();
     resetProposalIds();
 

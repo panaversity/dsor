@@ -6,7 +6,8 @@ every later step inherits. Nothing here is about DSoR yet.
 ## In plain words
 
 Before you build a house you pour a floor. This step is the floor. It is a tiny
-TypeScript project with one function, one program that runs it, and two tests. It
+TypeScript project with one function, one program that runs it, and four tests: two
+for the function, and two that start the program and read what it printed. It
 proves that your tools work. Every one of the next 51 steps begins as a copy of the
 step before it, so everything in this folder travels with you to the end, including
 the instructions that tell Claude Code how to build a step.
@@ -40,7 +41,8 @@ This step also sets four habits that the rest of the tutorial depends on:
   vitest.config.ts     tells the test runner where this step's tests live
   src/greet.ts         one pure function
   src/main.ts          a program that calls it
-  test/greet.test.ts   two tests: one "yes", one "no"
+  test/greet.test.ts   two tests for the function: one "yes", one "no"
+  test/main.test.ts    two tests that run the program and read what it printed
   CLAUDE.md            what Claude Code must know when it works in a step
   .claude/             the build-baby-step skill, and which commands may run unasked
   .gitignore           keeps node_modules and secrets out of git
@@ -70,18 +72,18 @@ Then, in this folder:
 cd docs/baby_steps_tutorials/00_foundation
 pnpm install               # installs this step only
 pnpm start                 # prints: Hello, accounts-payable-fte.
-pnpm test                  # 2 tests pass
+pnpm test                  # 4 tests pass
 pnpm typecheck             # prints nothing, which means no type errors
 pnpm check                 # typecheck, then test. Run this before you call a step done
 ```
 
 ### Why the imports end in `.ts`
 
-Look at the first line of `src/main.ts`: `import { greet } from "./greet.ts"`. Node can
-run a TypeScript file by deleting the type annotations and running what is left. It
-does not rename files, so the import has to name the real file, `greet.ts`. Three
-settings in `tsconfig.json` keep our code inside what Node can delete. The payoff is
-that there is never a build step between you and your running code.
+Look at the import at the top of `src/main.ts`: `import { greet } from "./greet.ts"`.
+Node can run a TypeScript file by deleting the type annotations and running what is
+left. It does not rename files, so the import has to name the real file, `greet.ts`.
+Three settings in `tsconfig.json` keep our code inside what Node can delete. The payoff
+is that there is never a build step between you and your running code.
 
 ## Break it
 
@@ -91,12 +93,21 @@ Do both. Each takes a minute, and each shows you what a tool is for.
 `Hello` to `Hi`. Run `pnpm test`:
 
 ```text
+ FAIL  test/greet.test.ts > greet > greets the caller by name
 Expected: "Hello, accounts-payable-fte."
 Received: "Hi, accounts-payable-fte."
-Tests  1 failed | 1 passed (2)
+
+ FAIL  test/main.test.ts > the demo program > prints the greeting the README promises, and nothing else
+- Hello, accounts-payable-fte.
++ Hi, accounts-payable-fte.
+
+Tests  2 failed | 2 passed (4)
 ```
 
-The test knew what the function promised. Change it back.
+Two tests noticed, not one. The first knew what the function promised. The second
+started `src/main.ts` as a separate program and read the line it printed, so it knew
+what `pnpm start` promises further up this page. Without it, a one-character edit could
+change the output you were told to expect and leave every test green. Change it back.
 
 **2. Break the types, and let the compiler catch it.** Change the last line of
 `greet` to `return name.length;`. Run `pnpm typecheck`:
@@ -126,8 +137,9 @@ Then paste:
 Teach me by building, one file at a time. Create a minimal TypeScript project here:
 pnpm, strict TypeScript that Node can run directly without a build step, and vitest.
 One pure function greet(name) that returns "Hello, <name>." and refuses an empty name,
-a main.ts that prints greet("accounts-payable-fte"), and two tests: one for the
-greeting and one for the refusal. Scripts: start, test, typecheck, check. Explain each
+a main.ts that prints greet("accounts-payable-fte"), and four tests: one for the
+greeting, one for the refusal, and two that run main.ts as a child process and check
+the line it prints. Scripts: start, test, typecheck, check. Explain each
 file in two or three plain sentences before you create it, and wait for me to say "go".
 Do not look at ../00_foundation until I ask you to compare.
 ```

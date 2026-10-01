@@ -91,7 +91,8 @@ describe("formatUri", () => {
   // nothing. Types do not stop this, because Node deletes them before it runs.
   // The three parts must come OUT OF the address, not from somewhere convenient. Every address
   // in this whole step uses the entity `invoice`, so replacing `match[2]` with the constant
-  // `"invoice"` used to pass all 24 tests — and a payment address then parsed as an invoice.
+  // `"invoice"` used to pass every test in the step — and a payment address then parsed as an
+  // invoice.
   // That is lesson 10: the expected value was a literal that also appeared in the input.
   it("DSOR-RID-01a: each part comes out of the address, not from a default", () => {
     for (const entity of ["invoice", "payment", "vendor", "journal_entry"]) {

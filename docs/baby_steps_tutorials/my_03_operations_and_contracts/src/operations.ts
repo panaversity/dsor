@@ -138,15 +138,14 @@ export function assertPaired(
 }
 
 // Start-up, not first request. This line and the loadRegistry above it are the whole of
-// "refused before anything runs".
-// Start-up, not first request, and the constant holds **how many** pairs were checked rather
-// than nothing at all.
+// "refused before anything runs", and the constant holds **how many** pairs were checked
+// rather than nothing at all.
 //
-// The bare call was this step's headline idea — "refused at start-up, not on first request" — and
-// no test could tell whether it had run: deleting the line left all 53 tests green, because the
-// two lists match today so the check is silent when it passes. A count has to come from walking
-// them. It is not a proof, since hardcoding today's number would also pass; it moves the mistake
-// from "delete a line" to "delete a line and keep a number right". Step 06 reaches the same
+// The bare call was this step's headline idea, and no test could tell whether it had run:
+// deleting the line left every test in the step green, because the two lists match today
+// so the check is silent when it passes. A count has to come from walking them. It is not
+// a proof, since hardcoding today's number would also pass; it moves the mistake from
+// "delete a line" to "delete a line and keep a number right". Step 06 reaches the same
 // conclusion about its own table.
 export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 

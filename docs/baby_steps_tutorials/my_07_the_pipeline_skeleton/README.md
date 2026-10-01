@@ -88,7 +88,8 @@ Three things become possible that were not:
 
 - **A test can read the order.** `test/pipeline.test.ts` asserts it directly, and — the test this
   step most needed — takes every one of the 24 orderings of the four stages and asserts that
-  **exactly one** is accepted.
+  **exactly one** is accepted. `test/main.test.ts` then starts the real program and reads the two
+  lines where that order shows on the screen.
 - **A later step adds a line** rather than editing a function it could get wrong.
 - **A second door can be handed the same list.** `makeDoor(stages)` builds one, and
   `callOperation` is `makeDoor(PIPELINE)`. Step 42's HTTP server gets the same list, because it is
@@ -117,22 +118,34 @@ nothing fails, the step just never happens.
 anything satisfies the check — a review built exactly that door. There is no way to read a
 function's meaning out of a list.
 
-So the check is not the only thing guarding the order. `test/deny-by-default.test.ts` is: a door
-whose `authorize` does nothing lets `cfo_100` issue an invoice, and that is a failing test. Break 4
-below is that door.
+So the check is not the only thing guarding the order. Behaviour is: a door whose `authorize` does
+nothing lets `cfo_100` issue an invoice, and that is a failing test in three files at once.
+`test/pipeline.test.ts` builds that hollow door on purpose and catches it; the five tests in
+`test/deny-by-default.test.ts` that ask what `cfo_100` may do go red; and `test/main.test.ts`, which
+runs the program, finds her issuing an invoice on the screen. Break 4 below is that door.
 
 ## What changed since step 06
 
 ```text
 my_07_the_pipeline_skeleton/
   src/pipeline.ts          NEW  Stage, Context, assertPipeline, applies, runPipeline
-  test/pipeline.test.ts    NEW  23 tests: the list, its rules, and the walk
+  test/pipeline.test.ts    NEW  24 tests: the list, its rules, and the walk
+  test/main.test.ts        NEW   6 tests: starts src/main.ts and reads what it printed
   src/operations.ts    CHANGED  the four stages, PIPELINE, makeDoor; callOperation walks the list
   package.json         CHANGED  name and description only
 ```
 
-Four files. For a step that moved every check in the program, that is the point: the checks
+Five files. For a step that moved every check in the program, that is the point: the checks
 themselves did not change, only where the order lives.
+
+`test/main.test.ts` is the odd one out, and it is here because a review asked which test imports
+`src/main.ts` and the answer was none — in this step or any step before it. That is the program the
+section above tells you to run, and the block below is its output pasted in as proof. Flip one
+`===` inside `show` and all 173 of the other tests stayed green — measured, by doing it — while
+`pnpm start` crashed. So that file starts the program as a child process, the way you do, and reads
+what came back: the whole output byte for byte, and then five separate claims the story turns on,
+each titled with the rule it proves. A promise nobody tests is a promise nobody has, and the output
+was a promise.
 
 To see every difference yourself:
 
@@ -148,7 +161,7 @@ diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
 cd docs/baby_steps_tutorials/my_07_the_pipeline_skeleton
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 169 tests pass
+pnpm check                 # typecheck, then test. 179 tests pass
 ```
 
 ```text
@@ -171,9 +184,13 @@ denied, real invoice    cfo_100               AUTHORIZATION_DENIED     retry: ne
 denied, no such invoice cfo_100               AUTHORIZATION_DENIED     retry: never                cfo_100 may not call invoice.issue
 ```
 
-Compare that with step 06's output. It is the same, line for line — `diff` reports nothing. A step
-whose whole job is to change where something *lives* should change nothing about what the program
-*does*, and that is how you check.
+Compare that with step 06's output. It is the same, line for line — `diff` reports nothing, and
+running both programs and diffing them is how that was confirmed rather than assumed. A step whose
+whole job is to change where something *lives* should change nothing about what the program *does*,
+and that is how you check.
+
+Those seventeen lines are also what `test/main.test.ts` asserts, so `pnpm test` fails if `pnpm
+start` ever stops printing them.
 
 ## Break it
 
@@ -183,40 +200,48 @@ Five breaks. Change the code back after each. Every number below was produced by
 `authenticate`. Run `pnpm test`:
 
 ```text
- Test Files  5 failed | 8 passed (13)
-      Tests  97 passed (97)
+ Test Files  6 failed | 8 passed (14)
+      Tests  6 failed | 99 passed (105)
 
 TypeError: the pipeline runs resolve the operation where authenticate belongs: the order must be
 authenticate then resolve the operation then authorize then validate the input
 ```
 
-**Read the totals.** 97 collected, not 169 — and *nothing failed*. Seventy-two tests did not fail;
-they never ran, because five test files import a module that throws while it is loading. The program
-refuses to start. That is what "refused at start-up" looks like from the outside, and it is the
-strongest answer a break can get.
+**Read the totals.** 105 collected, not 179. Seventy-four tests did not fail; they never ran,
+because five test files import a module that throws while it is loading. The program refuses to
+start. That is what "refused at start-up" looks like from the outside, and it is the strongest
+answer a break can get.
 
-It is also a trap. "All passed" on a shrunken total looks exactly like a break that nothing caught.
-When you run these, read the total first.
+Six test *files* are red, and they are red for two different reasons: five could not load at all,
+and the sixth is `test/main.test.ts`, whose six tests are the `6 failed` on the second line. Those
+six are the only reason this break goes red rather than merely quiet. That file does not import the
+program, it starts it — so a program that will not start is a failing test instead of a test that
+silently went missing.
+
+The shrunken total is still the trap, and it is worth seeing why. Park `test/main.test.ts` somewhere
+else for a moment and run this break again: it prints `99 passed (99)` with **nothing failed** — a
+total that has quietly lost seventy-four tests, reading exactly like a break nobody caught. When you
+run these, read the total first, every time.
 
 **2. Make the walker take the list backwards.** In `src/pipeline.ts`, change
 `for (const stage of stages)` to `for (const stage of [...stages].reverse())` — **the one inside
-`runPipeline`**, not the one inside `assertPipeline`. Run `pnpm test`:
+`runPipeline`**, not either of the two inside `assertPipeline`. Run `pnpm test`:
 
 ```text
-      Tests  44 failed | 125 passed (169)
+      Tests  50 failed | 129 passed (179)
 ```
 
-Forty-four. The order is load-bearing for nearly every test in the step.
+Fifty. The order is load-bearing for nearly every test in the step.
 
-There are two loops with that same first line, and mutating both is a different experiment: it
-breaks the start-up check instead, and you get break 1's shrinking total. That caught me four times
-while building this step.
+Three loops in that file open with that same line: two in `assertPipeline`, one in `runPipeline`.
+Reversing one of `assertPipeline`'s is a different experiment — it breaks the start-up check
+instead, and you get break 1's shrinking total. That caught me four times while building this step.
 
 **3. Let the walk carry on after a refusal.** In `runPipeline`, change `return result` to
 `continue`. Run `pnpm test`:
 
 ```text
-      Tests  15 failed | 154 passed (169)
+      Tests  19 failed | 160 passed (179)
 ```
 
 The first no has to be the answer. Without that, a caller who failed a check has later checks run
@@ -232,19 +257,26 @@ function with `(context) => carryOn(context)`. Run `pnpm test`:
      × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
      × DSOR-AUT-01b: the supervisor may issue, and does
-      Tests  6 failed | 163 passed (169)
+     × prints what the README shows, byte for byte
+     × DSOR-AUT-01b: cfo_100 is refused invoice.issue and the agent is not, for the same invoice
+     × DSOR-EXE-01a: the two denied lines are the same refusal, word for word
+      Tests  9 failed | 170 passed (179)
 ```
 
 This is the break to sit with. **`assertPipeline` is perfectly happy** — the list still holds four
 stages with the right names in the right order. A list cannot see what a function does. What catches
 it is behaviour: `cfo_100` can now issue an invoice.
 
+The last three failures are the ones worth noticing. They come from `test/main.test.ts`, which means
+the hole is visible on the screen a learner is looking at: run `pnpm start` with this door and
+`cfo_100` gets `COMMITTED` where the README shows `AUTHORIZATION_DENIED`.
+
 **5. Stop freezing the context between stages.** In `runPipeline`, drop the two `Object.freeze`
 calls. Run `pnpm test`:
 
 ```text
      × DSOR-EXE-01a: a stage cannot edit the context it was given
-      Tests  1 failed | 168 passed (169)
+      Tests  1 failed | 178 passed (179)
 ```
 
 A stage is meant to *return* what it learned, not edit what it was handed. Without the freeze a
@@ -294,9 +326,11 @@ And the part that finds real bugs:
 4. `assertPipeline` checks five things. Name the one it **cannot** check, and say what catches that
    instead.
 5. A command-only stage may not sit before `resolve the operation`. Why not?
-6. In break 1 the output says `97 passed (97)` and nothing failed. Why is that the *strongest*
-   result a break can get, and why is it also a trap?
-7. Is this step secure?
+6. In break 1 the output says `6 failed | 99 passed (105)`. Which of those two numbers is the
+   interesting one, and why?
+7. Which test file would notice if `pnpm start` printed the opposite of what this README shows, and
+   why could no other file notice?
+8. Is this step secure?
 
 <details>
 <summary>Answers</summary>
@@ -316,10 +350,17 @@ And the part that finds real bugs:
 5. Because whether it applies depends on the contract, and the contract is resolved by a stage.
    Placed earlier, there is no kind to ask about, so the walker steps over it on every call
    including commands — a step that is silently never reached, which is what `DSOR-EXE-01b` forbids.
-6. Strongest because the program did not start at all: a wrong order is not something you discover
-   on a request. A trap because "97 passed, 0 failed" reads like a break nothing caught, when really
-   seventy-two tests never ran. Always read the total.
-7. No more than step 06 was. Nothing here is authenticated, the roles are in the source, and
+6. The **105**. The six failures tell you something broke; the total tells you *how* it broke. 105
+   collected where 179 should be means seventy-four tests never ran at all, because the module they
+   import threw while it was loading — the program refused to start, which is the strongest answer a
+   break can get. The trap is that a shrunken total with nothing failing reads exactly like a break
+   nobody caught, and that is what this break printed before `test/main.test.ts` existed. Always
+   read the total.
+7. `test/main.test.ts`, because it is the only one that runs `src/main.ts`. Every other file imports
+   a function and calls it, and `main.ts` exports nothing to call — it does its work at the top
+   level, so importing it would just run it. Until that file existed, `src/main.ts` was imported by
+   no test in this step or any step before it, and the README's output block was an untested claim.
+8. No more than step 06 was. Nothing here is authenticated, the roles are in the source, and
    thirteen of §21's seventeen steps do not exist — including the two that matter most for evidence:
    recording the decision, which is step 08, and writing the intent record, which is step 36. What
    *is* real is that
@@ -351,7 +392,7 @@ Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-OPR-04a` | Every interface must invoke the same pipeline. The machinery is here — a door is *given* its list — but there is one interface, so nothing yet proves two of them share it. Step 42 adds the second, and that is when this becomes claimable. |
+| `DSOR-OPR-04a` | Every interface must invoke the same pipeline. The machinery is here — a door is *given* its list — but there is one interface, so nothing yet proves two of them share it. Step 42 adds the second, and that is when this becomes claimable. One test title used to claim it anyway; it is now titled `DSOR-EXE-01b`, which is what it actually shows. |
 | `DSOR-EXE-02` | The decision must be recorded before the response, denials included. Nothing is recorded anywhere yet: §21.11 is step 08. |
 | `DSOR-EXE-03a` | A durable intent record before any side effect. §21.13, step 36 — it needs a proposal id, an idempotency key and a connector, none of which exist before then. The refusal of arguments that cannot be written down is the smallest shape of it and not the rule. |
 | `DSOR-EXE-03b` | No execution if the evidence cannot be written. Its sentence covers the decision record *or* the intent record: step 08 meets the decision branch, step 36 the intent branch. |
@@ -380,6 +421,32 @@ catch.** That is lesson 14 in the learner's notes, and it had already cost somet
 
 There is a reason this section exists in three step READMEs now. A green suite and a finished
 mutation sweep are not enough, and the person least able to see it is the one who wrote both.
+
+### And what a second review found, after that
+
+A nine-reviewer pass came back later and went after the things the first pass had not thought to
+look at: the tests themselves, and this README.
+
+- **No test imported `src/main.ts`** — not here, and not in any earlier step. The program the "Run
+  it" section tells you to run, whose output this README pastes as proof, was the one file in the
+  step nothing checked. `test/main.test.ts` is the fix: it starts the program for real and reads
+  what came back. Seventeen single-line edits to `src/main.ts` were then tried one at a time, and
+  fifteen turned a test red. The two survivors are written down at the top of that file, because an
+  output that genuinely cannot differ is not a gap and the next reader should not have to rediscover
+  which two they were.
+- **Four test titles named a rule the test does not prove**, and a title is how this project counts
+  coverage, so a wrong id is a wrong number. One claimed `DSOR-OPR-04a` — the rule this README's own
+  table gives up two sections above. Three claimed `DSOR-OPR-02b`, which is about the registry not
+  filling in a value the file left out, for two freeze tests and a type-coercion test that say
+  nothing about defaults. Each one now names what it shows, or names nothing, with the reasoning
+  written beside it.
+- **Every count in this README was stale.** It said 169 tests and 23 in `test/pipeline.test.ts`;
+  there were 173 and 24. All five break-it outputs were a build or two out of date. They were
+  re-run, one at a time, and the numbers above are what they printed.
+
+The pattern across both passes is the same, and it is the one worth taking out of this step: the
+thing nobody tests is the thing nobody is looking at, and a number nobody re-measures is a number
+that has already stopped being true.
 
 **Next:** step 08, write the decision first — §21.11, the line of the checklist that matters most for
 evidence: the decision is recorded before the response even when the answer is no.

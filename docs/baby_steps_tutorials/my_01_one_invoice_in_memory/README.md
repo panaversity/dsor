@@ -47,20 +47,28 @@ the currency beside the amount from the first line is what makes that fixable la
 
 ```text
 my_01_one_invoice_in_memory/
-  src/money.ts          NEW  the Money type, and money() which refuses bad amounts
-  src/invoice.ts        NEW  the Invoice type, two invoices, and getInvoice
-  test/money.test.ts    NEW  five tests: one "yes", three refusals, one recorded gap
-  test/invoice.test.ts  NEW  six tests: reading, searching, refusing, the float bug, immutability
-  src/main.ts        CHANGED now reads INV-1008 and prints it
-  package.json       CHANGED name and description only
+  src/money.ts           NEW  the Money type, and money() which refuses bad amounts
+  src/invoice.ts         NEW  the Invoice type, two invoices, and getInvoice
+  test/money.test.ts     NEW  five tests: one "yes", three refusals, one recorded gap
+  test/invoice.test.ts   NEW  eight tests: reading, searching, refusing, the float bug, immutability
+  src/main.ts        CHANGED  now reads INV-1008 and prints it
+  test/main.test.ts  CHANGED  four tests: the three lines the program prints, pinned
+  package.json       CHANGED  name and description only
+  CLAUDE.md          CHANGED  gained the "explain, ask, then build" rule. Housekeeping, not this step
 ```
 
 `src/greet.ts` and its two tests stay exactly as step 00 left them. They are not part of the DSoR
 story — they are the "does this project run at all" check every step inherits — but they are real
-tests, so they are inside every count from this step's 13 onward, and the program still opens by
+tests, so they are inside every count from this step's 19 onward, and the program still opens by
 greeting the agent. Nothing later removes them.
 
-Everything else is step 00, byte for byte. To see that for yourself:
+`test/main.test.ts` deserves a word, because it is the one test file that tests a *program* and
+not a function. `src/main.ts` prints as soon as it loads and exports nothing, so there is no
+function for a test to call. Instead the test starts the real program as a separate process — the
+same way `pnpm start` does — and reads the three lines it printed. Step 00 had a version of this
+file for its one greeting line. This step's version pins the invoice line too.
+
+Every file that is *not* in that list is step 00, byte for byte. To see that for yourself:
 
 ```bash
 cd docs/baby_steps_tutorials
@@ -69,17 +77,21 @@ diff -rq --exclude=node_modules --exclude=pnpm-lock.yaml \
 ```
 
 ```text
+Files 00_foundation/CLAUDE.md and my_01_one_invoice_in_memory/CLAUDE.md differ
 Files 00_foundation/README.md and my_01_one_invoice_in_memory/README.md differ
 Files 00_foundation/package.json and my_01_one_invoice_in_memory/package.json differ
 Only in my_01_one_invoice_in_memory/src: invoice.ts
 Files 00_foundation/src/main.ts and my_01_one_invoice_in_memory/src/main.ts differ
 Only in my_01_one_invoice_in_memory/src: money.ts
 Only in my_01_one_invoice_in_memory/test: invoice.test.ts
+Files 00_foundation/test/main.test.ts and my_01_one_invoice_in_memory/test/main.test.ts differ
 Only in my_01_one_invoice_in_memory/test: money.test.ts
 ```
 
-Seven lines, and six of them are this step. To read one of those changes in full, name
-the two files:
+Nine lines. Six are this step: the two new source files, the two new test files, the
+program, and the program's test. The other three are housekeeping — this README, the
+package name, and the one rule `CLAUDE.md` gained after step 00 was written. To read one
+of those changes in full, name the two files:
 
 ```bash
 git diff --no-index 00_foundation/src/main.ts my_01_one_invoice_in_memory/src/main.ts
@@ -111,13 +123,16 @@ The last line matters as much as the one above it. `getInvoice` returns `undefin
 there is no such invoice. A missing record is an ordinary answer, not a crash. Proper
 error shapes arrive in step 04.
 
+All three lines are pinned by `test/main.test.ts`, so they are a promise and not only an
+example. Break 5 below is how you check that for yourself.
+
 `(issued)` is the invoice's **status**: where it has got to in its life. An invoice is
 `draft` before it is sent, `issued` once it is, then `paid` or `cancelled`. In this step
 the status is only a label on the record. Nothing reads it before acting. Turning "a
 payment needs an issued invoice" into a rule the system checks is step 32.
 
 ```bash
-pnpm check                 # typecheck, then test. 15 tests pass
+pnpm check                 # typecheck, then test. 19 tests pass
 ```
 
 ### Why some tests are titled with a rule id
@@ -137,17 +152,30 @@ and its formatting; it does not run its tests. Your step is run by you. You use 
 convention here so the habit is already yours when you write a test that does get
 counted.
 
-**Four** of the eleven new tests carry no rule id. Two test `getInvoice` — that it searches the
-list, and that it returns `undefined` for a missing invoice — and no rule in §9 governs either.
-The third is the float test: it does not touch this step's code at all, so it would still pass if
-`src/` were deleted, because it shows the fact about computers that the rule exists to guard
-against. That is motivation, not proof, and a title claiming otherwise would misdescribe what the
-test checks.
+Eight of this step's nineteen tests carry `DSOR-MON-01`: four in `test/money.test.ts`, three in
+`test/invoice.test.ts`, and one in `test/main.test.ts`. The other **eleven** carry no id, and that
+is correct rather than a gap. Here is the whole list, because the reason differs by group:
 
-The fourth is the recorded gap — the test that `money()` accepts `ZZZ`, which is not a currency
-anyone issues. It carries no id for the opposite reason to the float test: it documents something
-this step does **not** do. A rule id on it would read as conformance when it is a note about a
-hole. It is counted as a test above and as "one recorded gap" in the file list.
+- **The two `greet` tests**, inherited from step 00. No rule says a program must greet anybody.
+- **Three of the four tests on the program's output** — the greeting line, the not-found line, and
+  the check that there are exactly three lines in that order. They pin a promise this README
+  makes. No rule makes it.
+- **Three tests on `getInvoice`**: that it searches the list instead of always handing back the
+  first entry, that an id which is only the beginning of a real id finds nothing, and that a
+  missing id returns `undefined`. No rule in §9 governs any of the three.
+- **The float test.** It does not touch this step's code at all, so it would still pass if `src/`
+  were deleted. It shows the fact about computers that the rule exists to guard against. That is
+  motivation, not proof, and a title claiming otherwise would misdescribe what the test checks.
+- **The recorded gap** — the test that `money()` accepts `ZZZ`, which is not a currency anyone
+  issues. It carries no id for the opposite reason to the float test: it documents something this
+  step does **not** do. A rule id on it would read as conformance when it is a note about a hole.
+- **The test that every stored invoice is frozen.** This one is the most instructive, because it
+  used to carry `DSOR-MON-01` and had not earned it. The rule is about how an amount is *written*.
+  That test checks only that the records are locked, and the two are independent: `Object.isFrozen`
+  answers `true` for a bare number, so replacing `"2500.00"` with `2500` would break the rule
+  outright while every line of that test still passed. **A test that cannot fail when a rule is
+  broken does not prove that rule**, however close the subject looks. Its title no longer claims
+  it does.
 
 ### Why `getInvoice` makes the compiler complain
 
@@ -168,7 +196,11 @@ crash reaches production. Answer the compiler; do not silence it.
 ## Break it
 
 This step has four locks on the amount, and they are not the same lock. Break each one
-and watch which tool complains. Change the code back after each break.
+and watch which tool complains. A fifth break is about the program rather than the
+amount. Change the code back after each break.
+
+The outputs below are abridged: vitest prints every failure in full, and these keep one
+message per failing file plus the two count lines at the end.
 
 **1. Break the text, and a test catches it.** In `src/invoice.ts`, change INV-1008's
 amount from `money("31400.00", "USD")` to `money("31400", "USD")`. It is still a valid
@@ -178,11 +210,18 @@ decimal string, so the guard is happy and the compiler is happy. Run `pnpm test`
 AssertionError: expected '31400' to be '31400.00' // Object.is equality
 Expected: "31400.00"
 Received: "31400"
- Test Files  1 failed | 2 passed (3)
-      Tests  3 failed | 12 passed (15)
+
+AssertionError: expected 'INV-1008: 31400 USD to VENDOR-44 (iss…' to be 'INV-1008: 31400.00 USD to VENDOR-44 (…'
+Expected: "INV-1008: 31400.00 USD to VENDOR-44 (issued)"
+Received: "INV-1008: 31400 USD to VENDOR-44 (issued)"
+
+ Test Files  2 failed | 2 passed (4)
+      Tests  5 failed | 14 passed (19)
 ```
 
-Only a test knows what the string is supposed to *say*.
+Only a test knows what the string is supposed to *say*. Five tests say it: three read the
+stored amount, and two read what the program printed. The second message is the one on
+screen — the missing cents reach the learner's own terminal, not only a unit test.
 
 **2. Break the type, and the compiler catches it.** Change it to `money(31400, "USD")`
 — the number. Run `pnpm typecheck`:
@@ -198,15 +237,36 @@ You never ran the code, and no test had to fail.
 has nothing to say. Run `pnpm test`:
 
 ```text
+ FAIL  test/invoice.test.ts [ test/invoice.test.ts ]
 TypeError: not a decimal amount: "2,500 dollars-ish"
- Test Files  1 failed | 2 passed (3)
-      Tests  7 passed (7)
+ ❯ money src/money.ts:44:11
+ ❯ src/invoice.ts:42:13
+ ❯ test/invoice.test.ts:7:1
+
+ FAIL  test/main.test.ts > pnpm start > still opens by greeting the agent
+Error: Command failed: …/src/main.ts
+TypeError: not a decimal amount: "2,500 dollars-ish"
+
+ Test Files  2 failed | 2 passed (4)
+      Tests  4 failed | 7 passed (11)
 ```
 
-Read that test count carefully. Seven tests passed, not thirteen. The six tests in
-`invoice.test.ts` did not fail — they never ran. `money()` threw while the file was
-being loaded, before any test in it started. A bad amount stops at the moment it is
-made, which is the whole point of checking there.
+Read those two count lines carefully. **Eleven** tests were counted, not nineteen, and
+only seven of them passed. Two different things happened, and both are worth seeing.
+
+`invoice.test.ts` did not fail a test. Its eight tests never ran, so they are not in the
+count at all — vitest reports the whole file as a failed *suite*. `money()` threw while
+the file was being loaded, before the first test in it started. A bad amount stops at the
+moment it is made, which is the whole point of checking there.
+
+`main.test.ts` did fail, all four of its tests, and for a different reason. It starts the
+real program as a separate process, that program loads the same broken file, and it dies
+before printing a line. This is what testing the program buys you: a crash in
+`pnpm start` shows up in `pnpm test`, instead of waiting until a learner runs the program
+by hand.
+
+A dropping test count is itself worth remembering. If the total ever falls below nineteen,
+a file failed to load, and the tests that are missing are not tests that passed.
 
 This is the break that matters most. Without `money()`, that line compiles and the
 `Money` type has nothing to say, because `"2,500 dollars-ish"` is a string. Here it
@@ -219,7 +279,7 @@ the money is made covers every record; a test covers the ones you remembered to 
 First delete the word `readonly` from `value` in `src/money.ts`. Run `pnpm typecheck`:
 
 ```text
-test/invoice.test.ts(99,7): error TS2578: Unused '@ts-expect-error' directive.
+test/invoice.test.ts(115,7): error TS2578: Unused '@ts-expect-error' directive.
 ```
 
 That error *is* the test. The line said "what comes next must not compile"; with
@@ -231,8 +291,9 @@ Now put `readonly` back and delete `Object.freeze` from the `return` instead. Ru
 ```text
 AssertionError: expected function to throw an error, but it didn't
 AssertionError: expected false to be true // Object.is equality
- Test Files  1 failed | 2 passed (3)
-      Tests  2 failed | 13 passed (15)
+AssertionError: INV-1008 amount: expected false to be true // Object.is equality
+ Test Files  1 failed | 3 passed (4)
+      Tests  3 failed | 16 passed (19)
 ```
 
 The compiler was satisfied and the amount changed anyway. `readonly` is a promise the
@@ -240,7 +301,29 @@ compiler checks and then **erases**: Node deletes every type before it runs the 
 at run time there is nothing left to stop an assignment. `Object.freeze` is the run-time
 half. You need both, and the two breaks above prove neither one covers for the other.
 
-Change everything back and run `pnpm check` to confirm 15 tests pass again.
+Notice that the program's tests all still pass here. The amount was never actually
+changed by anyone — the lock was only removed — so `pnpm start` prints the same three
+lines. A missing lock is a door left open, not a theft, and only a test that pushes on
+the door finds it.
+
+**5. Break the program, and the program's tests catch it.** The four breaks above are all
+about the amount. This one is in `src/main.ts`: on the last line, change
+`getInvoice("INV-9999") === undefined` to `!==`. Every function in the step still behaves
+exactly as before, and the compiler is happy. Run `pnpm test`:
+
+```text
+AssertionError: expected 'INV-9999: found.' to be 'INV-9999: not found.' // Object.is equality
+Expected: "INV-9999: not found."
+Received: "INV-9999: found."
+ Test Files  1 failed | 3 passed (4)
+      Tests  2 failed | 17 passed (19)
+```
+
+Before `test/main.test.ts` existed, that one flipped character left every test green while
+`pnpm start` printed the opposite of what this README promises. A program the README tells
+you to run is code like any other, and untested code can lie about the code underneath it.
+
+Change everything back and run `pnpm check` to confirm 19 tests pass again.
 
 ## Build it yourself with Claude Code
 

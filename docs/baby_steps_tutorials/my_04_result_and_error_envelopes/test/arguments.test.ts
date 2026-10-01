@@ -67,7 +67,14 @@ describe("the caller's arguments", () => {
   // and again to fingerprint the receipt. A caller could make those two reads disagree, so the
   // receipt described a request that never happened. Here the getter hands back a decoy on any
   // read after the first, and the fingerprint must still be of INV-1009.
-  it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", () => {
+  //
+  // No rule id, and it used to carry DSOR-SCH-01. That rule is about an artifact validating
+  // against its JSON Schema; what this test counts is how many times the caller's object is
+  // read, which the rule's sentence says nothing about. The nearest real rules are
+  // DSOR-APR-02b (a payload hash over canonical JSON) and DSOR-EXE-03a (write it down
+  // before you do it), and both arrive later — steps 29 and 08. Reading the arguments once
+  // is ordinary correctness this step owes its own promise, not a rule it meets.
+  it("the arguments are read once, so the receipt describes what was done", () => {
     resetRequestIds();
     resetProposalIds();
 

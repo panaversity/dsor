@@ -23,8 +23,20 @@ function refusalFrom(answer: OperationAnswer) {
   return answer.envelope;
 }
 
+// Which id each test in this file claims, because the two rules say different things and
+// coverage is counted from these titles.
+//
+// DSOR-AUT-01b is one sentence: "DSoR MUST deny any operation for which no permission is
+// granted." Only a test that shows a refusal can prove it. DSOR-AUT-01a is the other sentence:
+// "DSoR MUST support role-based access control using the `<resource>:<action>` permission
+// format." A test that shows a granted permission letting a caller through proves that one.
+//
+// Four tests here used to be titled 01b while showing a caller being *allowed*. Naming the
+// denial rule on a test that shows an allow inflates 01b and leaves 01a looking thinner than it
+// is — and the step needs both halves, because a program that denied everything would satisfy
+// 01b's words and be useless.
 describe("anything not granted is refused", () => {
-  it("DSOR-AUT-01b: cfo_100 may read an invoice", () => {
+  it("DSOR-AUT-01a: cfo_100 may read an invoice", () => {
     const answer = callOperation(CFO, "invoice.get", { invoice: INV_1008 });
 
     if (answer.kind !== "data") {
@@ -154,10 +166,13 @@ describe("anything not granted is refused", () => {
     // inputs that can tell whether authority was settled first.
     //
     // Every attempt above is a perfectly writable string, so each of their refusals comes from
-    // further downstream, and a review proved it: authorization could be moved to run AFTER the
-    // arguments were read and all 161 tests stayed green. cfo_100 then got VALIDATION_FAILED for
-    // an unwritable argument and AUTHORIZATION_DENIED for a writable one — two distinguishable
-    // answers where this step promises one.
+    // further downstream, and a review proved it: before these three cases existed, the gate
+    // could be moved to run AFTER the arguments were read with the whole suite still green.
+    // cfo_100 then got VALIDATION_FAILED for an unwritable argument and AUTHORIZATION_DENIED for
+    // a writable one — two distinguishable answers where this step promises one.
+    //
+    // Found live 2026-10-01: moving the gate below the argument read now prints
+    // `Tests  1 failed | 155 passed (156)`, and the one failure is this test.
     const circular: Record<string, unknown> = { invoice: INV_1009 };
 
     circular["itself"] = circular;
@@ -190,13 +205,13 @@ describe("anything not granted is refused", () => {
   // the honest proof is the refusal it gets *instead* of AUTHORIZATION_DENIED: CONFLICT comes
   // from the business rule, which only runs once authority is settled. That way this test does
   // not need the one draft invoice, which the last test uses.
-  it("DSOR-AUT-01b: a caller who was granted invoice:issue gets past the gate", () => {
+  it("DSOR-AUT-01a: a caller who was granted invoice:issue gets past the gate", () => {
     const envelope = refusalFrom(callOperation(AGENT, "invoice.issue", { invoice: INV_1008 }));
 
     expect(envelope.code).toBe("CONFLICT");
   });
 
-  it("DSOR-AUT-01b: everyone in the story may read", () => {
+  it("DSOR-AUT-01a: everyone in the story may read", () => {
     for (const login of [CFO, SUPERVISOR, AGENT]) {
       const answer = callOperation(login, "invoice.get", { invoice: INV_1008 });
 
@@ -205,7 +220,7 @@ describe("anything not granted is refused", () => {
   });
 
   // Last in the file on purpose: it uses up the only draft invoice.
-  it("DSOR-AUT-01b: the supervisor may issue, and does", () => {
+  it("DSOR-AUT-01a: the supervisor may issue, and does", () => {
     const answer = callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
     if (answer.kind !== "result") {

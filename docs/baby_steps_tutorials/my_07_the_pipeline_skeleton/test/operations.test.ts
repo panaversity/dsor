@@ -167,8 +167,11 @@ describe("callOperation", () => {
       expect(envelope.retry).toBe("never");
     });
 
-    // Step 02's README promised the entity segment stops being trusted text in step 03.
-    // No rule id: this keeps that promise, it is not DSOR-RID-01b.
+    // Step 02's README promised the entity segment stops being trusted text in step 03, and this
+    // keeps that promise. Titled DSOR-ERR-01a and not DSOR-RID-01b: what it asserts is the
+    // refusal's code and retry class, which is ERR-01a's own sentence. RID-01b is about a display
+    // name standing in for a tenant id, and `vendor` is a perfectly good entity — just not one
+    // invoice.get is named for.
     it("DSOR-ERR-01a: an address whose entity no operation is named for is VALIDATION_FAILED", () => {
       const envelope = refusalFrom(
         callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_456/vendor/VENDOR-44" }),

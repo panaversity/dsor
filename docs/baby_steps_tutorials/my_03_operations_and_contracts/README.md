@@ -124,15 +124,23 @@ my_03_operations_and_contracts/
   src/contracts/*.json     NEW  invoice.get and invoice.issue, as documents
   src/registry.ts          NEW  validateContract, loadRegistry, contractsFromDisk
   src/operations.ts        NEW  callOperation, assertPaired, and the invoice.get handler
-  test/registry.test.ts    NEW  thirteen tests: what the registry refuses, and what it keeps
-  test/operations.test.ts  NEW  sixteen tests: calling by name, and the refusals
+  src/tenant.ts            NEW  the one company id, in a file of its own
+  test/registry.test.ts    NEW  fifteen tests: what the registry refuses, and what it keeps
+  test/operations.test.ts  NEW  twenty tests: calling by name, and the refusals
   src/main.ts          CHANGED  calls through the registry, and no longer imports getInvoice
-  src/invoice.ts       CHANGED  TENANT is exported for the tenant check; markers removed
+  src/invoice.ts       CHANGED  reads TENANT from src/tenant.ts; markers removed
   src/uri.ts           CHANGED  step 02's NEW IN STEP markers removed
+  test/main.test.ts    CHANGED  six tests: runs src/main.ts and checks every line it prints
   test/uri.test.ts     CHANGED  step 02's NEW IN STEP markers removed
   test/invoice.test.ts CHANGED  step 02's NEW IN STEP markers removed
   package.json         CHANGED  name, description, and ajv
 ```
+
+`src/tenant.ts` is a two-line file, and that is the point. The company id is a fact about
+*identity* — which company a caller belongs to, which records they may touch. It started
+life in `src/invoice.ts`, because that was the first file that needed it, and by step 05
+that meant the identity module imported the company id from the invoice module, which is
+backwards. Step 10 makes more than one company possible by replacing this one file.
 
 ```bash
 cd docs/baby_steps_tutorials
@@ -161,8 +169,23 @@ refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vend
 refused  no contract: execute_sql is not an operation: this program has no contract for it
 ```
 
+That block is not a paste. `test/main.test.ts` runs `src/main.ts` as a subprocess and
+compares what it printed against those lines, character for character.
+
+Until now `src/main.ts` was the one file no test touched, which made it the easiest thing
+in the step to break quietly: flipping the single `===` inside it left every other test
+green while `pnpm start` printed `not found` for both invoices. Fifteen deliberate
+one-line changes to `src/main.ts` — the flipped `===`, a loop made to iterate nothing, a
+printed value replaced by a constant — now each fail at least one test.
+
+Nothing this program prints moves between runs. There is no clock in it, no random value
+and no file path, so the whole text can be compared exactly instead of being matched
+loosely. What a test of the output cannot prove is the step's headline claim, that a
+broken contract stops the program before it prints anything: that needs a broken contract
+on disk, so it is Break 1 below.
+
 ```bash
-pnpm check                 # typecheck, then test. 65 tests pass
+pnpm check                 # typecheck, then test. 71 tests pass
 ```
 
 ### A contract without a handler, on purpose
@@ -259,13 +282,17 @@ The program printed nothing at all — not the greeting, not the operation list.
 `pnpm test`:
 
 ```text
- Test Files  2 failed | 4 passed (6)
-      Tests  5 failed | 40 passed (45)
+ Test Files  3 failed | 4 passed (7)
+      Tests  11 failed | 40 passed (51)
 ```
 
-Read the totals. **45 collected, not 65.** Twenty tests did not fail — they never ran,
+Read the totals. **51 collected, not 71.** Twenty tests did not fail — they never ran,
 because `operations.test.ts` imports a module that throws while it is loading. That is
 what "refused at start-up" looks like from the outside.
+
+The eleven that did fail are five from `registry.test.ts`, which load the contract
+directly, and all six from `main.test.ts`, because the program it runs exits with the
+error instead of printing anything.
 
 **2. Remove the `common.schema.json` line from `src/registry.ts`,** keeping the other
 `addSchema`. Run `pnpm start`:
@@ -324,12 +351,15 @@ It ran. Happily. Every line exactly as before, with a contract that has **no ris
 at all**. Now `pnpm test`:
 
 ```text
- Test Files  1 failed | 5 passed (6)
-      Tests  4 failed | 61 passed (65)
+ Test Files  1 failed | 6 passed (7)
+      Tests  4 failed | 67 passed (71)
 ```
 
-All 53 collected this time, because nothing threw while loading. Only the four tests
-that expect a refusal failed.
+All 71 collected this time, because nothing threw while loading. Only the four tests in
+`registry.test.ts` that expect a refusal failed. `main.test.ts` passed, and it was right
+to: the program's output really is identical. A test of what a program prints cannot
+catch a rule that was never enforced, because an unenforced rule changes nothing. Only a
+test that asks for a refusal can.
 
 Compare that with Break 1. Same broken contract; the difference is one letter in the
 schema. Under `strict: false`, ajv ignores a keyword it does not recognise — so the rule
@@ -402,9 +432,10 @@ general directions are in the
    normative schema silently drops whatever you removed, with nothing to tell you —
    which is the same class of mistake as claiming `money()` checks ISO 4217.
 5. Because under `strict: true` thirteen of the specification's fourteen schemas refuse
-   to compile, since their if/then blocks declare `required` without repeating `type`.
-   The trade is real and unavoidable here; Break 4 shows the cost and the tests are what
-   cover for it.
+   to compile: nine over an if/then block that requires a property not listed beside it,
+   and four over an unknown `format`, a union type, or a block with no `type`. The trade
+   is real and unavoidable here; Break 4 shows the cost and the tests are what cover for
+   it.
 6. `assertPaired` checks it both ways. An id on the list must still have a contract, so
    the note cannot refer to nothing; and it must *not* already have a handler, so nobody
    can implement the operation and forget to cross it off. A test hands `assertPaired` a
@@ -427,6 +458,14 @@ general directions are in the
 - **[DSOR-OPR-02b · L1]** The registry MUST NOT infer a default for risk level,
   execution semantics, effect, or idempotency.
   ([§7](../../../specs/dsor/01-model.md#7-operations-and-the-operation-contract))
+- **[DSOR-SCH-02 · L1]** An implementation that adds fields MUST place them under an
+  `extensions` object keyed by a reverse-DNS namespace.
+  ([§0.5](../../../specs/dsor/00-conventions.md#05-normative-artifacts)) — this is
+  Break 3, and `test/registry.test.ts` tests both halves of it.
+
+Steps 01 and 02's rules are still named by tests here, because the code they cover is
+still running: `DSOR-MON-01` on the amounts, `DSOR-RID-01a` and `DSOR-RID-01b` on the
+addresses. This step adds nothing to them.
 
 `DSOR-OPR-02a` is met squarely: the schema is the specification's own, and the registry
 refuses while it is loading.

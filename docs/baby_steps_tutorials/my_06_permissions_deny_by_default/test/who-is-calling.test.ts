@@ -167,8 +167,8 @@ describe("who you are comes from the login, never from the arguments", () => {
 
   // No rule id, for the reason given on the walk below: this step has no audit, no
   // connectors and no events, so it supports DSOR-COR-01a in part and claims neither it nor
-  // DSOR-COR-01b for attribution. DSOR-COR-01b is about generating a request id, and the two
-  // tests that prove that live in test/envelopes.test.ts.
+  // DSOR-COR-01b for attribution. DSOR-COR-01b is about generating a request id, and the tests
+  // that prove that live in test/envelopes.test.ts and test/login.test.ts.
   it("the answer records who asked", () => {
     const answer = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-9999",

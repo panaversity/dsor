@@ -118,8 +118,8 @@ describe("callOperation", () => {
 
     // A NEAR MISS, which is what the two cases above cannot catch: `org_999` and `org_1` are
     // refused by a prefix match too, so nothing protected the `!==`. Replacing it with
-    // `!TENANT.startsWith(parsed.tenant)` left all 53 tests green, and `org_45` and `org_4` then
-    // read org_456's invoice.
+    // `!TENANT.startsWith(parsed.tenant)` left every test in the step green, and `org_45` and
+    // `org_4` then read org_456's invoice.
     //
     // Fifth appearance of this shape in six steps: getInvoice's id, parseUri's entity, this
     // tenant, step 05's findPerson, step 06's holds. Two of the five became real defects.
@@ -138,7 +138,13 @@ describe("callOperation", () => {
 
     // The same near-miss question for the entity. `vendor` is refused by a prefix match too;
     // `invoices` and `invoice_line` are not.
-    it("DSOR-RID-01b: an entity that is only part of ours is refused", () => {
+    //
+    // No rule id, and it used to carry DSOR-RID-01b. That contradicted the comment eight lines
+    // above, which already says the entity check "is not DSOR-RID-01b" — and the comment was
+    // right. 01b is about a display name, slug or alias appearing in a URI, and about `tenant_id`
+    // being opaque. It says nothing about the entity segment. What this proves is this step's own
+    // promise: an operation is named for the entity it works on, and the two must agree.
+    it("an entity that is only part of ours is refused", () => {
       for (const entity of ["invoices", "invoice_line", "inv", "invoic"]) {
         expect(
           () => callOperation("invoice.get", { invoice: `dsor://org_456/${entity}/INV-1008` }),
@@ -149,7 +155,12 @@ describe("callOperation", () => {
 
     // The caller's OWN argument. An object that inherits `invoice` from a prototype carries an
     // argument nobody in this program passed.
-    it("DSOR-RID-01b: an invoice argument the object only inherits is not read", () => {
+    //
+    // No rule id, and it used to carry DSOR-RID-01b. Nothing here is about a URI at all: the
+    // argument is refused before it is ever read as an address, and the subject is own-property
+    // versus inherited-property lookup. No requirement in the registry covers that, so claiming
+    // one would count coverage this test has not earned.
+    it("an invoice argument the object only inherits is not read", () => {
       const inherited = Object.create({
         invoice: "dsor://org_456/invoice/INV-1008",
       }) as Record<string, unknown>;
@@ -207,8 +218,8 @@ describe("callOperation", () => {
 
   // The step's headline idea: the pairing is checked when the program loads, not on the first
   // request. No test in this process can watch a line at module scope run, so the constant carries
-  // how many pairs the walk looked at. Deleting the call used to leave all 53 tests green, because
-  // the two lists match today and the check is silent when it passes.
+  // how many pairs the walk looked at. Deleting the call used to leave every test in the step
+  // green, because the two lists match today and the check is silent when it passes.
   it("DSOR-OPR-01: the pairing was checked at start-up, and all of it was", () => {
     const registry = loadRegistry(contractsFromDisk());
 

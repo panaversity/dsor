@@ -127,14 +127,15 @@ This is the same lesson as `money()` in step 01 and `parseUri` in step 02, one l
 ```text
 my_04_result_and_error_envelopes/
   src/envelopes.ts          NEW  the two builders, the §28 table, request ids
-  test/envelopes.test.ts    NEW  22 tests: the table, the shapes, the refusals
+  test/envelopes.test.ts    NEW  24 tests: the table, the shapes, the refusals
   test/invoice.test.ts  CHANGED  three tests for issueInvoice, the state change this step adds
   test/arguments.test.ts    NEW  two tests: the arguments are read once, and checked first
   src/schemas/*.json        NEW  result-envelope and error-envelope, copied byte for byte
   src/invoice.ts        CHANGED  a new issueInvoice, which reports an outcome instead of throwing
   src/operations.ts     CHANGED  every refusal is an envelope; invoice.issue has a handler
   src/main.ts           CHANGED  reads every answer in one place, printing its code and retry class
-  test/operations.test.ts CHANGED every refusal test asserts a code and a retry class; seven new
+  test/main.test.ts         NEW  6 tests: runs the program itself and reads what it printed
+  test/operations.test.ts CHANGED every refusal test asserts a code and a retry class; four new
   src/registry.ts       CHANGED  step 03's NEW IN STEP markers removed
   test/registry.test.ts CHANGED  step 03's NEW IN STEP markers removed
   package.json          CHANGED  name, description, and ajv-formats
@@ -194,8 +195,20 @@ VALIDATION_FAILED        retry: never                not a canonical URI: "INV-1
 UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an operation: this program has no contract for it
 ```
 
+That transcript is not a snapshot somebody pasted once and never checked again.
+`test/main.test.ts` starts `src/main.ts` as a real program, in a real child process, and
+compares what it printed to the sixteen lines above, line for line. It then reads the
+refusal lines back and checks each code and retry class against the §28 table itself.
+
+Until this step had that test, `src/main.ts` was the one file no test imported. Flipping a
+single `===` inside it left every test green while `pnpm start` printed the opposite of
+what this page promises. A mutation sweep over the program now kills seventeen of twenty
+deliberate breakages; the three survivors print the identical bytes, so no test reading the
+output could tell — for instance, replacing `operationIds().join(", ")` with the same two
+names typed out by hand.
+
 ```bash
-pnpm check                 # typecheck, then test. 95 tests pass
+pnpm check                 # typecheck, then test. 104 tests pass
 ```
 
 ### Why two lines say "(no envelope)"
@@ -269,7 +282,7 @@ Five breaks. Change the code back after each.
 `pnpm test`:
 
 ```text
-      Tests  10 failed | 85 passed (95)
+      Tests  13 failed | 91 passed (104)
 ```
 
 Every refusal in the step is now wrong, and note *what is not wrong*: every envelope
@@ -285,17 +298,20 @@ never had an opinion.
      × the schema pins three codes' retry classes, and only three
      × DSOR-ERR-01a: the table cannot be edited at run time
      × DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT
-      Tests  6 failed | 89 passed (95)
+     × prints exactly what the README pastes under Run it
+     × prints six refusals and five different codes, and every one says never
+      Tests  8 failed | 96 passed (104)
 ```
 
 This is the break worth sitting with. You have just told every caller that re-issuing an
-already-issued invoice is safe to retry. The schema validates it. Six tests are the only
-thing standing between that and a caller in a loop.
+already-issued invoice is safe to retry. The schema validates it. Eight tests are the only
+thing standing between that and a caller in a loop — and the last two of them are the demo
+program, caught printing `retry: safe_same_key` where this README promises `never`.
 
 **3. Drop a code from the table.** Delete the `RATE_LIMITED` line. Run `pnpm test`:
 
 ```text
-      Tests  4 failed | 91 passed (95)
+      Tests  4 failed | 100 passed (104)
 ```
 
 One of those four is the test that reads the schema's own list of 32 codes; another is the
@@ -306,7 +322,7 @@ cannot fall behind the specification without something going red.
 that runs before the envelope is returned. Run `pnpm test`:
 
 ```text
-      Tests  1 failed | 94 passed (95)
+      Tests  1 failed | 103 passed (104)
 ```
 
 That check is why a `BATCH_PARTIAL` cannot be built in this step: the schema requires an
@@ -317,13 +333,15 @@ Without the check, a half-built envelope would be handed to the caller.
 re-issue refusal from `CONFLICT` to `RESOURCE_NOT_FOUND`. Run `pnpm test`:
 
 ```text
-      Tests  2 failed | 93 passed (95)
+      Tests  5 failed | 99 passed (104)
 ```
 
 The envelope is perfectly valid. The retry class is correct for the code. And the answer
-is a lie: the invoice exists. Nothing but a test knows the difference.
+is a lie: the invoice exists. Nothing but a test knows the difference — three of the five
+are the demo program, which now prints `RESOURCE_NOT_FOUND` for an invoice it has just
+read.
 
-Change everything back and run `pnpm check` to see 95 tests pass.
+Change everything back and run `pnpm check` to see 104 tests pass.
 
 ## Build it yourself with Claude Code
 

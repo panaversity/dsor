@@ -92,10 +92,11 @@ knowledge from outside the text.
 ```text
 my_02_canonical_uris/
   src/uri.ts            NEW  parseUri, formatUri, and the two patterns
-  test/uri.test.ts      NEW  nine tests: the shape, the refusals, the round trip
+  test/uri.test.ts      NEW  thirteen tests: the shape, the refusals, the round trip
   src/invoice.ts     CHANGED an Invoice now carries its own uri
   test/invoice.test.ts CHANGED two tests for an invoice's address
   src/main.ts        CHANGED prints the address
+  test/main.test.ts  CHANGED the address line is now pinned in the program's output
   src/money.ts       CHANGED step 01's NEW IN STEP markers removed
   test/money.test.ts CHANGED step 01's NEW IN STEP markers removed
   package.json       CHANGED name and description only
@@ -127,8 +128,15 @@ INV-9999: not found.
 ```
 
 ```bash
-pnpm check                 # typecheck, then test. 30 tests pass
+pnpm check                 # typecheck, then test. 36 tests pass
 ```
+
+Those four lines are not only pasted here, they are tested. `test/main.test.ts` runs
+`node src/main.ts` as a separate program and compares what it printed against the block
+above, character for character. Without it, `src/main.ts` would be the one file in the
+step that nothing checks — so a flipped `===` inside it could leave every other test
+green while `pnpm start` printed the opposite of what this page promises. Break 5 below
+is that flip.
 
 ### Why the address is built from the id
 
@@ -144,19 +152,23 @@ a different record. An address that points at the wrong invoice is worse than no
 address, because every log line and every approval that quotes it is now confidently
 wrong. Break 3 below shows exactly that going wrong.
 
-### Why `formatUri` reads back what it writes, and compares
+### Why `formatUri` checks each part, then reads back what it writes
 
 ```ts
-const uri = `dsor://${parts.tenant}/${parts.entity}/${parts.id}`;
+const tenant = ownText(parts, "tenant");
+const entity = ownText(parts, "entity");
+const id = ownText(parts, "id");
+
+const uri = `dsor://${tenant}/${entity}/${id}`;
 const back = parseUri(uri);
 
-if (back.tenant !== parts.tenant || back.entity !== parts.entity || back.id !== parts.id) {
+if (back.tenant !== tenant || back.entity !== entity || back.id !== id) {
   throw new TypeError(`address does not read back the same: ${JSON.stringify(uri)}`);
 }
 ```
 
-Without this, `formatUri` would be a back door: you could not get a bad address *past*
-`parseUri`, but you could *create* one.
+Without some check here, `formatUri` would be a back door: you could not get a bad
+address *past* `parseUri`, but you could *create* one.
 
 Parsing alone is not enough, and this is the subtle part. Building text with
 `${...}` turns whatever it is given into text first. So if the id is missing, the
@@ -169,11 +181,35 @@ dsor://org_456/invoice/undefined
 which parses perfectly. It is canonical, it is permanent, and it points at nothing. The
 types do not save you: `readonly id: string` is erased before Node runs the file, so a
 `null` from a database row in step 09 arrives here and quietly becomes the word
-`"null"`. Comparing the parts catches it, because `"undefined"` is not `undefined`.
+`"null"`.
+
+The read-back comparison was this step's first fix for that, because `"undefined"` is not
+`undefined`. Then attacking the function found two more holes, and both were about *how*
+the parts were read rather than what they were:
+
+- A part the object merely **inherits** is a value nobody in this program chose. An
+  object owning nothing at all used to mint a perfectly valid address from its
+  prototype.
+- A part can be a **getter**, and a getter may answer differently each time it is read.
+  The old code read each part twice — once to build the address and once to compare it
+  back — so an object answering `INV-1008` and then `INV-9999` made those two reads
+  disagree.
+
+So each part is now read exactly **once**, through `ownText`, which demands the object's
+own property and demands it be text. That catches the missing id *earlier* than the
+comparison did, and catches more.
+
+Which leaves the comparison unreachable, and `src/uri.ts` says so in a comment rather
+than pretending otherwise. Every string that would read back differently — a slash
+inside a part, a leading or trailing newline — makes `parseUri` refuse the address on the
+line above. No input `formatUri` accepts can now make the comparison fail. It stays as
+the last line of defence, and because it is what this step teaches; a guard no test can
+kill is worth a comment rather than a quiet line.
 
 ## Break it
 
-Four breaks, each one showing a different guard. Change the code back after each.
+Five breaks, each one showing a different guard. Change the code back after each. Every
+block below is what the command printed, not what it ought to print.
 
 **1. Loosen `TENANT_ID` to the schema's own pattern.** In `src/uri.ts`, change it to
 `/^[A-Za-z0-9_-]+$/` — the exact pattern the normative schema uses for the tenant part.
@@ -184,36 +220,47 @@ Run `pnpm test`:
 AssertionError: expected function to throw an error, but it didn't
  FAIL  test/uri.test.ts > parseUri > DSOR-RID-01b: the refusal says which half was wrong
  FAIL  test/uri.test.ts > formatUri > DSOR-RID-01b: refuses to write an address it would not read
- Test Files  1 failed | 3 passed (4)
-      Tests  3 failed | 27 passed (30)
+ Test Files  1 failed | 4 passed (5)
+      Tests  3 failed | 33 passed (36)
 ```
 
 This is the break to sit with. The pattern you just pasted in is not wrong — it is what
-the specification's schema actually says. It is simply not enough on its own, and three
-tests say so. `dsor://acme/invoice/INV-1008` is now accepted.
+the specification's schema actually says. It is not enough on its own, and three tests
+say so. `dsor://acme/invoice/INV-1008` is now accepted.
 
 **2. Remove the `^` and `$`.** These mean "the whole text must be the address, and
 nothing else". Without them a match anywhere inside a longer string counts:
 
 ```text
+ FAIL  test/uri.test.ts > parseUri > DSOR-RID-01a: an address of the wrong shape is refused
 AssertionError: expected function to throw an error, but it didn't
- Test Files  1 failed | 3 passed (4)
-      Tests  3 failed | 27 passed (30)
+ FAIL  test/uri.test.ts > parseUri > DSOR-RID-01a: nothing may be hidden either side of the address
+ FAIL  test/uri.test.ts > formatUri > DSOR-RID-01a: a part that is not text is refused before an address is built
+AssertionError: expected [Function] to throw error matching /not a canonical URI/ but got 'address does not read back the same: …'
+ Test Files  1 failed | 4 passed (5)
+      Tests  3 failed | 33 passed (36)
 ```
 
-`dsor://org_456/invoice/INV-1008 and more` now parses cleanly.
+`dsor://org_456/invoice/INV-1008 and more` now parses cleanly. The third failure is the
+most interesting one: with the ends of the pattern gone, an id ending in a newline is no
+longer refused by `parseUri`, so the read-back comparison — the guard that is unreachable
+in the working code — is the thing that catches it, and it says so in the message.
 
 **3. Type the id twice.** In `makeInvoice`, change `id` inside `formatUri` to the
 literal `"INV-1008"`. Run `pnpm test`:
 
 ```text
+ FAIL  test/invoice.test.ts > an invoice's address > DSOR-RID-01a: INV-1008's address is dsor://org_456/invoice/INV-1008
 AssertionError: expected 'dsor://org_456/invoice/INV-1008' to be 'dsor://org_456/invoice/INV-1009' // Object.is equality
- Test Files  1 failed | 3 passed (4)
-      Tests  2 failed | 28 passed (30)
+ FAIL  test/invoice.test.ts > an invoice's address > the id inside the address is the invoice's own id
+ Test Files  1 failed | 4 passed (5)
+      Tests  2 failed | 34 passed (36)
 ```
 
 INV-1009 now claims INV-1008's address. Nothing crashed, nothing looked broken, and two
-different invoices answer to the same name.
+different invoices answer to the same name. Note what did *not* fail: `pnpm start` prints
+INV-1008, whose own address is still right, so the program's output is unchanged. A test
+on the output alone would have missed this.
 
 **4. Misspell a part.** Change `id` to `invoiceId: id` in that same call. Run
 `pnpm typecheck`:
@@ -222,7 +269,25 @@ different invoices answer to the same name.
 src/invoice.ts(50,57): error TS2353: Object literal may only specify known properties, and 'invoiceId' does not exist in type 'ResourceUri'.
 ```
 
-No test had to run. Change everything back and run `pnpm check` to see 30 tests pass.
+No test had to run.
+
+**5. Flip the `===` in the program itself.** On the last line of `src/main.ts`, change
+`getInvoice("INV-9999") === undefined` to `!== undefined`. Run `pnpm test`:
+
+```text
+ FAIL  test/main.test.ts > pnpm start > reports a missing invoice as not found, and does not crash
+AssertionError: expected 'INV-9999: found.' to be 'INV-9999: not found.' // Object.is equality
+ FAIL  test/main.test.ts > pnpm start > prints exactly the four lines the README shows, in order
+ Test Files  1 failed | 4 passed (5)
+      Tests  2 failed | 34 passed (36)
+```
+
+`pnpm start` now announces that an invoice which does not exist was found. This is the
+break that needs `test/main.test.ts` to exist: nothing in `src/uri.ts`, `src/invoice.ts`
+or `src/money.ts` changed, so before that file was written every test stayed green while
+the program contradicted this page.
+
+Change everything back and run `pnpm check` to see 36 tests pass.
 
 ## Build it yourself with Claude Code
 
@@ -279,8 +344,13 @@ general directions are in the
 4. Parsing alone only proves the text is a well-formed address. Building the text
    converts whatever it was given into text first, so a missing id becomes the word
    `"undefined"` and `dsor://org_456/invoice/undefined` parses perfectly — canonical,
-   permanent, and pointing at nothing. Comparing the parts catches that, because
-   `"undefined"` is not `undefined`.
+   permanent, and pointing at nothing. Comparing the parts was the first fix for that,
+   because `"undefined"` is not `undefined`. Reading each part through `ownText` now
+   catches it one line earlier, and catches two things the comparison never could: a part
+   the object merely inherits, and a part that is a getter answering differently on a
+   second read. That leaves the comparison unreachable in the working code — Break 2
+   above is the only way to see it fire — so it stays as the last line of defence, with a
+   comment saying it cannot be tested.
 5. The address and the record drift apart. Break 3 shows INV-1009 carrying INV-1008's
    address: nothing crashes, and two invoices answer to one name, so every log line and
    approval quoting that address is confidently wrong.
@@ -300,7 +370,7 @@ Both are met for the addresses this step creates, and both come with a limit wor
 knowing.
 
 **`DSOR-RID-01b` is checked on the tenant segment only.** Read the rule again: a name
-"MUST NOT appear in a canonical URI" — the whole address, not just the company part.
+"MUST NOT appear in a canonical URI" — the whole address, not only the company part.
 §5's **Common mistake** names the other half too: *"using the company's name (`acme`)
 or one system's internal row id as the identifier"*. `TENANT_ID` stops the first.
 Nothing here stops the second, so `dsor://org_456/vendor/acme` and

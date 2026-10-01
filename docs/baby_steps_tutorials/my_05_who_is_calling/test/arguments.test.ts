@@ -73,7 +73,16 @@ describe("the caller's arguments", () => {
   // and again to fingerprint the receipt. A caller could make those two reads disagree, so the
   // receipt described a request that never happened. Here the getter hands back a decoy on any
   // read after the first, and the fingerprint must still be of INV-1009.
-  it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", () => {
+  //
+  // No rule id, and it used to carry `DSOR-SCH-01`. That rule is "every artifact validates
+  // against its JSON Schema wherever it crosses an interface" — and nothing below validates an
+  // envelope against a schema. What this test proves is that the fingerprint matches the request
+  // that was really acted on, which no rule this step has met states: the rule that wants a
+  // payload hash written down first is `DSOR-EXE-03a`, and step 08 builds it. Coverage here is
+  // counted from these titles, so an id in the wrong title is a wrong number.
+  //
+  // Its twin in test/who-is-calling.test.ts has carried no id all along.
+  it("the arguments are read once, so the receipt describes what was done", () => {
     resetRequestIds();
     resetProposalIds();
 

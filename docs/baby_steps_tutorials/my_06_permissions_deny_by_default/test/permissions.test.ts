@@ -182,7 +182,12 @@ describe("permissions", () => {
   // Every person's role is one the table knows. Without this, a typo in people.ts would take
   // every permission away from somebody and no test would notice — deny-by-default means the
   // mistake is silent.
-  it("DSOR-AUT-01b: everybody in the story has a role the table defines", () => {
+  //
+  // DSOR-AUT-01a, and it used to say 01b. 01b is the denial rule: "MUST deny any operation for
+  // which no permission is granted". This test asserts the opposite direction — that everybody
+  // holds something — so it proves nothing about denial. What it does prove is that permissions
+  // hang off roles the table defines, which is 01a's "role-based access control".
+  it("DSOR-AUT-01a: everybody in the story has a role the table defines", () => {
     for (const who of everyone()) {
       expect(Object.keys(ROLES), who.id).toContain(who.role);
       expect(permissionsOf(who).length, who.id).toBeGreaterThan(0);

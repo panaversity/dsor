@@ -101,7 +101,14 @@ describe("the operation registry", () => {
   // ajv can be told to rewrite the document it is checking. Both options are off, and
   // this test is what keeps them off: `coerceTypes` would turn the string "1" into the
   // number 1 rather than refusing it.
-  it("DSOR-OPR-02b: a version written as text is refused, not quietly converted", () => {
+  //
+  // Titled DSOR-OPR-01, not DSOR-OPR-02b. OPR-02b names four things the registry may not
+  // supply a default for — risk level, execution semantics, effect, idempotency — and
+  // `version` is none of them. Converting a value the document does already carry is not
+  // supplying a missing one. What this shows is OPR-01: the schema says `version` is an
+  // integer, so a contract whose version is text does not validate and the registry
+  // refuses it.
+  it("DSOR-OPR-01: a version written as text is refused, not quietly converted", () => {
     const broken = contractCopy("invoice.issue");
     broken["version"] = "1";
 
@@ -191,8 +198,10 @@ describe("validateContract", () => {
   // The schema says a contract may not carry fields it does not know about, so a
   // friendly "description" has to go under `extensions` with a reverse-DNS key
   // (DSOR-SCH-02). Worth meeting once, because the urge to add one is strong.
-  // DSOR-SCH-02 is the rule about added fields belonging under `extensions`. This shows the
-  // half that is enforced here: a bare extra field is refused.
+  //
+  // Both halves of the rule are here, which is why the id is earned rather than borrowed: the
+  // bare field is refused, and the same field keyed by a reverse-DNS namespace under
+  // `extensions` is accepted. A test that only showed the refusal would be showing half a rule.
   it("DSOR-SCH-02: a helpful extra field is refused, and extensions is the way in", () => {
     const extra = contractCopy("invoice.get");
     extra["description"] = "Reads one invoice";
@@ -230,7 +239,12 @@ describe("validateContract", () => {
   // authorization. This walks the whole contract instead, so a nested object nobody thought of
   // cannot arrive mutable. Object.freeze is one level deep, which is the whole reason deepFreeze
   // exists.
-  it("DSOR-OPR-02b: every object and array inside a contract is frozen, all the way down", () => {
+  //
+  // No rule id, and it used to claim DSOR-OPR-02b. That rule is about the registry not supplying a
+  // value the file left out; freezing is about nobody changing a value the file did supply. They
+  // are different sentences. "what the registry hands back cannot be changed, all the way down",
+  // thirty lines up, is the same claim and has never carried an id — this one now matches it.
+  it("every object and array inside a contract is frozen, all the way down", () => {
     const registry = loadRegistry(contractsFromDisk());
 
     expect(registry.size).toBeGreaterThan(0);
@@ -260,7 +274,10 @@ describe("validateContract", () => {
 
   // deepFreeze used to return early on anything already frozen, which is the wrong test: a frozen
   // object can still hold mutable children, because Object.freeze is one level deep.
-  it("DSOR-OPR-02b: a document whose top level is already frozen is still frozen inside", () => {
+  //
+  // No rule id, for the reason given on the walk above: this is about deepFreeze, not about a
+  // default the registry did or did not supply.
+  it("a document whose top level is already frozen is still frozen inside", () => {
     const document = {
       where: "test",
       expectedId: "invoice.get",
