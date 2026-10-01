@@ -46,19 +46,29 @@ export function companyOf(store: InvoiceStore, tenant: string, reads: Reads = ne
   const open = (): void => {
     if (reads.closed) throw new Error("this call has ended, so its company reads nothing more");
   };
+  // A label that fails its check is noted as such before the error reaches the code, so code
+  // that catches it cannot hide it (step 15's README, decision 6). Found by the review.
+  const note = (freshness: unknown): void => {
+    try {
+      reads.labels.push(checkedLabel(freshness));
+    } catch (error) {
+      reads.broken = true;
+      throw error;
+    }
+  };
   const invoices: CompanyInvoices = Object.freeze({
     get: async (id: string) => {
       open();
       const { invoice, freshness } = await store.get(tenant, id);
       open();
-      reads.labels.push(checkedLabel(freshness));
+      note(freshness);
       return invoice;
     },
     list: async (after: string | undefined, count: number) => {
       open();
       const { rows, freshness } = await store.list(tenant, after, count);
       open();
-      reads.labels.push(checkedLabel(freshness));
+      note(freshness);
       return rows;
     },
   });

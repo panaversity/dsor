@@ -61,21 +61,25 @@ function isDateTime(text: string): boolean {
 }
 
 /**
- * One call's reads, as the bound store notes them for the checklist: each read's label, and
- * whether line ⑨ has ended. The code never holds it (step 15's README, decision 5).
+ * One call's reads, as the bound store notes them for the checklist: each read's label,
+ * whether a store gave a label that failed its check, and whether line ⑨ has ended. The code
+ * never holds it (step 15's README, decisions 5 and 6).
  */
-export type Reads = { labels: Freshness[]; closed: boolean };
+export type Reads = { labels: Freshness[]; broken: boolean; closed: boolean };
 
 /** A notebook for one call, with no read in it yet. */
 export function newReads(): Reads {
-  return { labels: [], closed: false };
+  return { labels: [], broken: false, closed: false };
 }
 
 /**
  * The label of an answer built from these reads: the weakest mode, and the oldest time with
  * the connector that read it. A query that read nothing has none.
  */
-export function stalest({ labels: reads }: Reads): Freshness {
+export function stalest({ labels: reads, broken }: Reads): Freshness {
+  // NEW IN STEP 15: one label that failed its check refuses the call, even when the code
+  // caught the error and read again (step 15's README, decision 6). Found by the review.
+  if (broken) throw new Error("a store gave a label that failed its check");
   // A label for an answer that read nothing would be invented (step 15's README, decision 6).
   if (reads.length === 0) throw new Error("the query's code returned data without a read");
   // An answer is only as fresh as its stalest part. The weakest mode and the oldest time can

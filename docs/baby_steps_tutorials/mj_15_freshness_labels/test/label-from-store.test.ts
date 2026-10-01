@@ -130,6 +130,24 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
     );
     expect(freshnessOf(answer)).toStrictEqual(BOUNDED);
   });
+
+  // Found by the review: the bad label's error went to the code, which could catch it, read
+  // again, and succeed. Now one bad label refuses the call (decision 6).
+  it("decision 6: code that catches a bad label's error and reads again still gets INTERNAL_ERROR", async () => {
+    const answer = await runOver(
+      relabelled([{ ...BOUNDED, mode: "fresh" }, BOUNDED]),
+      CFO,
+      async (_input, company) => {
+        try {
+          await company.invoices.get("INV-1008");
+        } catch {
+          // The code swallows the error, and tries again.
+        }
+        return company.invoices.get("INV-1008");
+      },
+    );
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+  });
 });
 
 // Found by the review: a Company the code kept from an earlier call still read, and its read's
