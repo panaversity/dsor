@@ -181,11 +181,26 @@ function correlationFor(
   requestId: string | undefined,
   principalId: string | undefined,
 ): Correlation {
-  const request_id = requestId ?? nextRequestId();
+  const request_id = idFor(requestId);
 
   return Object.freeze(
     principalId === undefined ? { request_id } : { request_id, principal_id: principalId },
   );
+}
+
+/**
+ * The request id to put on an envelope: the caller's, when they gave a usable one.
+ *
+ * `requestId ?? nextRequestId()` was wrong, and a deep pass proved it: `??` only treats `undefined`
+ * and `null` as absent, so a caller passing `""` got an envelope carrying `request_id: ""`. It
+ * validated, because `common.schema.json` puts no `minLength` on `request_id` — so a receipt for a
+ * state change came back with no usable correlation id at all.
+ *
+ * `DSOR-COR-01b` says DSoR MUST **generate** a `request_id` when the caller supplies none, and a
+ * blank string is none. Anything that is not text with something in it gets a fresh id.
+ */
+function idFor(requestId: string | undefined): string {
+  return typeof requestId === "string" && requestId.trim() !== "" ? requestId : nextRequestId();
 }
 
 /**

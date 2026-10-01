@@ -158,6 +158,38 @@ export function resetRequestIds(): void {
 let proposalCount = 0;
 
 /**
+ * The request id to put on an envelope: the caller's, when they gave a usable one.
+ *
+ * `requestId ?? nextRequestId()` was wrong, and a deep pass proved it: `??` only treats `undefined`
+ * and `null` as absent, so a caller passing `""` got an envelope carrying `request_id: ""`. It
+ * validated, because `common.schema.json` puts no `minLength` on `request_id` — so a receipt for a
+ * state change came back with no usable correlation id at all.
+ *
+ * `DSOR-COR-01b` says DSoR MUST **generate** a `request_id` when the caller supplies none, and a
+ * blank string is none. Anything that is not text with something in it gets a fresh id.
+ */
+function idFor(requestId: string | undefined): string {
+  return typeof requestId === "string" && requestId.trim() !== "" ? requestId : nextRequestId();
+}
+
+/**
+ * How long a refusal's message may be.
+ *
+ * Every error envelope in this program is built here, which is why the cap lives here. A fuzz run
+ * found messages the caller had filled out: a 200,000-character invoice id and a 100,000-character
+ * login name came straight back in `message`. Capping each site that writes one is how you miss the
+ * next site, so the cap is at the one place they all pass through — and it says how much was
+ * dropped, so a long message is shortened rather than silently misrepresented.
+ */
+const ROOM_FOR_A_MESSAGE = 300;
+
+function clipMessage(message: string): string {
+  return message.length <= ROOM_FOR_A_MESSAGE
+    ? message
+    : `${message.slice(0, ROOM_FOR_A_MESSAGE)}… (${message.length} characters, ${message.length - ROOM_FOR_A_MESSAGE} dropped)`;
+}
+
+/**
  * Builds a refusal.
  *
  * The caller says what went wrong and in which words. It does not get to say whether a
@@ -173,9 +205,9 @@ export function refusal(code: string, message: string, requestId?: string): Erro
 
   const envelope: ErrorEnvelope = Object.freeze({
     code,
-    message,
+    message: clipMessage(message),
     retry,
-    correlation: Object.freeze({ request_id: requestId ?? nextRequestId() }),
+    correlation: Object.freeze({ request_id: idFor(requestId) }),
   });
 
   if (!validateEnvelope("error", envelope)) {
@@ -215,7 +247,7 @@ export function success(answer: {
     payload_hash: answer.payloadHash,
     semantics: answer.semantics,
     data: answer.data,
-    correlation: Object.freeze({ request_id: answer.requestId ?? nextRequestId() }),
+    correlation: Object.freeze({ request_id: idFor(answer.requestId) }),
   });
 
   if (!validateEnvelope("result", envelope)) {

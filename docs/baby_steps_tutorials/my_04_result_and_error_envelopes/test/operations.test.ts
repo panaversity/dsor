@@ -344,4 +344,26 @@ describe("callOperation", () => {
       ).toThrow(/invoice\.issue has a contract and no handler/);
     });
   });
+
+  /**
+   * NEW: the count includes the waiting list.
+   *
+   * `assertPaired` returns how many pairs it looked at, and both tests above hand it a *rotten*
+   * waiting list and assert a throw — so nothing ever observed the return value on a path where the
+   * waiting loop completes. A mutation sweep found it: `checked += 1` inside that loop could be
+   * `+= 0` with every test green, which hollows out the one device this step uses to show the
+   * start-up check really walked the lists (lesson 12).
+   */
+  it("DSOR-OPR-01: a valid waiting list is counted too", () => {
+    const registry = loadRegistry(contractsFromDisk());
+    const contracts = [...registry.keys()].length;
+
+    // A legitimate queue: invoice.issue has a contract and, here, no handler yet.
+    const onlyGet = { "invoice.get": handlersForBoth()["invoice.get"]! };
+
+    expect(assertPaired(registry, onlyGet, new Set(["invoice.issue"]))).toBe(contracts + 1);
+
+    // And with nothing waiting, it is the contracts alone.
+    expect(assertPaired(registry, handlersForBoth(), new Set())).toBe(contracts);
+  });
 });

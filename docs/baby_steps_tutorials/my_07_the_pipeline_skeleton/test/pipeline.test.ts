@@ -8,6 +8,7 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
+import { getInvoice } from "../src/invoice.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(at: number | null, name: string, applies: Stage["applies"] = "both"): Stage {
@@ -466,5 +467,96 @@ describe("the pipeline", () => {
 
       expect(() => assertPipeline(list), String(at)).toThrow(/not a step §21 has/);
     }
+  });
+
+  /**
+   * NEW: each clause of the door's completeness guard, fed the one input only it can catch.
+   *
+   * The guard works. What it did not have was a test per clause — every existing test lazied a stage
+   * **completely**, so one clause caught them all and the other four could be deleted with 169 tests
+   * green. A mutation sweep proved each in turn, and the worst was real: with `given === undefined`
+   * flipped and a stage that fills `given` but not the hash, `invoice.issue` runs to the end — the
+   * invoice IS issued — and then `success()` throws at the caller. A committed change and an
+   * exception instead of a receipt.
+   *
+   * A **half-done** stage is the shape that separates the clauses: one that fills some of what it
+   * promises and not the rest.
+   */
+  it("DSOR-EXE-01b: a half-done stage is refused, whichever half it did", () => {
+    const halves = [
+      {
+        what: "given but no payload hash",
+        stage: "validate the input",
+        run: (c: Context) => ({
+          kind: "carry_on" as const,
+          context: { ...c, given: Object.freeze({ ...c.args }) },
+        }),
+      },
+      {
+        what: "a payload hash but no arguments",
+        stage: "validate the input",
+        run: (c: Context) => ({
+          kind: "carry_on" as const,
+          context: { ...c, payloadHash: "sha256:x" },
+        }),
+      },
+      {
+        what: "no principal",
+        stage: "authenticate",
+        run: (c: Context) => ({ kind: "carry_on" as const, context: c }),
+      },
+      {
+        what: "no contract",
+        stage: "resolve the operation",
+        run: (c: Context) => ({ kind: "carry_on" as const, context: c }),
+      },
+    ];
+
+    for (const { what, stage, run } of halves) {
+      // Before and after, rather than "is it a draft". This step has no way to put the store back —
+      // that seam arrives in step 08 — and other tests in this file issue INV-1009, so the
+      // order-independent claim is that *this call* changed nothing.
+      const before = getInvoice("INV-1009")?.status;
+      const list = PIPELINE.map((s) => (s.name === stage ? Object.freeze({ ...s, run }) : s));
+      const answer = makeDoor(list)({ loggedInAs: "user_123" }, "invoice.issue", {
+        invoice: "dsor://org_456/invoice/INV-1009",
+      });
+
+      if (answer.kind !== "error") {
+        throw new Error(`${what}: expected a refusal, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.code, what).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.retry, what).toBe("never");
+
+      // The point: nothing was carried out.
+      expect(getInvoice("INV-1009")?.status, what).toBe(before);
+    }
+
+    // The principal clause needs **two** hollow stages to reach, because `authorize` refuses without
+    // a principal before the door ever looks. With both `authenticate` and `authorize` carrying on,
+    // the walk ends with a contract, arguments and a hash and no idea who asked — and the door used
+    // to reach `handler(given, contract, principal.id, hash)` and throw a raw TypeError at the caller.
+    const noOne = PIPELINE.map((stage) =>
+      stage.name === "authenticate" || stage.name === "authorize"
+        ? Object.freeze({
+            ...stage,
+            run: (c: Context) => ({ kind: "carry_on" as const, context: c }),
+          })
+        : stage,
+    );
+
+    const unchanged = getInvoice("INV-1009")?.status;
+    const answer = makeDoor(noOne)(undefined, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.askedBy).toBe("(nobody)");
+    expect(getInvoice("INV-1009")?.status).toBe(unchanged);
   });
 });

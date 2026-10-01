@@ -320,4 +320,44 @@ describe("request ids", () => {
     // propagation through connectors and audit for step 40.
     expect(Object.keys(refusal("CONFLICT", "x").correlation)).toEqual(["request_id"]);
   });
+
+  /**
+   * NEW: a caller cannot hand over a blank request id and keep it.
+   *
+   * `requestId ?? nextRequestId()` only treats `undefined` as absent, so `""` used to survive all the
+   * way onto the envelope — and it validated, because `common.schema.json` puts no `minLength` on
+   * `request_id`. A receipt for a state change came back with no usable correlation id at all.
+   * `DSOR-COR-01b` says DSoR MUST generate one when the caller supplies none, and a blank is none.
+   */
+  it("DSOR-COR-01b: a blank request id from the caller is replaced, not kept", () => {
+    resetRequestIds();
+
+    for (const blank of ["", "   ", "\t", "\n"]) {
+      const envelope = refusal("CONFLICT", "x", blank);
+
+      expect(envelope.correlation.request_id, JSON.stringify(blank)).toMatch(/^req_\d+$/);
+      expect(validateEnvelope("error", envelope), JSON.stringify(blank)).toBe(true);
+    }
+
+    // A real id is still the caller's own.
+    expect(refusal("CONFLICT", "x", "req_99").correlation.request_id).toBe("req_99");
+  });
+
+  /**
+   * NEW: a caller cannot choose how long an error message is.
+   *
+   * A fuzz run found a 200,000-character invoice id and a 100,000-character login name coming
+   * straight back in `message`. Four different places build a message out of caller text, so the cap
+   * is where they all pass through rather than at each one.
+   */
+  it("DSOR-ERR-01a: an error message is capped, and says how much was dropped", () => {
+    const envelope = refusal("CONFLICT", "x".repeat(500_000), "req_1");
+
+    expect(envelope.message.length).toBeLessThan(400);
+    expect(envelope.message).toMatch(/characters, \d+ dropped/);
+    expect(validateEnvelope("error", envelope)).toBe(true);
+
+    // A short message is untouched, suffix and all.
+    expect(refusal("CONFLICT", "a sentence", "req_2").message).toBe("a sentence");
+  });
 });
