@@ -3,7 +3,8 @@
 // decision 5). Each store here is planted under the bound store, where a connector sits.
 import { describe, expect, it } from "vitest";
 import type { Company } from "../src/company.ts";
-import { memoryInvoices } from "../src/invoice.ts";
+import type { Freshness } from "../src/freshness.ts";
+import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { call } from "../src/pipeline.ts";
 import { AGENT, CFO, UNEXPECTED, log, omitted } from "./helpers.ts";
 import { cacheOver, freshnessOf, registryOver, relabelled, runOver } from "./stores.ts";
@@ -173,6 +174,41 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
       },
     );
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+  });
+});
+
+// Found by the mutation sweep, 2026-10-02: every broken-label test above read with get, so a
+// list that noted its label unchecked passed. And a store that changed its label object after
+// handing it over could change the label, if DSoR kept the store's object, not its own copy.
+describe("C4, from the sweep: every read's label is checked, and kept as it was checked", () => {
+  it("decision 6: a page whose store gives a label with an unknown mode gives INTERNAL_ERROR", async () => {
+    const store = relabelled([{ ...BOUNDED, mode: "fresh" }]);
+    const answer = await call(registryOver(store), log, CFO, "invoice.list", {});
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+  });
+
+  it("decision 6: a store that changes its first label after handing it over does not change the answer's label", async () => {
+    const inner = memoryInvoices();
+    const first: Freshness = { mode: "observational", observed_at: STALE.observed_at, connector: "cache" };
+    const fresh: Freshness = { mode: "current", observed_at: "2026-10-01T09:00:00.000Z", connector: "memory" };
+    let reads = 0;
+    // The first read is an old copy. At the second read, the store rewrites the first label
+    // to look fresh, and gives a current one.
+    const shifty: InvoiceStore = {
+      get: async (tenant, id) => {
+        const { invoice } = await inner.get(tenant, id);
+        if (reads++ === 0) return { invoice, freshness: first };
+        Object.assign(first, { mode: "current", observed_at: "2026-10-01T09:30:00.000Z" });
+        return { invoice, freshness: fresh };
+      },
+      list: inner.list,
+    };
+    const answer = await runOver(shifty, CFO, async (_input, company) => {
+      const invoice = await company.invoices.get("INV-1008");
+      await company.invoices.get("INV-1008");
+      return invoice;
+    });
+    expect(freshnessOf(answer)).toStrictEqual(STALE);
   });
 });
 

@@ -53,4 +53,14 @@ describe("C6: only a successful query carries freshness", () => {
       { authorization: "ALLOW", result: "INTERNAL_ERROR" },
     ]);
   });
+
+  // Found by the mutation sweep, 2026-10-02: the label taken right after the copy, before the
+  // company check and the 64 KiB check, passed every test. The label is taken last, so an
+  // answer an earlier check refuses is refused for that check's reason (step 15's README,
+  // decision 5). Here, 70,000 bytes, read from nothing: refused for its size, not its label.
+  it("decision 5: an answer too large, from code that read nothing, is refused for its size", async () => {
+    const huge = { ...structuredClone(INV_1008_OF_456), note: "x".repeat(70_000) };
+    const answer = await call(registryRunning(() => huge), log, CFO, "test.run", GET_1008);
+    expect(answer).toMatchObject({ code: "UNSUPPORTED_CAPABILITY" });
+  });
 });
