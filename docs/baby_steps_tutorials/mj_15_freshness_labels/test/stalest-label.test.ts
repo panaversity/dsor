@@ -61,6 +61,15 @@ describe("C5: several reads give the stalest label", () => {
     expect(await labelOfTwoReads(weaker, older)).toStrictEqual(expected);
   });
 
+  // Found by the mutation sweep, 2026-10-02: the design said nothing about a tie, so taking
+  // the last of two equal times passed. On a tie, the first read's connector (decision 6).
+  it("decision 6: when two reads have the same oldest time, the connector is the first of them", async () => {
+    const warehouse = { mode: "bounded_staleness", observed_at: at("08:30:00"), connector: "warehouse" };
+    const crm = { mode: "bounded_staleness", observed_at: at("08:30:00"), connector: "crm" };
+    expect(await labelOfTwoReads(warehouse, crm)).toStrictEqual(warehouse);
+    expect(await labelOfTwoReads(crm, warehouse)).toStrictEqual(crm);
+  });
+
   // 09:00 at +05:00 is 04:00 in UTC, older than 05:00 in UTC, though its text sorts after
   // it. Times are compared as moments, never as text. The label keeps the time as its
   // store wrote it.

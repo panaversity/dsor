@@ -191,7 +191,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    `current` before `bounded_staleness`, before `connector_defined`, before `observational`.
    The `observed_at` is the oldest. The connector is the one that served the oldest read.
    The weakest mode and the oldest time can come from two different reads. The label then
-   takes each from its own read, because each is the worst of its kind.
+   takes each from its own read, because each is the worst of its kind. When two reads have
+   the same oldest time, the connector is the first of them. *Added after the mutation sweep,
+   2026-10-02,* which showed the design said nothing about a tie.
    - A successful query whose code read nothing is refused with `INTERNAL_ERROR`, because a
      label for it would be invented, and DSOR-FRS-01a asks for one.
    - *Added before any code, 2026-10-01:* a label from a store that is not one of the four
