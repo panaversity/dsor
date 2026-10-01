@@ -100,7 +100,10 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
 // (DSOR-FRS-01a; step 15's README, decision 5).
 export type InvoiceStore = {
   /** Finds one invoice of one company: a copy of it, or `undefined` when there is none, and the read's label. */
-  get: (tenant: string, id: string) => Promise<{ invoice: Invoice | undefined; freshness: Freshness }>;
+  get: (
+    tenant: string,
+    id: string,
+  ) => Promise<{ invoice: Invoice | undefined; freshness: Freshness }>;
   // A list reads rows in order of id, after the cursor, never more than
   // it is asked for (step 13's README, decision 4).
   /** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id, and the read's label. */

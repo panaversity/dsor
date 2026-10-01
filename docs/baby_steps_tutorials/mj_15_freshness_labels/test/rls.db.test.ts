@@ -277,20 +277,24 @@ describe("C2: the store keeps companies apart when the SQL forgets the company",
   // after another file had written records. With no org_789 record, it had no teeth.
   // It may take as long as the owner's program is given, 60 s (asOwner in test/db.ts).
   // Found live 2026-10-02: one run took 45 s on Neon, where it usually takes 11.
-  it("DSOR-TEN-01b: with every policy skipped, DSoR's own store still finds only org_456's rows", { timeout: 60_000 }, async () => {
-    await call(registry, log, AGENT, "invoice.get", {
-      invoice: "dsor://org_456/invoice/INV-1008",
-    });
-    await call(registry, log, USER_700, "invoice.get", {
-      invoice: "dsor://org_789/invoice/INV-1008",
-    });
-    expect(ownerStore()).toStrictEqual({
-      bypassrls: true,
-      inv2001: null,
-      inv1008: "org_456",
-      recordTenants: ["org_456"],
-    });
-  });
+  it(
+    "DSOR-TEN-01b: with every policy skipped, DSoR's own store still finds only org_456's rows",
+    { timeout: 60_000 },
+    async () => {
+      await call(registry, log, AGENT, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      });
+      await call(registry, log, USER_700, "invoice.get", {
+        invoice: "dsor://org_789/invoice/INV-1008",
+      });
+      expect(ownerStore()).toStrictEqual({
+        bypassrls: true,
+        inv2001: null,
+        inv1008: "org_456",
+        recordTenants: ["org_456"],
+      });
+    },
+  );
 });
 
 describe("C3: no company set, no rows", () => {

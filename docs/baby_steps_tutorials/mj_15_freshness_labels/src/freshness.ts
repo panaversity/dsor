@@ -14,11 +14,17 @@ export type Freshness = { mode: FreshnessMode; observed_at: string; connector: s
 // Strongest first. §27 does not rank connector_defined. This tutorial puts it below
 // bounded_staleness, because its promise is the connector's, not DSoR's (step 15's README,
 // decision 6).
-const MODES: readonly string[] = ["current", "bounded_staleness", "connector_defined", "observational"];
+const MODES: readonly string[] = [
+  "current",
+  "bounded_staleness",
+  "connector_defined",
+  "observational",
+];
 
 // not copied: common.schema.json's timestamp says only "format": "date-time". This is that
 // format, RFC 3339's date-time, typed out: a date, a time, and Z or an offset.
-const DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+const DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
 
 /**
  * The label a store gave, checked, with its three fields only: one of the four modes, a real

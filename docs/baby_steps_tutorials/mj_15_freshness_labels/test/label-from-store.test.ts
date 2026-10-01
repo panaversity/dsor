@@ -16,7 +16,11 @@ const BOUNDED = {
   connector: "warehouse",
 };
 // What a cache says: an old copy.
-const STALE = { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z", connector: "cache" };
+const STALE = {
+  mode: "observational",
+  observed_at: "2026-10-01T08:00:00.000Z",
+  connector: "cache",
+};
 // What code would like the answer to say.
 const FAKE = { mode: "current", observed_at: "2099-01-01T00:00:00.000Z", connector: "made-up" };
 
@@ -27,7 +31,13 @@ async function claimsCurrent(_input: unknown, company: Company): Promise<unknown
 
 describe("C4: the label comes from the store, and the code cannot write it", () => {
   it("DSOR-FRS-01a: a store that delivers bounded_staleness gives an answer that says so, with its time and its name", async () => {
-    const answer = await call(registryOver(relabelled([BOUNDED])), log, CFO, "invoice.get", GET_1008);
+    const answer = await call(
+      registryOver(relabelled([BOUNDED])),
+      log,
+      CFO,
+      "invoice.get",
+      GET_1008,
+    );
     expect(answer).toMatchObject({ data: { id: "INV-1008" } });
     expect(freshnessOf(answer)).toStrictEqual(BOUNDED);
   });
@@ -98,7 +108,13 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
   ];
   for (const [what, label] of broken) {
     it(`decision 6: a store's label with ${what} gives INTERNAL_ERROR`, async () => {
-      const answer = await call(registryOver(relabelled([label])), log, CFO, "invoice.get", GET_1008);
+      const answer = await call(
+        registryOver(relabelled([label])),
+        log,
+        CFO,
+        "invoice.get",
+        GET_1008,
+      );
       expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
     });
   }

@@ -50,7 +50,11 @@ describe("C5: several reads give the stalest label", () => {
   // The weakest mode and the oldest time come from two different reads here. The label
   // takes each from its own read, and the connector from the oldest read.
   it("decision 6: the weakest mode and the oldest time are each taken from their own read", async () => {
-    const older = { mode: "bounded_staleness", observed_at: at("07:00:00"), connector: "warehouse" };
+    const older = {
+      mode: "bounded_staleness",
+      observed_at: at("07:00:00"),
+      connector: "warehouse",
+    };
     const weaker = { mode: "observational", observed_at: at("08:45:00"), connector: "cache" };
     const expected = { mode: "observational", observed_at: at("07:00:00"), connector: "warehouse" };
     expect(await labelOfTwoReads(older, weaker)).toStrictEqual(expected);

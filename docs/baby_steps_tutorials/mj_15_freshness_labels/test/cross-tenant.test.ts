@@ -698,7 +698,12 @@ describe("C7: the refusal is for the company, and for nothing else", () => {
           return answer;
         }
         const freshness = A_MEMORY_READ;
-        return { data: value, classification: "public", freshness, correlation: answer.correlation };
+        return {
+          data: value,
+          classification: "public",
+          freshness,
+          correlation: answer.correlation,
+        };
       };
       const report = await suiteOver(empty, answersEmpty);
       const said = `its same-company call is not answered with data: the data is ${what}`;
