@@ -272,7 +272,16 @@ describe("C2: the store keeps companies apart when the SQL forgets the company",
   // The first lock alone. Found by the review: with DSoR's WHERE deleted (break V5), every
   // test passed, because the database's lock hid it. The owner holds BYPASSRLS, so no
   // policy applies to it, and only DSoR's own WHERE can filter what the store returns.
-  it("DSOR-TEN-01b: with every policy skipped, DSoR's own store still finds only org_456's rows", () => {
+  // The test writes a record of each company first. Found live 2026-10-01, on step 15's
+  // branch made fresh from main: the log was empty, so the test failed, or passed only
+  // after another file had written records. With no org_789 record, it had no teeth.
+  it("DSOR-TEN-01b: with every policy skipped, DSoR's own store still finds only org_456's rows", async () => {
+    await call(registry, log, AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    await call(registry, log, USER_700, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
     expect(ownerStore()).toStrictEqual({
       bypassrls: true,
       inv2001: null,
