@@ -3,10 +3,11 @@
 // extensions, beside step 14's classification (step 15's README, C7 and decision 7).
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
-import { createDbLog, openPool } from "../src/postgres.ts";
+import type { InvoiceStore } from "../src/invoice.ts";
+import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
 import { RUNTIME_URL, dbRegistry, newPool, requestId, tryThenRollBack } from "./db.ts";
 import { CFO, OUR_EXTENSIONS } from "./helpers.ts";
-import { freshnessOf } from "./stores.ts";
+import { freshnessOf, registryOver } from "./stores.ts";
 
 const pool = openPool(RUNTIME_URL);
 // A connection of its own, to read the rows the program's pool wrote.
@@ -58,6 +59,41 @@ describe("C7 on the database: the record of a read keeps its label", () => {
       (record) => record.correlation.request_id === request_id,
     );
     expect(mine).toMatchObject([{ connector: "postgres" }]);
+  });
+
+  // Found by the mutation sweep, 2026-10-02: every read on the database was postgres's, so a
+  // log that wrote "postgres", or read it back, whatever the read's connector, passed. Here a
+  // store over the database names its reads warehouse.
+  it("decision 7: on the database, a read a warehouse served leaves warehouse in the row, and the reader gives it back", async () => {
+    const database = createDbInvoices(pool);
+    const warehouse = {
+      mode: "bounded_staleness" as const,
+      observed_at: "2026-10-01T08:59:30.000Z",
+      connector: "warehouse",
+    };
+    const store: InvoiceStore = {
+      get: async (tenant, id) => ({ ...(await database.get(tenant, id)), freshness: warehouse }),
+      list: async (tenant, after, count) => ({
+        ...(await database.list(tenant, after, count)),
+        freshness: warehouse,
+      }),
+    };
+    const request_id = requestId("frs-warehouse");
+    await call(registryOver(store), log, { ...CFO, request_id }, "invoice.get", GET_1008);
+    expect(await labelOf(request_id)).toMatchObject([
+      {
+        connector: "warehouse",
+        extensions: {
+          [OUR_EXTENSIONS]: {
+            freshness: { mode: "bounded_staleness", observed_at: "2026-10-01T08:59:30.000Z" },
+          },
+        },
+      },
+    ]);
+    const mine = (await log.records("org_456")).filter(
+      (record) => record.correlation.request_id === request_id,
+    );
+    expect(mine).toMatchObject([{ connector: "warehouse" }]);
   });
 
   it("decision 7: on the database, a refused read leaves no connector and no extensions", async () => {

@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 import { createLog } from "../src/log.ts";
 import { call } from "../src/pipeline.ts";
-import { AGENT, CFO, OUR_EXTENSIONS, registry } from "./helpers.ts";
+import type { Company } from "../src/company.ts";
+import { AGENT, CFO, OUR_EXTENSIONS, registry, registryRunning, shippedLabels } from "./helpers.ts";
 import { freshnessOf, registryOver, relabelled } from "./stores.ts";
 
 const GET_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
@@ -54,6 +55,54 @@ describe("C7: the record of a read keeps its label", () => {
         extensions: {
           [OUR_EXTENSIONS]: {
             freshness: { mode: "bounded_staleness", observed_at: "2026-10-01T08:59:30.000Z" },
+          },
+        },
+      },
+    ]);
+  });
+
+  // Found by the mutation sweep, 2026-10-02: no record test made two reads, so a record that
+  // kept the first or the last read's label passed. Each order is tried once.
+  it("decision 7: a call with two reads is recorded with the stalest label, in either order", async () => {
+    const current = { mode: "current", observed_at: "2026-10-01T09:00:00.000Z", connector: "memory" };
+    const cached = { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z", connector: "cache" };
+    const twice = async (_input: unknown, company: Company): Promise<unknown> => {
+      const first = await company.invoices.get("INV-1008");
+      await company.invoices.get("INV-1008");
+      return first;
+    };
+    for (const labels of [[current, cached], [cached, current]]) {
+      const log = createLog();
+      await call(registryRunning(twice, "Invoice", shippedLabels, relabelled(labels)), log, CFO, "test.run", GET_1008);
+      expect(await log.records()).toMatchObject([
+        {
+          connector: "cache",
+          extensions: {
+            [OUR_EXTENSIONS]: {
+              freshness: { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z" },
+            },
+          },
+        },
+      ]);
+    }
+  });
+
+  // And no record test made code write its own label, so a record that took it from the
+  // answer's data passed.
+  it("decision 7: code that writes freshness into its data leaves the store's label in the record", async () => {
+    const log = createLog();
+    const cached = { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z", connector: "cache" };
+    const claims = async (_input: unknown, company: Company): Promise<unknown> => ({
+      ...(await company.invoices.get("INV-1008")),
+      freshness: "current",
+    });
+    await call(registryRunning(claims, "Invoice", shippedLabels, relabelled([cached])), log, CFO, "test.run", GET_1008);
+    expect(await log.records()).toMatchObject([
+      {
+        connector: "cache",
+        extensions: {
+          [OUR_EXTENSIONS]: {
+            freshness: { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z" },
           },
         },
       },
