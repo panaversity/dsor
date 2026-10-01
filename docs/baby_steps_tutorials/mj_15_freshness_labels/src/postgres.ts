@@ -113,6 +113,8 @@ type AuditRow = {
   // What a read returned. NULL on every other record.
   resources: string[] | null;
   row_count: number | null;
+  // NEW IN STEP 15: which connector served a read. NULL on every other record.
+  connector: string | null;
 };
 
 /** The log in the database: add a decision, and read the records of one company. */
@@ -132,8 +134,8 @@ export function createDbLog(pool: pg.Pool): DbLog {
         client.query(
           `INSERT INTO dsor.audit
              (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-              extensions, resources, row_count)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+              extensions, resources, row_count, connector)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             `aud_${randomUUID()}`,
             decision.kind,
@@ -150,6 +152,8 @@ export function createDbLog(pool: pg.Pool): DbLog {
             // The URIs a read returned, and how many (DSOR-CLS-05).
             decision.resources ?? null,
             decision.row_count ?? null,
+            // NEW IN STEP 15: which connector served the read (step 15's README, decision 7).
+            decision.connector ?? null,
           ],
         ),
       );
@@ -162,7 +166,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
       const { rows } = await inCompany(pool, tenant, (client) =>
         client.query<AuditRow>(
           `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
-                  correlation, tenant, extensions, resources, row_count
+                  correlation, tenant, extensions, resources, row_count, connector
              FROM dsor.audit WHERE tenant = $1 ORDER BY sequence`,
           [tenant],
         ),
@@ -188,6 +192,7 @@ function recordOf(row: AuditRow): DecisionRecord {
     ...(row.extensions === null ? {} : { extensions: row.extensions }),
     ...(row.resources === null ? {} : { resources: row.resources }),
     ...(row.row_count === null ? {} : { row_count: row.row_count }),
+    ...(row.connector === null ? {} : { connector: row.connector }),
   };
 }
 

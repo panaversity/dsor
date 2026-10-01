@@ -3,6 +3,7 @@
 // This file holds the log in memory, for the unit tests. The log the program uses is a
 // table in the database: createDbLog in postgres.ts.
 import { randomUUID } from "node:crypto";
+import type { Freshness, FreshnessMode } from "./freshness.ts";
 import type { Label } from "./labels.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
@@ -23,16 +24,27 @@ export type Decision = {
   // Fields this tutorial adds, under a name of its own (DSOR-SCH-02): the company a
   // non-member asked for (step 10's README, decision 6), or the label of what a read
   // returned (step 14's README, decision 7).
-  extensions?: { [namespace: string]: { requested_tenant?: string; classification?: Label } };
+  // NEW IN STEP 15: and the mode and time of what a read returned (step 15's README, decision
+  // 7).
+  extensions?: {
+    [namespace: string]: {
+      requested_tenant?: string;
+      classification?: Label;
+      freshness?: { mode: FreshnessMode; observed_at: string };
+    };
+  };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
   resources?: string[];
   row_count?: number;
+  // NEW IN STEP 15: which connector served the read, in the audit record's own field.
+  connector?: string;
 };
 
 // What a query's answer returned, for its record (step 14's README,
 // decision 7).
-/** The URIs a read returned, and the label of its answer. */
-export type Read = { resources: string[]; classification: Label };
+/** The URIs a read returned, the label of its answer, and how fresh it was. */
+// NEW IN STEP 15: and its freshness (step 15's README, decision 7).
+export type Read = { resources: string[]; classification: Label; freshness: Freshness };
 
 // The reverse domain name this tutorial's own record fields sit under (DSOR-SCH-02).
 const OURS = "org.panaversity.steps";
@@ -110,7 +122,15 @@ export function decisionOf(
       : {
           resources: read.resources,
           row_count: read.resources.length,
-          extensions: { [OURS]: { classification: read.classification } },
+          // NEW IN STEP 15: the answer's freshness. The connector has a field of its own in
+          // the audit record, and the mode and time do not (step 15's README, decision 7).
+          connector: read.freshness.connector,
+          extensions: {
+            [OURS]: {
+              classification: read.classification,
+              freshness: { mode: read.freshness.mode, observed_at: read.freshness.observed_at },
+            },
+          },
         }),
   };
 }

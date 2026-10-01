@@ -211,7 +211,7 @@ export async function call(
     const { classification, redactions, resources } = shown;
     const listed = redactions.length > 0 ? { redactions } : {};
     answer = { data: shown.data, classification, ...listed, freshness, correlation };
-    read = { resources, classification };
+    read = { resources, classification, freshness };
   } catch (thrown) {
     // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
     // review, and fixed in toEnvelope from step 04 on.

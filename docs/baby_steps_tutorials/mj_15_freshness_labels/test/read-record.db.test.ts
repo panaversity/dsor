@@ -39,7 +39,13 @@ describe("C5 on the database: a read of confidential data leaves a row with who,
         operation: "invoice.get@1",
         resources: ["dsor://org_456/invoice/INV-1008"],
         row_count: 1,
-        extensions: { [OUR_EXTENSIONS]: { classification: "confidential" } },
+        // NEW IN STEP 15: and how fresh the read was (step 15's README, decision 7).
+        extensions: {
+          [OUR_EXTENSIONS]: {
+            classification: "confidential",
+            freshness: { mode: "current", observed_at: expect.any(String) },
+          },
+        },
         who: "cfo_100",
       },
     ]);
@@ -53,7 +59,12 @@ describe("C5 on the database: a read of confidential data leaves a row with who,
         operation: "invoice.list@1",
         resources: ["dsor://org_456/invoice/INV-1001", "dsor://org_456/invoice/INV-1002"],
         row_count: 2,
-        extensions: { [OUR_EXTENSIONS]: { classification: "confidential" } },
+        extensions: {
+          [OUR_EXTENSIONS]: {
+            classification: "confidential",
+            freshness: { mode: "current", observed_at: expect.any(String) },
+          },
+        },
         who: "cfo_100",
       },
     ]);
