@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
-import { stalest, type Freshness } from "./freshness.ts";
+import { newReads, stalest } from "./freshness.ts";
 import { decisionOf, type DecisionLog, type Read } from "./log.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
@@ -65,8 +65,8 @@ export async function call(
   // says so (DSOR-CLS-05; step 14's README, decision 7).
   let read: Read | undefined;
   // NEW IN STEP 15: the label of each read the code makes, noted by the bound store. Only the
-  // checklist holds this list (step 15's README, decision 5).
-  const reads: Freshness[] = [];
+  // checklist holds this notebook (step 15's README, decision 5).
+  const reads = newReads();
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
@@ -176,6 +176,10 @@ export async function call(
         // A refusal the code throws is masked as its answer would be
         // (DSOR-CLS-02a; step 14's README, decision 8).
         throw maskRefusal(thrown, clearanceOf(caller));
+      } finally {
+        // NEW IN STEP 15: line ⑨ ends here, so the company the code was given reads nothing
+        // more (step 15's README, decision 5). Found by the review.
+        reads.closed = true;
       }
     });
     // Ours, not §21's: every tenant_id in the code's answer must be the active company's.

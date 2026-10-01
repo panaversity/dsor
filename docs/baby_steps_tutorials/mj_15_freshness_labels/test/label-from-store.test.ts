@@ -3,9 +3,10 @@
 // decision 5). Each store here is planted under the bound store, where a connector sits.
 import { describe, expect, it } from "vitest";
 import type { Company } from "../src/company.ts";
+import { memoryInvoices } from "../src/invoice.ts";
 import { call } from "../src/pipeline.ts";
 import { AGENT, CFO, UNEXPECTED, log, omitted } from "./helpers.ts";
-import { freshnessOf, registryOver, relabelled, runOver } from "./stores.ts";
+import { cacheOver, freshnessOf, registryOver, relabelled, runOver } from "./stores.ts";
 
 const GET_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
 
@@ -128,6 +129,40 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
       GET_1008,
     );
     expect(freshnessOf(answer)).toStrictEqual(BOUNDED);
+  });
+});
+
+// Found by the review: a Company the code kept from an earlier call still read, and its read's
+// label went into that earlier call's list, which nobody read again. Now the bound store
+// closes when line ⑨ ends (decision 5).
+describe("C4, from the review: the bound store closes when line ⑨ ends", () => {
+  it("decision 5: a call that reads the cache through an earlier call's Company fails, and is never current", async () => {
+    const store = cacheOver(memoryInvoices());
+    let kept: Company | undefined;
+    // The first call reads INV-1008, so the cache holds it, and the code keeps its Company.
+    const first = await runOver(store, CFO, async (_input, company) => {
+      kept = company;
+      return company.invoices.get("INV-1008");
+    });
+    expect(freshnessOf(first)).toMatchObject({ mode: "current" });
+    // The second reads the cached INV-1008 through the kept Company, and INV-1001, fresh,
+    // through its own, then answers with the cached copy.
+    const second = await runOver(store, CFO, async (_input, company) => {
+      const old = await kept!.invoices.get("INV-1008");
+      await company.invoices.get("INV-1001");
+      return old;
+    });
+    expect(second).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+  });
+
+  it("decision 5: once its call has ended, a kept Company's get and list both throw", async () => {
+    let kept: Company | undefined;
+    await runOver(memoryInvoices(), CFO, async (_input, company) => {
+      kept = company;
+      return company.invoices.get("INV-1008");
+    });
+    await expect(kept!.invoices.get("INV-1008")).rejects.toThrow();
+    await expect(kept!.invoices.list(undefined, 1)).rejects.toThrow();
   });
 });
 

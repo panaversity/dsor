@@ -699,7 +699,14 @@ describe("C8: the code can reach only the active company, and its answer must be
   // store (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step
   // 10 on. From step 13, that store reads by id and lists by page.
   it("DSOR-IDN-03b: the code is given only the active company: its id, and its invoices to read by id or by page", async () => {
-    const spy = vi.fn<Handler>(() => "ran");
+    // NEW IN STEP 15: the code reads while its call runs. Once line ⑨ ends, the company
+    // reads nothing more (step 15's README, decision 5).
+    const seen: { one?: unknown; listed?: unknown[] } = {};
+    const spy = vi.fn<Handler>(async (_input, company) => {
+      seen.one = await company.invoices.get("INV-1008");
+      seen.listed = (await company.invoices.list(undefined, 20)).map(({ tenant_id }) => tenant_id);
+      return "ran";
+    });
     await call(registryWith(spy), log, FIRM_IN_789, "test.run", {
       invoice: "dsor://org_789/invoice/INV-1008",
     });
@@ -713,9 +720,8 @@ describe("C8: the code can reach only the active company, and its answer must be
     expect(company.tenant).toBe("org_789");
     expect(Reflect.ownKeys(company.invoices)).toStrictEqual(["get", "list"]);
     expect(Object.getPrototypeOf(company.invoices)).toBe(Object.prototype);
-    expect(await company.invoices.get("INV-1008")).toStrictEqual(INV_1008_OF_789);
-    const listed = await company.invoices.list(undefined, 20);
-    expect(listed.map(({ tenant_id }) => tenant_id)).toStrictEqual(Array(5).fill("org_789"));
+    expect(seen.one).toStrictEqual(INV_1008_OF_789);
+    expect(seen.listed).toStrictEqual(Array(5).fill("org_789"));
   });
 
   // A row of another company in the answer is a bug in the code. The call fails with the

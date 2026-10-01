@@ -5,7 +5,7 @@
 // specs/dsor/02-security.md, section 12.
 // Found by the Stage 2 review, and fixed from step 10 on.
 import { types } from "node:util";
-import { checkedLabel, type Freshness } from "./freshness.ts";
+import { checkedLabel, newReads, type Reads } from "./freshness.ts";
 import { jsonCopy, NOT_JSON } from "./inputs.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
 
@@ -31,7 +31,7 @@ export type Company = {
  * The store, bound to one company. Every read is that company's, whatever the code passes.
  * The label of each read is noted in `reads`, which the code never sees.
  */
-export function companyOf(store: InvoiceStore, tenant: string, reads: Freshness[] = []): Company {
+export function companyOf(store: InvoiceStore, tenant: string, reads: Reads = newReads()): Company {
   // get takes an id, and list a place and a count, and nothing more. The company is fixed
   // here, out of the code's reach, so an extra argument changes nothing. Frozen, so the
   // code cannot swap the company or the store for others (step 10's README, decision 13).
@@ -40,15 +40,25 @@ export function companyOf(store: InvoiceStore, tenant: string, reads: Freshness[
   // that fails the check throws, so the code gets nothing from that read. The list belongs
   // to the checklist, so the code cannot see, add to, or change a label (step 15's README,
   // decisions 5 and 6).
+  // NEW IN STEP 15: once line ⑨ has ended, the answer is fixed, and nothing more is read for
+  // it: a Company the code kept for a later call reads nothing (step 15's README, decision 5).
+  // Found by the review: such a read worked, and its label went into a list nobody read again.
+  const open = (): void => {
+    if (reads.closed) throw new Error("this call has ended, so its company reads nothing more");
+  };
   const invoices: CompanyInvoices = Object.freeze({
     get: async (id: string) => {
+      open();
       const { invoice, freshness } = await store.get(tenant, id);
-      reads.push(checkedLabel(freshness));
+      open();
+      reads.labels.push(checkedLabel(freshness));
       return invoice;
     },
     list: async (after: string | undefined, count: number) => {
+      open();
       const { rows, freshness } = await store.list(tenant, after, count);
-      reads.push(checkedLabel(freshness));
+      open();
+      reads.labels.push(checkedLabel(freshness));
       return rows;
     },
   });
