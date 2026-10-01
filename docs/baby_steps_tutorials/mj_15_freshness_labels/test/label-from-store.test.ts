@@ -111,7 +111,10 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
     ["a connector of 65 characters", { ...BOUNDED, connector: "w".repeat(65) }],
     ["a connector with a space in it", { ...BOUNDED, connector: "ware house" }],
     ["a connector in capitals", { ...BOUNDED, connector: "Warehouse" }],
-    ["a time with 10 digits after the second", { ...BOUNDED, observed_at: "2026-10-01T08:59:30.0000000001Z" }],
+    [
+      "a time with 10 digits after the second",
+      { ...BOUNDED, observed_at: "2026-10-01T08:59:30.0000000001Z" },
+    ],
     // Found by the mutation sweep, 2026-10-02: each part of the time's pattern, so a pattern
     // that lost its ^ or $, or allowed hour 24, passed every test.
     ["text after the time", { ...BOUNDED, observed_at: "2026-10-01T08:59:30.000Zjunk" }],
@@ -121,7 +124,10 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
     ["an offset of 24 hours", { ...BOUNDED, observed_at: "2026-10-01T08:59:30+24:00" }],
     ["a month of one digit", { ...BOUNDED, observed_at: "2026-1-01T08:59:30Z" }],
     ["a space for the T", { ...BOUNDED, observed_at: "2026-10-01 08:59:30Z" }],
-    ["a time that is a String object, not text", { ...BOUNDED, observed_at: new String(BOUNDED.observed_at) }],
+    [
+      "a time that is a String object, not text",
+      { ...BOUNDED, observed_at: new String(BOUNDED.observed_at) },
+    ],
   ];
   for (const [what, label] of broken) {
     it(`decision 6: a store's label with ${what} gives INTERNAL_ERROR`, async () => {
@@ -154,7 +160,13 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
       observed_at: "2026-10-01T08:59:30.123456789Z",
       connector: `w${"0".repeat(63)}`,
     };
-    const answer = await call(registryOver(relabelled([longest])), log, CFO, "invoice.get", GET_1008);
+    const answer = await call(
+      registryOver(relabelled([longest])),
+      log,
+      CFO,
+      "invoice.get",
+      GET_1008,
+    );
     expect(freshnessOf(answer)).toStrictEqual(longest);
   });
 
@@ -189,8 +201,16 @@ describe("C4, from the sweep: every read's label is checked, and kept as it was 
 
   it("decision 6: a store that changes its first label after handing it over does not change the answer's label", async () => {
     const inner = memoryInvoices();
-    const first: Freshness = { mode: "observational", observed_at: STALE.observed_at, connector: "cache" };
-    const fresh: Freshness = { mode: "current", observed_at: "2026-10-01T09:00:00.000Z", connector: "memory" };
+    const first: Freshness = {
+      mode: "observational",
+      observed_at: STALE.observed_at,
+      connector: "cache",
+    };
+    const fresh: Freshness = {
+      mode: "current",
+      observed_at: "2026-10-01T09:00:00.000Z",
+      connector: "memory",
+    };
     let reads = 0;
     // The first read is an old copy. At the second read, the store rewrites the first label
     // to look fresh, and gives a current one.

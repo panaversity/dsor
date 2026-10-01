@@ -64,16 +64,33 @@ describe("C7: the record of a read keeps its label", () => {
   // Found by the mutation sweep, 2026-10-02: no record test made two reads, so a record that
   // kept the first or the last read's label passed. Each order is tried once.
   it("decision 7: a call with two reads is recorded with the stalest label, in either order", async () => {
-    const current = { mode: "current", observed_at: "2026-10-01T09:00:00.000Z", connector: "memory" };
-    const cached = { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z", connector: "cache" };
+    const current = {
+      mode: "current",
+      observed_at: "2026-10-01T09:00:00.000Z",
+      connector: "memory",
+    };
+    const cached = {
+      mode: "observational",
+      observed_at: "2026-10-01T08:00:00.000Z",
+      connector: "cache",
+    };
     const twice = async (_input: unknown, company: Company): Promise<unknown> => {
       const first = await company.invoices.get("INV-1008");
       await company.invoices.get("INV-1008");
       return first;
     };
-    for (const labels of [[current, cached], [cached, current]]) {
+    for (const labels of [
+      [current, cached],
+      [cached, current],
+    ]) {
       const log = createLog();
-      await call(registryRunning(twice, "Invoice", shippedLabels, relabelled(labels)), log, CFO, "test.run", GET_1008);
+      await call(
+        registryRunning(twice, "Invoice", shippedLabels, relabelled(labels)),
+        log,
+        CFO,
+        "test.run",
+        GET_1008,
+      );
       expect(await log.records()).toMatchObject([
         {
           connector: "cache",
@@ -91,12 +108,22 @@ describe("C7: the record of a read keeps its label", () => {
   // answer's data passed.
   it("decision 7: code that writes freshness into its data leaves the store's label in the record", async () => {
     const log = createLog();
-    const cached = { mode: "observational", observed_at: "2026-10-01T08:00:00.000Z", connector: "cache" };
+    const cached = {
+      mode: "observational",
+      observed_at: "2026-10-01T08:00:00.000Z",
+      connector: "cache",
+    };
     const claims = async (_input: unknown, company: Company): Promise<unknown> => ({
       ...(await company.invoices.get("INV-1008")),
       freshness: "current",
     });
-    await call(registryRunning(claims, "Invoice", shippedLabels, relabelled([cached])), log, CFO, "test.run", GET_1008);
+    await call(
+      registryRunning(claims, "Invoice", shippedLabels, relabelled([cached])),
+      log,
+      CFO,
+      "test.run",
+      GET_1008,
+    );
     expect(await log.records()).toMatchObject([
       {
         connector: "cache",

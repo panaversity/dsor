@@ -60,7 +60,13 @@ describe("C6: only a successful query carries freshness", () => {
   // decision 5). Here, 70,000 bytes, read from nothing: refused for its size, not its label.
   it("decision 5: an answer too large, from code that read nothing, is refused for its size", async () => {
     const huge = { ...structuredClone(INV_1008_OF_456), note: "x".repeat(70_000) };
-    const answer = await call(registryRunning(() => huge), log, CFO, "test.run", GET_1008);
+    const answer = await call(
+      registryRunning(() => huge),
+      log,
+      CFO,
+      "test.run",
+      GET_1008,
+    );
     expect(answer).toMatchObject({ code: "UNSUPPORTED_CAPABILITY" });
   });
 });
