@@ -284,6 +284,83 @@ the official tutorial's. A learner build does not change either. A maintainer de
   through the same-company call, because the checklist refuses every foreign URI before
   an operation's code runs (open question 41).
 
+## The Stage 2 review (2026-10-01)
+
+Six reviewers audited steps 10 to 14 on 2026-10-01: one per step, and one for the seams between steps. Each worked in
+its own copy outside the repository. The orchestrator then re-ran the most serious findings on the final code.
+
+**The verdict: no live leak.** With today's data, agents, and operations, no reviewer found a way for one company to:
+
+- read another company's data,
+- use another company's roles,
+- learn whether another company's invoices exist,
+- drain a table,
+- or see a masked field.
+
+Every break count a reviewer re-ran matched its README. What they found sits one step further out. Some guarantees
+hold only because of today's data. Some holes sit at the seams, where one step trusts another. And some sentences say
+more than the code does.
+
+**The high finding.** Both locks trust the company that the operation's code hands to the store. Two runs on step 14
+showed it:
+
+- A one-line fallback in `invoice.get` let `user_700`, in `org_789`, read `org_456`'s `INV-1001`, and all 761 tests
+  passed.
+- An answer with `tenant_id` rewritten to the caller's company gave `cfo_100` `VENDOR-77` and 99,000.00 USD, and the
+  mystery shopper reported nothing.
+
+The learner chose to fix the high finding and every medium one in the step that introduced each, and to carry each
+fix forward through every later folder. The fixes are F1 to F9:
+
+| Fix | Origin step | What it closes |
+| --- | --- | --- |
+| F1 | 07 | One JSON copy of the input, made at line ①. Before this, ① and ② checked the raw input, and line ⑥ copied it again for the code |
+| F2 | 10 | A company id of at most 18 digits, and a size cap on the record's `extensions`. One refused call had left a 1 MB record |
+| F3 | 10 | A store bound to the active company, and a check that every `tenant_id` in an answer is the active company |
+| F4 | 11 | A transaction counts only when its `COMMIT` really committed |
+| F5 | 11 | The start-up check's `BYPASSRLS` and membership facts, tested on the real database |
+| F6 | 11 | The guard for tenant tables: every schema, every view, and every `SECURITY DEFINER` function |
+| F7 | 12 | The shopper searches for values only the other company has, tests its judge through the suite, and checks an operation's own "not found" |
+| F8 | 13 | The shopper walks every page of a list, and the 64 KiB backstop is tested at its edge |
+| F9 | 14 | A clearance that is not one of the four labels gets `public`. Labels apply at every depth. A row is any kind with `tenant_id` and `id`. A redaction never copies a key |
+
+**Low findings, recorded and not fixed now:**
+
+- **Spellings and text matching**
+  - `active_tenant`, the specification's own spelling in `security-context.schema.json`, is not among the four checked
+    tenant fields. Neither are `Tenant`, `tenant_ID`, or a tenant field nested deeper (step 10).
+  - The URI check reads only the start of a text. `" dsor://org_789/…"` and `"see dsor://org_789/…"` reach the code.
+    Nothing leaks today, because the code reads inside the active company (step 10).
+- **Records and history**
+  - When a non-member names a company in the envelope, the record keeps it. When a caller names one in the arguments,
+    the record does not (step 10).
+  - The log on `step-10`, and on every branch made from it, holds 1,128 records from before migration 002 with no
+    tenant. It also holds 30 `ALLOW` records with no tenant, written while break U6 ran against the database, and the
+    39 records rewritten in step 09. From step 15, a fresh branch.
+- **Database privileges (step 11)**
+  - `REPLICATION` is not refused at start-up. With it, logical decoding would read every company's rows. Neon's
+    `wal_level` makes that unreachable today.
+  - `dsor_runtime` holds `TEMP`, so a temporary table would trip the "owns no table" check.
+  - These show volume across companies: `pg_stat_user_tables`, `reltuples`, `EXPLAIN ANALYZE` with no company, and the
+    gaps in the audit counter.
+  - `pg_stat_activity` shows another `dsor_runtime` session's SQL text. DSoR passes values as parameters, so today it
+    shows no data.
+- **Pages (step 13)**
+  - `capped` can report a cut that did not happen: `org_789` asking for 50 gets its 5 rows and `capped: { asked: 50 }`.
+  - `next_cursor` is whatever id is stored, and `app.invoices.id` has no CHECK. So DSoR could hand out a cursor it then
+    refuses.
+  - No migration pins the ordering of ids, `COLLATE "C"`. On a database with another default, memory and Postgres
+    could page differently.
+- **Answer shapes (step 14)**
+  - A `__proto__` key in an answer changes the copy's prototype instead of adding a field.
+  - Map, Set, and Date values survive the deep copy and measure as `{}` against the 64 KiB limit.
+  - Redactions name only the fields a row actually has, so an optional withheld field shows, row by row, whether it is
+    present.
+  - Principals of type `application` and `system` are not masked. The specification allows it.
+- **Tests**
+  - `pnpm test:db` runs the owner's migration from step 10 on. It needs the owner's key and resets `dsor_runtime`'s
+    password on every run.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
