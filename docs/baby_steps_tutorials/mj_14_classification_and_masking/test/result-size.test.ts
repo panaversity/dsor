@@ -74,11 +74,14 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     expect(await askPage(rows)).toStrictEqual(TOO_LARGE);
   });
 
-  // A string of n characters x is n + 2 bytes of JSON, with its two quotes.
+  // NEW IN STEP 14: an invoice whose text field brings it to exactly 64 KiB. Text alone is
+  // not a record, and is refused for everyone (step 14's README, decision 3).
   it("DSOR-QRY-01: a result of exactly 64 KiB is answered", async () => {
-    const answer = await runAs(SUPERVISOR, async () => "x".repeat(LIMIT - 2));
+    const exact = sizedInvoice(LIMIT);
+    expect(bytes(exact)).toBe(LIMIT);
+    const answer = await runAs(SUPERVISOR, async () => exact);
     expect(answer).toStrictEqual({
-      data: "x".repeat(LIMIT - 2),
+      data: exact,
       // NEW IN STEP 14: text has no label, so it is confidential (DSOR-CLS-01).
       classification: "confidential",
       correlation: correlationFor(THE_SUPERVISOR),
@@ -86,19 +89,24 @@ describe("C2: no query's result is larger than 64 KiB", () => {
   });
 
   it("DSOR-QRY-01: a result one byte over 64 KiB is refused", async () => {
-    expect(await runAs(SUPERVISOR, async () => "x".repeat(LIMIT - 1))).toStrictEqual(TOO_LARGE);
+    const over = sizedInvoice(LIMIT + 1);
+    expect(bytes(over)).toBe(LIMIT + 1);
+    expect(await runAs(SUPERVISOR, async () => over)).toStrictEqual(TOO_LARGE);
   });
 
   // é is one character and two bytes. A check of the text's length would let this through.
-  it("DSOR-QRY-01: the size is counted in bytes, not characters: 40,000 × é is 80,002 bytes, and refused", async () => {
-    expect(await runAs(SUPERVISOR, async () => "é".repeat(40000))).toStrictEqual(TOO_LARGE);
+  it("DSOR-QRY-01: the size is counted in bytes, not characters: 40,000 × é is 80,000 bytes, and refused", async () => {
+    const accents = { tenant_id: "org_456", id: "INV-1008", text: "é".repeat(40000) };
+    expect(JSON.stringify(accents).length).toBeLessThan(LIMIT);
+    expect(await runAs(SUPERVISOR, async () => accents)).toStrictEqual(TOO_LARGE);
   });
 
   // The code ran, so the record says ALLOW, with the refusal as its result (step 08's
   // README, decision 5).
   it("DSOR-EXE-02: a result refused for its size is recorded like every other answer", async () => {
     const log = createLog();
-    const registry = registryWith(async () => "x".repeat(LIMIT));
+    // NEW IN STEP 14: an invoice too large to send. Text alone is refused for being text.
+    const registry = registryWith(async () => sizedInvoice(LIMIT + 1));
     const input = { invoice: "dsor://org_456/invoice/INV-1008" };
     const answer = await call(registry, log, SUPERVISOR, "test.run", input);
     expect(await log.records()).toMatchObject([
@@ -150,18 +158,23 @@ describe("C2: no query's result is larger than 64 KiB", () => {
     });
   });
 
-  // Found by the sweep: without `?? ""`, a result of nothing could not be measured, and the
-  // answer became INTERNAL_ERROR.
-  it("DSOR-QRY-01: a query whose code returns nothing is answered, as before this step", async () => {
-    expect(await runAs(SUPERVISOR, async () => undefined)).toStrictEqual({
-      data: undefined,
-      // NEW IN STEP 14: nothing is not a record, so it is confidential too (step 14's
-      // README, decision 3).
-      classification: "confidential",
+  // Found by step 13's sweep: without `?? ""`, a result of nothing could not be measured.
+  // NEW IN STEP 14: nothing is not a record, so it is refused before it is measured, for
+  // everyone (step 14's README, decision 3).
+  it("DSOR-QRY-01: a query whose code returns nothing is refused as not a record, never measured", async () => {
+    expect(await runAs(SUPERVISOR, async () => undefined)).toMatchObject({
+      code: "INTERNAL_ERROR",
       correlation: correlationFor(THE_SUPERVISOR),
     });
   });
 });
+
+// NEW IN STEP 14: a record, because text alone is refused (step 14's README, decision 3).
+/** INV-1008 of org_456 with a text field that brings its JSON to exactly `target` bytes. */
+function sizedInvoice(target: number): { tenant_id: string; id: string; text: string } {
+  const empty = { tenant_id: "org_456", id: "INV-1008", text: "" };
+  return { ...empty, text: "x".repeat(target - bytes(empty)) };
+}
 
 /** The answer's page with its items cut down to their ids, or the refusal as it is. */
 function idsIn(answer: unknown): unknown {

@@ -51,8 +51,8 @@ export function show(
   // A record of `kind`: each field kept, left out, or walked as a list. `path` is where
   // the record sits: "" for the answer, "items[]." for a page's items.
   function record(value: unknown, kind: string, path: string): unknown {
-    // What is not a record has no fields to leave out. An agent gets none of it, and a
-    // person gets it whole (step 14's README, decision 3).
+    // What is not a record has no fields to leave out and no row to name (step 14's
+    // README, decision 3).
     if (!isObject(value)) return whole(value);
     // A row is a record of a kind with no list in it: one invoice, not a page. Its URI is
     // its company, its kind in lower case, and its id. formatUri refuses a row with no id
@@ -79,14 +79,13 @@ export function show(
     }
     return kept;
   }
-  // Something DSoR cannot walk field by field.
-  function whole(value: unknown): unknown {
+  // Something DSoR cannot walk field by field, and cannot name in the record. Nobody
+  // gets it, a person too: their read would be recorded as reading nothing. Changed by
+  // the review (step 14's README, decision 3).
+  function whole(_value: unknown): never {
     // A throw, not a refusal: the operation's code returned what its contract does not
     // promise, a bug. The caller hears INTERNAL_ERROR, with a fixed message.
-    if (clearance !== undefined) throw new Error("the answer is not a record of its kind");
-    // Nothing in it has a label, so it is confidential (DSOR-CLS-01).
-    holds("confidential");
-    return value;
+    throw new Error("the answer is not a record of its kind");
   }
   // A kind none of whose fields is a list.
   function isRow(kind: string): boolean {
