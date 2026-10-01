@@ -23,10 +23,11 @@ the agent reads INV-1008       { id, vendor_id, status, tenant_id }
 cfo_100 reads INV-1008         { id, vendor_id, amount: 31,400.00 USD, open_amount, status, tenant_id }
 ```
 
-Think of a document released with some lines blacked out. The clerk takes a marker to the
-copy, before it leaves the building, and the black bars stay on the page, so a reader
-knows something was there. The analogy stops at the bars: DSoR leaves the field out
-entirely, and the list of what was left out plays the part of the bars.
+Think of a document released with some lines blacked out. The records office blacks out
+the lines on the copy before it hands the copy to the new clerk, and the black bars stay
+on the page, so the clerk knows something was there. The analogy stops at the bars: DSoR
+leaves the field out entirely, and the list of what was left out plays the part of the
+bars.
 
 ## Why it matters
 
@@ -162,15 +163,20 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    masking is not applied to them (decision 5). *Downside:* §19.2's example gives the
    agent `confidential`. This step chose `INTERNAL` so that the map's masked `amount` can
    be seen.
-3. **A withheld field is left out, never replaced.** The answer has no `amount` key at
-   all. `{ value: "***" }` would break step 01's rule that a money value is a decimal
-   string, and code that trusted it would read a wrong value. What is not a record of its
-   kind, such as text, a number, nothing, or a list where one invoice was due, has no
-   fields to leave out. So an agent gets none of it: the call is refused with
-   `INTERNAL_ERROR`. A person gets it, labelled `confidential`, because nothing in it has
-   a label. *Downside:* the invoice an agent gets no longer has the shape of an invoice,
-   and the output schema must allow the fields to be missing. And step 13's size tests,
-   whose fake code returns text and pages of made-up rows, now ask as a person.
+3. **A withheld field is left out, never replaced, and the answer is DSoR's own copy.**
+   The answer has no `amount` key at all. `{ value: "***" }` would break step 01's rule
+   that a money value is a decimal string, and code that trusted it would read a wrong
+   value. DSoR first takes a deep copy of what the operation's code returned, and walks
+   only the copy. So no value can change after DSoR has looked at it, and the record and
+   the answer come from the same copy. A value that cannot be copied, such as a function,
+   is refused. What is not a record of its kind, such as text, a number, nothing, or a
+   list where one invoice was due, has no fields to leave out and no rows to name. So
+   nobody gets it: the call is refused with `INTERNAL_ERROR`, for a person too.
+   *Downside:* the invoice an agent gets no longer has the shape of an invoice, and the
+   output schema must allow the fields to be missing. A label says what a field holds,
+   and DSoR does not check the value: code that puts an amount inside `status` would send
+   it (left open below). And step 13's size tests, whose fake code returned text and pages
+   of made-up rows, now return invoices and ask as a person.
 4. **The answer grows two fields beside `data`, with the names and shapes of the
    result envelope:** `classification`, always, and `redactions`, only when something
    was left out. Each redaction is `{ field, reason: "clearance", treatment: "omitted" }`,
@@ -178,10 +184,14 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    for a page's items. *Downside:* the query answer's shape, step 04's decision, changes
    again, and is still not a result envelope, because it has no `outcome`.
 5. **Masking is for agent principals, and is applied right after line ⑨,** before the
-   64 KiB check of step 13 and before line ⑪ records the decision, so the size measured
-   and the answer given are what leaves. Humans are not masked. *Downside:* a human who
-   pastes an answer into an AI assistant of their own carries it across a model boundary
-   DSoR cannot see.
+   64 KiB check of step 13 and before line ⑪ records the decision. The 64 KiB counts the
+   data and the list of what was withheld, because that list holds field names taken from
+   the data. The label is one word that DSoR writes itself. Humans are not masked.
+   *Downside:* a human who pastes an answer into an AI assistant of their own carries it
+   across a model boundary DSoR cannot see. And a page is cut to 64 KiB inside the
+   operation's code, before masking, so the fields an agent cannot see still decide where
+   its page ends. The agent learns roughly how large they are, never their values (left
+   open below).
 6. **The tenant's egress policy is not built.** DSOR-CLS-02a also withholds a field that
    the tenant's policy bars from a kind of model provider. It needs each agent's model
    boundary and a policy per company. *Downside:* a `RESTRICTED` field goes to an agent
@@ -204,6 +214,17 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    reader who looks for classified reads looks inside `extensions`. A kind whose name in
    lower case is not its URI's entity needs a rule of its own. And step 13's page tests
    give their made-up rows a `tenant_id`.
+8. **A refusal from the operation's code is masked too.** *Added after the review.* A
+   refusal's message is text, and the operation's code can put company data in it. So a
+   refusal thrown at line ⑨ carries a label, `confidential` unless the code gives one. An
+   agent whose clearance is below it gets the same code with a fixed message: "the
+   operation refused the call, and its reason is above the caller's clearance". A message
+   labelled `restricted` is replaced for everyone, so no record ever holds one
+   (DSOR-AUD-05a). `invoice.get`'s `no invoice "INV-9999"` is labelled `internal`: it
+   repeats only the id the caller sent. Refusals from lines ① to ⑥ are DSoR's own
+   sentences about the caller's own input, and are not masked. *Downside:* every refusal
+   an operation writes needs a label, or an agent gets the fixed message. The record keeps
+   what the caller heard, as it has since step 08.
 
 ### The tests, by claim
 
@@ -219,20 +240,35 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   clearance written down is treated as `public`: every field of an invoice is withheld
   and listed. *Added before any code, 2026-10-01:* the learner's prediction for break Y6
   showed that without it, nothing would catch a missing clearance treated as a high one.
-  An answer that is not a record, and a page whose items are not, are refused for an
-  agent (decision 3). Masking comes before the 64 KiB check: a large field the agent
+  An answer that is not a record, and a page whose items are not, are refused, for a
+  person too (decision 3). Masking comes before the 64 KiB check: a large field the agent
   may not see does not refuse its answer, and does refuse a person's (decision 5).
+  *From the review:* a planted agent with no clearance, sent through the real pipeline,
+  gets every field withheld. An agent's own answer over 64 KiB is refused. A value that
+  cannot be copied is refused, and a value changed after the code returned does not
+  change the answer (decision 3).
 - **C3:** the agent's `invoice.get`: `redactions` names `amount`, then `open_amount`, each
   with `reason: "clearance"` and `treatment: "omitted"`. `invoice.list`:
   `items[].amount` and `items[].open_amount`, each once. Both pass the result envelope's
-  schema for `redactions`. The human's answers: no `redactions` key.
+  schema for `redactions`. The human's answers: no `redactions` key. *From the review:*
+  a list of what was withheld counts toward the 64 KiB, so 2,000 unlabelled fields are
+  refused (decision 5). A list inside a page's items keeps its whole path.
 - **C4:** the agent's `INV-1008`: `"internal"`. The human's: `"confidential"`. An empty
   page: `"public"`. Each passes the result envelope's schema for `classification`.
 - **C5:** on the database: the human's `invoice.get` leaves a record with
   `resources: ["dsor://org_456/invoice/INV-1008"]`, `row_count: 1`, and
   `"confidential"` under `extensions`. A page's record names each invoice it returned. A
   refused read's record names none. An answer whose invoice has no `id` is refused, for
-  a person too (decision 7).
+  a person too (decision 7). *From the review:* the record names the id the answer
+  carries, even when the code's object gives a different id each time it is read. A page
+  that holds one invoice twice counts two rows. An answer refused for its size records no
+  rows. An answer of a kind the file does not have is still named. The database log's
+  own reader gives `resources` and `row_count` back.
+- **Decision 8, from the review:** the operation's refusal with the amount in its
+  message: the agent hears the fixed message, and neither its answer nor the record holds
+  the amount (DSOR-AUD-05a). `no invoice "INV-9999"` still reaches the agent. A person
+  hears a `confidential` message whole. A `restricted` message is replaced for a person
+  too, and in the record.
 - **C6:** `cfo_100` and `user_123` get `amount` and `open_amount` with the values of step
   13.
 - **Start-up:** `classifications.json` with the label `secret`, the label `INTERNAL` in
@@ -263,6 +299,13 @@ record.
   cannot see.
 - **Row budgets over time** (DSOR-CLS-04b, L2), which the map places in no step yet.
 - **A `purpose` on each query,** which §19.2 recommends.
+- **Wrong data in a correctly labelled field** (decision 3). DSoR does not check that a
+  value fits its field. Checking a result against its output schema would, and that is
+  not this step's idea.
+- **The page cut before masking** (decision 5) tells an agent roughly how large the
+  fields it cannot see are.
+- **The actor chain** in the record of a read (DSOR-CLS-05). It is the caller alone until
+  step 18, so DSOR-CLS-05 is met only in part.
 
 ## Before you build: set up Neon
 
@@ -549,7 +592,7 @@ _The review's findings are written here when the reviewers report._
 | DSOR-CLS-02a | For agents, fields above their clearance are withheld before the response leaves | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/masking.test.ts` and `test/masking.db.test.ts`: both agents' `invoice.get` and `invoice.list`, each clearance, the agent with none, masking before the 64 KiB check, and what is not a record (C2). The clearance half only: the egress policy is not built (decision 6) |
 | DSOR-CLS-02b | A response with withheld fields lists the redactions | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/redactions.test.ts`: each field once, as a path, in the result envelope's shape, and no list when nothing was left out (C3) |
 | DSOR-CLS-03 | Every query response carries the highest classification among its fields | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/answer-label.test.ts`: `internal` for the agent, `confidential` for a person, `public` for an empty page, `restricted` when one field is (C4) |
-| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/read-record.test.ts` and `test/read-record.db.test.ts`: the URIs, the row count, and the label of every read that returns data, nothing for a refusal, and no value read (C5). The actor chain is the caller alone until step 18 |
+| DSOR-CLS-05 | Reads of `CONFIDENTIAL` or `RESTRICTED` data are audited with who, what, and how many | [§19.2 The model boundary](../../../specs/dsor/02-security.md#192-the-model-boundary) | `test/read-record.test.ts` and `test/read-record.db.test.ts`: the URIs, the row count, and the label of every read that returns data, nothing for a refusal, and no value read (C5). **Partly:** the actor chain is the caller alone until step 18 |
 
 Also advanced, first met in earlier steps: DSOR-AUD-05a, a record holds URIs, a count,
 and a label, never a value read (`test/read-record.test.ts`). DSOR-EXE-02, the record of a
