@@ -22,9 +22,15 @@ const MODES: readonly string[] = [
 ];
 
 // not copied: common.schema.json's timestamp says only "format": "date-time". This is that
-// format, RFC 3339's date-time, typed out: a date, a time, and Z or an offset.
+// format, RFC 3339's date-time, typed out: a date, a time, and Z or an offset. NEW IN STEP 15,
+// from the review: at most 9 digits after the second, a nanosecond, so a label stays small.
 const DATE_TIME =
-  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,9})?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+
+// not copied: connector.schema.json gives a connector's id no pattern. This tutorial names a
+// connector by a short id, so a label stays small and prints on one line (step 15's README,
+// decision 6). Found by the review.
+const CONNECTOR = /^[a-z][a-z0-9._-]{0,63}$/;
 
 /**
  * The label a store gave, checked, with its three fields only: one of the four modes, a real
@@ -41,7 +47,7 @@ export function checkedLabel(label: unknown): Freshness {
   if (typeof observed_at !== "string" || !isDateTime(observed_at)) {
     throw new Error("a read's label has no date and time");
   }
-  if (typeof connector !== "string" || connector === "") {
+  if (typeof connector !== "string" || !CONNECTOR.test(connector)) {
     throw new Error("a read's label names no connector");
   }
   return { mode: mode as FreshnessMode, observed_at, connector };

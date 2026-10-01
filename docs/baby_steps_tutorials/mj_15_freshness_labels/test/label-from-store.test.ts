@@ -106,6 +106,21 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
     ["an empty connector", { ...BOUNDED, connector: "" }],
     ["no label at all", undefined],
     ["null for a label", null],
+    // Added by the review, 2026-10-02: a label is small (decision 6).
+    ["a connector of 65 characters", { ...BOUNDED, connector: "w".repeat(65) }],
+    ["a connector with a space in it", { ...BOUNDED, connector: "ware house" }],
+    ["a connector in capitals", { ...BOUNDED, connector: "Warehouse" }],
+    ["a time with 10 digits after the second", { ...BOUNDED, observed_at: "2026-10-01T08:59:30.0000000001Z" }],
+    // Found by the mutation sweep, 2026-10-02: each part of the time's pattern, so a pattern
+    // that lost its ^ or $, or allowed hour 24, passed every test.
+    ["text after the time", { ...BOUNDED, observed_at: "2026-10-01T08:59:30.000Zjunk" }],
+    ["text before the time", { ...BOUNDED, observed_at: "on 2026-10-01T08:59:30.000Z" }],
+    ["hour 24", { ...BOUNDED, observed_at: "2026-10-01T24:00:00Z" }],
+    ["minute 60", { ...BOUNDED, observed_at: "2026-10-01T08:60:00Z" }],
+    ["an offset of 24 hours", { ...BOUNDED, observed_at: "2026-10-01T08:59:30+24:00" }],
+    ["a month of one digit", { ...BOUNDED, observed_at: "2026-1-01T08:59:30Z" }],
+    ["a space for the T", { ...BOUNDED, observed_at: "2026-10-01 08:59:30Z" }],
+    ["a time that is a String object, not text", { ...BOUNDED, observed_at: new String(BOUNDED.observed_at) }],
   ];
   for (const [what, label] of broken) {
     it(`decision 6: a store's label with ${what} gives INTERNAL_ERROR`, async () => {
@@ -129,6 +144,17 @@ describe("C4: a label DSoR cannot rank is a bug, and a label has three fields", 
       GET_1008,
     );
     expect(freshnessOf(answer)).toStrictEqual(BOUNDED);
+  });
+
+  // The edges of decision 6's limits, kept. Added by the review, 2026-10-02.
+  it("decision 6: a connector of 64 characters and a time with 9 digits after the second are kept", async () => {
+    const longest = {
+      mode: "bounded_staleness",
+      observed_at: "2026-10-01T08:59:30.123456789Z",
+      connector: `w${"0".repeat(63)}`,
+    };
+    const answer = await call(registryOver(relabelled([longest])), log, CFO, "invoice.get", GET_1008);
+    expect(freshnessOf(answer)).toStrictEqual(longest);
   });
 
   // Found by the review: the bad label's error went to the code, which could catch it, read
