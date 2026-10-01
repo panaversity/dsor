@@ -118,10 +118,15 @@ export const RETRY: Readonly<Record<ErrorCode, RetryClass>> = {
 /** A refusal, as a handler throws it: a code from the table and a message for people. */
 export class Refusal extends Error {
   readonly code: ErrorCode;
+  // NEW IN STEP 14: how sensitive the message is. A message is text that may hold company
+  // data, so it is confidential unless the code that refuses says otherwise (step 14's
+  // README, decision 8).
+  readonly label: Label;
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(code: ErrorCode, message: string, label: Label = "confidential") {
     super(message);
     this.code = code;
+    this.label = label;
   }
 }
 

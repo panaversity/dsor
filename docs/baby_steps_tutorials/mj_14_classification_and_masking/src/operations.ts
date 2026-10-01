@@ -26,7 +26,9 @@ export function handlersFor(invoices: InvoiceStore): Record<string, Handler> {
       // Only inside the active company. Another company's INV-2001 is
       // "not found", word for word as an invoice nobody has (DSOR-IDN-03b, DSOR-ERR-01b).
       const invoice = await invoices.get(tenant, id);
-      if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`);
+      // NEW IN STEP 14: internal, because it repeats only the id the caller sent (step 14's
+      // README, decision 8).
+      if (!invoice) throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`, "internal");
       return invoice;
     },
     // A page of the company's invoices, in order of id. The caller's limit

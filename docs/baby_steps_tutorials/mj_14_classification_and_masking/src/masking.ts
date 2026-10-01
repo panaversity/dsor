@@ -2,6 +2,7 @@
 // clearance is left out, and the answer lists what was (DSOR-CLS-02a, DSOR-CLS-02b). Every
 // answer carries its label (DSOR-CLS-03), and the rows it returns are named for its record
 // (DSOR-CLS-05). specs/dsor/02-security.md, section 19.2. The labels are src/labels.ts.
+import { Refusal } from "./envelope.ts";
 import { LABELS, isObject, labelOf, rank, type Kinds, type Label } from "./labels.ts";
 import type { Principal } from "./principals.ts";
 import { formatUri, type ResourceParts } from "./uri.ts";
@@ -11,6 +12,23 @@ import { formatUri, type ResourceParts } from "./uri.ts";
 /** The highest label this caller may see, or undefined for a caller whose answers are not masked. */
 export function clearanceOf(principal: Principal): Label | undefined {
   return principal.type === "agent" ? (principal.clearance ?? "public") : undefined;
+}
+
+// The message that replaces a refusal's own (step 14's README, decision 8).
+const WITHHELD = "the operation refused the call, and its reason is above the caller's clearance";
+
+// DSOR-CLS-02a, for a refusal that the operation's code throws at line ⑨. Its message is
+// text that may hold company data. Above the caller's clearance, and for everyone when it
+// is restricted, the message is replaced and the code kept, so no record holds a
+// restricted message either (DSOR-AUD-05a). Added by the review (step 14's README,
+// decision 8).
+/** What the caller hears of something the operation's code threw. */
+export function maskRefusal(thrown: unknown, clearance: Label | undefined): unknown {
+  if (!(thrown instanceof Refusal)) return thrown;
+  const { code, label } = thrown;
+  const restricted = rank(label) >= rank("restricted");
+  const above = clearance !== undefined && rank(label) > rank(clearance);
+  return restricted || above ? new Refusal(code, WITHHELD, label) : thrown;
 }
 
 // The result envelope's shape for one withheld field. This step only leaves fields out,

@@ -6,7 +6,7 @@ import { checkInput } from "./inputs.ts";
 import { decisionOf, type DecisionLog, type Read } from "./log.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
-import { clearanceOf, show } from "./masking.ts";
+import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import { preview, type Registry } from "./registry.ts";
 import {
@@ -148,10 +148,16 @@ export async function call(
     //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
     // The code may read the database, so call waits for it. A refusal it
     // throws while waiting is caught below, like any other.
-    const data = await line(9, () => {
+    const data = await line(9, async () => {
       reachedCode = true;
       // The code works inside the active company only.
-      return handler(checked, tenant);
+      try {
+        return await handler(checked, tenant);
+      } catch (thrown) {
+        // NEW IN STEP 14: a refusal the code throws is masked as its answer would be
+        // (DSOR-CLS-02a; step 14's README, decision 8).
+        throw maskRefusal(thrown, clearanceOf(caller));
+      }
     });
     // NEW IN STEP 14: ours, not §21's. For an agent, every field above its clearance is
     // left out before the answer leaves (DSOR-CLS-02a). The contract names the kind of its
