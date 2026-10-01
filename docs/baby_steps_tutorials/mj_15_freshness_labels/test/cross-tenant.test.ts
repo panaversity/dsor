@@ -27,10 +27,11 @@ import {
   type Send,
 } from "./cross-tenant.ts";
 import {
-  FOREIGN_URI,
-  INV_1008_OF_456,
+  A_MEMORY_READ,
   contract,
+  FOREIGN_URI,
   handlers,
+  INV_1008_OF_456,
   registry,
   shipped,
   shippedInputs,
@@ -179,6 +180,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
             data: { tenant_id: request.tenant, id: "INV-1008" },
             // Every answer carries its label.
             classification: "internal" as const,
+            freshness: A_MEMORY_READ,
             correlation: { request_id: `req_${randomUUID()}` },
           };
     const report = await crossTenantSuite(registry, createLog(), examples, noUriCheck);
@@ -549,6 +551,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       {
         data: INV_1008_OF_456,
         classification: "confidential" as const,
+        freshness: A_MEMORY_READ,
         correlation: { request_id: "req_1" },
       },
     ],
@@ -694,7 +697,8 @@ describe("C7: the refusal is for the company, and for nothing else", () => {
         if (name !== "invoice.empty" || "data" in answer || answer.code !== "INTERNAL_ERROR") {
           return answer;
         }
-        return { data: value, classification: "public", correlation: answer.correlation };
+        const freshness = A_MEMORY_READ;
+        return { data: value, classification: "public", freshness, correlation: answer.correlation };
       };
       const report = await suiteOver(empty, answersEmpty);
       const said = `its same-company call is not answered with data: the data is ${what}`;
@@ -810,6 +814,8 @@ describe("C8: an operation's own code answers a same-company call with nothing o
   });
 
   // The cache is filled in org_456, so only the suite's second company can see it.
+  // NEW IN STEP 15: a call the cache answers reads nothing, so it is refused, in org_456 too
+  // (step 15's README, decision 6). Only the agent, the first caller, read INV-1008.
   it("DSOR-IDN-03b: invoice.cached, which keeps invoices by id alone, is a finding from org_789", async () => {
     const cache = new Map<string, Invoice | undefined>();
     const cached = plant({
@@ -822,9 +828,10 @@ describe("C8: an operation's own code answers a same-company call with nothing o
       example: JSON.stringify(GOOD),
     });
     const report = await suiteOver(cached);
-    expect(report.findings).toStrictEqual(
-      READERS_789.map((who) => refusedAsBug("invoice.cached", who, "org_789")),
-    );
+    expect(report.findings).toStrictEqual([
+      ...READERS_456.slice(1).map((who) => refusedAsBug("invoice.cached", who, "org_456")),
+      ...READERS_789.map((who) => refusedAsBug("invoice.cached", who, "org_789")),
+    ]);
   });
 
   // Found by the Stage 2 review: each of these passed the suite with no finding. Its search
@@ -844,10 +851,12 @@ describe("C8: an operation's own code answers a same-company call with nothing o
     [
       "invoice.rewritten",
       "the other company's invoice, its tenant_id rewritten to the caller's",
-      (async (_input, company) => ({
-        ...theirs1008(company.tenant),
-        tenant_id: company.tenant,
-      })) as Handler,
+      // NEW IN STEP 15: it reads its own company first. A query that reads nothing is refused
+      // before the suite sees it (step 15's README, decision 6).
+      (async (_input, company) => {
+        await company.invoices.get("INV-1008");
+        return { ...theirs1008(company.tenant), tenant_id: company.tenant };
+      }) as Handler,
       // vendor_id is internal, so every caller gets the other company's vendor.
       (_who: string, home: string) => (home === "org_456" ? '"VENDOR-77"' : '"VENDOR-44"'),
     ],

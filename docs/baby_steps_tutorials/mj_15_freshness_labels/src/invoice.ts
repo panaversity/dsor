@@ -1,6 +1,7 @@
 // One kind of business record. The field names are the ones in specs/dsor/01-model.md,
 // section 6. The program reads invoices from the table app.invoices (postgres.ts); the
 // unit tests read them from memory (memoryInvoices below).
+import type { Freshness } from "./freshness.ts";
 import { money, type Money } from "./money.ts";
 import { formatUri } from "./uri.ts";
 
@@ -95,21 +96,40 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
 // Where invoices come from, in memory or in the database (step 09's
 // README, decision 12). One function, so the operations never know which.
 // The company comes first. The store never looks outside it (DSOR-IDN-03b).
+// NEW IN STEP 15: each read comes back with its label, written by the store that served it
+// (DSOR-FRS-01a; step 15's README, decision 5).
 export type InvoiceStore = {
-  /** Finds one invoice of one company: a copy of it, or `undefined` when there is none. */
-  get: (tenant: string, id: string) => Promise<Invoice | undefined>;
+  /** Finds one invoice of one company: a copy of it, or `undefined` when there is none, and the read's label. */
+  get: (tenant: string, id: string) => Promise<{ invoice: Invoice | undefined; freshness: Freshness }>;
   // A list reads rows in order of id, after the cursor, never more than
   // it is asked for (step 13's README, decision 4).
-  /** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id. */
-  list: (tenant: string, after: string | undefined, count: number) => Promise<Invoice[]>;
+  /** Copies of the first `count` invoices of one company whose id comes after `after`, in order of id, and the read's label. */
+  list: (
+    tenant: string,
+    after: string | undefined,
+    count: number,
+  ) => Promise<{ rows: Invoice[]; freshness: Freshness }>;
 };
 
 /** The invoices above, held in memory, for the unit tests. */
 export function memoryInvoices(): InvoiceStore {
   return {
-    get: async (tenant, id) => getInvoice(invoices, tenant, id),
-    list: async (tenant, after, count) => listInvoices(invoices, tenant, after, count),
+    get: async (tenant, id) => ({
+      invoice: getInvoice(invoices, tenant, id),
+      freshness: readNow(),
+    }),
+    list: async (tenant, after, count) => ({
+      rows: listInvoices(invoices, tenant, after, count),
+      freshness: readNow(),
+    }),
   };
+}
+
+// NEW IN STEP 15: memory is the unit tests' system of record, read within the request, so
+// current. It has no database, so its clock is the program's (step 15's README, decision 2).
+/** The label of a read from memory, now. */
+function readNow(): Freshness {
+  return { mode: "current", observed_at: new Date().toISOString(), connector: "memory" };
 }
 
 // The memory version of the list's SQL (step 13's README, decision 4).
@@ -133,11 +153,11 @@ export function listInvoices(
 // 13). Found by the Stage 2 review, and fixed from step 10 on.
 /** A store that reads nothing: each read throws. */
 export const NO_STORE: InvoiceStore = Object.freeze({
-  get: async (): Promise<Invoice | undefined> => {
+  get: async (): Promise<never> => {
     throw new Error("this registry was built without a store of invoices");
   },
   // And no list. Found by the Stage 2 review, and fixed from step 13 on.
-  list: async (): Promise<Invoice[]> => {
+  list: async (): Promise<never> => {
     throw new Error("this registry was built without a store of invoices");
   },
 });

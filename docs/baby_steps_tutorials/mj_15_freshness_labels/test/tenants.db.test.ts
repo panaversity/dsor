@@ -29,7 +29,7 @@ import {
   shippedInputs,
   shippedLabels,
   shippedRoles,
-  withoutRequestId,
+  forComparing,
 } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
@@ -68,15 +68,18 @@ describe("C2: a read in the database looks only inside the active company", () =
       invoice: "dsor://org_456/invoice/INV-9999",
     });
     expect(theirs).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
-    const asSent = JSON.stringify(withoutRequestId(nobodys)).replaceAll("INV-9999", "INV-2001");
-    expect(JSON.stringify(withoutRequestId(theirs))).toBe(asSent);
+    const asSent = JSON.stringify(forComparing(nobodys)).replaceAll("INV-9999", "INV-2001");
+    expect(JSON.stringify(forComparing(theirs))).toBe(asSent);
   });
 
   it("DSOR-IDN-03b: the store finds an invoice by company and id together", async () => {
+    // NEW IN STEP 15: the store gives the invoice beside its read's label.
     const store = createDbInvoices(pool);
-    expect(await store.get("org_789", "INV-2001")).toStrictEqual(INV_2001_OF_789);
-    expect(await store.get("org_456", "INV-2001")).toBeUndefined();
-    expect(await store.get("org_999", "INV-1008")).toBeUndefined();
+    const found = async (tenant: string, id: string): Promise<unknown> =>
+      (await store.get(tenant, id)).invoice;
+    expect(await found("org_789", "INV-2001")).toStrictEqual(INV_2001_OF_789);
+    expect(await found("org_456", "INV-2001")).toBeUndefined();
+    expect(await found("org_999", "INV-1008")).toBeUndefined();
   });
 });
 
@@ -272,8 +275,9 @@ describe("C8: in the database, the code reaches only the active company, and its
   // Stage 2 review, and fixed from step 10 on.
   it("step 10's decision 14: code that reads org_789 through a store of its own fails with INTERNAL_ERROR, recorded as ALLOW", async () => {
     const itsOwn = createDbInvoices(pool);
-    const reachesAround: Handler = (input) =>
-      itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id);
+    // NEW IN STEP 15: the invoice, out of what the store gives.
+    const reachesAround: Handler = async (input) =>
+      (await itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id)).invoice;
     const planted = buildRegistry(
       shipped,
       { "invoice.get": reachesAround },

@@ -133,7 +133,8 @@ describe("decision 8: with no database named, the database tests fail and never 
 
 describe("step 09's decision 12: the invoices in memory, for the unit tests", () => {
   it("DSOR-MON-01: the store in memory gives INV-1008, its money a string", async () => {
-    expect(await memoryInvoices().get("org_456", "INV-1008")).toStrictEqual({
+    // NEW IN STEP 15: the store gives the invoice beside its read's label.
+    expect((await memoryInvoices().get("org_456", "INV-1008")).invoice).toStrictEqual({
       tenant_id: "org_456",
       id: "INV-1008",
       vendor_id: "VENDOR-44",
@@ -144,13 +145,13 @@ describe("step 09's decision 12: the invoices in memory, for the unit tests", ()
   });
 
   it("gives back undefined for an invoice that is not there", async () => {
-    expect(await memoryInvoices().get("org_456", "INV-9999")).toBeUndefined();
+    expect((await memoryInvoices().get("org_456", "INV-9999")).invoice).toBeUndefined();
   });
 
   it("gives a copy, so a caller that changes it cannot change the store", async () => {
     const store = memoryInvoices();
-    const first = await store.get("org_456", "INV-1008");
+    const first = (await store.get("org_456", "INV-1008")).invoice;
     first!.status = "paid";
-    expect((await store.get("org_456", "INV-1008"))!.status).toBe("issued");
+    expect((await store.get("org_456", "INV-1008")).invoice!.status).toBe("issued");
   });
 });

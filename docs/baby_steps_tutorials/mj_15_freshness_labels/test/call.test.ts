@@ -7,21 +7,22 @@ import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
   AGENT,
   CFO,
-  GOOD_ISSUE,
-  REFUSALS,
-  REQUEST_ID,
-  SUPERVISOR,
-  THE_AGENT,
-  UNEXPECTED,
   correlationFor,
+  FROM_MEMORY,
+  GOOD_ISSUE,
   handlers,
   log,
+  REFUSALS,
   refusedWith,
   registry,
+  REQUEST_ID,
   run,
   shipped,
   shippedRoles,
+  SUPERVISOR,
+  THE_AGENT,
   THE_CFO,
+  UNEXPECTED,
 } from "./helpers.ts";
 
 // Every call carries the agent's login token, and every answer names the
@@ -108,6 +109,7 @@ describe("C6: a query's success is { data, correlation }", () => {
       },
       // Its label (DSOR-CLS-03).
       classification: "confidential",
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_CFO),
     });
   });

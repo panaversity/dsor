@@ -8,7 +8,14 @@ import { describe, expect, it } from "vitest";
 import { createLog } from "../src/log.ts";
 import { pageOf } from "../src/pages.ts";
 import { call } from "../src/pipeline.ts";
-import { SUPERVISOR, THE_SUPERVISOR, correlationFor, registryWith, runAs } from "./helpers.ts";
+import {
+  correlationFor,
+  FROM_MEMORY,
+  registryWith,
+  runAs,
+  SUPERVISOR,
+  THE_SUPERVISOR,
+} from "./helpers.ts";
 
 // 64 KiB, typed out again rather than imported from src.
 const LIMIT = 65536;
@@ -100,6 +107,7 @@ describe("C2: no query's result is larger than 64 KiB", () => {
       data: exact,
       // Text has no label, so it is confidential (DSOR-CLS-01).
       classification: "confidential",
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_SUPERVISOR),
     });
   });

@@ -8,19 +8,20 @@ import { call } from "../src/pipeline.ts";
 import {
   AGENT,
   CFO,
+  correlationFor,
+  FROM_MEMORY,
   INV_1008_OF_456,
+  labelsWith,
+  log,
   MASKED_1008_OF_456,
   MASKED_REDACTIONS,
+  omitted,
+  registry,
+  runAs,
   SUPERVISOR,
   THE_AGENT,
   THE_CFO,
   UNEXPECTED,
-  correlationFor,
-  labelsWith,
-  log,
-  omitted,
-  registry,
-  runAs,
 } from "./helpers.ts";
 
 const GET_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
@@ -58,6 +59,7 @@ describe("decision 3: a field labelled as a plain value holds a plain value", ()
       data: { items: [], capped: { asked: 1000, max: 10 } },
       classification: "public",
       redactions: [omitted("capped.<unlabelled>")],
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_AGENT),
     });
   });
@@ -162,11 +164,13 @@ describe("decision 3: today's answers for today's data are as they were", () => 
       data: MASKED_1008_OF_456,
       classification: "internal",
       redactions: MASKED_REDACTIONS,
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_AGENT),
     });
     sameAs(await call(registry, log, CFO, "invoice.get", GET_1008), {
       data: INV_1008_OF_456,
       classification: "confidential",
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_CFO),
     });
   });

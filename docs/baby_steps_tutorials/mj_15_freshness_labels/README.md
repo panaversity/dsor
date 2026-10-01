@@ -136,7 +136,7 @@ Checked on 2026-10-01:
 | DSOR-FRS-01a | **C1.** Every successful query answer states the mode delivered, `observed_at`, and the connector | `invoice.get` and `invoice.list`, as the agent and as `cfo_100`, on memory and on the database, each carry exactly these three |
 | DSOR-FRS-01a | **C2.** `observed_at` is the database's clock, in the reading transaction | It falls between two readings of the database's clock taken around the call. In memory, it falls between two readings of the program's clock |
 | DSOR-FRS-01b | **C3.** A cached value is never labelled `current` | The planted cache's second answer says `observational`, with the first read's `observed_at` |
-| (our decision) | **C4.** The label comes from the store, through the bound store, and the code cannot write it | A planted store that reports `bounded_staleness` gives an answer that says `bounded_staleness`. A planted operation that writes its own `freshness` into its data does not change the answer's label |
+| (our decision) | **C4.** The label comes from the store, through the bound store, and the code cannot write it | A planted store that reports `bounded_staleness` gives an answer that says `bounded_staleness`. A planted operation that writes its own `freshness` into its data does not change the answer's label. A store's label DSoR cannot rank is refused |
 | (our decision) | **C5.** Several reads give the stalest label | A planted operation that reads once `current` and once `observational` gives `observational`, with the older `observed_at` |
 | (our decision) | **C6.** Only a successful query carries freshness, and a successful query that read nothing is refused | Refusals have no `freshness`. A planted query whose code returns data without reading is `INTERNAL_ERROR` |
 | (our decision) | **C7.** The record of a read keeps its label | On the database, the record of the call in C1 holds the same mode, `observed_at`, and connector as the answer |
@@ -168,6 +168,10 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
      It notes each read's label in a list that only the checklist can reach.
    - After line ⑨, the checklist takes the labels from that list. The `Company` the code is
      given has no way to see, add to, or change it.
+   - *Found while building, 2026-10-01:* it takes them last, after the company check,
+     masking, and the 64 KiB check. None of those waits, so no read can be noted after the
+     answer was copied. And an answer one of them refuses is refused for that reason, not
+     for reading nothing, so decision 6 never hides an earlier step's check.
 
    This is the Stage 2 review's lesson again: DSoR does not take its own operation code's word
    for anything that it can check. *Downside:* `companyOf` grows a second job, and the raw
@@ -221,14 +225,21 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   and nothing else.
 - **C2.** On the database: take `SELECT now()` before the call, make the call, then take
   `SELECT now()` after. `observed_at` lies between the two. On memory, it lies between two
-  readings of the program's clock.
+  readings of the program's clock. *Added while writing the tests, 2026-10-01:* the same
+  database test again, with the program's clock set to 2001 during the call. A label from
+  the program's clock would say 2001.
 - **C3.** A planted cache under the bound store. The first `invoice.get` is `current`. The
   second is `observational`, with the first read's `observed_at`. The cache is keyed by
   company: `org_789`'s first read of `INV-1008` is `current`, not `org_456`'s cached copy.
 - **C4.** A planted raw store that reports `bounded_staleness` gives an answer that says so.
-  A planted operation that writes `freshness: { mode: "current" }` into its data:
+  A planted operation that writes `freshness: "current"` into its data:
   - The answer's `freshness` is still the store's label.
   - The code's field is withheld from an agent as `<unlabelled>` (step 14).
+
+  Written as an object, `freshness: { mode: "current" }`, the code's field is refused for
+  everyone with `INTERNAL_ERROR`, because step 14 refuses an object in a field that has no
+  label. *Changed before any code, 2026-10-01:* the design first expected the object to
+  reach a person as data. The first red run showed step 14's rule, from the Stage 2 review.
 
   A planted operation that *tries* to change its recorded reads leaves the label exactly as
   the store recorded it. It tries through every property of the `Company` it is given, its
@@ -256,7 +267,7 @@ Run against the finished step. The learner's predictions were recorded before an
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
 | Z1 | The checklist writes `current` itself, ignoring the recorded reads | C3, C4, and C5: the planted stores | caught by the planted stores |
-| Z2 | `observed_at` is the program's clock on the database | only C2's database test, and only when the two clocks differ enough | not asked; the expectation stands |
+| Z2 | `observed_at` is the program's clock on the database | C2's database test with the program's clock set to 2001, every time. Without it: only when the two clocks differ enough | not asked; the expectation stands |
 | Z3 | Refusals carry `freshness` too | C6 | not asked; the expectation stands |
 | Z4 | Several reads give the freshest label, not the stalest | only C5 | only the two-read test |
 | Z5 | The cache gives `observed_at` as "now" instead of the first read's time | only C3's time check | only C3's time check |

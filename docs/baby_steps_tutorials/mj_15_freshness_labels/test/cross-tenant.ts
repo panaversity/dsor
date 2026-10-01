@@ -22,7 +22,7 @@ import {
   swaps,
   waysFrom,
 } from "./companies.ts";
-import { withoutRequestId } from "./helpers.ts";
+import { forComparing } from "./helpers.ts";
 
 /** A principal the suite attacks as: its id, and the login token DSoR gave it. */
 export type Attacker = { id: string; token: string };
@@ -92,23 +92,24 @@ export function judge(answer: Answer): string | undefined {
 /** Why these answers are a finding, or undefined when they are the same. */
 export function compare(answers: Answer[]): string | undefined {
   // Word for word, once the request id is set aside: DSoR makes a new one for every call.
+  // NEW IN STEP 15: and the time of each read, which every call's read has of its own.
   // A difference would tell the caller something about the other company, such as
   // whether it has the thing, or exists at all (DSOR-ERR-01b).
-  const [first, ...others] = answers.map(withoutRequestId);
+  const [first, ...others] = answers.map(forComparing);
   const same = others.every((other) => isDeepStrictEqual(other, first));
   return same ? undefined : "the three answers differ";
 }
 
 /**
  * Why the two answers of an in-company pair are a finding, or undefined when they are the
- * same apart from the request id and the id each request named. An answer may repeat the id
- * it was sent, as "no invoice" does, and that tells the caller nothing new (DSOR-ERR-01b).
- * Found by the Stage 2 review, and fixed from step 12 on.
+ * same apart from the request id, the time of its read, and the id each request named. An
+ * answer may repeat the id it was sent, as "no invoice" does, and that tells the caller
+ * nothing new (DSOR-ERR-01b). Found by the Stage 2 review, and fixed from step 12 on.
  */
 export function comparePair(answers: Answer[], ids: string[]): string | undefined {
   // Each id as it is written inside JSON text, so it is found there.
   const [named, nobody] = ids.map((id) => JSON.stringify(id).slice(1, -1));
-  const [first, second] = answers.map((answer) => JSON.stringify(withoutRequestId(answer)));
+  const [first, second] = answers.map((answer) => JSON.stringify(forComparing(answer)));
   // The second answer is written as if it had been asked for the first id, and must then
   // be the first answer, word for word. Masking both ids with one mark let an answer that
   // wrote the mark itself pass. Found by a hostile pass on the Stage 2 review's fix.

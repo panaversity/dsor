@@ -36,7 +36,8 @@ try {
       const ids: string[] = [];
       let after: string | undefined;
       for (let page = 0; page < 20; page++) {
-        const rows = await invoices.list(company, after, 5);
+        // NEW IN STEP 15: the store gives the rows beside its read's label.
+        const { rows } = await invoices.list(company, after, 5);
         ids.push(...rows.map(({ tenant_id, id }) => `${tenant_id}/${id}`));
         if (rows.length < 5) break;
         after = rows[rows.length - 1]!.id;
@@ -49,8 +50,8 @@ try {
     result = {
       bypassrls,
       // org_789's only invoice by that name.
-      inv2001: (await invoices.get("org_456", "INV-2001")) ?? null,
-      inv1008: (await invoices.get("org_456", "INV-1008"))?.tenant_id ?? null,
+      inv2001: (await invoices.get("org_456", "INV-2001")).invoice ?? null,
+      inv1008: (await invoices.get("org_456", "INV-1008")).invoice?.tenant_id ?? null,
       recordTenants: [...new Set(records.map((record) => record.tenant ?? null))],
     };
   }

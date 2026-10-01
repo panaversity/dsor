@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 import pg from "pg";
+import type { Freshness } from "./freshness.ts";
 import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import type { Decision, DecisionLog, DecisionRecord } from "./log.ts";
 import { money } from "./money.ts";
@@ -219,7 +220,7 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
         ),
       );
       const row = rows[0];
-      return row === undefined ? undefined : invoiceOf(row);
+      return { invoice: row === undefined ? undefined : invoiceOf(row), freshness: fromPostgres() };
     },
     // The first `count` invoices of the company after the cursor, in order
     // of id (step 13's README, decision 4). With no cursor, $2 is NULL, and the list starts
@@ -236,9 +237,15 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
           [tenant, after ?? null, count],
         ),
       );
-      return rows.map(invoiceOf);
+      return { rows: rows.map(invoiceOf), freshness: fromPostgres() };
     },
   };
+}
+
+// NEW IN STEP 15: a read from PostgreSQL, within this request, is current (DSOR-FRS-01a).
+/** The label of a read from PostgreSQL. */
+function fromPostgres(): Freshness {
+  return { mode: "current", observed_at: new Date().toISOString(), connector: "postgres" };
 }
 
 // One row as an invoice. Shared by get and list.

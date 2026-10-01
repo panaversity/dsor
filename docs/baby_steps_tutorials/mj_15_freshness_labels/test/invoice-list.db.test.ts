@@ -154,9 +154,10 @@ describe("C6: each page is its own call, with its own record", () => {
 describe("C1: the database store reads no more rows than it is asked for", () => {
   it("DSOR-QRY-01: asked for 3, then for 2 after INV-1003, it gives exactly those", async () => {
     const store = createDbInvoices(pool);
-    const three = await store.list("org_456", undefined, 3);
+    // NEW IN STEP 15: the store gives the rows beside its read's label.
+    const { rows: three } = await store.list("org_456", undefined, 3);
     expect(three.map(({ id }) => id)).toStrictEqual(["INV-1001", "INV-1002", "INV-1003"]);
-    const two = await store.list("org_456", "INV-1003", 2);
+    const { rows: two } = await store.list("org_456", "INV-1003", 2);
     expect(two.map(({ id }) => id)).toStrictEqual(["INV-1004", "INV-1005"]);
   });
 });

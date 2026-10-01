@@ -2,6 +2,7 @@
 // DSOR-ERR-01a in specs/dsor/03-execution.md, section 28.
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import type { Freshness } from "./freshness.ts";
 import type { Label } from "./labels.ts";
 import type { Redaction } from "./masking.ts";
 
@@ -68,6 +69,9 @@ export type Success = {
   data: unknown;
   classification: Label;
   redactions?: Redaction[];
+  // NEW IN STEP 15: how fresh the data is, from the store that read it (DSOR-FRS-01a; step
+  // 15's README, decision 1).
+  freshness: Freshness;
   correlation: Correlation;
 };
 

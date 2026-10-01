@@ -10,9 +10,11 @@ import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import { crossTenantSuite, readExamples, type Report, type Send } from "./cross-tenant.ts";
 import {
-  INV_2001_OF_789,
+  A_MEMORY_READ,
+  afterARead,
   contract,
   handlers,
+  INV_2001_OF_789,
   shipped,
   shippedInputs,
   shippedLabels,
@@ -70,7 +72,9 @@ function suiteWithList(
   };
   const registry = buildRegistry(
     [...shipped, source(browse, "invoice.browse.json")],
-    { ...handlers, "invoice.browse": handler },
+    // NEW IN STEP 15: the code reads once first, so a page it makes is not refused for
+    // reading nothing (step 15's README, decision 6).
+    { ...handlers, "invoice.browse": afterARead(handler) },
     shippedRoles,
     [...shippedInputs, source(input, "InvoiceBrowseRequest.schema.json")],
     shippedLabels,
@@ -197,6 +201,7 @@ describe("C5: a list, with no URI to swap, is checked by its rows", () => {
               items: own(String(request.tenant)).map(({ tenant_id: _left_out, ...rest }) => rest),
             },
             classification: "internal",
+            freshness: A_MEMORY_READ,
             correlation: { request_id: "req_fake" },
           }
         : call(registry, log, request, name, input);

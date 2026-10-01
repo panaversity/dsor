@@ -4,9 +4,10 @@ import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { expect } from "vitest";
 import type { Answer, ErrorCode } from "../src/envelope.ts";
+import type { Freshness } from "../src/freshness.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
 import { Refusal } from "../src/envelope.ts";
-import { memoryInvoices } from "../src/invoice.ts";
+import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { readClassifications, type ClassificationSource } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
@@ -213,10 +214,18 @@ export const INV_2001_OF_789 = {
   status: "issued",
 };
 
-/** An answer without its request id, so two answers can be compared word for word. */
-export function withoutRequestId(answer: Answer): unknown {
+/**
+ * An answer without what each call makes anew, so two answers can be compared word for word:
+ * its request id, and the time of its read.
+ */
+// NEW IN STEP 15: and the time of the read, which each call's read has of its own (step 15's
+// README, decision 2). Found while building step 15: the cross-tenant suite's in-company
+// pair named two answers that differed only by a millisecond. Renamed from withoutRequestId.
+export function forComparing(answer: Answer): unknown {
   const { request_id: _made, ...rest } = answer.correlation;
-  return { ...answer, correlation: rest };
+  if (!("freshness" in answer)) return { ...answer, correlation: rest };
+  const { observed_at: _read, ...label } = answer.freshness;
+  return { ...answer, freshness: label, correlation: rest };
 }
 
 // Who an answer names as its caller (step 05's README, decision 9). An
@@ -264,10 +273,25 @@ export function notGranted(name: string, permission: string): string {
 // Test.run returns an Invoice, as invoice.get does, unless the test names
 // another kind for its output (step 14's README, decision 1). And the shipped labels, unless
 // the test gives others. Found by the Stage 2 review.
+// NEW IN STEP 15: the code reads INV-1008 once before it runs, so code that answers with
+// data the test made is not refused for reading nothing (afterARead below).
 export function registryWith(
   handler: Handler,
   output = "Invoice",
   labels: ClassificationSource = shippedLabels,
+): Registry {
+  return registryRunning(afterARead(handler), output, labels);
+}
+
+// NEW IN STEP 15: for the tests of what the code reads. And the invoices in memory, unless
+// the test plants a store of its own under the bound store (step 15's README, decisions 5
+// and 8).
+/** The same registry, with the code exactly as the test wrote it: it reads what it reads. */
+export function registryRunning(
+  handler: Handler,
+  output = "Invoice",
+  labels: ClassificationSource = shippedLabels,
+  store: InvoiceStore = memoryInvoices(),
 ): Registry {
   const testRun = { ...contract("invoice.get"), id: "test.run", output: { schema: output } };
   return buildRegistry(
@@ -277,7 +301,7 @@ export function registryWith(
     shippedRoles,
     shippedInputs,
     labels,
-    memoryInvoices(),
+    store,
   );
 }
 
@@ -300,6 +324,17 @@ export const registry: Registry = buildRegistry(
   shippedLabels,
   memoryInvoices(),
 );
+
+// NEW IN STEP 15: a query whose code read nothing is refused, because its label would be
+// invented (step 15's README, decision 6). Planted code that answers with data the test made
+// reads INV-1008 of its company first, so the tests of earlier steps test what they did.
+/** The handler, after one read of INV-1008 through the company it is given. */
+export function afterARead(handler: Handler): Handler {
+  return async (input, company) => {
+    await company.invoices.get("INV-1008");
+    return handler(input, company);
+  };
+}
 
 /** Calls "test.run", an operation whose code is the handler the test wrote. */
 export function run(handler: Handler): Promise<Answer> {
@@ -373,6 +408,20 @@ export function refusedWith(code: ErrorCode): Promise<Answer> {
 // "req_" and a random UUID (step 04's README, decision 4).
 export const REQUEST_ID: RegExp =
   /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// NEW IN STEP 15: the label of a read from memory: current, a time, and memory (step 15's
+// README, decision 2). Typed out again rather than imported from src.
+export const FROM_MEMORY: { mode: string; observed_at: unknown; connector: string } = {
+  mode: "current",
+  observed_at: expect.any(String),
+  connector: "memory",
+};
+// One such label, with a time, for a fake DSoR's answers.
+export const A_MEMORY_READ: Freshness = {
+  mode: "current",
+  observed_at: "2026-10-01T09:00:00.000Z",
+  connector: "memory",
+};
 
 // The one message a bug's envelope carries, typed out again rather than imported from src.
 export const UNEXPECTED = "DSoR hit an unexpected error";

@@ -5,12 +5,13 @@ import { describe, expect, it } from "vitest";
 import type { ClassificationSource } from "../src/labels.ts";
 import {
   AGENT,
-  PLANTED_MASKED,
-  THE_AGENT,
   correlationFor,
+  FROM_MEMORY,
   labelsWith,
   omitted,
+  PLANTED_MASKED,
   runAs,
+  THE_AGENT,
 } from "./helpers.ts";
 
 // The refusal every too-large result gets, typed out again rather than imported.
@@ -76,6 +77,7 @@ describe("decision 5: the 64 KiB counts what leaves for the caller", () => {
       data: PLANTED_MASKED,
       classification: "internal",
       redactions: [omitted("<unlabelled>")],
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_AGENT),
     });
   });

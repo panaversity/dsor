@@ -16,31 +16,29 @@ import { parseUri } from "../src/uri.ts";
 import {
   AGENT,
   BAD_TENANT,
-  FIRM_IN_456,
-  FIRM_IN_789,
-  FOREIGN_URI,
-  GOOD_ISSUE,
-  INV_1008_OF_456,
-  INV_1008_OF_789,
-  INV_2001_OF_789,
-  NOBODY,
-  NOT_A_MEMBER,
-  OUR_EXTENSIONS,
-  SUPERVISOR,
-  THE_789_SUPERVISOR,
-  THE_AGENT,
-  THE_FIRM,
-  THE_SUPERVISOR,
-  UNEXPECTED,
-  USER_700,
+  CFO,
   contract,
   correlationFor,
   extraField,
+  FIRM_IN_456,
+  FIRM_IN_789,
+  FOREIGN_URI,
+  FROM_MEMORY,
+  GOOD_ISSUE,
   handlers,
+  INV_1008_OF_456,
+  INV_1008_OF_789,
+  INV_2001_OF_789,
   log,
+  MASKED_1008_OF_456,
+  MASKED_1008_OF_789,
+  MASKED_REDACTIONS,
+  NOBODY,
+  NOT_A_MEMBER,
   notGranted,
   notValid,
   otherTenant,
+  OUR_EXTENSIONS,
   registry,
   registryWith,
   shipped,
@@ -48,14 +46,17 @@ import {
   shippedLabels,
   shippedRoles,
   source,
-  withPlanted,
-  withoutRequestId,
-  type Caller,
-  CFO,
+  SUPERVISOR,
+  THE_789_SUPERVISOR,
+  THE_AGENT,
   THE_CFO,
-  MASKED_1008_OF_456,
-  MASKED_1008_OF_789,
-  MASKED_REDACTIONS,
+  THE_FIRM,
+  THE_SUPERVISOR,
+  type Caller,
+  UNEXPECTED,
+  USER_700,
+  forComparing,
+  withPlanted,
 } from "./helpers.ts";
 
 /** The error envelope a test expects, with a request id DSoR made. */
@@ -191,6 +192,7 @@ describe("C1: each request works in exactly one company, which the caller belong
       // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_FIRM),
     });
   });
@@ -205,6 +207,7 @@ describe("C1: each request works in exactly one company, which the caller belong
       // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_FIRM),
     });
   });
@@ -237,6 +240,7 @@ describe("C2: a read looks only inside the active company", () => {
       data: INV_1008_OF_456,
       // Its label (DSOR-CLS-03).
       classification: "confidential",
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_CFO),
     });
   });
@@ -249,6 +253,7 @@ describe("C2: a read looks only inside the active company", () => {
       data: INV_1008_OF_789,
       // Its label (DSOR-CLS-03).
       classification: "confidential",
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_789_SUPERVISOR),
     });
   });
@@ -270,19 +275,22 @@ describe("C2: a read looks only inside the active company", () => {
     });
     expect(theirs).toStrictEqual(refused("RESOURCE_NOT_FOUND", 'no invoice "INV-2001"', THE_AGENT));
     // Word for word, once the id the caller itself sent is set aside.
-    const asSent = JSON.stringify(withoutRequestId(nobodys)).replaceAll("INV-9999", "INV-2001");
-    expect(JSON.stringify(withoutRequestId(theirs))).toBe(asSent);
+    const asSent = JSON.stringify(forComparing(nobodys)).replaceAll("INV-9999", "INV-2001");
+    expect(JSON.stringify(forComparing(theirs))).toBe(asSent);
   });
 
   it("DSOR-IDN-03b: the store in memory finds an invoice by company and id together", async () => {
+    // NEW IN STEP 15: the store gives the invoice beside its read's label.
     const store = memoryInvoices();
-    expect(await store.get("org_456", "INV-1008")).toStrictEqual(INV_1008_OF_456);
-    expect(await store.get("org_789", "INV-1008")).toStrictEqual(INV_1008_OF_789);
-    expect(await store.get("org_789", "INV-2001")).toStrictEqual(INV_2001_OF_789);
-    expect(await store.get("org_456", "INV-2001")).toBeUndefined();
-    expect(await store.get("org_999", "INV-1008")).toBeUndefined();
+    const found = async (tenant: string, id: string): Promise<unknown> =>
+      (await store.get(tenant, id)).invoice;
+    expect(await found("org_456", "INV-1008")).toStrictEqual(INV_1008_OF_456);
+    expect(await found("org_789", "INV-1008")).toStrictEqual(INV_1008_OF_789);
+    expect(await found("org_789", "INV-2001")).toStrictEqual(INV_2001_OF_789);
+    expect(await found("org_456", "INV-2001")).toBeUndefined();
+    expect(await found("org_999", "INV-1008")).toBeUndefined();
     // Found by the review: a store that matched the start of the company, not all of it.
-    expect(await store.get("org_45", "INV-1008")).toBeUndefined();
+    expect(await found("org_45", "INV-1008")).toBeUndefined();
   });
 });
 
@@ -513,7 +521,7 @@ describe("C5: a refusal never tells whether another company, or its invoice, exi
     const none = await call(registry, log, agentIn("org_999"), "invoice.get", {
       invoice: "dsor://org_999/invoice/INV-1008",
     });
-    expect(withoutRequestId(real)).toStrictEqual(withoutRequestId(none));
+    expect(forComparing(real)).toStrictEqual(forComparing(none));
     // Found by the review: "the same" alone passed with the membership check deleted, when
     // both became line ⑤'s refusal. The same, and the right refusal.
     expect(real).toStrictEqual(refused("AUTHORIZATION_DENIED", NOT_A_MEMBER, THE_AGENT));
@@ -522,7 +530,7 @@ describe("C5: a refusal never tells whether another company, or its invoice, exi
   it("DSOR-ERR-01b: org_789's INV-1008 and org_789's NOPE get the same refusal, word for word", async () => {
     const real = await call(registry, log, SUPERVISOR, "invoice.issue", FOREIGN_1008);
     const none = await call(registry, log, SUPERVISOR, "invoice.issue", FOREIGN_NOPE);
-    expect(withoutRequestId(real)).toStrictEqual(withoutRequestId(none));
+    expect(forComparing(real)).toStrictEqual(forComparing(none));
     expect(real).toStrictEqual(refused("TENANT_MISMATCH", FOREIGN_URI, THE_SUPERVISOR));
   });
 });
@@ -681,6 +689,7 @@ const MASKED_ANSWER = {
   data: MASKED_1008_OF_456,
   classification: "internal",
   redactions: MASKED_REDACTIONS,
+  freshness: FROM_MEMORY,
   correlation: correlationFor(THE_AGENT),
 };
 
@@ -761,13 +770,16 @@ describe("C8: the code can reach only the active company, and its answer must be
   // Found by the Stage 2 review, and fixed from step 13 on.
   it("step 10's decision 14: a page that holds one row of org_789 fails with INTERNAL_ERROR in org_456, and nothing of it leaks", async () => {
     const memory = memoryInvoices();
+    // NEW IN STEP 15: its rows come beside the label of the read, as every store's do.
     const forgetful: InvoiceStore = {
       get: memory.get,
-      list: async (_tenant, after, count) =>
-        invoices
+      list: async (tenant, after, count) => ({
+        rows: invoices
           .filter((invoice) => after === undefined || invoice.id > after)
           .slice(0, count)
           .map((invoice) => structuredClone(invoice)),
+        freshness: (await memory.list(tenant, after, count)).freshness,
+      }),
     };
     const fresh = createLog();
     const leaky = buildRegistry(
@@ -793,8 +805,9 @@ describe("C8: the code can reach only the active company, and its answer must be
   // (step 10's README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
   it("step 10's decision 14: code that reads org_789 through a store of its own is caught by its answer", async () => {
     const itsOwn = memoryInvoices();
-    const reachesAround: Handler = (input) =>
-      itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id);
+    // NEW IN STEP 15: the invoice, out of what the store gives.
+    const reachesAround: Handler = async (input) =>
+      (await itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id)).invoice;
     const answer = await call(registryWith(reachesAround), log, AGENT, "test.run", {
       invoice: "dsor://org_456/invoice/INV-2001",
     });

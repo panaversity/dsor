@@ -60,7 +60,9 @@ describe("the suite, on the database", () => {
         [home],
       );
       const store = createDbInvoices(pool);
-      const held = await Promise.all(rows.map((row) => store.get(home, String(row["id"]))));
+      // NEW IN STEP 15: the store gives each invoice beside its read's label.
+      const reads = await Promise.all(rows.map((row) => store.get(home, String(row["id"]))));
+      const held = reads.map(({ invoice }) => invoice);
       const expected = (ROWS["invoice"] ?? []).filter((row) => row.tenant_id === home);
       expect(held).toStrictEqual([...expected].sort((a, b) => a.id.localeCompare(b.id)));
     },

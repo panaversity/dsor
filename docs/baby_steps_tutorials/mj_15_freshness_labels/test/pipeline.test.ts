@@ -2,28 +2,26 @@
 // README). C6 is a reading check, done beside §21's diagram.
 import { describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
+import { memoryInvoices } from "../src/invoice.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
+  afterARead,
   AGENT,
   BAD_ISSUE,
   CFO,
-  GOOD_ISSUE,
-  LOG_IN_FIRST,
-  MASKED_1008_OF_456,
-  NOT_A_MEMBER,
-  STARTING_ROLES,
-  SUPERVISOR,
-  THE_AGENT,
-  THE_CFO,
-  THE_SUPERVISOR,
   companyNamed,
   contract,
   correlationFor,
+  FROM_MEMORY,
+  GOOD_ISSUE,
   handlers,
   inputsWith,
   log,
+  LOG_IN_FIRST,
+  MASKED_1008_OF_456,
+  NOT_A_MEMBER,
   notGranted,
   notTheCaller,
   notValid,
@@ -33,9 +31,15 @@ import {
   rolesFile,
   shipped,
   shippedInputs,
+  shippedLabels,
   shippedRoles,
   shippedWith,
   source,
+  STARTING_ROLES,
+  SUPERVISOR,
+  THE_AGENT,
+  THE_CFO,
+  THE_SUPERVISOR,
 } from "./helpers.ts";
 
 // JSON text for a list nested 100,000 levels deep. JSON.parse reads it, but JSON.stringify
@@ -47,6 +51,8 @@ const DEEP = "[".repeat(100_000) + "]".repeat(100_000);
 const ANSWERED = {
   data: MASKED_1008_OF_456,
   classification: "internal",
+  // NEW IN STEP 15: the label of the read the planted code made first.
+  freshness: FROM_MEMORY,
   correlation: correlationFor(THE_AGENT),
 };
 
@@ -619,8 +625,11 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
 });
 
 /** The shipped registry, with invoice.get's code replaced by the test's. */
+// NEW IN STEP 15: the code reads INV-1008 once first, from the invoices in memory, so code
+// that answers without reading is not refused for it (step 15's README, decision 6).
 function registryWithGet(handler: Handler): Registry {
-  return buildRegistry(shipped, { ...handlers, "invoice.get": handler }, shippedRoles);
+  const code = { ...handlers, "invoice.get": afterARead(handler) };
+  return buildRegistry(shipped, code, shippedRoles, shippedInputs, shippedLabels, memoryInvoices());
 }
 
 /**
@@ -636,7 +645,8 @@ function registryListing(field: string, handler: Handler): Registry {
     additionalProperties: false,
   };
   const inputs = inputsWith("InvoiceGetRequest.schema.json", JSON.stringify(schema));
-  return buildRegistry(shipped, { ...handlers, "invoice.get": handler }, shippedRoles, inputs);
+  const code = { ...handlers, "invoice.get": afterARead(handler) };
+  return buildRegistry(shipped, code, shippedRoles, inputs, shippedLabels, memoryInvoices());
 }
 
 /** An input whose field reads as `first` the first time, and as `later` every time after. */

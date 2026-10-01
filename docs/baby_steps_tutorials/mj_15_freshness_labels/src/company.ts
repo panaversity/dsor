@@ -5,6 +5,7 @@
 // specs/dsor/02-security.md, section 12.
 // Found by the Stage 2 review, and fixed from step 10 on.
 import { types } from "node:util";
+import type { Freshness } from "./freshness.ts";
 import { jsonCopy, NOT_JSON } from "./inputs.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
 
@@ -26,14 +27,29 @@ export type Company = {
   readonly invoices: CompanyInvoices;
 };
 
-/** The store, bound to one company. Every read is that company's, whatever the code passes. */
-export function companyOf(store: InvoiceStore, tenant: string): Company {
+/**
+ * The store, bound to one company. Every read is that company's, whatever the code passes.
+ * The label of each read is noted in `reads`, which the code never sees.
+ */
+export function companyOf(store: InvoiceStore, tenant: string, reads: Freshness[] = []): Company {
   // get takes an id, and list a place and a count, and nothing more. The company is fixed
   // here, out of the code's reach, so an extra argument changes nothing. Frozen, so the
   // code cannot swap the company or the store for others (step 10's README, decision 13).
+  // NEW IN STEP 15: the store gives each read's label beside the rows. The label is noted
+  // here, before the code gets the rows, and the code gets the rows only. The list belongs
+  // to the checklist, so the code cannot see, add to, or change a label (step 15's README,
+  // decision 5).
   const invoices: CompanyInvoices = Object.freeze({
-    get: (id: string) => store.get(tenant, id),
-    list: (after: string | undefined, count: number) => store.list(tenant, after, count),
+    get: async (id: string) => {
+      const { invoice, freshness } = await store.get(tenant, id);
+      reads.push(freshness);
+      return invoice;
+    },
+    list: async (after: string | undefined, count: number) => {
+      const { rows, freshness } = await store.list(tenant, after, count);
+      reads.push(freshness);
+      return rows;
+    },
   });
   return Object.freeze({ tenant, invoices });
 }

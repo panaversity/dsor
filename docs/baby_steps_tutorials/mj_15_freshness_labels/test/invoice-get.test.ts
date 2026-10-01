@@ -7,17 +7,18 @@ import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import {
   AGENT,
-  FIRM_IN_789,
-  INV_1008_OF_456,
-  THE_AGENT,
-  THE_FIRM,
   correlationFor,
+  FIRM_IN_789,
+  FROM_MEMORY,
+  INV_1008_OF_456,
   log,
-  notValid,
-  registry,
   MASKED_1008_OF_456,
   MASKED_1008_OF_789,
   MASKED_REDACTIONS,
+  notValid,
+  registry,
+  THE_AGENT,
+  THE_FIRM,
 } from "./helpers.ts";
 
 describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
@@ -39,6 +40,7 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
       // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_AGENT),
     });
     const in789 = { invoice: "dsor://org_789/invoice/INV-1008" };
@@ -47,6 +49,7 @@ describe("decision 1: invoice.get takes an invoice's canonical URI", () => {
       // Its label (DSOR-CLS-03).
       classification: "internal",
       redactions: MASKED_REDACTIONS,
+      freshness: FROM_MEMORY,
       correlation: correlationFor(THE_FIRM),
     });
   });

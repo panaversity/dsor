@@ -29,7 +29,7 @@ import {
   shippedLabels,
   shippedRoles,
   walk,
-  withoutRequestId,
+  forComparing,
   CFO,
 } from "./helpers.ts";
 
@@ -183,7 +183,7 @@ describe("C3: the cursor walks the whole list, once", () => {
   it("DSOR-IDN-03b: as org_789, the cursor INV-1010, which only org_456 has, gives the same page as the made-up INV-1099", async () => {
     const theirs = await call(registry, log, FIRM_IN_789, "invoice.list", { cursor: "INV-1010" });
     const nobodys = await call(registry, log, FIRM_IN_789, "invoice.list", { cursor: "INV-1099" });
-    expect(withoutRequestId(theirs)).toStrictEqual(withoutRequestId(nobodys));
+    expect(forComparing(theirs)).toStrictEqual(forComparing(nobodys));
     expect(idsOf(theirs)).toStrictEqual({ items: ORG_789.slice(1) });
   });
 });
@@ -219,17 +219,18 @@ describe("C1: the store is asked for one row more than the page, and reads no mo
   });
 
   it("DSOR-QRY-01: the store in memory gives no more rows than it is asked for", async () => {
-    const three = await memoryInvoices().list("org_456", undefined, 3);
+    // NEW IN STEP 15: the store gives the rows beside its read's label.
+    const { rows: three } = await memoryInvoices().list("org_456", undefined, 3);
     expect(three.map(({ id }) => id)).toStrictEqual(["INV-1001", "INV-1002", "INV-1003"]);
-    const two = await memoryInvoices().list("org_456", "INV-1003", 2);
+    const { rows: two } = await memoryInvoices().list("org_456", "INV-1003", 2);
     expect(two.map(({ id }) => id)).toStrictEqual(["INV-1004", "INV-1005"]);
   });
 
   // As invoice.get's copy, found by step 04's review. Found for list by the sweep.
   it("decision 1: a listed invoice is a copy: changing it changes nothing stored", async () => {
-    const [first] = await memoryInvoices().list("org_456", "INV-1007", 1);
+    const [first] = (await memoryInvoices().list("org_456", "INV-1007", 1)).rows;
     first!.amount.value = "0.01";
-    const [again] = await memoryInvoices().list("org_456", "INV-1007", 1);
+    const [again] = (await memoryInvoices().list("org_456", "INV-1007", 1)).rows;
     expect(again).toStrictEqual(INV_1008_OF_456);
     expect(invoices[0]).toStrictEqual(INV_1008_OF_456);
   });

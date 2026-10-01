@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
+import { stalest, type Freshness } from "./freshness.ts";
 import { decisionOf, type DecisionLog, type Read } from "./log.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
@@ -63,6 +64,9 @@ export async function call(
   // What the answer returned, set only when it returns data. Its record
   // says so (DSOR-CLS-05; step 14's README, decision 7).
   let read: Read | undefined;
+  // NEW IN STEP 15: the label of each read the code makes, noted by the bound store. Only the
+  // checklist holds this list (step 15's README, decision 5).
+  const reads: Freshness[] = [];
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
@@ -155,7 +159,8 @@ export async function call(
     // ⑦ Idempotency claim. Commands only. Not built yet: step 20.
     // ⑧ Create the proposal, or load it. Commands only. Not built yet: step 22.
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
-    //   reads here. Freshness and preconditions are not built yet: steps 15 and 32.
+    //   reads here, and each read is labelled (step 15). A required freshness and
+    //   preconditions: not built yet, step 32.
     // The code may read the database, so call waits for it. A refusal it
     // throws while waiting is caught below, like any other.
     const returned = await line(9, async () => {
@@ -166,7 +171,7 @@ export async function call(
       // itself, so it cannot name another company (step 10's README, decision 13). Found
       // by the Stage 2 review, and fixed from step 10 on.
       try {
-        return await handler(copy, companyOf(registry.invoices, tenant));
+        return await handler(copy, companyOf(registry.invoices, tenant, reads));
       } catch (thrown) {
         // A refusal the code throws is masked as its answer would be
         // (DSOR-CLS-02a; step 14's README, decision 8).
@@ -191,6 +196,12 @@ export async function call(
     // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
     // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
     checkResultSize(shown.data, shown.redactions);
+    // NEW IN STEP 15: the answer's label, from the labels its reads left. Nothing since the
+    // copy waited, so no read can have been noted after it: the label covers every read whose
+    // rows could be in the copy. Last of the checks, so an answer refused for another reason
+    // is refused for that one. A query that read nothing is a bug in its code (DSOR-FRS-01a;
+    // step 15's README, decision 6).
+    const freshness = stalest(reads);
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
 
@@ -199,7 +210,7 @@ export async function call(
     // any (DSOR-CLS-02b).
     const { classification, redactions, resources } = shown;
     const listed = redactions.length > 0 ? { redactions } : {};
-    answer = { data: shown.data, classification, ...listed, correlation };
+    answer = { data: shown.data, classification, ...listed, freshness, correlation };
     read = { resources, classification };
   } catch (thrown) {
     // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
