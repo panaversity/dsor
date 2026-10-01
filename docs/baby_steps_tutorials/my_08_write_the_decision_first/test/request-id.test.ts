@@ -13,7 +13,8 @@
 // that the correct two were one file over all along:
 //
 //   DSOR-COR-01b: DSoR MUST generate a `request_id` when the caller supplies none.
-//   DSOR-COR-01a: DSoR MUST propagate the correlation identifiers through connectors, audit, and events.
+//   DSOR-COR-01a: DSoR MUST propagate `task_id`, `trace_id`, `session_id`, `tenant_id`, `agent_id`,
+//                   `principal_id`, and `request_id` through connectors, audit, and events.
 //
 // `01a` is the exact rule for "the record and the answer name the same request".
 

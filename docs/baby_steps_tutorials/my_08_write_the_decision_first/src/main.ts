@@ -80,7 +80,7 @@ for (const [what, run] of [
 }
 
 // NEW IN STEP 08, and this is the step. Everything above already happened; this is what was written
-// down while it did. Read the `authorization` column: the two DENY lines are the ones a program that
+// down while it did. Read the `authorization` column: the four DENY lines are the ones a program that
 // logged only its successes would have lost, and they are the most interesting lines here.
 //
 // `previous_hash` is the record before it, so the whole run is one chain. Change any line of it and
@@ -103,10 +103,19 @@ for (const record of theLog()) {
 }
 
 console.log();
-// `theHead()` is passed on purpose. Without it, `verifyChain` can only judge the records it is
-// handed — so dropping the last one, the one holding a denial, would still print `true`.
+// `theHead()` is passed on purpose, and the next three lines are why rather than a comment claiming
+// it. Hash chaining proves no record was *edited*. It cannot prove none was *deleted from the end* —
+// drop the last record and every link still holds, there is simply less of it. The checkpoint is what
+// notices, and §30 names checkpoints beside hash chaining for exactly this.
+const whole = theLog();
+const tampered = whole.slice(0, whole.length - 1);
+
 console.log(
-  `${theLog().length} records, chain verifies against the head: ${verifyChain(theLog(), theHead())}`,
+  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, theHead())}`,
+);
+console.log(
+  `drop the last record and the chain alone still says: ${verifyChain(tampered)} ` +
+    `— but against the head: ${verifyChain(tampered, theHead())}`,
 );
 console.log(
   `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,

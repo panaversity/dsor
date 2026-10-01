@@ -252,6 +252,13 @@ describe("the pipeline", () => {
     expect(answer.envelope.retry).toBe("never");
     expect(answer.envelope.message).toContain("without a record of the decision");
 
+    // The refusal is attributed to the caller, because by this point authenticate HAS run. A review
+    // flipped `principal === undefined ? undefined : askedBy` with all 223 tests passing: the receipt
+    // check made this branch reachable for the first time, and nothing read what it put in the
+    // correlation block.
+    expect(answer.envelope.correlation.principal_id).toBe("user_123");
+    expect(answer.askedBy).toBe("user_123");
+
     // The point of the whole step: no evidence, so nothing happened.
     expect(getInvoice("INV-1009")?.status).toBe("draft");
     expect(theLog()).toHaveLength(0);

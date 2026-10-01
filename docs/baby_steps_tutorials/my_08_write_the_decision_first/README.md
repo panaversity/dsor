@@ -81,18 +81,19 @@ this is what was written down while it did:
 ```text
 The audit log:
 
- 0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:3c8d4d3...
- 1  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:57090b3...
- 2  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:e60023b...
- 3  ALLOW  invoice.get@1        cfo_100                ALLOWED                 sha256:53aa4ff...
- 4  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:47d542a...
- 5  ALLOW  invoice.issue@1      accounts-payable-fte   ALLOWED                 sha256:f15d72b...
- 6  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:b3b315f...
- 7  DENY   (no such operation)  user_123               UNSUPPORTED_CAPABILITY  sha256:c344505...
- 8  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:2da9887...
- 9  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:3c1ac1f...
+ 0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:b9b124b...
+ 1  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:7488230...
+ 2  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:33e5244...
+ 3  ALLOW  invoice.get@1        cfo_100                ALLOWED                 sha256:e89a3f0...
+ 4  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:61339ac...
+ 5  ALLOW  invoice.issue@1      accounts-payable-fte   ALLOWED                 sha256:98bff79...
+ 6  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:e59b7f4...
+ 7  DENY   (no such operation)  user_123               UNSUPPORTED_CAPABILITY  sha256:3501ce7...
+ 8  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:8a9e5a8...
+ 9  DENY   invoice.issue@1      cfo_100                AUTHORIZATION_DENIED    sha256:8ee22b6...
 
 10 records, chain verifies against the head: true
+drop the last record and the chain alone still says: true — but against the head: false
 2 refusals counted without a record, because nobody was logged in
 ```
 
@@ -165,8 +166,9 @@ An envelope is where the correlation block lives. So for a successful read:
 - a record **is** written, and it carries a `request_id`
 - the caller never learns that id
 
-Ten of the twelve records in the log above are `invoice.get@1`. For ten of them, the person who caused
-the record cannot cite the id that identifies it. For a correlation id that is the whole job, and this
+Measured on the demo above: twelve calls, ten records, and **four** of the answers come back as
+`{ kind: "data" }` with no envelope. So four of those ten records carry a `request_id` that the person
+who caused them cannot cite. For a correlation id that is the whole job, and this
 is the one place it is not done.
 
 It is not a bug in this step; it is the shape of the result envelope, and step 19 is where reads get
@@ -179,7 +181,7 @@ their own governed answer. It is written here because `src/operations.ts` and
 git diff --no-index ../my_07_the_pipeline_skeleton ../my_08_write_the_decision_first
 ```
 
-Eleven files, ignoring `node_modules`:
+Sixteen paths change, ignoring `node_modules`. The ones that matter:
 
 | File | What |
 | --- | --- |
@@ -192,7 +194,7 @@ Eleven files, ignoring `node_modules`:
 | `test/audit.test.ts`, `test/decision-first.test.ts`, `test/request-id.test.ts` | new |
 | `test/pipeline.test.ts`, `test/login.test.ts` | the fifth stage, and the new signature |
 
-169 tests became 223, of which 49 were written *after* the step looked finished — see the review
+169 tests became 229, of which 55 were written *after* the step looked finished — see the review
 section at the bottom.
 
 ## One repair came first
@@ -227,16 +229,20 @@ Every allowed call is still recorded. Every test about an answer still passes. N
 program's output changes at all — and denials have silently stopped being written down.
 
 ```text
- Test Files  7 failed | 9 passed (16)
-      Tests  119 passed (119)
+ Test Files  8 failed | 9 passed (17)
+      Tests  5 failed | 120 passed (125)
 
 TypeError: record the decision must run even after a refusal, or denials go unrecorded
 ```
 
-**`119 passed (119)`, and nothing failed.** Look at the total, not at the failures: 219 tests were
-collected before, and 100 of them never ran, because seven files import a module that throws while
-loading. `pnpm start` will not start either. This is the strongest result a break can get — the
-program refuses to exist — and it looks exactly like a break nothing caught.
+**Read the total, not the failures: 229 tests were collected before, and 104 of them never ran**,
+because eight files import a module that throws while loading. `pnpm start` will not start either.
+
+Only five failures show, and all five are in `main.test.ts` — the one file that runs the program as a
+subprocess, so it reports a failure where the others simply never start. Before `main.test.ts` existed
+this same break printed `119 passed (119)` with **nothing** failing at all. That is the strongest
+result a break can get, the program refusing to exist, and it looks exactly like a break nothing
+caught. A test that runs the real program is what turns it into something you can see.
 
 ### Break 2 · record after the response, the way a `finally` block would
 
@@ -271,7 +277,7 @@ THREW: something went wrong on the way out
 records written: 0
 
  Test Files  7 failed | 9 passed (16)
-      Tests  51 failed | 168 passed (219)
+      Tests  76 failed | 147 passed (223)
 ```
 
 The refusal vanished. This is §21's "common mistake" performed on purpose: the record was written
@@ -302,7 +308,7 @@ const previous = GENESIS;   // was log[sequence - 1]?.record_hash ?? GENESIS
 
 ```text
  Test Files  2 failed | 14 passed (16)
-      Tests  8 failed | 211 passed (219)
+      Tests  8 failed | 215 passed (223)
 ```
 
 ### Break 5 · take away the checkpoint
@@ -316,13 +322,13 @@ export function verifyChain(records: readonly AuditRecord[], head?: Head): boole
 
 ```text
  Test Files  1 failed | 15 passed (16)
-      Tests  1 failed | 218 passed (219)
+      Tests  1 failed | 222 passed (223)
 ```
 
 One test, and it is the one that drops the record holding a denial and checks that somebody notices.
 
-Restore each break and confirm `pnpm check` prints `223 passed` again — or
-`222 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
+Restore each break and confirm `pnpm check` prints `229 passed` again — or
+`228 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
 byte-for-byte schema comparison has nothing to compare against.
 
 ## Build it yourself with Claude Code
@@ -349,7 +355,8 @@ byte-for-byte schema comparison has nothing to compare against.
 3. Line 6 of the log says `ALLOWED` for a call the caller saw refused. Why is that correct?
 4. Two calls in the demo left no record at all. Which ones, and what protects the log by leaving them
    out?
-5. `verifyChain` has two checks. It used to have four. What made the other two pointless?
+5. `verifyChain` once had a check on each record's `sequence` and on its `chain`. Both were deleted.
+   What made them pointless?
 6. In break 1 the output says `119 passed` and nothing failed. What actually happened?
 7. Could someone who can reach the log still rewrite history?
 8. A successful read leaves a record carrying a `request_id`, and the caller never learns it. Why?
@@ -374,7 +381,9 @@ byte-for-byte schema comparison has nothing to compare against.
    attacker can exhaust.
 5. `sequence` and `chain` are *inside* the record, so they are inside the hash. Changing either one
    breaks `record_hash` first, so a separate check for them can never be the thing that catches
-   anything. Both were removed after mutating them away left every test passing.
+   anything. Both were removed after mutating them away left every test passing. What `verifyChain`
+   checks now is each record against the schema, its own hash, its link to the record before, and that
+   its time does not run backwards — plus the checkpoint, before the loop starts.
 6. Seven test files failed to *load*, because the list check throws while the module is being
    imported, so 100 tests never ran. Nothing failed because almost nothing ran. Always read the total.
 7. Yes. The log is an array in memory, so anyone holding it can edit a record — and a chain that is
@@ -408,8 +417,8 @@ byte-for-byte schema comparison has nothing to compare against.
   ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline))
 - **[DSOR-MOD-04 · L1]** DSoR MUST NOT accept a caller-supplied assertion of current state, policy, or
   approval as evidence. ([§4](../../../specs/dsor/01-model.md#4-authority-boundaries-and-precedence))
-- **[DSOR-COR-01a · L1]** DSoR MUST propagate the correlation identifiers through connectors, audit,
-  and events. ([§32](../../../specs/dsor/03-execution.md#32-correlation))
+- **[DSOR-COR-01a · L1]** DSoR MUST propagate `task_id`, `trace_id`, `session_id`, `tenant_id`,
+  `agent_id`, `principal_id`, and `request_id` through connectors, audit, and events. ([§32](../../../specs/dsor/03-execution.md#32-correlation))
 
 `DSOR-EXE-02` is met for the decision itself: every call that reaches a principal is recorded before
 its answer is returned, refusals included, with the refusal's code and message as the reason. Two
@@ -452,7 +461,7 @@ a disjunction — "the decision **or** intent record" — so this is one complet
 a stub. The intent branch is step 36's, along with `DSOR-EXE-03a`.
 
 `DSOR-MOD-04` is met for the record: every field comes from what DSoR established, and a test plants
-all nineteen field names in the arguments at once to prove it. It was the step's biggest hole — the
+twenty field names in the arguments at once to prove it. It was the step's biggest hole — the
 claim was in a comment and nothing tested it, so a version of the stage that read
 `context.args["subject"]` passed all 198 tests.
 
@@ -520,8 +529,8 @@ invoice.issue finished the pipeline without a record of the decision
 ```
 
 The invoice stays `draft`. The guarantee no longer rests on the stage being the right stage — it rests
-on a record existing. Two mutations made that honest: removing the receipt fails 36 tests, and
-replacing it with the literal `"pretend"` passed all 222, because the door was checking that
+on a record existing. Two mutations made that honest: removing the receipt fails 37 tests, and
+replacing it with the literal `"pretend"` passed every test at the time, because the door was checking that
 *something* was there rather than that the something was real. A test now reads the receipt and
 asserts it is the id of the record in the log.
 
@@ -544,9 +553,12 @@ asserts it is the id of the record in the log.
 - `AUDIT_SCHEMA_CHECKED = true` — a reviewer deleted the compile guard under it and every test passed.
   [Lesson 12](../my_notes/lessons.md), in the one file that had not learned it.
 
-Two mutations still survive, and both say so in the code rather than in a table: `applies` in its
-positive form is equivalent while `Applies` has two members, and the order of the walker's two
-`continue`s is unreachable because `assertPipeline` refuses the only list that would expose it.
+A systematic sweep of every `===`, `!==`, `&&`, `||`, `<`, `>`, `??`, `return true/false` and `+= 1`
+in `src/` generates **253 mutants: 217 fail a test and 36 survive.** Most survivors cannot behave differently at all — `a ?? b` and `a || b` are the same when
+`a` can never be `""` or `0`, and the door's five narrowing clauses sit on a branch nothing reaches.
+Two are equivalent on purpose and say so in the code: `applies` in its positive form, and the order of
+the walker's two `continue`s. The survivors that are **not** equivalent are listed in
+[the step's notes](../my_notes/step-08-write-the-decision-first.md) rather than hidden here.
 
 **Next:** step 09, `postgres_on_neon` — the invoices and this log move into a real database, and the
 application's database user is allowed to insert log rows and not to change or delete them. Three

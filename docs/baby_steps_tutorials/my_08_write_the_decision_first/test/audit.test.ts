@@ -230,6 +230,35 @@ describe("the audit log", () => {
 
     expect(Object.keys(shuffled)).not.toEqual(Object.keys(written));
     expect(verifyChain([shuffled])).toBe(true);
+
+    // The **nested** objects too. This test only reversed the top level, so removing the recursive
+    // half of the sort left all 223 tests passing — a review built a record whose `identity` keys
+    // arrived in a different order and it still verified. `canonical` sorts at every depth, and this
+    // is the input that says so.
+    const nested = {
+      ...written,
+      identity: Object.fromEntries(Object.entries(written.identity).reverse()),
+      correlation: Object.fromEntries(Object.entries(written.correlation).reverse()),
+    } as unknown as AuditRecord;
+
+    expect(Object.keys(nested.identity)).not.toEqual(Object.keys(written.identity));
+    expect(verifyChain([nested])).toBe(true);
+  });
+
+  // The emptiest case, which had no test: a fresh log checked against its own fresh head. `lastHashOf`
+  // has to answer the genesis hash for an empty run, and a review flipped that `=== 0` with all 223
+  // tests passing — an empty log would have been reported as a broken chain.
+  it("DSOR-AUD-04b: an empty log verifies against an empty head", () => {
+    forgetTheLog();
+
+    expect(theHead().count).toBe(0);
+    expect(theHead().lastHash).toMatch(/^sha256:0+$/);
+    expect(verifyChain(theLog(), theHead())).toBe(true);
+
+    // And one record in, the head has moved on, so the empty case is not a special-case shortcut.
+    recorded();
+    expect(verifyChain(theLog(), theHead())).toBe(true);
+    expect(verifyChain([], theHead())).toBe(false);
   });
 
   it("DSOR-AUD-04b: a log with one record, and an empty log, both verify", () => {
