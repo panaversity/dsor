@@ -207,6 +207,12 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   A planted operation that writes `freshness: { mode: "current" }` into its data:
   - The answer's `freshness` is still the store's label.
   - The code's field is withheld from an agent as `<unlabelled>` (step 14).
+
+  A planted operation that *tries* to change its recorded reads leaves the label exactly as
+  the store recorded it. It tries through every property of the `Company` it is given, its
+  prototype included, and by changing the rows it got back. *Added before any code,
+  2026-10-01:* the learner's prediction for break Z6 ("only a test that tries to") showed the
+  design had no such test, so Z6 would have survived.
 - **C5.** A planted operation that reads twice, through a planted store whose second read is
   `observational`. The answer is `observational`, with the older `observed_at`.
 - **C6.** Answers of `RESOURCE_NOT_FOUND`, `TENANT_MISMATCH`, and `AUTHORIZATION_DENIED`
@@ -220,12 +226,12 @@ Run against the finished step. The learner's predictions were recorded before an
 
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
-| Z1 | The checklist writes `current` itself, ignoring the recorded reads | C3, C4, and C5: the planted stores | _to record_ |
-| Z2 | `observed_at` is the program's clock on the database | only C2's database test, and only when the two clocks differ enough | _to record_ |
-| Z3 | Refusals carry `freshness` too | C6 | _to record_ |
-| Z4 | Several reads give the freshest label, not the stalest | only C5 | _to record_ |
-| Z5 | The cache gives `observed_at` as "now" instead of the first read's time | only C3's time check | _to record_ |
-| Z6 | The code is handed the list of recorded reads, so it can change them | only a test that tries to | _to record_ |
+| Z1 | The checklist writes `current` itself, ignoring the recorded reads | C3, C4, and C5: the planted stores | caught by the planted stores |
+| Z2 | `observed_at` is the program's clock on the database | only C2's database test, and only when the two clocks differ enough | not asked; the expectation stands |
+| Z3 | Refusals carry `freshness` too | C6 | not asked; the expectation stands |
+| Z4 | Several reads give the freshest label, not the stalest | only C5 | only the two-read test |
+| Z5 | The cache gives `observed_at` as "now" instead of the first read's time | only C3's time check | only C3's time check |
+| Z6 | The code is handed the list of recorded reads, so it can change them | C4's planted operation that tries to | only a test that tries to (and there was none: C4 gained one) |
 
 The review also attacks the step with the threat that is its reason: a stale or cached
 value presented as live, whether through the code, a cache, a clock, or a combination of
