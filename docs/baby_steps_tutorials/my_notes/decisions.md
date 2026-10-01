@@ -1164,3 +1164,56 @@ program being wrong about itself, not a store being unavailable — and retry `n
 reasoning was "a list check cannot catch this", which is true and is not a reason to leave a command
 executing with no audit trail. Also rejected: having the door read the log to confirm the record is
 there. A test asserts that instead, so the door stays a door.
+
+## 67 · `pg` and raw SQL, not a query builder or an ORM (2026-10-01)
+
+**Decided by:** the learner.
+**What:** step 09 talks to PostgreSQL through `pg`, the plain driver, with SQL written out by hand.
+**Why:** the step's whole idea is a guarantee the **database** makes, not one our code makes —
+`REVOKE UPDATE, DELETE ON audit FROM dsor_runtime`, and the error PostgreSQL raises when the
+application tries anyway. A query builder would hide the easy half (writing an INSERT) and leave the
+hard half (the REVOKE) as hand-written SQL anyway. An ORM would want to own the schema, which fights
+with two database users and hand-written migrations. `pg` is also what the reference profile names.
+**Cost:** `$1, $2, $3` placeholders and no types across the query boundary, so a column rename is a
+runtime error rather than a compile error. A later step can add a builder on top once the permissions
+are the thing being taught rather than the thing being learned.
+**Rejected:** Kysely or Drizzle, and Prisma. Both named above.
+
+## 68 · Numbered `.sql` files and a runner we write (2026-10-01)
+
+**Decided by:** the learner.
+**What:** `migrations/001_*.sql`, `002_*.sql`, applied in order by `scripts/migrate.ts`, which records
+what it has applied in a table so it never applies a file twice.
+**Why:** "your first migration" is the thing being taught. A migration library teaches the library.
+Twenty lines we can read beats a dependency whose rollback feature this step does not need.
+**Cost:** no rollback, no checksums on applied files, and a hand-rolled runner is one more thing that
+can be wrong — so it gets tests of its own before it touches a database.
+**Rejected:** `node-pg-migrate`. Fine software; wrong lesson for this step.
+
+## 69 · The audit log moves; the invoices stay in memory one more step (2026-10-01)
+
+**Decided by:** the learner, against the map.
+**What:** step 09 puts the audit log in PostgreSQL. The invoice store stays an array.
+**Why:** the map says "move the invoices and the log", which is two tables, two sets of queries, and
+one interesting guarantee that applies to only one of them. The log is where the idea lives:
+durability, and an application that cannot rewrite history. Moving both would also invite a question
+this step cannot answer — should issuing an invoice and recording the decision share one transaction?
+That is `DSOR-EXE-04a`, step 34.
+**Cost:** the step diverges from the written map, and step 10 or later owes the invoice half. The map
+entry should be split, the way [decision 12](#12--the-command-landed-in-step-04-not-a-new-step-2026-09-24)
+split step 03.
+**Rejected:** both at once, as written. It is a bigger step for no extra idea.
+
+## 70 · Database tests are a separate tier, skipped without a connection string (2026-10-01)
+
+**Decided by:** the learner.
+**What:** `*.db.test.ts` files run only under `pnpm test:db`, against `DSOR_DB_URL`. `pnpm check`
+never collects them, so the step still runs with no database and no network.
+**Why:** it is the shape [AGENTS.md](../../../AGENTS.md) already defines for the reference
+implementation, so the tutorial and the real thing agree. And every step so far runs standalone —
+a step that needs credentials to run its own gate would be the first that does not.
+**Cost:** `pnpm check` being green no longer means the database guarantees hold. That is the honest
+situation and the README has to say so: two commands, and the second one is the one that proves
+`DSOR-AUD-04a`.
+**Rejected:** a local PostgreSQL in Docker (a second thing to install, and it drifts from the Neon
+setup the rest of the tutorial assumes), and requiring Neon for every run.
