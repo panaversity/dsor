@@ -324,6 +324,38 @@ fix forward through every later folder. The fixes are F1 to F9:
 | F8 | 13 | The shopper walks every page of a list, and the 64 KiB backstop is tested at its edge |
 | F9 | 14 | A clearance that is not one of the four labels gets `public`. Labels apply at every depth. A row is any kind with `tenant_id` and `id`. A redaction never copies a key |
 
+**Done, on 2026-10-01.** Each fix was written red first. An agent made each folder's fix, and the orchestrator
+ran the folder's checks and committed it. Every folder's own tests pass, unit and database, and the repository's
+`pnpm check` exits 0 after each.
+
+| Step | Commit | Fixes | Unit tests | Database tests |
+| --- | --- | --- | --- | --- |
+| 07 | `b6cc3ce` | F1 | 441 → 451 | — |
+| 08 | `5916fed` | F1 | 477 → 489 | — |
+| 09 | `2f5e1ac` | F1 | 501 → 513 | 28 |
+| 10 | `e463f6c` | F1–F3 | 576 → 628 | 39 → 45 |
+| 11 | `44fc939` | F1–F6 | 577 → 629 | 61 → 75 |
+| 12 | `ccbc75a` | F1–F7 | 628 → 719 | 64 → 80 |
+| 13 | `b35da68` | F1–F8 | 669 → 774 | 75 → 92 |
+| 14 | `f4c7015` | F1–F9 | 761 → 924 | 82 → 100 |
+
+Commit `8d18292` carried F5 back to step 09, because a hostile pass found that the start-up facts dated from
+there.
+
+What the extra passes found:
+
+- The fixes had their own hostile passes, and these found more:
+  - **Step 10.** The answer check first checked the code's live object and then sent it, so a row changed after
+    returning leaked. Now it checks and sends one JSON copy.
+  - **Step 12.** It found five gaps in the new shopper.
+  - **Step 13.** The orchestrator found a walk that checked only pages 1 and 2.
+  - **Step 14.** A caller type DSoR did not know, such as `Agent`, was not masked.
+- **The four probes, re-run on step 14.** The orchestrator re-ran them after the fixes:
+  - the rewritten-`tenant_id` leak now gives 18 findings;
+  - the one-way fallback is refused;
+  - a clearance spelled `INTERNAL` reads as `public`;
+  - a million-digit company id leaves a 383-byte record.
+
 **Low findings, recorded and not fixed now:**
 
 - **Spellings and text matching**
