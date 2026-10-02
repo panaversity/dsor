@@ -1217,3 +1217,25 @@ situation and the README has to say so: two commands, and the second one is the 
 `DSOR-AUD-04a`.
 **Rejected:** a local PostgreSQL in Docker (a second thing to install, and it drifts from the Neon
 setup the rest of the tutorial assumes), and requiring Neon for every run.
+
+## 71 · PGlite for the permission tests, a real server for what PGlite cannot do (2026-10-01)
+
+**What:** `test/audit-permissions.test.ts` runs against **PGlite** — PostgreSQL 18 compiled to
+WebAssembly, in-process — and runs under plain `pnpm check` with no connection string. The
+`*.db.test.ts` tier against a real server stays, for the two things PGlite cannot do.
+**Why:** [decision 70](#70--database-tests-are-a-separate-tier-skipped-without-a-connection-string-2026-10-01)
+said database tests skip without `DSOR_DB_URL`, which would have meant the step's central guarantee —
+`UPDATE audit …` is refused — was unproven on a fresh checkout. PGlite needs no server, no account and
+no credentials, so a learner sees `permission denied for table audit` on the first run.
+
+It is **not a mock**, and that is why it is allowed: [AGENTS.md](../../../AGENTS.md) forbids proving
+audit immutability against a mock, and a mock is a thing that imitates a database's answers. PGlite is
+the engine. The refusal in that test is PostgreSQL's own privilege system.
+**Cost:** a dependency, and two real gaps. PGlite has one connection, so the application's account is
+reached with `SET ROLE` rather than by logging in — the privilege checks are identical, but a real
+*login* as `dsor_runtime` is untested. And one connection cannot race itself, so
+`UNIQUE (chain, sequence)` under parallel writers needs a server. Both are written down in the test
+file's own header, next to the tests that cannot cover them.
+**Rejected:** leaving the guarantee untested until someone sets up Neon. The step's "done when" is one
+line — `UPDATE audit …` fails — and a step whose headline claim only runs for people with an account
+is a step most readers take on trust.

@@ -392,3 +392,43 @@ If there is no answer, the guard is redundant — delete it. If there is one, th
 not have yet. This is [lesson 14](#14--a-safety-net-you-have-never-tested-is-not-a-safety-net) told
 from the other end: there, a net had never been thrown anything; here, four nets were stacked so
 nothing ever reached the lower three.
+
+## 19 · A `GRANT` or a `REVOKE` that does nothing does not say so
+
+I wrote step 09's permission migration believing the `REVOKE` lines were what made the audit log
+safe. A mutation sweep deleted each one and every test still passed. Measured against PostgreSQL 18:
+
+```text
+fresh table, nothing granted:  privileges = (none)
+after GRANT INSERT, SELECT:    privileges = INSERT, SELECT
+after REVOKE UPDATE, DELETE:   privileges = INSERT, SELECT   <- unchanged
+```
+
+A freshly created table grants nobody anything, so there was nothing for a `REVOKE` to take away.
+**The guarantee rested on the `GRANT` being narrow, not on the `REVOKE` being present** — and my
+comments said the opposite, in a file whose whole purpose is that one guarantee.
+
+Then the sharper half. Running `GRANT UPDATE ON audit TO dsor_runtime` **as the account that does not
+own the table** raises no error at all. PostgreSQL issues a warning and grants nothing. So:
+
+```ts
+// proves nothing
+expect(await asTheApplication("GRANT UPDATE ON audit TO dsor_runtime")).toBe("allowed");
+
+// the only thing worth asserting
+expect(await privilegesOfTheApplication()).toEqual(["INSERT", "SELECT"]);
+```
+
+Two rules come out of it:
+
+1. **Never judge a `GRANT` or a `REVOKE` by whether the statement threw.** A migration full of
+   `REVOKE`s can run perfectly and leave every privilege in place. Ask the catalogue
+   (`information_schema.role_table_grants`) what the role actually holds.
+2. **To test a `REVOKE`, grant the thing first.** On a fresh table the line is unreachable. The test
+   has to create the situation the line defends against — a privilege arriving via `PUBLIC`, or granted
+   directly — and then re-run **the migration**, not a hand-written copy of the `REVOKE`. My first
+   attempt issued its own, which proved PostgreSQL works and said nothing about our file.
+
+This is [lesson 18](#18--overlapping-checks-cannot-be-tested-together) wearing different clothes: a
+line that cannot fail is not protecting anything yet, and the fix is to reach it rather than to trust
+it.
