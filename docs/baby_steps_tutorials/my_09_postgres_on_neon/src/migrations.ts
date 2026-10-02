@@ -120,3 +120,58 @@ export function migrationsIn(folder: string): readonly Migration[] {
 
   return Object.freeze(numbers.map((number) => found.get(number)!));
 }
+
+/**
+ * The migrations still to apply, given the ones a database says it has already run.
+ *
+ * Pure: it is handed both lists and reads nothing. That is why it can be tested without a database,
+ * and the deciding is the part worth testing — connecting to PostgreSQL is plumbing, while getting
+ * *which files to run* wrong is how a database ends up in a shape nobody intended.
+ *
+ * It refuses two situations rather than carrying on:
+ *
+ *   - **The database ran a migration this folder no longer has.** The same worry as the no-gap rule
+ *     above, one layer out. The database says it ran `002_runtime_user.sql`; the file is gone; nobody
+ *     can say what it did — and in this step what it did was take away the application's right to
+ *     rewrite the log. Applying `003` on top of that would be building on a shape nobody can account
+ *     for.
+ *   - **The applied migrations are not the first ones, in order.** That means somebody applied them
+ *     by hand, or two people applied different subsets. Either way this folder no longer describes
+ *     the database in front of us.
+ *
+ * Both refusals say which file, because "the migrations disagree" is not something anyone can act on.
+ */
+export function pending(
+  all: readonly Migration[],
+  applied: readonly string[],
+): readonly Migration[] {
+  const known = new Set(all.map((migration) => migration.name));
+
+  for (const name of applied) {
+    if (!known.has(name)) {
+      throw new TypeError(
+        `the database has applied ${name} and this folder does not have it: ` +
+          "a migration that has run must never be deleted, because nothing can say what it did",
+      );
+    }
+  }
+
+  // Position by position against the ordered list. `applied` is treated as a set of names rather
+  // than as an order, because a database table has no inherent order — what must hold is that the
+  // applied ones are exactly the first N.
+  const appliedNames = new Set(applied);
+
+  for (const [at, migration] of all.entries()) {
+    const isApplied = appliedNames.has(migration.name);
+    const shouldBeApplied = at < applied.length;
+
+    if (isApplied !== shouldBeApplied) {
+      throw new TypeError(
+        `${migration.name} is ${isApplied ? "applied" : "not applied"} and the ones before it are ` +
+          "not: the applied migrations must be the first ones, in order",
+      );
+    }
+  }
+
+  return Object.freeze(all.slice(applied.length));
+}

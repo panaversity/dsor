@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrationsIn } from "../src/migrations.ts";
+import { migrationsIn, pending } from "../src/migrations.ts";
 
 const made: string[] = [];
 
@@ -166,5 +166,68 @@ describe("finding the migrations", () => {
     expect(() => migrationsIn(join(tmpdir(), "dsor-no-such-folder-9f3a"))).toThrow(
       /no migrations folder/,
     );
+  });
+});
+
+describe("deciding what is still to apply", () => {
+  const all = [
+    { number: 1, name: "001_audit.sql", sql: "SELECT 1;" },
+    { number: 2, name: "002_runtime_user.sql", sql: "SELECT 2;" },
+    { number: 3, name: "003_later.sql", sql: "SELECT 3;" },
+  ];
+
+  it("a fresh database has everything to apply", () => {
+    expect(pending(all, []).map((m) => m.number)).toEqual([1, 2, 3]);
+  });
+
+  it("a database that has run the first two has only the third", () => {
+    expect(pending(all, ["001_audit.sql", "002_runtime_user.sql"]).map((m) => m.name)).toEqual([
+      "003_later.sql",
+    ]);
+  });
+
+  it("a database that has run everything has nothing to apply", () => {
+    expect(
+      pending(
+        all,
+        all.map((m) => m.name),
+      ),
+    ).toEqual([]);
+  });
+
+  /**
+   * The guard that matters here, and it is the same worry as the no-gap rule one layer down.
+   *
+   * The database says it ran `002_runtime_user.sql`. The file is not in the folder. Nobody can say
+   * what it did — and in this step, what it did was take away the application's right to rewrite the
+   * log. Carrying on would mean applying `003` on top of a database whose shape nobody can account
+   * for, so it stops.
+   */
+  it("a migration the database has run but the folder has lost stops everything", () => {
+    const withoutTwo = [all[0]!, all[2]!].map((m, at) => ({ ...m, number: at + 1 }));
+
+    expect(() => pending(withoutTwo, ["001_audit.sql", "002_runtime_user.sql"])).toThrow(
+      /002_runtime_user\.sql/,
+    );
+  });
+
+  // Applied out of order means somebody applied them by hand, or two people applied different
+  // subsets. Either way the database's shape is not the one this folder describes.
+  it("applied migrations must be the first ones, in order", () => {
+    expect(() => pending(all, ["002_runtime_user.sql"])).toThrow(/001_audit\.sql/);
+    expect(() => pending(all, ["001_audit.sql", "003_later.sql"])).toThrow(/002_runtime_user\.sql/);
+  });
+
+  it("the list it hands back cannot be edited", () => {
+    const next = pending(all, []);
+
+    expect(Object.isFrozen(next)).toBe(true);
+    expect(() => {
+      (next as { length: number }).length = 0;
+    }).toThrow(TypeError);
+  });
+
+  it("an empty folder with an empty database is simply nothing to do", () => {
+    expect(pending([], [])).toEqual([]);
   });
 });
