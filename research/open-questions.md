@@ -337,3 +337,22 @@ for a human. An agent may gather evidence; it does not settle these alone.
     gets it. Masking cannot see this. Only a check of each result against its output
     schema could. Should DSOR-CLS-02a, or DSOR-SCH-01 for results, say that a query's
     result is checked against its output schema before masking?
+51. **Are the freshness modes written `CURRENT` or `current`?** §27's table, DSOR-FRS-01b,
+    and `decision-bundle.schema.json` write `CURRENT`. `common.schema.json`, which the
+    operation contract and the connector schemas use, writes `current`. Step 15's learner
+    build follows the schemas, so a reader meets both spellings. Which one is normative?
+52. **Where does `connector_defined` rank among the modes?** Step 15's learner build
+    labels an answer from several reads with the weakest mode. That needs an order, and
+    §27 gives none for `connector_defined`, whose strength the connector documents. The
+    build ranks it below `bounded_staleness` and above `observational`. Should §27 give
+    the order, or say that an answer combining reads states each read's mode?
+53. **Where does the audit record keep a read's freshness?** DSOR-AUD-01's
+    `audit-record.schema.json` has a `connector` field, but no field for the mode
+    delivered or `observed_at`. The decision bundle keeps both for each state read
+    (DSOR-AUD-03a, L2). Step 15's learner build keeps the connector in the record's own
+    field and the rest under `extensions`. The query answer's side is question 19.
+54. **Which connector does an answer from several reads name?** DSOR-FRS-01a asks a query
+    result to state "the connector", one. A query that reads an invoice from PostgreSQL
+    and a vendor from a cache has two. Step 15's learner build names the connector of the
+    oldest read, so a cache can hide behind `postgres` in the record when its read is
+    the newer one. Should the result state each read's connector?
