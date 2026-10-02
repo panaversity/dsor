@@ -14,7 +14,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { migrationsIn } from "./migrations.ts";
+import { applyMigrations, type Runner } from "./migrations.ts";
 import { useDatabase, type Database } from "./audit.ts";
 
 /** Where the on-disk demo database lives. In .gitignore: it is this machine's, not the project's. */
@@ -46,21 +46,21 @@ export async function openTheDatabase(): Promise<{
 
   const db = await PGlite.create(LOCAL);
 
-  // The migrations, every time. Applying one twice would fail, so each file is guarded by a check
-  // for what it creates — which is the cheap version of the `applied` table the next piece brings.
-  const alreadyThere = await db.query<{ exists: boolean }>(
-    "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'audit') AS exists",
+  // The application's account, if it is not there yet. On a real server a human creates this once;
+  // here there is nobody to do it, and it is not the lesson — 002_runtime_user.sql is the lesson.
+  await db.exec(`DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dsor_runtime') THEN
+      CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-demo-not-a-secret';
+    END IF;
+  END $$;`);
+
+  // And the migrations, through the same runner `pnpm migrate` uses. This used to ask whether the
+  // `audit` table existed and skip everything if it did — which worked for exactly one migration,
+  // and would have silently skipped the second the day it was added.
+  await applyMigrations(
+    db as unknown as Runner,
+    fileURLToPath(new URL("../migrations", import.meta.url)),
   );
-
-  if (alreadyThere.rows[0]?.exists !== true) {
-    await db.exec("CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-demo-not-a-secret';");
-
-    for (const migration of migrationsIn(
-      fileURLToPath(new URL("../migrations", import.meta.url)),
-    )) {
-      await db.exec(migration.sql);
-    }
-  }
 
   useDatabase(db as unknown as Database);
 

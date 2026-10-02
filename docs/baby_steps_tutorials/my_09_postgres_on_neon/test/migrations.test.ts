@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrationsIn, pending } from "../src/migrations.ts";
+import { checksumOf, migrationsIn, pending } from "../src/migrations.ts";
 
 const made: string[] = [];
 
@@ -176,23 +176,51 @@ describe("deciding what is still to apply", () => {
     { number: 3, name: "003_later.sql", sql: "SELECT 3;" },
   ];
 
+  /** What the database remembers about a migration it has run: its name, and what it looked like. */
+  const asApplied = (...names: string[]): { name: string; checksum: string }[] =>
+    names.map((name) => ({
+      name,
+      checksum: checksumOf(all.find((m) => m.name === name)!.sql),
+    }));
+
   it("a fresh database has everything to apply", () => {
     expect(pending(all, []).map((m) => m.number)).toEqual([1, 2, 3]);
   });
 
   it("a database that has run the first two has only the third", () => {
-    expect(pending(all, ["001_audit.sql", "002_runtime_user.sql"]).map((m) => m.name)).toEqual([
-      "003_later.sql",
-    ]);
+    expect(
+      pending(all, asApplied("001_audit.sql", "002_runtime_user.sql")).map((m) => m.name),
+    ).toEqual(["003_later.sql"]);
   });
 
   it("a database that has run everything has nothing to apply", () => {
-    expect(
-      pending(
-        all,
-        all.map((m) => m.name),
-      ),
-    ).toEqual([]);
+    expect(pending(all, asApplied(...all.map((m) => m.name)))).toEqual([]);
+  });
+
+  /**
+   * A migration that was applied and then **edited**.
+   *
+   * The other half of the lost-file rule, and the likelier accident of the two: the file is still
+   * there, so nothing looks wrong, and the database ran a different version of it. Somebody fixes a
+   * typo in `001_audit.sql` six months later, runs `pnpm migrate`, and it reports nothing to do —
+   * while the table in front of them was built from the old text.
+   *
+   * The checksum is what notices. It covers the whole file, so a comment change counts too, and that
+   * is deliberate: the rule is "an applied migration is never edited", not "not edited in ways I
+   * would judge to matter".
+   */
+  it("a migration edited after it was applied stops everything", () => {
+    const edited = asApplied("001_audit.sql");
+
+    edited[0]!.checksum = checksumOf("SELECT 1; -- a typo fixed six months later");
+
+    expect(() => pending(all, edited)).toThrow(/001_audit\.sql has changed since it was applied/);
+  });
+
+  it("the checksum covers the text, so even a comment counts", () => {
+    expect(checksumOf("SELECT 1;")).toBe(checksumOf("SELECT 1;"));
+    expect(checksumOf("SELECT 1;")).not.toBe(checksumOf("SELECT 1; -- harmless"));
+    expect(checksumOf("SELECT 1;")).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
   /**
@@ -206,7 +234,7 @@ describe("deciding what is still to apply", () => {
   it("a migration the database has run but the folder has lost stops everything", () => {
     const withoutTwo = [all[0]!, all[2]!].map((m, at) => ({ ...m, number: at + 1 }));
 
-    expect(() => pending(withoutTwo, ["001_audit.sql", "002_runtime_user.sql"])).toThrow(
+    expect(() => pending(withoutTwo, asApplied("001_audit.sql", "002_runtime_user.sql"))).toThrow(
       /002_runtime_user\.sql/,
     );
   });
@@ -214,8 +242,10 @@ describe("deciding what is still to apply", () => {
   // Applied out of order means somebody applied them by hand, or two people applied different
   // subsets. Either way the database's shape is not the one this folder describes.
   it("applied migrations must be the first ones, in order", () => {
-    expect(() => pending(all, ["002_runtime_user.sql"])).toThrow(/001_audit\.sql/);
-    expect(() => pending(all, ["001_audit.sql", "003_later.sql"])).toThrow(/002_runtime_user\.sql/);
+    expect(() => pending(all, asApplied("002_runtime_user.sql"))).toThrow(/001_audit\.sql/);
+    expect(() => pending(all, asApplied("001_audit.sql", "003_later.sql"))).toThrow(
+      /002_runtime_user\.sql/,
+    );
   });
 
   it("the list it hands back cannot be edited", () => {

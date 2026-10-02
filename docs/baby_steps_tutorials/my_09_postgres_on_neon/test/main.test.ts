@@ -32,18 +32,28 @@ beforeEach(() => {
   rmSync(ITS_DATABASE, { recursive: true, force: true });
 });
 
-/** The program's output, with the hashes replaced so two runs can be compared. */
-function demo(): string {
-  const out = execFileSync("node", [new URL("../src/main.ts", import.meta.url).pathname], {
+/**
+ * Run the program once, and return what it printed both ways.
+ *
+ * `raw` is what a learner sees. `report` has the hashes replaced, so two runs can be compared — they
+ * differ every run because the time a decision was made is part of what is hashed.
+ *
+ * Both from **one** subprocess. An earlier version ran the program a second time just to see real
+ * hashes, and each run builds a PostgreSQL on disk: with the suite's other files doing the same thing
+ * in parallel, two tests here timed out while passing comfortably when the file ran alone. A test
+ * that only passes when nothing else is running is a test that will fail on somebody's laptop.
+ */
+function demo(): { raw: string; report: string } {
+  const raw = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
     encoding: "utf8",
   });
 
-  return out.replace(/sha256:[0-9a-f]+/g, "sha256:HASH");
+  return { raw, report: raw.replace(/sha256:[0-9a-f]+/g, "sha256:HASH") };
 }
 
 describe("the program a learner runs", () => {
   it("DSOR-AUT-01b: the CFO is refused the command and the agent is allowed it", () => {
-    const out = demo();
+    const out = demo().report;
 
     // Step 06's whole lesson, in the output rather than in a test double.
     expect(out).toContain("cfo_100               AUTHORIZATION_DENIED");
@@ -60,7 +70,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-ERR-01a: every refusal the demo shows is an envelope with a retry class", () => {
-    const out = demo();
+    const out = demo().report;
 
     // The printer's branches, which is where the mutations landed: `answer.kind === "error"` and
     // `=== "result"`. Flipping either left every test green and made `pnpm start` crash.
@@ -83,7 +93,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-EXE-02: the log it prints has the decisions in it, and the chain verifies", () => {
-    const out = demo();
+    const out = demo().report;
     const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
 
     expect(rows).toHaveLength(10);
@@ -109,7 +119,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-AUD-01: an unknown operation is recorded with no operation field", () => {
-    expect(demo()).toContain("DENY   (no such operation)");
+    expect(demo().report).toContain("DENY   (no such operation)");
   });
 
   /**
@@ -128,26 +138,21 @@ describe("the program a learner runs", () => {
     const records = (out: string): number =>
       Number(/^(\d+) records, chain verifies/m.exec(out)?.[1] ?? "-1");
 
-    const first = demo();
+    const first = demo().report;
 
     expect(records(first)).toBe(10);
     expect(first).toContain("chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
-    const second = demo();
+    const second = demo().report;
 
     expect(records(second)).toBe(20);
     expect(second).toContain("chain verifies against the head: true");
 
-    const third = demo();
-
-    expect(records(third)).toBe(30);
-    expect(third).toContain("chain verifies against the head: true");
-
-    // And run one's records are still there, unchanged, in run three's output.
-    expect(third).toContain(" 0  ALLOW  invoice.get@1");
-    expect(third.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      30,
+    // Run one's records are still there, unchanged, among run two's.
+    expect(second).toContain(" 0  ALLOW  invoice.get@1");
+    expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
+      20,
     );
   });
 
@@ -159,19 +164,14 @@ describe("the program a learner runs", () => {
 
     const second = demo();
 
-    // Identical once the hashes are normalised — `demo()` does that — and genuinely different
-    // underneath.
-    expect(second).toBe(first);
+    // The same report once the hashes are normalised.
+    expect(second.report).toBe(first.report);
 
-    // A third fresh run, read raw this time, so the hashes are the real ones rather than the
-    // normalised placeholders `demo()` substitutes.
-    rmSync(ITS_DATABASE, { recursive: true, force: true });
-
+    // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
-    const raw = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
-      encoding: "utf8",
-    });
 
-    expect(hashesOf(raw)).toHaveLength(10);
+    expect(hashesOf(first.raw)).toHaveLength(10);
+    expect(hashesOf(second.raw)).toHaveLength(10);
+    expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 });

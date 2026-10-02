@@ -10,6 +10,7 @@
 // order* — and it answers it strictly, because every mistake it could let through is quiet and
 // permanent. Applying them is the next piece, and it needs a database.
 
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -122,6 +123,22 @@ export function migrationsIn(folder: string): readonly Migration[] {
 }
 
 /**
+ * A fingerprint of a migration's text, so an applied one can be checked against the file.
+ *
+ * The whole file, comments included. The rule is "an applied migration is never edited", and a
+ * checksum that forgave comments would be making a judgement about which edits matter.
+ */
+export function checksumOf(sql: string): string {
+  return `sha256:${createHash("sha256").update(sql).digest("hex")}`;
+}
+
+/** What a database remembers about a migration it has run. */
+export interface AppliedMigration {
+  readonly name: string;
+  readonly checksum: string;
+}
+
+/**
  * The migrations still to apply, given the ones a database says it has already run.
  *
  * Pure: it is handed both lists and reads nothing. That is why it can be tested without a database,
@@ -143,12 +160,23 @@ export function migrationsIn(folder: string): readonly Migration[] {
  */
 export function pending(
   all: readonly Migration[],
-  applied: readonly string[],
+  applied: readonly AppliedMigration[],
 ): readonly Migration[] {
-  const known = new Set(all.map((migration) => migration.name));
+  const known = new Map(all.map((migration) => [migration.name, migration]));
 
-  for (const name of applied) {
-    if (!known.has(name)) {
+  for (const { name, checksum } of applied) {
+    const file = known.get(name);
+
+    // Applied and then edited. The file is still there, so nothing looks wrong — and the database
+    // was built from text that no longer exists anywhere.
+    if (file !== undefined && checksumOf(file.sql) !== checksum) {
+      throw new TypeError(
+        `${name} has changed since it was applied: the database ran a different version of it, ` +
+          "and an applied migration is never edited. Add a new migration instead",
+      );
+    }
+
+    if (file === undefined) {
       throw new TypeError(
         `the database has applied ${name} and this folder does not have it: ` +
           "a migration that has run must never be deleted, because nothing can say what it did",
@@ -159,7 +187,7 @@ export function pending(
   // Position by position against the ordered list. `applied` is treated as a set of names rather
   // than as an order, because a database table has no inherent order — what must hold is that the
   // applied ones are exactly the first N.
-  const appliedNames = new Set(applied);
+  const appliedNames = new Set(applied.map((one) => one.name));
 
   for (const [at, migration] of all.entries()) {
     const isApplied = appliedNames.has(migration.name);
@@ -174,4 +202,67 @@ export function pending(
   }
 
   return Object.freeze(all.slice(applied.length));
+}
+
+/** Somewhere SQL can be run. The same shape `audit.ts` uses, for the same reason. */
+export interface Runner {
+  exec: (sql: string) => Promise<unknown>;
+  query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+}
+
+/**
+ * The table that remembers which migrations have run.
+ *
+ * It cannot itself be a migration — there would be nowhere to record that it had been applied — so
+ * the runner creates it, every time, with `IF NOT EXISTS`. That is the one piece of SQL in this
+ * program that is allowed to run twice.
+ */
+const REMEMBER = `CREATE TABLE IF NOT EXISTS applied_migrations (
+  name       TEXT        PRIMARY KEY,
+  checksum   TEXT        NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
+/**
+ * Apply whatever has not been applied, in order, and record each one.
+ *
+ * Returns the migrations it applied, so a caller can say what happened. An empty array means the
+ * database was already up to date, which is a different fact from "nothing went wrong" and worth
+ * being able to tell apart.
+ *
+ * Each migration and its record go in **one transaction**. Without that, a migration could succeed
+ * and the record of it fail — and then the next run would apply it a second time, against a database
+ * that already had it, and fail on something confusing like "table audit already exists" rather than
+ * on the thing that actually went wrong.
+ */
+export async function applyMigrations(db: Runner, folder: string): Promise<readonly Migration[]> {
+  await db.exec(REMEMBER);
+
+  const { rows } = await db.query<AppliedMigration>(
+    "SELECT name, checksum FROM applied_migrations ORDER BY name",
+  );
+  const todo = pending(migrationsIn(folder), rows);
+
+  for (const migration of todo) {
+    await db.exec("BEGIN");
+
+    try {
+      await db.exec(migration.sql);
+      await db.query("INSERT INTO applied_migrations (name, checksum) VALUES ($1, $2)", [
+        migration.name,
+        checksumOf(migration.sql),
+      ]);
+      await db.exec("COMMIT");
+    } catch (whyItFailed) {
+      await db.exec("ROLLBACK");
+
+      // Named, because "syntax error at or near" with no file attached is the least helpful message
+      // a migration run can produce.
+      throw new TypeError(
+        `${migration.name} failed and was rolled back: ${(whyItFailed as Error).message}`,
+      );
+    }
+  }
+
+  return todo;
 }
