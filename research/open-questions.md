@@ -356,3 +356,16 @@ for a human. An agent may gather evidence; it does not settle these alone.
     and a vendor from a cache has two. Step 15's learner build names the connector of the
     oldest read, so a cache can hide behind `postgres` in the record when its read is
     the newer one. Should the result state each read's connector?
+55. **Does a freshness label describe the data, or only the reads?** DSOR-FRS-01a asks for
+    "the mode actually delivered". Step 15's learner build labels the reads a call made
+    through its bound store. Code that keeps a copy of `INV-1008` from an earlier call,
+    reads anything fresh, and answers with the copy, gets `current`. Checking that every
+    row in an answer equals a row read in this call would close it; the build leaves that
+    for a step of its own. Is the mode delivered a property of each value in the answer,
+    and must DSoR enforce it?
+56. **How does DSoR know a connector labels its reads honestly?** DSOR-FRS-01b forbids DSoR
+    to label a cached value `CURRENT`, but the mode comes from the connector. Step 15's
+    learner build accepts a cache that passes on the `current` label it copied, and a
+    `current` label dated in the future. Checking a `current` label's time against the
+    call would compare the connector's clock with DSoR's. Should a connector's declared
+    `freshness` (`connector.schema.json`) be verified, and how?

@@ -146,6 +146,20 @@ reviewer for a mutation sweep too.
   and every test stayed green, because the page was cut afterwards. Test what the store
   is asked for, not only what the caller receives.
 
+- **A "no" test can pass for an earlier step's reason** (step 15). Ten "a broken label gives
+  `INTERNAL_ERROR`" tests passed before any code: the label rode on the invoice as a field
+  with no label holding an object, and step 14 refused that. They turned red at C1 and
+  passed again only with C4's check. Ask which code answers a test before trusting a red run.
+- **A new refusal can hide an older check** (step 15). "A query that read nothing is
+  refused" made planted code that answered from memory fail anyway, so deleting step 10's
+  answer check left three suite tests green. Take the new check last, and let planted code
+  read first, so each older test still fails for its own reason.
+- **A field that differs on every call breaks exact comparisons** (step 15). Each answer's
+  read time made step 12's in-company pair differ by a millisecond, now and then. Set such
+  fields aside where answers are compared, as the request id already was.
+- **Edit by script, all or nothing.** Check every anchor in every file before writing any
+  file. One half-applied run had to be found and redone (step 15).
+
 ## Bugs found in earlier builds
 
 A later step's review can find a bug that an earlier build has. The fix belongs in the
@@ -222,6 +236,12 @@ Step 08 found one more on 2026-09-27:
 - **`envelope.ts` passed 150 lines** with that fix: 156 in `mj_04`, 157 from `mj_05`.
   Step 07 named 150 as the point to split it. The next change to it should split it.
 
+- **Step 11's owner-store test read the log as other tests had left it.** Found on step 15's
+  branch made fresh from `main`: on an empty log it failed, and with no `org_789` record it
+  had no teeth. It now writes a record of each company first, and may take 60 s, the limit
+  of the program it starts. Fixed in step 15, and carried back to steps 11 to 14 on
+  2026-10-02.
+
 ## Proposed for the house list and the map
 
 Proposals only. The analogy list lives in the `write-for-learners` skill, and the map is
@@ -283,6 +303,14 @@ the official tutorial's. A learner build does not change either. A maintainer de
   And "adding a new operation without tenant checks makes this suite fail" is met only
   through the same-company call, because the checklist refuses every foreign URI before
   an operation's code runs (open question 41).
+
+- **The bakery sticker** (step 15, new, flagged by its review): "baked this morning" never
+  goes on yesterday's bread. It fits DSOR-FRS-01b, and the README says where it stops: bread
+  goes stale by the clock, data when the real record changes.
+- **"Before you build" for a Neon reset.** Neon's MCP tool for a password reset returns the
+  new password, so it puts the password in the chat. Step 15 reset it through Neon's API
+  from a script that printed only the status. The map's setup could say: the console, or
+  such a script, never the MCP tool.
 
 ## The Stage 2 review (2026-10-01)
 
