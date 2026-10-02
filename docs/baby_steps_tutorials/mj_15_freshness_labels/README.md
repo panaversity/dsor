@@ -581,18 +581,19 @@ first, then fixed:
   `current`. To check that every row in an answer equals a row read in this call is a second
   idea: it would refuse every older test that answers with rows it made, and step 12's
   planted leaks before its suite could see them. Step 12's `invoice.cached` shows the gap.
+  Open question 55.
 - **DSoR believes its stores** (F4). A cache that passes on the `current` label it copied,
   or a label dated 2099, is accepted. A store is DSoR's own connector, not the agent.
   DSOR-FRS-01b holds as honestly as the connectors label their reads. To check a `current`
   label's time against the call would compare two machines' clocks, which decision 2
-  avoided.
+  avoided. Open question 56.
 - **JavaScript's built-ins** (F3). The code runs inside DSoR's own program. Code that rewrites
   `Array.prototype.push` can rewrite a label as it is noted, and can defeat every earlier
   step's checks the same way. The defense is reviewing the code, or running it apart.
 - **One connector for several reads** (F8). A current read from `postgres` and an
   observational one from a cache give `{ observational, postgres }`, and the record hides
   the cache. The specification's place for each read's own label is the decision bundle
-  (DSOR-AUD-03a, L2).
+  (DSOR-AUD-03a, L2). Open question 54.
 - **Years 0000 to 0099** are refused as times, because JavaScript reads them as 1900 to 1999.
   No store writes them.
 
@@ -611,11 +612,14 @@ first, then fixed:
 
 **Questions for the specification:**
 
-- §27 and DSOR-FRS-01b write `CURRENT`. `common.schema.json` writes `current`.
-- §27 does not rank `connector_defined` against the other modes.
-- `result-envelope.schema.json` and `audit-record.schema.json` have no place for a read's
-  mode or `observed_at`.
-- DSOR-FRS-01a names "the connector", one, for a query that may read from several.
+These are in `research/open-questions.md`:
+
+- §27 and DSOR-FRS-01b write `CURRENT`. `common.schema.json` writes `current` (question 51).
+- §27 does not rank `connector_defined` against the other modes (question 52).
+- `audit-record.schema.json` has no place for a read's mode or `observed_at` (question 53),
+  and `result-envelope.schema.json` none for a query's label (question 19).
+- DSOR-FRS-01a names "the connector", one, for a query that may read from several
+  (question 54).
 
 ## The rules this step meets
 
