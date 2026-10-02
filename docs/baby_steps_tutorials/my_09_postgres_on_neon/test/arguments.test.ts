@@ -24,12 +24,12 @@ describe("the caller's arguments", () => {
   //
   // This is the first small shape of DSOR-EXE-03a, "write it down before you do it". Step 08
   // builds the real intent record.
-  it("DSOR-ERR-01a: an argument that cannot be written down is refused before anything is issued", () => {
+  it("DSOR-ERR-01a: an argument that cannot be written down is refused before anything is issued", async () => {
     const circular: Record<string, unknown> = { invoice: INV_1009 };
     circular["itself"] = circular;
 
     for (const args of [circular, { invoice: INV_1009, big: 1n }]) {
-      const answer = callOperation(
+      const answer = await callOperation(
         ISSUER,
         "invoice.issue",
         args as Readonly<Record<string, unknown>>,
@@ -50,7 +50,7 @@ describe("the caller's arguments", () => {
       },
     };
 
-    const answer = callOperation(ISSUER, "invoice.issue", throwing);
+    const answer = await callOperation(ISSUER, "invoice.issue", throwing);
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -59,7 +59,7 @@ describe("the caller's arguments", () => {
     expect(answer.envelope.code).toBe("VALIDATION_FAILED");
 
     // And INV-1009 is still a draft, so none of that half-happened.
-    const after = callOperation(ISSUER, "invoice.get", { invoice: INV_1009 });
+    const after = await callOperation(ISSUER, "invoice.get", { invoice: INV_1009 });
 
     if (after.kind !== "data") {
       throw new Error("INV-1009 should still be readable");
@@ -73,7 +73,7 @@ describe("the caller's arguments", () => {
   // and again to fingerprint the receipt. A caller could make those two reads disagree, so the
   // receipt described a request that never happened. Here the getter hands back a decoy on any
   // read after the first, and the fingerprint must still be of INV-1009.
-  it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", () => {
+  it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", async () => {
     resetRequestIds();
     resetProposalIds();
 
@@ -104,7 +104,7 @@ describe("the caller's arguments", () => {
       },
     };
 
-    const answer = callOperation(ISSUER, "invoice.issue", args);
+    const answer = await callOperation(ISSUER, "invoice.issue", args);
 
     if (answer.kind !== "result") {
       throw new Error(`expected a result, got ${answer.kind}`);

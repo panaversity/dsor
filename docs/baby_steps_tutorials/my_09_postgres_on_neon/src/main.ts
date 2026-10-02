@@ -13,7 +13,7 @@ const SUPERVISOR: Login = { loggedInAs: "user_123" };
 const AGENT: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
-function show(answer: ReturnType<typeof callOperation>): string {
+function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
   const who = answer.askedBy.padEnd(21);
 
   if (answer.kind === "error") {
@@ -38,45 +38,55 @@ console.log(greet("accounts-payable-fte"));
 console.log();
 
 // The same read, by two different callers. Switching is just a different login.
-console.log(show(callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 })));
-console.log(show(callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
+console.log(show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 })));
+console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
 console.log();
 
 // The step's whole point: a principal written into the arguments is ignored.
 console.log(
-  show(callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008, principal: "cfo_100" })),
+  show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008, principal: "cfo_100" })),
 );
 console.log();
 
 // NEW IN STEP 06, and this is the step in four lines. The CFO reads INV-1009 and is told what
 // it is. She asks to issue it and is refused. Then the agent issues the very same invoice and
 // it works. Nothing about the invoice changed between those lines -- only who asked.
-console.log(show(callOperation(CFO, "invoice.get", { invoice: INV_1009 })));
-console.log(show(callOperation(CFO, "invoice.issue", { invoice: INV_1009 })));
-console.log(show(callOperation(AGENT, "invoice.issue", { invoice: INV_1009 })));
+console.log(show(await callOperation(CFO, "invoice.get", { invoice: INV_1009 })));
+console.log(show(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 })));
+console.log(show(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 })));
 console.log();
 
 // And with nobody logged in, nothing is even looked at.
 for (const [what, run] of [
-  ["not logged in", () => callOperation(undefined, "invoice.get", { invoice: INV_1008 })],
+  [
+    "not logged in",
+    async () => await callOperation(undefined, "invoice.get", { invoice: INV_1008 }),
+  ],
   [
     "nobody by that name",
-    () => callOperation({ loggedInAs: "nobody" }, "invoice.get", { invoice: INV_1008 }),
+    async () => await callOperation({ loggedInAs: "nobody" }, "invoice.get", { invoice: INV_1008 }),
   ],
   [
     "logged in, bad address",
-    () => callOperation(SUPERVISOR, "invoice.get", { invoice: "INV-1008" }),
+    async () => await callOperation(SUPERVISOR, "invoice.get", { invoice: "INV-1008" }),
   ],
-  ["logged in, no contract", () => callOperation(SUPERVISOR, "execute_sql", { sql: "select 1" })],
+  [
+    "logged in, no contract",
+    async () => await callOperation(SUPERVISOR, "execute_sql", { sql: "select 1" }),
+  ],
   // Authority is settled before the address is read, so these two are the same refusal, word
   // for word -- and the caller cannot tell whether INV-9999 exists.
-  ["denied, real invoice", () => callOperation(CFO, "invoice.issue", { invoice: INV_1008 })],
+  [
+    "denied, real invoice",
+    async () => await callOperation(CFO, "invoice.issue", { invoice: INV_1008 }),
+  ],
   [
     "denied, no such invoice",
-    () => callOperation(CFO, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" }),
+    async () =>
+      await callOperation(CFO, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" }),
   ],
 ] as const) {
-  console.log(`${what.padEnd(23)} ${show(run())}`);
+  console.log(`${what.padEnd(23)} ${show(await run())}`);
 }
 
 // NEW IN STEP 08, and this is the step. Everything above already happened; this is what was written

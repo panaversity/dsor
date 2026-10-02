@@ -30,7 +30,7 @@ function handlersForBoth() {
 }
 
 /** The error envelope a refusal came back in, or a failure if it was not a refusal. */
-function refusalFrom(answer: ReturnType<typeof callOperation>) {
+function refusalFrom(answer: Awaited<ReturnType<typeof callOperation>>) {
   if (answer.kind !== "error") {
     throw new Error(`expected a refusal, got ${answer.kind}`);
   }
@@ -75,9 +75,9 @@ describe("callOperation", () => {
     ).toThrow(/invoice\.cancel/);
   });
 
-  it("DSOR-ERR-01a: an operation with no contract is refused with UNSUPPORTED_CAPABILITY", () => {
+  it("DSOR-ERR-01a: an operation with no contract is refused with UNSUPPORTED_CAPABILITY", async () => {
     for (const id of ["invoice.delete", "execute_sql"]) {
-      const envelope = refusalFrom(callOperation(SUPERVISOR, id, { invoice: INV_1008 }));
+      const envelope = refusalFrom(await callOperation(SUPERVISOR, id, { invoice: INV_1008 }));
 
       expect(envelope.code).toBe("UNSUPPORTED_CAPABILITY");
       expect(envelope.retry).toBe("never");
@@ -124,7 +124,7 @@ describe("callOperation", () => {
     ).toThrow(/take it off the waiting list/);
   });
 
-  it("DSOR-OPR-01: on load, every contract is accounted for", () => {
+  it("DSOR-OPR-01: on load, every contract is accounted for", async () => {
     const ids = operationIds();
 
     expect(ids).toEqual(["invoice.get", "invoice.issue"]);
@@ -136,7 +136,7 @@ describe("callOperation", () => {
       let refusal = "";
 
       try {
-        callOperation(SUPERVISOR, id, { invoice: INV_1008 });
+        await callOperation(SUPERVISOR, id, { invoice: INV_1008 });
       } catch (error) {
         refusal = (error as Error).message;
       }
@@ -148,8 +148,8 @@ describe("callOperation", () => {
   describe("invoice.get", () => {
     // A query's success is not in an envelope. There is no outcome value that means
     // "here is the data", so a read keeps handing back the invoice — the README says so.
-    it("reads one invoice by its canonical address", () => {
-      const answer = callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+    it("reads one invoice by its canonical address", async () => {
+      const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
       if (answer.kind !== "data") {
         throw new Error(`expected data, got ${answer.kind}`);
@@ -158,9 +158,11 @@ describe("callOperation", () => {
       expect(answer.invoice.amount.value).toBe("31400.00");
     });
 
-    it("DSOR-ERR-01a: an invoice we do not hold is RESOURCE_NOT_FOUND, never retryable", () => {
+    it("DSOR-ERR-01a: an invoice we do not hold is RESOURCE_NOT_FOUND, never retryable", async () => {
       const envelope = refusalFrom(
-        callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }),
+        await callOperation(SUPERVISOR, "invoice.get", {
+          invoice: "dsor://org_456/invoice/INV-9999",
+        }),
       );
 
       expect(envelope.code).toBe("RESOURCE_NOT_FOUND");
@@ -169,20 +171,22 @@ describe("callOperation", () => {
 
     // Step 02's README promised the entity segment stops being trusted text in step 03.
     // No rule id: this keeps that promise, it is not DSOR-RID-01b.
-    it("DSOR-ERR-01a: an address whose entity no operation is named for is VALIDATION_FAILED", () => {
+    it("DSOR-ERR-01a: an address whose entity no operation is named for is VALIDATION_FAILED", async () => {
       const envelope = refusalFrom(
-        callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_456/vendor/VENDOR-44" }),
+        await callOperation(SUPERVISOR, "invoice.get", {
+          invoice: "dsor://org_456/vendor/VENDOR-44",
+        }),
       );
 
       expect(envelope.code).toBe("VALIDATION_FAILED");
       expect(envelope.retry).toBe("never");
     });
 
-    it("DSOR-ERR-01a: an address that is not canonical, or missing, is VALIDATION_FAILED", () => {
+    it("DSOR-ERR-01a: an address that is not canonical, or missing, is VALIDATION_FAILED", async () => {
       expect(
-        refusalFrom(callOperation(SUPERVISOR, "invoice.get", { invoice: "INV-1008" })).code,
+        refusalFrom(await callOperation(SUPERVISOR, "invoice.get", { invoice: "INV-1008" })).code,
       ).toBe("VALIDATION_FAILED");
-      expect(refusalFrom(callOperation(SUPERVISOR, "invoice.get", {})).code).toBe(
+      expect(refusalFrom(await callOperation(SUPERVISOR, "invoice.get", {})).code).toBe(
         "VALIDATION_FAILED",
       );
     });
@@ -190,10 +194,10 @@ describe("callOperation", () => {
     // A regular expression turns whatever it is given into text first, so an object
     // with a toString would sail past parseUri and read a real invoice. Only checking
     // the type stops it — the same lesson formatUri taught in step 02.
-    it("DSOR-ERR-01a: an argument that is not text is VALIDATION_FAILED, however convincing", () => {
+    it("DSOR-ERR-01a: an argument that is not text is VALIDATION_FAILED, however convincing", async () => {
       const disguised = { toString: () => INV_1008 } as unknown as string;
       const envelope = refusalFrom(
-        callOperation(SUPERVISOR, "invoice.get", { invoice: disguised }),
+        await callOperation(SUPERVISOR, "invoice.get", { invoice: disguised }),
       );
 
       expect(envelope.code).toBe("VALIDATION_FAILED");
@@ -205,10 +209,10 @@ describe("callOperation", () => {
     // A NEAR MISS, which the org_999 case above cannot catch: a prefix match refuses org_999
     // too. Replacing the tenant's `!==` with a prefix test left every test green in step 03, and
     // `org_45` then read org_456's invoice. Fifth appearance of this shape in six steps.
-    it("DSOR-ERR-01a: a tenant that is only part of ours is TENANT_MISMATCH, both ways round", () => {
+    it("DSOR-ERR-01a: a tenant that is only part of ours is TENANT_MISMATCH, both ways round", async () => {
       for (const tenant of ["org_45", "org_4", "org_4567", "org_456789"]) {
         const envelope = refusalFrom(
-          callOperation(SUPERVISOR, "invoice.get", {
+          await callOperation(SUPERVISOR, "invoice.get", {
             invoice: `dsor://${tenant}/invoice/INV-1008`,
           }),
         );
@@ -219,11 +223,11 @@ describe("callOperation", () => {
     });
 
     // The same near-miss question for the entity.
-    it("DSOR-ERR-01a: an entity that is only part of ours is VALIDATION_FAILED", () => {
+    it("DSOR-ERR-01a: an entity that is only part of ours is VALIDATION_FAILED", async () => {
       for (const entity of ["invoices", "invoice_line", "inv"]) {
         expect(
           refusalFrom(
-            callOperation(SUPERVISOR, "invoice.get", {
+            await callOperation(SUPERVISOR, "invoice.get", {
               invoice: `dsor://org_456/${entity}/INV-1008`,
             }),
           ).code,
@@ -234,20 +238,22 @@ describe("callOperation", () => {
 
     // The caller's OWN argument: an object that inherits `invoice` carries an argument nobody
     // in this program passed.
-    it("DSOR-ERR-01a: an invoice argument the object only inherits is not read", () => {
+    it("DSOR-ERR-01a: an invoice argument the object only inherits is not read", async () => {
       const inherited = Object.create({
         invoice: "dsor://org_456/invoice/INV-1008",
       }) as Record<string, unknown>;
 
       expect(inherited["invoice"]).toBe("dsor://org_456/invoice/INV-1008");
-      expect(refusalFrom(callOperation(SUPERVISOR, "invoice.get", inherited)).code).toBe(
+      expect(refusalFrom(await callOperation(SUPERVISOR, "invoice.get", inherited)).code).toBe(
         "VALIDATION_FAILED",
       );
     });
 
-    it("DSOR-ERR-01a: an address for another company is TENANT_MISMATCH", () => {
+    it("DSOR-ERR-01a: an address for another company is TENANT_MISMATCH", async () => {
       const envelope = refusalFrom(
-        callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_999/invoice/INV-1008" }),
+        await callOperation(SUPERVISOR, "invoice.get", {
+          invoice: "dsor://org_999/invoice/INV-1008",
+        }),
       );
 
       expect(envelope.code).toBe("TENANT_MISMATCH");
@@ -262,11 +268,11 @@ describe("callOperation", () => {
     // Issue, then issue again — in one test on purpose. Tests in one file share the
     // module, so a second test could not assume INV-1009 was still a draft. This also
     // covers the map's "done when": issuing twice returns an error envelope, not a throw.
-    it("DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT", () => {
+    it("DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT", async () => {
       resetRequestIds();
       resetProposalIds();
 
-      const first = callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+      const first = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
       if (first.kind !== "result") {
         throw new Error(`expected a result, got ${first.kind}`);
@@ -287,16 +293,18 @@ describe("callOperation", () => {
 
       // Again. Nothing is thrown; the refusal is an envelope a caller can act on, and
       // its retry class says plainly that trying again cannot help.
-      const second = refusalFrom(callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 }));
+      const second = refusalFrom(
+        await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 }),
+      );
 
       expect(second.code).toBe("CONFLICT");
       expect(second.retry).toBe("never");
       expect(second.message).toMatch(/draft/);
     });
 
-    it("DSOR-ERR-01a: issuing an invoice that is already issued is CONFLICT", () => {
+    it("DSOR-ERR-01a: issuing an invoice that is already issued is CONFLICT", async () => {
       expect(
-        refusalFrom(callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1008 })).code,
+        refusalFrom(await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1008 })).code,
       ).toBe("CONFLICT");
     });
 
@@ -304,7 +312,7 @@ describe("callOperation", () => {
     // invoice.get share invoiceIdFrom, and until these existed only invoice.get proved
     // the sharing: deleting the command's refusal passthrough collapsed every bad address
     // to "undefined is not an invoice we hold" with all tests still green.
-    it("DSOR-ERR-01a: a bad address to the command is refused the same way as to the query", () => {
+    it("DSOR-ERR-01a: a bad address to the command is refused the same way as to the query", async () => {
       const cases = [
         ["dsor://org_999/invoice/INV-1009", "TENANT_MISMATCH"],
         ["dsor://org_456/vendor/VENDOR-44", "VALIDATION_FAILED"],
@@ -313,11 +321,11 @@ describe("callOperation", () => {
 
       for (const [address, code] of cases) {
         expect(
-          refusalFrom(callOperation(SUPERVISOR, "invoice.issue", { invoice: address })).code,
+          refusalFrom(await callOperation(SUPERVISOR, "invoice.issue", { invoice: address })).code,
         ).toBe(code);
       }
 
-      expect(refusalFrom(callOperation(SUPERVISOR, "invoice.issue", {})).code).toBe(
+      expect(refusalFrom(await callOperation(SUPERVISOR, "invoice.issue", {})).code).toBe(
         "VALIDATION_FAILED",
       );
     });
@@ -347,10 +355,10 @@ describe("callOperation", () => {
       }
     });
 
-    it("DSOR-ERR-01a: issuing an invoice we do not hold is RESOURCE_NOT_FOUND", () => {
+    it("DSOR-ERR-01a: issuing an invoice we do not hold is RESOURCE_NOT_FOUND", async () => {
       expect(
         refusalFrom(
-          callOperation(SUPERVISOR, "invoice.issue", {
+          await callOperation(SUPERVISOR, "invoice.issue", {
             invoice: "dsor://org_456/invoice/INV-9999",
           }),
         ).code,

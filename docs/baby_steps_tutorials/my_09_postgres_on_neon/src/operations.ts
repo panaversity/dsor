@@ -610,7 +610,7 @@ export type Door = (
   login: Login | undefined,
   id: string,
   args: Readonly<Record<string, unknown>>,
-) => OperationAnswer;
+) => Promise<OperationAnswer>;
 
 /**
  * Builds a door from a checklist.
@@ -637,14 +637,14 @@ export function makeDoor(stages: readonly Stage[]): Door {
 
   assertPipeline(checked);
 
-  return (login, id, args) => {
+  return async (login, id, args) => {
     // NEW IN STEP 08: one id for this request, minted here — before the first stage, because the
     // request exists before any answer does. Every refusal and every success below is handed this
     // same id, so the record step 08 writes and the answer the caller reads name the same request.
     // It used to be minted inside whichever envelope was built first, which made it the name of an
     // answer rather than of a request.
     const requestId = nextRequestId();
-    const walked = runPipeline(checked, { login, id, args, requestId });
+    const walked = await runPipeline(checked, { login, id, args, requestId });
 
     if (walked.kind === "refused") {
       return walked.answer;

@@ -30,7 +30,7 @@ const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
 /** The request id on whatever came back, whichever kind of answer it is. */
-function idOf(answer: ReturnType<typeof callOperation>): string {
+function idOf(answer: Awaited<ReturnType<typeof callOperation>>): string {
   if (answer.kind === "data") {
     throw new Error("a query's success carries no envelope, so no id — see the README's gap");
   }
@@ -42,14 +42,14 @@ describe("the request id", () => {
   // Consecutive ids with no gaps is the whole test. A gap would mean a request minted an id and
   // then threw it away, which is what "minted inside the envelope" does as soon as one request
   // builds two envelopes.
-  it("DSOR-COR-01b: each request mints exactly one id, and refusals are not exempt", () => {
+  it("DSOR-COR-01b: each request mints exactly one id, and refusals are not exempt", async () => {
     resetRequestIds();
     resetProposalIds();
 
     // Three requests, refused at three different stages, so the id is not an accident of one path.
-    const noLogin = callOperation(undefined, "invoice.get", { invoice: INV_1008 });
-    const noSuchOperation = callOperation(SUPERVISOR, "invoice.destroy", {});
-    const notAllowed = callOperation(CFO, "invoice.issue", { invoice: INV_1008 });
+    const noLogin = await callOperation(undefined, "invoice.get", { invoice: INV_1008 });
+    const noSuchOperation = await callOperation(SUPERVISOR, "invoice.destroy", {});
+    const notAllowed = await callOperation(CFO, "invoice.issue", { invoice: INV_1008 });
 
     expect(idOf(noLogin)).toBe("req_1");
     expect(idOf(noSuchOperation)).toBe("req_2");
@@ -63,14 +63,14 @@ describe("the request id", () => {
     expect(notAllowed.kind === "error" && notAllowed.envelope.code).toBe("AUTHORIZATION_DENIED");
   });
 
-  it("DSOR-COR-01a: a command that succeeds carries the id its request was given", () => {
+  it("DSOR-COR-01a: a command that succeeds carries the id its request was given", async () => {
     resetRequestIds();
     resetProposalIds();
 
     // Refuse once, so the counter has moved and the success below cannot pass by starting at one.
-    expect(idOf(callOperation(undefined, "invoice.get", {}))).toBe("req_1");
+    expect(idOf(await callOperation(undefined, "invoice.get", {}))).toBe("req_1");
 
-    const issued = callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    const issued = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
     if (issued.kind !== "result") {
       throw new Error(`expected a result, got ${issued.kind}`);
@@ -82,17 +82,17 @@ describe("the request id", () => {
     // And one more, because that is where an extra mint shows. A review added `nextRequestId()` to the
     // top of a handler and the whole suite passed: the handler's extra id lands *after* the door has
     // already taken req_2, so the gap only appears on the request after it.
-    expect(idOf(callOperation(undefined, "invoice.get", {}))).toBe("req_3");
+    expect(idOf(await callOperation(undefined, "invoice.get", {}))).toBe("req_3");
   });
 
-  it("DSOR-COR-01b: two requests never share an id", () => {
+  it("DSOR-COR-01b: two requests never share an id", async () => {
     resetRequestIds();
     resetProposalIds();
 
     const seen = new Set<string>();
 
     for (let i = 0; i < 20; i += 1) {
-      seen.add(idOf(callOperation(undefined, "invoice.get", {})));
+      seen.add(idOf(await callOperation(undefined, "invoice.get", {})));
     }
 
     expect(seen.size).toBe(20);

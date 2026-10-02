@@ -24,8 +24,8 @@ function refusalFrom(answer: OperationAnswer) {
 }
 
 describe("anything not granted is refused", () => {
-  it("DSOR-AUT-01b: cfo_100 may read an invoice", () => {
-    const answer = callOperation(CFO, "invoice.get", { invoice: INV_1008 });
+  it("DSOR-AUT-01b: cfo_100 may read an invoice", async () => {
+    const answer = await callOperation(CFO, "invoice.get", { invoice: INV_1008 });
 
     if (answer.kind !== "data") {
       throw new Error(`expected data, got ${answer.kind}`);
@@ -35,14 +35,14 @@ describe("anything not granted is refused", () => {
   });
 
   // The other half of the map's "done when", and the point of the step.
-  it("DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries", () => {
-    const envelope = refusalFrom(callOperation(CFO, "invoice.issue", { invoice: INV_1009 }));
+  it("DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries", async () => {
+    const envelope = refusalFrom(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 }));
 
     expect(envelope.code).toBe("AUTHORIZATION_DENIED");
     expect(envelope.retry).toBe("never");
 
     // Still a draft, so the refusal happened before anything changed.
-    const after = callOperation(CFO, "invoice.get", { invoice: INV_1009 });
+    const after = await callOperation(CFO, "invoice.get", { invoice: INV_1009 });
 
     if (after.kind !== "data") {
       throw new Error("INV-1009 should still be readable");
@@ -53,8 +53,8 @@ describe("anything not granted is refused", () => {
 
   // Decision 35. It says she may not do it, not what she was missing. A refusal that names the
   // missing permission draws the permission model for anyone willing to ask twenty times.
-  it("DSOR-AUT-01b: the refusal does not say which permission was missing", () => {
-    const envelope = refusalFrom(callOperation(CFO, "invoice.issue", { invoice: INV_1009 }));
+  it("DSOR-AUT-01b: the refusal does not say which permission was missing", async () => {
+    const envelope = refusalFrom(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 }));
 
     expect(envelope.message).toContain("cfo_100");
     expect(envelope.message).toContain("invoice.issue");
@@ -65,8 +65,8 @@ describe("anything not granted is refused", () => {
   // Asserting against CFO.loggedInAs, not the literal "cfo_100". A hostile review pointed out
   // that a test whose expected value is a constant cannot tell the caller's real id from that
   // one string — the same trap step 05's attribution test fell into.
-  it("DSOR-AUT-01b: a denial says who was denied", () => {
-    const answer = callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+  it("DSOR-AUT-01b: a denial says who was denied", async () => {
+    const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
 
     expect(answer.askedBy).toBe(CFO.loggedInAs);
     expect(refusalFrom(answer).correlation.principal_id).toBe(CFO.loggedInAs);
@@ -76,7 +76,7 @@ describe("anything not granted is refused", () => {
   // neither does *what you may do*. A hostile review proved this was untested: making the gate
   // believe a `permission` written into the arguments let cfo_100 issue the invoice, with all
   // 126 tests still green.
-  it("DSOR-SRC-02a: the permission comes from the contract, never from the arguments", () => {
+  it("DSOR-SRC-02a: the permission comes from the contract, never from the arguments", async () => {
     const planted = [
       { permission: "invoice:read" },
       { permission: "" },
@@ -86,14 +86,14 @@ describe("anything not granted is refused", () => {
 
     for (const extra of planted) {
       const envelope = refusalFrom(
-        callOperation(CFO, "invoice.issue", { invoice: INV_1009, ...extra }),
+        await callOperation(CFO, "invoice.issue", { invoice: INV_1009, ...extra }),
       );
 
       expect(envelope.code, JSON.stringify(extra)).toBe("AUTHORIZATION_DENIED");
     }
 
     // And it still is not issued.
-    const after = callOperation(CFO, "invoice.get", { invoice: INV_1009 });
+    const after = await callOperation(CFO, "invoice.get", { invoice: INV_1009 });
 
     if (after.kind !== "data") {
       throw new Error("INV-1009 should still be readable");
@@ -104,8 +104,8 @@ describe("anything not granted is refused", () => {
 
   // The denial is a new return site, and every answer in this program is frozen because
   // `readonly` is erased before Node runs. No test covered this one.
-  it("a denial cannot be edited after it is handed out", () => {
-    const answer = callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+  it("a denial cannot be edited after it is handed out", async () => {
+    const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
 
     expect(Object.isFrozen(answer)).toBe(true);
     expect(() => {
@@ -123,7 +123,7 @@ describe("anything not granted is refused", () => {
   //
   // This is the mechanism DSOR-ERR-01b needs. The rule itself is about a caller who may not
   // *read* a resource, and all three roles here hold invoice:read, so the step cannot claim it.
-  it("DSOR-AUT-01b: being refused for authority tells the caller nothing about the data", () => {
+  it("DSOR-AUT-01b: being refused for authority tells the caller nothing about the data", async () => {
     const attempts = [
       ["a draft that exists", INV_1009],
       ["an invoice that does not exist", "dsor://org_456/invoice/INV-9999"],
@@ -136,7 +136,7 @@ describe("anything not granted is refused", () => {
     const seen = new Set<string>();
 
     for (const [why, invoice] of attempts) {
-      const envelope = refusalFrom(callOperation(CFO, "invoice.issue", { invoice }));
+      const envelope = refusalFrom(await callOperation(CFO, "invoice.issue", { invoice }));
 
       expect(envelope.code, why).toBe("AUTHORIZATION_DENIED");
       seen.add(envelope.message);
@@ -144,7 +144,7 @@ describe("anything not granted is refused", () => {
 
     // Not even a missing argument is examined — and its message joins the set, so a message
     // that varied with the arguments could not hide here either.
-    const noArgument = refusalFrom(callOperation(CFO, "invoice.issue", {}));
+    const noArgument = refusalFrom(await callOperation(CFO, "invoice.issue", {}));
 
     expect(noArgument.code).toBe("AUTHORIZATION_DENIED");
     seen.add(noArgument.message);
@@ -175,7 +175,7 @@ describe("anything not granted is refused", () => {
       ],
     ] as const) {
       const envelope = refusalFrom(
-        callOperation(CFO, "invoice.issue", args as Readonly<Record<string, unknown>>),
+        await callOperation(CFO, "invoice.issue", args as Readonly<Record<string, unknown>>),
       );
 
       expect(envelope.code, why).toBe("AUTHORIZATION_DENIED");
@@ -190,23 +190,25 @@ describe("anything not granted is refused", () => {
   // the honest proof is the refusal it gets *instead* of AUTHORIZATION_DENIED: CONFLICT comes
   // from the business rule, which only runs once authority is settled. That way this test does
   // not need the one draft invoice, which the last test uses.
-  it("DSOR-AUT-01b: a caller who was granted invoice:issue gets past the gate", () => {
-    const envelope = refusalFrom(callOperation(AGENT, "invoice.issue", { invoice: INV_1008 }));
+  it("DSOR-AUT-01b: a caller who was granted invoice:issue gets past the gate", async () => {
+    const envelope = refusalFrom(
+      await callOperation(AGENT, "invoice.issue", { invoice: INV_1008 }),
+    );
 
     expect(envelope.code).toBe("CONFLICT");
   });
 
-  it("DSOR-AUT-01b: everyone in the story may read", () => {
+  it("DSOR-AUT-01b: everyone in the story may read", async () => {
     for (const login of [CFO, SUPERVISOR, AGENT]) {
-      const answer = callOperation(login, "invoice.get", { invoice: INV_1008 });
+      const answer = await callOperation(login, "invoice.get", { invoice: INV_1008 });
 
       expect(answer.kind, login.loggedInAs).toBe("data");
     }
   });
 
   // Last in the file on purpose: it uses up the only draft invoice.
-  it("DSOR-AUT-01b: the supervisor may issue, and does", () => {
-    const answer = callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+  it("DSOR-AUT-01b: the supervisor may issue, and does", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
     if (answer.kind !== "result") {
       throw new Error(`expected a result, got ${answer.kind}`);

@@ -97,6 +97,16 @@ export interface Context {
  * A refusal ends the walk. There is no "carry on but remember this went wrong" — the first no is
  * the answer, which is what makes the order matter.
  */
+/**
+ * NEW IN STEP 09: a stage answers with a promise, because one of them talks to a database.
+ *
+ * Only `record the decision` needs this — it writes a row, and a row is on the other side of a
+ * network. But a walker that awaits one stage has to await all of them, and a door that awaits the
+ * walker has to be awaited by its caller, so the `await` reaches every call site in the program.
+ *
+ * That is the honest cost of a real database, and it arrives here rather than being hidden: nothing
+ * in Node can write to PostgreSQL and return before it has.
+ */
 export type StageResult =
   | { readonly kind: "carry_on"; readonly context: Context }
   | { readonly kind: "refused"; readonly answer: OperationAnswer };
@@ -125,7 +135,7 @@ export interface Stage {
    * are skipped, and the evidence stages still run.
    */
   readonly evenAfterARefusal: boolean;
-  readonly run: (context: Context) => StageResult;
+  readonly run: (context: Context) => StageResult | Promise<StageResult>;
 }
 
 /**
@@ -364,7 +374,10 @@ export type PipelineResult =
  * resolved *by a stage*. Before that stage has run there is no kind to ask about — so no
  * command-only stage may sit that early, and `assertPipeline` is where that will be refused.
  */
-export function runPipeline(stages: readonly Stage[], start: Context): PipelineResult {
+export async function runPipeline(
+  stages: readonly Stage[],
+  start: Context,
+): Promise<PipelineResult> {
   // Frozen on the way in and again after every stage. A stage is meant to *return* what it learned,
   // not edit what it was handed — and without this it could rewrite the request under the checks
   // that already ran: change the id after authorize said yes, or the login after authenticate did.
@@ -395,7 +408,9 @@ export function runPipeline(stages: readonly Stage[], start: Context): PipelineR
       continue;
     }
 
-    const result = stage.run(context);
+    // Awaited whether or not this particular stage returns a promise. `await` on a plain value is
+    // the value, so the stages that do not touch a database are unchanged by this.
+    const result = await stage.run(context);
 
     if (result.kind === "refused") {
       // The *last* refusal wins, and only an `evenAfterARefusal` stage can ever overwrite an

@@ -22,9 +22,9 @@ const ISSUER = { loggedInAs: "accounts-payable-fte" } as const;
 describe("who you are comes from the login, never from the arguments", () => {
   // cfo_100 is the person who approves large payments. If a caller could claim to be her
   // by writing it down, every approval rule in DSoR would be worth nothing.
-  it("DSOR-SRC-02a: a principal named in the arguments is ignored", () => {
-    const honest = callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
-    const lying = callOperation(SUPERVISOR, "invoice.get", {
+  it("DSOR-SRC-02a: a principal named in the arguments is ignored", async () => {
+    const honest = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+    const lying = await callOperation(SUPERVISOR, "invoice.get", {
       invoice: INV_1008,
       principal: "cfo_100",
       subject: "cfo_100",
@@ -37,8 +37,8 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(honest.askedBy).toBe("user_123");
   });
 
-  it("DSOR-SRC-02a: a tenant named in the arguments is ignored too", () => {
-    const answer = callOperation(SUPERVISOR, "invoice.get", {
+  it("DSOR-SRC-02a: a tenant named in the arguments is ignored too", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.get", {
       invoice: INV_1008,
       tenant: "org_999",
       active_tenant: "org_999",
@@ -50,8 +50,8 @@ describe("who you are comes from the login, never from the arguments", () => {
   // The test above only shows a useless extra field is harmless. This one sends what an
   // attacker would: an address for another company, and the *right* company written into
   // the arguments beside it, hoping the written one is believed. It must buy nothing.
-  it("DSOR-SRC-02a: the right company in the arguments cannot buy another company's record", () => {
-    const answer = callOperation(SUPERVISOR, "invoice.get", {
+  it("DSOR-SRC-02a: the right company in the arguments cannot buy another company's record", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.get", {
       invoice: "dsor://org_999/invoice/INV-1008",
       tenant: "org_456",
       active_tenant: "org_456",
@@ -68,8 +68,8 @@ describe("who you are comes from the login, never from the arguments", () => {
   // The command path shares invoiceIdFrom with the query, but its own success envelope
   // names the principal separately. A review proved that field could be read out of the
   // arguments with every test still green, so the command is asked the question too.
-  it("DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well", () => {
-    const answer = callOperation(SUPERVISOR, "invoice.issue", {
+  it("DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", {
       invoice: INV_1008,
       principal: "cfo_100",
       principal_id: "cfo_100",
@@ -86,8 +86,8 @@ describe("who you are comes from the login, never from the arguments", () => {
   // Step 01's lesson, applied to this step's own new type. `readonly` is erased before Node
   // runs, so the answer a caller is handed must be frozen as well as declared readonly —
   // and `askedBy` is this step's entire record of who asked.
-  it("an answer cannot be edited after it is handed out", () => {
-    const answer = callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+  it("an answer cannot be edited after it is handed out", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(Object.isFrozen(answer)).toBe(true);
     expect(() => {
@@ -99,14 +99,14 @@ describe("who you are comes from the login, never from the arguments", () => {
   // A caller-supplied object that throws when it is read. src/operations.ts promises that every
   // refusal comes back as an envelope, and a hostile review found two places where it did not:
   // the login, and the arguments. A stack trace is not an envelope a caller can act on.
-  it("DSOR-ERR-01a: an object that throws when read is refused, not thrown at", () => {
+  it("DSOR-ERR-01a: an object that throws when read is refused, not thrown at", async () => {
     const throwingLogin = {
       get loggedInAs(): string {
         throw new Error("boom");
       },
     };
 
-    const one = callOperation(throwingLogin as never, "invoice.get", { invoice: INV_1008 });
+    const one = await callOperation(throwingLogin as never, "invoice.get", { invoice: INV_1008 });
 
     if (one.kind !== "error") {
       throw new Error(`expected a refusal, got ${one.kind}`);
@@ -120,7 +120,7 @@ describe("who you are comes from the login, never from the arguments", () => {
       },
     };
 
-    const two = callOperation(SUPERVISOR, "invoice.issue", throwingArgs);
+    const two = await callOperation(SUPERVISOR, "invoice.issue", throwingArgs);
 
     if (two.kind !== "error") {
       throw new Error(`expected a refusal, got ${two.kind}`);
@@ -129,8 +129,8 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(two.envelope.code).toBe("VALIDATION_FAILED");
   });
 
-  it("DSOR-IDN-01: with nobody logged in, nothing happens at all", () => {
-    const answer = callOperation(undefined, "invoice.get", { invoice: INV_1008 });
+  it("DSOR-IDN-01: with nobody logged in, nothing happens at all", async () => {
+    const answer = await callOperation(undefined, "invoice.get", { invoice: INV_1008 });
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -142,9 +142,9 @@ describe("who you are comes from the login, never from the arguments", () => {
 
   // The login is checked before anything else, which is what DSOR-IDN-01's "before any
   // other processing" means. A nonsense operation and a nonsense address both come second.
-  it("DSOR-IDN-01: the login is checked before the operation or the arguments", () => {
-    const noOperation = callOperation(undefined, "execute_sql", { sql: "select 1" });
-    const noAddress = callOperation(undefined, "invoice.get", {});
+  it("DSOR-IDN-01: the login is checked before the operation or the arguments", async () => {
+    const noOperation = await callOperation(undefined, "execute_sql", { sql: "select 1" });
+    const noAddress = await callOperation(undefined, "invoice.get", {});
 
     for (const answer of [noOperation, noAddress]) {
       if (answer.kind !== "error") {
@@ -156,8 +156,8 @@ describe("who you are comes from the login, never from the arguments", () => {
     }
   });
 
-  it("DSOR-IDN-01: the agent asks as itself, and is a principal like any other", () => {
-    const answer = callOperation({ loggedInAs: "accounts-payable-fte" }, "invoice.get", {
+  it("DSOR-IDN-01: the agent asks as itself, and is a principal like any other", async () => {
+    const answer = await callOperation({ loggedInAs: "accounts-payable-fte" }, "invoice.get", {
       invoice: INV_1008,
     });
 
@@ -169,8 +169,8 @@ describe("who you are comes from the login, never from the arguments", () => {
   // connectors and no events, so it supports DSOR-COR-01a in part and claims neither it nor
   // DSOR-COR-01b for attribution. DSOR-COR-01b is about generating a request id, and the two
   // tests that prove that live in test/envelopes.test.ts.
-  it("the answer records who asked", () => {
-    const answer = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
+  it("the answer records who asked", async () => {
+    const answer = await callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-9999",
     });
 
@@ -200,7 +200,7 @@ describe("who you are comes from the login, never from the arguments", () => {
   // identifiers carried through connectors, audit and events — none of which exist yet —
   // and for `DSOR-IDN-02b`, which needs the audit log of step 08. Neither is claimed here,
   // so neither is named in a title.
-  it("every answer says who asked, and so does the envelope inside it", () => {
+  it("every answer says who asked, and so does the envelope inside it", async () => {
     const calls: readonly (readonly [string, Record<string, unknown>])[] = [
       ["invoice.get", { invoice: INV_1008 }], // data
       ["invoice.get", { invoice: "INV-1008" }], // bad address
@@ -218,7 +218,7 @@ describe("who you are comes from the login, never from the arguments", () => {
 
     for (const who of ["user_123", "cfo_100", "accounts-payable-fte"]) {
       for (const [id, args] of calls) {
-        const answer = callOperation({ loggedInAs: who }, id, args);
+        const answer = await callOperation({ loggedInAs: who }, id, args);
         const where = `${who} ${id} ${JSON.stringify(args)}`;
 
         expect(answer.askedBy, where).toBe(who);
@@ -236,11 +236,11 @@ describe("who you are comes from the login, never from the arguments", () => {
   //
   // This is the first small shape of DSOR-EXE-03a, "the intent record is written before the
   // side effect". Step 08 builds the real thing.
-  it("DSOR-ERR-01a: an argument that cannot be written down is refused before anything is issued", () => {
+  it("DSOR-ERR-01a: an argument that cannot be written down is refused before anything is issued", async () => {
     const circular: Record<string, unknown> = { invoice: INV_1009 };
     circular["itself"] = circular;
 
-    const answer = callOperation(ISSUER, "invoice.issue", circular);
+    const answer = await callOperation(ISSUER, "invoice.issue", circular);
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -251,7 +251,7 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(answer.envelope.correlation.principal_id).toBe("accounts-payable-fte");
 
     // And INV-1009 is still a draft, so nothing happened.
-    const after = callOperation(ISSUER, "invoice.get", { invoice: INV_1009 });
+    const after = await callOperation(ISSUER, "invoice.get", { invoice: INV_1009 });
 
     if (after.kind !== "data") {
       throw new Error("INV-1009 should still be readable");
@@ -268,7 +268,7 @@ describe("who you are comes from the login, never from the arguments", () => {
   // fingerprint the receipt. A property with a getter could answer differently each time, so
   // the receipt described a request that never happened. Here the getter hands back a decoy
   // on any read after the first, and the fingerprint must still be of INV-1009.
-  it("the answer that changes something says who asked, and the arguments are read once", () => {
+  it("the answer that changes something says who asked, and the arguments are read once", async () => {
     let reads = 0;
     const args = {
       get invoice(): string {
@@ -278,7 +278,7 @@ describe("who you are comes from the login, never from the arguments", () => {
       },
     };
 
-    const answer = callOperation(ISSUER, "invoice.issue", args);
+    const answer = await callOperation(ISSUER, "invoice.issue", args);
 
     if (answer.kind !== "result") {
       throw new Error(`expected a result, got ${answer.kind}`);
@@ -297,9 +297,9 @@ describe("who you are comes from the login, never from the arguments", () => {
 
   // Losing a name is bad. Inventing one is worse: an unauthenticated request stamped with
   // a real person's id would put a caller in the record who never asked for anything.
-  it("DSOR-IDN-01: a refused login is attributed to nobody, never to a real person", () => {
+  it("DSOR-IDN-01: a refused login is attributed to nobody, never to a real person", async () => {
     for (const login of [undefined, { loggedInAs: "nobody" }, { loggedInAs: "cfo_100_evil" }]) {
-      const answer = callOperation(login, "invoice.get", { invoice: INV_1008 });
+      const answer = await callOperation(login, "invoice.get", { invoice: INV_1008 });
 
       if (answer.kind !== "error") {
         throw new Error("that login should have been refused");

@@ -144,7 +144,7 @@ describe("the pipeline", () => {
    * unflagged, run the flagged, the last one wins" was proven only indirectly, through `callOperation`.
    * Swapping the two `continue`s in the walker left all 198 tests passing.
    */
-  it("DSOR-EXE-02: a refusal is carried, the unflagged are skipped, and the flagged still run", () => {
+  it("DSOR-EXE-02: a refusal is carried, the unflagged are skipped, and the flagged still run", async () => {
     const ran: string[] = [];
     const refuses = (name: string, flagged: boolean, no: boolean): Stage =>
       Object.freeze({
@@ -169,7 +169,7 @@ describe("the pipeline", () => {
       });
 
     const start = { login: undefined, id: "invoice.get", args: {}, requestId: "req_1" };
-    const walked = runPipeline(
+    const walked = await runPipeline(
       [refuses("first", false, true), refuses("second", false, true), refuses("third", true, true)],
       start,
     );
@@ -206,7 +206,7 @@ describe("the pipeline", () => {
       },
     });
 
-    runPipeline([refuses("first", false, true), watcher], start);
+    await runPipeline([refuses("first", false, true), watcher], start);
 
     expect((sawRefusal as { envelope: { code: string } }).envelope.code).toBe("first");
   });
@@ -224,7 +224,7 @@ describe("the pipeline", () => {
    * the stage leaves its record id in the context, and the door refuses to execute without one. So
    * the guarantee no longer rests on the stage being the right stage — it rests on a record existing.
    */
-  it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", () => {
+  it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", async () => {
     forgetTheLog();
     resetInvoices();
 
@@ -240,7 +240,7 @@ describe("the pipeline", () => {
     // The list is accepted: the name is there, the flag is on, it applies to both kinds.
     expect(assertPipeline(blind)).toBe(PIPELINE.length);
 
-    const answer = makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.issue", {
+    const answer = await makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
     });
 
@@ -264,7 +264,7 @@ describe("the pipeline", () => {
     expect(theLog()).toHaveLength(0);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
-    const real = callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
+    const real = await callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
     });
 
@@ -281,7 +281,7 @@ describe("the pipeline", () => {
    * placed after §21.11 reads the receipt, which is how a test can see a field that is otherwise
    * private to the walk.
    */
-  it("DSOR-EXE-02: the receipt names the record that was written", () => {
+  it("DSOR-EXE-02: the receipt names the record that was written", async () => {
     forgetTheLog();
 
     let receipt: string | undefined;
@@ -297,7 +297,7 @@ describe("the pipeline", () => {
       },
     });
 
-    const answer = makeDoor([...PIPELINE, peek])({ loggedInAs: "user_123" }, "invoice.get", {
+    const answer = await makeDoor([...PIPELINE, peek])({ loggedInAs: "user_123" }, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
 
@@ -310,7 +310,7 @@ describe("the pipeline", () => {
   });
 
   // A query too, because a read is the case where nothing would have looked wrong at all.
-  it("DSOR-EXE-02: a read without a record is refused as well", () => {
+  it("DSOR-EXE-02: a read without a record is refused as well", async () => {
     forgetTheLog();
 
     const blind = PIPELINE.map((stage) =>
@@ -322,7 +322,7 @@ describe("the pipeline", () => {
         : stage,
     );
 
-    const answer = makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.get", {
+    const answer = await makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
 
@@ -383,7 +383,7 @@ describe("the pipeline", () => {
   });
 
   // A door is checked when it is built, and then walks a frozen copy — not the array it was handed.
-  it("DSOR-OPR-04a: a door cannot be rewritten after it has been checked", () => {
+  it("DSOR-OPR-04a: a door cannot be rewritten after it has been checked", async () => {
     const list = [...PIPELINE];
     const door = makeDoor(list);
 
@@ -391,7 +391,7 @@ describe("the pipeline", () => {
     list.length = 2;
     list.push(fake(99, "nonsense"));
 
-    const answer = door({ loggedInAs: "cfo_100" }, "invoice.issue", {
+    const answer = await door({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
     });
 
@@ -402,7 +402,7 @@ describe("the pipeline", () => {
   // Piece 2 left this branch unreached: every stage in the real list applies to both kinds, so
   // nothing walked a command-only one. These walk a list of their own, which is the honest way to
   // test a mechanism the real list does not yet exercise.
-  it("DSOR-EXE-01b: the walker skips a command-only stage for a query, and runs it for a command", () => {
+  it("DSOR-EXE-01b: the walker skips a command-only stage for a query, and runs it for a command", async () => {
     const ran: string[] = [];
     const watch = (at: number | null, name: string, applies: Stage["applies"]): Stage =>
       Object.freeze({
@@ -425,7 +425,7 @@ describe("the pipeline", () => {
 
     // A query: the contract says `query`, so the command-only stage is stepped over.
     ran.length = 0;
-    runPipeline(list, {
+    await runPipeline(list, {
       login: undefined,
       id: "invoice.get",
       args: {},
@@ -436,7 +436,7 @@ describe("the pipeline", () => {
 
     // A command: every stage runs.
     ran.length = 0;
-    runPipeline(list, {
+    await runPipeline(list, {
       login: undefined,
       id: "invoice.issue",
       args: {},
@@ -495,7 +495,7 @@ describe("the pipeline", () => {
   // other three unproven, and that removing `authorize`'s own guard made the door THROW at the
   // caller with all 161 tests green. And two callers, not one, asserted against the login rather
   // than a literal — the literal was lesson 10 in this step's own new test.
-  it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", () => {
+  it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", async () => {
     for (const login of [{ loggedInAs: "user_123" }, { loggedInAs: "cfo_100" }]) {
       // Only the stages that FILL something can leave the walk short. Two stages fill nothing, and
       // each has its own test elsewhere because a no-op version of each is a different failure:
@@ -522,7 +522,7 @@ describe("the pipeline", () => {
         );
 
         const where = `${login.loggedInAs} with ${lazied.name} lazied`;
-        const answer = makeDoor(list)(login, "invoice.get", {
+        const answer = await makeDoor(list)(login, "invoice.get", {
           invoice: "dsor://org_456/invoice/INV-1008",
         });
 
@@ -555,7 +555,7 @@ describe("the pipeline", () => {
   // asking anything satisfies assertPipeline — a review built exactly that door. There is no way to
   // check a function's meaning from a list. What catches it is behaviour: cfo_100 does not hold
   // invoice:issue, and with that door she can issue.
-  it("DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here", () => {
+  it("DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here", async () => {
     // INV-1009 is the story's only draft, and the test above issues it. Decision 59's seam is what
     // stops this test depending on the order it happens to run in.
     resetInvoices();
@@ -572,7 +572,7 @@ describe("the pipeline", () => {
     // The list is fine. That is the point.
     expect(assertPipeline(hollow)).toBe(PIPELINE.length);
 
-    const answer = makeDoor(hollow)({ loggedInAs: "cfo_100" }, "invoice.issue", {
+    const answer = await makeDoor(hollow)({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
     });
 
@@ -580,7 +580,7 @@ describe("the pipeline", () => {
     expect(answer.kind).not.toBe("error");
 
     // And the real door refuses her.
-    const real = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
+    const real = await callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
     });
 
@@ -594,7 +594,7 @@ describe("the pipeline", () => {
   // Every path out of the door hands back a frozen answer. `readonly` is erased before Node runs, so
   // without this a caller could rewrite `askedBy` on the answer they were given — and two of these
   // paths had no test at all.
-  it("every answer the door gives back is frozen", () => {
+  it("every answer the door gives back is frozen", async () => {
     const good = "dsor://org_456/invoice/INV-1008";
     const paths = [
       ["nobody logged in", undefined, "invoice.get", { invoice: good }],
@@ -608,7 +608,7 @@ describe("the pipeline", () => {
     ] as const;
 
     for (const [why, login, id, args] of paths) {
-      const answer = callOperation(
+      const answer = await callOperation(
         login as never,
         id as never,
         args as Readonly<Record<string, unknown>>,
@@ -625,9 +625,9 @@ describe("the pipeline", () => {
   // raw TypeError at the caller. And `handlers` is a plain object, so an id of "toString" found a
   // function on Object.prototype — the same lookup that let a role named `toString` grant
   // permissions in step 06.
-  it("DSOR-ERR-01a: an operation named by something that is not text is refused, not thrown at", () => {
+  it("DSOR-ERR-01a: an operation named by something that is not text is refused, not thrown at", async () => {
     for (const id of [Symbol("nope"), 7, null, undefined, {}, ["invoice.get"]]) {
-      const answer = callOperation({ loggedInAs: "user_123" }, id as never, {});
+      const answer = await callOperation({ loggedInAs: "user_123" }, id as never, {});
 
       if (answer.kind !== "error") {
         throw new Error(`${String(id)}: expected a refusal, got ${answer.kind}`);
@@ -637,9 +637,9 @@ describe("the pipeline", () => {
     }
   });
 
-  it("DSOR-ERR-01a: an operation id that only exists on Object.prototype is not an operation", () => {
+  it("DSOR-ERR-01a: an operation id that only exists on Object.prototype is not an operation", async () => {
     for (const id of ["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf"]) {
-      const answer = callOperation({ loggedInAs: "user_123" }, id, {});
+      const answer = await callOperation({ loggedInAs: "user_123" }, id, {});
 
       if (answer.kind !== "error") {
         throw new Error(`${id}: expected a refusal, got ${answer.kind}`);
@@ -652,7 +652,7 @@ describe("the pipeline", () => {
   // A stage returns what it learned; it does not edit what it was handed. The context is frozen on
   // the way in and after every stage, so a stage cannot rewrite the request under the checks that
   // already ran — change the id after authorize said yes, say.
-  it("DSOR-EXE-01a: a stage cannot edit the context it was given", () => {
+  it("DSOR-EXE-01a: a stage cannot edit the context it was given", async () => {
     let threw = "";
     const vandal: Stage = Object.freeze({
       at: null,
@@ -671,7 +671,7 @@ describe("the pipeline", () => {
     });
 
     const list = PIPELINE.map((stage) => (stage.name === vandal.name ? vandal : stage));
-    const answer = makeDoor(list)({ loggedInAs: "user_123" }, "invoice.get", {
+    const answer = await makeDoor(list)({ loggedInAs: "user_123" }, "invoice.get", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
 
@@ -698,7 +698,7 @@ describe("the pipeline", () => {
       },
     });
 
-    runPipeline(
+    await runPipeline(
       PIPELINE.map((stage) => (stage.name === "authenticate" ? earlyVandal : stage)),
       { login: undefined, id: "invoice.get", args: {}, requestId: "req_1" },
     );
