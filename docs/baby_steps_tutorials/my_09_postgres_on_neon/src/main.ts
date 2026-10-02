@@ -5,6 +5,7 @@ import { greet } from "./greet.ts";
 import { callOperation } from "./operations.ts";
 import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
 import type { Login } from "./login.ts";
+import { openTheDatabase } from "./database.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -34,7 +35,10 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
   return `${who} ${"(no envelope)".padEnd(24)} ${i.uri}  ${i.amount.value} ${i.amount.currency}  ${i.status}`;
 }
 
+const database = await openTheDatabase();
+
 console.log(greet("accounts-payable-fte"));
+console.log(`The audit log is in ${database.where}.`);
 console.log();
 
 // The same read, by two different callers. Switching is just a different login.
@@ -99,7 +103,7 @@ console.log();
 console.log("The audit log:");
 console.log();
 
-for (const record of theLog()) {
+for (const record of await theLog()) {
   console.log(
     [
       String(record.sequence).padStart(2),
@@ -113,20 +117,22 @@ for (const record of theLog()) {
 }
 
 console.log();
-// `theHead()` is passed on purpose, and the next three lines are why rather than a comment claiming
+// `await theHead()` is passed on purpose, and the next three lines are why rather than a comment claiming
 // it. Hash chaining proves no record was *edited*. It cannot prove none was *deleted from the end* —
 // drop the last record and every link still holds, there is simply less of it. The checkpoint is what
 // notices, and §30 names checkpoints beside hash chaining for exactly this.
-const whole = theLog();
+const whole = await theLog();
 const tampered = whole.slice(0, whole.length - 1);
 
 console.log(
-  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, theHead())}`,
+  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, await theHead())}`,
 );
 console.log(
   `drop the last record and the chain alone still says: ${verifyChain(tampered)} ` +
-    `— but against the head: ${verifyChain(tampered, theHead())}`,
+    `— but against the head: ${verifyChain(tampered, await theHead())}`,
 );
 console.log(
   `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,
 );
+
+await database.close();

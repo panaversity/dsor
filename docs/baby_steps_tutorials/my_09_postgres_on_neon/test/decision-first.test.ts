@@ -9,7 +9,7 @@
 // recorded, the whole probe leaves nothing behind. §21 puts it plainly: denied and failed attempts
 // are evidence, and they are often the most useful evidence.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   countedWithoutARecord,
   forgetTheLog,
@@ -24,6 +24,7 @@ import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice, resetInvoices } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { assertPipeline, type Context, type Stage } from "../src/pipeline.ts";
+import { aDatabase } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 const CFO = { loggedInAs: "cfo_100" } as const;
@@ -31,24 +32,36 @@ const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
 /** A clean slate: an empty log, a counter at zero, and request ids starting again at one. */
-function fresh(): void {
-  forgetTheLog();
+async function fresh(): Promise<void> {
+  await forgetTheLog();
   resetRequestIds();
   resetProposalIds();
   resetClock();
   resetInvoices();
 }
 
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
 describe("the decision is written down first", () => {
   it("DSOR-EXE-02: an allowed call is recorded, from what DSoR established", async () => {
-    fresh();
+    await fresh();
 
     const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(answer.kind).toBe("data");
-    expect(theLog()).toHaveLength(1);
+    expect(await theLog()).toHaveLength(1);
 
-    const record = theLog()[0]!;
+    const record = (await theLog())[0]!;
 
     expect(record.authorization).toBe("ALLOW");
     expect(record.result).toBe("ALLOWED");
@@ -62,7 +75,7 @@ describe("the decision is written down first", () => {
 
   // The one that matters most, and the one a careless implementation skips.
   it("DSOR-EXE-02: a refusal is recorded, with the code and the reason for the DENY", async () => {
-    fresh();
+    await fresh();
 
     const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
 
@@ -71,9 +84,9 @@ describe("the decision is written down first", () => {
     }
 
     expect(answer.envelope.code).toBe("AUTHORIZATION_DENIED");
-    expect(theLog()).toHaveLength(1);
+    expect(await theLog()).toHaveLength(1);
 
-    const record = theLog()[0]!;
+    const record = (await theLog())[0]!;
 
     expect(record.authorization).toBe("DENY");
     expect(record.result).toBe("AUTHORIZATION_DENIED");
@@ -88,7 +101,7 @@ describe("the decision is written down first", () => {
   // Why the request id had to be repaired first. Without this the record and the answer are two
   // unrelated pieces of paper.
   it("DSOR-COR-01a: the record and the answer name the same request", async () => {
-    fresh();
+    await fresh();
 
     const refused = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
     const issued = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
@@ -97,12 +110,18 @@ describe("the decision is written down first", () => {
       throw new Error(`expected a refusal then a result, got ${refused.kind} then ${issued.kind}`);
     }
 
-    expect(theLog()).toHaveLength(2);
-    expect(theLog()[0]!.correlation.request_id).toBe(refused.envelope.correlation.request_id);
-    expect(theLog()[1]!.correlation.request_id).toBe(issued.envelope.correlation.request_id);
+    expect(await theLog()).toHaveLength(2);
+    expect((await theLog())[0]!.correlation.request_id).toBe(
+      refused.envelope.correlation.request_id,
+    );
+    expect((await theLog())[1]!.correlation.request_id).toBe(
+      issued.envelope.correlation.request_id,
+    );
 
     // Two requests, two ids, two records. Nothing shared by accident.
-    expect(theLog()[0]!.correlation.request_id).not.toBe(theLog()[1]!.correlation.request_id);
+    expect((await theLog())[0]!.correlation.request_id).not.toBe(
+      (await theLog())[1]!.correlation.request_id,
+    );
   });
 
   it("DSOR-EXE-02: every refusal made during the decision is recorded as a DENY", async () => {
@@ -117,7 +136,7 @@ describe("the decision is written down first", () => {
     ];
 
     for (const { login, id, args, code } of refusedWhileDeciding) {
-      fresh();
+      await fresh();
 
       const answer = await callOperation(login, id, args);
       const where = `${login.loggedInAs} calling ${id}`;
@@ -127,9 +146,9 @@ describe("the decision is written down first", () => {
       }
 
       expect(answer.envelope.code, where).toBe(code);
-      expect(theLog(), where).toHaveLength(1);
-      expect(theLog()[0]!.authorization, where).toBe("DENY");
-      expect(theLog()[0]!.result, where).toBe(code);
+      expect(await theLog(), where).toHaveLength(1);
+      expect((await theLog())[0]!.authorization, where).toBe("DENY");
+      expect((await theLog())[0]!.result, where).toBe(code);
     }
   });
 
@@ -166,7 +185,7 @@ describe("the decision is written down first", () => {
     ];
 
     for (const { id, args, code } of refusedWhileExecuting) {
-      fresh();
+      await fresh();
 
       const answer = await callOperation(SUPERVISOR, id, args);
       const where = `user_123 calling ${id} with ${JSON.stringify(args)}`;
@@ -178,13 +197,13 @@ describe("the decision is written down first", () => {
       expect(answer.envelope.code, where).toBe(code);
 
       // Recorded, and recorded as an ALLOW — because the decision was to allow it.
-      expect(theLog(), where).toHaveLength(1);
-      expect(theLog()[0]!.authorization, where).toBe("ALLOW");
-      expect(theLog()[0]!.result, where).toBe("ALLOWED");
+      expect(await theLog(), where).toHaveLength(1);
+      expect((await theLog())[0]!.authorization, where).toBe("ALLOW");
+      expect((await theLog())[0]!.result, where).toBe("ALLOWED");
 
       // Which means the record and the answer disagree about how this went. That is the limit: the
       // outcome needs §21.15, and the step that brings it is where this stops being true.
-      expect(theLog()[0]!.result, where).not.toBe(answer.envelope.code);
+      expect((await theLog())[0]!.result, where).not.toBe(answer.envelope.code);
     }
   });
 
@@ -193,20 +212,20 @@ describe("the decision is written down first", () => {
   // the caller's string there would make the record unwritable, which would turn a misspelling into
   // EVIDENCE_STORE_UNAVAILABLE.
   it("DSOR-EXE-02: an unknown operation is recorded without an operation field", async () => {
-    fresh();
+    await fresh();
 
     await callOperation(SUPERVISOR, "not an operation at all", {});
 
-    const record = theLog()[0]!;
+    const record = (await theLog())[0]!;
 
     expect(record.operation).toBeUndefined();
     expect(record.result).toBe("UNSUPPORTED_CAPABILITY");
     expect(record.reason).toContain("not an operation at all");
-    expect(verifyChain(theLog())).toBe(true);
+    expect(verifyChain(await theLog())).toBe(true);
   });
 
   it("DSOR-EXE-02: a caller who never logged in is counted, and writes no record", async () => {
-    fresh();
+    await fresh();
 
     for (let i = 0; i < 5; i += 1) {
       expect((await callOperation(undefined, "invoice.get", { invoice: INV_1008 })).kind).toBe(
@@ -214,7 +233,7 @@ describe("the decision is written down first", () => {
       );
     }
 
-    expect(theLog()).toHaveLength(0);
+    expect(await theLog()).toHaveLength(0);
     expect(countedWithoutARecord()).toBe(5);
   });
 
@@ -222,7 +241,7 @@ describe("the decision is written down first", () => {
   // throws, so the caller gets no answer at all — and the record is already there. This is §21's own
   // warning: write the log in a `finally` at the end and a crash in between leaves nothing.
   it("DSOR-EXE-02: the record is already written when a later stage crashes", async () => {
-    fresh();
+    await fresh();
 
     const explode: Stage = Object.freeze({
       at: 14,
@@ -245,15 +264,15 @@ describe("the decision is written down first", () => {
     );
 
     // No answer reached the caller, and the decision is on the record anyway.
-    expect(theLog()).toHaveLength(1);
-    expect(theLog()[0]!.operation).toBe("invoice.get@1");
-    expect(theLog()[0]!.authorization).toBe("ALLOW");
+    expect(await theLog()).toHaveLength(1);
+    expect((await theLog())[0]!.operation).toBe("invoice.get@1");
+    expect((await theLog())[0]!.authorization).toBe("ALLOW");
   });
 
   // Fault injection through the seam that already exists. A clock that returns nonsense makes the
   // record fail its schema, which is the closest this step can get to "the store is down".
   it("DSOR-EXE-03b: if the decision cannot be written, nothing is carried out", async () => {
-    fresh();
+    await fresh();
     expect(getInvoice("INV-1009")?.status).toBe("draft");
 
     setClock(() => "the day before yesterday");
@@ -268,7 +287,7 @@ describe("the decision is written down first", () => {
 
     // Retry `safe_same_key`, because the request provably never ran — which is the next assertion.
     expect(answer.envelope.retry).toBe("safe_same_key");
-    expect(theLog()).toHaveLength(0);
+    expect(await theLog()).toHaveLength(0);
     expect(getInvoice("INV-1009")?.status).toBe("draft");
 
     resetClock();
@@ -278,7 +297,7 @@ describe("the decision is written down first", () => {
     expect((await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 })).kind).toBe(
       "result",
     );
-    expect(theLog()).toHaveLength(1);
+    expect(await theLog()).toHaveLength(1);
   });
 
   /**
@@ -294,7 +313,7 @@ describe("the decision is written down first", () => {
    * missing half.
    */
   it("DSOR-EXE-03b: a denial that cannot be recorded is not reported as a denial", async () => {
-    fresh();
+    await fresh();
     setClock(() => "the day before yesterday");
 
     const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
@@ -305,7 +324,7 @@ describe("the decision is written down first", () => {
 
     // Not AUTHORIZATION_DENIED, though that is what the authorize stage said.
     expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
-    expect(theLog()).toHaveLength(0);
+    expect(await theLog()).toHaveLength(0);
 
     resetClock();
 
@@ -313,8 +332,8 @@ describe("the decision is written down first", () => {
     const again = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
 
     expect(again.kind === "error" && again.envelope.code).toBe("AUTHORIZATION_DENIED");
-    expect(theLog()).toHaveLength(1);
-    expect(theLog()[0]!.result).toBe("AUTHORIZATION_DENIED");
+    expect(await theLog()).toHaveLength(1);
+    expect((await theLog())[0]!.result).toBe("AUTHORIZATION_DENIED");
   });
 
   /**
@@ -329,7 +348,7 @@ describe("the decision is written down first", () => {
    * approval as evidence. So every field of the record gets planted in the arguments at once.
    */
   it("DSOR-MOD-04: nothing a caller puts in the arguments reaches the record", async () => {
-    fresh();
+    await fresh();
 
     const answer = await callOperation(SUPERVISOR, "invoice.get", {
       invoice: INV_1008,
@@ -357,9 +376,9 @@ describe("the decision is written down first", () => {
     });
 
     expect(answer.kind).toBe("data");
-    expect(theLog()).toHaveLength(1);
+    expect(await theLog()).toHaveLength(1);
 
-    const record = theLog()[0]!;
+    const record = (await theLog())[0]!;
 
     // Who: from the login, through findPerson's table. Never from the arguments.
     expect(record.identity.subject).toBe("user_123");
@@ -389,13 +408,13 @@ describe("the decision is written down first", () => {
     expect(record.payload_hash).not.toBe(`sha256:${"c".repeat(64)}`);
     expect(record.record_hash).not.toBe(`sha256:${"a".repeat(64)}`);
 
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
   });
 
   // The payload hash is real: it is of these arguments and no others. A review pointed out that a
   // constant fingerprint on every record passed the whole suite.
   it("DSOR-EXE-02: the record's payload hash is of the arguments, and the answer carries the same one", async () => {
-    fresh();
+    await fresh();
 
     const issued = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
@@ -403,18 +422,18 @@ describe("the decision is written down first", () => {
       throw new Error(`expected a result, got ${issued.kind}`);
     }
 
-    expect(theLog()[0]!.payload_hash).toBe(issued.envelope.payload_hash);
+    expect((await theLog())[0]!.payload_hash).toBe(issued.envelope.payload_hash);
 
     // Different arguments, different fingerprint.
     const other = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(other.kind).toBe("data");
-    expect(theLog()[1]!.payload_hash).not.toBe(theLog()[0]!.payload_hash);
+    expect((await theLog())[1]!.payload_hash).not.toBe((await theLog())[0]!.payload_hash);
   });
 
   // The §21.6 refusal, which is the only decision-stage refusal that arrives with no payload hash.
   it("DSOR-EXE-02: a refusal at validate is recorded, with no payload hash", async () => {
-    fresh();
+    await fresh();
 
     const cycle: Record<string, unknown> = { invoice: INV_1008 };
 
@@ -423,11 +442,11 @@ describe("the decision is written down first", () => {
     const answer = await callOperation(SUPERVISOR, "invoice.get", cycle);
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
-    expect(theLog()).toHaveLength(1);
-    expect(theLog()[0]!.authorization).toBe("DENY");
-    expect(theLog()[0]!.result).toBe("VALIDATION_FAILED");
-    expect(theLog()[0]!.payload_hash).toBeUndefined();
-    expect(theLog()[0]!.operation).toBe("invoice.get@1");
+    expect(await theLog()).toHaveLength(1);
+    expect((await theLog())[0]!.authorization).toBe("DENY");
+    expect((await theLog())[0]!.result).toBe("VALIDATION_FAILED");
+    expect((await theLog())[0]!.payload_hash).toBeUndefined();
+    expect((await theLog())[0]!.operation).toBe("invoice.get@1");
   });
 
   /**
@@ -447,7 +466,7 @@ describe("the decision is written down first", () => {
       ["resolve the operation", /reached authorize without/],
       ["validate the input", /reached §21.11 without/],
     ] as const) {
-      fresh();
+      await fresh();
 
       const list = PIPELINE.map((stage) =>
         stage.name === lazied
@@ -461,10 +480,10 @@ describe("the decision is written down first", () => {
       const answer = await makeDoor(list)(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
       expect(answer.kind === "error" && answer.envelope.code, lazied).toBe("INTERNAL_ERROR");
-      expect(theLog(), lazied).toHaveLength(1);
-      expect(theLog()[0]!.authorization, lazied).toBe("DENY");
-      expect(theLog()[0]!.result, lazied).toBe("INTERNAL_ERROR");
-      expect(theLog()[0]!.reason, lazied).toMatch(why);
+      expect(await theLog(), lazied).toHaveLength(1);
+      expect((await theLog())[0]!.authorization, lazied).toBe("DENY");
+      expect((await theLog())[0]!.result, lazied).toBe("INTERNAL_ERROR");
+      expect((await theLog())[0]!.reason, lazied).toMatch(why);
 
       // And nothing was carried out.
       expect(getInvoice("INV-1009")?.status, lazied).toBe("draft");
@@ -474,7 +493,7 @@ describe("the decision is written down first", () => {
   // Lesson 13 again. `resolveTheOperation` guards `${id}` on a Symbol; the one stage that runs after
   // it did not, so an evidence failure came back as a stack trace instead of an envelope.
   it("DSOR-ERR-01a: an operation named by something that is not text still gets an envelope", async () => {
-    fresh();
+    await fresh();
     setClock(() => "the day before yesterday");
 
     const answer = await callOperation(SUPERVISOR, Symbol("invoice.get") as unknown as string, {});
@@ -486,8 +505,8 @@ describe("the decision is written down first", () => {
     const again = await callOperation(SUPERVISOR, Symbol("invoice.get") as unknown as string, {});
 
     expect(again.kind === "error" && again.envelope.code).toBe("UNSUPPORTED_CAPABILITY");
-    expect(theLog()).toHaveLength(1);
-    expect(theLog()[0]!.reason).toMatch(/not text/);
+    expect(await theLog()).toHaveLength(1);
+    expect((await theLog())[0]!.reason).toMatch(/not text/);
   });
 
   /**
@@ -518,7 +537,7 @@ describe("the decision is written down first", () => {
     ];
 
     for (const { login, id, args } of cases) {
-      fresh();
+      await fresh();
 
       const answer = await callOperation(login, id, args);
 
@@ -532,7 +551,7 @@ describe("the decision is written down first", () => {
       expect(answer.envelope.message, answer.envelope.code).toMatch(/characters, \d+ dropped/);
 
       // And nothing enormous reached the log either.
-      for (const record of theLog()) {
+      for (const record of await theLog()) {
         expect((record.reason ?? "").length, answer.envelope.code).toBeLessThan(700);
       }
     }
@@ -540,7 +559,7 @@ describe("the decision is written down first", () => {
 
   // An authenticated caller cannot grow the log without bound, which is the half decision 53 missed.
   it("DSOR-AUD-01: an enormous operation id does not become an enormous record", async () => {
-    fresh();
+    await fresh();
 
     const answer = await callOperation(SUPERVISOR, "x".repeat(2_000_000), {});
 
@@ -554,9 +573,9 @@ describe("the decision is written down first", () => {
     // caps what is built, which protects the caller — a two-megabyte error message is its own problem.
     expect(answer.envelope.message.length).toBeLessThan(400);
 
-    expect(theLog()).toHaveLength(1);
-    expect(theLog()[0]!.reason!.length).toBeLessThan(600);
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    expect(await theLog()).toHaveLength(1);
+    expect((await theLog())[0]!.reason!.length).toBeLessThan(600);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
   });
 
   // The guard that stops a later step reintroducing the hole by accident. A `record the decision`
@@ -585,7 +604,7 @@ describe("the decision is written down first", () => {
   // The chain holds across a real run of mixed answers, which is the property step 39 will move into
   // a database.
   it("DSOR-AUD-01: every record the pipeline writes validates against the schema", async () => {
-    fresh();
+    await fresh();
 
     await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
     await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
@@ -595,15 +614,15 @@ describe("the decision is written down first", () => {
     // Every `validateAuditRecord` call in audit.test.ts is on a record that file built itself.
     // DSOR-AUD-01's sentence is about the records the pipeline actually writes, and a review pointed
     // out that nothing checked those.
-    expect(theLog()).toHaveLength(4);
+    expect(await theLog()).toHaveLength(4);
 
-    for (const record of theLog()) {
+    for (const record of await theLog()) {
       expect(validateAuditRecord(record), record.record_id).toBe(true);
     }
   });
 
   it("DSOR-AUD-04b: a run of allows and denials leaves one verifiable chain", async () => {
-    fresh();
+    await fresh();
 
     await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
     await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
@@ -612,10 +631,10 @@ describe("the decision is written down first", () => {
     await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
     // Four records, not five: the caller with no login was counted instead.
-    expect(theLog()).toHaveLength(4);
+    expect(await theLog()).toHaveLength(4);
     expect(countedWithoutARecord()).toBe(1);
-    expect(verifyChain(theLog(), theHead())).toBe(true);
-    expect(theLog().map((record) => record.authorization)).toEqual([
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
+    expect((await theLog()).map((record) => record.authorization)).toEqual([
       "ALLOW",
       "DENY",
       "DENY",

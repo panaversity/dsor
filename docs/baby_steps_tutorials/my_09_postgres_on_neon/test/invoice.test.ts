@@ -3,10 +3,23 @@
 // A test that proves a rule starts its title with that rule's id. A test that only
 // shows why a rule exists does not. The difference matters, and both kinds are here.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { parseUri } from "../src/uri.ts";
+import { aDatabase } from "./support/database.ts";
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("getInvoice", () => {
   it("DSOR-MON-01: INV-1008 is 31400.00 USD, an amount and a currency", () => {

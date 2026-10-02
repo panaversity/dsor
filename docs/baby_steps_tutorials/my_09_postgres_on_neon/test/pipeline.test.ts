@@ -3,13 +3,14 @@
 // Nothing here calls an operation. The whole point of this step is that the order stopped being
 // the order some lines happened to sit in, and became a list — so these tests are about the list.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertPipeline, runPipeline, applies, type Context, type Stage } from "../src/pipeline.ts";
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 import { forgetTheLog, theLog } from "../src/audit.ts";
 import { getInvoice, resetInvoices } from "../src/invoice.ts";
+import { aDatabase } from "./support/database.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(
@@ -29,6 +30,18 @@ function fake(
     run: (context: Context) => ({ kind: "carry_on" as const, context }),
   });
 }
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("the pipeline", () => {
   // The order, written out. If a later step inserts a stage in the wrong place, this is what says
@@ -225,7 +238,7 @@ describe("the pipeline", () => {
    * the guarantee no longer rests on the stage being the right stage — it rests on a record existing.
    */
   it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", async () => {
-    forgetTheLog();
+    await forgetTheLog();
     resetInvoices();
 
     const blind = PIPELINE.map((stage) =>
@@ -261,7 +274,7 @@ describe("the pipeline", () => {
 
     // The point of the whole step: no evidence, so nothing happened.
     expect(getInvoice("INV-1009")?.status).toBe("draft");
-    expect(theLog()).toHaveLength(0);
+    expect(await theLog()).toHaveLength(0);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
     const real = await callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
@@ -269,7 +282,7 @@ describe("the pipeline", () => {
     });
 
     expect(real.kind).toBe("result");
-    expect(theLog()).toHaveLength(1);
+    expect(await theLog()).toHaveLength(1);
     expect(getInvoice("INV-1009")?.status).toBe("issued");
   });
 
@@ -282,7 +295,7 @@ describe("the pipeline", () => {
    * private to the walk.
    */
   it("DSOR-EXE-02: the receipt names the record that was written", async () => {
-    forgetTheLog();
+    await forgetTheLog();
 
     let receipt: string | undefined;
     const peek: Stage = Object.freeze({
@@ -302,16 +315,16 @@ describe("the pipeline", () => {
     });
 
     expect(answer.kind).toBe("data");
-    expect(theLog()).toHaveLength(1);
+    expect(await theLog()).toHaveLength(1);
 
     // Not merely present — the id of the record that exists.
-    expect(receipt).toBe(theLog()[0]!.record_id);
-    expect(receipt).toMatch(/^audit:org_456:\d+:0$/);
+    expect(receipt).toBe((await theLog())[0]!.record_id);
+    expect(receipt).toBe("audit:org_456:0");
   });
 
   // A query too, because a read is the case where nothing would have looked wrong at all.
   it("DSOR-EXE-02: a read without a record is refused as well", async () => {
-    forgetTheLog();
+    await forgetTheLog();
 
     const blind = PIPELINE.map((stage) =>
       stage.name === "record the decision"
@@ -328,7 +341,7 @@ describe("the pipeline", () => {
 
     // It used to come back as `data` with the invoice in it, and nothing written down.
     expect(answer.kind).toBe("error");
-    expect(theLog()).toHaveLength(0);
+    expect(await theLog()).toHaveLength(0);
   });
 
   // NEW IN STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.

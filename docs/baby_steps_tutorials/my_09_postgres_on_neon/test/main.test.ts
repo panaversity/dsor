@@ -14,7 +14,23 @@
 // part of the output that moves.
 
 import { execFileSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { beforeEach, describe, expect, it } from "vitest";
+
+/**
+ * The program's own database, which it keeps on disk between runs.
+ *
+ * NEW IN STEP 09: these tests have to delete it first. The log is durable now, so a second run finds
+ * the first run's records still there — which is the step's whole point, and which makes "the demo
+ * prints ten records" true only on a fresh database.
+ */
+const ITS_DATABASE = fileURLToPath(new URL("../.local-database", import.meta.url));
+
+/** Start from nothing, so a run's output is about that run. */
+beforeEach(() => {
+  rmSync(ITS_DATABASE, { recursive: true, force: true });
+});
 
 /** The program's output, with the hashes replaced so two runs can be compared. */
 function demo(): string {
@@ -96,23 +112,66 @@ describe("the program a learner runs", () => {
     expect(demo()).toContain("DENY   (no such operation)");
   });
 
-  // The hash column is the only thing that moves between runs, and it moves because the time a
-  // decision was made is part of what is hashed. Two runs, same everything else.
-  it("DSOR-AUD-04b: every run prints the same report, and different hashes", () => {
+  /**
+   * The step, in one test: **the log survives the program stopping.**
+   *
+   * This is what step 09 opens with. Step 08 kept the log in an array, so closing the program lost
+   * every decision it had written down — and nothing in step 08 could test otherwise, because there
+   * was nothing left to look at. Here the program is run three times as three separate processes,
+   * and the log grows.
+   *
+   * Note what the chain does across that boundary: run two reads records written by a process that
+   * no longer exists, links its own onto them, and the whole chain still verifies. The fingerprint of
+   * the last record of run one is what run two's first record points at.
+   */
+  it("DSOR-AUD-01: the log survives the program stopping, and the chain survives with it", () => {
+    const records = (out: string): number =>
+      Number(/^(\d+) records, chain verifies/m.exec(out)?.[1] ?? "-1");
+
     const first = demo();
+
+    expect(records(first)).toBe(10);
+    expect(first).toContain("chain verifies against the head: true");
+
+    // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo();
 
+    expect(records(second)).toBe(20);
+    expect(second).toContain("chain verifies against the head: true");
+
+    const third = demo();
+
+    expect(records(third)).toBe(30);
+    expect(third).toContain("chain verifies against the head: true");
+
+    // And run one's records are still there, unchanged, in run three's output.
+    expect(third).toContain(" 0  ALLOW  invoice.get@1");
+    expect(third.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
+      30,
+    );
+  });
+
+  // The hashes move every run, because the time a decision was made is part of what is hashed.
+  it("DSOR-AUD-04b: two fresh runs print the same report with different hashes", () => {
+    const first = demo();
+
+    rmSync(ITS_DATABASE, { recursive: true, force: true });
+
+    const second = demo();
+
+    // Identical once the hashes are normalised — `demo()` does that — and genuinely different
+    // underneath.
     expect(second).toBe(first);
 
-    const hashes = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
-    const raw = execFileSync("node", [new URL("../src/main.ts", import.meta.url).pathname], {
-      encoding: "utf8",
-    });
-    const again = execFileSync("node", [new URL("../src/main.ts", import.meta.url).pathname], {
+    // A third fresh run, read raw this time, so the hashes are the real ones rather than the
+    // normalised placeholders `demo()` substitutes.
+    rmSync(ITS_DATABASE, { recursive: true, force: true });
+
+    const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
+    const raw = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
       encoding: "utf8",
     });
 
-    expect(hashes(raw)).toHaveLength(10);
-    expect(hashes(raw)).not.toEqual(hashes(again));
+    expect(hashesOf(raw)).toHaveLength(10);
   });
 });

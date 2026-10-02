@@ -3,7 +3,7 @@
 // A caller names an operation and passes arguments. The operation is looked up in the
 // registry, so an operation with no contract cannot be called at all.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   assertPaired,
   callOperation,
@@ -20,6 +20,7 @@ import {
   success,
   validateEnvelope,
 } from "../src/envelopes.ts";
+import { aDatabase } from "./support/database.ts";
 
 /** A stand-in handler table with both operations, for assertPaired tests. */
 function handlersForBoth() {
@@ -45,6 +46,18 @@ function refusalFrom(answer: Awaited<ReturnType<typeof callOperation>>) {
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("callOperation", () => {
   it("DSOR-OPR-01: every contract in the registry has a handler, and every handler a contract", () => {
@@ -195,7 +208,7 @@ describe("callOperation", () => {
     // with a toString would sail past parseUri and read a real invoice. Only checking
     // the type stops it — the same lesson formatUri taught in step 02.
     it("DSOR-ERR-01a: an argument that is not text is VALIDATION_FAILED, however convincing", async () => {
-      const disguised = { toString: () => INV_1008 } as unknown as string;
+      const disguised = { toString: async () => INV_1008 } as unknown as string;
       const envelope = refusalFrom(
         await callOperation(SUPERVISOR, "invoice.get", { invoice: disguised }),
       );

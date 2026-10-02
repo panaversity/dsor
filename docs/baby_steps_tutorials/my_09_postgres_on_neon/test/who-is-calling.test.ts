@@ -4,8 +4,9 @@
 // arguments changes nothing.
 
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callOperation } from "../src/operations.ts";
+import { aDatabase } from "./support/database.ts";
 
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
@@ -18,6 +19,18 @@ const SUPERVISOR = { loggedInAs: "user_123" } as const;
 // the program changing which caller a test needs is exactly what it looks like when permissions
 // start working.
 const ISSUER = { loggedInAs: "accounts-payable-fte" } as const;
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("who you are comes from the login, never from the arguments", () => {
   // cfo_100 is the person who approves large payments. If a caller could claim to be her

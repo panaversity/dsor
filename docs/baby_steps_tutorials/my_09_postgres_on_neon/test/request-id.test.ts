@@ -18,9 +18,10 @@
 //
 // `01a` is the exact rule for "the record and the answer name the same request".
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { callOperation } from "../src/operations.ts";
+import { aDatabase } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 const CFO = { loggedInAs: "cfo_100" } as const;
@@ -37,6 +38,18 @@ function idOf(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   return answer.envelope.correlation.request_id;
 }
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("the request id", () => {
   // Consecutive ids with no gaps is the whole test. A gap would mean a request minted an id and

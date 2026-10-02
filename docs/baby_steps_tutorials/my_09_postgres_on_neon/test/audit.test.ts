@@ -4,7 +4,7 @@
 // chain that makes one hard to change quietly — before anything writes one.
 
 import { existsSync, readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   audit,
   AUDIT_SCHEMA_FIELDS,
@@ -20,6 +20,7 @@ import {
   type AuditRecord,
   type DecisionToRecord,
 } from "../src/audit.ts";
+import { aDatabase } from "./support/database.ts";
 
 /** The parts of a record a caller supplies. The time, the sequence and the hashes are not theirs. */
 function decision(over: Partial<DecisionToRecord> = {}): DecisionToRecord {
@@ -41,8 +42,8 @@ function decision(over: Partial<DecisionToRecord> = {}): DecisionToRecord {
  * to: a caller must not be able to assume a record exists, because whether one is written is
  * `audit`'s decision and not the caller's.
  */
-function recorded(over: Partial<DecisionToRecord> = {}): AuditRecord {
-  const written = audit(decision(over));
+async function recorded(over: Partial<DecisionToRecord> = {}): Promise<AuditRecord> {
+  const written = await audit(decision(over));
 
   if (written === undefined) {
     throw new Error("expected a record to be written, and none was");
@@ -65,8 +66,20 @@ const specCopy = new URL(
 );
 const insideTheRepository = existsSync(specCopy);
 
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
 describe("the audit log", () => {
-  it("DSOR-SCH-01: the compiled schema refuses records, so it is doing work", () => {
+  it("DSOR-SCH-01: the compiled schema refuses records, so it is doing work", async () => {
     // A count off the compiled schema, not `true`. A review deleted the compile guard and every test
     // still passed, because the old sentinel was a literal — lesson 12, in the one file that had not
     // learned it.
@@ -78,8 +91,8 @@ describe("the audit log", () => {
 
     expect(AUDIT_SCHEMA_FIELDS).toBe(Object.keys(declared.properties).length);
 
-    forgetTheLog();
-    const good = recorded();
+    await forgetTheLog();
+    const good = await recorded();
 
     // The assertions a stub schema cannot pass. Each of these is one required field or one pattern.
     expect(validateAuditRecord(good)).toBe(true);
@@ -109,11 +122,11 @@ describe("the audit log", () => {
     },
   );
 
-  it("DSOR-AUD-01: a record validates against audit-record.schema.json", () => {
-    forgetTheLog();
+  it("DSOR-AUD-01: a record validates against audit-record.schema.json", async () => {
+    await forgetTheLog();
     setClock(() => "2026-09-30T07:41:00.000Z");
 
-    const written = recorded();
+    const written = await recorded();
 
     expect(validateAuditRecord(written)).toBe(true);
     expect(written.at).toBe("2026-09-30T07:41:00.000Z");
@@ -127,12 +140,12 @@ describe("the audit log", () => {
 
   // The chain, which is the whole reason a record is hard to change quietly. Each record's
   // previous_hash is the one before it, so editing any record breaks every hash after it.
-  it("DSOR-AUD-04b: each record's previous_hash is the record before it", () => {
-    forgetTheLog();
+  it("DSOR-AUD-04b: each record's previous_hash is the record before it", async () => {
+    await forgetTheLog();
 
-    const first = recorded({ requestId: "req_1" });
-    const second = recorded({ requestId: "req_2", authorization: "DENY" });
-    const third = recorded({ requestId: "req_3" });
+    const first = await recorded({ requestId: "req_1" });
+    const second = await recorded({ requestId: "req_2", authorization: "DENY" });
+    const third = await recorded({ requestId: "req_3" });
 
     expect(first.sequence).toBe(0);
     expect(second.sequence).toBe(1);
@@ -145,66 +158,74 @@ describe("the audit log", () => {
 
     // Every hash is different, so the hash is of the record and not of a constant.
     expect(new Set([first.record_hash, second.record_hash, third.record_hash]).size).toBe(3);
-    expect(verifyChain(theLog())).toBe(true);
+    expect(verifyChain(await theLog())).toBe(true);
   });
 
   // What the chain is FOR. This is also the test that says what step 39 will make impossible
   // rather than merely detectable: here the log is an array in memory, so anyone holding a copy can
   // edit a record. What they cannot do is edit one and leave the chain agreeing with itself.
-  it("DSOR-AUD-04b: editing a record breaks the chain after it", () => {
-    forgetTheLog();
-    recorded({ requestId: "req_1" });
-    recorded({ requestId: "req_2", authorization: "DENY", result: "AUTHORIZATION_DENIED" });
-    recorded({ requestId: "req_3" });
+  it("DSOR-AUD-04b: editing a record breaks the chain after it", async () => {
+    await forgetTheLog();
+    await recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_2", authorization: "DENY", result: "AUTHORIZATION_DENIED" });
+    await recorded({ requestId: "req_3" });
 
-    expect(verifyChain(theLog())).toBe(true);
+    expect(verifyChain(await theLog())).toBe(true);
 
     // Rewrite history: make the denial look like an allow.
-    const tampered = theLog().map((record, at) =>
+    const tampered = (await theLog()).map((record, at) =>
       at === 1 ? ({ ...record, authorization: "ALLOW", result: "data" } as AuditRecord) : record,
     );
 
     expect(verifyChain(tampered)).toBe(false);
 
     // A record removed altogether is caught too, because the sequence and the link both move.
-    expect(verifyChain([...theLog().slice(0, 1), ...theLog().slice(2)])).toBe(false);
+    expect(verifyChain([...(await theLog()).slice(0, 1), ...(await theLog()).slice(2)])).toBe(
+      false,
+    );
 
     // And so is a record moved, with nothing else touched.
-    expect(verifyChain([theLog()[1]!, theLog()[0]!, theLog()[2]!])).toBe(false);
+    expect(verifyChain([(await theLog())[1]!, (await theLog())[0]!, (await theLog())[2]!])).toBe(
+      false,
+    );
   });
 
   // Each of the two checks, pinned on its own. Without these, three overlapping checks were all
   // caught by the same two tests: mutating the sequence check away, and mutating the link check
   // away, left all 178 tests passing. A test that is caught by two checks proves neither.
-  it("DSOR-AUD-04b: an edit to the *last* record is caught, where no link follows it", () => {
-    forgetTheLog();
-    recorded({ requestId: "req_1" });
-    recorded({ requestId: "req_2" });
-    const last = recorded({ requestId: "req_3", authorization: "DENY", result: "POLICY_DENIED" });
+  it("DSOR-AUD-04b: an edit to the *last* record is caught, where no link follows it", async () => {
+    await forgetTheLog();
+    await recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_2" });
+    const last = await recorded({
+      requestId: "req_3",
+      authorization: "DENY",
+      result: "POLICY_DENIED",
+    });
 
     // Nothing comes after `last`, so there is no previous_hash anywhere that mentions it. Its
     // position is right and its link backwards is right. Only its own hash disagrees.
     const tampered: AuditRecord[] = [
-      ...theLog().slice(0, 2),
+      ...(await theLog()).slice(0, 2),
       { ...last, authorization: "ALLOW", result: "data" } as AuditRecord,
     ];
 
     expect(tampered[2]!.sequence).toBe(2);
-    expect(tampered[2]!.previous_hash).toBe(theLog()[1]!.record_hash);
+    expect(tampered[2]!.previous_hash).toBe((await theLog())[1]!.record_hash);
     expect(verifyChain(tampered)).toBe(false);
   });
 
-  it("DSOR-AUD-04b: a genuine record from another history is caught", () => {
+  it("DSOR-AUD-04b: a genuine record from another history is caught", async () => {
     // Two separate runs of the program. Every record in each is real: right sequence, right hash,
     // right link. The attack is to keep one and drop it into the other chain, which is what an
     // attacker with a backup and a database does.
-    forgetTheLog();
-    const mine0 = recorded({ requestId: "req_mine_0" });
-    const mine1 = recorded({ requestId: "req_mine_1" });
+    await forgetTheLog();
+    const mine0 = await recorded({ requestId: "req_mine_0" });
+    const mine1 = await recorded({ requestId: "req_mine_1" });
 
-    forgetTheLog();
-    const theirs0 = recorded({ requestId: "req_theirs_0" });
-    const theirs1 = recorded({ requestId: "req_theirs_1", authorization: "DENY" });
+    await forgetTheLog();
+    const theirs0 = await recorded({ requestId: "req_theirs_0" });
+    const theirs1 = await recorded({ requestId: "req_theirs_1", authorization: "DENY" });
 
     expect(verifyChain([mine0, mine1])).toBe(true);
     expect(verifyChain([theirs0, theirs1])).toBe(true);
@@ -220,10 +241,10 @@ describe("the audit log", () => {
   // Why the record is hashed from text with its keys sorted. Nothing in a single run can tell the
   // difference — a later step that reorders two lines in `audit` is what this protects, and that
   // step is not here to be tested. What *can* be tested is the property itself.
-  it("DSOR-AUD-04b: the hash is of the record's contents, not of its key order", () => {
-    forgetTheLog();
+  it("DSOR-AUD-04b: the hash is of the record's contents, not of its key order", async () => {
+    await forgetTheLog();
 
-    const written = recorded();
+    const written = await recorded();
     const shuffled = Object.fromEntries(
       Object.entries(written).reverse(),
     ) as unknown as AuditRecord;
@@ -248,24 +269,24 @@ describe("the audit log", () => {
   // The emptiest case, which had no test: a fresh log checked against its own fresh head. `lastHashOf`
   // has to answer the genesis hash for an empty run, and a review flipped that `=== 0` with all 223
   // tests passing — an empty log would have been reported as a broken chain.
-  it("DSOR-AUD-04b: an empty log verifies against an empty head", () => {
-    forgetTheLog();
+  it("DSOR-AUD-04b: an empty log verifies against an empty head", async () => {
+    await forgetTheLog();
 
-    expect(theHead().count).toBe(0);
-    expect(theHead().lastHash).toMatch(/^sha256:0+$/);
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    expect((await theHead()).count).toBe(0);
+    expect((await theHead()).lastHash).toMatch(/^sha256:0+$/);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
 
     // And one record in, the head has moved on, so the empty case is not a special-case shortcut.
-    recorded();
-    expect(verifyChain(theLog(), theHead())).toBe(true);
-    expect(verifyChain([], theHead())).toBe(false);
+    await recorded();
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
+    expect(verifyChain([], await theHead())).toBe(false);
   });
 
-  it("DSOR-AUD-04b: a log with one record, and an empty log, both verify", () => {
-    forgetTheLog();
-    expect(verifyChain(theLog())).toBe(true);
-    recorded();
-    expect(verifyChain(theLog())).toBe(true);
+  it("DSOR-AUD-04b: a log with one record, and an empty log, both verify", async () => {
+    await forgetTheLog();
+    expect(verifyChain(await theLog())).toBe(true);
+    await recorded();
+    expect(verifyChain(await theLog())).toBe(true);
   });
 
   // Step 01's lesson, in a fifth place: `readonly` is erased before Node runs. `Object.freeze` is
@@ -275,10 +296,10 @@ describe("the audit log", () => {
   // No requirement id on this one on purpose. `Object.freeze` on a JavaScript object is not
   // `REVOKE UPDATE` on a table, and `DSOR-AUD-04a` is about the second. Step 09 gives the
   // application's database user no UPDATE on the log; step 39 hardens it.
-  it("a record handed out cannot be edited, at any depth", () => {
-    forgetTheLog();
+  it("a record handed out cannot be edited, at any depth", async () => {
+    await forgetTheLog();
 
-    const written = recorded();
+    const written = await recorded();
 
     for (const part of [
       written,
@@ -310,13 +331,13 @@ describe("the audit log", () => {
   // Three records, not one. On a one-element array `sort` and `reverse` report success because they
   // are no-ops and never write — a review pointed out that a test written with one record would pass
   // against an unfrozen copy.
-  it("the log handed out cannot be reordered or appended to", () => {
-    forgetTheLog();
-    recorded({ requestId: "req_1" });
-    recorded({ requestId: "req_2" });
-    recorded({ requestId: "req_3" });
+  it("the log handed out cannot be reordered or appended to", async () => {
+    await forgetTheLog();
+    await recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_2" });
+    await recorded({ requestId: "req_3" });
 
-    const order = theLog().map((record) => record.correlation.request_id);
+    const order = (await theLog()).map((record) => record.correlation.request_id);
 
     for (const wreck of [
       (log: AuditRecord[]) => log.push(log[0]!),
@@ -330,12 +351,22 @@ describe("the audit log", () => {
         log[0] = log[2]!;
       },
     ]) {
-      expect(() => wreck(theLog() as AuditRecord[])).toThrow(TypeError);
+      // Hoisted out of the arrow, because `expect(() => …)` takes a plain function and an `await`
+      // cannot live in one. One array, wrecked repeatedly, which is what the test meant anyway.
+      const handedOut = (await theLog()) as AuditRecord[];
+
+      expect(() => wreck(handedOut)).toThrow(TypeError);
     }
 
     // And the real log is untouched by all of that.
-    expect(theLog().map((record) => record.correlation.request_id)).toEqual(order);
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    //
+    // NEW IN STEP 09: this assertion means something weaker than it did, and is kept for what it
+    // still covers. In step 08 `theLog()` handed out the array the program was writing to, so the
+    // freeze was the only thing between a reader and the log. Now it hands out rows built fresh from
+    // a query, so mutating them could not reach the database whatever we did — the freeze stops a
+    // caller fooling *itself*, and the log is protected by having no UPDATE and no DELETE.
+    expect((await theLog()).map((record) => record.correlation.request_id)).toEqual(order);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
   });
 
   /**
@@ -345,33 +376,33 @@ describe("the audit log", () => {
    * A review dropped the last record — the one holding a denial — and got `true`. Then dropped two.
    * Then handed it an empty log: `true`. Chaining is evidence a record was not *edited*; it is no
    * evidence at all that one was not *deleted from the end*. §30 names checkpoints beside hash
-   * chaining for exactly this reason, and `theHead()` is the smallest checkpoint there is.
+   * chaining for exactly this reason, and `await theHead()` is the smallest checkpoint there is.
    */
-  it("DSOR-AUD-04b: dropping records off the end is caught, but only against the head", () => {
-    forgetTheLog();
-    recorded({ requestId: "req_1" });
-    recorded({ requestId: "req_2", authorization: "DENY", result: "POLICY_DENIED" });
-    recorded({ requestId: "req_3" });
+  it("DSOR-AUD-04b: dropping records off the end is caught, but only against the head", async () => {
+    await forgetTheLog();
+    await recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_2", authorization: "DENY", result: "POLICY_DENIED" });
+    await recorded({ requestId: "req_3" });
 
-    expect(verifyChain(theLog(), theHead())).toBe(true);
-    expect(theHead().count).toBe(3);
-    expect(theHead().lastHash).toBe(theLog()[2]!.record_hash);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
+    expect((await theHead()).count).toBe(3);
+    expect((await theHead()).lastHash).toBe((await theLog())[2]!.record_hash);
 
     // Drop the denial and everything after it. Every link still holds, every hash still matches.
-    const truncated = theLog().slice(0, 1);
+    const truncated = (await theLog()).slice(0, 1);
 
     expect(verifyChain(truncated)).toBe(true);
-    expect(verifyChain(truncated, theHead())).toBe(false);
+    expect(verifyChain(truncated, await theHead())).toBe(false);
 
     // And the emptiest version of the same attack.
     expect(verifyChain([])).toBe(true);
-    expect(verifyChain([], theHead())).toBe(false);
+    expect(verifyChain([], await theHead())).toBe(false);
 
     // The head is not fooled by a log of the right length either: a two-record log padded back to
     // three with a copy of an earlier record fails on the link, and on the head's last hash.
-    const padded = [theLog()[0]!, theLog()[1]!, theLog()[1]!];
+    const padded = [(await theLog())[0]!, (await theLog())[1]!, (await theLog())[1]!];
 
-    expect(verifyChain(padded, theHead())).toBe(false);
+    expect(verifyChain(padded, await theHead())).toBe(false);
   });
 
   /**
@@ -382,8 +413,8 @@ describe("the audit log", () => {
    * three times — to choose record-or-count, for `identity.subject`, for `correlation.principal_id` —
    * so the gate saw one person and the record blamed another. Schema-valid. Chain verifies.
    */
-  it("DSOR-MOD-04: a field that answers differently on a second read cannot split a record", () => {
-    forgetTheLog();
+  it("DSOR-MOD-04: a field that answers differently on a second read cannot split a record", async () => {
+    await forgetTheLog();
 
     let reads = 0;
     const shifty: DecisionToRecord = {
@@ -399,7 +430,7 @@ describe("the audit log", () => {
       operation: "invoice.get@1",
     };
 
-    const written = audit(shifty);
+    const written = await audit(shifty);
 
     if (written === undefined) {
       throw new Error("expected a record");
@@ -409,7 +440,7 @@ describe("the audit log", () => {
     expect(reads).toBe(1);
     expect(written.identity.subject).toBe("user_123");
     expect(written.correlation.principal_id).toBe("user_123");
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
   });
 
   /**
@@ -419,10 +450,10 @@ describe("the audit log", () => {
    * to every reader and serialise another way to the hash, keep the original `record_hash`, and
    * verify. Fields `JSON.stringify` drops came along for free and were readable afterwards.
    */
-  it("DSOR-AUD-04b: a record that lies about its own contents does not verify", () => {
-    forgetTheLog();
+  it("DSOR-AUD-04b: a record that lies about its own contents does not verify", async () => {
+    await forgetTheLog();
 
-    const real = recorded({ authorization: "DENY", result: "POLICY_DENIED" });
+    const real = await recorded({ authorization: "DENY", result: "POLICY_DENIED" });
 
     // Reads as an ALLOW; serialises as the original DENY. Same record_hash.
     const twoFaced = {
@@ -454,15 +485,15 @@ describe("the audit log", () => {
 
   // The authenticated flood. Decision 53 guarded the unauthenticated half by counting; one principal
   // who is *supposed* to be recorded fills the log far faster, by making each record enormous.
-  it("DSOR-AUD-01: caller text in a record is capped, and says how much was dropped", () => {
-    forgetTheLog();
+  it("DSOR-AUD-01: caller text in a record is capped, and says how much was dropped", async () => {
+    await forgetTheLog();
 
-    const written = recorded({ reason: "x".repeat(2_000_000) });
+    const written = await recorded({ reason: "x".repeat(2_000_000) });
 
     expect(written.reason!.length).toBeLessThan(600);
     expect(written.reason).toMatch(/2000000 characters, 1999500 dropped/);
     expect(validateAuditRecord(written)).toBe(true);
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
   });
 
   // A verifier that crashes on hostile input rather than answering `false` is a shape a caller gets
@@ -481,26 +512,26 @@ describe("the audit log", () => {
 
   // A backdated record is hashed *from* the backdated time, so checks 2 and 3 cannot see it. "Later
   // than the one before" is a relationship between neighbours, which is what this function is for.
-  it("DSOR-AUD-04b: a record whose time runs backwards does not verify", () => {
-    forgetTheLog();
+  it("DSOR-AUD-04b: a record whose time runs backwards does not verify", async () => {
+    await forgetTheLog();
 
     setClock(() => "2026-09-30T10:00:00.000Z");
-    recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_1" });
     setClock(() => "2019-01-01T00:00:00.000Z");
-    const backdated = recorded({ requestId: "req_2" });
+    const backdated = await recorded({ requestId: "req_2" });
     resetClock();
 
     // It is a genuine record: schema-valid, correctly linked, correctly hashed.
     expect(validateAuditRecord(backdated)).toBe(true);
-    expect(backdated.previous_hash).toBe(theLog()[0]!.record_hash);
-    expect(verifyChain(theLog())).toBe(false);
+    expect(backdated.previous_hash).toBe((await theLog())[0]!.record_hash);
+    expect(verifyChain(await theLog())).toBe(false);
 
     // Equal times are fine, because a fixed clock gives them.
-    forgetTheLog();
+    await forgetTheLog();
     setClock(() => "2026-09-30T10:00:00.000Z");
-    recorded({ requestId: "req_1" });
-    recorded({ requestId: "req_2" });
-    expect(verifyChain(theLog(), theHead())).toBe(true);
+    await recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_2" });
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
     resetClock();
   });
 
@@ -508,14 +539,17 @@ describe("the audit log", () => {
   // `record_id`, `identity.mode`, `actor_chain` and `subject_authority.source` one at a time and no
   // test noticed any of them: the hash proves a field was not changed after writing, never that the
   // right value was written.
-  it("DSOR-AUD-01: the fields DSoR chooses are the ones DSoR means", () => {
-    forgetTheLog();
+  it("DSOR-AUD-01: the fields DSoR chooses are the ones DSoR means", async () => {
+    await forgetTheLog();
     setClock(() => "2026-09-30T07:41:00.000Z");
 
-    const written = recorded();
+    const written = await recorded();
 
     expect(written.chain).toBe("audit:org_456");
-    expect(written.record_id).toMatch(/^audit:org_456:\d+:0$/);
+    // NEW IN STEP 09: `${chain}:${sequence}`, with no reset counter in it. Step 08 needed one
+    // because `forgetTheLog` rewound the sequence while the old records were still in the array.
+    // Here the reset is a DELETE, so the id it frees belongs to nothing.
+    expect(written.record_id).toBe("audit:org_456:0");
     expect(written.tenant).toBe("org_456");
     expect(written.kind).toBe("decision");
     expect(written.correlation.tenant_id).toBe("org_456");
@@ -530,30 +564,45 @@ describe("the audit log", () => {
     resetClock();
   });
 
-  // Two records written at the same instant by a fixed clock still differ, because the sequence and
-  // the link are in the hash. And record ids survive a reset without being handed out twice.
-  it("DSOR-AUD-01: no two records share a record id, even across a reset", () => {
-    forgetTheLog();
-    const first = recorded({ requestId: "req_1" });
+  /**
+   * A record id repeats after a reset, and in step 09 that is correct rather than a regression.
+   *
+   * Step 08 could not allow it: `forgetTheLog` rewound the sequence while the records it had already
+   * handed out were still in the array, so two live decisions could carry one id. That is why the id
+   * had a reset counter in it.
+   *
+   * Here the reset is `DELETE FROM audit`. The id is freed because the record holding it is gone, so
+   * reusing it collides with nothing — and the PRIMARY KEY is what guarantees that, not our care.
+   * Also worth saying plainly: nothing in a real deployment deletes, because the application's own
+   * account has no DELETE. Only a test holding the owner's connection can reach this at all.
+   */
+  it("DSOR-AUD-01: a record id is unique among the records that exist", async () => {
+    await forgetTheLog();
+    const first = await recorded({ requestId: "req_1" });
+    const second = await recorded({ requestId: "req_2" });
 
-    forgetTheLog();
-    const afterReset = recorded({ requestId: "req_2" });
+    expect(second.record_id).not.toBe(first.record_id);
+
+    // After a reset the numbering starts again, and the id it reuses belongs to nothing.
+    await forgetTheLog();
+    const afterReset = await recorded({ requestId: "req_3" });
 
     expect(afterReset.sequence).toBe(0);
-    expect(afterReset.record_id).not.toBe(first.record_id);
+    expect(afterReset.record_id).toBe(first.record_id);
+    expect(await theLog()).toHaveLength(1);
   });
 
   // Decision 53. A caller who never logged in is counted, not recorded, because §29 says so and
   // because the reason is a real attack: an unauthenticated flood filling the audit store.
-  it("DSOR-AUD-01: an unauthenticated refusal is counted and leaves no record", () => {
-    forgetTheLog();
+  it("DSOR-AUD-01: an unauthenticated refusal is counted and leaves no record", async () => {
+    await forgetTheLog();
     expect(countedWithoutARecord()).toBe(0);
 
-    recorded();
-    expect(theLog()).toHaveLength(1);
+    await recorded();
+    expect(await theLog()).toHaveLength(1);
 
     for (let i = 0; i < 100; i += 1) {
-      const nothing = audit({
+      const nothing = await audit({
         kind: "decision",
         subject: undefined,
         requestId: `req_flood_${i}`,
@@ -564,8 +613,8 @@ describe("the audit log", () => {
     }
 
     expect(countedWithoutARecord()).toBe(100);
-    expect(theLog()).toHaveLength(1);
-    expect(verifyChain(theLog())).toBe(true);
+    expect(await theLog()).toHaveLength(1);
+    expect(verifyChain(await theLog())).toBe(true);
   });
 
   // The clock is real, and the seam exists so a test can be exact and the README stable.
@@ -584,18 +633,20 @@ describe("the audit log", () => {
     expect(when).toBeLessThanOrEqual(after);
   });
 
-  it("DSOR-AUD-01: a record the schema would refuse is never kept", () => {
-    forgetTheLog();
+  it("DSOR-AUD-01: a record the schema would refuse is never kept", async () => {
+    await forgetTheLog();
 
     // `invoice.get` with no version is not an operationRef, so the schema refuses it. The point is
     // what happens next: the log does not grow, and the sequence does not advance.
-    expect(() => audit(decision({ operation: "invoice.get" }))).toThrow(
+    // `.rejects`, because `audit` writes a row and therefore returns a promise. A `.toThrow` here
+    // would pass without ever running the call.
+    await expect(audit(decision({ operation: "invoice.get" }))).rejects.toThrow(
       /audit-record\.schema\.json/,
     );
-    expect(theLog()).toHaveLength(0);
+    expect(await theLog()).toHaveLength(0);
 
     // The next good record is still sequence 0, so the refused one left no gap in the chain.
-    expect(recorded().sequence).toBe(0);
-    expect(verifyChain(theLog())).toBe(true);
+    expect((await recorded()).sequence).toBe(0);
+    expect(verifyChain(await theLog())).toBe(true);
   });
 });

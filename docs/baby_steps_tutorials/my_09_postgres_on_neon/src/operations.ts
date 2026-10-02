@@ -450,7 +450,7 @@ const validateTheInput: Stage["run"] = (context) => {
  *   - An unauthenticated caller leaves no record, only a count. `audit` decides that, not this
  *     stage — see decision 53 and §29.
  */
-const recordTheDecision: Stage["run"] = (context) => {
+const recordTheDecision: Stage["run"] = async (context) => {
   const { principal, contract, refusal: refused } = context;
   const denial = refused?.kind === "error" ? refused.envelope : undefined;
 
@@ -496,7 +496,7 @@ const recordTheDecision: Stage["run"] = (context) => {
   let written;
 
   try {
-    written = audit({
+    written = await audit({
       kind: "decision",
       subject: principal?.id,
       requestId: context.requestId,

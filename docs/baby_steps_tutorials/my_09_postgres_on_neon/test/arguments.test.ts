@@ -9,13 +9,26 @@
 // past the gate, and this file is about the arguments rather than about authority.
 
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callOperation } from "../src/operations.ts";
 import type { Login } from "../src/login.ts";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
+import { aDatabase } from "./support/database.ts";
 
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 const ISSUER: Login = { loggedInAs: "accounts-payable-fte" };
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("the caller's arguments", () => {
   // An argument that cannot be written down at all. The receipt fingerprints the arguments, so

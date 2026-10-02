@@ -4,8 +4,9 @@
 // issue. That caller is cfo_100 — she approves payments, and does not type invoices into the
 // accounts-payable system.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { aDatabase } from "./support/database.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -22,6 +23,18 @@ function refusalFrom(answer: OperationAnswer) {
 
   return answer.envelope;
 }
+
+// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
+let db: Awaited<ReturnType<typeof aDatabase>>;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
 
 describe("anything not granted is refused", () => {
   it("DSOR-AUT-01b: cfo_100 may read an invoice", async () => {

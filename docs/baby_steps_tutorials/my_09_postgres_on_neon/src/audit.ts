@@ -189,18 +189,46 @@ export function resetClock(): void {
   clock = realClock;
 }
 
-const log: AuditRecord[] = [];
-let unauthenticated = 0;
+/**
+ * NEW IN STEP 09: anything that can run SQL and give back rows.
+ *
+ * One method, because that is all this file needs. `pg`'s Pool satisfies it, and so does PGlite, so
+ * the same SQL runs against Neon in production and against PostgreSQL-in-process in the tests.
+ *
+ * This is deliberately **not** a second implementation of the store. There is one store — the SQL
+ * below — and two things that can execute it. A second in-memory implementation would be faster and
+ * would be a thing that can drift from the real one while the tests stay green, which is what
+ * AGENTS.md means by never testing audit immutability against a mock.
+ */
+export interface Database {
+  query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+}
+
+let database: Database | undefined;
 
 /**
- * Which run of the program this is. Zero, unless a test has emptied the log.
+ * Point the log at a database. `main.ts` calls this with a connection; a test calls it with PGlite.
  *
- * `record_id` used to be `${CHAIN}:${sequence}`, and `forgetTheLog` sets the sequence back to zero —
- * so two different decisions could carry one id, each verifying as a complete history. A review
- * showed the pair. Counting the resets makes the id unique without making it random, and a random id
- * would change every hash on every run, which would make this step's README unprintable.
+ * It is required rather than lazily defaulted, and the error below says why: a program that quietly
+ * kept writing to memory when its database was missing would lose exactly the evidence this step
+ * exists to keep.
  */
-let run = 0;
+export function useDatabase(db: Database): void {
+  database = db;
+}
+
+function theDatabase(): Database {
+  if (database === undefined) {
+    throw new TypeError(
+      "the audit log has no database: call useDatabase() before recording anything. " +
+        "Step 09 moved the log out of memory, so there is nowhere else for a record to go.",
+    );
+  }
+
+  return database;
+}
+
+let unauthenticated = 0;
 
 /**
  * The head of the chain: how many records exist, and the hash of the last one.
@@ -219,11 +247,29 @@ export interface Head {
   readonly lastHash: string;
 }
 
-let head: Head = Object.freeze({ count: 0, lastHash: GENESIS });
+/**
+ * The head of the chain, asked of the database rather than remembered.
+ *
+ * Step 08 held this in a variable beside the array. A variable is no use here: the point of a
+ * database is that the records outlive the process, so a checkpoint the process remembers would be
+ * reset by every restart and would vouch for nothing.
+ */
+export async function theHead(): Promise<Head> {
+  const { rows } = await theDatabase().query<{ count: string; last_hash: string | null }>(
+    `SELECT count(*)::text AS count,
+            (SELECT record_hash FROM audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
+              AS last_hash
+     FROM audit WHERE chain = $1`,
+    [CHAIN],
+  );
+  const row = rows[0];
 
-/** The head of the chain as it stands. Pass it to `verifyChain` to catch a dropped tail. */
-export function theHead(): Head {
-  return head;
+  return Object.freeze({
+    // `count(*)` comes back as a string, because a PostgreSQL bigint does not fit in a JavaScript
+    // number and the driver will not quietly truncate it. Ten rows or ten billion, it is text here.
+    count: row === undefined ? 0 : Number(row.count),
+    lastHash: row?.last_hash ?? GENESIS,
+  });
 }
 
 /**
@@ -325,7 +371,7 @@ function hashOf(record: Readonly<Record<string, unknown>>): string {
  * grow. §21.11's rule is the other half, and it lands in the pipeline: if the evidence cannot be
  * written, the command does not run.
  */
-export function audit(decision: DecisionToRecord): AuditRecord | undefined {
+export async function audit(decision: DecisionToRecord): Promise<AuditRecord | undefined> {
   // Read **once**, into locals, before anything is decided. A review read `decision.subject` three
   // times — once to choose record-or-count, once for `identity.subject`, once for
   // `correlation.principal_id` — and a getter answered differently each time: the gate saw
@@ -349,17 +395,39 @@ export function audit(decision: DecisionToRecord): AuditRecord | undefined {
     return undefined;
   }
 
-  // found live 2026-09-30 (review): this read-then-write is only safe because nothing suspends between
-  // these three lines and the `log.push` below. Two requests cannot claim one sequence today for that
-  // reason alone. Step 09 makes it a database write, and on that day it has to become one atomic
-  // statement with a unique constraint on (chain, sequence) — proven by a real parallel *.db.test.ts,
-  // because AGENTS.md forbids proving a concurrency guarantee against a mock.
+  // NEW IN STEP 09: the position comes from the table.
+  //
+  // Step 08 took it from `log.length` and left a note saying this is where it has to become real.
+  // It is still a read and then a write, and it has to be: `sequence` and `previous_hash` are both
+  // inside the hash, so they must be known *before* the record exists. There is no single statement
+  // that computes them, hashes the result and inserts it.
+  //
+  // What changes is what happens when two requests read the same answer. In step 08 both wrote and
+  // the log quietly held two records at one position. Here the second INSERT violates
+  // UNIQUE (chain, sequence) and fails — so the race is **refused** rather than absorbed. The caller
+  // gets EVIDENCE_STORE_UNAVAILABLE, whose retry class is `safe_same_key`, which is true: nothing
+  // ran. Untestable in-process, because one PGlite connection cannot race itself; it needs a real
+  // server and two connections, which is what audit.db.test.ts is for.
   const at = now();
-  const sequence = log.length;
-  const previous = log[sequence - 1]?.record_hash ?? GENESIS;
+  const db = theDatabase();
+  // `AS at_position`, and the alias is load-bearing. `SELECT sequence::text` names its output column
+  // `sequence`, and PostgreSQL resolves a bare name in ORDER BY to an **output** column first — so
+  // `ORDER BY sequence DESC` ordered by the text, where "9" sorts after "10". The tail froze at 9 and
+  // every write after that computed 10 and failed on the primary key.
+  //
+  // This is the hazard `src/migrations.ts` has a paragraph about — "10_x.sql sorts before 9_x.sql as
+  // text" — met again in SQL, where the cast creates it silently. Nine records passed before it bit.
+  const { rows: tail } = await db.query<{ at_position: string; record_hash: string }>(
+    `SELECT sequence::text AS at_position, record_hash
+     FROM audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1`,
+    [CHAIN],
+  );
+  const last = tail[0];
+  const sequence = last === undefined ? 0 : Number(last.at_position) + 1;
+  const previous = last?.record_hash ?? GENESIS;
 
   const body: Record<string, unknown> = {
-    record_id: `${CHAIN}:${run}:${sequence}`,
+    record_id: `${CHAIN}:${sequence}`,
     chain: CHAIN,
     sequence,
     previous_hash: previous,
@@ -432,15 +500,81 @@ export function audit(decision: DecisionToRecord): AuditRecord | undefined {
     );
   }
 
-  log.push(written);
-  head = Object.freeze({ count: log.length, lastHash: written.record_hash });
+  // One INSERT, with every value as a parameter rather than pasted into the SQL. Not politeness:
+  // `reason` holds a caller's own words, and a caller's words in a SQL string is how an audit log
+  // ends up executing them.
+  await db.query(
+    `INSERT INTO audit (
+       record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
+       identity, correlation, operation, payload_hash, "authorization", result, reason
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      written.record_id,
+      written.chain,
+      written.sequence,
+      written.previous_hash,
+      written.record_hash,
+      written.at,
+      written.tenant,
+      written.kind,
+      JSON.stringify(written.identity),
+      JSON.stringify(written.correlation),
+      written.operation ?? null,
+      written.payload_hash ?? null,
+      written.authorization ?? null,
+      written.result,
+      written.reason ?? null,
+    ],
+  );
 
   return written;
 }
 
-/** Every record written so far, oldest first. A copy, and frozen, so a reader cannot append. */
-export function theLog(): readonly AuditRecord[] {
-  return Object.freeze([...log]);
+/**
+ * Every record in the chain, oldest first, read back out of the database.
+ *
+ * `at` comes back as a `Date` and the hash covers the ISO string the record was written with, so it
+ * is converted back. Anything that changes the text here changes every hash, which is why this is the
+ * only place that reads rows and why it rebuilds the record field by field rather than spreading the
+ * row — a column added later must not silently become part of what `verifyChain` hashes.
+ */
+export async function theLog(): Promise<readonly AuditRecord[]> {
+  const { rows } = await theDatabase().query<Record<string, unknown>>(
+    // Same alias, same reason. Without it this returned the chain in text order — 0, 1, 10, 11, 2 —
+    // and `verifyChain` would have reported a perfectly good log as broken.
+    `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash, at, tenant,
+            kind, identity, correlation, operation, payload_hash, "authorization", result, reason
+     FROM audit WHERE chain = $1 ORDER BY sequence`,
+    [CHAIN],
+  );
+
+  return Object.freeze(
+    rows.map((row) => {
+      const record: Record<string, unknown> = {
+        record_id: row.record_id,
+        chain: row.chain,
+        sequence: Number(row.at_position),
+        previous_hash: row.previous_hash,
+        record_hash: row.record_hash,
+        at: (row.at as Date).toISOString(),
+        tenant: row.tenant,
+        kind: row.kind,
+        identity: row.identity,
+        correlation: row.correlation,
+        result: row.result,
+      };
+
+      // The optional columns, left out rather than set to null — the schema says a field is either
+      // right or absent, and `operation: null` is neither.
+      for (const field of ["operation", "payload_hash", "authorization", "reason"]) {
+        if (row[field] !== null && row[field] !== undefined) {
+          record[field] = row[field];
+        }
+      }
+
+      return Object.freeze(record) as unknown as AuditRecord;
+    }),
+  );
 }
 
 /** How many decisions were counted instead of recorded, because nobody had logged in. */
@@ -461,11 +595,12 @@ export function countedWithoutARecord(): number {
  * It also erases the aggregated count, which is the only evidence an unauthenticated flood ever
  * happened. And it bumps `run`, so the record ids it frees are never handed out twice.
  */
-export function forgetTheLog(): void {
-  log.length = 0;
+export async function forgetTheLog(): Promise<void> {
+  // DELETE, which the application's own account is not allowed to run — so this only works for a
+  // caller connected as the owner. That is the shape of the guarantee: a test holds the owner's
+  // connection, and the program never does.
+  await theDatabase().query("DELETE FROM audit");
   unauthenticated = 0;
-  run += 1;
-  head = Object.freeze({ count: 0, lastHash: GENESIS });
 }
 
 /** Does this record match the specification's schema? */
