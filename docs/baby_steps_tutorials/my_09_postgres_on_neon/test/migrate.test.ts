@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterEach, describe, expect, it } from "vitest";
-import { applyMigrations, checksumOf } from "../src/migrations.ts";
+import { applyMigrations, asRunner, checksumOf } from "../src/migrations.ts";
 
 const made: string[] = [];
 let db: PGlite;
@@ -30,7 +30,15 @@ function folderWith(files: Record<string, string>): string {
 }
 
 afterEach(async () => {
-  await db?.close();
+  // Closed and forgotten. Without the reset, a test that does not make a database inherits the
+  // previous one's closed handle and this throws "PGlite is closed" — which is how the adapter test
+  // below, the one test here that needs no database at all, started failing.
+  const open = db;
+
+  db = undefined as unknown as PGlite;
+
+  await open?.close();
+
   for (const dir of made.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -189,6 +197,35 @@ describe("applying the migrations", () => {
     await applyMigrations(db, dir);
 
     expect((await remembered())[0]!.checksum).toBe(checksumOf(sql));
+  });
+
+  /**
+   * The `pg` adapter, which exists because `pg` has no `exec`.
+   *
+   * The first version of this code cast a pool straight to `Runner`. That typechecks and fails at the
+   * first migration, because the method is not there — a cast asserting a shape nobody checked. No
+   * server is needed to prove the adapter calls through, so none is used: the stub below records what
+   * it was asked to run.
+   */
+  it("the pg adapter sends exec as a parameterless query, and passes parameters through", async () => {
+    const asked: { sql: string; params?: unknown[] }[] = [];
+    const runner = asRunner({
+      query: async (sql: string, params?: unknown[]) => {
+        asked.push({ sql, params });
+
+        return { rows: [] };
+      },
+    });
+
+    await runner.exec("CREATE TABLE a (x int)");
+    await runner.query("SELECT $1", ["one"]);
+
+    expect(asked).toEqual([
+      // No parameters, which is what makes `pg` use the simple protocol and accept several
+      // statements in one string — the thing `exec` is for.
+      { sql: "CREATE TABLE a (x int)", params: undefined },
+      { sql: "SELECT $1", params: ["one"] },
+    ]);
   });
 
   it("an empty folder is simply nothing to do", async () => {

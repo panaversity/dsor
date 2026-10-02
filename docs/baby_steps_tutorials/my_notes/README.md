@@ -26,6 +26,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-06-permissions-deny-by-default.md](step-06-permissions-deny-by-default.md) | Roles, and anything ungranted refused |
 | [step-07-the-pipeline-skeleton.md](step-07-the-pipeline-skeleton.md) | The order of the checks becomes a list |
 | [step-08-write-the-decision-first.md](step-08-write-the-decision-first.md) | Every decision is written down before the answer, refusals included |
+| [step-09-postgres-on-neon.md](step-09-postgres-on-neon.md) | The log lives in a database the application may not rewrite |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
@@ -43,6 +44,7 @@ with one pure function and two tests, and every later step begins as a copy of i
 | `my_06_permissions_deny_by_default` | 156 | done, built a piece at a time |
 | `my_07_the_pipeline_skeleton` | 179 | done |
 | `my_08_write_the_decision_first` | 232 | done, and 31 of those tests came from reviews and two deep passes |
+| `my_09_postgres_on_neon` | 278 | done, plus 4 in the database tier that need a real server |
 
 Each count includes everything inherited from the steps before it, because a step is a
 copy of the step before plus one new idea.

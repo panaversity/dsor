@@ -14,6 +14,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { Pool } from "pg";
 import { applyMigrations, type Runner } from "./migrations.ts";
 import { useDatabase, type Database } from "./audit.ts";
 
@@ -34,12 +35,20 @@ export async function openTheDatabase(): Promise<{
   const url = process.env.DSOR_DB_URL;
 
   if (url !== undefined && url.trim() !== "") {
-    // The real server. `pg` is not a dependency of this step yet — the step that needs it is the one
-    // that runs against Neon — so this says so plainly instead of failing with a module error.
-    throw new TypeError(
-      "DSOR_DB_URL is set, and connecting to a real server needs the `pg` driver, which this " +
-        "step does not install yet. Unset DSOR_DB_URL to run the demo on its own database.",
-    );
+    // The real thing. One connection, because this program answers one request at a time; a pool of
+    // one keeps the shape the same as a pool of many for the day it needs one.
+    const pool = new Pool({ connectionString: url, max: 1 });
+
+    useDatabase(pool as unknown as Database);
+
+    // Said rather than assumed. A connection string that is wrong fails here, on the first query,
+    // with the driver's own message — not later, inside a decision, as EVIDENCE_STORE_UNAVAILABLE.
+    await pool.query("SELECT 1");
+
+    return {
+      where: `the PostgreSQL at ${url.replace(/\/\/[^@]*@/, "//…@")}`,
+      close: () => pool.end(),
+    };
   }
 
   mkdirSync(LOCAL, { recursive: true });

@@ -432,3 +432,39 @@ Two rules come out of it:
 This is [lesson 18](#18--overlapping-checks-cannot-be-tested-together) wearing different clothes: a
 line that cannot fail is not protecting anything yet, and the fix is to reach it rather than to trust
 it.
+
+## 20 · A cast is a promise you did not check
+
+Step 09 connects to PostgreSQL two ways: `pg` against a real server, PGlite in-process. Both run the
+same SQL, so one interface describes both — and `pg`'s pool went in through a cast:
+
+```ts
+const applied = await applyMigrations(pool as unknown as Runner, FOLDER);
+```
+
+It typechecks. It cannot work. `Runner` has `exec` and `query`; `pg` has only `query`. The cast says
+"trust me" about a method that is not there, and the first migration would have died on
+`db.exec is not a function` — on the real server, which is the one place I could not test.
+
+An adapter is four lines and asserts nothing:
+
+```ts
+export function asRunner(pool: { query: (sql: string, params?: unknown[]) => Promise<…> }): Runner {
+  return { exec: (sql) => pool.query(sql), query: (sql, params) => pool.query(sql, params) };
+}
+```
+
+The general shape: **`as unknown as T` turns a question into an assumption.** Every time I reached for
+one in this step it was hiding something — this, and `db as unknown as Database`, where PGlite and
+`pg` genuinely do differ in their generics and the cast was load-bearing in a way worth a comment
+rather than a shrug.
+
+And the test for it needs no database at all. A stub recording what it was asked to run proves the
+adapter calls through, which is the whole of what an adapter does:
+
+```text
+[ [ 'CREATE TABLE a (x int)', undefined ], [ 'SELECT $1', [ 'one' ] ] ]
+```
+
+`undefined` for the parameters on the first one is the point: that is what makes `pg` use the simple
+protocol and accept several statements in one string, which is what `exec` is for.

@@ -1239,3 +1239,56 @@ file's own header, next to the tests that cannot cover them.
 **Rejected:** leaving the guarantee untested until someone sets up Neon. The step's "done when" is one
 line — `UPDATE audit …` fails — and a step whose headline claim only runs for people with an account
 is a step most readers take on trust.
+
+## 72 · The pipeline becomes async in step 09, not in a step of its own (2026-10-02)
+
+**Decided by:** the learner, after being shown the size.
+**What:** `Stage.run` may return a promise, `runPipeline` and `Door` are async, and 73 of the step's
+tests gained `await`.
+**Why:** a database write is not synchronous, so the moment `audit()` writes a row the `await` reaches
+every call site — 129 of them across eight test files. The
+[`build-baby-step` skill](../my_01_one_invoice_in_memory/.claude/skills/build-baby-step/SKILL.md) says
+to stop when a step needs two ideas, so this was put to the learner rather than assumed. The answer:
+async is the **cost** of a real database rather than a second idea, and it arrives where the reason for
+it is visible. Splitting it would also have left step 09 not solving the problem it opens with — the
+log would still vanish on a restart.
+**Cost:** the widest mechanical change in the tutorial so far, and one behaviour change hidden inside
+it: a stage that throws now produces a rejected promise, so `expect(() => door(...)).toThrow()` passes
+without running its body. Three such tests existed and had to become `.rejects.toThrow()`.
+**Rejected:** a separate step for the async change, and keeping the in-memory log while writing rows
+alongside it. The second would have meant the record was not durably written before the response,
+which is `DSOR-EXE-02`'s whole sentence.
+
+## 73 · The test files run one at a time, in one process (2026-10-02)
+
+**What:** `vitest.config.ts` sets `pool: "forks"`, `singleFork: true`, `isolate: true`, and a 30-second
+timeout.
+**Why:** three attempts, and the first two each taught something. Files in parallel shared
+`audit.ts`'s module-level connection, so one file's `useDatabase` replaced another's mid-run and both
+computed `max(sequence)` from the wrong table — 27 failures, while one file passed all 21 of its tests
+alone. `isolate` fixed that. Then twenty files each building a PostgreSQL, four at a time, gave a
+different answer every run, including tests reported as **skipped**, which is the tell that a worker
+was killed rather than that anything was wrong.
+**Cost:** no parallelism. 278 tests in about 7.6 seconds, where step 08's 232 took 0.25. A step a
+learner runs once should give the same answer every time, and
+**a flaky suite teaches nothing except not to trust the suite.**
+**Rejected:** a second in-memory store implementation so most tests need no database. Faster, and a
+thing that can drift from the real one while the tests stay green — which is what
+[AGENTS.md](../../../AGENTS.md) means by never testing audit immutability against a mock. There is one
+store, the SQL, and two things that can run it.
+
+## 74 · Two times on an audit row (2026-10-02)
+
+**Decided by:** the learner.
+**What:** `at` is the application's claim and is inside the hash. `recorded_at` is stamped by the
+database with `DEFAULT now()`, cannot be set by the application, and is **not** covered by the hash.
+**Why:** step 08 left `setClock()` able to backdate a record undetectably, because the fingerprint is
+computed *from* the faked time. The database cannot stamp `at` instead: the hash is computed before the
+row exists, and `UPDATE` is revoked afterwards, so there is no moment at which a database-supplied time
+could be inside the hash. An independent second time is the next best thing — a backdated record
+arrives with the two years apart.
+**Cost:** detection, not prevention, and one more column to explain. Also honest: the application
+*could* set `recorded_at` on an INSERT; what makes the gap evidence is that the code which writes
+records never does, and a test says so rather than pretending the column is protected.
+**Rejected:** a `CHECK` that `at` is near `now()`. It prevents the lie and refuses an innocent slow
+request — and a refused audit write means the operation does not run at all.

@@ -266,3 +266,20 @@ export async function applyMigrations(db: Runner, folder: string): Promise<reado
 
   return todo;
 }
+
+/**
+ * A `pg` pool, as a `Runner`.
+ *
+ * `pg` has no `exec`: it has `query`, which runs a multi-statement string when it is given no
+ * parameters. PGlite has both. Casting a pool to `Runner` typechecks and fails at the first
+ * migration, which is what the first version of this did — the cast hid a method that was not there.
+ */
+export function asRunner(pool: {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+}): Runner {
+  return {
+    exec: (sql: string) => pool.query(sql),
+    query: <T>(sql: string, params?: unknown[]) =>
+      pool.query(sql, params) as Promise<{ rows: T[] }>,
+  };
+}

@@ -6,6 +6,11 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
 
+    // The database tier is excluded here, not merely unmatched: `*.db.test.ts` ends in `.test.ts`,
+    // so without this line `pnpm check` collects it and the step stops running without a server.
+    // It has its own config, vitest.db.config.ts, and its own command, `pnpm test:db`.
+    exclude: ["**/node_modules/**", "test/**/*.db.test.ts"],
+
     // NEW IN STEP 09, and the shape took three attempts to get right.
     //
     // `src/audit.ts` holds one database connection in a module-level variable, because a program has

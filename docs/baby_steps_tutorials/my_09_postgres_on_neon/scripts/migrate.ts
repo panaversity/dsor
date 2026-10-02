@@ -11,17 +11,29 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { applyMigrations, type Runner } from "../src/migrations.ts";
+import { Pool } from "pg";
+import { applyMigrations, asRunner, type Runner } from "../src/migrations.ts";
 
 const FOLDER = fileURLToPath(new URL("../migrations", import.meta.url));
 const LOCAL = fileURLToPath(new URL("../.local-database", import.meta.url));
 
-if (process.env.DSOR_DB_OWNER_URL !== undefined && process.env.DSOR_DB_OWNER_URL.trim() !== "") {
-  console.error(
-    "DSOR_DB_OWNER_URL is set, and connecting to a real server needs the `pg` driver, which this\n" +
-      "step does not install yet. Unset it to migrate the demo's own database.",
+const ownerUrl = process.env.DSOR_DB_OWNER_URL;
+
+if (ownerUrl !== undefined && ownerUrl.trim() !== "") {
+  // The owner's connection, because migrations create and change tables and the application's
+  // account cannot. That separation is the whole of 002_runtime_user.sql, so running migrations as
+  // `dsor_runtime` would quietly undo the lesson.
+  const pool = new Pool({ connectionString: ownerUrl, max: 1 });
+  const applied = await applyMigrations(asRunner(pool), FOLDER);
+
+  console.log(
+    applied.length === 0
+      ? "Already up to date. Nothing was applied."
+      : applied.map((migration) => `applied ${migration.name}`).join("\n"),
   );
-  process.exit(1);
+
+  await pool.end();
+  process.exit(0);
 }
 
 mkdirSync(LOCAL, { recursive: true });

@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-01.
+2026-10-02.
 
 ## Specification
 
@@ -49,7 +49,7 @@ before it plus **one** new idea. Steps named `my_NN_*` are a learner's own copie
 built in the open with their reasoning recorded in
 [`my_notes/`](baby_steps_tutorials/my_notes/README.md).
 
-Eight of the 52 are built. Test counts are cumulative, because each step inherits the
+Nine of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -63,6 +63,7 @@ one before it:
 | `my_06_permissions_deny_by_default` | 156 | deny by default, and "may you" is asked before "does it exist" |
 | `my_07_the_pipeline_skeleton` | 179 | the order of the checks becomes a list a test can read |
 | `my_08_write_the_decision_first` | 232 | every decision is recorded before the answer, refusals included, in a hash chain |
+| `my_09_postgres_on_neon` | 278 | the audit log moves into PostgreSQL, and the application may not rewrite it |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -73,18 +74,22 @@ are true of all of them:
   verified by `pnpm --dir docs/baby_steps_tutorials/<step> check`, by hand. Every step
   now also has a `test/main.test.ts` that runs its demo program as a subprocess, so the
   output each README pastes as proof is checked rather than asserted.
-- **Nothing is durable, and nothing is authenticated.** There is no database until
-  step 09 and no real login until steps 43 and 44. The invoice store and the audit log
-  are arrays in one process, so a restart loses both.
+- **Nothing is authenticated, and only the audit log is durable.** There is no real
+  login until steps 43 and 44. From step 09 the audit log is in PostgreSQL and survives
+  a restart; the invoice store is still an array in one process.
+- **Step 09 has a second test tier.** `pnpm check` proves its guarantees against
+  PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
+  `pnpm test:db` covers the two things one in-process connection cannot do — logging in
+  as a second user, and two writers racing — and reports `4 skipped` without a server.
 - **A requirement id in a step's test title is a claim about that step, not about
   DSoR.** Step 08's 232 tests name 23 ids in their titles, and each step's README has a
   table saying which halves of which rules it does *not* meet. No L1, L2 or L3
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 66 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 74 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
-18 lessons, several of them about tests that passed while proving nothing.
+20 lessons, several of them about tests that passed while proving nothing.
 
 ## Learning-path stages
 
