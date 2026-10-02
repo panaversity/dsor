@@ -969,6 +969,13 @@ the suite.
   pair compares an operation's own. `test/cross-tenant.ts` was 224 lines, not 217. And
   "the other twelve" did not match its table (above).
 
+- **The owner-store test needed records that other tests had left.** Found by step 15's
+  build, on a branch made fresh from `main`: the log was empty, so `DSOR-TEN-01b: with every
+  policy skipped, DSoR's own store still finds only org_456's rows` failed, or passed only
+  after another file had written records. With no `org_789` record in the log it had no
+  teeth. Fixed from step 11 on: the test writes a record of each company first, and may take
+  60 s, as long as the owner's program it starts.
+
 **Left open on purpose:**
 
 - **Five changes no test can catch, because they change nothing today.** The
