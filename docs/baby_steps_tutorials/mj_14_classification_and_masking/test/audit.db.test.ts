@@ -128,20 +128,37 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
     const problems = ownerLoginCheck();
     expect(problems).toContain("can change or remove records in dsor.audit");
     expect(problems).toContain("is a member of pg_write_all_data");
+    expect(problems).toContain("holds BYPASSRLS");
   });
 
   // SET LOCAL lasts only inside a transaction. Outside one, PostgreSQL ignores it and warns,
   // and the look-alikes above would answer again. So the check that the program runs, on its
-  // pool, must open its own transaction first: no warning means the pin held. Found by step
-  // 16's review, and fixed from step 09 on.
+  // pool, must open its own transaction, pin the path, ask, and roll back, in that order.
+  // The test notes each statement the pool's connection sends, and hears every warning.
+  // Found by step 16's review, and fixed from step 09 on. The list of statements came from
+  // a review of step 15's port: a pool that skipped the pin sent no SET LOCAL, so nothing
+  // warned, and the test passed.
   it("DSOR-AUD-04a: the start-up check pins the search path inside a transaction of its own", async () => {
     const pool = newPool();
     const notices: string[] = [];
-    pool.on("connect", (client) =>
-      client.on("notice", (notice) => notices.push(String(notice.message))),
-    );
+    const sent: string[] = [];
+    pool.on("connect", (client) => {
+      client.on("notice", (notice) => notices.push(String(notice.message)));
+      const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+      // Every statement goes to the database as it was written, and is noted first.
+      client.query = ((...args: unknown[]) => {
+        sent.push(typeof args[0] === "string" ? args[0].trim() : "(not text)");
+        return query(...args);
+      }) as typeof client.query;
+    });
     try {
       expect(await runtimeRoleProblems(pool)).toStrictEqual([]);
+      expect(sent).toStrictEqual([
+        "BEGIN READ ONLY",
+        "SET LOCAL search_path TO pg_catalog, pg_temp",
+        expect.stringMatching(/^SELECT r\.rolname AS who/),
+        "ROLLBACK",
+      ]);
       expect(notices).toStrictEqual([]);
     } finally {
       await pool.end();
