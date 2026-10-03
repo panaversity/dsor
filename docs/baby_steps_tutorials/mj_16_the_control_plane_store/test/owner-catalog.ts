@@ -28,6 +28,10 @@ const FIXTURE = [
   // no to every question. With public first in the search path, it would be found first.
   `CREATE FUNCTION public.has_table_privilege(name, oid, text) RETURNS boolean
      LANGUAGE sql AS 'SELECT false'`,
+  // A view can stand in for one of PostgreSQL's the same way. This one shows no relation at
+  // all, so a read that only wrote pg_catalog. in front of its functions would still be
+  // fooled. Found by a review of step 15's port of step 09's fix, and fixed here.
+  "CREATE VIEW public.pg_class AS SELECT * FROM pg_catalog.pg_class WHERE false",
   "SET LOCAL search_path TO public, pg_catalog",
 ];
 

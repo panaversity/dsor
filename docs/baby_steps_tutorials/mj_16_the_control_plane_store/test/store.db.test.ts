@@ -33,17 +33,33 @@ describe("today's database and its map", () => {
 
   // SET LOCAL lasts only inside a transaction. Outside one, PostgreSQL ignores it and warns,
   // and a look-alike in public (below) could answer again. So the read the program runs, on
-  // its pool, must open its own transaction first: no warning means the pin held. Found
-  // while carrying step 09's fix forward: with the pool's BEGIN READ ONLY removed, every
-  // test that reads the catalog still passed (step 16's README, decision 4).
+  // its pool, must open its own transaction, pin the path, read, and roll back, in that
+  // order. The test notes each statement the pool's connection sends, and hears every
+  // warning. Found while carrying step 09's fix forward: with the pool's BEGIN READ ONLY
+  // removed, every test that reads the catalog still passed (step 16's README, decision 4).
+  // The list of statements came from a review of step 15's port: a pool that skipped the
+  // pin sent no SET LOCAL, so nothing warned, and the test passed.
   it("step 16's decision 4: the catalog read pins the search path inside a transaction of its own", async () => {
     const pool = newPool();
     const notices: string[] = [];
-    pool.on("connect", (client) =>
-      client.on("notice", (notice) => notices.push(String(notice.message))),
-    );
+    const sent: string[] = [];
+    pool.on("connect", (client) => {
+      client.on("notice", (notice) => notices.push(String(notice.message)));
+      const query = client.query.bind(client) as (...args: unknown[]) => Promise<unknown>;
+      // Every statement goes to the database as it was written, and is noted first.
+      client.query = ((...args: unknown[]) => {
+        sent.push(typeof args[0] === "string" ? args[0].trim() : "(not text)");
+        return query(...args);
+      }) as typeof client.query;
+    });
     try {
       expect(storeDifferences(map, await readCatalog(pool))).toStrictEqual([]);
+      expect(sent).toStrictEqual([
+        "BEGIN READ ONLY",
+        "SET LOCAL search_path TO pg_catalog, pg_temp",
+        expect.stringMatching(/^WITH who AS/),
+        "ROLLBACK",
+      ]);
       expect(notices).toStrictEqual([]);
     } finally {
       await pool.end();

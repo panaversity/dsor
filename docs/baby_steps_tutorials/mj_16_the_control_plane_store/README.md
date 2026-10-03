@@ -697,6 +697,15 @@ included.
   read. Without `BEGIN`, PostgreSQL warned twice: "SET LOCAL can only be used in
   transaction blocks", then "there is no transaction in progress". The database tests went
   from 125 to 129.
+- **Strengthened after a review of step 15's port.** Two breaks passed every test above, in
+  the login check and in the catalog read alike: writing `pg_catalog.` in front of the
+  functions instead of pinning the search path, and skipping the pin for the pool's own
+  connections. So the owner's child programs also plant look-alike views: `pg_roles` for
+  the login check, which says no login holds `BYPASSRLS`, and `pg_class` for the catalog
+  read, which shows no relation at all. The first login test expects "holds BYPASSRLS"
+  too. Both pool tests note each statement their connection sends, and expect exactly
+  `BEGIN READ ONLY`, the `SET LOCAL`, the read, and `ROLLBACK`. All four breaks now fail a
+  test, and the login check without `SET LOCAL` now fails both login tests, not one.
 
 **Also worth knowing:**
 
