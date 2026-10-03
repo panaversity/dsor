@@ -4,6 +4,7 @@ Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 278 t
 database tier
 Spec: [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) · `DSOR-AUD-04a`,
 `DSOR-AUD-02a`
+Both tiers have run: 278 under `pnpm check`, and 4 under `pnpm test:db` against a real server.
 Decisions [67 to 74](decisions.md). Lesson [20](lessons.md).
 
 ## What it does
@@ -69,7 +70,7 @@ day.
 
 | Here | Becomes |
 | --- | --- |
-| the in-process tests reach the application's account with `SET ROLE`, not a login | `audit.db.test.ts`, which needs a server and reports `4 skipped` without one |
+| the in-process tests reach the application's account with `SET ROLE`, not a login | `audit.db.test.ts`, which needs a server. Run against a local PostgreSQL 17 on 2026-10-03: 4 passed, and 2 fail if the application is granted `UPDATE` |
 | `theHead()` is computed on demand and stored nowhere | §30 says to anchor a checkpoint outside the control-plane store. `DSOR-AUD-04d` is not claimed |
 | the **owner** can still do anything | the design, not a gap — migrations have to come from somewhere. The rule is met against the *application* |
 | `recorded_at` can be set on an INSERT; what makes the gap evidence is that the writer never does | a test says this plainly rather than implying the column is protected |
@@ -86,3 +87,41 @@ PostgreSQL and there is no agent memory for it to be in instead.
 And `DSOR-EXE-02`'s *durably* half, which step 08 explicitly did not claim — demonstrated by running
 `pnpm start` twice and watching 10 records become 20, with the chain verifying across a process that
 no longer exists.
+
+## The database tier, finally run
+
+The four tests that need a real server were written and never executed — no Neon account, and signing
+up for one is not something I can do. They do not need Neon, though: they need **a PostgreSQL with two
+real logins**, and `brew install postgresql@17` provides that with no account at all.
+
+```text
+pnpm migrate   ->  applied 001_audit.sql
+                   applied 002_runtime_user.sql
+pnpm test:db   ->  Tests  4 passed (4)
+```
+
+The migrate line matters as much as the tests: it is the `pg` driver path, which PGlite cannot
+exercise, running the migrations as the owner against a real server. That had never been executed
+either, and [lesson 20](lessons.md) is about the cast in it that would have failed there and nowhere
+else.
+
+Then the check that makes the result worth anything — grant the application `UPDATE` on that server:
+
+```text
+ Tests  2 failed | 2 passed (4)
+   AssertionError: promise resolved "Result{ command: 'UPDATE' …}" instead of rejecting
+   AssertionError: expected [ 'DELETE', 'INSERT', 'SELECT', …(2) ] to deeply equal [ 'INSERT', 'SELECT' ]
+```
+
+**And one finding that mattered more than the tests.** The run printed:
+
+```text
+DEPRECATED  `test.poolOptions` was removed in Vitest 4.
+```
+
+So [decision 73](decisions.md)'s `singleFork` — the fix for a suite that gave a different answer every
+run — **was never being applied**. The suite had been stable by luck. Both configs now use the
+top-level option, there is no deprecation warning, and three consecutive runs give 278.
+
+That is a shape worth remembering: a deprecation notice is not noise when the thing being deprecated
+is a setting you are relying on. It had been in every run's output and I had been reading past it.

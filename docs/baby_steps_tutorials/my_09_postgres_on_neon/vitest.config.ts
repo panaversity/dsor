@@ -31,7 +31,7 @@ export default defineConfig({
     // and it always gives the same answer, and for a step a learner runs once that is the better
     // trade. A flaky suite teaches nothing except not to trust the suite.
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
+    singleFork: true,
     isolate: true,
 
     // Five seconds is the default and is for tests that do arithmetic. These start real databases,

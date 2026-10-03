@@ -15,7 +15,7 @@ export default defineConfig({
     // correctly, which is worse than failing: it looks like the tests ran.
     setupFiles: ["test/support/env.ts"],
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
+    singleFork: true,
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },

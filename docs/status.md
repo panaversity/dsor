@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-02.
+2026-10-03.
 
 ## Specification
 
@@ -80,7 +80,9 @@ are true of all of them:
 - **Step 09 has a second test tier.** `pnpm check` proves its guarantees against
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers the two things one in-process connection cannot do — logging in
-  as a second user, and two writers racing — and reports `4 skipped` without a server.
+  as a second user, and two writers racing. Those four have been run, against a local
+  PostgreSQL 17 with two real logins, on 2026-10-03; without a server they report
+  `4 skipped` rather than passing quietly.
 - **A requirement id in a step's test title is a claim about that step, not about
   DSoR.** Step 08's 232 tests name 23 ids in their titles, and each step's README has a
   table saying which halves of which rules it does *not* meet. No L1, L2 or L3

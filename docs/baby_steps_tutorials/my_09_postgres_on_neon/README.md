@@ -131,15 +131,22 @@ guarantee holds.** Two things one in-process connection cannot do, and `audit.db
 - **race.** One connection cannot race itself, so `UNIQUE (chain, sequence)` under two writers
   needs a server. That test sends the same insert three times at once and expects exactly one to win.
 
-With no connection string it reports `4 skipped`, which says so rather than passing quietly.
+With no connection string it reports `4 skipped`, which says so rather than passing quietly. With one,
+it reports `4 passed` — and those four have been run, against a real PostgreSQL 17 with two real
+logins. Granting the application `UPDATE` on that server fails two of them, which is how you know they
+are asserting something.
 
-### Pointing it at Neon
+### Pointing it at a real server
 
 ```bash
 cp .env.example .env     # then fill in both connection strings
 ```
 
-Make a project at [neon.tech](https://neon.tech), then in its SQL editor:
+`.env` is read by `pnpm start`, `pnpm migrate` and `pnpm test:db` — through
+`process.loadEnvFile`, which is Node's own, so there is no dependency for it.
+
+**Neon**, which is what the map names: make a project at [neon.tech](https://neon.tech), then in its
+SQL editor:
 
 ```sql
 CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'something-long';
@@ -149,6 +156,22 @@ GRANT CONNECT ON DATABASE neondb TO dsor_runtime;
 No table rights there on purpose — `002_runtime_user.sql` grants the one it needs and revokes the
 rest, so the whole permission story is in a file you can read. `.env` is in `.gitignore` and must
 never be committed; `.env.example` has no secrets in it.
+
+**Or a PostgreSQL on your own machine**, which needs no account and is what these four tests were
+first run against:
+
+```bash
+brew install postgresql@17
+initdb -D /tmp/dsor-pg -U dsor_owner --auth=trust
+pg_ctl -D /tmp/dsor-pg -o "-p 55432 -k /tmp" -l /tmp/dsor-pg.log start
+createdb -h /tmp -p 55432 -U dsor_owner dsor_step09
+psql -h /tmp -p 55432 -U dsor_owner -d dsor_step09 \
+  -c "CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'pick-something';" \
+  -c "GRANT CONNECT ON DATABASE dsor_step09 TO dsor_runtime;"
+```
+
+Then two connection strings against `localhost:55432`, and `pnpm migrate && pnpm test:db`. Stop it
+afterwards with `pg_ctl -D /tmp/dsor-pg stop`.
 
 ## What `at` and `recorded_at` are both for
 
