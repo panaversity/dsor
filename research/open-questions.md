@@ -369,3 +369,29 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `current` label dated in the future. Checking a `current` label's time against the
     call would compare the connector's clock with DSoR's. Should a connector's declared
     `freshness` (`connector.schema.json`) be verified, and how?
+57. **Must DSoR check what a row-level security policy says, or only that one is in
+    force?** DSOR-RP-01b asks tenant tables for `FORCE ROW LEVEL SECURITY`. Step 16's
+    learner build checks at start-up that each company table has row-level security
+    enabled and forced. It does not read the policies. An owner who adds a second policy
+    `USING (true)` beside the real one opens every company's rows, and start-up sees
+    nothing. Step 11's database test compares every policy, but nothing runs it before
+    start-up. Should the reference profile name the policy a tenant table must carry, so
+    that DSoR can compare it?
+58. **Who besides `dsor_runtime` may touch DSoR's own store?** DSOR-MOD-01 asks for a store
+    "separate from agent context", and DSOR-RP-01a limits `dsor_runtime`. Step 16's
+    learner build checks only `dsor_runtime`'s privileges. A new login given `UPDATE` on
+    `dsor.audit`, or made a member of `dsor_runtime`, passes start-up. The owner and
+    Neon's own roles must keep theirs. Should the specification say which roles may hold
+    privileges on the control-plane store, beside DSOR-AUD-05b for reading the log?
+59. **How often must DSoR check its own store?** Step 16's learner build compares the
+    database with its map each time the program starts. A grant made while it runs is seen
+    only at the next start. No rule asks DSoR to check its store's privileges at all.
+    Should one, and is start-up enough, or must DSoR check again while it runs?
+60. **Can a foreign table be proven on a real database?** Step 16's learner build refuses
+    a foreign table at start-up, and its unit tests name one. Its owner test makes a view,
+    a materialized view, a partitioned table, a rule, a trigger, and a `SECURITY DEFINER`
+    function on Neon, inside a transaction it rolls back, but no foreign table. A foreign
+    table needs an extension such as `postgres_fdw`, which the build has not tried on Neon.
+    So no test shows the catalog read naming a real foreign table. Can a build make one on
+    Neon and roll it back, and should the reference profile forbid foreign tables in the
+    database that holds the control-plane store?

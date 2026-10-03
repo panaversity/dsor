@@ -624,15 +624,17 @@ that matters.
 - **What a policy says.** The inspector checks that row-level security is on and forced,
   not what its policies allow. A policy `USING (true)` beside the real one opens every
   company's rows. Step 11's database test compares every policy, but nothing runs it
-  before start-up. A map of policies is a second idea.
+  before start-up. A map of policies is a second idea. Open question 57.
 - **Which other roles may touch DSoR's store.** The inspector describes `dsor_runtime`
   only. A new login given `UPDATE` on the log is not seen. This belongs with "who may read
-  the log" (DSOR-AUD-05b).
-- **A grant made while the program runs** is seen at the next start only.
+  the log" (DSOR-AUD-05b). Open question 58.
+- **A grant made while the program runs** is seen at the next start only. Open question 59.
 - **A foreign table read from a real catalog.** The owner's rolled-back test makes no
-  foreign table, because that needs an extension on Neon. The unit tests name one.
+  foreign table, because that needs an extension on Neon. The unit tests name one. Open
+  question 60.
 
-**Reported to the earliest step that has it, to be fixed from there forward:**
+**Reported to the earliest step that has it, to be fixed from there forward.** Each has a
+plan in `mj_notes.md`, "Bugs found in earlier builds":
 
 - **Step 09:** the log's `add` never checks that one row was written. With a rule on the
   log, the program says records were kept that never were. This step refuses such a rule

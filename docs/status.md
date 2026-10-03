@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-01.
+2026-10-03.
 
 ## Specification
 
@@ -63,7 +63,8 @@ schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.m
 | 13 · bounded queries | Planned. A learner build, `mj_13_bounded_queries`, tests DSOR-QRY-01: `invoice.list` gives at most 10 rows whatever the caller asks, says `capped` when it cuts the limit, and gives a cursor for the next page. Every query's result is capped at 64 KiB, measured after line ⑨. Both numbers are the tutorial's, written in code, because the contract has no field for them (open questions 43 and 45). Step 12's suite checks a list by its rows, since a list takes no URI (open question 42). Nothing limits how many pages a caller reads: that is DSOR-CLS-04b, an L2 rule no step builds yet. The list's SQL is guarded by `pnpm test:db`, which CI does not run. Since the Stage 2 review (2026-10-01), the suite walks every page of a list, and the list's code reads through the bound company store. It is not the official step |
 | 14 · classification and masking | Planned. A learner build, `mj_14_classification_and_masking`, tests DSOR-CLS-01, DSOR-CLS-02a (the clearance half), DSOR-CLS-02b, DSOR-CLS-03, and DSOR-CLS-05 (without the actor chain, which waits for step 18). Every field has a label in `classifications.json`, a field with no label is `confidential`, and both agents have the clearance `internal`. Right after line ⑨, an agent's answer leaves out every field above its clearance and lists them, every successful answer carries its label (a refusal carries none yet: open question 46), and a refusal from an operation's code is masked too. Every read that returns data is recorded with the URIs it returned and how many, by migration `007`. People are not masked. Not built: the tenant's egress policy, tokens (DSOR-CLS-02c), and row budgets (DSOR-CLS-04b). A label is not checked against the value its field holds (open question 50). The record of a read is guarded by `pnpm test:db`, which CI does not run. Since the Stage 2 review (2026-10-01), labels apply at every depth, and a clearance that is not one of the four labels reads as `public`. It is not the official step |
 | 15 · freshness labels | Planned. A learner build, `mj_15_freshness_labels`, tests DSOR-FRS-01a (without a resource version, which waits for step 21) and DSOR-FRS-01b (against a cache planted in the tests: DSoR has none). Every successful query answer states its mode, `observed_at`, and connector; the label comes from the store through the bound store, the operation's code never writes it, and several reads give the stalest. The record of a read keeps the label. It runs on a fresh Neon branch made from `main`. Learning-path stage 2 is complete. It is not the official step |
-| 16 to 51 | Planned |
+| 16 · the control-plane store | Planned. A learner build, `mj_16_the_control_plane_store`, gives DSoR's own store a map, `store.json`, and refuses to start on a database that does not match it. It names a table or other relation the map does not list, one privilege too many or too few, a column the database fills in that the map lets the program write, a rule, a trigger, a `SECURITY DEFINER` function the program may run, and a company table without forced row-level security. Its tests name DSOR-AUD-04a and DSOR-RP-01b, which steps 09 and 11 first proved. DSOR-MOD-01 is claimed for audit evidence only, carried by the tests of steps 09 and 10; no test is titled with it. It runs on a Neon branch made from `step-15`. It is not the official step |
+| 17 to 51 | Planned |
 
 ## Learning-path stages
 
