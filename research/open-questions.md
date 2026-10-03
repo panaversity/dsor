@@ -395,3 +395,29 @@ for a human. An agent may gather evidence; it does not settle these alone.
     So no test shows the catalog read naming a real foreign table. Can a build make one on
     Neon and roll it back, and should the reference profile forbid foreign tables in the
     database that holds the control-plane store?
+61. **Does the store accept a record that it does not keep?** DSOR-EXE-03b says DSoR must
+    not execute if the control-plane store "cannot accept" the decision or intent record.
+    A rule `DO INSTEAD NOTHING` on the log, or a trigger that returns `NULL`, makes
+    PostgreSQL take the `INSERT` without an error and keep no row. Step 16's review found
+    that steps 09 to 16 then answered every call and kept no record. The learner builds
+    now count the rows that the `INSERT` wrote, and refuse unless the count is one. Should
+    DSOR-EXE-03b say that "accept" means that the record is kept? Should §47's table list
+    "a store that says yes and keeps nothing" as a fault to inject?
+62. **Does a foreign table share a transaction?** DSOR-EXE-04a applies "where the
+    connector's store and the control-plane store share a transaction". A foreign table
+    from `postgres_fdw` shows another database's table inside DSoR's database, so it looks
+    like one transaction. It is not one. The PostgreSQL manual says that `postgres_fdw`
+    cannot "prepare the remote transaction for two-phase commit". So a crash in `COMMIT`
+    can keep a payment in one database and lose DSoR's record in the other. A local run
+    on 2026-10-03 showed two more problems. PostgreSQL refuses row-level security on a
+    foreign table. And the tenant setting does not travel to the other database. Should
+    §21 or §36 say, as a common mistake, that a foreign table does not share a
+    transaction, so that DSOR-EXE-03a and the unknown-outcome rules apply?
+63. **Must a security check read PostgreSQL's own catalog?** The learner builds check
+    DSOR-RP-01a at start-up, and step 16 checks the store's privileges, through
+    PostgreSQL's catalog and functions such as `has_table_privilege`. The owner can put
+    `public` first in the search path, and make functions and views there with the same
+    names. Then the check reads the look-alikes, and a login that can change the log
+    passes. The learner builds now pin the search path to `pg_catalog` in a transaction of
+    their own, and their tests plant look-alikes. Should the reference profile require
+    that every security check reads PostgreSQL's own catalog?

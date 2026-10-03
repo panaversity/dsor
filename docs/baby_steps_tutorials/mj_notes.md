@@ -64,6 +64,16 @@ Steps 04 and 05 recorded their questions in
 instead: 19 and 20 from step 04, and 21 to 25 from step 05. Each one rests on a
 sentence of the specification, so it belongs with the specification's open questions.
 
+Step 16 recorded its questions there too:
+
+- 57: what a row-level security policy says.
+- 58: who besides `dsor_runtime` may touch DSoR's store.
+- 59: how often DSoR checks its store.
+- 60: a foreign table on a real database.
+- 61: a store that takes a record and keeps no row.
+- 62: a foreign table that seems to share a transaction.
+- 63: a security check that reads look-alikes in `public`.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -176,6 +186,16 @@ reviewer for a mutation sweep too.
   fields aside where answers are compared, as the request id already was.
 - **Edit by script, all or nothing.** Check every anchor in every file before writing any
   file. One half-applied run had to be found and redone (step 15).
+- **Give each parallel agent a scratch folder of its own** (the step 09 fixes,
+  2026-10-03). Seven agents carried one fix into seven builds at the same time. Two
+  agents saved a copy under the same file name, and one restore put step 14's code into
+  step 12. That agent saw a column that step 12's migrations do not have. It discarded
+  the run and ran it again.
+- **"No warning" is a signal, not a guard** (the step 09 fixes, 2026-10-04). The test
+  for the pool's pin expected no warning from PostgreSQL. A pool that skipped the pin
+  sent no `SET LOCAL`, so nothing warned, and the test passed. Now the test records each
+  statement and expects the exact list. This is Habit 1 in a test: credit for a question
+  that the check does not ask.
 
 ## Bugs found in earlier builds
 
@@ -296,9 +316,8 @@ Step 08 found one more on 2026-09-27:
 - **How both fixes travelled** (the Stage 2 campaign's way). `mj_09` first, by hand, then
   one agent per build for `mj_10` to `mj_16`, each on its own Neon branch, with every diff
   checked and committed one build at a time. Two lessons:
-  - **Give each parallel agent its own scratch folder.** Two agents saved a copy under the
-    same file name, and one restore put `mj_14`'s code into `mj_12` for one break run. The
-    agent noticed a column its migrations lack, threw the run away, and redid it.
+  - **A shared scratch file name let one run use another build's code.** See "Ways of
+    working that helped".
   - **Database runs time out under load.** With seven suites on Neon at once, a few tests
     timed out at 30 seconds, in runs before and after the fix. Every rerun was green.
 
@@ -371,6 +390,16 @@ the official tutorial's. A learner build does not change either. A maintainer de
   new password, so it puts the password in the chat. Step 15 reset it through Neon's API
   from a script that printed only the status. The map's setup could say: the console, or
   such a script, never the MCP tool.
+- **Analogy, from step 16: the clerk's notebook.** The new clerk keeps a personal
+  notebook of past work, notes, and lessons. That notebook is the agent's context. DSoR's
+  paperwork is never kept in it, and never copied from it. It fits DSOR-MOD-01's
+  "separate from agent context". Step 16's README stops the picture there: the notebook
+  does not explain the store's map.
+- **Step 16's entry in the map.** The map says of DSoR's store: "It is a second schema,
+  `dsor`, in the same Neon database". In the learner builds, step 09 already put the log
+  in `dsor`. So step 16's new idea was the map of the store, `store.json`, and the check
+  at start-up against it. The map entry could say that. Or step 09 could keep the log in
+  `app` until step 16.
 
 ## The Stage 2 review (2026-10-01)
 
