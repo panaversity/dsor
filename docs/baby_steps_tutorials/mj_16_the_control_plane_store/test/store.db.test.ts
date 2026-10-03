@@ -30,6 +30,25 @@ describe("today's database and its map", () => {
   it("step 16's decision 7: DSoR's store, as the database holds it today, matches its map exactly", async () => {
     expect(storeDifferences(map, await readCatalog(observer))).toStrictEqual([]);
   });
+
+  // SET LOCAL lasts only inside a transaction. Outside one, PostgreSQL ignores it and warns,
+  // and a look-alike in public (below) could answer again. So the read the program runs, on
+  // its pool, must open its own transaction first: no warning means the pin held. Found
+  // while carrying step 09's fix forward: with the pool's BEGIN READ ONLY removed, every
+  // test that reads the catalog still passed (step 16's README, decision 4).
+  it("step 16's decision 4: the catalog read pins the search path inside a transaction of its own", async () => {
+    const pool = newPool();
+    const notices: string[] = [];
+    pool.on("connect", (client) =>
+      client.on("notice", (notice) => notices.push(String(notice.message))),
+    );
+    try {
+      expect(storeDifferences(map, await readCatalog(pool))).toStrictEqual([]);
+      expect(notices).toStrictEqual([]);
+    } finally {
+      await pool.end();
+    }
+  });
 });
 
 // Today dsor_runtime holds nothing on a sequence, on the database, WITH GRANT OPTION, or

@@ -402,12 +402,16 @@ this way:
 | `src/main.ts` | Checks the map with the other files, before `operations:`. Compares the database with the map after step 09's login check, and refuses to start on any difference. A database it cannot reach is named, with no stack trace |
 | `test/catalogs.ts` | **New.** `today()`, the catalog as steps 09 to 15 left it, for the unit tests to change one thing at a time |
 | `test/store-map.test.ts`, `test/inspector.test.ts` | **New.** C4 and C7, then C2, C3, and C5, with no database |
-| `test/store.db.test.ts`, `test/owner-catalog.ts` | **New.** The planted catalog is the real one, and the store matches its map. The inspector asked about the owner sees every kind of privilege. The owner's rolled-back view, materialized view, partitioned table, rule, trigger, definer function, disabled lock, and look-alike function are each seen |
+| `test/store.db.test.ts`, `test/owner-catalog.ts` | **New.** The planted catalog is the real one, and the store matches its map. The inspector asked about the owner sees every kind of privilege. The owner's rolled-back view, materialized view, partitioned table, rule, trigger, definer function, disabled lock, and look-alike function are each seen. A read on a pool pins its search path inside a transaction of its own |
 | `test/startup.test.ts`, `test/program.db.test.ts` | C6: the program refuses to start with a broken map, with none, with a database it cannot reach, and with a map that leaves out a real table |
 | `test/db.ts`, `test/audit.db.test.ts` | Step 09's list of privileges starts from the catalog, not from three table names, and checks `SELECT` on each column too (decision 6) |
 
 Every other file is step 15's, without its `NEW IN STEP` markers. No new dependency, and no
 new migration (decision 7).
+
+Step 09's two fixes from this step's review ("Think it through") are in step 15 as well, so
+they are not this step's change. They live in `src/postgres.ts`, `test/audit.db.test.ts`,
+`test/db.ts`, and `test/owner-login-check.ts`, with a comment in `test/program.db.test.ts`.
 
 To see every line, from `docs/baby_steps_tutorials`:
 
@@ -635,14 +639,64 @@ that matters.
   foreign table, because that needs an extension on Neon. The unit tests name one. Open
   question 60.
 
-**Reported to the earliest step that has it, to be fixed from there forward.** Each has a
-plan in `mj_notes.md`, "Bugs found in earlier builds":
+**Found by this step's review, and fixed from step 09 on (2026-10-03).** Both bugs came
+from step 09. They were fixed there first, then carried into every step after it, this one
+included.
 
-- **Step 09:** the log's `add` never checks that one row was written. With a rule on the
-  log, the program says records were kept that never were. This step refuses such a rule
-  at start-up, but one added later is not seen.
-- **Step 09:** the login check's SQL has the same search path weakness that this step fixed
-  in the catalog read.
+- **The log trusted an `INSERT` that kept nothing.** `add` sent its `INSERT` and never
+  asked how many rows the database wrote. A rule `DO INSTEAD NOTHING` on `dsor.audit`, or a
+  trigger that returns `NULL`, makes the database take the `INSERT` and keep no row. In this
+  step's review, the program then answered every call and kept no record of any of them.
+  The inspector refuses such a rule at start-up, but one added while the program runs is
+  not seen.
+  - **Fixed:** `add` throws unless the `INSERT` wrote exactly one row. The check runs
+    inside `inCompany`'s transaction, so that transaction is rolled back, and the caller
+    hears `EVIDENCE_STORE_UNAVAILABLE` (DSOR-EXE-03b).
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. On the log's own connection, it swaps the log's
+    `INSERT` for `INSERT … SELECT … WHERE false`, with the same values: a real statement on
+    the real database, which keeps no row. It also checks that this statement ran once and
+    kept 0 rows, so an `INSERT` that fails cannot pass the test by accident.
+- **The start-up check read PostgreSQL's names through the search path.** The **search
+  path** is the list of schemas PostgreSQL looks in to find a name such as
+  `has_table_privilege`. The owner can put `public` first, and make functions there with
+  PostgreSQL's names that answer "no". Then a login that can change the log passes the
+  check. The review found it while fixing the same weakness in the catalog read.
+  - **Fixed:** the check runs inside a transaction that starts with
+    `SET LOCAL search_path TO pg_catalog, pg_temp`, as `readCatalog` does. `SET LOCAL` lasts
+    only until the transaction ends. The check takes one connection as well as a pool.
+  - **Caught by** two tests in `test/audit.db.test.ts`. The first, `DSOR-AUD-04a: the
+    start-up check reads PostgreSQL's own names, whatever the search path finds first`,
+    runs a child program as the owner, `test/owner-login-check.ts`, through
+    `ownerLoginCheck` in `test/db.ts`. Inside a transaction that is rolled back, it makes
+    look-alikes of `has_table_privilege`, `has_any_column_privilege`, and `pg_has_role`,
+    puts `public` first, and runs the check on that connection. The owner can change the
+    log, and the check must still say so. The second, `DSOR-AUD-04a: the start-up check
+    pins the search path inside a transaction of its own`, guards the pool's path, the one
+    the program uses. Outside a transaction, PostgreSQL ignores `SET LOCAL` and warns, so
+    the test expects no warning.
+- **The catalog read's pool path had no test of its own.** Its code was right. But with the
+  `BEGIN READ ONLY` removed from `readCatalog`'s pool path, `SET LOCAL` was ignored, and
+  all 16 tests in `test/store.db.test.ts` and `test/program.db.test.ts` still passed. The
+  owner's look-alike test reads on one connection, inside the owner's own transaction, so it
+  never takes the pool's path. A new test, `step 16's decision 4: the catalog read pins the
+  search path inside a transaction of its own`, in `test/store.db.test.ts`, expects no
+  warning, as the login check's test does.
+- **Red first:** before the fixes, two of the three tests failed. The call whose `INSERT`
+  kept no row answered with INV-1008's data. The owner's problems were four: logged in as
+  the owner, holds `BYPASSRLS`, owns 14 tables, and belongs to 2 other roles. The
+  look-alikes had hidden "is a member of pg_write_all_data" and "can change or remove
+  records in dsor.audit". The pool's test passed, as expected: the old check sent no
+  `SET LOCAL` at all.
+- **Broken on purpose, four ways:** `add` without its row count check, the login check
+  without `SET LOCAL`, the login check's pool path without `BEGIN READ ONLY`, and the
+  catalog read's pool path without `BEGIN READ ONLY`. Each turned its own test red, and only
+  that one. The first ran against every database test. The other three ran against the files
+  that reach the code they break: `test/audit.db.test.ts` and `test/program.db.test.ts` for
+  the login check, `test/store.db.test.ts` and `test/program.db.test.ts` for the catalog
+  read. Without `BEGIN`, PostgreSQL warned twice: "SET LOCAL can only be used in
+  transaction blocks", then "there is no transaction in progress". The database tests went
+  from 125 to 129.
 
 **Also worth knowing:**
 
