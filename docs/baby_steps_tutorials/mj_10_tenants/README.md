@@ -916,6 +916,14 @@ high finding, here.
   check without `SET LOCAL`, and the check on a pool without its `BEGIN READ ONLY`. Each
   turned its own test red, and only that one: 1 failed, 47 passed. The database tests
   went from 45 to 48.
+- **Strengthened after a review of step 15's port.** Two breaks passed every test above:
+  the check writing `pg_catalog.` in front of its three functions instead of pinning the
+  search path, and the pin skipped for the pool's own connections. So the owner's child
+  program also plants a look-alike of the view `pg_roles`, which says no login holds
+  `BYPASSRLS`, and the first test expects "holds BYPASSRLS" too. The pool's test notes
+  each statement its connection sends, and expects exactly `BEGIN READ ONLY`, the
+  `SET LOCAL`, the check, and `ROLLBACK`. Both breaks now fail a test, and the check
+  without `SET LOCAL` now fails both login tests, not one.
 
 **Left open, on purpose:**
 
