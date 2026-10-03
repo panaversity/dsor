@@ -38,9 +38,16 @@ export type Catalog = {
   definers: string[];
 };
 
+// Each privilege, then each again WITH GRANT OPTION, which would let the user hand it on
+// to another role, such as PUBLIC. No kind allows one held that way, so the map never
+// lists one (step 16's README, decision 3). Found by the review.
+function andWithGrant(privileges: string[]): string[] {
+  return [...privileges, ...privileges.map((p) => `${p} WITH GRANT OPTION`)];
+}
+
 // Every privilege PostgreSQL has for each kind of object, in the order it lists them.
 // MAINTAIN came with PostgreSQL 17.
-const ON_TABLES = [
+const ON_TABLES = andWithGrant([
   "SELECT",
   "INSERT",
   "UPDATE",
@@ -49,10 +56,10 @@ const ON_TABLES = [
   "REFERENCES",
   "TRIGGER",
   "MAINTAIN",
-];
-export const ON_COLUMNS: string[] = ["SELECT", "INSERT", "UPDATE", "REFERENCES"];
-const ON_SEQUENCES = ["USAGE", "SELECT", "UPDATE"];
-const ON_SCHEMAS = ["USAGE", "CREATE"];
+]);
+export const ON_COLUMNS: string[] = andWithGrant(["SELECT", "INSERT", "UPDATE", "REFERENCES"]);
+const ON_SEQUENCES = andWithGrant(["USAGE", "SELECT", "UPDATE"]);
+const ON_SCHEMAS = andWithGrant(["USAGE", "CREATE"]);
 // The relations a query can read rows from, by relkind. Indexes, sequences, and the like
 // hold no rows a query reads.
 const KIND_OF: Record<string, RelationKind> = {
