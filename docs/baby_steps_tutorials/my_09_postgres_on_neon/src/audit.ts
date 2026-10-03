@@ -272,9 +272,9 @@ export interface Head {
  */ export async function theHead(): Promise<Head> {
   const { rows } = await theDatabase().query<{ count: string; last_hash: string | null }>(
     `SELECT count(*)::text AS count,
-            (SELECT record_hash FROM audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
+            (SELECT record_hash FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
               AS last_hash
-     FROM audit WHERE chain = $1`,
+     FROM public.audit WHERE chain = $1`,
     [CHAIN],
   );
   const row = rows[0];
@@ -466,7 +466,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // text" — met again in SQL, where the cast creates it silently. Nine records passed before it bit.
   const { rows: tail } = await db.query<{ at_position: string; record_hash: string }>(
     `SELECT sequence::text AS at_position, record_hash
-     FROM audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1`,
+     FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1`,
     [CHAIN],
   );
   const last = tail[0];
@@ -601,7 +601,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     // UNIQUE violation from a writer that beat us to this position would answer yes to the first
     // question and no to the second, and treating it as success would lose a decision.
     const { rows: found } = await db.query<{ record_hash: string }>(
-      "SELECT record_hash FROM audit WHERE record_id = $1",
+      "SELECT record_hash FROM public.audit WHERE record_id = $1",
       [written.record_id],
     );
 
@@ -627,7 +627,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
  */
 async function insert(db: Database, written: AuditRecord): Promise<void> {
   await db.query(
-    `INSERT INTO audit (
+    `INSERT INTO public.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
        identity, correlation, operation, payload_hash, "authorization", result, reason
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
@@ -665,7 +665,7 @@ export async function theLog(): Promise<readonly AuditRecord[]> {
     // and `verifyChain` would have reported a perfectly good log as broken.
     `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash, at, tenant,
             kind, identity, correlation, operation, payload_hash, "authorization", result, reason
-     FROM audit WHERE chain = $1 ORDER BY sequence`,
+     FROM public.audit WHERE chain = $1 ORDER BY sequence`,
     [CHAIN],
   );
 
@@ -720,7 +720,7 @@ export async function forgetTheLog(): Promise<void> {
   // DELETE, which the application's own account is not allowed to run — so this only works for a
   // caller connected as the owner. That is the shape of the guarantee: a test holds the owner's
   // connection, and the program never does.
-  await theDatabase().query("DELETE FROM audit");
+  await theDatabase().query("DELETE FROM public.audit");
   unauthenticated = 0;
 }
 

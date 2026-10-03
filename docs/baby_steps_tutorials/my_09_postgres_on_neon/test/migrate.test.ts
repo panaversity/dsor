@@ -47,7 +47,7 @@ afterEach(async () => {
 /** What the database says it has applied. */
 async function remembered(): Promise<{ name: string; checksum: string }[]> {
   const { rows } = await db.query<{ name: string; checksum: string }>(
-    "SELECT name, checksum FROM applied_migrations ORDER BY name",
+    "SELECT name, checksum FROM public.applied_migrations ORDER BY name",
   );
 
   return rows;
@@ -167,7 +167,11 @@ describe("applying the migrations", () => {
     const recordRefuses = {
       exec: (sql: string) => db.exec(sql),
       query: async <T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> => {
-        if (sql.startsWith("INSERT INTO applied_migrations")) {
+        // Matched on the qualified name, because that is what the code sends. This said
+        // `startsWith("INSERT INTO applied_migrations")` and silently stopped injecting anything
+        // the day every table name was schema-qualified — the migration then succeeded and the
+        // test failed loudly, which is the good outcome of a brittle match rather than a quiet one.
+        if (sql.includes("INSERT INTO public.applied_migrations")) {
           throw new Error("the record could not be written");
         }
 

@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrationsIn } from "../src/migrations.ts";
+import { audit, theLog, useDatabase } from "../src/audit.ts";
 
 let db: PGlite;
 
@@ -388,5 +389,88 @@ describe("the database's own witness", () => {
     const row = await db.query<{ recorded_at: Date }>("SELECT recorded_at FROM audit");
 
     expect(row.rows[0]!.recorded_at.getUTCFullYear()).toBe(2019);
+  });
+});
+
+describe("a table the application makes to stand in front of the real one", () => {
+  /**
+   * The attack, and it is the quietest one in this step.
+   *
+   * `dsor_runtime` may not UPDATE or DELETE the audit log. It may still **create a temporary
+   * table**, because `TEMPORARY` on a database is granted to `PUBLIC` by default — and `pg_temp` is
+   * searched *before* `public`, implicitly, whatever `search_path` says. So an unqualified
+   * `INSERT INTO audit` lands in the application's own throwaway table, which disappears when the
+   * connection closes.
+   *
+   * Measured, before every table name was schema-qualified:
+   *
+   *     the application CAN create a temp table called audit
+   *     after one audit() call:  public.audit has 0 row(s),  pg_temp.audit has 1
+   *     theLog() reports 1 record(s)
+   *
+   * Nothing refuses, nothing is logged, and the program reports a healthy audit trail while the
+   * real one stays empty. That is a complete bypass of `DSOR-AUD-01` reachable from the
+   * application's own account, and the privilege system cannot stop it — taking `TEMPORARY` away
+   * would close this door and is not portable to write in a migration, and `search_path` cannot
+   * demote `pg_temp` for an unqualified name.
+   *
+   * What closes it is naming the schema: `public.audit`, every time, in every statement.
+   */
+  it("DSOR-AUD-01: a temp table named `audit` does not catch the log", async () => {
+    await db.exec("SET ROLE dsor_runtime;");
+    await db.exec("CREATE TEMP TABLE audit (LIKE public.audit INCLUDING ALL)");
+
+    // Not testing nothing: the shadow table really does exist and really is found first.
+    const resolved = await db.query<{ schema: string }>(
+      `SELECT n.nspname AS schema FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.oid = 'audit'::regclass`,
+    );
+
+    expect(resolved.rows[0]?.schema).toMatch(/^pg_temp/);
+
+    useDatabase(db);
+
+    await audit({
+      kind: "decision",
+      subject: "user_123",
+      requestId: "req_1",
+      operation: "invoice.get@1",
+      authorization: "ALLOW",
+      result: "ALLOWED",
+    });
+
+    const real = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");
+    const shadow = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM pg_temp.audit");
+
+    expect(real.rows[0]?.n).toBe("1");
+    expect(shadow.rows[0]?.n).toBe("0");
+    expect(await theLog()).toHaveLength(1);
+
+    await db.exec("RESET ROLE;");
+  });
+
+  it("DSOR-AUD-01: every statement the audit log runs names its schema", async () => {
+    // The guard above proves one statement. This one proves there is no second statement that was
+    // missed — a read that still resolves through `search_path` would report the shadow table's
+    // contents even though the write went to the real one, and the two tests together are what
+    // makes "every time" a claim rather than a hope.
+    const source = await import("node:fs").then((fs) =>
+      fs.readFileSync(fileURLToPath(new URL("../src/audit.ts", import.meta.url)), "utf8"),
+    );
+
+    for (const match of source.matchAll(/\b(?:FROM|INTO|UPDATE|JOIN)\s+(\w+(?:\.\w+)?)/g)) {
+      const named = match[1]!;
+
+      // `audit` and `applied_migrations` are this program's tables and must be qualified. Anything
+      // else matched here is a PostgreSQL catalogue or a CTE, which is not what this is about.
+      if (named === "audit" || named === "applied_migrations") {
+        throw new Error(
+          `\`${named}\` is used unqualified in src/audit.ts: write \`public.${named}\``,
+        );
+      }
+    }
+
+    expect(source).toContain("public.audit");
   });
 });

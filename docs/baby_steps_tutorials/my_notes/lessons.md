@@ -540,3 +540,20 @@ somebody type", which is a question about history, not about security.
 
 The general shape: when a guarantee is enforced by a system, ask the system whether it holds. Do not
 reconstruct the answer from the inputs that were supposed to produce it.
+
+## 26 · A privilege cannot stop a name from resolving somewhere else
+
+The audit table was protected by GRANTs, which decide *what may be done to a table*. They have
+nothing to say about *which table a name means*. `pg_temp` is searched before `public`, the
+application is allowed to create temp tables, and so the application could decide where its own
+audit writes went — without holding UPDATE, DELETE, or TRUNCATE on anything.
+
+Two defences for two different questions, and a step that only had the first:
+
+| question | answered by |
+| --- | --- |
+| what may this account do to this table? | GRANT / REVOKE |
+| which table does this name mean? | the schema-qualified name |
+
+So: in any SQL that carries a guarantee, write `public.thing`. The cost is nine characters and the
+alternative is a guarantee that holds only while nobody creates an awkwardly named table.

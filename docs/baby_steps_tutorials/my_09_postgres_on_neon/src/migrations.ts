@@ -217,7 +217,7 @@ export interface Runner {
  * the runner creates it, every time, with `IF NOT EXISTS`. That is the one piece of SQL in this
  * program that is allowed to run twice.
  */
-const REMEMBER = `CREATE TABLE IF NOT EXISTS applied_migrations (
+const REMEMBER = `CREATE TABLE IF NOT EXISTS public.applied_migrations (
   name       TEXT        PRIMARY KEY,
   checksum   TEXT        NOT NULL,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -239,7 +239,7 @@ export async function applyMigrations(db: Runner, folder: string): Promise<reado
   await db.exec(REMEMBER);
 
   const { rows } = await db.query<AppliedMigration>(
-    "SELECT name, checksum FROM applied_migrations ORDER BY name",
+    "SELECT name, checksum FROM public.applied_migrations ORDER BY name",
   );
   const todo = pending(migrationsIn(folder), rows);
 
@@ -248,7 +248,7 @@ export async function applyMigrations(db: Runner, folder: string): Promise<reado
 
     try {
       await db.exec(migration.sql);
-      await db.query("INSERT INTO applied_migrations (name, checksum) VALUES ($1, $2)", [
+      await db.query("INSERT INTO public.applied_migrations (name, checksum) VALUES ($1, $2)", [
         migration.name,
         checksumOf(migration.sql),
       ]);

@@ -1611,3 +1611,55 @@ situation it is in, and it is correct to refuse rather than guess.
 
 `pnpm check`: 23 files, 301 tests. `pnpm test:db`: 4. Both routes verify: 10 records on the server,
 20 on disk.
+
+## 80 · Every table name names its schema (2026-10-04)
+
+**The problem, and it is the quietest hole in step 09.** `dsor_runtime` may not UPDATE or DELETE the
+audit log. It may still create a **temporary table**, because `TEMPORARY` on a database is granted to
+`PUBLIC` by default — and `pg_temp` is searched *before* `public`, implicitly, whatever `search_path`
+says. So an unqualified `INSERT INTO audit` lands in the application's own throwaway table, which
+disappears when the connection closes. Measured:
+
+```text
+search_path: undefined
+the application CAN create a temp table called audit
+after one audit() call:  public.audit has 0 row(s),  pg_temp.audit has 1
+theLog() reports 1 record(s)
+```
+
+Read the last line again. The program reports a healthy audit trail — `theLog()` finds the record,
+`verifyChain` would be happy — while `public.audit` is empty and the evidence evaporates at
+disconnect. A complete bypass of `DSOR-AUD-01`, reachable from the application's own account, with
+nothing refused and nothing logged.
+
+**Why the privilege system cannot fix this.** Taking `TEMPORARY` away would close the door, and a
+migration cannot write it portably — `REVOKE TEMPORARY ON DATABASE` needs the database's name, which
+a migration file does not know. And `search_path` cannot demote `pg_temp` for an unqualified name:
+it is consulted first unless it is listed explicitly, which is a session setting, not a grant.
+
+**The decision.** Name the schema, every time, in every statement: `public.audit`,
+`public.applied_migrations`. Ten statements across `src/audit.ts` and `src/migrations.ts`. It does
+not depend on `search_path`, on a privilege, or on nobody having created a table with an awkward
+name.
+
+**Two tests, and they are different questions.** One creates the shadow table, checks that
+`'audit'::regclass` really does resolve to `pg_temp` first — so it is not testing nothing — and then
+proves the record lands in `public.audit` anyway. The other reads `src/audit.ts` and fails if
+`audit` or `applied_migrations` appears unqualified anywhere, because the first test proves one
+statement and "every time" needs the other.
+
+**Proved by breaking it.**
+
+| Sabotage | Result |
+| --- | --- |
+| unqualify the INSERT only | 2 fail |
+| unqualify the tail read only | 1 fails |
+| restored | 18 pass |
+
+**A side effect worth recording.** `migrate.test.ts` injects its fault by matching
+`sql.startsWith("INSERT INTO applied_migrations")`, and qualifying the name stopped it injecting
+anything at all — the migration then succeeded and the test failed, loudly, which is the good
+outcome of a brittle match rather than a quiet one. A test that recognises a statement by its text is
+coupled to that text; this one now says so in a comment.
+
+`pnpm check`: 23 files, 303 tests passed.
