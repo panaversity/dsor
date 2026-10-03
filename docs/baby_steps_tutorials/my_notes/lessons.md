@@ -557,3 +557,26 @@ Two defences for two different questions, and a step that only had the first:
 
 So: in any SQL that carries a guarantee, write `public.thing`. The cost is nine characters and the
 alternative is a guarantee that holds only while nobody creates an awkwardly named table.
+
+## 27 · A DEFAULT is not a permission
+
+`recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()` reads like the database owns that column. It does
+not. A default fills a value nobody supplied; it says nothing about who is allowed to supply one.
+The column was writable by the application for as long as the table-level `GRANT INSERT` existed.
+
+The same confusion, in other clothes, is worth watching for: a `CHECK` is not a permission either,
+and neither is a `NOT NULL`, a trigger that normalises a value, or a comment. Constraints describe
+what a row may look like. Privileges describe who may write it. When a column exists to be evidence
+*against* the writer, it needs the second kind, and in PostgreSQL that means a column-level GRANT.
+
+## 28 · Ask which constraint refused, not just whether something did
+
+A test that asserts "exactly one writer won" passes whatever did the refusing. Three writers sent the
+same `record_id` and the primary key turned two of them away, while the test's own comment said it
+was the only place `UNIQUE (chain, sequence)` could be seen. Dropping that constraint changed
+nothing.
+
+Two habits come out of it. Build the fixture so **only** the constraint under test can fire — here,
+different ids racing for one position. And assert the constraint's **name** from the error, because
+that is the difference between testing a guarantee and testing that the database is not completely
+broken.

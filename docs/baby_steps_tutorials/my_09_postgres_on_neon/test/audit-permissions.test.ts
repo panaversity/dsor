@@ -61,6 +61,47 @@ const A_DECISION = `INSERT INTO audit (
   '{"request_id":"req_1"}', 'invoice.issue@1', 'DENY', 'AUTHORIZATION_DENIED'
 )`;
 
+/**
+ * Split a SQL `VALUES (...)` list on the commas that separate values.
+ *
+ * Not a SQL parser — it only has to cope with `A_DECISION`, whose values include quoted strings
+ * with commas and braces inside them. Written out because `values.split(",")` cut the JSON
+ * literals in half and the test then failed for the wrong reason.
+ */
+function splitValues(values: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let current = "";
+
+  for (const character of values) {
+    if (character === "'") {
+      quoted = !quoted;
+    }
+
+    if (!quoted && (character === "(" || character === "{")) {
+      depth += 1;
+    }
+
+    if (!quoted && (character === ")" || character === "}")) {
+      depth -= 1;
+    }
+
+    if (character === "," && !quoted && depth === 0) {
+      out.push(current.trim());
+      current = "";
+
+      continue;
+    }
+
+    current += character;
+  }
+
+  out.push(current.trim());
+
+  return out;
+}
+
 /** Run SQL as the application's own account, and say what happened. */
 async function asTheApplication(sql: string): Promise<string> {
   await db.exec("SET ROLE dsor_runtime;");
@@ -85,43 +126,71 @@ async function reapplyThePermissions(): Promise<void> {
   }
 }
 
-/** Every privilege a table can carry, so "and nothing else" means all of them. */
-const EVERY_PRIVILEGE = [
-  "DELETE",
-  "INSERT",
-  "REFERENCES",
-  "SELECT",
-  "TRIGGER",
-  "TRUNCATE",
-  "UPDATE",
-] as const;
+/**
+ * Privileges that can be granted on a single column, and those that can only be granted on a table.
+ *
+ * The split matters because `has_table_privilege` and `has_column_privilege` answer different
+ * questions and `has_column_privilege` only accepts the four below.
+ */
+const PER_COLUMN = ["INSERT", "REFERENCES", "SELECT", "UPDATE"] as const;
+const TABLE_ONLY = ["DELETE", "TRIGGER", "TRUNCATE"] as const;
 
 /**
- * Which privileges the application's account actually holds on `audit`.
+ * Which privileges the application's account can use on `audit` at all, by any route.
  *
- * This asked `information_schema.role_table_grants WHERE grantee = 'dsor_runtime'`, and that was
- * wrong in a way that let a real hole through. A catalogue row exists only for a grant made **to
- * this role by name**. A privilege can reach the role by three other routes, and the catalogue
- * shows none of them:
+ * Two corrections live in this function, both found by measuring.
  *
- *   a database with a history (granted to PUBLIC):   UPDATE=true DELETE=true TRUNCATE=true
- *   ...and what `grantee = 'dsor_runtime'` showed:   nothing
- *
- * So `toEqual(["INSERT", "SELECT"])` could pass while the account held DELETE and TRUNCATE through
- * PUBLIC. `has_table_privilege` is the question actually worth asking: it answers for the role as
+ * It first read `information_schema.role_table_grants WHERE grantee = 'dsor_runtime'`. A catalogue
+ * row exists only for a grant made to the role **by name**, so a privilege reaching it through
+ * `PUBLIC` had no row and `toEqual(["INSERT", "SELECT"])` passed while the account held DELETE and
+ * TRUNCATE. `has_table_privilege` is the question worth asking: it answers for the role the way
  * PostgreSQL will when the statement runs, counting a direct grant, a grant to PUBLIC, a right
- * inherited through role membership, and superuser bypass. Measured 2026-10-04.
+ * inherited through role membership, and superuser bypass.
+ *
+ * Then `002_runtime_user.sql` started granting INSERT **column by column**, and
+ * `has_table_privilege` went to `false` for INSERT — correctly, because there is no table-level
+ * INSERT any more. Measured:
+ *
+ *   has_table_privilege (INSERT):                      false
+ *   has_column_privilege (record_id, INSERT):           true
+ *   has_column_privilege (recorded_at, INSERT):         false   <- the hole that closed
+ *   has_column_privilege (recorded_at, SELECT):         true
+ *
+ * So a privilege counts as held when the role has it on the table **or on any column**, which is
+ * what "can the application use this privilege" actually means.
  */
 async function privilegesOfTheApplication(): Promise<string[]> {
+  const columnwise = PER_COLUMN.map(
+    (privilege, i) =>
+      `(has_table_privilege('dsor_runtime', 'public.audit', '${privilege}') OR EXISTS (
+          SELECT 1 FROM pg_attribute a
+          WHERE a.attrelid = 'public.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+            AND has_column_privilege('dsor_runtime', 'public.audit', a.attname, '${privilege}')
+        )) AS any_${i}`,
+  );
+  const tablewise = TABLE_ONLY.map(
+    (privilege, i) =>
+      `has_table_privilege('dsor_runtime', 'public.audit', '${privilege}') AS all_${i}`,
+  );
   const held = await db.query<Record<string, boolean>>(
-    `SELECT ${EVERY_PRIVILEGE.map(
-      (privilege, i) =>
-        `has_table_privilege('dsor_runtime', 'public.audit', '${privilege}') AS held_${i}`,
-    ).join(", ")}`,
+    `SELECT ${[...columnwise, ...tablewise].join(", ")}`,
   );
   const row = held.rows[0];
 
-  return EVERY_PRIVILEGE.filter((_privilege, i) => row?.[`held_${i}`] === true);
+  return [
+    ...PER_COLUMN.filter((_privilege, i) => row?.[`any_${i}`] === true),
+    ...TABLE_ONLY.filter((_privilege, i) => row?.[`all_${i}`] === true),
+  ].sort();
+}
+
+/** Can the application write this one column? `recorded_at` is the column it must not. */
+async function mayInsertColumn(column: string): Promise<boolean> {
+  const { rows } = await db.query<{ may: boolean }>(
+    "SELECT has_column_privilege('dsor_runtime', 'public.audit', $1, 'INSERT') AS may",
+    [column],
+  );
+
+  return rows[0]?.may === true;
 }
 
 describe("what the application may do to the log", () => {
@@ -244,6 +313,92 @@ describe("what the table itself refuses", () => {
     await expect(db.exec(A_DECISION.replace(", 0,\n", ", -1,\n"))).rejects.toThrow(
       /check constraint/i,
     );
+  });
+
+  /**
+   * Every `NOT NULL` in `001_audit.sql`, one at a time.
+   *
+   * There are eleven of them and not one had a test. They are read out of the catalogue rather than
+   * listed here, so a column that gains or loses `NOT NULL` changes what this test checks without
+   * anybody remembering to update it — and a column added without `NOT NULL` that should have had it
+   * shows up as a missing row in the count below.
+   */
+  it("DSOR-AUD-01: every required column is refused when it is missing", async () => {
+    const required = await db.query<{ name: string }>(
+      `SELECT a.attname AS name FROM pg_attribute a
+       WHERE a.attrelid = 'public.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+         AND a.attnotnull
+         -- recorded_at is NOT NULL with a default, so leaving it out is not an error.
+         AND NOT EXISTS (SELECT 1 FROM pg_attrdef d WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum)
+       ORDER BY a.attname`,
+    );
+    const names = required.rows.map((row) => row.name);
+
+    // Pinned, so dropping a NOT NULL does not quietly shrink what this test covers.
+    expect(names).toStrictEqual([
+      "at",
+      "chain",
+      "correlation",
+      "identity",
+      "kind",
+      "previous_hash",
+      "record_hash",
+      "record_id",
+      "result",
+      "sequence",
+      "tenant",
+    ]);
+
+    for (const missing of names) {
+      // The valid INSERT, with one column and its value taken out.
+      const withoutIt = A_DECISION.replace(
+        /\(([^)]*)\)\s*VALUES\s*\(([\s\S]*)\)$/,
+        (_whole, columnList: string, values: string) => {
+          const columns = columnList.split(",").map((one) => one.trim());
+          const at = columns.indexOf(missing === "authorization" ? '"authorization"' : missing);
+          const given = splitValues(values);
+
+          columns.splice(at, 1);
+          given.splice(at, 1);
+
+          return `(${columns.join(", ")}) VALUES (${given.join(", ")})`;
+        },
+      );
+
+      await expect(db.exec(withoutIt), `missing ${missing}`).rejects.toThrow(
+        /null value in column|violates not-null/i,
+      );
+    }
+  });
+
+  it("DSOR-AUD-04b: a previous_hash that is not a sha256 is refused", async () => {
+    // `record_hash` had this test and `previous_hash` did not, though both carry the same CHECK.
+    // The chain's first link is the one that matters most: a genesis hash of the wrong shape would
+    // make every verification downstream meaningless.
+    for (const wrong of ["", "nothing", "md5:abc", "sha256:", "sha256:zz!!", " sha256:abc"]) {
+      const forged = A_DECISION.replace(
+        "'sha256:0000000000000000000000000000000000000000000000000000000000000000'",
+        `'${wrong}'`,
+      );
+
+      await expect(db.exec(forged), JSON.stringify(wrong)).rejects.toThrow(
+        /violates check constraint/i,
+      );
+    }
+  });
+
+  it("DSOR-AUD-01: there is one index on (chain, sequence), not two", async () => {
+    // `UNIQUE (chain, sequence)` is implemented as an index, and `001_audit.sql` also had a
+    // `CREATE INDEX` on the same two columns with a comment claiming reads would otherwise scan the
+    // whole table. Measured: two identical btrees, the second buying nothing and costing a write on
+    // every INSERT.
+    const indexes = await db.query<{ definition: string }>(
+      `SELECT indexdef AS definition FROM pg_indexes
+       WHERE tablename = 'audit' AND indexdef LIKE '%(chain, sequence)'`,
+    );
+
+    expect(indexes.rows).toHaveLength(1);
+    expect(indexes.rows[0]?.definition).toContain("UNIQUE");
   });
 });
 
@@ -375,20 +530,58 @@ describe("the database's own witness", () => {
     expect(secondsAgo).toBeLessThan(60);
   });
 
+  /**
+   * This test's title said "the application cannot set recorded_at" and its body said the opposite:
+   * "the application CAN set it, and what it cannot do is change it afterwards." Both were in the
+   * file at once, and the body was right. Two things were wrong with it.
+   *
+   * It ran as the **owner**, through `db.exec`, which can set any column and proves nothing about
+   * the application. And a table-level `GRANT INSERT ON audit` covers every column, so the
+   * application really could forge the witness:
+   *
+   *     INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
+   *
+   * The point of `recorded_at` is to be a time the application did not choose, so the fix was to
+   * make the title true rather than to soften it. `002_runtime_user.sql` grants INSERT column by
+   * column and leaves `recorded_at` out.
+   */
   it("DSOR-AUD-04b: the application cannot set recorded_at", async () => {
     const forged = A_DECISION.replace("record_id, chain", "recorded_at, record_id, chain").replace(
       "VALUES (\n  'audit",
       "VALUES (\n  '2019-01-01T00:00:00Z', 'audit",
     );
 
-    // It is not refused — the column has no special privilege — so this is honest about what the
-    // witness is worth: the application CAN set it, and what it cannot do is change it afterwards.
-    // What makes the gap evidence is that the code that writes records never sets it.
-    await db.exec(forged);
+    // As the application, which is the only account the claim is about.
+    expect(await asTheApplication(forged)).toMatch(/permission denied for table audit/);
+    expect(await mayInsertColumn("recorded_at")).toBe(false);
 
-    const row = await db.query<{ recorded_at: Date }>("SELECT recorded_at FROM audit");
+    // Nothing was written, so there is no forged witness to find.
+    const rows = await db.query("SELECT 1 FROM public.audit");
 
-    expect(row.rows[0]!.recorded_at.getUTCFullYear()).toBe(2019);
+    expect(rows.rows).toHaveLength(0);
+  });
+
+  it("DSOR-AUD-04b: the application can still write every other column, and read this one", async () => {
+    // The other half, and the reason a column-level grant is a real cost rather than free: leave a
+    // column out by accident and the application stops being able to record anything at all. Each
+    // column it does need is checked by name, so a future column added to `audit` without being
+    // added to the grant fails here rather than in production.
+    const columns = await db.query<{ name: string }>(
+      `SELECT a.attname AS name FROM pg_attribute a
+       WHERE a.attrelid = 'public.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+       ORDER BY a.attnum`,
+    );
+
+    expect(columns.rows.length).toBeGreaterThan(10);
+
+    for (const { name } of columns.rows) {
+      expect(await mayInsertColumn(name), `INSERT on ${name}`).toBe(name !== "recorded_at");
+    }
+
+    // And it can read the witness. A log the application cannot read is not a log it can verify.
+    await db.exec(A_DECISION);
+
+    expect(await asTheApplication("SELECT recorded_at FROM public.audit")).toBe("allowed");
   });
 });
 

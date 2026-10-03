@@ -118,27 +118,51 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
    * `UNIQUE (chain, sequence)` is what makes that safe, and this is the only test that can see it —
    * one connection cannot race itself, which is why the in-process tests leave this gap open and say
    * so. Exactly one writer must win.
+   *
+   * THE TEST USED TO PROVE SOMETHING ELSE. It sent the *same* `aDecision(0)` three times, which
+   * means the same `record_id` three times — so the two losers were refused by `audit_pkey`, the
+   * primary key on `record_id`, and `UNIQUE (chain, sequence)` was never consulted. Dropping the
+   * unique constraint entirely left the test green. Three different ids racing for one position is
+   * what actually exercises it, and the constraint is now named in the assertion so the claim above
+   * is checkable rather than decorative.
    */
   it("DSOR-AUD-01: two writers cannot both claim one position in the chain", async () => {
     await owner.query("DELETE FROM audit");
 
-    const [sql, params] = aDecision(0);
-    // The same insert, three times at once, on three connections from the pool. All three compute
-    // the same position, because none of them has committed yet.
-    const bothAtOnce = await Promise.allSettled([
-      application.query(sql, params),
-      application.query(sql, [...params]),
-      application.query(sql, [...params]),
-    ]);
+    // Three different record ids, all claiming position 0 of the same chain. Nothing here collides
+    // on the primary key, so only the unique constraint can refuse them.
+    const racers = [0, 1, 2].map((which) => aDecision(0, `audit:org_456:racer_${which}`));
+    const bothAtOnce = await Promise.allSettled(
+      racers.map(([sql, params]) => application.query(sql, params)),
+    );
     const won = bothAtOnce.filter((one) => one.status === "fulfilled");
     const lost = bothAtOnce.filter((one) => one.status === "rejected");
 
     expect(won).toHaveLength(1);
-    expect(lost.length).toBeGreaterThanOrEqual(1);
+    expect(lost).toHaveLength(2);
+
+    // Which constraint did the refusing. This is the whole point of the test.
+    for (const refusal of lost) {
+      const message = (refusal as PromiseRejectedResult).reason as { message: string };
+
+      expect(message.message).toMatch(/audit_chain_sequence_key/);
+    }
 
     const rows = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM audit");
 
     expect(rows.rows[0]!.n).toBe("1");
+  });
+
+  it("DSOR-AUD-01: one record id cannot be written twice, by the primary key", async () => {
+    // The other constraint, kept as its own test now that the one above no longer covers it by
+    // accident. Same id, two different positions — so only `audit_pkey` can refuse it.
+    await owner.query("DELETE FROM audit");
+
+    const [first, firstParams] = aDecision(0, "audit:org_456:same");
+    const [second, secondParams] = aDecision(1, "audit:org_456:same");
+
+    await application.query(first, firstParams);
+    await expect(application.query(second, secondParams)).rejects.toThrow(/audit_pkey/);
   });
 
   it("DSOR-AUD-04a: the application cannot grant itself the rights back", async () => {
@@ -146,11 +170,40 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
     // about the privilege, never about whether the statement threw. Lesson 19.
     await application.query("GRANT UPDATE ON audit TO dsor_runtime").catch(() => undefined);
 
-    const held = await application.query<{ privilege_type: string }>(
-      `SELECT privilege_type FROM information_schema.role_table_grants
-       WHERE grantee = 'dsor_runtime' AND table_name = 'audit' ORDER BY privilege_type`,
+    // Asked of PostgreSQL, not of the grant catalogue. This read `role_table_grants` and expected
+    // `["INSERT", "SELECT"]`, and it broke the day `002_runtime_user.sql` started granting INSERT
+    // column by column — correctly, because there is no table-level INSERT row any more. A
+    // catalogue listing answers "what did somebody type"; `has_*_privilege` answers "what will
+    // happen when the statement runs", counting a direct grant, PUBLIC, role membership, a column
+    // grant, and superuser bypass. Third place in this step that made the same mistake.
+    const may = await application.query<{
+      insert_any: boolean;
+      insert_recorded_at: boolean;
+      select: boolean;
+      update: boolean;
+      del: boolean;
+      truncate: boolean;
+    }>(
+      `SELECT has_column_privilege('dsor_runtime', 'public.audit', 'record_id', 'INSERT') AS insert_any,
+              has_column_privilege('dsor_runtime', 'public.audit', 'recorded_at', 'INSERT')
+                AS insert_recorded_at,
+              has_table_privilege('dsor_runtime', 'public.audit', 'SELECT')   AS select,
+              has_table_privilege('dsor_runtime', 'public.audit', 'UPDATE')   AS update,
+              has_table_privilege('dsor_runtime', 'public.audit', 'DELETE')   AS del,
+              has_table_privilege('dsor_runtime', 'public.audit', 'TRUNCATE') AS truncate`,
     );
+    const held = may.rows[0]!;
 
-    expect(held.rows.map((r) => r.privilege_type)).toEqual(["INSERT", "SELECT"]);
+    // What it needs, still there — the GRANT it issued itself changed nothing in either direction.
+    expect(held.insert_any).toBe(true);
+    expect(held.select).toBe(true);
+
+    // What it must not have, including the witness column it tried to grant itself nothing about.
+    expect([held.update, held.del, held.truncate, held.insert_recorded_at]).toStrictEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
   });
 });

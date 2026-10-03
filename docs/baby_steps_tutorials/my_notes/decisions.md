@@ -1663,3 +1663,79 @@ outcome of a brittle match rather than a quiet one. A test that recognises a sta
 coupled to that text; this one now says so in a comment.
 
 `pnpm check`: 23 files, 303 tests passed.
+
+## 81 · `recorded_at` becomes a witness the application really cannot forge (2026-10-04)
+
+**Three claims in `001_audit.sql` and its tests were false, and they were all about the same column.**
+
+`recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()` was described as "the time the database wrote the
+row ... which the application cannot set". A `DEFAULT` applies only when the INSERT leaves the column
+out; it is not a defence. And `GRANT INSERT ON audit` covers **every column**, so:
+
+```text
+INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
+```
+
+The application forged the database's own witness. The test named
+`DSOR-AUD-04b: the application cannot set recorded_at` said so in its own body — *"the application
+CAN set it"* — so the title and the body contradicted each other in the same file. And it ran as the
+**owner**, through `db.exec`, which can set any column and proves nothing about the application.
+
+**The decision: make the sentence true, not softer.** `002_runtime_user.sql` grants INSERT **column
+by column** and leaves `recorded_at` out:
+
+```text
+normal insert:            SUCCEEDED, recorded_at = the database's now()
+backdating recorded_at:   REFUSED, permission denied for table audit
+```
+
+The cost is real and the comment says it: add a column to `audit` and the list must gain it, or every
+INSERT fails. It fails *closed*, which is the right direction, and a test now checks every column of
+the table by name so a forgotten one fails in `pnpm check` rather than in production.
+
+**It also moved the privilege question again.** `has_table_privilege(..., 'INSERT')` went to `false`,
+correctly — there is no table-level INSERT any more. Measured:
+
+```text
+has_table_privilege  (INSERT):               false
+has_column_privilege (record_id, INSERT):     true
+has_column_privilege (recorded_at, INSERT):   false   <- the hole that closed
+has_column_privilege (recorded_at, SELECT):   true    <- it can still read the witness
+```
+
+So "which privileges does the application hold" means *table level **or** any column*, and the
+helper in `audit-permissions.test.ts` now asks that. This is the **third** place in step 09 that read
+a grant catalogue and got a security answer wrong; lesson 25 is the general form.
+
+## 82 · The duplicate index, and the race test that tested the wrong constraint (2026-10-04)
+
+**The index.** `001_audit.sql` had `UNIQUE (chain, sequence)` *and*
+`CREATE INDEX audit_chain_sequence ON audit (chain, sequence)`, the second with a comment claiming
+that without it "every read of a chain is a scan of the whole table". A UNIQUE constraint **is** an
+index, so the table carried two identical btrees:
+
+```text
+audit_chain_sequence       INDEX        ON public.audit USING btree (chain, sequence)
+audit_chain_sequence_key   UNIQUE INDEX ON public.audit USING btree (chain, sequence)
+```
+
+The second serves every read the first would. The first bought nothing and cost a write on every
+INSERT. Deleted, with the reflex named in a comment where it was, and a test that there is exactly
+one index on those columns and that it is the UNIQUE one.
+
+**The race test.** `audit.db.test.ts` claimed to be the only test that could see
+`UNIQUE (chain, sequence)` — and it sent the same `aDecision(0)` three times, which is the same
+`record_id` three times. The two losers were refused by `audit_pkey`. Dropping the unique constraint
+left the test green.
+
+Fixed by racing three **different** record ids for one position, so nothing can collide on the
+primary key, and by asserting **which constraint** refused:
+
+```text
+with UNIQUE (chain, sequence) dropped:   1 failed | 4 passed
+restored:                                5 passed
+```
+
+The primary key kept its own test, since the race test no longer covers it by accident.
+
+`pnpm check`: 23 files, 307 tests. `pnpm test:db`: 5. Both routes verify, 10 records each.

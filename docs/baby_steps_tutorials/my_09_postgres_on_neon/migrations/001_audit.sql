@@ -23,12 +23,23 @@ CREATE TABLE audit (
   -- there is no moment at which the database could stamp it and still be covered.
   at             TIMESTAMPTZ NOT NULL,
 
-  -- The time the database wrote the row, stamped by the database, which the application cannot set
-  -- and the hash does not cover. This is the independent witness: `setClock()` can still backdate
-  -- `at`, and a backdated record then sits here with its two times years apart.
+  -- The time the database wrote the row, stamped by the database, and not covered by the hash. This
+  -- is the independent witness: `setClock()` can still backdate `at`, and a backdated record then
+  -- sits here with its two times years apart.
   --
-  -- Detection, not prevention. A CHECK that `at` is close to now() would prevent it, and would also
-  -- refuse an innocent slow request — and a refused audit write means the operation does not run.
+  -- `DEFAULT now()` is what fills it, and a default is not a defence — it applies only when the
+  -- INSERT leaves the column out. This comment used to say "which the application cannot set", and
+  -- that was false. Measured:
+  --
+  --   INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
+  --
+  -- The application forged the witness, because `GRANT INSERT ON audit` covers every column. What
+  -- makes the sentence true is the **column-level** grant in `002_runtime_user.sql`, which lists
+  -- every column except this one.
+  --
+  -- Detection, not prevention, for `at` itself. A CHECK that `at` is close to now() would prevent a
+  -- backdated `at` and would also refuse an innocent slow request — and a refused audit write means
+  -- the operation does not run.
   recorded_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
   tenant         TEXT        NOT NULL,
@@ -55,6 +66,16 @@ CREATE TABLE audit (
   UNIQUE (chain, sequence)
 );
 
--- Reading the log means reading one chain in order. Without this, every read of a chain is a scan
--- of the whole table, which is fine at ten rows and not at ten million.
-CREATE INDEX audit_chain_sequence ON audit (chain, sequence);
+-- There was a `CREATE INDEX audit_chain_sequence ON audit (chain, sequence);` here, with the comment
+-- "without this, every read of a chain is a scan of the whole table". It was a duplicate, and the
+-- comment was false. `UNIQUE (chain, sequence)` above is implemented *as* an index, so the table
+-- already had two with identical columns:
+--
+--   audit_chain_sequence       INDEX        ON public.audit USING btree (chain, sequence)
+--   audit_chain_sequence_key   UNIQUE INDEX ON public.audit USING btree (chain, sequence)
+--
+-- The second serves every read the first would, so the first bought nothing and cost a write on
+-- every INSERT and space on disk. Measured 2026-10-04.
+--
+-- The lesson, and it is the reason this is a comment and not a silent deletion: a UNIQUE constraint
+-- is an index. Reaching for `CREATE INDEX` on the same columns is a reflex worth catching.

@@ -45,7 +45,24 @@
 
 -- Add a row, and read rows back. That is the whole of what writing an audit log needs — and it is
 -- this line, the narrow one, that the guarantee rests on.
-GRANT INSERT, SELECT ON audit TO dsor_runtime;
+--
+-- INSERT is granted **column by column**, and `recorded_at` is the one left out. A table-level
+-- `GRANT INSERT ON audit` covers every column, so the application could name `recorded_at` in its
+-- INSERT and set the database's own witness to anything it liked. Measured, before this changed:
+--
+--   INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
+--
+-- The point of `recorded_at` is to be a time the application did not choose, so a comment in
+-- `001_audit.sql` claiming it "cannot set" it had to become true rather than be softened.
+--
+-- The cost is real and worth knowing: add a column to `audit` and this list must gain it, or every
+-- INSERT starts failing. It fails *closed*, which is the right direction, and the error names the
+-- table rather than the column — so if the application ever reports `permission denied for table
+-- audit` right after a schema change, this list is the first place to look.
+GRANT INSERT (
+  record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
+  identity, correlation, operation, payload_hash, "authorization", result, reason
+), SELECT ON audit TO dsor_runtime;
 
 -- A no-op on a fresh table, and not a no-op on a database somebody has already been administering.
 -- A privilege can arrive without anyone granting it to this role: through PUBLIC, or through a role
