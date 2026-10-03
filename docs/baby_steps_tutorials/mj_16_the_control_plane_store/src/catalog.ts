@@ -80,6 +80,12 @@ const CATALOG = `
     (SELECT coalesce(json_agg(json_build_object(
         'name', o.nspname || '.' || c.relname, 'relkind', c.relkind,
         'enabled', c.relrowsecurity, 'forced', c.relforcerowsecurity,
+        -- Every rule but _RETURN, the one that makes a view a view. Every trigger but those
+        -- PostgreSQL makes itself, such as for a foreign key.
+        'rules', array(SELECT r.rulename::text FROM pg_rewrite r
+                        WHERE r.ev_class = c.oid AND r.rulename <> '_RETURN' ORDER BY 1),
+        'triggers', array(SELECT t.tgname::text FROM pg_trigger t
+                           WHERE t.tgrelid = c.oid AND NOT t.tgisinternal ORDER BY 1),
         'held', array(SELECT p FROM unnest($2::text[]) WITH ORDINALITY u(p, i)
                        WHERE has_table_privilege(w.name, c.oid, p) ORDER BY i),
         'columns', (SELECT coalesce(json_agg(json_build_object('name', a.attname,
@@ -109,7 +115,7 @@ const CATALOG = `
 type CatalogRow = {
   who: string;
   schemas: Catalog["schemas"];
-  relations: (Omit<Relation, "kind" | "rowSecurity" | "rules" | "triggers"> & {
+  relations: (Omit<Relation, "kind" | "rowSecurity"> & {
     relkind: string;
     enabled: boolean;
     forced: boolean;
@@ -149,15 +155,17 @@ export async function readCatalog(db: pg.Pool | pg.ClientBase, user?: string): P
   return {
     user: row.who,
     schemas: row.schemas,
-    relations: row.relations.map(({ name, relkind, held, columns, enabled, forced }) => ({
-      name,
-      kind: KIND_OF[relkind]!,
-      held,
-      columns,
-      rowSecurity: { enabled, forced },
-      rules: [],
-      triggers: [],
-    })),
+    relations: row.relations.map(
+      ({ name, relkind, held, columns, enabled, forced, rules, triggers }) => ({
+        name,
+        kind: KIND_OF[relkind]!,
+        held,
+        columns,
+        rowSecurity: { enabled, forced },
+        rules,
+        triggers,
+      }),
+    ),
     sequences: row.sequences,
     database: [],
     definers: row.definers,

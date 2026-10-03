@@ -30,6 +30,15 @@ export function storeDifferences(map: StoreMap, catalog: Catalog): string[] {
       found.push(`${relation.name} is a table that store.json does not name`);
     } else {
       found.push(...privilegesOf(relation, line, user), ...lockOf(relation, line));
+      // A rule DO INSTEAD NOTHING turns every INSERT into nothing, and a trigger that returns
+      // NULL does the same: the program would think its records were kept. Found by the
+      // review (step 16's README, decision 3).
+      for (const rule of relation.rules) {
+        found.push(`${relation.name} has the rule ${rule}, which no kind allows`);
+      }
+      for (const trigger of relation.triggers) {
+        found.push(`${relation.name} has the trigger ${trigger}, which no kind allows`);
+      }
     }
   }
   for (const name of map.tables.keys()) {
