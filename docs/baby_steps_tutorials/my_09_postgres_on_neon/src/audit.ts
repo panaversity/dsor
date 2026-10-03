@@ -456,7 +456,6 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // gets EVIDENCE_STORE_UNAVAILABLE, whose retry class is `safe_same_key`, which is true: nothing
   // ran. Untestable in-process, because one PGlite connection cannot race itself; it needs a real
   // server and two connections, which is what audit.db.test.ts is for.
-  const at = now();
   const db = theDatabase();
   // `AS at_position`, and the alias is load-bearing. `SELECT sequence::text` names its output column
   // `sequence`, and PostgreSQL resolves a bare name in ORDER BY to an **output** column first — so
@@ -473,6 +472,30 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const last = tail[0];
   const sequence = last === undefined ? 0 : Number(last.at_position) + 1;
   const previous = last?.record_hash ?? GENESIS;
+
+  // The clock is read **after** the tail, and the order is the guarantee, not a detail.
+  //
+  // It used to be read before, one line above `await db.query`, and that let a benign race leave
+  // the log permanently unverifiable. Two writers, the slow one sampling its time first:
+  //
+  //     seq 0  at 2026-10-04T00:00:01.000Z  req_fast
+  //     seq 1  at 2026-10-04T00:00:00.000Z  req_slow   <-- earlier time, later position
+  //     verifyChain: false
+  //
+  // Nothing was tampered with. Every hash agreed. `verifyChain` rejects a log whose times go
+  // backwards, so it called an intact chain broken — and the rows cannot be corrected, because the
+  // application has no UPDATE, which is the whole point of this step. One lost race and the
+  // evidence is unverifiable for good.
+  //
+  // Reading it here is airtight, and the reason is the UNIQUE constraint. A writer that takes
+  // position N+1 saw N in the tail, so N was already committed; and N's time was sampled on this
+  // line, before N's INSERT. So at(N) < commit(N) <= tail-read(N+1) < at(N+1), for every pair.
+  // The sequence and the clock can only agree.
+  //
+  // What this does not survive is the system clock itself going backwards — an NTP correction
+  // between two writes. That is a real hole and it is not fixable here: §30 wants a trusted time
+  // source, and this step has none. `recorded_at` is the database's own witness beside it.
+  const at = now();
 
   const body: Record<string, unknown> = {
     record_id: `${CHAIN}:${sequence}`,

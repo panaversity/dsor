@@ -1420,3 +1420,59 @@ being what would notice if a later change started reading the login through `in`
 | restored | 32 pass |
 
 `pnpm check`: 21 files, 293 tests passed.
+
+## 77 · The clock is read after the tail, not before (2026-10-04)
+
+**The problem.** `audit` read the time one line above the query that finds the chain's tail:
+
+```ts
+const at = now();
+const db = theDatabase();
+const { rows: tail } = await db.query(…);   // position and previous_hash come from here
+```
+
+So a writer's timestamp was fixed before it knew its position. Two writers, the slow one sampling
+first, and the log comes out like this — forced deterministically by holding the first writer's tail
+read open until the second had committed:
+
+```text
+seq 0  at 2026-10-04T00:00:01.000Z  req_fast
+seq 1  at 2026-10-04T00:00:00.000Z  req_slow   <-- earlier time, later position
+verifyChain: false
+```
+
+Nothing was tampered with. Every hash agreed. But `verifyChain` rejects a log whose times go
+backwards, so it reported an intact chain as broken — and the rows **cannot be corrected**, because
+the application has no UPDATE, which is this step's whole point. One lost race and the evidence is
+unverifiable for good. That is `DSOR-AUD-04b` failing: a tamper-evidence mechanism that cries wolf
+is as broken as one that misses the wolf.
+
+**The decision.** Read the clock after the tail, immediately before building the record.
+
+**Why that is airtight, and it is the UNIQUE constraint that makes it so.** A writer that takes
+position N+1 saw N in the tail, so N was already committed. N's time was sampled before N's INSERT.
+Therefore `at(N) < commit(N) <= tail-read(N+1) < at(N+1)`, for every pair. The sequence and the
+clock can only agree. Nothing about this depends on luck or on how fast a writer is.
+
+**What it does not fix.** The system clock going backwards — an NTP correction between two writes.
+Not fixable here: §30 wants a trusted time source and this step has none. `recorded_at` is the
+database's own witness beside it. Recorded in `open-questions.md`, not papered over.
+
+**Tested by fault injection, not by hope** (§47). A `Database` wrapper holds a writer at its tail
+read while another goes past. One PGlite connection cannot race itself — true, and I had used that
+as a reason not to test this at all, which was the wrong conclusion: the interleaving needs control
+over the order, not real concurrency. The real server keeps its job, which is the UNIQUE constraint
+under genuine parallelism.
+
+**Two mistakes while writing the test**, both found by running it:
+
+- The ten-writer case left writer 0 ungated, so it raced ahead, two writers computed position 0,
+  and the run died on `audit_pkey` instead of testing anything. Every writer is gated now, and they
+  are released one at a time in the reverse of creation order — the ordering that produced an
+  inversion at *every* link in the old code.
+- The gate matched `ORDER BY sequence DESC`, which `theHead`'s subquery also contains. It counted
+  `theHead` as an eleventh writer and reached past the end of the gate list. `isTheTailRead` now
+  matches on both halves, and the comment says why either half alone is not enough.
+
+**Proved by breaking it.** Clock read moved back above the tail: **all 4 fail**. Restored:
+`pnpm check` 22 files, 297 tests passed.

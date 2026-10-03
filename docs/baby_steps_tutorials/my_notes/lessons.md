@@ -493,3 +493,18 @@ The rule that follows: when hardening a reader of untrusted data, do not ask "do
 *value*?" Ask "does this line touch the object **at all**?" If it does, it belongs inside the
 `try`. The guard outside may test only `null` and `typeof`, the two questions no object can
 intercept.
+
+## 23 · "It cannot be tested in-process" usually means "not with real concurrency"
+
+The comment in `audit` said the race was untestable in-process, because one PGlite connection cannot
+race itself. Both halves of that are true and the conclusion was wrong. A race test needs **control
+over the order**, not parallelism — and a wrapper around the store gives it, deterministically, with
+no sleeps and no flakiness. Holding one writer at its read while another commits is a two-line
+`Database` and it reproduced the defect every single run.
+
+Real concurrency is still needed for what the *database* guarantees: the UNIQUE constraint, the
+atomic reservation, the isolation level. It is not needed to prove what *my own code* does when the
+order is unkind to it.
+
+The tell: a comment that explains why a guarantee is not tested. That is where the untested
+guarantees live.
