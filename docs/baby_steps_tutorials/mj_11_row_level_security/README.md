@@ -426,6 +426,9 @@ below do not show them. Two kinds of change in this folder do show: step 10's ne
 database tests read `dsor.audit` inside a company or through the owner, and decisions 1,
 7, and 10 bring this step's own fixes.
 
+*Changed by step 16's review, 2026-10-03:* its two fixes, from step 09 on, are in both
+folders too ("Think it through").
+
 To see every line, from `docs/baby_steps_tutorials`:
 
 ```bash
@@ -468,7 +471,7 @@ migration 003b_bounded_claims: done
 
 On your own branch made from `step-10`, one `pnpm migrate` prints a line for each file
 that branch has not run: `004` and `005`, with `003b` first if your step 10 did not run
-it. `pnpm check` prints `629 passed`, and `pnpm test:db` prints `75 passed`. Outside the
+it. `pnpm check` prints `629 passed`, and `pnpm test:db` prints `78 passed`. Outside the
 repository, three tests that compare the schemas with the repository's originals are
 skipped: `626 passed | 3 skipped`.
 
@@ -891,6 +894,51 @@ folder carries the fixes. Three began here.
   teeth. Fixed from step 11 on: the test writes a record of each company first, and may take
   60 s, as long as the owner's program it starts.
 
+**Found by step 16's review (2026-10-03), and fixed from step 09 on.**
+
+- **The log trusted an `INSERT` that kept nothing.** `add` sent its `INSERT` and never
+  asked how many rows the database wrote. But the owner can attach code to a table that
+  runs on each write: a rule `DO INSTEAD NOTHING`, or a trigger that returns `NULL`. With
+  either on `dsor.audit`, the database takes the `INSERT`, gives no error, and keeps no
+  row. In step 16's review, the program answered every call and kept no record of any of
+  them.
+  - **Fixed:** `add` throws unless its `INSERT` wrote exactly one row. It throws inside
+    `inCompany`'s work, so the transaction is rolled back, and the caller hears
+    `EVIDENCE_STORE_UNAVAILABLE` (DSOR-EXE-03b).
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. Like the `COMMIT` test beside it, it changes one
+    statement on its way to the real database: the log's `INSERT` becomes
+    `INSERT … SELECT … WHERE false`, which keeps no row. The test also checks that this
+    statement ran once and kept 0 rows, so an `INSERT` that failed cannot pass it.
+- **The start-up check read PostgreSQL's names through the search path.** The **search
+  path** is the list of schemas PostgreSQL looks in to find a name such as
+  `has_table_privilege`. The owner can put `public` first, and make functions there with
+  PostgreSQL's names that answer "no". Then a login that can change the log passes the
+  check.
+  - **Fixed:** the check runs inside a transaction that starts with
+    `SET LOCAL search_path TO pg_catalog, pg_temp`. So PostgreSQL's own schema,
+    `pg_catalog`, is searched first. `SET LOCAL` lasts only until the transaction ends.
+    The check takes one connection as well as a pool.
+  - **Caught by** two tests in `test/audit.db.test.ts`. `DSOR-AUD-04a: the start-up check
+    reads PostgreSQL's own names, whatever the search path finds first` starts a child
+    program, `test/owner-login-check.ts`. As the owner, inside a transaction that is
+    rolled back, it makes three look-alikes: functions in `public` with the names of
+    PostgreSQL's own, which answer "no". It puts `public` first and runs the check, which
+    must still say that the owner can change the log. `DSOR-AUD-04a: the start-up check
+    pins the search path inside a transaction of its own` guards the check the program
+    runs on its pool. Outside a transaction, PostgreSQL ignores `SET LOCAL` and warns, so
+    the test expects no warning.
+- **Red first, and broken on purpose.** Before the fixes, the first two tests failed. The
+  call answered with INV-1008's data. The owner's check named 4 problems and left out "can
+  change or remove records in dsor.audit" and "is a member of pg_write_all_data". The
+  third test passed, as expected: it guards the pool's new transaction. Then three breaks,
+  one at a time: `add` without its row count check, the check without `SET LOCAL`, and
+  the pool's check without its `BEGIN READ ONLY`. Each turned its own test red, and only
+  that one: 1 failed and 77 passed. With the third, the test heard PostgreSQL's two
+  warnings: "SET LOCAL can only be used in transaction blocks" and "there is no
+  transaction in progress". The 629 unit tests passed every time. The database tests went
+  from 75 to 78.
+
 **Left open on purpose:**
 
 - **A definer function that runs as a trigger.** `EXECUTE` is checked when a trigger is
@@ -926,10 +974,10 @@ folder carries the fixes. Three began here.
 - **`dsor.principal_id`**, which §36's example also sets, waits until something reads it.
 - **Decision 9's rule for joins and foreign keys** waits for a second business table.
 - **Neon's pooler is shown, not tested** (decision 8).
-- **`src/postgres.ts` is 273 lines,** far past the 150 at which a file wants splitting.
-  It was 268 before the Stage 2 review, whose decision 10 added 5. And `src/pipeline.ts`
-  is 228 lines and `src/registry.ts` 161, since that review's fixes from step 10.
-  Splitting them is a step of its own.
+- **`src/postgres.ts` is 303 lines,** far past the 150 at which a file wants splitting.
+  It was 268 before the Stage 2 review, whose decision 10 added 5, and step 16's review
+  added 30 (above). And `src/pipeline.ts` is 228 lines and `src/registry.ts` 161, since
+  the Stage 2 review's fixes from step 10. Splitting them is a step of its own.
 
 ## The rules this step meets
 
