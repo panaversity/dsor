@@ -1,6 +1,6 @@
 // Start-up. How the contract files are found, and the program itself.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,11 @@ import { STARTING_ROLES, contract, shipped, without } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
+// NEW IN STEP 16: the step's own files, named on the command line before a map of the test's.
+const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
+const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
+const CLASSIFICATIONS = fileURLToPath(new URL("../classifications.json", import.meta.url));
+const STORE = fileURLToPath(new URL("../store.json", import.meta.url));
 
 // No rule id: how start-up finds the contract files.
 describe("reading the contracts folder", () => {
@@ -162,6 +167,62 @@ describe("the program", () => {
       try {
         const missing = join(dir, "roles.json");
         const run = spawnSync(process.execPath, [MAIN, CONTRACTS, missing], { encoding: "utf8" });
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch(missing);
+        expect(run.stderr).not.toMatch(/^\s+at /m);
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
+  // NEW IN STEP 16: start-up checks the map too, with the other files, before it prints
+  // operations: (step 16's README, C6). The map is named after the labels file. DSOR_DB_URL
+  // is emptied, so a program that skipped the map would stop at the database, never use it.
+  it(
+    "step 16's decision 4: refuses to start with a broken map: it names every problem and exits with code 1",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-store-"));
+      try {
+        const map = JSON.parse(readFileSync(STORE, "utf8"));
+        map.tables["dsor.audit"].runtime.table.push("UPDATE");
+        map.schemas.dsor.runtime.push("CREATE");
+        const broken = join(dir, "store.json");
+        writeFileSync(broken, JSON.stringify(map));
+        const run = spawnSync(
+          process.execPath,
+          [MAIN, CONTRACTS, ROLES, INPUTS, CLASSIFICATIONS, broken],
+          { encoding: "utf8", env: { ...process.env, DSOR_DB_URL: "" } },
+        );
+        expect(run.status).toBe(1);
+        expect(run.stderr).toMatch(
+          "store.json: dsor.audit lists UPDATE, which an append-only table does not allow",
+        );
+        expect(run.stderr).toMatch(
+          "store.json: the schema dsor lists CREATE, and a schema allows only USAGE",
+        );
+        expect(run.stderr).not.toMatch(/^\s+at /m);
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
+  it(
+    "step 16's decision 4: refuses to start without its map: it names the file and prints no stack trace",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-store-"));
+      try {
+        const missing = join(dir, "store.json");
+        const run = spawnSync(
+          process.execPath,
+          [MAIN, CONTRACTS, ROLES, INPUTS, CLASSIFICATIONS, missing],
+          { encoding: "utf8", env: { ...process.env, DSOR_DB_URL: "" } },
+        );
         expect(run.status).toBe(1);
         expect(run.stderr).toMatch(missing);
         expect(run.stderr).not.toMatch(/^\s+at /m);

@@ -122,13 +122,17 @@ export function poolOfOne(): pg.Pool {
 }
 
 /**
- * Every privilege the logged-in user holds on this step's tables, their columns, their
- * sequences, and the schemas, one row per object. Held directly, through PUBLIC, or
- * through a role it belongs to: has_..._privilege counts them all.
+ * Every privilege the logged-in user holds on every relation, column, sequence, and schema
+ * outside PostgreSQL's own, one row per object. Held directly, through PUBLIC, or through
+ * a role it belongs to: has_..._privilege counts them all.
  */
+// NEW IN STEP 16: the relations, sequences, and schemas come from the catalog, not from a
+// list of names, so one that no list names still shows here (step 16's README, decision 6).
 export const PRIVILEGES_HELD = `
-  WITH tables(rel) AS (VALUES ('app.invoices'::regclass), ('dsor.audit'::regclass),
-                             ('dsor.migrations'::regclass)),
+  WITH outside(oid) AS (SELECT oid FROM pg_namespace
+                         WHERE nspname <> 'information_schema' AND nspname !~ '^pg_'),
+  tables(rel) AS (SELECT c.oid::regclass FROM pg_class c JOIN outside o ON o.oid = c.relnamespace
+                   WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')),
   on_tables AS (
     SELECT rel::text AS object, string_agg(p, ' ' ORDER BY p) AS held
       FROM tables, unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE',
@@ -143,14 +147,13 @@ export const PRIVILEGES_HELD = `
      WHERE has_column_privilege(a.attrelid, a.attnum, p) GROUP BY 1),
   on_sequences AS (
     SELECT c.oid::regclass::text AS object, string_agg(p, ' ' ORDER BY p) AS held
-      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace,
+      FROM pg_class c JOIN outside o ON o.oid = c.relnamespace,
            unnest(ARRAY['USAGE','SELECT','UPDATE']) AS p
-     WHERE c.relkind = 'S' AND n.nspname IN ('app', 'dsor')
-       AND has_sequence_privilege(c.oid, p) GROUP BY 1),
+     WHERE c.relkind = 'S' AND has_sequence_privilege(c.oid, p) GROUP BY 1),
   on_schemas AS (
-    SELECT 'schema ' || s AS object, string_agg(p, ' ' ORDER BY p) AS held
-      FROM unnest(ARRAY['app','dsor','public']) AS s, unnest(ARRAY['USAGE','CREATE']) AS p
-     WHERE has_schema_privilege(s, p) GROUP BY s)
+    SELECT 'schema ' || n.nspname AS object, string_agg(p, ' ' ORDER BY p) AS held
+      FROM pg_namespace n JOIN outside o ON o.oid = n.oid, unnest(ARRAY['USAGE','CREATE']) AS p
+     WHERE has_schema_privilege(n.oid, p) GROUP BY n.nspname)
   SELECT * FROM on_tables UNION ALL SELECT * FROM on_columns
   UNION ALL SELECT * FROM on_sequences UNION ALL SELECT * FROM on_schemas
   ORDER BY object`;

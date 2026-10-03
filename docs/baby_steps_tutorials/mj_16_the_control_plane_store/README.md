@@ -288,8 +288,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
   gives no difference.
 - **C3:** unit tests: `UPDATE` on `app.invoices`; no `SELECT` on `app.invoices`; `INSERT`
   on the log's column `sequence`; `CREATE` on the schema `dsor`; `USAGE` on the log's
-  sequence. Each is named. On the database: the inspector, asked about the owner, names
-  each of these (decision 8).
+  sequence. Each is named. On the database: the inspector, asked about the owner, sees
+  each of these (decision 8). The owner holds them on whole tables, so its run proves the
+  catalog read, and the planted catalogs prove the comparison.
 - **C4:** maps that give `app.invoices` `UPDATE`, give `dsor.audit` `UPDATE`, or put an
   `append-only` table in `app`. Each is refused when the map is checked.
 - **C5:** planted catalogs: row-level security off on `app.invoices`; on but not forced; a
