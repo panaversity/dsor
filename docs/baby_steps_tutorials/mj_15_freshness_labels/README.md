@@ -623,6 +623,14 @@ first, then fixed:
   own test red. The second and third left the other 115 database tests green. With the
   first, three more tests timed out at 30 s. Run again with the same break, those three
   passed, and the `INSERT` test failed alone. The database tests went from 113 to 116.
+- **Strengthened after a review of step 15's port.** Two breaks passed every test above:
+  the check writing `pg_catalog.` in front of its three functions instead of pinning the
+  search path, and the pin skipped for the pool's own connections. So the owner's child
+  program also plants a look-alike of the view `pg_roles`, which says no login holds
+  `BYPASSRLS`, and the first test expects "holds BYPASSRLS" too. The pool's test notes
+  each statement its connection sends, and expects exactly `BEGIN READ ONLY`, the
+  `SET LOCAL`, the check, and `ROLLBACK`. Both breaks now fail a test, and the check
+  without `SET LOCAL` now fails both login tests, not one.
 
 **Left open on purpose.** The learner chose each of these:
 
