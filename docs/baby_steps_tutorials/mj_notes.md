@@ -242,6 +242,46 @@ Step 08 found one more on 2026-09-27:
   of the program it starts. Fixed in step 15, and carried back to steps 11 to 14 on
   2026-10-02.
 
+- **The log trusts an INSERT that kept nothing** (from `mj_09`). Found by step 16's review
+  on 2026-10-03. `add` sends its `INSERT` and returns, and never asks how many rows were
+  written. The owner added a rule on `dsor.audit`, `DO INSTEAD NOTHING`. Every `INSERT`
+  then kept nothing, and the program answered every call and printed "14 calls answered,
+  so 14 records were written". A trigger that returns NULL does the same. Step 16 refuses
+  such a rule or trigger at start-up, but one added while the program runs is not seen.
+  **The plan, not yet done:**
+  1. Red first, in `mj_09`'s `test/audit.db.test.ts`, beside the tests whose `COMMIT` or
+     `INSERT` fails. Wrap the pooled client's `query`, as those tests do, so that the log's
+     `INSERT` runs as `INSERT … SELECT … WHERE false`: the real database takes it and keeps
+     no row. Expect `EVIDENCE_STORE_UNAVAILABLE`, no invoice, and no record
+     (DSOR-EXE-03b). No mock database: the statement is real.
+  2. The fix: `add` throws unless the `INSERT`'s `rowCount` is 1. One line in `mj_09`,
+     inside `inCompany`'s work from `mj_11` on.
+  3. By hand, once, on a throwaway branch: the owner adds the rule, and every call is
+     refused with `EVIDENCE_STORE_UNAVAILABLE`.
+- **The login check reads names through the search path** (from `mj_09`). Found by step
+  16's review on 2026-10-03, while fixing the same weakness in step 16's catalog read.
+  `runtimeRoleProblems` calls `has_table_privilege`, `has_any_column_privilege`, and
+  `pg_has_role`, and reads `pg_roles`, `pg_class`, and `pg_auth_members`, by bare name. The
+  owner can set `dsor_runtime`'s search path to `public, pg_catalog` and put look-alikes in
+  `public` that say "no". Then a login that can change the log passes the check.
+  **The plan, not yet done:**
+  1. Red first, a database test with an owner child program, as step 16's
+     `test/owner-catalog.ts` does. Inside one transaction that is rolled back, the owner
+     makes `public.has_table_privilege(text, text)` and
+     `public.has_any_column_privilege(text, text)` that return false, sets the search path
+     to `public, pg_catalog`, and runs the check on that connection. The owner can change
+     the log, so the check must still say so.
+  2. The fix: `runtimeRoleProblems` reads inside a transaction that starts with
+     `SET LOCAL search_path TO pg_catalog, pg_temp`, as step 16's `readCatalog` does. It
+     takes one connection as well as a pool, so the test can call it inside its
+     transaction.
+- **How both fixes travel** (the Stage 2 campaign's way). Fix `mj_09` first, then carry
+  each fix forward by hand to `mj_10` through `mj_16`, one commit per build. The code
+  differs from build to build: `add` runs inside `inCompany` from `mj_11`. Run each build's
+  `pnpm check`, and `pnpm test:db` on a Neon branch of its own. The project allows ten
+  branches, and nine are taken: `main` and `step-09` to `step-16`. One throwaway fits.
+  For more, free an old step's branch first, or reuse one build at a time.
+
 ## Proposed for the house list and the map
 
 Proposals only. The analogy list lives in the `write-for-learners` skill, and the map is
