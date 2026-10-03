@@ -580,3 +580,14 @@ Two habits come out of it. Build the fixture so **only** the constraint under te
 different ids racing for one position. And assert the constraint's **name** from the error, because
 that is the difference between testing a guarantee and testing that the database is not completely
 broken.
+
+## 29 · A break-it exercise that fails nothing is the finding
+
+Break 6 — "let the program keep the owner's connection" — failed **zero** tests. The guarantee was
+written down, the migration implemented it, nine tests covered it, and removing the thing that made
+it true changed nothing, because every test set up the identity it then tested.
+
+So the break-it list is not documentation written after the fact. It is a mutation sweep with
+sentences, and the useful ones are the breaks whose number is **lower than expected**. Write the
+exercise, run it, and when the count is 0 or 1 for something the step calls its whole point, the test
+suite is the thing that is broken.

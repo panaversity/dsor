@@ -696,4 +696,78 @@ describe("the audit log", () => {
     expect((await recorded()).sequence).toBe(0);
     expect(verifyChain(await theLog())).toBe(true);
   });
+  /**
+   * Every field of a record, changed one at a time, and every change caught.
+   *
+   * `hashOf` walks `FIELDS` — the schema's own property list — and copies each value into the
+   * snapshot it hashes, skipping only `record_hash`. Nothing tested that the walk reaches every
+   * field, and a field the hash did not cover would be a field an attacker could rewrite with the
+   * chain still verifying.
+   *
+   * Each substitution below is **schema-valid**, which the test asserts before it checks anything
+   * else. Without that, a change could be caught by `validateAuditRecord` rather than by the hash,
+   * and the test would pass while proving nothing about the tamper-evidence.
+   *
+   * Almost every field here is caught by check 2, the record's own hash, and that is the point:
+   * `sequence` and `chain` once had checks of their own and they were removed because both are
+   * inside the record and therefore inside the hash. This test is the standing evidence for that
+   * reasoning — if the hash ever stopped covering a field, the field would have no other guard, and
+   * the line here would go red.
+   */
+  it("DSOR-AUD-04b: no single field can be changed without the chain noticing", async () => {
+    await forgetTheLog();
+
+    // Every optional field filled, so the loop below has something to change in each of them.
+    const original = await recorded({
+      requestId: "req_1",
+      operation: "invoice.issue@1",
+      authorization: "DENY",
+      result: "AUTHORIZATION_DENIED",
+      reason: "the CFO may not issue invoices",
+      payloadHash: `sha256:${"a".repeat(64)}`,
+    });
+
+    expect(verifyChain([original], await theHead())).toBe(true);
+
+    const instead: Record<string, unknown> = {
+      record_id: "audit:org_456:99",
+      chain: "audit:org_999",
+      sequence: 7,
+      previous_hash: `sha256:${"1".repeat(64)}`,
+      record_hash: `sha256:${"2".repeat(64)}`,
+      at: "2030-01-01T00:00:00.000Z",
+      tenant: "org_999",
+      kind: "classified_read",
+      identity: { ...original.identity, subject: "cfo_100" },
+      operation: "invoice.get@1",
+      payload_hash: `sha256:${"b".repeat(64)}`,
+      authorization: "ALLOW",
+      result: "ALLOWED",
+      reason: "a different reason entirely",
+      correlation: { ...original.correlation, request_id: "req_999" },
+    };
+
+    // Every field this record actually carries is covered here, so a field the writer starts
+    // filling in later makes this fail rather than slip through untested.
+    //
+    // Not every field the *schema* declares: it has 24 properties and a decision record uses 15.
+    // The other nine belong to the record kinds this step does not write — proposal transitions and
+    // classified reads arrive in later steps, and they will bring their own cases here.
+    expect(Object.keys(instead).sort()).toStrictEqual(Object.keys(original).sort());
+    expect(Object.keys(instead).length).toBeLessThan(AUDIT_SCHEMA_FIELDS);
+
+    for (const [field, value] of Object.entries(instead)) {
+      const tampered = { ...original, [field]: value } as AuditRecord;
+
+      // Really changed, and still a valid record — so whatever catches it is the tamper-evidence
+      // and not the schema.
+      expect(tampered[field as keyof AuditRecord], field).not.toStrictEqual(
+        original[field as keyof AuditRecord],
+      );
+      expect(validateAuditRecord(tampered), `${field} is still schema-valid`).toBe(true);
+
+      expect(verifyChain([tampered]), `changing ${field} went unnoticed`).toBe(false);
+      expect(verifyChain([tampered], await theHead()), `changing ${field} vs the head`).toBe(false);
+    }
+  });
 });

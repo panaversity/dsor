@@ -42,10 +42,30 @@ Ours had every permission.
 | Account | May |
 | --- | --- |
 | the **owner** | create and change tables. Used by `pnpm migrate`, and never by the program |
-| **`dsor_runtime`** | `INSERT` and `SELECT` on `audit`. Not `UPDATE`, not `DELETE`, not `TRUNCATE` |
+| **`dsor_runtime`** | `INSERT` on every column except `recorded_at`, and `SELECT`. Not `UPDATE`, not `DELETE`, not `TRUNCATE` |
 
 That is `002_runtime_user.sql`, and it is the whole step. Step 08's chain makes tampering
 **detectable**; this makes it **refused**.
+
+**And the program has to actually *be* `dsor_runtime`.** This is the part that was wrong here for a
+while, and it is worth a paragraph because the mistake is easy and quiet. The migration took
+`UPDATE` away from `dsor_runtime` and the tests proved it — by running `SET ROLE dsor_runtime`
+themselves first. The program never ran that line. On the in-process route it connected as
+`postgres`, a superuser, and a superuser is allowed everything no matter what any `GRANT` says:
+
+```text
+PGlite connects as: postgres   superuser: true
+  UPDATE    SUCCEEDED
+  DELETE    SUCCEEDED
+  TRUNCATE  SUCCEEDED
+```
+
+280 tests were green, because not one of them asked who the program had connected as. A test that
+borrows the right identity proves the `GRANT`. Only a test that uses the program's **own**
+connection proves the program. `src/database.ts` now drops to the application's role and then asks
+the database whether this connection could rewrite the log, refusing to start if it could — on both
+routes, because a connection string pointing at the owner is a configuration mistake, not a
+preference.
 
 ## Run it
 
@@ -139,7 +159,7 @@ Those refusals are PostgreSQL's own privilege system, not our code checking itse
 ## Two commands, and what each proves
 
 ```bash
-pnpm check     # 278 tests, no database and no network needed
+pnpm check     # 308 tests, no database and no network needed
 pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
 ```
 
@@ -152,7 +172,7 @@ guarantee holds.** Two things one in-process connection cannot do, and `audit.db
 - **race.** One connection cannot race itself, so `UNIQUE (chain, sequence)` under two writers
   needs a server. That test sends the same insert three times at once and expects exactly one to win.
 
-With no connection string it reports `4 skipped`, which says so rather than passing quietly. With one,
+With no connection string it reports `5 skipped`, which says so rather than passing quietly. With one,
 it reports `4 passed` — and those four have been run, against a real PostgreSQL 17 with two real
 logins. Granting the application `UPDATE` on that server fails two of them, which is how you know they
 are asserting something.
@@ -202,8 +222,22 @@ The table has two times, and the reason is worth knowing.
 exists, and `UPDATE` is revoked afterwards, so there is no moment at which the database could stamp it
 and still be covered by the hash.
 
-So the database stamps `recorded_at` as well — which the application cannot change and the hash does
-not cover. A backdated record arrives with its two times far apart:
+So the database stamps `recorded_at` as well — which the application cannot set or change, and which
+the hash does not cover. "Cannot set" is a recent repair: `recorded_at TIMESTAMPTZ NOT NULL DEFAULT
+now()` reads as though the database owns the column, and a `DEFAULT` only fills a value nobody
+supplied. `GRANT INSERT ON audit` covers **every column**, so the application could simply name it:
+
+```text
+INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
+```
+
+The point of `recorded_at` is to be a time the application did not choose, so `002_runtime_user.sql`
+grants `INSERT` **column by column** and leaves this one out. A `DEFAULT` is not a permission. The
+cost is worth knowing: add a column to `audit` and that list must gain it, or every `INSERT` starts
+failing — which fails closed, and a test checks every column of the table by name so it fails in
+`pnpm check` rather than in production.
+
+A backdated record arrives with its two times far apart:
 
 ```text
  at          = 2019-01-01 00:00:00
@@ -225,13 +259,17 @@ git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
 | `migrations/001_audit.sql` | new — the table, with the primary key and `UNIQUE (chain, sequence)` |
 | `migrations/002_runtime_user.sql` | new — the grant and the revokes. The step |
 | `src/migrations.ts` | new — finding the migrations, deciding which are left, applying them |
-| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk |
-| `src/audit.ts` | the log is SQL now: `INSERT`, `SELECT`, and a head that is a query |
+| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk, and in both cases **as `dsor_runtime`** |
+| `src/audit.ts` | the log is SQL now: `INSERT`, `SELECT`, and a head that is a query. Every table name says `public.` |
+| `src/login.ts` | one line moved inside a `try`, because `Object.hasOwn` can throw |
 | `src/pipeline.ts`, `src/operations.ts` | async, because a database write is |
 | `scripts/migrate.ts` | new — `pnpm migrate` |
+| `test/database.test.ts` | new — who the program connects as. Break 6 is zero failures without it |
+| `test/audit-race.test.ts` | new — a writer held at its tail read while another commits |
+| `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply |
 | everything in `test/` | async, and nine files now need a database |
 
-232 tests became 278.
+232 tests became 308.
 
 ## The pipeline became async, and that was a decision
 
@@ -250,6 +288,11 @@ await expect(door(...)).rejects.toThrow(/power went out/)  // what it has to be
 
 ## Break it
 
+Nine of them, because this step has nine separate guarantees and a break that takes down half the
+suite does not tell you which one you broke. Every number below was produced by actually making the
+change and running `pnpm check`, never written from memory — and several of them were wrong until
+they were re-run.
+
 ### Break 1 · let the application change the log
 
 In `migrations/002_runtime_user.sql`, grant it everything:
@@ -259,10 +302,11 @@ GRANT ALL ON audit TO dsor_runtime;
 ```
 
 ```text
- Tests  4 failed | 274 passed (278)
+ Tests  6 failed | 302 passed (308)
 ```
 
-Four tests, and the first of them is the step's "done when".
+Six, and the first of them is the step's "done when". `GRANT ALL` also hands back `INSERT` on
+`recorded_at`, so the forged-witness tests go red alongside the `UPDATE` ones.
 
 ### Break 2 · leave `TRUNCATE` out of the revoke
 
@@ -271,7 +315,7 @@ REVOKE UPDATE, DELETE ON audit FROM dsor_runtime;   -- was UPDATE, DELETE, TRUNC
 ```
 
 ```text
- Tests  2 failed | 276 passed (278)
+ Tests  2 failed | 306 passed (308)
 ```
 
 `TRUNCATE` is its own privilege, not part of `DELETE`, and it empties the table in one statement. A
@@ -282,7 +326,7 @@ log the application can `TRUNCATE` is not append-only whatever else is true of i
 In `001_audit.sql`, replace `UNIQUE (chain, sequence)` with `CHECK (true)`.
 
 ```text
- Tests  1 failed | 277 passed (278)
+ Tests  2 failed | 306 passed (308)
 ```
 
 ### Break 4 · let a migration be edited after it ran
@@ -294,7 +338,7 @@ if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checks
 ```
 
 ```text
- Tests  2 failed | 276 passed (278)
+ Tests  2 failed | 306 passed (308)
 ```
 
 ### Break 5 · order the chain as text
@@ -302,11 +346,11 @@ if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checks
 In `src/audit.ts`, drop the alias:
 
 ```sql
-SELECT sequence::text, record_hash FROM audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1
+SELECT sequence::text, record_hash FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1
 ```
 
 ```text
- Tests  17 failed | 261 passed (278)
+ Tests  62 failed | 246 passed (308)
 ```
 
 This is the bug that actually happened, and it survived nine records before it bit. `SELECT
@@ -314,7 +358,75 @@ sequence::text` names its output column `sequence`, and PostgreSQL resolves a ba
 to an **output** column first — so the ordering becomes text, where `"9"` sorts after `"10"`. The tail
 freezes at 9 and every write after that computes 10 and dies on the primary key.
 
-Restore each break and confirm `pnpm check` prints `278 passed` again.
+### Break 6 · let the program keep the owner's connection
+
+In `src/database.ts`, comment out the line that drops to the application's role:
+
+```ts
+// await becomeTheApplication(db);
+```
+
+```text
+ Tests  11 failed | 297 passed (308)
+```
+
+The largest number here after Break 5, and it was **zero** until `test/database.test.ts` existed.
+Every privilege test still passed, because each one ran `SET ROLE dsor_runtime` itself. This is the
+step's sharpest lesson: a permission test has to use the connection the **program** ended up
+holding, or it is testing the database and not the program.
+
+### Break 7 · leave the schema off a table name
+
+In `src/audit.ts`, write `INSERT INTO audit (` instead of `INSERT INTO public.audit (`.
+
+```text
+ Tests  2 failed | 306 passed (308)
+```
+
+`dsor_runtime` cannot `UPDATE` or `DELETE` the log, and it *can* create a temporary table, because
+`TEMPORARY` is granted to `PUBLIC` by default. `pg_temp` is searched before `public` whatever
+`search_path` says, so an unqualified `INSERT INTO audit` goes to the application's own throwaway
+table:
+
+```text
+after one audit() call:  public.audit has 0 row(s),  pg_temp.audit has 1
+theLog() reports 1 record(s)
+```
+
+The program reports a healthy audit trail, the real log stays empty, and the evidence disappears when
+the connection closes. No privilege closes this one — a GRANT decides what may be done to a table, not
+which table a name means.
+
+### Break 8 · treat a lost reply as a failed write
+
+In `src/audit.ts`, replace the `try`/`catch` around `insert(db, written)` with a bare
+`await insert(db, written);`.
+
+```text
+ Tests  2 failed | 306 passed (308)
+```
+
+A database can commit an `INSERT` and lose the **reply**. Step 08's store was an array, which either
+takes the record or throws; a network has a third answer. Treating it as failure told the caller the
+decision "could not be written down, so it was not carried out" while the row sat in the table saying
+`ALLOWED` — the log and the answer contradicting each other, which is the one thing a decision record
+exists to prevent.
+
+### Break 9 · read the clock before the tail
+
+In `src/audit.ts`, move `const at = now();` back above `const db = theDatabase();`.
+
+```text
+ Tests  4 failed | 304 passed (308)
+```
+
+A writer that gets overtaken then stamps an earlier time at a later position. Nothing is tampered
+with, every hash agrees, and `verifyChain` reports the chain broken — permanently, because the
+application has no `UPDATE` to correct the rows with. Reading the clock after the tail is airtight
+and the unique constraint is why: a writer that takes position N+1 saw N in the tail, so N was
+committed, and N's time was sampled before N's `INSERT`.
+
+Restore each break and confirm `pnpm check` prints `308 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -348,11 +460,12 @@ Restore each break and confirm `pnpm check` prints `278 passed` again.
    change *detectable*; this makes it refused.
 2. Because the fingerprint covers `at`, and the fingerprint is computed before the row exists — and
    `UPDATE` is revoked afterwards, so there is no later moment to stamp it in. `recorded_at` is the
-   database's own time, which the application cannot set and the hash does not cover, so the two
-   disagreeing is the evidence.
+   database's own time, which the application cannot set — `INSERT` is granted column by column and
+   that column is left out — and which the hash does not cover, so the two disagreeing is the
+   evidence.
 3. That the application is refused when it **logs in** as itself rather than assuming the role, and
    that two writers cannot both take one position in the chain. Both need a server and both are in
-   `audit.db.test.ts`, which reports `4 skipped` without one.
+   `audit.db.test.ts`, which reports `5 skipped` without one.
 4. That the line was not what was protecting you. Measured: a freshly created table grants nobody
    anything, so there was nothing for a `REVOKE` to take away — the guarantee rested on the `GRANT`
    being narrow. The `REVOKE`s matter on a database with a history, and the tests now reach them by
@@ -372,13 +485,28 @@ Restore each break and confirm `pnpm check` prints `278 passed` again.
 - **[DSOR-AUD-02a · L1]** Operational audit MUST NOT be stored only as agent memory.
   ([§29](../../../specs/dsor/03-execution.md#29-audit-and-decision-evidence))
 
-`DSOR-AUD-04a` is met for the account the application connects as: `INSERT` and `SELECT`, with
-`UPDATE`, `DELETE` and `TRUNCATE` revoked, proven by tests that run each one and require PostgreSQL to
-refuse. Two limits stated plainly. The in-process tests reach that account with `SET ROLE` rather than
-by logging in, and the test that logs in properly needs a server. And the **owner** can still do
-anything — which is the design, not a gap: migrations have to come from somewhere. What that means is
-that this rule is met against the *application*, and a human with the owner's connection string is
-outside what any `GRANT` can say about.
+`DSOR-AUD-04a` is met for the account the application connects as: `INSERT` on every column except
+`recorded_at`, and `SELECT`, with `UPDATE`, `DELETE` and `TRUNCATE` revoked — proven by tests that run
+each one and require PostgreSQL to refuse, **through the connection the program itself ends up
+holding**. That last clause is the whole of Break 6, and it was the gap: the rule says the *runtime
+identity* must not be able to update or delete records, and for a while the runtime identity was
+`postgres`.
+
+Three limits, stated plainly.
+
+1. On the in-process route there are no logins at all — PGlite hands out one connection and it
+   belongs to the owner — so the program reaches the application's account with `SET ROLE`. On a real
+   server the limit is the **server's**, because the program only ever holds `dsor_runtime`'s
+   password; here it is the program's own choice, and a `RESET ROLE` would lift it. What the choice
+   does prove is that the grants are enough for the program to do its job and no more, which would
+   otherwise stay untested until the day it ran against Neon. `audit.db.test.ts` is the test that
+   logs in properly, and it needs a server.
+2. The **owner** can still do anything, which is the design and not a gap: migrations have to come
+   from somewhere. So this rule is met against the *application*, and a human with the owner's
+   connection string is outside what any `GRANT` can say about.
+3. `refuseIfItCanRewriteHistory` is a check at start-up, not a boundary. It stops a misconfigured
+   deployment from keeping a log it could edit; it does not stop someone who can change the
+   configuration.
 
 `DSOR-AUD-02a` is met in the only sense it can be here: the log is in PostgreSQL, and there is no
 agent memory in this program for it to be in instead. The rule exists to stop an implementation

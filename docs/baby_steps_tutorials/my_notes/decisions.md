@@ -1739,3 +1739,33 @@ restored:                                5 passed
 The primary key kept its own test, since the race test no longer covers it by accident.
 
 `pnpm check`: 23 files, 307 tests. `pnpm test:db`: 5. Both routes verify, 10 records each.
+
+## 83 · Every number in the README's Break-it section was re-measured (2026-10-04)
+
+The step's nine guarantees now have nine break-it exercises, and **every count was produced by making
+the change and running `pnpm check`**, not written from memory. The old section had five, all stale
+(the suite had grown from 278 to 308) and one wrong when it was written — Break 1 claimed four
+failures.
+
+| Break | Measured |
+| --- | --- |
+| 1 · `GRANT ALL ON audit TO dsor_runtime` | 6 failed / 302 passed |
+| 2 · leave `TRUNCATE` out of the revoke | 2 failed |
+| 3 · take away `UNIQUE (chain, sequence)` | 2 failed |
+| 4 · let a migration be edited after it ran | 2 failed |
+| 5 · order the chain as text (drop the alias) | **62 failed** |
+| 6 · let the program keep the owner's connection | **11 failed** |
+| 7 · leave the schema off a table name | 2 failed |
+| 8 · treat a lost reply as a failed write | 2 failed |
+| 9 · read the clock before the tail | 4 failed |
+
+Break 6 is the one worth staring at. It was **zero failures** before `test/database.test.ts` existed
+— every privilege test passed, because each one ran `SET ROLE dsor_runtime` itself. A guarantee with
+a break-it exercise that fails nothing is a guarantee nobody is holding.
+
+Also corrected in the README: the two-accounts table (INSERT is column-level now), the `recorded_at`
+paragraph (it said "cannot change" where the truth was "could trivially set"), the file list, the
+`5 skipped` count for the database tier, and the `DSOR-AUD-04a` section — which claimed the rule was
+met while the runtime identity was `postgres`, and which now states three limits instead of two: the
+`SET ROLE` substitution on the in-process route, the owner's remaining power, and the fact that
+`refuseIfItCanRewriteHistory` is a start-up check and not a boundary.
