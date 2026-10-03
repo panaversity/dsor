@@ -524,7 +524,7 @@ On your own branch made from `step-09`, one `pnpm migrate` prints all four
 `migration … done` lines at once. `003b` comes after `003_`, because `_` sorts before
 `b`. `pnpm check` prints `628 passed` here, inside the repository. Outside it, three
 tests that compare the schemas with the repository's originals are skipped:
-`625 passed | 3 skipped`. `pnpm test:db` prints `45 passed`.
+`625 passed | 3 skipped`. `pnpm test:db` prints `48 passed`.
 
 The new part of `pnpm start`. The same id, two invoices. Then a stranger, and a URI
 from another company. The record numbers come from the database:
@@ -872,6 +872,51 @@ high finding, here.
     call`, in `test/program.db.test.ts`. Each of the three changes to the SQL turns it
     red. Found by a hostile pass on the Stage 2 review's fix in step 11.
 
+**Found by step 16's review (2026-10-03), and fixed from step 09 on.**
+
+- **The log trusted an `INSERT` that kept nothing.** `add` sent its `INSERT` and never
+  asked how many rows the database wrote. The owner can make PostgreSQL drop each new
+  row without an error. A rule, a stored instruction that rewrites a statement, does it
+  as `DO INSTEAD NOTHING` on `dsor.audit`. So does a trigger, a function the database
+  runs before each new row, when it returns `NULL`. Then the program answers, and the
+  call has no record.
+  - **Fixed:** `add` throws unless PostgreSQL reports exactly one row written. The caller
+    hears `EVIDENCE_STORE_UNAVAILABLE`, as with a closed pool (DSOR-EXE-03b).
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. It sends the log's nine values, `tenant` and
+    `extensions` too, in an `INSERT … SELECT … WHERE false`: a real statement on the real
+    database, which keeps no row.
+- **The start-up check read PostgreSQL's names through the search path.** The **search
+  path** is the list of schemas PostgreSQL looks in to find a name such as
+  `has_table_privilege`. The owner can change the search path that `dsor_runtime` gets
+  at login, so it looks in `public` first. Then the owner makes look-alikes there:
+  functions with PostgreSQL's names that answer "no". A login that can change the log
+  then passes the check.
+  - **Fixed:** the check looks in PostgreSQL's own schema first. Its first statement,
+    inside a transaction, is `SET LOCAL search_path TO pg_catalog, pg_temp`.
+    `pg_catalog` holds PostgreSQL's own functions and tables. `pg_temp` holds this
+    connection's temporary tables, and comes last, so no temporary table can stand in
+    for one of PostgreSQL's. `SET LOCAL` lasts only until the transaction ends. Given a
+    pool, the check opens a read-only transaction of its own. Given one connection, it
+    runs inside the transaction its caller has open, so a test can plant look-alikes
+    first.
+  - **Caught by** two tests in `test/audit.db.test.ts`. `DSOR-AUD-04a: the start-up check
+    reads PostgreSQL's own names, whatever the search path finds first` runs a child
+    program, `test/owner-login-check.ts`. As the owner, inside a transaction that is
+    rolled back, it makes the look-alikes, puts `public` first, and runs the check. The
+    owner can change the log, and the check must still say so. `DSOR-AUD-04a: the
+    start-up check pins the search path inside a transaction of its own` runs the check
+    on a pool, as the program does. Outside a transaction, PostgreSQL ignores `SET LOCAL`
+    and warns, so this test expects no warning.
+- **This build, on 2026-10-03.** Red first: the `INSERT` test and the child program's
+  test failed. The call answered with `org_456`'s INV-1008, 31,400.00 USD, and the
+  owner's check named three problems, but not "can change or remove records in
+  dsor.audit". The pool test passed, as expected: no `SET LOCAL` was sent yet, so there
+  was nothing to warn about. Then three breaks: `add` without its row count check, the
+  check without `SET LOCAL`, and the check on a pool without its `BEGIN READ ONLY`. Each
+  turned its own test red, and only that one: 1 failed, 47 passed. The database tests
+  went from 45 to 48.
+
 **Left open, on purpose:**
 
 - **The subject, not the caller.** DSOR-IDN-03a says the *subject* holds the membership.
@@ -891,6 +936,11 @@ high finding, here.
 - **`reason` has no size limit in the database.** The code keeps every refusal message
   short, and the largest record a hostile pass could make was 480 bytes. Only
   `extensions` has a limit of its own (decision 12).
+- **A record can still go missing while PostgreSQL reports one row.** `add` trusts the
+  count PostgreSQL reports. A rule that writes the row into another table instead, or a
+  trigger that deletes it right after, still reports one. Only the owner can add either.
+  Step 16 refuses a rule or a trigger on the log at start-up. Before step 16, nothing
+  looks for them. Found by the hostile pass on this step's copy of the fix.
 - **`src/pipeline.ts` is 228 lines**, past this tutorial's guide of about 150, and
   `src/registry.ts` is 161. The Stage 2 review's fixes added 34 and 12, most of it
   comments. Splitting them is a step of its own.

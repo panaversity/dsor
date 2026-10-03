@@ -1,6 +1,7 @@
 // The letterbox. The log is a table, dsor_runtime can drop a record in and
 // read it, and can never change or remove one. By claim, C1 to C5 in step 09's README.
 import { spawnSync } from "node:child_process";
+import type pg from "pg";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
@@ -109,6 +110,38 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
   // (step 09's README, decision 17).
   it("DSOR-AUD-04a: the program's start-up check finds no problem with dsor_runtime", async () => {
     expect(await runtimeRoleProblems(observer)).toStrictEqual([]);
+  });
+
+  // The owner can set a search path that finds public first, and put functions there with
+  // PostgreSQL's names that answer "no". The check must still read PostgreSQL's own, so the
+  // owner, who can change the log, is told so. The child program makes the look-alikes
+  // inside a transaction that is rolled back, so nothing is kept, and runs the check on
+  // that connection. Found by step 16's review, and fixed from step 09 on.
+  it("DSOR-AUD-04a: the start-up check reads PostgreSQL's own names, whatever the search path finds first", () => {
+    const child = fileURLToPath(new URL("owner-login-check.ts", import.meta.url));
+    const run = spawnSync(process.execPath, [child], { encoding: "utf8", timeout: 60_000 });
+    expect(run.status, run.stderr).toBe(0);
+    const problems = JSON.parse(run.stdout) as string[];
+    expect(problems).toContain("can change or remove records in dsor.audit");
+    expect(problems).toContain("is a member of pg_write_all_data");
+  });
+
+  // SET LOCAL lasts only inside a transaction. Outside one, PostgreSQL ignores it and warns,
+  // and the look-alikes above would answer again. So the check that the program runs, on its
+  // pool, must open its own transaction first: no warning means the pin held. Found by step
+  // 16's review, and fixed from step 09 on.
+  it("DSOR-AUD-04a: the start-up check pins the search path inside a transaction of its own", async () => {
+    const pool = newPool();
+    const notices: string[] = [];
+    pool.on("connect", (client) =>
+      client.on("notice", (notice) => notices.push(String(notice.message))),
+    );
+    try {
+      expect(await runtimeRoleProblems(pool)).toStrictEqual([]);
+      expect(notices).toStrictEqual([]);
+    } finally {
+      await pool.end();
+    }
   });
 
   it("the tests really are dsor_runtime", async () => {
@@ -298,6 +331,44 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
       // What the database said stays inside: it names users and servers (step 08's
       // README, decision 4).
       expect(JSON.stringify(answer)).not.toMatch(/password|dsor_runtime|neon/i);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  // The database can take an INSERT and keep no row: a rule DO INSTEAD NOTHING on the log,
+  // or a trigger that returns NULL. Here the log's own values go in an INSERT that matches
+  // no row: a real statement, on the real database, and no mock. Found by step 16's
+  // review, and fixed from step 09 on.
+  it("DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no record", async () => {
+    const pool = openPool(RUNTIME_URL);
+    const keepsNothing = `INSERT INTO dsor.audit
+        (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
+         extensions)
+      SELECT $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::jsonb, $8::text,
+             $9::jsonb WHERE false`;
+    // Only the log's INSERT changes. Everything else reaches the database as it was sent.
+    const swallowing = {
+      query: (text: string, values?: unknown[]) =>
+        pool.query(
+          text.trimStart().startsWith("INSERT INTO dsor.audit") ? keepsNothing : text,
+          values,
+        ),
+    } as unknown as pg.Pool;
+    try {
+      const id = requestId("c4-kept-nothing");
+      const answer = await call(
+        registry,
+        createDbLog(swallowing),
+        { ...AGENT, request_id: id },
+        "invoice.get",
+        {
+          id: "INV-1008",
+        },
+      );
+      expect(answer).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
+      expect(answer).not.toHaveProperty("data");
+      expect(await rowsFor(observer, id)).toStrictEqual([]);
     } finally {
       await pool.end();
     }
