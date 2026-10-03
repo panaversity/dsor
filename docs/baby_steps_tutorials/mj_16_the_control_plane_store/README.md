@@ -477,19 +477,21 @@ The database does not match store.json. Refused:
 One lock broken, and the other still held.
 
 **A3 · The inspector skips columns.** In a copy, `privilegesOf` returns after the table's
-privileges. Four tests fail, and every one is about a column: `INSERT` on `sequence`,
-`UPDATE` on `result`, a missing column grant, and a misspelled column. `UPDATE` on
-`app.invoices` and `CREATE` on `dsor` are still named. So only `INSERT (sequence)` would
-get past start-up.
+privileges. Seven tests fail, and every one is about a column: `INSERT` on `sequence`,
+`UPDATE` on `result`, a missing column grant, a misspelled column, a map that lets the
+program write the log's time, `SELECT` on one column of the bookkeeping table, and a column
+privilege held `WITH GRANT OPTION`. `UPDATE` on `app.invoices` and `CREATE` on `dsor` are
+still named. So only `INSERT (sequence)` would get past start-up.
 
 **A4 · The inspector looks only at the map's tables.** In a copy, the loop reads
 `catalog.relations.filter((r) => map.tables.has(r.name))`. Six tests fail: the table that
-is not on the map, and also the view, the materialized view, the foreign table, and the
-partitioned table. An inspector that starts from its own list misses everything nobody
+is not on the map, the view, the materialized view, the foreign table, the partitioned
+table, and the test that names every difference at once. An inspector that starts from its own list misses everything nobody
 wrote down.
 
 **A5 · The kind rule is gone.** In a copy, `tableProblems` returns no problem for any
-privilege. Nine of the map's tests fail, among them every test that guards the log. Then,
+privilege. Eleven tests fail: ten of the map's, among them every test that guards the log,
+and the start-up test with a broken map. Then,
 live: the owner grants `UPDATE ON app.invoices`, and the program starts with a map that
 lists `UPDATE` for it. It starts, answers every call, and exits with code 0. The map and the
 database agree, so nothing at start-up objects. Step 09's database test does:
@@ -512,9 +514,9 @@ the map of the store refused to start:
 | --- | --- | --- |
 | A1 | "It refuses to start" | Right, by step 09's line, in step 15 too. The map is the second lock, shown with step 09's line broken |
 | A2 | Step 15 "refuses to start" | Step 15 **serves**. Step 16 refuses, naming `app.invoices` and `UPDATE` |
-| A3 | "None of them" gets past | **`INSERT (sequence)` gets past.** Four column tests catch the change |
+| A3 | "None of them" gets past | **`INSERT (sequence)` gets past.** Seven column tests catch the change |
 | A4 | "A table not on the map" | Right, **and** every view, materialized view, foreign table, and partitioned table. Six tests catch the change |
-| A5 | "The start-up check" | **Nothing at start-up.** Nine map tests catch the change to the code. The grant itself: step 09's database test, when someone runs it |
+| A5 | "The start-up check" | **Nothing at start-up.** Eleven tests catch the change to the code. The grant itself: step 09's database test, when someone runs it |
 
 To try A2 yourself, make a branch of `step-16`, write a `.env` for it the same way as for
 `step-16`, run `pnpm migrate`, then run the `GRANT` as the owner and `pnpm start`. Delete the
