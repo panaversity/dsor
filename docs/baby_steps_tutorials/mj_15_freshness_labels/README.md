@@ -574,6 +574,56 @@ first, then fixed:
   bound store is this tutorial's choice. And a cache that says "now" breaks DSOR-FRS-01a's
   `observed_at`, not DSOR-FRS-01b.
 
+**Found by step 16's review (2026-10-03), and fixed from step 09 on.**
+
+- **The log trusted an `INSERT` that kept nothing.** `add` never asked how many rows the
+  database wrote. A **rule** on `dsor.audit` rewrites a statement before it runs, and a
+  **trigger** is a function the database runs on each new row. A rule `DO INSTEAD NOTHING`,
+  or a trigger that runs before each row and returns `NULL`, makes the database take the
+  `INSERT` and keep no row. Then the agent gets `INV-1008`, and no record says it asked.
+  - **Fixed:** `add` throws unless the `INSERT` wrote exactly one row. It throws inside the
+    company's transaction, so the transaction is rolled back, and the caller hears
+    `EVIDENCE_STORE_UNAVAILABLE` (DSOR-EXE-03b). The count catches a log that keeps
+    nothing. It is no defense against the table's owner, who can send the row to another
+    table, or delete it afterwards. Tamper evidence makes a deleted record visible
+    (DSOR-AUD-04b), and the map plans it for step 39.
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. On its way to the database, the test swaps the
+    log's `INSERT` for an `INSERT … SELECT … WHERE false` with the same values: a real
+    statement on the real database, which keeps no row. The test also checks that the
+    database kept 0 rows, so an `INSERT` that fails cannot pass it.
+- **The start-up check read PostgreSQL's names through the search path.** A **schema** is
+  a folder of tables and functions. The **search path** is the list of schemas PostgreSQL
+  looks in to find a name such as `has_table_privilege`. PostgreSQL's own names live in
+  the schema `pg_catalog`, which is searched first unless the search path names it later.
+  The owner can set a search path that names `public` before `pg_catalog`, and make
+  functions in `public` with PostgreSQL's names that answer "no". Then a login that can
+  change the log passes the check.
+  - **Fixed:** the check runs inside a read-only transaction of its own, which starts with
+    `SET LOCAL search_path TO pg_catalog, pg_temp`: PostgreSQL's own schema first, and the
+    schema for temporary tables last. `SET LOCAL` lasts only until the transaction ends.
+    The check also takes one connection, as well as a pool, so a test can run it inside a
+    transaction that the test opened.
+  - **Caught by** two tests in `test/audit.db.test.ts`. `DSOR-AUD-04a: the start-up check
+    reads PostgreSQL's own names, whatever the search path finds first` runs
+    `test/owner-login-check.ts` as the owner. Inside a transaction that is rolled back, it
+    makes look-alikes of `has_table_privilege`, `has_any_column_privilege`, and
+    `pg_has_role` in `public`, names `public` before `pg_catalog`, and runs the check on
+    that connection. The owner can change the log, and the check must still say so.
+    `DSOR-AUD-04a: the start-up check pins the search path inside a transaction of its
+    own` runs the check on a pool, as the program does. Outside a transaction, PostgreSQL
+    ignores `SET LOCAL` and warns, so the test expects no warning. It cannot see a pool
+    that skips the pin altogether, because no `SET LOCAL` gives no warning either.
+- **In this build:** before the fixes, the first two tests failed. The call answered with
+  `INV-1008`'s data. The owner's problems left out "can change or remove records in
+  dsor.audit" and "is a member of pg_write_all_data", because the look-alikes answered
+  "no". The third test passed, as expected: before the fix, the check sent no `SET LOCAL`,
+  so nothing warned. Broken on purpose three ways: `add` ignoring the row count, the check
+  without `SET LOCAL`, and the pool's path without its `BEGIN READ ONLY`. Each turned its
+  own test red. The second and third left the other 115 database tests green. With the
+  first, three more tests timed out at 30 s. Run again with the same break, those three
+  passed, and the `INSERT` test failed alone. The database tests went from 113 to 116.
+
 **Left open on purpose.** The learner chose each of these:
 
 - **The label covers the reads, not the data** (F1). Code that keeps an old copy of
