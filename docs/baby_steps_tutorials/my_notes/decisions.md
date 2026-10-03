@@ -1359,3 +1359,64 @@ a test opens a throwaway directory instead of the demo's, and `connection` in wh
 test can ask the program's *own session* who it is. A fresh connection would be a different
 session, and `SET ROLE` is per session — which is also why the role has to be set on every open,
 and why there is a test for the second run.
+
+## 76 · Every read of a caller's object goes inside the `try` (2026-10-04)
+
+**The problem.** `ownString` in `src/login.ts` already caught a throwing *getter* — a hostile
+review had found that one in step 05. The catch was in the right place for a getter and the wrong
+place for everything else:
+
+```ts
+if (from === null || typeof from !== "object" || !Object.hasOwn(from, key)) {
+  return undefined;        // <-- Object.hasOwn is OUTSIDE the try
+}
+try { … } catch { return undefined; }
+```
+
+`Object.hasOwn` is not a passive question. It consults the object's own
+`getOwnPropertyDescriptor`, which a `Proxy` may trap. So a caller who sends
+
+```ts
+new Proxy({}, { getOwnPropertyDescriptor() { throw new Error("boom"); } })
+```
+
+never reached the `try` at all. Measured through the real pipeline:
+
+```text
+callOperation THREW: boom
+records written while that happened: 0
+```
+
+A raw `Error` where `DSOR-ERR-01a` promises an envelope, and an empty audit log where
+`DSOR-EXE-02` promises the decision is recorded before the response — both from one object a
+caller chose to send. The arguments side was already safe (`VALIDATION_FAILED`, one record
+written); only the login was not.
+
+**The decision.** The early return now tests only `null` and `typeof`, the two questions an object
+cannot lie about or throw from. Everything that touches `from` — `Object.hasOwn` included — is
+inside the `try`.
+
+**What I got wrong writing the test.** I expected all four traps to be refused. Measured:
+
+```text
+getOwnPropertyDescriptor   refused AUTHENTICATION_REQUIRED   <-- the hole
+get                        refused AUTHENTICATION_REQUIRED
+has                        resolved to user_123
+ownKeys                    resolved to user_123
+```
+
+`Object.hasOwn` consults `getOwnPropertyDescriptor`, not `has` and not `ownKeys`. A login that
+traps those two is still a login whose `loggedInAs` is genuinely its own and genuinely readable, so
+resolving it is the right answer and not a miss. Both facts now have a test: one that the two
+reachable traps refuse, one that the two unreachable traps do not change the answer — the second
+being what would notice if a later change started reading the login through `in` or `Object.keys`.
+
+**Proved by breaking it.** Total held at 32 throughout.
+
+| Sabotage | Result |
+| --- | --- |
+| `Object.hasOwn` back outside the `try` (the original defect) | 2 fail |
+| the `catch` rethrows instead of returning `undefined` | 3 fail |
+| restored | 32 pass |
+
+`pnpm check`: 21 files, 293 tests passed.

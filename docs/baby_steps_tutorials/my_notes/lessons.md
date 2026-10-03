@@ -481,3 +481,15 @@ tests, it is testing the database's GRANT machinery. To test the program you hav
 connection the program itself ended up holding — which is why `openTheDatabase` now returns it.
 
 The tell was there to find: 280 tests, and not one of them contained the words `current_user`.
+
+## 22 · `Object.hasOwn` is not a passive question
+
+It reads like one, which is why it sat outside the `try` for four steps. It consults the object's
+own `getOwnPropertyDescriptor`, and a `Proxy` can trap that and throw. So can `in`, `Object.keys`,
+`JSON.stringify`, spreading, and `String(x)` — anything that touches an object a caller handed you
+is a call into code the caller wrote.
+
+The rule that follows: when hardening a reader of untrusted data, do not ask "does this line read a
+*value*?" Ask "does this line touch the object **at all**?" If it does, it belongs inside the
+`try`. The guard outside may test only `null` and `typeof`, the two questions no object can
+intercept.

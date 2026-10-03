@@ -142,6 +142,108 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(two.envelope.code).toBe("VALIDATION_FAILED");
   });
 
+  // NEW IN STEP 09, and it is the same hole one layer further out. The test above sends an object
+  // with a throwing *getter*, and `ownString` catches that because the read sits inside a `try`.
+  // `Object.hasOwn` sat **outside** it — and `Object.hasOwn` consults a Proxy's
+  // `getOwnPropertyDescriptor` trap, so a caller who sends a Proxy with a throwing trap never
+  // reaches the `try` at all. Measured before the fix:
+  //
+  //     callOperation THREW: boom
+  //     records written while that happened: 0
+  //
+  // A raw Error and an empty audit log, from one object a caller chose to send. The arguments side
+  // was already safe (`VALIDATION_FAILED`, one record written); only the login was not.
+  it("DSOR-ERR-01a: a login whose own Proxy trap throws is refused, not thrown at", async () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor(): never {
+          throw new Error("boom");
+        },
+      },
+    );
+
+    const answer = await callOperation(hostile as never, "invoice.get", { invoice: INV_1008 });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("AUTHENTICATION_REQUIRED");
+    expect(answer.envelope.retry).toBe("never");
+  });
+
+  // Which traps are actually on this path, measured rather than assumed. I first wrote this test
+  // expecting all four to be refused, and two of them are not — correctly:
+  //
+  //     getOwnPropertyDescriptor   refused AUTHENTICATION_REQUIRED   <-- the hole that was fixed
+  //     get                        refused AUTHENTICATION_REQUIRED
+  //     has                        resolved to user_123
+  //     ownKeys                    resolved to user_123
+  //
+  // `Object.hasOwn` consults `getOwnPropertyDescriptor`, not `has` and not `ownKeys`. So a login
+  // that traps those two is still a login whose `loggedInAs` is genuinely its own and genuinely
+  // readable, and resolving it is the right answer, not a miss. Measured 2026-10-04.
+  it("DSOR-ERR-01a: the two traps this path does consult are both refused", async () => {
+    for (const [name, handler] of [
+      [
+        "getOwnPropertyDescriptor",
+        {
+          getOwnPropertyDescriptor: (): never => {
+            throw new Error("boom");
+          },
+        },
+      ],
+      [
+        "get",
+        {
+          get: (): never => {
+            throw new Error("boom");
+          },
+        },
+      ],
+    ] as const) {
+      const hostile = new Proxy({ loggedInAs: "user_123" }, handler);
+      const answer = await callOperation(hostile as never, "invoice.get", { invoice: INV_1008 });
+
+      if (answer.kind !== "error") {
+        throw new Error(`the ${name} trap should have been refused, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.code, name).toBe("AUTHENTICATION_REQUIRED");
+    }
+  });
+
+  // And the two it does not consult. A trap that is never reached cannot refuse a login that is
+  // otherwise perfectly good, so these resolve — and this test is what would notice if a later
+  // change started reading the login through `in` or `Object.keys` and made them throwable.
+  it("DSOR-IDN-01: a trap this path never consults does not change the answer", async () => {
+    for (const [name, handler] of [
+      [
+        "has",
+        {
+          has: (): never => {
+            throw new Error("boom");
+          },
+        },
+      ],
+      [
+        "ownKeys",
+        {
+          ownKeys: (): never => {
+            throw new Error("boom");
+          },
+        },
+      ],
+    ] as const) {
+      const hostile = new Proxy({ loggedInAs: "user_123" }, handler);
+      const answer = await callOperation(hostile as never, "invoice.get", { invoice: INV_1008 });
+
+      expect(answer.kind, name).not.toBe("error");
+      expect(answer.askedBy, name).toBe("user_123");
+    }
+  });
+
   it("DSOR-IDN-01: with nobody logged in, nothing happens at all", async () => {
     const answer = await callOperation(undefined, "invoice.get", { invoice: INV_1008 });
 

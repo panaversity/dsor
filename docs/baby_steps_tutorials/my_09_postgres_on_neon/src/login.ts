@@ -26,13 +26,25 @@ import { findPerson, type Principal } from "./people.ts";
  * - a property that is a *getter* and throws when it is read. A hostile review found that one:
  *   `{ get loggedInAs() { throw new Error("boom") } }` used to come out of here as an exception
  *   rather than a refusal, and a stack trace is not an envelope a caller can act on.
+ * - a `Proxy` whose traps throw. NEW IN STEP 09, and it is the getter hole one layer further out:
+ *   `Object.hasOwn` is not a passive question, it consults the object's own
+ *   `getOwnPropertyDescriptor` trap, so it used to throw *before* the `try` below was reached.
+ *   Measured: `callOperation THREW: boom`, and zero audit records written. A raw Error and an
+ *   empty log, from one object a caller chose to send.
+ *
+ * Which is why every line that touches `from` is inside the `try` now, and why the early return
+ * tests only `null` and `typeof`, the two questions an object cannot lie about or throw from.
  */
 function ownString(from: unknown, key: string): string | undefined {
-  if (from === null || typeof from !== "object" || !Object.hasOwn(from, key)) {
+  if (from === null || typeof from !== "object") {
     return undefined;
   }
 
   try {
+    if (!Object.hasOwn(from, key)) {
+      return undefined;
+    }
+
     const value = (from as Record<string, unknown>)[key];
 
     return typeof value === "string" ? value : undefined;
