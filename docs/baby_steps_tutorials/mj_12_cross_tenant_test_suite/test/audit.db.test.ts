@@ -322,10 +322,11 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
     expect(await rowsFor(observer, "org_456", id)).toStrictEqual([]);
   });
 
-  // The two tests beside this one fail before the transaction begins, at
-  // pool.connect(). Here the INSERT itself fails, inside inCompany's transaction, because
-  // the log's connections are read-only. Found by step 11's review: with the error
-  // swallowed inside inCompany, the caller got the invoice and no record was kept.
+  // The tests of a closed pool and of a wrong password fail before the
+  // transaction begins, at pool.connect(). Here the INSERT itself fails, inside
+  // inCompany's transaction, because the log's connections are read-only. Found by step
+  // 11's review: with the error swallowed inside inCompany, the caller got the invoice and
+  // no record was kept.
   it("DSOR-EXE-03b: a log whose INSERT fails inside its transaction gives no invoice, and no record", async () => {
     const readOnly = new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });
     readOnly.on("connect", (client) => {
