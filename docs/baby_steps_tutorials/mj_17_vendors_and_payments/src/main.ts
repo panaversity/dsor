@@ -52,7 +52,7 @@ const INPUTS: string | undefined = process.argv[4];
 // Start-up checks the labels too (step 14's README, decision 1). A file of
 // them can be named after the inputs folder, so a test can start with a broken one.
 const CLASSIFICATIONS: string | undefined = process.argv[5];
-// NEW IN STEP 16: start-up checks the map of its store too (step 16's README, decision 4).
+// Start-up checks the map of its store too (step 16's README, decision 4).
 // A map can be named after the labels file, so a test can start with a broken one.
 const STORE: string | undefined = process.argv[6];
 // The pool is made before the checks, because the registry holds the store
@@ -73,7 +73,7 @@ try {
     // (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
     createDbInvoices(pool),
   );
-  // NEW IN STEP 16: a broken map stops start-up here, with the other files, before the
+  // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).
   const { map, problems } = checkStore(readStore(STORE));
   if (problems.length > 0) {
@@ -96,7 +96,7 @@ try {
   process.exit(1);
 }
 
-// NEW IN STEP 16: both checks below read the database, which may be out of reach. Then the
+// Both checks below read the database, which may be out of reach. Then the
 // program stops with the database's message, never a stack trace, and answers nothing.
 // Found by the review.
 let problems: string[];
@@ -120,7 +120,7 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-// NEW IN STEP 16: on any difference with the map, the program refuses to start, and names
+// On any difference with the map, the program refuses to start, and names
 // each one. It fails closed, as the login check does (step 16's README, C6).
 if (differences.length > 0) {
   console.error(`The database does not match store.json. Refused:\n  ${differences.join("\n  ")}`);

@@ -1,4 +1,4 @@
-// NEW IN STEP 16: the inspector compares the database with the map (step 16's README, C2,
+// The inspector compares the database with the map (step 16's README, C2,
 // C3, and C5). No database: each test plants one difference in today's catalog
 // (test/catalogs.ts) and expects it named, and only it.
 import { describe, expect, it } from "vitest";

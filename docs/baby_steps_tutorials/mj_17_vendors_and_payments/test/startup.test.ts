@@ -11,7 +11,7 @@ import { STARTING_ROLES, contract, shipped, without } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
-// NEW IN STEP 16: the step's own files, named on the command line before a map of the test's.
+// The step's own files, named on the command line before a map of the test's.
 const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
 const INPUTS = fileURLToPath(new URL("../inputs", import.meta.url));
 const CLASSIFICATIONS = fileURLToPath(new URL("../classifications.json", import.meta.url));
@@ -177,7 +177,7 @@ describe("the program", () => {
     },
   );
 
-  // NEW IN STEP 16: start-up checks the map too, with the other files, before it prints
+  // Start-up checks the map too, with the other files, before it prints
   // operations: (step 16's README, C6). The map is named after the labels file. DSOR_DB_URL
   // is emptied, so a program that skipped the map would stop at the database, never use it.
   it(

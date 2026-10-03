@@ -1,4 +1,4 @@
-// NEW IN STEP 16: the owner makes, inside one transaction, each thing the inspector must
+// The owner makes, inside one transaction, each thing the inspector must
 // refuse, reads the catalog on that same connection, and rolls all of it back. Not a test
 // file: store.db.test.ts starts it through ownerCatalog in test/db.ts. Nothing is kept: a
 // transaction that is rolled back, or whose connection drops, leaves no trace (step 16's

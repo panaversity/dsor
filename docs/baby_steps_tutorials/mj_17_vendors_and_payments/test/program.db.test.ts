@@ -193,7 +193,7 @@ describe("the program's start-up check", () => {
     },
   );
 
-  // NEW IN STEP 16: the database half of C6, on today's database. A map that leaves out
+  // The database half of C6, on today's database. A map that leaves out
   // dsor.migrations is a valid map, so start-up gets past the files and logs in, and the
   // inspector finds the table nobody wrote down. Found by the sweep: the refusal in
   // src/main.ts could be deleted, and every test stayed green.

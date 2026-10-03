@@ -1,4 +1,4 @@
-// NEW IN STEP 16: what the database really holds, read from PostgreSQL's own catalog
+// What the database really holds, read from PostgreSQL's own catalog
 // (step 16's README, decisions 4, 5, and 8). src/inspector.ts compares it with the map.
 import pg from "pg";
 

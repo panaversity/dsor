@@ -1,4 +1,4 @@
-// NEW IN STEP 16: planted catalogs. Not a test file.
+// Planted catalogs. Not a test file.
 // A planted catalog is what the inspector reads from PostgreSQL, written by the test
 // itself, so a unit test can plant one difference and needs no database (step 16's README,
 // "The success signals"). store.db.test.ts checks that today() is the real database's.

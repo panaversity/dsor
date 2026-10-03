@@ -126,7 +126,7 @@ export function ownerList(): unknown {
   return asOwner("owner-store.ts", ["list"]);
 }
 
-// NEW IN STEP 16: the catalog, read inside the owner's transaction that made each thing
+// The catalog, read inside the owner's transaction that made each thing
 // the inspector must refuse, then rolled back (step 16's README, decision 8).
 /** The catalog as dsor_runtime would see it, with the owner's rolled-back objects in it. */
 export function ownerCatalog(): unknown {
@@ -143,7 +143,7 @@ export function poolOfOne(): pg.Pool {
  * outside PostgreSQL's own, one row per object. Held directly, through PUBLIC, or through
  * a role it belongs to: has_..._privilege counts them all.
  */
-// NEW IN STEP 16: the relations, sequences, and schemas come from the catalog, not from a
+// The relations, sequences, and schemas come from the catalog, not from a
 // list of names, so one that no list names still shows here (step 16's README, decision 6).
 export const PRIVILEGES_HELD = `
   WITH outside(oid) AS (SELECT oid FROM pg_namespace

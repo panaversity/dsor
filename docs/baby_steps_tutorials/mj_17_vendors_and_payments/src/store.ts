@@ -1,4 +1,4 @@
-// NEW IN STEP 16: the map of DSoR's own store, store.json (step 16's README, decisions 1
+// The map of DSoR's own store, store.json (step 16's README, decisions 1
 // and 3). Start-up checks the file here, with no database, beside the contracts and the
 // labels. src/inspector.ts then compares the database with it.
 import { readFileSync } from "node:fs";

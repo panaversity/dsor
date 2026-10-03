@@ -1,4 +1,4 @@
-// NEW IN STEP 16: the map itself is checked at start-up, before the database is (step 16's
+// The map itself is checked at start-up, before the database is (step 16's
 // README, C4 and C7). No database: these read store.json, and copies of it with one change.
 import { describe, expect, it } from "vitest";
 import { checkStore, readStore, type StoreSource } from "../src/store.ts";

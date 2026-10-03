@@ -1,4 +1,4 @@
-// NEW IN STEP 16: the inspector. It compares what the catalog says (src/catalog.ts) with
+// The inspector. It compares what the catalog says (src/catalog.ts) with
 // the map (step 16's README, decisions 4 and 5). Start-up refuses on any difference.
 import { ON_COLUMNS, type Catalog, type Relation } from "./catalog.ts";
 import type { StoreMap, TableLine } from "./store.ts";

@@ -1,4 +1,4 @@
-// NEW IN STEP 16: the inspector on the real database (step 16's README, outcome 5, C2, C3,
+// The inspector on the real database (step 16's README, outcome 5, C2, C3,
 // and decision 8). The unit tests prove the comparison on planted catalogs. These prove
 // that the catalog the inspector reads is the real one, and that it can see every kind of
 // privilege, and every kind of thing it must refuse.

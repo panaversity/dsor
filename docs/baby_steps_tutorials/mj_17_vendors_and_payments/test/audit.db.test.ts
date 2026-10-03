@@ -57,7 +57,7 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
     const { rows } = await observer.query(PRIVILEGES_HELD);
     expect(rows).toStrictEqual([
       { object: "app.invoices", held: "SELECT" },
-      // NEW IN STEP 16: SELECT on each column too, so a grant of one column alone shows
+      // SELECT on each column too, so a grant of one column alone shows
       // here. Found by the review of step 16.
       {
         object: "app.invoices SELECT",
