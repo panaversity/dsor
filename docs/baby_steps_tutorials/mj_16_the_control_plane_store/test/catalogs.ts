@@ -2,7 +2,7 @@
 // A planted catalog is what the inspector reads from PostgreSQL, written by the test
 // itself, so a unit test can plant one difference and needs no database (step 16's README,
 // "The success signals"). store.db.test.ts checks that today() is the real database's.
-import type { Catalog, Relation } from "../src/inspector.ts";
+import type { Catalog, Relation } from "../src/catalog.ts";
 
 // The columns in the order PostgreSQL numbers them. tenant_id came last, in migration 002.
 const INVOICE_COLUMNS = [

@@ -2,7 +2,8 @@
 // C3, and C5). No database: each test plants one difference in today's catalog
 // (test/catalogs.ts) and expects it named, and only it.
 import { describe, expect, it } from "vitest";
-import { storeDifferences, type Catalog } from "../src/inspector.ts";
+import type { Catalog } from "../src/catalog.ts";
+import { storeDifferences } from "../src/inspector.ts";
 import { checkStore, readStore } from "../src/store.ts";
 import { columnIn, relationIn, relationOf, today } from "./catalogs.ts";
 

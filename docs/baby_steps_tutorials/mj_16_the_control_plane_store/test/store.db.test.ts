@@ -3,7 +3,8 @@
 // that the catalog the inspector reads is the real one, and that it can see every kind of
 // privilege.
 import { afterAll, describe, expect, it } from "vitest";
-import { readCatalog, storeDifferences } from "../src/inspector.ts";
+import { readCatalog } from "../src/catalog.ts";
+import { storeDifferences } from "../src/inspector.ts";
 import { checkStore, readStore } from "../src/store.ts";
 import { columnIn, relationIn, today } from "./catalogs.ts";
 import { newPool } from "./db.ts";

@@ -17,7 +17,8 @@
 import { fileURLToPath } from "node:url";
 import { readClassifications } from "./labels.ts";
 import type { Answer } from "./envelope.ts";
-import { readCatalog, storeDifferences } from "./inspector.ts";
+import { readCatalog } from "./catalog.ts";
+import { storeDifferences } from "./inspector.ts";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import type { DecisionLog } from "./log.ts";
 import { handlersFor } from "./operations.ts";
