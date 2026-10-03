@@ -86,12 +86,10 @@ checklist. The agent runs no command until a person's delegation exists.
 1. Migration `009` adds `app.payments`, the company's table of payments: its company, a
    number that the database gives (from 901, so the first id is `PAY-901`), the invoice, the
    vendor, the amount, and a status, `draft` or `cancelled`. It has row-level security,
-   enabled and forced, and at most one draft for each invoice (decision 10). It is on
-   `store.json` with a new kind (decision 3).
+   enabled and forced. It is on `store.json` with a new kind (decision 3).
 2. `payment.create` is a command, `compensatable`, undone by `payment.cancel`. Its input is
-   the invoice's URI and an amount. Its code reads the invoice through the bound company
-   store, refuses an amount that is not the invoice's open amount, and writes a draft for the
-   invoice's vendor.
+   the invoice's URI, and nothing else. Its code reads the invoice through the bound company
+   store, and writes a draft for the invoice's open amount and vendor.
 3. `payment.cancel` is a command, `atomic`. Its input is the payment's URI. It changes a
    draft to `cancelled`, and refuses anything else with `CONFLICT`.
 4. Every command's answer holds the draft as data and `semantics`, taken from the contract,
@@ -122,7 +120,6 @@ checklist. The agent runs no command until a person's delegation exists.
 - The agent gets `DELEGATION_REQUIRED` for both commands, although its role holds
   `payment:create`.
 - A contract whose `compensated_by` is `[]` stops start-up, named.
-- Two creates for INV-1008 at the same moment make one draft. The other gets `CONFLICT`.
 
 ### What the specification asks, and what this step can honestly give
 
@@ -146,9 +143,8 @@ Checked on 2026-10-04:
    command writes its draft at line ⑨ and its record at line ⑪, so a failed record can
    leave a draft behind. Step 36 closes this. Until then, this tutorial claims DSOR-EXE-03b
    for queries only, and break B1 shows the gap for real.
-7. **DSOR-MOD-03 and DSOR-MOD-04 ask DSoR to read state itself.** The open amount and the
-   vendor come from the invoice that DSoR reads. The amount in the request is what the caller
-   asks for, compared with that state, never taken as a fact.
+7. **DSOR-MOD-03 and DSOR-MOD-04 ask DSoR to read state itself.** The amount and the vendor
+   come from the invoice that DSoR reads. The request names only the invoice.
 
 ### What each rule really says
 
@@ -158,15 +154,16 @@ Checked on 2026-10-04:
 | DSOR-EXE-05b | **C2.** Every command's answer states the semantics that applied, from the contract | `payment.create` answers `compensatable`, `payment.cancel` answers `atomic`. Planted code that answers with semantics of its own is overruled |
 | DSOR-EXE-05c | **C3.** A compensatable command names a real undo, and the undo runs under the full checklist | Start-up refuses an empty list, an unknown name, a query, an operation with no code, and an operation that names itself. `payment.cancel` refuses cfo_100, another company's payment, and the agent, and every call is recorded |
 | DSOR-DEL-01a | **C4.** An agent's command never runs without an active delegation | The agent gets `DELEGATION_REQUIRED` for both commands, before line ⑤, with `payment:create` in its role. The refusal is recorded |
-| (our decision) | **C5.** The amount must be the open amount that DSoR reads | 31,400.00 USD makes the draft. 31,399.99 USD, or EUR, gets `CONFLICT`. Another company's invoice gets `TENANT_MISMATCH` |
-| (our decision) | **C6.** One draft for each invoice | A second create gets `CONFLICT`. Parallel creates make exactly one draft (database test) |
-| (our decision) | **C7.** A cancel changes only a draft | A second cancel gets `CONFLICT`, and the payment stays `cancelled` |
-| (our decision) | **C8.** `app.payments` is on the map with its own kind, and the program holds exactly that | Today's database matches `store.json`. Planted catalogs with `UPDATE` on the amount, or `DELETE`, are named |
+| (our decision) | **C5.** The draft's amount and vendor are the invoice's, read by DSoR | PAY-901 holds 31,400.00 USD and VENDOR-44 from INV-1008. A request that adds an amount gets `VALIDATION_FAILED`. Another company's invoice gets `TENANT_MISMATCH`, and an unknown one `RESOURCE_NOT_FOUND` |
+| (our decision) | **C6.** A cancel changes only a draft | A second cancel gets `CONFLICT`, and the payment stays `cancelled` |
+| (our decision) | **C7.** `app.payments` is on the map with its own kind, and the program holds exactly that | Today's database matches `store.json`. Planted catalogs with `UPDATE` on the amount, or `DELETE`, are named |
 
 ### Decisions the specification leaves to us
 
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside. Decisions 1
-to 11 were made by the learner on 2026-10-04, in three rounds of questions.
+to 11 were made by the learner on 2026-10-04. Decisions 4 and 10 changed the same day, before
+any code: decision 4 when the specification's own examples showed its reasons were false,
+and decision 10 after a real run.
 
 1. **The draft commits before its record, and the gap is shown.** A command's code writes at
    line ⑨, and the record is written at line ⑪. One idea per step: step 36 makes them commit
@@ -182,12 +179,12 @@ to 11 were made by the learner on 2026-10-04, in three rounds of questions.
    database: one login with exact grants per table, which is what lets step 36 commit the
    change and its record in one transaction. *Downside:* `dsor_runtime` can now change one
    company table, through named columns.
-4. **The input is the invoice's URI and an amount.** The amount must equal the invoice's open
-   amount, value and currency. Otherwise the answer is `CONFLICT`. The vendor comes from the
-   invoice. The request carries the amount because step 27's CFO rule reads the requested
-   amount, and step 29's approval binds a fingerprint of the exact request. Equality needs
-   no decimal arithmetic, which arrives in step 26. *Downside:* full payment only, until
-   preconditions in step 32.
+4. **The input is the invoice's URI, and nothing else.** DSoR reads the invoice's open
+   amount and vendor, and the draft stores them. The input schema refuses any other field.
+   In the specification's examples, the CFO control reads `state.payment.amount`, and an
+   approval binds the payment's version (§26.3), so nothing reads an amount in this request.
+   The first version also took an amount, for two reasons that those examples showed were
+   false. *Downside:* full payment only, until a later step adds partial payments.
 5. **The agent gets `DELEGATION_REQUIRED` at line ③.** For any command, from any caller that
    is not a person: an unknown type is treated as an agent, as step 14 treats it. People
    such as user_123 run commands in their own name. *Downside:* the agent runs no command
@@ -206,9 +203,13 @@ to 11 were made by the learner on 2026-10-04, in three rounds of questions.
    'draft'`. No row means `CONFLICT`. The database decides, so two cancels at the same moment
    cannot both succeed. *Downside:* the rule lives in the code's SQL until step 32 moves it
    to the contract.
-10. **One draft for each invoice.** A partial unique index on the company and the invoice,
-    for drafts only. A second create gets `CONFLICT`, even from parallel requests.
-    *Downside:* a draft must be cancelled before a new one can be made.
+10. **Two drafts for one invoice are allowed, until step 20.** A retry, or a second
+    request, makes a second draft. A real run on 2026-10-04 sent 20 creates for INV-1008 at
+    the same moment: 20 drafts. With a one-draft-per-invoice index: 1 draft and 19
+    refusals. The index was chosen first, then dropped before any code. With it, step 20's
+    break would count one draft whatever the code does, and a retry would get `CONFLICT`
+    instead of its first answer. *Downside:* until step 20's keys, and a later rule against
+    paying one invoice twice, two drafts for one invoice can exist. Drafts move no money.
 11. **Vendors wait.** The draft copies the invoice's `vendor_id`. A vendors table arrives with
     the first step that reads a vendor's state: a blocked vendor (step 32), or a bank account
     (step 35). *Downside:* this folder's name promises vendors. Recorded as a proposal for the
@@ -229,12 +230,11 @@ to 11 were made by the learner on 2026-10-04, in three rounds of questions.
   `DELEGATION_REQUIRED`. Each call has its record.
 - **C4:** the agent calls `payment.create` and `payment.cancel`: `DELEGATION_REQUIRED`, and the
   record says so. The same with an agent of an unknown type. user_123 succeeds.
-- **C5:** 31,400.00 USD makes a draft. 31,399.99 USD, 31,400.00 EUR, and an invoice of another
-  company each get refused, with no draft.
-- **C6:** a second create for INV-1008 gets `CONFLICT`. A database test sends parallel creates:
-  one draft, every other call `CONFLICT`.
-- **C7:** cancel, then cancel again: `CONFLICT`, and the status stays `cancelled`.
-- **C8:** the database test that today's catalog matches `store.json`, with `app.payments`.
+- **C5:** PAY-901 holds INV-1008's open amount, 31,400.00 USD, and VENDOR-44. A request with
+  an `amount` field gets `VALIDATION_FAILED`. Another company's invoice, and an unknown one,
+  are refused, with no draft.
+- **C6:** cancel, then cancel again: `CONFLICT`, and the status stays `cancelled`.
+- **C7:** the database test that today's catalog matches `store.json`, with `app.payments`.
   Planted catalogs with `UPDATE` on `amount_value` and with `DELETE` are named.
 
 ### Breaks we will try, and what we expect
@@ -245,11 +245,11 @@ Run against the finished step. The learner's predictions are recorded before any
 | --- | --- | --- | --- |
 | B1 | The record fails after the draft commits (fault injection on the log) | Nothing: it is the known gap. The caller hears `EVIDENCE_STORE_UNAVAILABLE`, and PAY-901 exists with no record | `EVIDENCE_STORE_UNAVAILABLE`, and "no draft" |
 | B2 | Line ③'s new check is removed. The agent calls `payment.create` | C4 | `AUTHORIZATION_DENIED` |
-| B3 | The partial unique index is dropped. Two parallel creates for INV-1008 | C6 | "One" draft |
+| B3 | Two creates for INV-1008 at the same moment. Since decision 10 changed, the design allows it until step 20 | Nothing: it is a known gap. Two drafts exist | "One" draft, predicted while the design still had the index |
 | B4 | Start-up's undo-list check is removed. A contract says `"compensated_by": []` | C3 | "It starts" |
 
 The review also attacks the step with the threats that are its reason: an undo that does not
-exist, an agent that acts without a person's permission, and a second draft for one invoice.
+exist, and an agent that acts without a person's permission.
 
 ### Left open, and not this step's idea
 
@@ -257,9 +257,17 @@ exist, an agent that acts without a person's permission, and a second draft for 
 - **Outcome words, proposals, and payload hashes** (steps 22 and 29), and so DSOR-SCH-01 for
   command answers.
 - **The draft and its record in one transaction** (step 36).
-- **Retries of one request** (step 20). A retry of `payment.create` gets `CONFLICT` from the
-  index, not the first answer again.
-- **Partial payments**, and the amount rule as a precondition in the contract (step 32).
+- **A second draft for one invoice** (decision 10). Step 20's keys stop retries of one
+  request, and a later rule stops two payments for one invoice.
+- **Partial payments.** The request carries no amount (decision 4).
+- **One counter numbers every company's payments.** So the number of a company's first
+  payment shows how many payments the other companies made. Open question 39 asks the same
+  about the log's numbers. A company's own payment numbers wait for its answer.
+- **One counter numbers every company's payments.** If `org_456` makes PAY-901 to PAY-940,
+  the next payment of `org_789` is PAY-941. So a company can count how often other
+  companies pay. Open question 39 in
+  [`research/open-questions.md`](../../../research/open-questions.md) asks the same of the
+  log's numbers. Numbering per company would be a second idea in this step.
 
 ## Before you build: set up Neon
 
@@ -305,7 +313,7 @@ _To be written when the code exists._
 1. What question does an execution-semantics label answer, and who needs the answer?
 2. Why is `payment.create` compensatable, while a refund would not undo `payment.execute`?
 3. The agent's role holds `payment:create`. Why is it still refused?
-4. DSoR reads the open amount itself. Why does the request carry an amount at all?
+4. Why does `payment.create` take only the invoice's URI, and no amount?
 5. What can go wrong between line ⑨ and line ⑪ for a command, and which step closes it?
 
 <details>
@@ -318,9 +326,9 @@ _To be written when the code exists._
 3. A state-changing command from an agent needs a person's delegation (DSOR-DEL-01a), and
    line ③ checks that before line ⑤ checks the permission. No delegation exists until
    step 18.
-4. The request says what the caller asks for. Step 27's CFO rule reads the requested amount,
-   and step 29's approval binds the exact request. DSoR compares it with the open amount that
-   it reads, and never takes it as a fact.
+4. DSoR reads the amount and the vendor from the invoice itself. In the specification's
+   examples, the CFO rule reads the payment's amount from state, and an approval binds the
+   payment's version, so nothing needs an amount in the request.
 5. The draft commits at line ⑨, and the record is written at line ⑪. If the record fails, a
    draft exists with no record. Step 36 makes them commit together.
 
