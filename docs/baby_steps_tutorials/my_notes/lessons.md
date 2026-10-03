@@ -520,3 +520,23 @@ So when a store moves from memory to a network, the question to ask of every `ca
 is not "do I handle the error" but "do I know which of the two things happened". If the answer is
 no, the `catch` is making a claim it cannot support — and the fix is to go and look, not to pick the
 likelier case.
+
+## 25 · Ask the database what a role may do, never the grant list
+
+Twice in one day, in two unrelated files, the same mistake: reading
+`information_schema` to find out what an account is allowed to do. A catalogue row exists only for a
+grant made to the role **by name**. Four routes to a privilege, and a grant list shows one of them:
+
+| route | in the grant list? | `has_table_privilege`? |
+| --- | --- | --- |
+| granted directly to the role | yes | yes |
+| granted to `PUBLIC` | **no** | yes |
+| inherited through role membership | **no** | yes |
+| superuser bypass | **no** | yes |
+
+`has_table_privilege(role, table, privilege)` answers the question that actually matters — what will
+happen when the statement runs — and it is not harder to write. The grant list answers "what did
+somebody type", which is a question about history, not about security.
+
+The general shape: when a guarantee is enforced by a system, ask the system whether it holds. Do not
+reconstruct the answer from the inputs that were supposed to produce it.

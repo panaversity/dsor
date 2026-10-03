@@ -84,19 +84,43 @@ async function reapplyThePermissions(): Promise<void> {
   }
 }
 
+/** Every privilege a table can carry, so "and nothing else" means all of them. */
+const EVERY_PRIVILEGE = [
+  "DELETE",
+  "INSERT",
+  "REFERENCES",
+  "SELECT",
+  "TRIGGER",
+  "TRUNCATE",
+  "UPDATE",
+] as const;
+
 /**
- * Which privileges the application's account actually holds on `audit`, from PostgreSQL's catalogue.
+ * Which privileges the application's account actually holds on `audit`.
  *
- * Asked directly, because a GRANT or a REVOKE that does nothing does not say so — see below.
+ * This asked `information_schema.role_table_grants WHERE grantee = 'dsor_runtime'`, and that was
+ * wrong in a way that let a real hole through. A catalogue row exists only for a grant made **to
+ * this role by name**. A privilege can reach the role by three other routes, and the catalogue
+ * shows none of them:
+ *
+ *   a database with a history (granted to PUBLIC):   UPDATE=true DELETE=true TRUNCATE=true
+ *   ...and what `grantee = 'dsor_runtime'` showed:   nothing
+ *
+ * So `toEqual(["INSERT", "SELECT"])` could pass while the account held DELETE and TRUNCATE through
+ * PUBLIC. `has_table_privilege` is the question actually worth asking: it answers for the role as
+ * PostgreSQL will when the statement runs, counting a direct grant, a grant to PUBLIC, a right
+ * inherited through role membership, and superuser bypass. Measured 2026-10-04.
  */
 async function privilegesOfTheApplication(): Promise<string[]> {
-  const held = await db.query<{ privilege_type: string }>(
-    `SELECT privilege_type FROM information_schema.role_table_grants
-     WHERE grantee = 'dsor_runtime' AND table_name = 'audit'
-     ORDER BY privilege_type`,
+  const held = await db.query<Record<string, boolean>>(
+    `SELECT ${EVERY_PRIVILEGE.map(
+      (privilege, i) =>
+        `has_table_privilege('dsor_runtime', 'public.audit', '${privilege}') AS held_${i}`,
+    ).join(", ")}`,
   );
+  const row = held.rows[0];
 
-  return held.rows.map((row) => row.privilege_type);
+  return EVERY_PRIVILEGE.filter((_privilege, i) => row?.[`held_${i}`] === true);
 }
 
 describe("what the application may do to the log", () => {
@@ -238,17 +262,41 @@ describe("the REVOKE lines, where there is something to revoke", () => {
   it("DSOR-AUD-04a: a privilege granted to PUBLIC is taken away again", async () => {
     // The mistake these lines defend against: somebody grants to PUBLIC, which is every role there
     // is, so the application gets UPDATE without anybody granting it to the application.
-    await db.exec("GRANT UPDATE ON audit TO PUBLIC;");
+    //
+    // All three of UPDATE, DELETE and TRUNCATE, and that is the point. This test granted only
+    // UPDATE, and `REVOKE ALL ON audit FROM PUBLIC` narrowed to `REVOKE UPDATE ON audit FROM
+    // PUBLIC` left all 301 tests passing — because the one privilege the test granted was the one
+    // the narrowed line still removed. Measured with the narrowed line:
+    //
+    //     after REVOKE UPDATE FROM PUBLIC:   UPDATE=false DELETE=true TRUNCATE=true
+    //
+    // A log the application can DELETE from or TRUNCATE is not append-only, so the test has to
+    // grant everything the line claims to take back.
+    await db.exec("GRANT UPDATE, DELETE, TRUNCATE ON audit TO PUBLIC;");
     await db.exec(A_DECISION);
 
+    // Not testing nothing: all three really do reach the application through PUBLIC.
+    expect(await privilegesOfTheApplication()).toEqual([
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "TRUNCATE",
+      "UPDATE",
+    ]);
     expect(await asTheApplication("UPDATE audit SET result = 'ALLOWED'")).toBe("allowed");
 
-    // Re-running the migration takes it back.
+    // Re-running the migration takes them back.
     await reapplyThePermissions();
 
-    expect(await asTheApplication("UPDATE audit SET result = 'ALLOWED'")).toMatch(
-      /permission denied for table audit/,
-    );
+    for (const forbidden of [
+      "UPDATE audit SET result = 'ALLOWED'",
+      "DELETE FROM audit",
+      "TRUNCATE audit",
+    ]) {
+      expect(await asTheApplication(forbidden), forbidden).toMatch(
+        /permission denied for table audit/,
+      );
+    }
 
     // And the rights it does need survived the revoke-and-regrant.
     expect(await privilegesOfTheApplication()).toEqual(["INSERT", "SELECT"]);

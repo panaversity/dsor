@@ -1534,3 +1534,80 @@ stale comment in `operations.ts` — "the decision could not be written" — now
 sentence is finally true rather than a guess.
 
 `pnpm check`: 23 files, 301 tests passed.
+
+## 79 · The privilege check asks PostgreSQL, not the grant catalogue (2026-10-04)
+
+**The problem.** Two mutants of `002_runtime_user.sql` survived with all 301 tests passing:
+
+```text
+REVOKE ALL ON audit FROM PUBLIC  ->  REVOKE UPDATE ON audit FROM PUBLIC     301 passed
+REVOKE UPDATE, DELETE, TRUNCATE ... FROM dsor_runtime  ->  deleted           301 passed
+```
+
+The first survived for a reason worth keeping: the test granted only `UPDATE` to PUBLIC, so the one
+privilege it checked was the one the narrowed line still removed. Measured with the narrowed line
+against a database that had a history:
+
+```text
+a database with a history (granted to PUBLIC):   UPDATE=true  DELETE=true  TRUNCATE=true
+after REVOKE UPDATE FROM PUBLIC:                 UPDATE=false DELETE=true  TRUNCATE=true
+after REVOKE ALL FROM PUBLIC:                    UPDATE=false DELETE=false TRUNCATE=false
+```
+
+A log the application can DELETE from or TRUNCATE is not append-only, and the test was blind to
+both.
+
+**Why it was blind, which is the part worth learning.** `privilegesOfTheApplication` read
+`information_schema.role_table_grants WHERE grantee = 'dsor_runtime'`. A catalogue row exists only
+for a grant made to the role **by name**. A privilege reaching it through PUBLIC has no such row, so
+`toEqual(["INSERT", "SELECT"])` passed while the account actually held DELETE and TRUNCATE.
+
+It now asks `has_table_privilege`, which answers for the role the way PostgreSQL will when the
+statement runs — counting a direct grant, a grant to PUBLIC, a right inherited through role
+membership, and superuser bypass. Same correction as decision 75, in a second place; the lesson
+generalises and is written down as lesson 25.
+
+**The decision**, three parts:
+
+1. The PUBLIC test grants `UPDATE, DELETE, TRUNCATE`, asserts all three really do reach the
+   application first, re-applies the migration, and then attempts all three.
+2. `privilegesOfTheApplication` uses `has_table_privilege` over every privilege a table can carry,
+   so "and nothing else" means all of them rather than the five somebody remembered.
+3. **The redundant `GRANT` was deleted**, because its stated reason was false. The comment said it
+   was needed "because the line above revokes from PUBLIC and dsor_runtime is a member of PUBLIC".
+   Measured:
+
+   ```text
+   after GRANT INSERT, SELECT to the role:   INSERT=true SELECT=true
+   after REVOKE ALL ON audit FROM PUBLIC:    INSERT=true SELECT=true   <- the direct grant survives
+   ```
+
+   `REVOKE ... FROM PUBLIC` revokes the grant made *to PUBLIC*; it does not touch a grant made
+   directly to a role that happens to be a member of it. So the line was a no-op in every case and
+   no test could ever have killed it. A line that protects nothing is worse than absent when it
+   carries a reason that is not true, because the next reader learns the wrong rule from it.
+
+**Proved by breaking it**, after the change:
+
+| Mutant | Result |
+| --- | --- |
+| `REVOKE ALL FROM PUBLIC` → `REVOKE UPDATE FROM PUBLIC` | 1 fails |
+| `REVOKE UPDATE, DELETE, TRUNCATE FROM dsor_runtime` deleted | 2 fail |
+| `GRANT INSERT, SELECT` narrowed to `GRANT INSERT` | 5 fail |
+| restored | 16 pass |
+
+**A consequence worth recording.** Editing an applied migration made `pnpm migrate` refuse, which is
+the guard in `src/migrations.ts` doing its job:
+
+```text
+TypeError: 002_runtime_user.sql has changed since it was applied: the database ran a different
+version of it, and an applied migration is never edited. Add a new migration instead
+```
+
+The right answer *in development*, while the migration is still being authored, is to reset the
+development database — `DROP TABLE audit, applied_migrations` as the owner, then `pnpm migrate`. The
+right answer once a migration has run anywhere real is to add `003`. The guard does not know which
+situation it is in, and it is correct to refuse rather than guess.
+
+`pnpm check`: 23 files, 301 tests. `pnpm test:db`: 4. Both routes verify: 10 records on the server,
+20 on disk.

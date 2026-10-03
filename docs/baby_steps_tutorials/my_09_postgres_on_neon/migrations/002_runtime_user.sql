@@ -24,11 +24,24 @@
 --
 -- A freshly created table grants nothing to anybody, so there is nothing for a REVOKE to take away.
 -- **What makes the log safe is the GRANT being narrow, not the REVOKE being present.** A mutation
--- sweep proved it: deleting the REVOKE line entirely leaves every test passing.
+-- sweep proved it: deleting a REVOKE line left every test passing, because every test started from
+-- a fresh table.
 --
 -- The REVOKEs stay, and the honest reason is below each one. They are a second answer to a question
 -- the GRANT already answers, for a database that is not fresh — and `audit-permissions.test.ts`
 -- tests them that way, by granting something first so there is something to remove.
+--
+-- UPDATED 2026-10-04: those tests now kill the mutants, and the sentence above is history rather
+-- than a current state. Two of them were still alive until today:
+--
+--   REVOKE ALL ON audit FROM PUBLIC  ->  REVOKE UPDATE ON audit FROM PUBLIC    301 tests passed
+--   REVOKE UPDATE, DELETE, TRUNCATE ... FROM dsor_runtime  ->  deleted          301 tests passed
+--
+-- The first survived because the test granted only UPDATE to PUBLIC, so the one privilege it
+-- checked was the one the narrowed line still removed. The test grants all three now, and the
+-- privilege check asks `has_table_privilege` rather than reading the grant catalogue — a catalogue
+-- row exists only for a grant made to the role *by name*, and a right arriving through PUBLIC has
+-- no such row. Both mutants now fail a test.
 
 -- Add a row, and read rows back. That is the whole of what writing an audit log needs — and it is
 -- this line, the narrow one, that the guarantee rests on.
@@ -48,8 +61,18 @@ REVOKE UPDATE, DELETE, TRUNCATE ON audit FROM dsor_runtime;
 -- and the one line here most likely to matter on a database with a history.
 REVOKE ALL ON audit FROM PUBLIC;
 
--- Granted again, because the line above revokes from PUBLIC and dsor_runtime is a member of PUBLIC.
-GRANT INSERT, SELECT ON audit TO dsor_runtime;
+-- There was a second `GRANT INSERT, SELECT ON audit TO dsor_runtime;` here, with the comment
+-- "granted again, because the line above revokes from PUBLIC and dsor_runtime is a member of
+-- PUBLIC". That is a false statement about PostgreSQL. `REVOKE ... FROM PUBLIC` revokes the grant
+-- made *to PUBLIC*; it does not touch a grant made directly to a role that happens to be a member
+-- of it. Measured against PostgreSQL 18:
+--
+--   after GRANT INSERT, SELECT to the role:   INSERT=true SELECT=true
+--   after REVOKE ALL ON audit FROM PUBLIC:    INSERT=true SELECT=true   <- the direct grant survives
+--
+-- So the line was a no-op in every case, and no test could ever have killed it. Deleting a line
+-- that protects nothing is better than keeping it with a reason that is not true, because the next
+-- reader would have learned the wrong rule from it.
 
 -- A role that can create tables can create one called `audit` in a schema earlier on its own search
 -- path, and then every INSERT lands somewhere nobody is auditing.
