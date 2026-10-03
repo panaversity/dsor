@@ -547,7 +547,9 @@ pair: 4 pairs, 8 calls, not counted as attacks either.
 prints what step 11's program printed, with every call sending a URI. *Changed by the
 Stage 2 review, 2026-10-01:* `pnpm check` now prints `719 passed`, and `pnpm
 test:db` prints `80 passed`. Outside the repository, three tests that compare the
-schemas with the repository's originals are skipped: `716 passed | 3 skipped`.
+schemas with the repository's originals are skipped: `716 passed | 3 skipped`. *Changed by
+step 16's review, 2026-10-03:* `pnpm test:db` now prints `83 passed`. The three new tests
+are in "Think it through".
 
 ## Break it
 
@@ -975,6 +977,51 @@ the suite.
   after another file had written records. With no `org_789` record in the log it had no
   teeth. Fixed from step 11 on: the test writes a record of each company first, and may take
   60 s, as long as the owner's program it starts.
+
+**Found by step 16's review (2026-10-03), and fixed from step 09 on.**
+
+- **The log trusted an `INSERT` that kept nothing.** `add` sent its `INSERT` and never
+  asked how many rows the database wrote. A rule `DO INSTEAD NOTHING` on `dsor.audit`, or
+  a trigger that returns `NULL`, makes the database take the `INSERT` and keep no row.
+  Then the caller gets the invoice, and no record is kept.
+  - **Fixed:** `add` throws unless the `INSERT` wrote exactly one row. It throws inside
+    `inCompany`'s transaction, so the transaction is rolled back, and the caller hears
+    `EVIDENCE_STORE_UNAVAILABLE` (DSOR-EXE-03b).
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. Like the `COMMIT` test beside it, it wraps the
+    real client. Only the log's `INSERT` changes: the same values go in an
+    `INSERT … SELECT … WHERE false`, a real statement that keeps no row. The test also
+    checks that this statement ran once and kept 0 rows, because an `INSERT` that failed
+    would pass the test for the wrong reason.
+- **The start-up check read PostgreSQL's names through the search path.** The **search
+  path** is the list of schemas PostgreSQL looks in to find a name such as
+  `has_table_privilege`. The owner can put `public` first, and make functions there with
+  PostgreSQL's names that answer "no". Then a login that can change the log passes the
+  check.
+  - **Fixed:** the check runs inside a transaction that starts with
+    `SET LOCAL search_path TO pg_catalog, pg_temp`. `SET LOCAL` lasts only until the
+    transaction ends. When it is given the program's pool, the check opens a read-only
+    transaction of its own. When it is given one connection, it runs inside the
+    transaction that connection has open. This step's count of roles (step 11's decision
+    7) is read the same way.
+  - **Caught by** two tests in `test/audit.db.test.ts`. The first, `DSOR-AUD-04a: the
+    start-up check reads PostgreSQL's own names, whatever the search path finds first`,
+    runs the owner's program `test/owner-login-check.ts`, through `ownerLoginCheck` in
+    `test/db.ts`. Inside a transaction that is rolled back, it makes look-alikes of
+    `has_table_privilege`, `has_any_column_privilege`, and `pg_has_role`, puts `public`
+    first, and runs the check. The owner can change the log, and the check must still say
+    so. The second, `DSOR-AUD-04a: the start-up check pins the search path inside a
+    transaction of its own`, guards the pool's path, the one the program uses. Outside a
+    transaction, PostgreSQL ignores `SET LOCAL` and warns, so the test expects no warning.
+- **Red first, and broken on purpose:** before the fixes, the first two tests failed. The
+  call answered with INV-1008's data. The check found 4 problems with the owner, and "can
+  change or remove records in dsor.audit" was not one of them. The third test passed, as
+  expected: the pool's path it guards did not exist yet. Then three breaks, each run
+  against all 83 database tests: `add` without its row count check, the check without
+  `SET LOCAL`, and the pool's path without its `BEGIN READ ONLY`. Each turned its own test
+  red, and only that one: 1 failed, 82 passed. The last showed PostgreSQL's two warnings,
+  "SET LOCAL can only be used in transaction blocks" and "there is no transaction in
+  progress". The database tests went from 80 to 83.
 
 **Left open on purpose:**
 

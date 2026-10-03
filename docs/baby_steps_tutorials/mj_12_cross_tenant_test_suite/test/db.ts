@@ -80,7 +80,8 @@ export async function tryThenRollBack(
 }
 
 // The owner's window, for the records dsor_runtime can write and never
-// read back (step 11's README, decision 4), and for DSoR's own lock alone.
+// read back (step 11's README, decision 4), and for DSoR's own lock alone. Since step 16's
+// review, for the start-up check run as the owner too.
 /**
  * Runs one of the owner's child programs, and gives back what it printed, as JSON. The
  * child reads the owner's key from .env and redacts what it prints, so the test never
@@ -101,6 +102,15 @@ export function ownerRowsFor(request_id: string): Record<string, unknown>[] {
 /** What DSoR's own store returns to the owner, whom no policy stops (test/owner-store.ts). */
 export function ownerStore(): unknown {
   return asOwner("owner-store.ts");
+}
+
+/**
+ * What the start-up check finds wrong with the owner's login, when look-alikes of
+ * PostgreSQL's functions come first in its search path (test/owner-login-check.ts). Found
+ * by step 16's review, and fixed from step 09 on.
+ */
+export function ownerLoginCheck(): string[] {
+  return asOwner("owner-login-check.ts") as string[];
 }
 
 /** A pool that holds one connection, so every request reuses it (step 11's README, decision 8). */
