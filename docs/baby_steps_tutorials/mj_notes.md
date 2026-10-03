@@ -42,6 +42,23 @@ contract. Step 03 found this in review and left it open. The question for the sp
 should "required" here mean "present and not empty", and must each named operation
 exist?
 
+### Does a weaker label remove a guard?
+
+The contract schema asks a `non_compensatable` command for two more fields:
+`authorization.approve_permission` and `in_flight`. A `compensatable` command needs
+neither. So a contract can label `payment.execute` as `compensatable`, name
+`payment.refund` as its undo, and pass the schema with no approver. A refund needs the
+vendor to act, so it is not an undo that DSoR can run. The schema cannot see that. We
+found this on 2026-10-03 with the real schema. The question for the spec: must a
+compensating operation be one that DSoR can run to the end by itself?
+
+### Which error code does a denial under DSOR-IDN-06 use?
+
+DSOR-IDN-06 says DSoR denies a command when the delegator's authority is older than the
+§44 bound. It names no error code. `AUTHORIZATION_DENIED` means "never retry", but the
+company directory can come back a minute later. Until the spec says, step 19's design
+must choose.
+
 Steps 04 and 05 recorded their questions in
 [`research/open-questions.md`](../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)
 instead: 19 and 20 from step 04, and 21 to 25 from step 05. Each one rests on a
@@ -463,6 +480,52 @@ What the extra passes found:
 - **Tests**
   - `pnpm test:db` runs the owner's migration from step 10 on. It needs the owner's key and resets `dsor_runtime`'s
     password on every run.
+
+## Understanding sessions
+
+From step 17, each step starts with a session that writes no code. The session teaches
+the step in small parts, one in each turn. A real run settles each prediction, and each
+part says what production needs. The session ends with the design questions that the
+design session starts from. The `understand-baby-step` skill in `.claude/skills/` holds
+the method.
+
+**Why this order.** Steps 01 to 16 taught inside the build. Understanding then shared
+each session with decisions, tests, and commits, and many predictions were about test
+counts. When understanding had a session of its own, each question was about what DSoR
+does, and a real run answered it within a minute.
+
+### Steps 08 to 20, for production (2026-10-03)
+
+- **Habit 1: credit for a question the check does not ask.** Step 09's start-up check
+  asks six fixed questions, so `GRANT UPDATE ON app.invoices` passed it. Step 12's test
+  that expects no findings still passed with the judge removed.
+- **Habit 2: a "yes" that DSoR cannot prove now.** A map that matches the database but
+  breaks its kind (step 16). A refund called an undo (17). An active slip after its
+  signer left (18). A directory answer 30 hours old (19).
+- **Parallel requests do not take turns (step 20).** A claim in two steps, first ask
+  and then insert, gave 12, 6, and 7 payments in three runs of 50 requests.
+
+### Step 17, before design (2026-10-04)
+
+- **Habit 1 again, three times.** A label is more than a word: `non_compensatable`
+  makes the schema ask for an approver. A valid answer is not a true answer: a made-up
+  proposal URI passes the schema. Line ⑤ never sees the amount: `checkPermission`
+  reads no part of the request.
+- **Design questions for Phase A:**
+  1. The shape of a command's answer. `COMMITTED` needs a proposal (step 22) and a
+     payload hash. Build small ones early, or use a tutorial shape that is recorded as
+     not meeting DSOR-SCH-01.
+  2. Who writes `app.payments`. Step 16's `business` kind allows only `SELECT`. Add a
+     kind for company records that DSoR writes, or a second login that stands in for a
+     connector.
+  3. Whether the agent is refused `payment.create` until step 18, because DSOR-DEL-01a
+     asks for a delegation.
+  4. `compensatable` or `atomic` for a draft that one transaction writes.
+  5. Start-up checks that each undo list is not empty and names a real operation. See
+     "Can a list of undo operations be empty?" above.
+  6. How `payment.cancel` refuses a payment that is not a draft, before preconditions
+     arrive in step 32.
+  7. Which roles get `payment:create` and `payment:cancel`.
 
 ## Still unknown
 
