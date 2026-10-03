@@ -574,6 +574,58 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // One INSERT, with every value as a parameter rather than pasted into the SQL. Not politeness:
   // `reason` holds a caller's own words, and a caller's words in a SQL string is how an audit log
   // ends up executing them.
+  //
+  // NEW IN STEP 09: and a failure here is not the same thing as a failure to write.
+  //
+  // Step 08's store was a JavaScript array. An array either takes the record or throws, and there is
+  // no third answer. A database on the other side of a network has one: the INSERT commits and the
+  // **reply** is lost. Measured, by dropping the reply of a committed INSERT:
+  //
+  //     the caller is told: EVIDENCE_STORE_UNAVAILABLE  retry: safe_same_key
+  //                         "could not be written down, so it was not carried out"
+  //     the log holds 1 record(s):
+  //        seq 0  ALLOW  ALLOWED  req_1
+  //
+  // Both halves of what the caller was told are false. It *was* written down. And retrying on
+  // `safe_same_key` writes a second ALLOWED record for the same request. Worse than either: an
+  // auditor reconstructing that request finds ALLOWED, while the caller holds a refusal — the log
+  // and the answer disagree, which is the one thing a decision record exists to prevent.
+  //
+  // `DSOR-UNK-01b` is the rule and it is about exactly this: an unknown outcome is reported as
+  // unknown, never as a retryable error. So this does not guess. It looks.
+  try {
+    await insert(db, written);
+  } catch (unknownOutcome) {
+    // Is the record there? Asked by `record_id`, and checked by `record_hash` — because the
+    // question is not "did something land at this position" but "did **this** record land". A
+    // UNIQUE violation from a writer that beat us to this position would answer yes to the first
+    // question and no to the second, and treating it as success would lose a decision.
+    const { rows: found } = await db.query<{ record_hash: string }>(
+      "SELECT record_hash FROM audit WHERE record_id = $1",
+      [written.record_id],
+    );
+
+    if (found[0]?.record_hash !== written.record_hash) {
+      // Either nothing landed, or something else did. Nothing was written, so the caller is told
+      // so, and `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is then true.
+      throw unknownOutcome;
+    }
+
+    // It landed. The reply was lost, not the record. Returning it is honest and it is also what
+    // keeps the log and the answer agreeing: the decision is recorded, so the command may proceed.
+  }
+
+  return written;
+}
+
+/**
+ * The INSERT, on its own so that the recovery above has something to call.
+ *
+ * Every value is a parameter rather than pasted into the SQL. Not politeness: `reason` holds a
+ * caller's own words, and a caller's words in a SQL string is how an audit log ends up executing
+ * them.
+ */
+async function insert(db: Database, written: AuditRecord): Promise<void> {
   await db.query(
     `INSERT INTO audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
@@ -597,8 +649,6 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
       written.reason ?? null,
     ],
   );
-
-  return written;
 }
 
 /**

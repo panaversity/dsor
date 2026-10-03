@@ -514,6 +514,13 @@ const recordTheDecision: Stage["run"] = async (context) => {
     // has happened yet. `EVIDENCE_STORE_UNAVAILABLE` is the §28 code for it, retry
     // `safe_same_key`: the request never ran, so sending it again is safe.
     //
+    // NEW IN STEP 09: and "could not be written" is now a true statement, where it used to be a
+    // guess. A database can commit an INSERT and lose the reply, which arrives here as an error
+    // from a write that actually happened — so this used to tell the caller the decision was not
+    // recorded while the record sat in the table saying ALLOWED. `audit` resolves that itself: it
+    // goes and looks for its own record by id and hash, and only throws when the record genuinely
+    // is not there. By the time this line runs, nothing was written.
+    //
     // This is the decision-record half of DSOR-EXE-03b. The other half is about the *intent* record
     // and lands in step 36, along with DSOR-EXE-03a.
     return refuse(

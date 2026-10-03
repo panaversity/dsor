@@ -135,3 +135,24 @@ This note had recommended leaving it, on the grounds that four folders touched f
 can see is the kind of edit that introduces a mistake while fixing a smell. That was the right call
 while the question was whether it deserved a detour. It stopped being right when the answer became
 "do all of it" — and the edit was mechanical, with all six suites green before and after.
+
+## The chain's time check trusts the system clock (raised 2026-10-04, step 09)
+
+`verifyChain` rejects a log whose `at` values go backwards. Decision 77 made the *sequence* and the
+clock agree with each other, so a lost race can no longer cause that. What it cannot do is make the
+clock itself monotonic: an NTP correction that moves the system clock back between two writes
+produces the same symptom — an intact chain reported as broken, with rows nobody can correct.
+
+Three ways out, none of them this step's:
+
+1. **A trusted time source**, which is what §30 actually asks for. The right answer and the
+   expensive one.
+2. **Order by `recorded_at` instead**, the database's own `now()`. One clock instead of many, but
+   `recorded_at` is deliberately *not* in the hash — it is the witness that sits beside the
+   application's claim, and putting it inside the hash would lose that.
+3. **Drop the time check from `verifyChain`** and rely on the hash chain alone for tamper-evidence,
+   keeping the times as evidence rather than as a rule. The chain already pins the order; the time
+   check is a second, weaker statement about the same thing.
+
+Option 3 is the one I would argue for, and it is a change to what `verifyChain` promises, so it is
+not a quiet edit. Left open.

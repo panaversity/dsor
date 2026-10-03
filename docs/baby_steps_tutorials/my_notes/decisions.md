@@ -1476,3 +1476,61 @@ under genuine parallelism.
 
 **Proved by breaking it.** Clock read moved back above the tail: **all 4 fail**. Restored:
 `pnpm check` 22 files, 297 tests passed.
+
+## 78 · A lost reply is not a failed write, so `audit` looks instead of guessing (2026-10-04)
+
+**The problem.** Step 08's store was a JavaScript array. An array has two answers: it took the
+record, or it threw. A database on the other side of a network has a third — the INSERT commits and
+the **reply** is lost. `audit` treated that as a failure. Measured, by dropping the reply of a
+committed INSERT:
+
+```text
+the caller is told: EVIDENCE_STORE_UNAVAILABLE  retry: safe_same_key
+                    "could not be written down, so it was not carried out"
+the log holds 1 record(s):
+   seq 0  ALLOW  ALLOWED  req_1
+```
+
+Both halves of what the caller was told are false. It *was* written down, and retrying on
+`safe_same_key` writes a second ALLOWED record for the same request. Worse than either: the log and
+the answer disagreed. An auditor reconstructing `req_1` finds ALLOWED while the caller holds a
+refusal — and stopping exactly that is why a decision record exists.
+
+`DSOR-UNK-01b` is the rule and it names this case: an unknown outcome is reported as unknown, never
+as a retryable error.
+
+**The decision.** `audit` does not guess which of the two happened. It looks: on a failed INSERT it
+queries for its own record and compares the **`record_hash`**, then either returns it (the reply was
+lost, the record is there, the decision stands) or rethrows (nothing was written, and
+`EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is then true).
+
+**Why `record_hash` and not "is there a row".** The question is not "did something land at this
+position" but "did **this** record land". A writer that beat us to the position makes the INSERT
+fail on the primary key and leaves a row at `audit:org_456:0` — someone else's. Accepting it would
+throw away a decision and tell the caller it was recorded. There is a test for precisely that, and
+narrowing the check to `found[0] === undefined` fails it.
+
+**Measured after the fix:**
+
+```text
+reply lost AFTER the insert committed:
+   caller: data
+   log:    1 record(s) [ALLOW/ALLOWED]  verifies: true
+the insert genuinely failed:
+   caller: EVIDENCE_STORE_UNAVAILABLE retry:safe_same_key
+   log:    0 record(s) []  verifies: true
+```
+
+**Proved by breaking it.** Total held at 4.
+
+| Sabotage | Result |
+| --- | --- |
+| no recovery at all (the original behaviour) | 2 fail |
+| recovery accepts any row at the position, not only ours | 1 fails |
+| restored | 4 pass |
+
+The INSERT moved into its own `insert` function, so the recovery has something to call twice. The
+stale comment in `operations.ts` — "the decision could not be written" — now says why that
+sentence is finally true rather than a guess.
+
+`pnpm check`: 23 files, 301 tests passed.

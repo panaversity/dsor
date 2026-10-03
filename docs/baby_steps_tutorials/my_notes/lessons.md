@@ -508,3 +508,15 @@ order is unkind to it.
 
 The tell: a comment that explains why a guarantee is not tested. That is where the untested
 guarantees live.
+
+## 24 · A network gives a third answer, and step 08's code only knew two
+
+An in-memory store either accepts the write or throws. Everything written against one quietly
+assumes that, and the assumption survives the move to a real database because the *types* do not
+change — `await db.query(...)` still either returns or throws. What changes is what a throw
+**means**: it can now mean "it worked and you did not hear about it".
+
+So when a store moves from memory to a network, the question to ask of every `catch` around a write
+is not "do I handle the error" but "do I know which of the two things happened". If the answer is
+no, the `catch` is making a claim it cannot support — and the fix is to go and look, not to pick the
+likelier case.
