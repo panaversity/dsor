@@ -116,6 +116,13 @@ export function ownerList(): unknown {
   return asOwner("owner-store.ts", ["list"]);
 }
 
+// NEW IN STEP 16: the catalog, read inside the owner's transaction that made each thing
+// the inspector must refuse, then rolled back (step 16's README, decision 8).
+/** The catalog as dsor_runtime would see it, with the owner's rolled-back objects in it. */
+export function ownerCatalog(): unknown {
+  return asOwner("owner-catalog.ts");
+}
+
 /** A pool that holds one connection, so every request reuses it (step 11's README, decision 8). */
 export function poolOfOne(): pg.Pool {
   return new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });
@@ -143,7 +150,7 @@ export const PRIVILEGES_HELD = `
            string_agg(a.attname, ' ' ORDER BY a.attnum) AS held
       FROM tables JOIN pg_attribute a ON a.attrelid = tables.rel
            AND a.attnum > 0 AND NOT a.attisdropped,
-           unnest(ARRAY['INSERT','UPDATE','REFERENCES']) AS p
+           unnest(ARRAY['SELECT','INSERT','UPDATE','REFERENCES']) AS p
      WHERE has_column_privilege(a.attrelid, a.attnum, p) GROUP BY 1),
   on_sequences AS (
     SELECT c.oid::regclass::text AS object, string_agg(p, ' ' ORDER BY p) AS held

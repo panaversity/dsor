@@ -1,7 +1,7 @@
 // The program's full runs, moved here from startup.test.ts, because the
 // program now needs the database (step 09's README, decision 15).
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -189,6 +189,38 @@ describe("the program's start-up check", () => {
       expect(run.stdout).not.toMatch("data: {");
       // The refusal names the problems, never the secret.
       expect(run.stdout + run.stderr).not.toContain("<owner URL>");
+    },
+  );
+
+  // NEW IN STEP 16: the database half of C6, on today's database. A map that leaves out
+  // dsor.migrations is a valid map, so start-up gets past the files and logs in, and the
+  // inspector finds the table nobody wrote down. Found by the sweep: the refusal in
+  // src/main.ts could be deleted, and every test stayed green.
+  it(
+    "step 16's decision 4: refuses to start on a database that does not match its map",
+    { timeout: 60_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-store-"));
+      try {
+        const map = JSON.parse(readFileSync(new URL("../store.json", import.meta.url), "utf8"));
+        delete map.tables["dsor.migrations"];
+        const partial = join(dir, "store.json");
+        writeFileSync(partial, JSON.stringify(map));
+        const step = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
+        const args = ["../contracts", "../roles.json", "../inputs", "../classifications.json"];
+        const run = spawnSync(process.execPath, [MAIN, ...args.map(step), partial], {
+          encoding: "utf8",
+        });
+        const stderr = redact(run.stderr, { "<runtime URL>": RUNTIME_URL });
+        expect(run.status).toBe(1);
+        expect(stderr).toMatch("The database does not match store.json. Refused:");
+        expect(stderr).toMatch("dsor.migrations is a table that store.json does not name");
+        // The files were checked, and the program logged in, before the inspector ran.
+        expect(run.stdout).toMatch("operations:");
+        expect(run.stdout).not.toMatch("data: {");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
     },
   );
 });

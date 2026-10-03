@@ -233,6 +233,25 @@ describe("the program", () => {
     },
   );
 
+  // Found by the review: a database the program cannot reach stopped it with a stack trace.
+  // It answered nothing, so it failed closed, but the problem was not named. Port 1 on this
+  // machine refuses at once, so the test needs no database.
+  it(
+    "step 16's decision 4: refuses to start when the database cannot be reached: it names why, with no stack trace",
+    { timeout: 30_000 },
+    () => {
+      const unreachable = "postgresql://dsor_runtime:nothing@127.0.0.1:1/neondb";
+      const run = spawnSync(process.execPath, [MAIN], {
+        encoding: "utf8",
+        env: { ...process.env, DSOR_DB_URL: unreachable },
+      });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toMatch("ECONNREFUSED");
+      expect(run.stderr).not.toMatch(/^\s+at /m);
+      expect(run.stdout).not.toMatch("data: {");
+    },
+  );
+
   // The program needs the database now, and it never falls back to a log
   // in memory (step 09's README, decision 15). The empty variable is kept: .env does not
   // override a variable that is already set, even to "".

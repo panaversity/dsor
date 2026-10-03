@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { Catalog } from "../src/catalog.ts";
 import { storeDifferences } from "../src/inspector.ts";
-import { checkStore, readStore } from "../src/store.ts";
+import { checkStore, readStore, type StoreMap } from "../src/store.ts";
 import { columnIn, relationIn, relationOf, today } from "./catalogs.ts";
 
 const { map } = checkStore(readStore());
@@ -204,7 +204,7 @@ describe("C5: every table with a company key is locked by row-level security, en
   // A company column the map forgot to call a key would get no lock check at all.
   it("DSOR-RP-01b: a table with a tenant_id column and no key in the map is named", () => {
     const found = differencesWith((c) => {
-      relationIn(c, "dsor.migrations").columns.push({ name: "tenant_id", held: [] });
+      relationIn(c, "dsor.migrations").columns.push({ name: "tenant_id", held: [], filled: false });
     });
     expect(found).toStrictEqual([
       "dsor.migrations has a column tenant_id, and store.json names no company key for it",
@@ -218,6 +218,97 @@ describe("C5: every table with a company key is locked by row-level security, en
     });
     expect(found).toStrictEqual([
       "store.json names tenant_id as the company key of app.invoices, and the table has no such column",
+    ]);
+  });
+});
+
+/** The shipped map with one change. It must pass the map's own checks. */
+function mapWith(change: (map: any) => void): StoreMap {
+  const data = JSON.parse(readStore().text);
+  change(data);
+  const checked = checkStore({ file: "store.json", text: JSON.stringify(data) });
+  expect(checked.problems).toStrictEqual([]);
+  return checked.map;
+}
+
+describe("C3, from the review: what one line in the map must never open", () => {
+  // The review added INSERT on at and sequence to the map, granted it, and wrote a record
+  // dated 2001. The database numbers and times each record (step 09's README, decision 6).
+  it("DSOR-AUD-04a: a map that lets the program write the log's time is named", () => {
+    const map = mapWith((m) => m.tables["dsor.audit"].runtime.columns.INSERT.push("at"));
+    const catalog = today();
+    columnIn(relationIn(catalog, "dsor.audit"), "at").held.push("INSERT");
+    expect(storeDifferences(map, catalog)).toStrictEqual([
+      "dsor.audit: store.json lists INSERT on the column at, which the database fills in",
+    ]);
+  });
+
+  // A privilege held WITH GRANT OPTION can be handed to another role, such as PUBLIC.
+  it("step 16's decision 3: a privilege on the log held WITH GRANT OPTION is named", () => {
+    const found = differencesWith((c) => {
+      relationIn(c, "dsor.audit").held.push("SELECT WITH GRANT OPTION");
+    });
+    expect(found).toStrictEqual([
+      "dsor.audit: dsor_runtime holds SELECT WITH GRANT OPTION, which store.json does not list",
+    ]);
+  });
+
+  it("step 16's decision 3: a column privilege held WITH GRANT OPTION is named", () => {
+    const found = differencesWith((c) => {
+      columnIn(relationIn(c, "dsor.audit"), "record_id").held.push("INSERT WITH GRANT OPTION");
+    });
+    expect(found).toStrictEqual([
+      "dsor.audit: dsor_runtime holds INSERT WITH GRANT OPTION on the column record_id, which store.json does not list",
+    ]);
+  });
+
+  // With CREATE on the database, dsor_runtime could make a schema, and own its tables.
+  it("step 16's decision 3: CREATE on the database is named", () => {
+    const found = differencesWith((c) => c.database.push("CREATE"));
+    expect(found).toStrictEqual(["the database: dsor_runtime holds CREATE, which no kind allows"]);
+  });
+
+  // Found by the sweep: a grant of SELECT on one column alone was never tested.
+  it("step 16's decision 3: SELECT on one column of a bookkeeping table is named", () => {
+    const found = differencesWith((c) => {
+      columnIn(relationIn(c, "dsor.migrations"), "name").held.push("SELECT");
+    });
+    expect(found).toStrictEqual([
+      "dsor.migrations: dsor_runtime holds SELECT on the column name, which store.json does not list",
+    ]);
+  });
+});
+
+describe("C2, from the review: nothing reaches around the tables", () => {
+  // The review's function, made by the owner, deleted log records for dsor_runtime.
+  it("DSOR-AUD-04a: a SECURITY DEFINER function dsor_runtime may run is named", () => {
+    const found = differencesWith((c) => c.definers.push("dsor.tidy()"));
+    expect(found).toStrictEqual([
+      "dsor.tidy(): dsor_runtime may run it, and it runs with its owner's rights, which no kind allows",
+    ]);
+  });
+
+  // DO INSTEAD NOTHING turns every INSERT into nothing, and the program thinks it kept the
+  // record. A trigger that returns NULL does the same.
+  it("step 16's decision 3: a rule on the log is named", () => {
+    const found = differencesWith((c) => relationIn(c, "dsor.audit").rules.push("swallow"));
+    expect(found).toStrictEqual(["dsor.audit has the rule swallow, which no kind allows"]);
+  });
+
+  it("step 16's decision 3: a trigger on the log is named", () => {
+    const found = differencesWith((c) => relationIn(c, "dsor.audit").triggers.push("drop_it"));
+    expect(found).toStrictEqual(["dsor.audit has the trigger drop_it, which no kind allows"]);
+  });
+});
+
+describe("C5, from the sweep", () => {
+  // Decision 1 names two company columns, and only tenant_id had a test.
+  it("DSOR-RP-01b: a table with a tenant column and no key in the map is named", () => {
+    const found = differencesWith((c) => {
+      relationIn(c, "dsor.migrations").columns.push({ name: "tenant", held: [], filled: false });
+    });
+    expect(found).toStrictEqual([
+      "dsor.migrations has a column tenant, and store.json names no company key for it",
     ]);
   });
 });

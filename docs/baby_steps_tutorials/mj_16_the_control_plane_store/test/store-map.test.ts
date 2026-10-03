@@ -119,7 +119,58 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
   });
 });
 
+// Found by the review: a company column named org_id would get no lock check, because only
+// tenant_id and tenant are recognised. A kind whose rows belong to a company must say which
+// column says so.
+describe("C4: a business or append-only table names its company key", () => {
+  it.each([
+    ["app.invoices", "business"],
+    ["dsor.audit", "append-only"],
+  ])("DSOR-RP-01b: %s (%s) with no company key is refused", (name, kind) => {
+    const source = mapWith((m) => (m.tables[name].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      `store.json: ${name} is ${kind}, which needs a company key, and names none`,
+    ]);
+  });
+
+  // Found by the sweep: the bookkeeping kind's column list was never pinned.
+  it("step 16's decision 3: a bookkeeping table may not be written column by column", () => {
+    const source = mapWith(
+      (m) => (m.tables["dsor.migrations"].runtime.columns = { INSERT: ["name"] }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.migrations lists INSERT on columns, which a bookkeeping table does not allow",
+    ]);
+  });
+});
+
 describe("C7: the map itself is checked", () => {
+  // Found by the sweep: with the check that the column lists are lists gone, the map passed,
+  // and the inspector would have thrown later, with a stack trace instead of a problem.
+  it("step 16's decision 1: a column list that is not a list is refused", () => {
+    const source = mapWith((m) => (m.tables["dsor.audit"].runtime.columns.INSERT = "record_id"));
+    expect(problemsOf(source)).toStrictEqual([
+      'store.json: dsor.audit is not written as a table line: {"kind", "tenant", "runtime": {"table": [...], "columns": {...}}}',
+    ]);
+  });
+
+  // Found by the sweep: no test pinned "exactly these fields", so a field nobody reads
+  // passed. Each line says all it means, or it is refused.
+  it("step 16's decision 1: a field the map does not know is refused, at each level", () => {
+    const top = mapWith((m) => (m.owner = "neondb_owner"));
+    const schema = mapWith((m) => (m.schemas.app.owner = "neondb_owner"));
+    const table = mapWith((m) => (m.tables["app.invoices"].runtime.delete = ["*"]));
+    expect(problemsOf(top)).toStrictEqual([
+      'store.json: must be {"schemas": {...}, "tables": {...}}',
+    ]);
+    expect(problemsOf(schema)).toStrictEqual([
+      'store.json: the schema app is not written as a schema line: {"side", "runtime": [...]}',
+    ]);
+    expect(problemsOf(table)).toStrictEqual([
+      'store.json: app.invoices is not written as a table line: {"kind", "tenant", "runtime": {"table": [...], "columns": {...}}}',
+    ]);
+  });
+
   it("step 16's decision 1: a kind the map does not know is refused", () => {
     const source = mapWith((m) => (m.tables["dsor.migrations"].kind = "ledger"));
     expect(problemsOf(source)).toStrictEqual([

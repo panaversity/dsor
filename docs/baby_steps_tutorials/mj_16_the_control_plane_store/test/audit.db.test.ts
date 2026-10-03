@@ -56,6 +56,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
     const { rows } = await observer.query(PRIVILEGES_HELD);
     expect(rows).toStrictEqual([
       { object: "app.invoices", held: "SELECT" },
+      // NEW IN STEP 16: SELECT on each column too, so a grant of one column alone shows
+      // here. Found by the review of step 16.
+      {
+        object: "app.invoices SELECT",
+        held: "id vendor_id amount_value amount_currency open_amount_value open_amount_currency status tenant_id",
+      },
       { object: "dsor.audit", held: "SELECT" },
       {
         object: "dsor.audit INSERT",
@@ -63,6 +69,10 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         // and how many (step 14's README, decision 7). And which connector
         // served it (step 15's README, decision 7).
         held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector",
+      },
+      {
+        object: "dsor.audit SELECT",
+        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector",
       },
       { object: "schema app", held: "USAGE" },
       { object: "schema dsor", held: "USAGE" },

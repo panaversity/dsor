@@ -49,28 +49,40 @@ export function today(): Catalog {
         name: "app.invoices",
         kind: "table",
         held: ["SELECT"],
-        columns: INVOICE_COLUMNS.map((name) => ({ name, held: ["SELECT"] })),
+        columns: INVOICE_COLUMNS.map((name) => ({ name, held: ["SELECT"], filled: false })),
         rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
       },
       {
         name: "dsor.audit",
         kind: "table",
         held: ["SELECT"],
-        columns: AUDIT_COLUMNS.map((name) => ({
-          name,
-          held: FILLED_BY_THE_DATABASE.includes(name) ? ["SELECT"] : ["SELECT", "INSERT"],
-        })),
+        columns: AUDIT_COLUMNS.map((name) => {
+          const filled = FILLED_BY_THE_DATABASE.includes(name);
+          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+        }),
         rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
       },
       {
         name: "dsor.migrations",
         kind: "table",
         held: [],
-        columns: ["name", "at"].map((name) => ({ name, held: [] })),
+        // at has a default, now(), so the database fills it in.
+        columns: [
+          { name: "name", held: [], filled: false },
+          { name: "at", held: [], filled: true },
+        ],
         rowSecurity: { enabled: false, forced: false },
+        rules: [],
+        triggers: [],
       },
     ],
     sequences: [{ name: "dsor.audit_sequence_seq", held: [] }],
+    database: [],
+    definers: [],
   };
 }
 
@@ -82,7 +94,7 @@ export function relationIn(catalog: Catalog, name: string): Relation {
 }
 
 /** The column of this name in the relation, to change in a test. */
-export function columnIn(relation: Relation, name: string): { name: string; held: string[] } {
+export function columnIn(relation: Relation, name: string): Relation["columns"][number] {
   const found = relation.columns.find((c) => c.name === name);
   if (found === undefined) throw new Error(`${relation.name} has no column ${name}`);
   return found;
@@ -94,7 +106,9 @@ export function relationOf(name: string, kind: Relation["kind"]): Relation {
     name,
     kind,
     held: [],
-    columns: [{ name: "note", held: [] }],
+    columns: [{ name: "note", held: [], filled: false }],
     rowSecurity: { enabled: false, forced: false },
+    rules: [],
+    triggers: [],
   };
 }

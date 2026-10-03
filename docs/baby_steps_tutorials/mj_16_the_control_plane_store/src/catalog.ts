@@ -16,9 +16,13 @@ export type Relation = {
   kind: RelationKind;
   // The privileges the user holds on the whole relation.
   held: string[];
-  // Every column, and the privileges the user holds on it.
-  columns: { name: string; held: string[] }[];
+  // Every column, the privileges the user holds on it, and whether the database fills it
+  // in: an identity, a default, or a generated column.
+  columns: { name: string; held: string[]; filled: boolean }[];
   rowSecurity: { enabled: boolean; forced: boolean };
+  // The rules and the triggers on the relation, by name.
+  rules: string[];
+  triggers: string[];
 };
 
 /** What the catalog says one user may do, outside PostgreSQL's own schemas. */
@@ -28,6 +32,10 @@ export type Catalog = {
   schemas: { name: string; held: string[] }[];
   relations: Relation[];
   sequences: { name: string; held: string[] }[];
+  // The privileges the user holds on the database itself.
+  database: string[];
+  // Every SECURITY DEFINER function the user may run, as schema.name(arguments).
+  definers: string[];
 };
 
 // Every privilege PostgreSQL has for each kind of object, in the order it lists them.
@@ -94,7 +102,8 @@ const CATALOG = `
 type CatalogRow = {
   who: string;
   schemas: Catalog["schemas"];
-  relations: (Omit<Relation, "kind" | "rowSecurity"> & {
+  relations: (Omit<Relation, "kind" | "rowSecurity" | "columns" | "rules" | "triggers"> & {
+    columns: { name: string; held: string[] }[];
     relkind: string;
     enabled: boolean;
     forced: boolean;
@@ -103,7 +112,7 @@ type CatalogRow = {
 };
 
 /** Reads the catalog, as it describes this user: the pool's own login, unless one is named. */
-export async function readCatalog(pool: pg.Pool, user?: string): Promise<Catalog> {
+export async function readCatalog(pool: pg.Pool | pg.ClientBase, user?: string): Promise<Catalog> {
   const values = [user ?? null, ON_TABLES, ON_COLUMNS, ON_SEQUENCES, ON_SCHEMAS];
   const row = (await pool.query<CatalogRow>(CATALOG, values)).rows[0]!;
   return {
@@ -113,9 +122,13 @@ export async function readCatalog(pool: pg.Pool, user?: string): Promise<Catalog
       name,
       kind: KIND_OF[relkind]!,
       held,
-      columns,
+      columns: columns.map((column) => ({ ...column, filled: false })),
       rowSecurity: { enabled, forced },
+      rules: [],
+      triggers: [],
     })),
     sequences: row.sequences,
+    database: [],
+    definers: [],
   };
 }
