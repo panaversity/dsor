@@ -47,7 +47,6 @@ const RECORDED_AS: Record<string, ["ALLOW" | "DENY", string | undefined]> = {
   "cfo_100 calling invoice.issue, which no role of theirs grants": ["DENY", "invoice.issue@1"],
   "the agent calling payment.create, which no delegation covers": ["DENY", "payment.create@1"],
   "invoice.issue, which has no code yet": ["DENY", "invoice.issue@1"],
-  "invoice.issue given code, because it is a command": ["DENY", "invoice.issue@1"],
   "invoice.get with no invoice": ["DENY", "invoice.get@1"],
   "invoice.get for INV-9999": ["ALLOW", "invoice.get@1"],
   "a bug in an operation's code": ["ALLOW", "test.run@1"],

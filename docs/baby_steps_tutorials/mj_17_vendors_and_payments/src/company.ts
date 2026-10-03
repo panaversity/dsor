@@ -8,6 +8,7 @@ import { types } from "node:util";
 import { checkedLabel, newReads, type Reads } from "./freshness.ts";
 import { jsonCopy, NOT_JSON } from "./inputs.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
+import { NO_PAYMENTS, type Cancelled, type Draft, type Payment, type PaymentStore } from "./payment.ts";
 
 /** One company's invoices. Whoever holds this can read that company's invoices, and no others. */
 export type CompanyInvoices = {
@@ -20,18 +21,35 @@ export type CompanyInvoices = {
   readonly list: (after: string | undefined, count: number) => Promise<Invoice[]>;
 };
 
-/** What the code of an operation is given: the active company's id, and its invoices. */
+// NEW IN STEP 17: the payments of one company, bound as its invoices are (step 17's README,
+// outcome 1).
+/** One company's payments. Whoever holds this can write that company's payments, and no others. */
+export type CompanyPayments = {
+  /** Writes a draft of this company. */
+  readonly create: (draft: Draft) => Promise<Payment>;
+  /** Cancels one of this company's payments, when it is a draft. */
+  readonly cancel: (id: string) => Promise<Cancelled>;
+};
+
+/** What the code of an operation is given: the active company's id, its invoices, and its payments. */
 export type Company = {
   // For code that must name its own company, such as in a URI. It is never needed to read.
   readonly tenant: string;
   readonly invoices: CompanyInvoices;
+  readonly payments: CompanyPayments;
 };
 
 /**
  * The store, bound to one company. Every read is that company's, whatever the code passes.
  * The label of each read is noted in `reads`, which the code never sees.
  */
-export function companyOf(store: InvoiceStore, tenant: string, reads: Reads = newReads()): Company {
+export function companyOf(
+  store: InvoiceStore,
+  tenant: string,
+  reads: Reads = newReads(),
+  // NEW IN STEP 17: the store the commands write. Without one, every write fails.
+  paymentStore: PaymentStore = NO_PAYMENTS,
+): Company {
   // get takes an id, and list a place and a count, and nothing more. The company is fixed
   // here, out of the code's reach, so an extra argument changes nothing. Frozen, so the
   // code cannot swap the company or the store for others (step 10's README, decision 13).
@@ -44,7 +62,7 @@ export function companyOf(store: InvoiceStore, tenant: string, reads: Reads = ne
   // it: a Company the code kept for a later call reads nothing (step 15's README, decision 5).
   // Found by the review: such a read worked, and its label went into a list nobody read again.
   const open = (): void => {
-    if (reads.closed) throw new Error("this call has ended, so its company reads nothing more");
+    if (reads.closed) throw new Error("this call has ended, so its company does nothing more");
   };
   // A label that fails its check is noted as such before the error reaches the code, so code
   // that catches it cannot hide it (step 15's README, decision 6). Found by the review.
@@ -72,7 +90,20 @@ export function companyOf(store: InvoiceStore, tenant: string, reads: Reads = ne
       return rows;
     },
   });
-  return Object.freeze({ tenant, invoices });
+  // NEW IN STEP 17: the payments, bound the same way. The company is fixed here, out of the
+  // code's reach, and a Company kept after line ⑨ writes nothing more. A write leaves no
+  // label: a command's answer carries no freshness (step 17's README, decision 2).
+  const payments: CompanyPayments = Object.freeze({
+    create: async (draft: Draft) => {
+      open();
+      return paymentStore.create(tenant, draft);
+    },
+    cancel: async (id: string) => {
+      open();
+      return paymentStore.cancel(tenant, id);
+    },
+  });
+  return Object.freeze({ tenant, invoices, payments });
 }
 
 /**

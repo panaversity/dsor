@@ -2,7 +2,6 @@
 // writes. payment.create makes a draft, and payment.cancel undoes it (step 17's README,
 // outcomes 2 and 3). The program keeps payments in the table app.payments (postgres.ts);
 // the unit tests keep them in memory (memoryPayments below).
-// SHELL: the shape only. Every function says "not built yet" until the code is written.
 import type { Money } from "./money.ts";
 
 export type PaymentStatus = "draft" | "cancelled";
@@ -35,13 +34,35 @@ export type PaymentStore = {
 };
 
 /** Payments held in memory, for the unit tests, in the list given. */
-export function memoryPayments(_rows: Payment[] = []): PaymentStore {
+export function memoryPayments(rows: Payment[] = []): PaymentStore {
+  // One counter for every company, as the database's identity column is (step 17's README,
+  // "Left open"). It starts after the rows the list already holds.
+  let next = 901 + rows.length;
   return {
-    create: async (): Promise<never> => {
-      throw new Error("not built yet");
+    create: async (tenant, draft) => {
+      // Field by field. The company is the store's own argument and the status is always
+      // draft, so a draft cannot carry a company or a status of its own (step 17's README,
+      // decision 12).
+      const payment: Payment = {
+        tenant_id: tenant,
+        id: `PAY-${next++}`,
+        invoice_id: draft.invoice_id,
+        vendor_id: draft.vendor_id,
+        amount: structuredClone(draft.amount),
+        status: "draft",
+      };
+      rows.push(payment);
+      // A copy, so the caller cannot change the stored row (step 01's lesson, for invoices).
+      return structuredClone(payment);
     },
-    cancel: async (): Promise<never> => {
-      throw new Error("not built yet");
+    cancel: async (tenant, id) => {
+      const found = rows.find((row) => row.tenant_id === tenant && row.id === id);
+      if (found === undefined) return { payment: undefined, changed: false };
+      // The memory version of UPDATE ... WHERE status = 'draft': only a draft changes, and a
+      // second look reports what the payment is (step 17's README, decision 9).
+      const changed = found.status === "draft";
+      if (changed) found.status = "cancelled";
+      return { payment: structuredClone(found), changed };
     },
   };
 }

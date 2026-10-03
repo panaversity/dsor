@@ -18,6 +18,7 @@ import {
   usableRequestId,
   type RequestEnvelope,
 } from "./request.ts";
+import { semanticsOf } from "./semantics.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 import { isTenantId } from "./uri.ts";
 
@@ -154,18 +155,18 @@ export async function call(
     // decision 5).
     const handler = registry.handlers.get(name);
     if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
-    // A command's success needs a result envelope, and that needs a proposal (step 22). So
-    // a command is refused before its code runs (step 04's README, decision 1).
-    if (contract["kind"] !== "query") {
-      const why = "is a command, and commands are not built yet";
-      throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} ${why}`);
-    }
+    // NEW IN STEP 17: a command's code runs. Step 04's decision 1 refused every command
+    // here, because its success needs a proposal (step 22). Its answer has a shape of its
+    // own until then (step 17's README, outcome 8 and decision 2).
 
     // ⑦ Idempotency claim. Commands only. Not built yet: step 20.
     // ⑧ Create the proposal, or load it. Commands only. Not built yet: step 22.
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
     //   reads here, and each read is labelled (step 15). A required freshness and
     //   preconditions: not built yet, step 32.
+    // NEW IN STEP 17: a command's code reads and writes here, and its record follows at line
+    //   ⑪. So a record that fails leaves the write behind, until step 36 commits the two
+    //   together (step 17's README, decision 1).
     // The code may read the database, so call waits for it. A refusal it
     // throws while waiting is caught below, like any other.
     const returned = await line(9, async () => {
@@ -176,14 +177,16 @@ export async function call(
       // itself, so it cannot name another company (step 10's README, decision 13). Found
       // by the Stage 2 review, and fixed from step 10 on.
       try {
-        return await handler(copy, companyOf(registry.invoices, tenant, reads));
+        // NEW IN STEP 17: and that company's payments, bound the same way.
+        return await handler(copy, companyOf(registry.invoices, tenant, reads, registry.payments));
       } catch (thrown) {
         // A refusal the code throws is masked as its answer would be
         // (DSOR-CLS-02a; step 14's README, decision 8).
         throw maskRefusal(thrown, clearanceOf(caller));
       } finally {
         // Line ⑨ ends here, so the company the code was given reads nothing
-        // more (step 15's README, decision 5). Found by the review.
+        // more (step 15's README, decision 5). Found by the review. Since step 17, it writes
+        // nothing more either.
         reads.closed = true;
       }
     });
@@ -204,13 +207,9 @@ export async function call(
     // Ours, not §21's. No query's result leaves larger than DSoR gives in
     // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
     // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
+    // A command's answer passes here too: one draft is far below the limit, so only a bug
+    // reaches it.
     checkResultSize(shown.data, shown.redactions);
-    // The answer's label, from the labels its reads left. Nothing since the
-    // copy waited, so no read can have been noted after it: the label covers every read whose
-    // rows could be in the copy. Last of the checks, so an answer refused for another reason
-    // is refused for that one. A query that read nothing is a bug in its code (DSOR-FRS-01a;
-    // step 15's README, decision 6).
-    const freshness = stalest(reads);
     // ⑩ Evaluate controls, separation of duties, and limits. Not built yet: steps 24,
     //   27, and 30.
 
@@ -219,8 +218,23 @@ export async function call(
     // any (DSOR-CLS-02b).
     const { classification, redactions, resources } = shown;
     const listed = redactions.length > 0 ? { redactions } : {};
-    answer = { data: shown.data, classification, ...listed, freshness, correlation };
-    read = { resources, classification, freshness };
+    if (contract["kind"] === "query") {
+      // The answer's label, from the labels its reads left. Nothing since the
+      // copy waited, so no read can have been noted after it: the label covers every read
+      // whose rows could be in the copy. Last of the checks, so an answer refused for another
+      // reason is refused for that one. A query that read nothing is a bug in its code
+      // (DSOR-FRS-01a; step 15's README, decision 6).
+      const freshness = stalest(reads);
+      answer = { data: shown.data, classification, ...listed, freshness, correlation };
+      read = { resources, classification, freshness };
+    } else {
+      // NEW IN STEP 17: a command's answer states the semantics its contract declares, never
+      // a word of its code (DSOR-EXE-05b). No freshness: DSOR-FRS-01a names query results,
+      // and a write is not a read (step 17's README, decision 2).
+      const semantics = semanticsOf(contract);
+      answer = { data: shown.data, classification, ...listed, semantics, correlation };
+      read = { resources, classification };
+    }
   } catch (thrown) {
     // toEnvelope never throws, so no throw above can skip line ⑪. Found by step 08's
     // review, and fixed in toEnvelope from step 04 on.

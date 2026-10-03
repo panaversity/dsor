@@ -5,6 +5,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import type { Freshness } from "./freshness.ts";
 import type { Label } from "./labels.ts";
 import type { Redaction } from "./masking.ts";
+import type { Semantics } from "./semantics.ts";
 
 /** What an error tells the caller about trying again. */
 export type RetryClass =
@@ -75,8 +76,21 @@ export type Success = {
   correlation: Correlation;
 };
 
+// NEW IN STEP 17: a command's answer. Its data, its label, what was withheld, and the
+// semantics its contract declares (DSOR-EXE-05b). No freshness: a write is not a read. This
+// shape is step 17's decision 2, not the specification's: it has no outcome word, such as
+// COMMITTED, until a proposal and a payload hash exist (steps 22 and 29).
+/** A command's answer. */
+export type CommandSuccess = {
+  data: unknown;
+  classification: Label;
+  redactions?: Redaction[];
+  semantics: Semantics;
+  correlation: Correlation;
+};
+
 /** Everything call can return. */
-export type Answer = Success | ErrorEnvelope;
+export type Answer = Success | CommandSuccess | ErrorEnvelope;
 
 // The §28 table, typed out from the prose: every code, and the retry class the table
 // gives it. The guard cannot watch prose, so a test types the table out again (step 04's

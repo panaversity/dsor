@@ -20,6 +20,7 @@ import {
   shipped,
   shippedRoles,
   SUPERVISOR,
+  THE_SUPERVISOR,
   THE_AGENT,
   THE_CFO,
   UNEXPECTED,
@@ -132,22 +133,25 @@ describe("C6: a query's success is { data, correlation }", () => {
     });
   });
 
-  // A command's success needs a result envelope, and that needs a proposal (step 22). So
-  // call refuses a command before its code runs (step 04's README, decision 1). Found by
-  // the review: a command with code answered in the query's shape. user_123
-  // calls, who holds invoice:issue, so the permission check is not what refuses the call.
-  it("a command's code never runs, even when the command has code", async () => {
-    const spy = vi.fn<Handler>(() => "issued");
+  // Until step 16, call refused a command before its code ran (step 04's README, decision 1).
+  // Step 04's review had found a command with code answering in the query's shape. Since step
+  // 17 a command's code runs, and its answer has the command's shape: its semantics, and no
+  // freshness (step 17's README, outcome 8 and decision 2). invoice.issue's result has no
+  // fields, so its answer is {}.
+  it("step 17's outcome 8: a command's code runs once, and answers in a command's shape, not a query's", async () => {
+    const spy = vi.fn<Handler>(() => ({}));
     const issueHasCode = buildRegistry(
       shipped,
       { ...handlers, "invoice.issue": spy },
       shippedRoles,
     );
-    // A good input, so line ⑥ is not what refuses the call either.
-    expect(await call(issueHasCode, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toMatchObject({
-      code: "UNSUPPORTED_CAPABILITY",
+    expect(await call(issueHasCode, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE)).toStrictEqual({
+      data: {},
+      classification: "public",
+      semantics: "atomic",
+      correlation: correlationFor(THE_SUPERVISOR),
     });
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
 

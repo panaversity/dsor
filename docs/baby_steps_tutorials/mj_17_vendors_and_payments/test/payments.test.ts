@@ -2,11 +2,12 @@
 // payment.cancel undoes it, through the same checklist as every call (step 17's README, C3,
 // C5, and C6; DSOR-EXE-05c in specs/dsor/03-execution.md, section 24).
 import { describe, expect, it } from "vitest";
+import type { Company } from "../src/company.ts";
 import type { Answer } from "../src/envelope.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
 import type { Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
-import type { Registry } from "../src/registry.ts";
+import type { Handler, Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
@@ -22,10 +23,12 @@ import {
   THE_SUPERVISOR,
   USER_700,
   correlationFor,
+  handlers,
   needsDelegation,
   notGranted,
   notValid,
   paymentRegistry,
+  shipped,
   type Caller,
 } from "./helpers.ts";
 
@@ -307,5 +310,28 @@ describe("C3: the undo, payment.cancel, runs under the full checklist", () => {
         resources: [PAY_901],
       },
     ]);
+  });
+});
+
+describe("the company the code is given writes only while its call runs", () => {
+  // Step 15 closed the company's reads when line ⑨ ends. Its writes close with them, so code
+  // that keeps the company cannot write a draft that no call recorded (step 17's README,
+  // outcome 1).
+  it("step 17's outcome 1: a company kept after line ⑨ writes nothing more", async () => {
+    const rows: Payment[] = [];
+    let kept: Company | undefined;
+    const keeper: Handler = async (input, company) => {
+      kept = company;
+      return handlers["payment.create"]!(input, company);
+    };
+    const on = paymentRegistry(rows, shipped, { ...handlers, "payment.create": keeper });
+    await call(on, createLog(), SUPERVISOR, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    expect(rows).toHaveLength(1);
+    const draft = { invoice_id: "INV-1008", vendor_id: "VENDOR-44", amount: rows[0]!.amount };
+    await expect(kept!.payments.create(draft)).rejects.toThrow("this call has ended");
+    await expect(kept!.payments.cancel("PAY-901")).rejects.toThrow("this call has ended");
+    expect(rows).toStrictEqual([PAY_901_DRAFT]);
   });
 });

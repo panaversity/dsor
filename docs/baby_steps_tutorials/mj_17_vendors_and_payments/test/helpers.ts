@@ -470,14 +470,6 @@ export const A_MEMORY_READ: Freshness = {
 // The one message a bug's envelope carries, typed out again rather than imported from src.
 export const UNEXPECTED = "DSoR hit an unexpected error";
 
-// invoice.issue with code. A command must be refused before its code runs (step 04's
-// README, decision 1). Built with the role table too.
-const issueHasCode = buildRegistry(
-  shipped,
-  { ...handlers, "invoice.issue": () => "issued" },
-  shippedRoles,
-);
-
 // Every refusal this step can give: its code and its message (step 04's README, decision
 // 7). Each one is a function, so each test makes its own call.
 // Each also says who the answer names as its caller (step 05's README,
@@ -537,21 +529,16 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
     needsDelegation("payment.create"),
     THE_AGENT,
   ],
-  // user_123 holds invoice:issue, so these two calls get past the
-  // permission check and hear that invoice.issue is not built yet (step 06's README, C5).
+  // user_123 holds invoice:issue, so this call gets past the permission check and hears that
+  // invoice.issue is not built yet (step 06's README, C5). Until step 16 a second call, with
+  // code for invoice.issue, heard that commands were not built yet. Since step 17 a command
+  // with code runs (step 17's README, outcome 8), so that refusal is gone.
   [
     "invoice.issue, which has no code yet",
     // A good input, so the call also passes line ⑥.
     () => call(registry, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
     "UNSUPPORTED_CAPABILITY",
     '"invoice.issue" is not built yet',
-    THE_SUPERVISOR,
-  ],
-  [
-    "invoice.issue given code, because it is a command",
-    () => call(issueHasCode, log, SUPERVISOR, "invoice.issue", GOOD_ISSUE),
-    "UNSUPPORTED_CAPABILITY",
-    '"invoice.issue" is a command, and commands are not built yet',
     THE_SUPERVISOR,
   ],
   [

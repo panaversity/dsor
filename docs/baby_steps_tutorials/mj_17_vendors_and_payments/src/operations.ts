@@ -46,8 +46,49 @@ export function handlersFor(): Record<string, Handler> {
       const rows = await company.invoices.list(cursor, pageSize(limit) + 1);
       return pageOf(rows, limit);
     },
-    // invoice.issue has a contract but no code yet. Its success needs a
-    // proposal, and proposals are step 22. Until then, call refuses every command before
-    // its code runs (step 04's README, decision 1).
+    // NEW IN STEP 17: a draft payment for an issued invoice: its open amount and its vendor,
+    // which DSoR reads itself. The request names only the invoice (step 17's README,
+    // decisions 4 and 13).
+    "payment.create": async (input, company) => {
+      // Line ⑥ has checked the input against PaymentCreateRequest: an invoice's URI, in the
+      // active company, because the checklist refused any other before the code runs.
+      const { id } = parseUri((input as { invoice: string }).invoice);
+      const invoice = await company.invoices.get(id);
+      if (!invoice) {
+        throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`, "internal");
+      }
+      // A paid invoice has nothing to pay, and a draft invoice is not owed yet. The rule
+      // lives here until step 32 moves it to the contract (step 17's README, decision 13).
+      if (invoice.status !== "issued") {
+        const why = "is not issued, so no payment is drafted for it";
+        throw new Refusal("CONFLICT", `invoice ${preview(id)} ${why}`, "internal");
+      }
+      // The code writes at line ⑨, and the record follows at line ⑪, so a record that
+      // fails leaves the draft behind. Step 36 makes them commit together (step 17's
+      // README, decision 1).
+      return company.payments.create({
+        invoice_id: invoice.id,
+        vendor_id: invoice.vendor_id,
+        amount: invoice.open_amount,
+      });
+    },
+    // NEW IN STEP 17: the undo of payment.create. Only a draft is cancelled. The store decides
+    // in one statement, and looks again when it changed nothing (step 17's README,
+    // decision 9).
+    "payment.cancel": async (input, company) => {
+      // Line ⑥ has checked the input against PaymentCancelRequest.
+      const { id } = parseUri((input as { payment: string }).payment);
+      const { payment, changed } = await company.payments.cancel(id);
+      if (!payment) {
+        throw new Refusal("RESOURCE_NOT_FOUND", `no payment ${preview(id)}`, "internal");
+      }
+      if (!changed) {
+        const why = "is not a draft, so it cannot be cancelled";
+        throw new Refusal("CONFLICT", `payment ${preview(id)} ${why}`, "internal");
+      }
+      return payment;
+    },
+    // invoice.issue has a contract but no code: issuing an invoice is not this tutorial's
+    // story. Since step 17, a command with code runs (step 17's README, outcome 8).
   };
 }

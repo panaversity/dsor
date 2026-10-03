@@ -741,11 +741,14 @@ describe("C8: the code can reach only the active company, and its answer must be
     // Every key, even a hidden one or a symbol, and nothing behind the objects either.
     // Found by a hostile pass on the Stage 2 review's fix: a hidden store, or the store as
     // the prototype of invoices, passed a check of the visible keys.
-    expect(Reflect.ownKeys(company)).toStrictEqual(["tenant", "invoices"]);
+    // Since step 17, its payments too, bound the same way (step 17's README, outcome 1).
+    expect(Reflect.ownKeys(company)).toStrictEqual(["tenant", "invoices", "payments"]);
     expect(Object.getPrototypeOf(company)).toBe(Object.prototype);
     expect(company.tenant).toBe("org_789");
     expect(Reflect.ownKeys(company.invoices)).toStrictEqual(["get", "list"]);
     expect(Object.getPrototypeOf(company.invoices)).toBe(Object.prototype);
+    expect(Reflect.ownKeys(company.payments)).toStrictEqual(["create", "cancel"]);
+    expect(Object.getPrototypeOf(company.payments)).toBe(Object.prototype);
     expect(seen.one).toStrictEqual(INV_1008_OF_789);
     expect(seen.listed).toStrictEqual(Array(5).fill("org_789"));
   });

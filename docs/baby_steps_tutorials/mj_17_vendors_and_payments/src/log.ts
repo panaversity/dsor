@@ -43,8 +43,10 @@ export type Decision = {
 // What a query's answer returned, for its record (step 14's README,
 // decision 7).
 /** The URIs a read returned, the label of its answer, and how fresh it was. */
-// And its freshness (step 15's README, decision 7).
-export type Read = { resources: string[]; classification: Label; freshness: Freshness };
+// And its freshness (step 15's README, decision 7). NEW IN STEP 17: a command's answer has
+// no freshness, so its record names its rows and its label only (step 17's README,
+// decision 2).
+export type Read = { resources: string[]; classification: Label; freshness?: Freshness };
 
 // The reverse domain name this tutorial's own record fields sit under (DSOR-SCH-02).
 const OURS = "org.panaversity.steps";
@@ -124,11 +126,18 @@ export function decisionOf(
           row_count: read.resources.length,
           // The answer's freshness. The connector has a field of its own in
           // the audit record, and the mode and time do not (step 15's README, decision 7).
-          connector: read.freshness.connector,
+          ...(read.freshness === undefined ? {} : { connector: read.freshness.connector }),
           extensions: {
             [OURS]: {
               classification: read.classification,
-              freshness: { mode: read.freshness.mode, observed_at: read.freshness.observed_at },
+              ...(read.freshness === undefined
+                ? {}
+                : {
+                    freshness: {
+                      mode: read.freshness.mode,
+                      observed_at: read.freshness.observed_at,
+                    },
+                  }),
             },
           },
         }),
