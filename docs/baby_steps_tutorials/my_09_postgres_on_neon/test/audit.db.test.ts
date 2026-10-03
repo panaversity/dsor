@@ -43,6 +43,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Clear the table on the way out, not only on the way in. These tests insert records with
+  // deliberately fake hashes — `sha256:0`, `req_0` — because what they are testing is the
+  // UNIQUE constraint and the GRANTs, not hashing. Left behind, those rows become the start of
+  // the chain the demo appends to, and `pnpm start` then reports a *correctly* broken chain:
+  //
+  //     21 records, chain verifies against the head: false
+  //
+  // which cost an hour to explain, and which a learner running `pnpm test:db` before `pnpm start`
+  // would hit with no idea why. A test that shares a database with the program cleans up after
+  // itself. Found live 2026-10-04.
+  await owner?.query("DELETE FROM audit");
   await owner?.end();
   await application?.end();
 });
