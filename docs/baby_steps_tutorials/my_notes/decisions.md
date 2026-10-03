@@ -1292,3 +1292,70 @@ arrives with the two years apart.
 records never does, and a test says so rather than pretending the column is protected.
 **Rejected:** a `CHECK` that `at` is near `now()`. It prevents the lie and refuses an innocent slow
 request — and a refused audit write means the operation does not run at all.
+
+## 75 · The program drops to the application's role, and refuses to start if it cannot (2026-10-04)
+
+**The problem.** `002_runtime_user.sql` takes UPDATE, DELETE and TRUNCATE away from
+`dsor_runtime`, and `audit-permissions.test.ts` proved it works. But it proved it by running
+`SET ROLE dsor_runtime` first. The program never ran that line. On the PGlite route it opened the
+database as `postgres`, a superuser, and a superuser is allowed everything regardless of any GRANT.
+Measured:
+
+```text
+PGlite connects as: postgres   superuser: true
+  UPDATE    SUCCEEDED  <-- the route pnpm start, pnpm migrate and all 280 tests used
+  DELETE    SUCCEEDED
+  TRUNCATE  SUCCEEDED
+```
+
+So the append-only audit log was fully rewritable by the program that kept it. 280 green tests did
+not notice, because not one of them asked who the program had connected as. A test that borrows the
+right identity proves the GRANT. Only a test that uses the program's own connection proves the
+program.
+
+The real-server route was never affected: `DSOR_DB_URL` holds `dsor_runtime`'s own credentials, so
+that connection is `dsor_runtime`, not a superuser, and UPDATE was already refused.
+
+**The decision.** Two parts.
+
+1. `becomeTheApplication` runs `SET ROLE dsor_runtime` on the PGlite route, after the migrations
+   (which are the owner's job) and before `useDatabase`. Be exact about what this is: on a real
+   server the limit is the *server's*, because the program only ever holds `dsor_runtime`'s
+   password. On PGlite there are no logins at all, so the limit is the program's own choice and a
+   `RESET ROLE` would lift it. What the choice does prove is that the GRANTs in
+   `002_runtime_user.sql` are enough for the program to do its job and no more — which would
+   otherwise stay untested until the day it ran against Neon.
+2. `refuseIfItCanRewriteHistory` asks the database, on **both** routes, whether this connection may
+   UPDATE, DELETE or TRUNCATE `public.audit`, and throws before recording anything if it may. A
+   connection string pointing at the owner is a configuration mistake, not a preference.
+
+**Why `has_table_privilege` and not a privilege listing.** I assumed a listing misses the owner.
+Measured, and it does not — but it misses something worse:
+
+```text
+owner (postgres):        listed grants = 1   has_table_privilege = true
+superuser, not owner:    listed grants = 0   has_table_privilege = true   <-- the gap
+dsor_runtime:            listed grants = 0   has_table_privilege = false
+```
+
+`has_table_privilege` counts every route to a right: a direct GRANT, a grant to `PUBLIC`, a right
+inherited through role membership, and superuser bypass. A catalogue query keyed on a grantee name
+counts only the first.
+
+**Proved by breaking it.** Each sabotage, with the test total held at 10 so no run was invalid:
+
+| Sabotage | Result |
+| --- | --- |
+| delete the `SET ROLE` (the exact defect, restored) | 5 of 10 fail |
+| `FORBIDDEN` narrowed to `["UPDATE"]` | 1 fails |
+| the no-row case trusts the database instead of failing closed | 1 fails |
+| restored | 10 pass |
+
+And in the program itself: `a PostgreSQL on disk at ./.local-database, as dsor_runtime`, 10 records
+verifying true, 20 on the second run.
+
+**The cost.** `openTheDatabase` gained two things that exist for the test: an optional `folder`, so
+a test opens a throwaway directory instead of the demo's, and `connection` in what it returns, so a
+test can ask the program's *own session* who it is. A fresh connection would be a different
+session, and `SET ROLE` is per session — which is also why the role has to be set on every open,
+and why there is a test for the second run.

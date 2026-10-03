@@ -468,3 +468,16 @@ adapter calls through, which is the whole of what an adapter does:
 
 `undefined` for the parameters on the first one is the point: that is what makes `pg` use the simple
 protocol and accept several statements in one string, which is what `exec` is for.
+
+## 21 · A test that borrows the right identity proves the GRANT, not the program
+
+`audit-permissions.test.ts` ran `SET ROLE dsor_runtime` and then proved the application's account
+cannot UPDATE the audit table. True, and it says nothing about the program, which was connecting as
+a superuser the whole time. The test and the program were authenticating differently, and only the
+test was being checked.
+
+Ask of any permission test: **whose connection is this?** If the test sets up the identity it then
+tests, it is testing the database's GRANT machinery. To test the program you have to use the
+connection the program itself ended up holding — which is why `openTheDatabase` now returns it.
+
+The tell was there to find: 280 tests, and not one of them contained the words `current_user`.
