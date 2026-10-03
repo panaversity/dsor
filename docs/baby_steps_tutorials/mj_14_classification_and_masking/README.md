@@ -1006,6 +1006,54 @@ in masking.
   teeth. Fixed from step 11 on: the test writes a record of each company first, and may take
   60 s, as long as the owner's program it starts.
 
+**Found by step 16's review (2026-10-03), and fixed from step 09 on.**
+
+- **The log trusted an `INSERT` that kept nothing.** A table's owner can attach a rule or
+  a trigger to it, which changes what an `INSERT` does. A rule `DO INSTEAD NOTHING` on
+  `dsor.audit`, or a trigger that returns `NULL`, makes the database accept the `INSERT`
+  and keep no row. `add` never asked how many rows were kept. In step 16's review, the
+  program answered every call and kept no record of any of them.
+  - **Fixed:** `add` throws unless its `INSERT` kept exactly one row. The check sits
+    inside `inCompany`'s work, so `inCompany` rolls the transaction back, and the caller
+    hears `EVIDENCE_STORE_UNAVAILABLE` (DSOR-EXE-03b).
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. It wraps the real client, as the `COMMIT` test
+    beside it does, and changes only the log's `INSERT`: the same eleven values go in an
+    `INSERT … SELECT … WHERE false`. That is a real statement, and it keeps no row. The
+    test also checks that the database ran that statement and kept 0 rows, so it cannot
+    pass on a statement the database refused.
+- **The start-up check read PostgreSQL's names through the search path.** The **search
+  path** is the list of schemas PostgreSQL looks in to find a name such as
+  `has_table_privilege`. The owner can put `public` first, and make functions there with
+  PostgreSQL's names that answer "no". Then a login that can change the log passes the
+  check.
+  - **Fixed:** the check first runs `SET LOCAL search_path TO pg_catalog, pg_temp`:
+    PostgreSQL's own schema first, and the schema of temporary tables last. `SET LOCAL`
+    lasts only until the transaction ends. So on a pool, the check opens a read-only
+    transaction of its own. Given one connection, it uses the transaction already open
+    there. Its SQL, with step 11's count of roles, is unchanged.
+  - **Caught by** two tests in `test/audit.db.test.ts`. `DSOR-AUD-04a: the start-up check
+    reads PostgreSQL's own names, whatever the search path finds first` runs a new owner
+    program, `test/owner-login-check.ts`, through `ownerLoginCheck` in `test/db.ts`. As
+    the owner, inside a transaction that is rolled back, it makes look-alikes of
+    `has_table_privilege`, `has_any_column_privilege`, and `pg_has_role`, puts `public`
+    first, and runs the check. `DSOR-AUD-04a: the start-up check pins the search path
+    inside a transaction of its own` guards the pool's path, the one the program uses.
+    Outside a transaction, PostgreSQL ignores `SET LOCAL` and warns, so the test expects
+    no warning.
+- **Red first, and broken on purpose.** Before the fixes, two of the three tests failed.
+  The agent got `INV-1008`, though the `INSERT` kept no row. And the owner's check named 4
+  problems, without "is a member of pg_write_all_data" or "can change or remove records
+  in dsor.audit". The pool's test passed, as expected: it guards a path the fix adds.
+  Then three breaks, each put back and compared byte for byte: `add` without its row
+  check, the check without `SET LOCAL`, and the pool's path without its `BEGIN READ
+  ONLY`. Each turned its own test red, and only that one, over all 924 unit tests and all
+  103 database tests. The last got two warnings: "SET LOCAL can only be used in
+  transaction blocks" and "there is no transaction in progress". The first also fails
+  `pnpm typecheck`: `rowCount` is then never read. Twice, a test timed out after 30 s
+  while the link to Neon was slow, once before any change, and each passed when run
+  again. The database tests went from 100 to 103.
+
 **Left open on purpose**, with the reason:
 
 - **Wrong data in a correctly labelled field.** Code that puts an amount inside `status`,

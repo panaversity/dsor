@@ -149,9 +149,10 @@ describe("the program's log", () => {
 // main.ts, every test stayed green. Several tests make a program use the owner's key: this
 // one, which hands it to the program; the migrate test in test/tenants.db.test.ts, whose
 // migrate.ts reads it from .env itself; and, from step 11 on, the tests that start
-// test/owner-reads.ts or test/owner-store.ts, which read it from .env too. No test logs in
-// as the owner itself: only those child programs do. Found by the Stage 2 review: this
-// comment still said "the only test".
+// test/owner-reads.ts, test/owner-store.ts, or, since step 16's review,
+// test/owner-login-check.ts, which read it from .env too. No test logs in as the owner
+// itself: only those child programs do. Found by the Stage 2 review: this comment still
+// said "the only test".
 describe("the program's start-up check", () => {
   it(
     "DSOR-AUD-04a: refuses to run as the owner, names why, and makes no call",
