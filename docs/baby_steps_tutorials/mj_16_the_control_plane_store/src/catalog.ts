@@ -82,7 +82,9 @@ const CATALOG = `
         'enabled', c.relrowsecurity, 'forced', c.relforcerowsecurity,
         'held', array(SELECT p FROM unnest($2::text[]) WITH ORDINALITY u(p, i)
                        WHERE has_table_privilege(w.name, c.oid, p) ORDER BY i),
-        'columns', (SELECT coalesce(json_agg(json_build_object('name', a.attname, 'held',
+        'columns', (SELECT coalesce(json_agg(json_build_object('name', a.attname,
+                      'filled', a.attidentity <> '' OR a.atthasdef OR a.attgenerated <> '',
+                      'held',
                       array(SELECT p FROM unnest($3::text[]) WITH ORDINALITY u(p, i)
                              WHERE has_column_privilege(w.name, c.oid, a.attnum, p) ORDER BY i))
                       ORDER BY a.attnum), '[]')
@@ -102,8 +104,7 @@ const CATALOG = `
 type CatalogRow = {
   who: string;
   schemas: Catalog["schemas"];
-  relations: (Omit<Relation, "kind" | "rowSecurity" | "columns" | "rules" | "triggers"> & {
-    columns: { name: string; held: string[] }[];
+  relations: (Omit<Relation, "kind" | "rowSecurity" | "rules" | "triggers"> & {
     relkind: string;
     enabled: boolean;
     forced: boolean;
@@ -146,7 +147,7 @@ export async function readCatalog(db: pg.Pool | pg.ClientBase, user?: string): P
       name,
       kind: KIND_OF[relkind]!,
       held,
-      columns: columns.map((column) => ({ ...column, filled: false })),
+      columns,
       rowSecurity: { enabled, forced },
       rules: [],
       triggers: [],

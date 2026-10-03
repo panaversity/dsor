@@ -73,6 +73,14 @@ function privilegesOf(relation: Relation, line: TableLine, user: string): string
       if (listed.includes(name) && !held.includes(p))
         found.push(`${what} lacks ${on}, which store.json lists`);
     }
+    // The database numbers and times a record itself, so the map may never let the program
+    // write such a column (step 09's README, decision 6). Found by the review: the map
+    // listed at, a grant matched it, and a record was dated 2001.
+    for (const { name } of relation.columns.filter((c) => c.filled && listed.includes(c.name))) {
+      found.push(
+        `${relation.name}: store.json lists ${p} on the column ${name}, which the database fills in`,
+      );
+    }
     for (const name of listed.filter((n) => !relation.columns.some((c) => c.name === n))) {
       found.push(
         `store.json lists ${p} on the column ${name} of ${relation.name}, which the table does not have`,
