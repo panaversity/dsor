@@ -42,6 +42,14 @@ export function storeDifferences(map: StoreMap, catalog: Catalog): string[] {
     for (const p of held)
       found.push(`${name}: ${user} holds ${p} on a sequence, which no kind allows`);
   }
+  // A SECURITY DEFINER function runs with its owner's rights, so it reaches around every
+  // privilege above. The review's deleted log records for dsor_runtime (step 16's README,
+  // decision 5). Found by the review.
+  for (const name of catalog.definers) {
+    found.push(
+      `${name}: ${user} may run it, and it runs with its owner's rights, which no kind allows`,
+    );
+  }
   return found;
 }
 

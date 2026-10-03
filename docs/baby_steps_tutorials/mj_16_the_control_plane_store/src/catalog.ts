@@ -98,7 +98,12 @@ const CATALOG = `
                WHERE has_sequence_privilege(w.name, c.oid, p) ORDER BY i))
         ORDER BY o.nspname || '.' || c.relname), '[]')
        FROM pg_class c JOIN outside o ON o.oid = c.relnamespace, who w
-      WHERE c.relkind = 'S') AS sequences`;
+      WHERE c.relkind = 'S') AS sequences,
+    (SELECT coalesce(json_agg(o.nspname || '.' || p.proname || '('
+                                || pg_get_function_identity_arguments(p.oid) || ')'
+                              ORDER BY o.nspname, p.proname), '[]')
+       FROM pg_proc p JOIN outside o ON o.oid = p.pronamespace, who w
+      WHERE p.prosecdef AND has_function_privilege(w.name, p.oid, 'EXECUTE')) AS definers`;
 
 // The row the statement gives back. json_agg arrives as JavaScript arrays and objects.
 type CatalogRow = {
@@ -110,6 +115,7 @@ type CatalogRow = {
     forced: boolean;
   })[];
   sequences: Catalog["sequences"];
+  definers: string[];
 };
 
 /**
@@ -154,6 +160,6 @@ export async function readCatalog(db: pg.Pool | pg.ClientBase, user?: string): P
     })),
     sequences: row.sequences,
     database: [],
-    definers: [],
+    definers: row.definers,
   };
 }
