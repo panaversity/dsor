@@ -62,7 +62,7 @@
 GRANT INSERT (
   record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
   identity, correlation, operation, payload_hash, "authorization", result, reason
-), SELECT ON audit TO dsor_runtime;
+), SELECT ON public.audit TO dsor_runtime;
 
 -- A no-op on a fresh table, and not a no-op on a database somebody has already been administering.
 -- A privilege can arrive without anyone granting it to this role: through PUBLIC, or through a role
@@ -71,12 +71,12 @@ GRANT INSERT (
 --
 -- TRUNCATE is named explicitly because it is its own privilege, not part of DELETE, and it empties
 -- the table in one statement. A log the application can TRUNCATE is not append-only.
-REVOKE UPDATE, DELETE, TRUNCATE ON audit FROM dsor_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON public.audit FROM dsor_runtime;
 
 -- PUBLIC is every role there is or ever will be, so a privilege granted to PUBLIC reaches
 -- dsor_runtime without anybody granting it anything. Also a no-op on a fresh table in PostgreSQL,
 -- and the one line here most likely to matter on a database with a history.
-REVOKE ALL ON audit FROM PUBLIC;
+REVOKE ALL ON public.audit FROM PUBLIC;
 
 -- There was a second `GRANT INSERT, SELECT ON audit TO dsor_runtime;` here, with the comment
 -- "granted again, because the line above revokes from PUBLIC and dsor_runtime is a member of
@@ -99,6 +99,12 @@ REVOKE ALL ON audit FROM PUBLIC;
 -- because a learner may well be pointing this at an older server.
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 REVOKE CREATE ON SCHEMA public FROM dsor_runtime;
+
+-- Every table name above says `public.`, and in a migration that is not decoration. `GRANT ... ON
+-- audit` resolves the name through `search_path` exactly as a query does, so a `pg_temp.audit` in
+-- the owner's session would have taken the grant and the real table would have received nothing.
+-- That fails closed — the application would be refused rather than let through — but a grant that
+-- silently went to the wrong table is still a migration that lied about what it did.
 
 -- USAGE is permission to *look inside* the schema at all. Without it the application cannot reach
 -- the table even holding INSERT on it.

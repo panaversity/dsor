@@ -7,7 +7,7 @@
 -- Read for the specification's own shape: every column below is a field of
 -- audit-record.schema.json, and nothing has been added or renamed on the way in.
 
-CREATE TABLE audit (
+CREATE TABLE public.audit (
   -- The primary key, which is what makes step 08's record-id finding permanent. A reset there could
   -- hand the same id to two different decisions; a primary key means the second one cannot be written.
   record_id      TEXT        PRIMARY KEY,

@@ -63,7 +63,7 @@ one before it:
 | `my_06_permissions_deny_by_default` | 156 | deny by default, and "may you" is asked before "does it exist" |
 | `my_07_the_pipeline_skeleton` | 179 | the order of the checks becomes a list a test can read |
 | `my_08_write_the_decision_first` | 232 | every decision is recorded before the answer, refusals included, in a hash chain |
-| `my_09_postgres_on_neon` | 308 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
+| `my_09_postgres_on_neon` | 315 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:

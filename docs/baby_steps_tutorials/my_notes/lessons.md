@@ -591,3 +591,26 @@ So the break-it list is not documentation written after the fact. It is a mutati
 sentences, and the useful ones are the breaks whose number is **lower than expected**. Write the
 exercise, run it, and when the count is 0 or 1 for something the step calls its whole point, the test
 suite is the thing that is broken.
+
+## 30 · Read what the error already says before asking the store a question
+
+The lost-reply recovery asked the database "is a record with my hash here?" — a question that cannot
+distinguish *my INSERT committed* from *someone wrote the same bytes*. PostgreSQL had already answered
+the real question: SQLSTATE `23505` means "that row exists and yours did not commit". The recovery
+threw that answer away and asked a weaker one.
+
+And the follow-up question ran on the connection that had just failed, which is usually a connection
+that is gone. A recovery that needs the thing that broke is not a recovery; it is the same failure
+with an extra step. When the store cannot be asked, the honest state is *unknown*, and the repo has a
+word for it.
+
+## 31 · A route chosen by an environment variable is not chosen by the test
+
+`test/database.test.ts` passed a throwaway folder to `openTheDatabase` and believed that chose the
+on-disk route. `openTheDatabase` reads `DSOR_DB_URL` first. One `export` in the shell — the thing
+the README tells a learner to do — and those tests were writing into a real server's audit log while
+asserting things about PGlite.
+
+If a test's claim depends on which branch the code takes, the test sets the inputs that pick the
+branch and then asserts which branch was taken. `vi.stubEnv` for the first half; "`where` says *on
+disk*" for the second.

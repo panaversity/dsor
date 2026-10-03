@@ -1452,7 +1452,8 @@ is as broken as one that misses the wolf.
 **Why that is airtight, and it is the UNIQUE constraint that makes it so.** A writer that takes
 position N+1 saw N in the tail, so N was already committed. N's time was sampled before N's INSERT.
 Therefore `at(N) < commit(N) <= tail-read(N+1) < at(N+1)`, for every pair. The sequence and the
-clock can only agree. Nothing about this depends on luck or on how fast a writer is.
+clock can only agree. Nothing about this depends on luck or on how fast a writer is. It does depend on there being **one** clock —
+one process. Two instances with skewed clocks break it; see decision 84 and the open question.
 
 **What it does not fix.** The system clock going backwards — an NTP correction between two writes.
 Not fixable here: §30 wants a trusted time source and this step has none. `recorded_at` is the
@@ -1502,7 +1503,8 @@ as a retryable error.
 **The decision.** `audit` does not guess which of the two happened. It looks: on a failed INSERT it
 queries for its own record and compares the **`record_hash`**, then either returns it (the reply was
 lost, the record is there, the decision stands) or rethrows (nothing was written, and
-`EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is then true).
+`EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is then true). *Corrected in decision 84: the
+look-up itself can fail, and that case is `OUTCOME_UNKNOWN`, not a rethrow.*
 
 **Why `record_hash` and not "is there a row".** The question is not "did something land at this
 position" but "did **this** record land". A writer that beat us to the position makes the INSERT
@@ -1769,3 +1771,106 @@ paragraph (it said "cannot change" where the truth was "could trivially set"), t
 met while the runtime identity was `postgres`, and which now states three limits instead of two: the
 `SET ROLE` substitution on the in-process route, the owner's remaining power, and the fact that
 `refuseIfItCanRewriteHistory` is a start-up check and not a boundary.
+
+## 84 · What the hostile review found, and what each finding cost (2026-10-04)
+
+The `requirement-reviewer` pass over the eleven fixes above came back with six broken guarantees, five
+missing negative tests and eight false claims. I reproduced the four it called live before touching
+anything; all four were exactly as described.
+
+**1 · The lost-reply recovery ran on the connection that had just died.** A lost reply usually means
+the connection is gone, so the follow-up "did my record land?" fails on the same connection — and its
+error escaped the `catch`, replacing the original, and became `EVIDENCE_STORE_UNAVAILABLE` with retry
+`safe_same_key`. The exact pre-fix behaviour, on the exact case a server restart produces:
+
+```text
+caller told: EVIDENCE_STORE_UNAVAILABLE retry:safe_same_key   rows in table: 1
+```
+
+The honest answer is that nobody knows, and `DSOR-UNK-01b` names it: unknown, with a retry class that
+does not permit a fresh attempt. `audit` now throws `OutcomeUnknown` when it cannot look, and the
+pipeline maps it to `OUTCOME_UNKNOWN` / `after_reconciliation` — a code and a class that were already
+in the step's own table. After: `caller told: OUTCOME_UNKNOWN retry:after_reconciliation`.
+
+The step now **claims `DSOR-UNK-01b` for this one case** and says so in the README with the limit
+stated; `envelopes.test.ts` used to say the rule arrives in step 37, and now says which half does.
+
+**2 · A byte-identical row absorbed a second decision.** The recovery asked "is a record with my hash
+here?", not "did my INSERT commit?". With a fixed clock, two writers for the same request hashed
+identically, and the second found "its" record present and was told it had been recorded:
+
+```text
+writer1=audit:org_456:0  writer2=audit:org_456:0  rows: 1
+```
+
+Reachable without `setClock`: `nextRequestId` is a per-process counter, so two instances of the
+program on one database both mint `req_1`. PostgreSQL already answers the right question — SQLSTATE
+`23505` means "that row exists; yours did not commit" — so the recovery takes that answer first and
+asks the hash question only for other errors. After: `writer2=threw (23505)  rows: 1`.
+
+**4 · `at` was hashed as the clock spelled it, not as the database stores it.** `storable` sets the
+rule for text and `at` was exempt. `theLog` rebuilds `at` with `toISOString`, so a clock emitting
+`2026-10-04T00:00:00Z` produced a record that could never verify:
+
+```text
+wrote at=2026-10-04T00:00:00Z  read back=2026-10-04T00:00:00.000Z  verifyChain=false
+```
+
+The trusted time source §30 asks for is exactly the kind of clock that would have hit this. Now
+`new Date(now()).toISOString()`, and a test with three spellings.
+
+**6 · The guard read a NULL as "may not".** `if (answer.may)` — and `a OR b OR c` is NULL when any
+operand is NULL and the rest are false. `!== false` now, with a test handing it a row that does not
+answer.
+
+**8 · `test/database.test.ts` did not pin the route it is named after.** `openTheDatabase` reads
+`DSOR_DB_URL` before it looks at `folder`, so with that variable exported in the shell — which the
+README's setup section invites — the tests would have run against the server and written real rows
+into its log. `vi.stubEnv("DSOR_DB_URL", "")`, and the first test now asserts `opened.where` says
+"on disk".
+
+**10 · "Every table name names its schema" was true of one file.** `CREATE TABLE audit` and three
+`ON audit` in the migrations, `applied_migrations` in the migrate script, `DELETE FROM audit` in test
+support. The migration ones matter: `GRANT ... ON audit` resolves through `search_path` like any
+query. All qualified; the scan now covers `src/`, `scripts/`, `migrations/` and `test/support/`,
+strips comments first, and runs one regex per keyword because a single alternation consumed
+`TRUNCATE ON` and skipped the `audit` after it. One unqualified `ON` in a migration fails it.
+
+**11 · The enforcement had one call site and nothing held it there.** `useDatabase` checks nothing;
+only `openTheDatabase` runs the refusal. A test now reads `src/` and fails on any statement-position
+`useDatabase(` outside `database.ts`. The first version matched the name anywhere and caught a string
+inside an error message, which is a mention and not a door — measured, corrected.
+
+**The credential mask leaked.** `url.replace(/\/\/[^@]*@/, "//…@")` on a password containing `@`
+printed `…@ss-word@host`, and `main.ts` prints that line. `withoutCredentials` parses as a URL and
+rebuilds from scheme, host and path; a string that is not a URL is masked whole.
+
+**`forgetTheLog` erased every chain.** `DELETE FROM public.audit` with no `chain` filter, while
+`theHead` and `theLog` filter by chain. One chain today; a cross-tenant delete in step 10. Filtered.
+
+**Two claims corrected rather than code.** The `at(N) < at(N+1)` argument in decision 77 holds for one
+process with one clock, and said nothing about the premise; two instances with skewed clocks break
+the check. And `src/audit.ts` said a program race fails on `UNIQUE (chain, sequence)` — for the
+program's own rows it is `audit_pkey`, because `record_id` is `${chain}:${sequence}`; the unique
+constraint is what keeps the ordering argument true if that format ever changes.
+
+**Proved by breaking each one**, totals held at 315:
+
+| Sabotage | Result |
+| --- | --- |
+| the re-query's failure escapes (finding 1) | 2 fail |
+| no `23505` short-circuit (finding 2) | 1 fails |
+| `at` not normalised (finding 4) | 1 fails |
+| guard reads NULL as false (finding 6) | 1 fails |
+| one unqualified `ON` in a migration (finding 10) | 1 fails |
+| a second `useDatabase` door, as a dead function (finding 11) | 1 fails |
+| the old regex mask | 1 fails |
+
+The first attempt at the finding-11 sabotage put the call at module top level, which crashed every
+import and shrank the total to 199. A shrinking total is an invalid run, not a result — lesson 11 —
+so it was re-done as a function nobody calls.
+
+**Re-measured, all nine break-it exercises at 315.** Break 5 is 64 now, Break 8 is 4 (the two
+`DSOR-UNK-01b` tests fall with it), the rest are unchanged in their failure counts.
+
+`pnpm check`: 23 files, 315 tests. `pnpm test:db`: 5. Both routes verify, 10 records each.

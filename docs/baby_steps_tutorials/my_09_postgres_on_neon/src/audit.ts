@@ -451,11 +451,21 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // that computes them, hashes the result and inserts it.
   //
   // What changes is what happens when two requests read the same answer. In step 08 both wrote and
-  // the log quietly held two records at one position. Here the second INSERT violates
-  // UNIQUE (chain, sequence) and fails — so the race is **refused** rather than absorbed. The caller
-  // gets EVIDENCE_STORE_UNAVAILABLE, whose retry class is `safe_same_key`, which is true: nothing
-  // ran. Untestable in-process, because one PGlite connection cannot race itself; it needs a real
-  // server and two connections, which is what audit.db.test.ts is for.
+  // the log quietly held two records at one position. Here the second INSERT fails — so the race is
+  // **refused** rather than absorbed. The caller gets EVIDENCE_STORE_UNAVAILABLE, whose retry class
+  // is `safe_same_key`, which is true: nothing ran.
+  //
+  // Which constraint refuses it, measured rather than assumed: for the program's own rows it is
+  // `audit_pkey`, because `record_id` is `${chain}:${sequence}` and so two writers at one position
+  // collide on the primary key as well, and PostgreSQL names the primary key first. This comment
+  // used to say `UNIQUE (chain, sequence)`, and that constraint earns its place differently — it is
+  // what keeps the ordering argument below true if the shape of `record_id` ever changes, and it is
+  // what `audit.db.test.ts` races three *distinct* ids against.
+  //
+  // "Untestable in-process" was the claim here once, because one PGlite connection cannot race
+  // itself. The interleaving does not need real concurrency, only control over the order, and
+  // `audit-race.test.ts` holds one writer at this read while another commits. What does need a real
+  // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
   const db = theDatabase();
   // `AS at_position`, and the alias is load-bearing. `SELECT sequence::text` names its output column
   // `sequence`, and PostgreSQL resolves a bare name in ORDER BY to an **output** column first — so
@@ -492,10 +502,21 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // line, before N's INSERT. So at(N) < commit(N) <= tail-read(N+1) < at(N+1), for every pair.
   // The sequence and the clock can only agree.
   //
-  // What this does not survive is the system clock itself going backwards — an NTP correction
-  // between two writes. That is a real hole and it is not fixable here: §30 wants a trusted time
-  // source, and this step has none. `recorded_at` is the database's own witness beside it.
-  const at = now();
+  // What this does not survive is the clock itself going backwards — an NTP correction between two
+  // writes, or two instances of this program on one database with skewed clocks, since the argument
+  // above needs ONE clock. Neither is fixable here: §30 wants a trusted time source, and this step
+  // has none. `recorded_at` is the database's own witness beside it.
+  //
+  // Normalised to the exact string the database will hand back, which is the rule `storable` sets
+  // for text and `at` was exempt from. `theLog` rebuilds `at` with `Date.prototype.toISOString`, so a
+  // clock that emits any other valid RFC 3339 spelling — `…T00:00:00Z` with no milliseconds, or
+  // `+00:00` — produced a record whose hash could never match what was read back:
+  //
+  //     wrote at=2026-10-04T00:00:00Z  read back=2026-10-04T00:00:00.000Z  verifyChain=false
+  //
+  // A hostile review found it. The trusted time source §30 asks for is exactly the kind of clock
+  // that would have hit it.
+  const at = new Date(now()).toISOString();
 
   const body: Record<string, unknown> = {
     record_id: `${CHAIN}:${sequence}`,
@@ -592,23 +613,51 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // and the answer disagree, which is the one thing a decision record exists to prevent.
   //
   // `DSOR-UNK-01b` is the rule and it is about exactly this: an unknown outcome is reported as
-  // unknown, never as a retryable error. So this does not guess. It looks.
+  // unknown, never as a retryable error. So this does not guess. It looks — and when it cannot
+  // look, it says so, with `OutcomeUnknown`, which the pipeline turns into `OUTCOME_UNKNOWN`.
   try {
     await insert(db, written);
-  } catch (unknownOutcome) {
-    // Is the record there? Asked by `record_id`, and checked by `record_hash` — because the
-    // question is not "did something land at this position" but "did **this** record land". A
-    // UNIQUE violation from a writer that beat us to this position would answer yes to the first
-    // question and no to the second, and treating it as success would lose a decision.
-    const { rows: found } = await db.query<{ record_hash: string }>(
-      "SELECT record_hash FROM public.audit WHERE record_id = $1",
-      [written.record_id],
-    );
+  } catch (failure) {
+    // A unique violation is PostgreSQL *telling* us the INSERT did not commit, so there is nothing
+    // to look for. This check comes first, and a hostile review is why: without it, a second writer
+    // whose record hashed to the same bytes — same subject, operation, result, request id and
+    // millisecond — found "its" record already there and was told it had been recorded, and two
+    // decisions became one row. The hash answers "is a record like mine here", not "did my INSERT
+    // commit", and only the second question matters.
+    if (isUniqueViolation(failure)) {
+      throw failure;
+    }
 
-    if (found[0]?.record_hash !== written.record_hash) {
-      // Either nothing landed, or something else did. Nothing was written, so the caller is told
-      // so, and `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is then true.
-      throw unknownOutcome;
+    // Is the record there? Asked by `record_id`, and checked by `record_hash` — because the
+    // question is not "did something land at this position" but "did **this** record land".
+    //
+    // On the connection that just failed, which is usually a connection that is gone. So this read
+    // can fail too, and the first version let that error escape and become
+    // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` — the exact pre-fix behaviour, on the
+    // exact case that happens when a server restarts. Measured: "caller is told the write FAILED",
+    // one row in the table. Here the honest answer is that nobody knows, and the retry class that
+    // says so is `after_reconciliation`, which does not permit a fresh attempt.
+    let found: { record_hash: string } | undefined;
+
+    try {
+      const { rows } = await db.query<{ record_hash: string }>(
+        "SELECT record_hash FROM public.audit WHERE record_id = $1",
+        [written.record_id],
+      );
+
+      found = rows[0];
+    } catch (cannotLook) {
+      throw new OutcomeUnknown(
+        `the decision ${written.record_id} may or may not have been recorded: the write failed ` +
+          `and the store could not be asked`,
+        cannotLook,
+      );
+    }
+
+    if (found?.record_hash !== written.record_hash) {
+      // Nothing landed. The caller is told so, and `EVIDENCE_STORE_UNAVAILABLE` with retry
+      // `safe_same_key` is then true.
+      throw failure;
     }
 
     // It landed. The reply was lost, not the record. Returning it is honest and it is also what
@@ -616,6 +665,28 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   }
 
   return written;
+}
+
+/**
+ * NEW IN STEP 09: the third answer a database can give.
+ *
+ * A write succeeded, failed, or **nobody knows** — the reply was lost and the follow-up question
+ * could not be asked either. This is that third one, as a type the pipeline can tell apart from a
+ * failure. It carries the error that stopped the question being asked, so the cause is not thrown
+ * away on the way to the envelope.
+ */
+export class OutcomeUnknown extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "OutcomeUnknown";
+  }
+}
+
+/** PostgreSQL's own word for "that row is already there": SQLSTATE 23505, from `pg` and PGlite alike. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error !== null && typeof error === "object" && (error as { code?: unknown }).code === "23505"
+  );
 }
 
 /**
@@ -720,7 +791,10 @@ export async function forgetTheLog(): Promise<void> {
   // DELETE, which the application's own account is not allowed to run — so this only works for a
   // caller connected as the owner. That is the shape of the guarantee: a test holds the owner's
   // connection, and the program never does.
-  await theDatabase().query("DELETE FROM public.audit");
+  //
+  // This chain only. `theHead` and `theLog` filter by `chain`, and so must the eraser, or step 10's
+  // second tenant finds its history gone the first time a test for the first tenant cleans up.
+  await theDatabase().query("DELETE FROM public.audit WHERE chain = $1", [CHAIN]);
   unauthenticated = 0;
 }
 

@@ -23,6 +23,8 @@
 //
 // Rule DSOR-AUD-04a: the DSoR runtime identity MUST NOT be able to update or delete audit records.
 
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -643,27 +645,61 @@ describe("a table the application makes to stand in front of the real one", () =
     await db.exec("RESET ROLE;");
   });
 
-  it("DSOR-AUD-01: every statement the audit log runs names its schema", async () => {
+  it("DSOR-AUD-01: every statement that names a table of ours names its schema", async () => {
     // The guard above proves one statement. This one proves there is no second statement that was
-    // missed — a read that still resolves through `search_path` would report the shadow table's
-    // contents even though the write went to the real one, and the two tests together are what
-    // makes "every time" a claim rather than a hope.
-    const source = await import("node:fs").then((fs) =>
-      fs.readFileSync(fileURLToPath(new URL("../src/audit.ts", import.meta.url)), "utf8"),
-    );
+    // missed — anywhere SQL that touches `audit` or `applied_migrations` is written: the source,
+    // the migrate script, the migration files, and the test support that erases the table.
+    //
+    // The first version scanned `src/audit.ts` only, under a commit titled "every table name names
+    // its schema", while `CREATE TABLE audit` and three `ON audit` sat in the migrations and a
+    // `DELETE FROM audit` in test support. A review listed them. The migration ones matter most:
+    // `GRANT ... ON audit` resolves through `search_path` like any query, so a `pg_temp.audit` in
+    // the owner's session would have taken the grant and left the real table with nothing.
+    //
+    // Comments are stripped first, because several of them quote the unqualified form on purpose
+    // to say what was wrong. Each keyword gets its own regex: one alternation would consume
+    // `TRUNCATE ON` as a match and skip the `audit` that follows.
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const files = [
+      ...readdirSync(join(root, "src")).map((f) => join("src", f)),
+      ...readdirSync(join(root, "scripts")).map((f) => join("scripts", f)),
+      ...readdirSync(join(root, "migrations")).map((f) => join("migrations", f)),
+      ...readdirSync(join(root, "test", "support")).map((f) => join("test", "support", f)),
+    ].filter((f) => f.endsWith(".ts") || f.endsWith(".sql"));
 
-    for (const match of source.matchAll(/\b(?:FROM|INTO|UPDATE|JOIN)\s+(\w+(?:\.\w+)?)/g)) {
-      const named = match[1]!;
+    expect(files.length).toBeGreaterThan(10);
 
-      // `audit` and `applied_migrations` are this program's tables and must be qualified. Anything
-      // else matched here is a PostgreSQL catalogue or a CTE, which is not what this is about.
-      if (named === "audit" || named === "applied_migrations") {
-        throw new Error(
-          `\`${named}\` is used unqualified in src/audit.ts: write \`public.${named}\``,
-        );
+    const unqualified: string[] = [];
+
+    for (const file of files) {
+      const raw = readFileSync(join(root, file), "utf8");
+      const code = file.endsWith(".sql")
+        ? raw.replace(/--[^\n]*/g, "")
+        : raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+      for (const keyword of [
+        "FROM",
+        "INTO",
+        "UPDATE",
+        "JOIN",
+        "TRUNCATE",
+        "COPY",
+        "ON",
+        "TABLE",
+        "EXISTS",
+      ]) {
+        const each = new RegExp(`\\b${keyword}\\s+("?[\\w.]+"?)`, "g");
+
+        for (const match of code.matchAll(each)) {
+          const named = match[1]!.replace(/"/g, "");
+
+          if (named === "audit" || named === "applied_migrations") {
+            unqualified.push(`${file}: ${keyword} ${named}`);
+          }
+        }
       }
     }
 
-    expect(source).toContain("public.audit");
+    expect(unqualified).toStrictEqual([]);
   });
 });

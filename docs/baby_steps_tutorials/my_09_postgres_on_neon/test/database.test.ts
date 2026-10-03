@@ -9,12 +9,18 @@
 // A test that borrows the right identity proves the GRANT. Only a test that uses the program's own
 // connection proves the program.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { APPLICATION_ROLE, openTheDatabase, refuseIfItCanRewriteHistory } from "../src/database.ts";
+import { fileURLToPath } from "node:url";
+import {
+  APPLICATION_ROLE,
+  openTheDatabase,
+  refuseIfItCanRewriteHistory,
+  withoutCredentials,
+} from "../src/database.ts";
 import { audit, theLog, type Database } from "../src/audit.ts";
 import { aDatabase } from "./support/database.ts";
 
@@ -23,9 +29,19 @@ let folder: string;
 
 beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), "dsor-db-test-"));
+
+  // Pinned to the on-disk route. `openTheDatabase` reads `DSOR_DB_URL` before it looks at `folder`,
+  // so with that variable exported in the shell these tests would silently run against whatever
+  // server it names — writing real rows into a shared audit log and proving things about that
+  // server instead of about the route they are named after. A review measured it: with a bogus
+  // URL exported, five of these tests failed inside `openTheDatabase`; with a valid one, three
+  // would have written to the real table. `pnpm check` does not read `.env`, so only an exported
+  // variable reaches here — which is exactly what the README's own setup section invites.
+  vi.stubEnv("DSOR_DB_URL", "");
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   rmSync(folder, { recursive: true, force: true });
 });
 
@@ -62,6 +78,8 @@ describe("the identity the program itself connects as", () => {
     // a fresh connection would be a different session, and `SET ROLE` is per session.
     const me = await identity(opened.connection);
 
+    // The route this file is about, asserted rather than assumed.
+    expect(opened.where).toContain("on disk");
     expect(me.who).toBe(APPLICATION_ROLE);
     expect(me.superuser).toBe(false);
 
@@ -201,6 +219,20 @@ describe("refuseIfItCanRewriteHistory", () => {
     await expect(refuseIfItCanRewriteHistory(silent)).rejects.toThrow(/did not say who/);
   });
 
+  it("DSOR-AUD-04a: an answer that is neither true nor false is refused, not read as false", async () => {
+    // `a OR b OR c` in SQL is NULL when any operand is NULL and the rest are false. A guard written
+    // `if (answer.may)` reads NULL — or a missing column — as "may not", which is the one branch
+    // here that fails open. The sibling test above covers no row at all; this covers a row that
+    // does not answer the question.
+    for (const evasive of [{ who: "x" }, { who: "x", may: null }, { who: "x", may: undefined }]) {
+      const db: Database = {
+        query: async <T>() => ({ rows: [evasive as T] }),
+      };
+
+      await expect(refuseIfItCanRewriteHistory(db), JSON.stringify(evasive)).rejects.toThrow();
+    }
+  });
+
   it("DSOR-AUD-04a: a right reached through role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL
@@ -217,5 +249,52 @@ describe("refuseIfItCanRewriteHistory", () => {
     await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/may UPDATE/);
 
     await db.close();
+  });
+});
+
+describe("what the program prints about where its log is", () => {
+  it("DSOR-CNR-02: a password is not printed, even one with an @ in it", () => {
+    // The first mask was `url.replace(/\/\/[^@]*@/, "//…@")`, and `pa@ss-word` came out as
+    // `…@ss-word@host`. `main.ts` prints this line. Parsing as a URL takes the last `@` as the
+    // delimiter, the way the driver does.
+    const shown = withoutCredentials(
+      "postgres://neon_user:pa@ss-word@ep-1.neon.tech/dsor?sslmode=require",
+    );
+
+    expect(shown).toBe("postgres://…@ep-1.neon.tech/dsor");
+    expect(shown).not.toContain("neon_user");
+    expect(shown).not.toContain("ss-word");
+    expect(withoutCredentials("not a url at all")).not.toContain("not a url");
+  });
+});
+
+describe("the one door to the audit log's database", () => {
+  it("DSOR-AUD-04a: nothing in src/ points the log at a connection except openTheDatabase", () => {
+    // `refuseIfItCanRewriteHistory` runs inside `openTheDatabase` and nowhere else. `useDatabase`
+    // itself checks nothing — the tests hand it the owner's connection on purpose. So the guarantee
+    // is only as wide as the set of call sites, and this is what keeps that set at one. Break 6
+    // showed what a guarantee nobody is holding looks like; this is the test that would notice a
+    // second door being added.
+    const src = fileURLToPath(new URL("../src", import.meta.url));
+    const callers: string[] = [];
+
+    for (const file of readdirSync(src)) {
+      if (!file.endsWith(".ts")) {
+        continue;
+      }
+
+      const source = readFileSync(join(src, file), "utf8");
+
+      for (const line of source.split("\n")) {
+        // Statement position: the line *is* a call. The first version matched the name anywhere
+        // and caught `"call useDatabase() before recording anything"` — a string inside an error
+        // message in audit.ts — which is a mention, not a door.
+        if (/^\s*useDatabase\(/.test(line)) {
+          callers.push(file);
+        }
+      }
+    }
+
+    expect([...new Set(callers)]).toStrictEqual(["database.ts"]);
   });
 });

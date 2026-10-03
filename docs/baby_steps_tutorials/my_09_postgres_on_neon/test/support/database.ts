@@ -40,5 +40,5 @@ export async function aDatabase(): Promise<PGlite> {
  * guarantee, not a convenience: a test can clear the log and the program cannot.
  */
 export async function emptyTheLog(db: PGlite): Promise<void> {
-  await db.exec("DELETE FROM audit");
+  await db.exec("DELETE FROM public.audit");
 }

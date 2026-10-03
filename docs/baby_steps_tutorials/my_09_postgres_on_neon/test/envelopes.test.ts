@@ -117,8 +117,10 @@ describe("the error envelope", () => {
     }
   });
 
-  // No rule id: nothing in this step can produce an unknown outcome, so this proves what
-  // the schema pins, not that DSOR-UNK-01b is met. That rule arrives in step 37.
+  // No rule id: this proves what the schema pins, not that DSOR-UNK-01b is met. Step 09 is where
+  // the first unknown outcome becomes possible — an audit write whose reply is lost on a connection
+  // that then dies — and `audit-lost-reply.test.ts` holds the rule for that one case. The rest of
+  // what the rule covers, a *command's* outcome being unknown, arrives in step 37.
   it("the schema pins three codes' retry classes, and only three", () => {
     const e = (code: string, retry: string) => ({
       code,

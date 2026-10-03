@@ -17,6 +17,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { migrationsIn } from "../src/migrations.ts";
 import {
   audit,
+  OutcomeUnknown,
+  resetClock,
+  setClock,
   theHead,
   theLog,
   useDatabase,
@@ -41,6 +44,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  resetClock();
   await real.close();
 });
 
@@ -175,5 +179,109 @@ describe("an INSERT whose reply is lost", () => {
     expect(log).toHaveLength(1);
     expect(log[0]?.correlation.request_id).toBe("req_theirs");
     expect(verifyChain(log, await theHead())).toBe(true);
+  });
+});
+
+describe("an INSERT whose reply is lost on a connection that then stays dead", () => {
+  /**
+   * The realistic case, and the one the first fix did not cover. A lost reply usually means the
+   * connection is gone — a restart, a failover — so the follow-up "did my record land?" fails on
+   * the same connection. The first version let that error escape, and the caller was told
+   * `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` while the row sat in the table: the
+   * exact pre-fix behaviour, on the exact case that happens in production. A hostile review
+   * measured it.
+   *
+   * There is no honest success and no honest failure here. `DSOR-UNK-01b` names the only honest
+   * answer: unknown, with a retry class that does not permit a fresh attempt, because the decision
+   * may already be on record. That is `OUTCOME_UNKNOWN` / `after_reconciliation`.
+   */
+  function withADeadConnectionAfterTheInsert(): Database {
+    let dead = false;
+
+    return {
+      async query<T>(sql: string, params?: unknown[]) {
+        if (dead) {
+          throw new Error("connection terminated unexpectedly");
+        }
+
+        const rows = await real.query<T>(sql, params);
+
+        if (sql.includes("INSERT")) {
+          dead = true;
+
+          throw new Error("connection terminated unexpectedly");
+        }
+
+        return rows;
+      },
+    };
+  }
+
+  it("DSOR-UNK-01b: when the store cannot be asked, audit says it does not know", async () => {
+    useDatabase(withADeadConnectionAfterTheInsert());
+
+    await expect(audit(aDecision("req_1"))).rejects.toBeInstanceOf(OutcomeUnknown);
+  });
+
+  it("DSOR-UNK-01b: the caller gets OUTCOME_UNKNOWN, never a retry-safe error", async () => {
+    useDatabase(withADeadConnectionAfterTheInsert());
+
+    const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.envelope.retry).toBe("after_reconciliation");
+
+    // And the row really is there, which is why "retry safely" would have been a lie.
+    useDatabase(real);
+
+    expect(await theLog()).toHaveLength(1);
+  });
+});
+
+describe("an INSERT refused because the row is already there", () => {
+  it("DSOR-EXE-02: two decisions that hash to the same bytes do not become one row", async () => {
+    // The hash comparison asks "is a record like mine here", not "did my INSERT commit". With a
+    // fixed clock, two writers for the same request, subject, operation and result hash
+    // identically — and the first version of the recovery found "its" record already present and
+    // told the second writer it had been recorded. One row, two callers holding a receipt for it.
+    //
+    // Reachable without a fixed clock: `nextRequestId` is a per-process counter, so two instances
+    // of this program against one database both mint `req_1`. Narrow, and the step's own target.
+    //
+    // PostgreSQL says SQLSTATE 23505 when an INSERT did not commit because the row exists. That is
+    // the answer, and the recovery now takes it instead of asking the hash question.
+    setClock(() => "2026-10-04T00:00:00.000Z");
+
+    let staleTailReads = 0;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[]) {
+        // Both writers see an empty tail, so both compute position 0.
+        if (
+          sql.includes("AS at_position") &&
+          sql.includes("ORDER BY sequence DESC") &&
+          staleTailReads++ < 2
+        ) {
+          return { rows: [] as T[] };
+        }
+
+        return real.query<T>(sql, params);
+      },
+    });
+
+    const first = await audit(aDecision("req_1"));
+
+    expect(first?.record_id).toBe("audit:org_456:0");
+
+    await expect(audit(aDecision("req_1"))).rejects.toMatchObject({ code: "23505" });
+
+    const log = await theLog();
+
+    expect(log).toHaveLength(1);
+    expect(log[0]?.record_hash).toBe(first?.record_hash);
   });
 });

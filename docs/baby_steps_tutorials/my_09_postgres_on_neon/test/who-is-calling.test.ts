@@ -217,7 +217,10 @@ describe("who you are comes from the login, never from the arguments", () => {
   // And the two it does not consult. A trap that is never reached cannot refuse a login that is
   // otherwise perfectly good, so these resolve — and this test is what would notice if a later
   // change started reading the login through `in` or `Object.keys` and made them throwable.
-  it("DSOR-IDN-01: a trap this path never consults does not change the answer", async () => {
+  // No rule id: this asserts a *success*, so it proves nothing about normalising a caller into a
+  // principal. It is a regression pin for the measurement above, and a title naming a rule would
+  // have counted as coverage of something it does not cover.
+  it("a trap this path never consults does not change the answer", async () => {
     for (const [name, handler] of [
       [
         "has",

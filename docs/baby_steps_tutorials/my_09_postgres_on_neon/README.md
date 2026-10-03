@@ -159,7 +159,7 @@ Those refusals are PostgreSQL's own privilege system, not our code checking itse
 ## Two commands, and what each proves
 
 ```bash
-pnpm check     # 308 tests, no database and no network needed
+pnpm check     # 315 tests, no database and no network needed
 pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
 ```
 
@@ -170,10 +170,12 @@ guarantee holds.** Two things one in-process connection cannot do, and `audit.db
   account with `SET ROLE`. The privilege checks are identical; what is untested is whether
   `dsor_runtime` *connecting* gets the same answers.
 - **race.** One connection cannot race itself, so `UNIQUE (chain, sequence)` under two writers
-  needs a server. That test sends the same insert three times at once and expects exactly one to win.
+  needs a server. That test races three *different* record ids for one position and asserts that the
+  error names `audit_chain_sequence_key`. It used to send the same insert three times, and the primary
+  key refused the losers — dropping the unique constraint left it green.
 
 With no connection string it reports `5 skipped`, which says so rather than passing quietly. With one,
-it reports `4 passed` — and those four have been run, against a real PostgreSQL 17 with two real
+it reports `5 passed` — and those five have been run, against a real PostgreSQL 17 with two real
 logins. Granting the application `UPDATE` on that server fails two of them, which is how you know they
 are asserting something.
 
@@ -198,7 +200,7 @@ No table rights there on purpose — `002_runtime_user.sql` grants the one it ne
 rest, so the whole permission story is in a file you can read. `.env` is in `.gitignore` and must
 never be committed; `.env.example` has no secrets in it.
 
-**Or a PostgreSQL on your own machine**, which needs no account and is what these four tests were
+**Or a PostgreSQL on your own machine**, which needs no account and is what these five tests were
 first run against:
 
 ```bash
@@ -259,17 +261,17 @@ git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
 | `migrations/001_audit.sql` | new — the table, with the primary key and `UNIQUE (chain, sequence)` |
 | `migrations/002_runtime_user.sql` | new — the grant and the revokes. The step |
 | `src/migrations.ts` | new — finding the migrations, deciding which are left, applying them |
-| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk, and in both cases **as `dsor_runtime`** |
+| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk. On disk it drops to `dsor_runtime`; on a server it is whatever the connection string names, and either way it refuses to start holding `UPDATE` |
 | `src/audit.ts` | the log is SQL now: `INSERT`, `SELECT`, and a head that is a query. Every table name says `public.` |
 | `src/login.ts` | one line moved inside a `try`, because `Object.hasOwn` can throw |
 | `src/pipeline.ts`, `src/operations.ts` | async, because a database write is |
 | `scripts/migrate.ts` | new — `pnpm migrate` |
 | `test/database.test.ts` | new — who the program connects as. Break 6 is zero failures without it |
 | `test/audit-race.test.ts` | new — a writer held at its tail read while another commits |
-| `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply |
+| `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply, on a connection that may then be gone |
 | everything in `test/` | async, and nine files now need a database |
 
-232 tests became 308.
+232 tests became 315.
 
 ## The pipeline became async, and that was a decision
 
@@ -302,7 +304,7 @@ GRANT ALL ON audit TO dsor_runtime;
 ```
 
 ```text
- Tests  6 failed | 302 passed (308)
+ Tests  6 failed | 309 passed (315)
 ```
 
 Six, and the first of them is the step's "done when". `GRANT ALL` also hands back `INSERT` on
@@ -315,7 +317,7 @@ REVOKE UPDATE, DELETE ON audit FROM dsor_runtime;   -- was UPDATE, DELETE, TRUNC
 ```
 
 ```text
- Tests  2 failed | 306 passed (308)
+ Tests  2 failed | 313 passed (315)
 ```
 
 `TRUNCATE` is its own privilege, not part of `DELETE`, and it empties the table in one statement. A
@@ -326,7 +328,7 @@ log the application can `TRUNCATE` is not append-only whatever else is true of i
 In `001_audit.sql`, replace `UNIQUE (chain, sequence)` with `CHECK (true)`.
 
 ```text
- Tests  2 failed | 306 passed (308)
+ Tests  2 failed | 313 passed (315)
 ```
 
 ### Break 4 · let a migration be edited after it ran
@@ -338,7 +340,7 @@ if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checks
 ```
 
 ```text
- Tests  2 failed | 306 passed (308)
+ Tests  2 failed | 313 passed (315)
 ```
 
 ### Break 5 · order the chain as text
@@ -350,7 +352,7 @@ SELECT sequence::text, record_hash FROM public.audit WHERE chain = $1 ORDER BY s
 ```
 
 ```text
- Tests  62 failed | 246 passed (308)
+ Tests  64 failed | 251 passed (315)
 ```
 
 This is the bug that actually happened, and it survived nine records before it bit. `SELECT
@@ -367,7 +369,7 @@ In `src/database.ts`, comment out the line that drops to the application's role:
 ```
 
 ```text
- Tests  11 failed | 297 passed (308)
+ Tests  11 failed | 304 passed (315)
 ```
 
 The largest number here after Break 5, and it was **zero** until `test/database.test.ts` existed.
@@ -380,7 +382,7 @@ holding, or it is testing the database and not the program.
 In `src/audit.ts`, write `INSERT INTO audit (` instead of `INSERT INTO public.audit (`.
 
 ```text
- Tests  2 failed | 306 passed (308)
+ Tests  2 failed | 313 passed (315)
 ```
 
 `dsor_runtime` cannot `UPDATE` or `DELETE` the log, and it *can* create a temporary table, because
@@ -403,7 +405,7 @@ In `src/audit.ts`, replace the `try`/`catch` around `insert(db, written)` with a
 `await insert(db, written);`.
 
 ```text
- Tests  2 failed | 306 passed (308)
+ Tests  4 failed | 311 passed (315)
 ```
 
 A database can commit an `INSERT` and lose the **reply**. Step 08's store was an array, which either
@@ -412,21 +414,31 @@ decision "could not be written down, so it was not carried out" while the row sa
 `ALLOWED` — the log and the answer contradicting each other, which is the one thing a decision record
 exists to prevent.
 
+The recovery looks for its own record and, if it **cannot look** because the connection is gone, says
+so: `OUTCOME_UNKNOWN`, retry `after_reconciliation`. That is `DSOR-UNK-01b`, and the first version of
+this fix got it wrong — the look-up ran on the dead connection, its error escaped, and the caller was
+back to `EVIDENCE_STORE_UNAVAILABLE` / `safe_same_key` on exactly the case a restart produces. And a
+`23505` from PostgreSQL is taken as the answer it is — "that row exists, yours did not commit" —
+before any hash is compared, because two decisions that hash to the same bytes are still two
+decisions.
+
 ### Break 9 · read the clock before the tail
 
 In `src/audit.ts`, move `const at = now();` back above `const db = theDatabase();`.
 
 ```text
- Tests  4 failed | 304 passed (308)
+ Tests  4 failed | 311 passed (315)
 ```
 
 A writer that gets overtaken then stamps an earlier time at a later position. Nothing is tampered
 with, every hash agrees, and `verifyChain` reports the chain broken — permanently, because the
-application has no `UPDATE` to correct the rows with. Reading the clock after the tail is airtight
-and the unique constraint is why: a writer that takes position N+1 saw N in the tail, so N was
-committed, and N's time was sampled before N's `INSERT`.
+application has no `UPDATE` to correct the rows with. Reading the clock after the tail closes it for
+**one process with one clock**, and the unique constraint is why: a writer that takes position N+1 saw
+N in the tail, so N was committed, and N's time was sampled before N's `INSERT`. Two instances of
+this program on one database with skewed clocks break the same check, and so does the system clock
+stepping backwards — neither is fixable here, and `my_notes/open-questions.md` holds both.
 
-Restore each break and confirm `pnpm check` prints `308 passed` again.
+Restore each break and confirm `pnpm check` prints `315 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -504,9 +516,12 @@ Three limits, stated plainly.
 2. The **owner** can still do anything, which is the design and not a gap: migrations have to come
    from somewhere. So this rule is met against the *application*, and a human with the owner's
    connection string is outside what any `GRANT` can say about.
-3. `refuseIfItCanRewriteHistory` is a check at start-up, not a boundary. It stops a misconfigured
-   deployment from keeping a log it could edit; it does not stop someone who can change the
-   configuration.
+3. `refuseIfItCanRewriteHistory` is a check at start-up, not a boundary, and it checks a
+   **privilege**, not every route to the effect. It stops a misconfigured deployment from keeping a
+   log it could edit; it does not stop someone who can change the configuration, and it would not
+   notice a `SECURITY DEFINER` function or an owner's trigger rewriting rows on the application's
+   behalf. No such function exists, and a test pins `openTheDatabase` as the only place the log is
+   pointed at a connection, so adding one is a visible act.
 
 `DSOR-AUD-02a` is met in the only sense it can be here: the log is in PostgreSQL, and there is no
 agent memory in this program for it to be in instead. The rule exists to stop an implementation
@@ -514,6 +529,13 @@ treating a model's recollection as the record, and nothing here could.
 
 `DSOR-EXE-02`'s *durably* half, which step 08 explicitly did not claim, now holds: the records survive
 the process, which `pnpm start` demonstrates by being run twice.
+
+`DSOR-UNK-01b` — an unknown outcome is reported as unknown, never as success, failure or a retryable
+error — is met **for the one unknown this step can produce**: an audit write whose reply is lost on a
+connection that then cannot be asked. The caller gets `OUTCOME_UNKNOWN` with retry
+`after_reconciliation`, and `test/audit-lost-reply.test.ts` holds it by killing the connection after
+the `INSERT`. The rest of what the rule covers — a *command's* outcome being unknown — needs a command
+that reaches a connector, and that is step 37.
 
 Rules nearby this step does **not** claim:
 

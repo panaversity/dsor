@@ -60,7 +60,7 @@ if (applied.length === 0) {
 }
 
 const { rows } = await db.query<{ name: string; applied_at: Date }>(
-  "SELECT name, applied_at FROM applied_migrations ORDER BY name",
+  "SELECT name, applied_at FROM public.applied_migrations ORDER BY name",
 );
 
 console.log();

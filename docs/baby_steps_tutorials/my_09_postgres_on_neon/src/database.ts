@@ -37,7 +37,14 @@ export const APPLICATION_ROLE = "dsor_runtime";
 const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 
 /**
- * Stop the program if the connection it is about to use could rewrite the audit log.
+ * Stop the program if the connection it is about to use holds UPDATE, DELETE or TRUNCATE on
+ * `public.audit`.
+ *
+ * That sentence is narrower than "could rewrite the audit log" on purpose. `has_table_privilege`
+ * answers for the *privilege*, not for every *route* to the effect: a `SECURITY DEFINER` function
+ * or a trigger owned by the table's owner would rewrite rows on the application's behalf, and this
+ * check would stay green. No such function exists today, and `EXECUTE` on a new one goes to
+ * `PUBLIC` by default — so the first helper a later migration adds is the moment to remember this.
  *
  * This asks PostgreSQL, not the migration file and not a GRANT listing: `has_table_privilege`
  * answers for the role the program is actually connected as, and it counts every route to the
@@ -67,13 +74,33 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  if (answer.may) {
+  // `!== false`, not truthiness. `a OR b OR c` in SQL is NULL when any operand is NULL and the rest
+  // are false, and a NULL read as "may not" would be the one branch here that fails open.
+  if (answer.may !== false) {
     throw new Error(
       `this connection is \`${answer.who}\`, which may ${FORBIDDEN.join(", ")} the audit table. ` +
         `An append-only log kept by an account that can rewrite it is not append-only. Point ` +
         `DSOR_DB_URL at the \`${APPLICATION_ROLE}\` account, not at the owner. ` +
         `See migrations/002_runtime_user.sql.`,
     );
+  }
+}
+
+/**
+ * The connection string with the user and password gone, for printing.
+ *
+ * This was `url.replace(/\/\/[^@]*@/, "//…@")`, and a review pointed out what a literal `@` in a
+ * password does to it: `pa@ss-word` leaves `…@ss-word@host` on stdout, where `main.ts` prints it.
+ * Parsing it as a URL takes the last `@` as the delimiter, the way the driver does, and nothing
+ * between the scheme and the host is reproduced. A string that is not a URL at all is masked whole.
+ */
+export function withoutCredentials(url: string): string {
+  try {
+    const parsed = new URL(url);
+
+    return `${parsed.protocol}//…@${parsed.host}${parsed.pathname}`;
+  } catch {
+    return "(a connection string that could not be parsed, not shown)";
   }
 }
 
@@ -133,7 +160,7 @@ export async function openTheDatabase(folder: string = LOCAL): Promise<{
     useDatabase(pool as unknown as Database);
 
     return {
-      where: `the PostgreSQL at ${url.replace(/\/\/[^@]*@/, "//…@")}`,
+      where: `the PostgreSQL at ${withoutCredentials(url)}`,
       close: () => pool.end(),
       connection: pool as unknown as Database,
     };

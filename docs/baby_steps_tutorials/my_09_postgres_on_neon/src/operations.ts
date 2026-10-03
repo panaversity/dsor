@@ -35,7 +35,7 @@ import {
 import { parseUri } from "./uri.ts";
 // NEW IN STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
-import { audit } from "./audit.ts";
+import { audit, OutcomeUnknown } from "./audit.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
 // the program here, before any caller gets a turn. That is DSOR-OPR-02a.
@@ -508,7 +508,22 @@ const recordTheDecision: Stage["run"] = async (context) => {
       ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
       ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
     });
-  } catch {
+  } catch (failure) {
+    // NEW IN STEP 09: the answer a step-08 array could never give. The write may have happened and
+    // the store could not be asked whether it did. That is not a failure and it is not a success,
+    // and `DSOR-UNK-01b` says it must be reported as neither: `OUTCOME_UNKNOWN`, whose retry class
+    // is `after_reconciliation` — a retry is not safe, because the decision may already be on
+    // record, and it is not forbidden, because it may not be. Somebody has to look first.
+    if (failure instanceof OutcomeUnknown) {
+      return refuse(
+        principal?.id ?? "(nobody)",
+        "OUTCOME_UNKNOWN",
+        `the decision about ${nameOf(context.id)} may or may not have been recorded, so it was ` +
+          `not carried out; reconcile before trying again`,
+        context.requestId,
+      );
+    }
+
     // The decision could not be written, so there is no honouring DSOR-EXE-02 by answering. The
     // caller is told that instead, and because this stage sits before anything executes, nothing
     // has happened yet. `EVIDENCE_STORE_UNAVAILABLE` is the §28 code for it, retry

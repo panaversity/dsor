@@ -140,8 +140,9 @@ while the question was whether it deserved a detour. It stopped being right when
 
 `verifyChain` rejects a log whose `at` values go backwards. Decision 77 made the *sequence* and the
 clock agree with each other, so a lost race can no longer cause that. What it cannot do is make the
-clock itself monotonic: an NTP correction that moves the system clock back between two writes
-produces the same symptom — an intact chain reported as broken, with rows nobody can correct.
+clock itself monotonic — and it assumes there is **one** clock. An NTP correction that moves the
+system clock back between two writes, or two instances of this program on one database with clocks a
+few seconds apart (the deployment `pg`'s pool and the Neon route exist for), produce the same symptom — an intact chain reported as broken, with rows nobody can correct.
 
 Three ways out, none of them this step's:
 

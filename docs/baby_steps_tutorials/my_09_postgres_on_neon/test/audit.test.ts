@@ -770,4 +770,40 @@ describe("the audit log", () => {
       expect(verifyChain([tampered], await theHead()), `changing ${field} vs the head`).toBe(false);
     }
   });
+  /**
+   * `at` is hashed as the database will hand it back, not as the clock spelled it.
+   *
+   * `storable` sets that rule for text — hash what will be stored, never what was sent — and `at`
+   * was exempt. `theLog` rebuilds `at` with `Date.prototype.toISOString`, so any clock whose output
+   * is a different but equally valid RFC 3339 spelling made a record that could never verify:
+   *
+   *     wrote at=2026-10-04T00:00:00Z  read back=2026-10-04T00:00:00.000Z  verifyChain=false
+   *
+   * The trusted time source §30 asks for is exactly the kind of clock that emits `Z` with no
+   * milliseconds, or `+00:00`. A hostile review found it; `new Date(now()).toISOString()` fixes it.
+   */
+  it("DSOR-AUD-04b: a clock that spells the time differently still produces a verifiable chain", async () => {
+    await forgetTheLog();
+
+    for (const spelling of [
+      "2026-10-04T00:00:00Z",
+      "2026-10-04T05:00:00+05:00",
+      "2026-10-04T00:00:00.5Z",
+    ]) {
+      setClock(() => spelling);
+
+      const written = await recorded({ requestId: `req_${spelling}` });
+
+      // Stored in the one canonical form, whatever the clock said.
+      expect(written.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(written.at).getTime()).toBe(new Date(spelling).getTime());
+    }
+
+    resetClock();
+
+    const log = await theLog();
+
+    expect(log).toHaveLength(3);
+    expect(verifyChain(log, await theHead())).toBe(true);
+  });
 });

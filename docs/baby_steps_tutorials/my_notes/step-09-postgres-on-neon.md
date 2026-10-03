@@ -220,3 +220,20 @@ nobody, because every test set up the identity it then tested.
 
 `pnpm check`: 23 files, **308 tests**. `pnpm test:db`: 5, against a real PostgreSQL with two real
 logins. Both routes verify their chain: 10 records on the server, 10 on disk.
+
+### Then the hostile review of the fixes
+
+The `requirement-reviewer` pass over the eleven fixes above found six more broken guarantees, and
+reproduced all of the ones it called live. The one that stings: the lost-reply recovery — written that
+morning to make the log and the answer agree — ran its follow-up question on the connection that had
+just died, so on the realistic case it did exactly what it was written to stop. And it asked a
+question the hash cannot answer, so two decisions with the same bytes became one row.
+
+Both fixed, with `OUTCOME_UNKNOWN` finally meaning something in this step; the step now claims
+`DSOR-UNK-01b` for the one unknown it can produce. Plus: `at` normalised to the stored spelling, the
+guard failing closed on NULL, the route pinned in `database.test.ts`, every table name in every file
+qualified, one door to the database and a test that counts them, a credential mask that does not leak
+a password with `@` in it, and `forgetTheLog` erasing one chain rather than all of them.
+[Decision 84](decisions.md), [lessons 30 and 31](lessons.md).
+
+`pnpm check`: **315 tests**. `pnpm test:db`: 5. Nine break-it exercises, all re-measured.
