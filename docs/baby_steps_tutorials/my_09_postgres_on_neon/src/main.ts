@@ -117,19 +117,26 @@ for (const record of await theLog()) {
 }
 
 console.log();
-// `await theHead()` is passed on purpose, and the next three lines are why rather than a comment claiming
-// it. Hash chaining proves no record was *edited*. It cannot prove none was *deleted from the end* —
-// drop the last record and every link still holds, there is simply less of it. The checkpoint is what
-// notices, and §30 names checkpoints beside hash chaining for exactly this.
+// Hash chaining proves no record was *edited*. It cannot prove none was *deleted from the end* — drop
+// the last record and every link still holds, there is simply less of it. A checkpoint is what
+// notices, and §30 names checkpoints beside hash chaining for exactly that.
+//
+// Be careful what the second line below demonstrates, because I claimed more than it shows. The log is
+// read ONCE, into `whole`, and `tampered` is a copy of it with the last record removed. So this
+// catches a shortened log you are **holding**, and that is all. A row deleted from the **table** moves
+// `theHead()` with it, because `theHead()` is a query over that same table, and then the two agree
+// again. §30 says the answer and says it as a SHOULD: anchor a checkpoint outside the store. This step
+// has nowhere outside to put one, which is why `DSOR-AUD-04d` is not claimed.
 const whole = await theLog();
+const head = await theHead();
 const tampered = whole.slice(0, whole.length - 1);
 
 console.log(
-  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, await theHead())}`,
+  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, head)}`,
 );
 console.log(
-  `drop the last record and the chain alone still says: ${verifyChain(tampered)} ` +
-    `— but against the head: ${verifyChain(tampered, await theHead())}`,
+  `drop one from the copy we are holding: the chain alone still says ${verifyChain(tampered)}, ` +
+    `and against the head ${verifyChain(tampered, head)}`,
 );
 console.log(
   `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,

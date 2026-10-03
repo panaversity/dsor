@@ -77,7 +77,7 @@ pnpm start
 
 ```text
 10 records, chain verifies against the head: true
-drop the last record and the chain alone still says: true — but against the head: false
+drop one from the copy we are holding: the chain alone still says true, and against the head false
 2 refusals counted without a record, because nobody was logged in
 ```
 
@@ -89,6 +89,27 @@ drop the last record and the chain alone still says: true — but against the he
 
 That line is step 09. The first run's records are still there, written by a process that no longer
 exists — and the second run's records link onto them, so the whole chain still verifies.
+
+### What the second line of that output does and does not show
+
+Hash chaining proves no record was **edited**. It is no evidence at all that none was **deleted from
+the end** — drop the last record and every link still holds, there is simply less of it. A
+*checkpoint* is what notices, and §30 names checkpoints beside hash chaining for exactly that.
+
+But read it carefully, because step 09 claimed more than it delivers. The log is read once and that
+line drops a record from **the copy being held**, so what it catches is a shortened log you were
+handed. A row deleted from the **table** moves `theHead()` with it, because `theHead()` is a query
+over that same table — and then the two agree again:
+
+```text
+3 records, head count 3   verifies: true
+DELETE the last row
+2 records, head count 2   verifies: true
+```
+
+§30 says the answer and says it as a SHOULD: *anchor checkpoints outside the control-plane store.*
+This step has nowhere outside to put one, which is why `DSOR-AUD-04d` is not claimed — and
+`test/audit.test.ts` pins the limit, so the day something anchors a checkpoint, a test says so.
 
 ### Which database is that?
 

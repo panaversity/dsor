@@ -557,6 +557,50 @@ describe("the decision is written down first", () => {
     }
   });
 
+  /**
+   * The worst bug step 09 had, and a caller could trigger it with one request.
+   *
+   * A JavaScript string may contain a **lone surrogate** — `"invoice.\uD800get"` — which is not valid
+   * Unicode and which UTF-8 cannot represent. The record was hashed as written and then stored by
+   * PostgreSQL as something else:
+   *
+   *     sent     : "a\ud800b"
+   *     read back: "a\ufffdb"
+   *
+   * So `verifyChain` recomputed the hash from the stored row, got a different answer, and reported
+   * the whole log as tampered with — **permanently**, from one malformed request. A NUL byte was the
+   * other half: PostgreSQL refuses it outright, so the write failed and the caller was told
+   * `EVIDENCE_STORE_UNAVAILABLE` about a database that was perfectly healthy.
+   *
+   * The rule: **hash what the database will store, never what the caller sent.**
+   */
+  it("DSOR-AUD-04b: text a database cannot store verbatim does not break the chain", async () => {
+    await fresh();
+
+    for (const [what, id] of [
+      ["a lone surrogate", "invoice.\uD800get"],
+      ["a NUL byte", "invoice.\u0000get"],
+      ["both at once", "a\uD800b\u0000c"],
+      ["a lone low surrogate", "\uDFFFinvoice"],
+    ] as const) {
+      const answer = await callOperation(SUPERVISOR, id, {});
+
+      // Refused for the right reason — the operation does not exist — not because of the encoding.
+      expect(answer.kind === "error" && answer.envelope.code, what).toBe("UNSUPPORTED_CAPABILITY");
+
+      // Recorded, and the chain still agrees with itself after it.
+      expect(await verifyChain(await theLog(), await theHead()), what).toBe(true);
+    }
+
+    expect(await theLog()).toHaveLength(4);
+
+    // And every stored row reads back as exactly what was hashed, which is the thing that was wrong.
+    for (const record of await theLog()) {
+      expect(record.reason!.isWellFormed(), record.record_id).toBe(true);
+      expect(record.reason).not.toContain("\u0000");
+    }
+  });
+
   // An authenticated caller cannot grow the log without bound, which is the half decision 53 missed.
   it("DSOR-AUD-01: an enormous operation id does not become an enormous record", async () => {
     await fresh();

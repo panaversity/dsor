@@ -266,6 +266,53 @@ describe("the audit log", () => {
     expect(verifyChain([nested])).toBe(true);
   });
 
+  /**
+   * The checkpoint's limit, pinned — because I claimed more than it does.
+   *
+   * `theHead()` is a query over the same table it is meant to vouch for. Delete a row from the table
+   * and the head moves with it, so the two agree again:
+   *
+   *     3 records, head count 3, last sha256:6feaa09…   verifies: true
+   *     DELETE the last row
+   *     2 records, head count 2, last sha256:934d65b…   verifies: TRUE
+   *
+   * Step 08 held the head in a module variable updated on each write, which was independent of the
+   * log and did catch this. Making it a query fixed a real problem — a variable is reset by every
+   * restart, so after the thing step 09 exists for it would vouch for nothing — and introduced this
+   * one, and I shipped the new behaviour while repeating the old claim.
+   *
+   * What the head still catches: a log **handed to you** that has been shortened, and a head read
+   * before the deletion. §30 says the real answer as a SHOULD — *"anchor checkpoints outside the
+   * control-plane store"* — and this step has nowhere outside to put one, so `DSOR-AUD-04d` is not
+   * claimed. This test is here so that the day something anchors it, this failure says so.
+   */
+  it("a head read after a deletion agrees with the shortened log, which is the limit", async () => {
+    await forgetTheLog();
+    await recorded({ requestId: "req_1" });
+    await recorded({ requestId: "req_2" });
+    const beforeTheDeletion = await theHead();
+
+    await recorded({ requestId: "req_3" });
+
+    const head = await theHead();
+
+    expect(await verifyChain(await theLog(), head)).toBe(true);
+
+    // Delete the newest row, as only the owner can.
+    await db.exec("DELETE FROM audit WHERE sequence = (SELECT max(sequence) FROM audit)");
+
+    const shortened = await theLog();
+
+    expect(shortened).toHaveLength(2);
+
+    // A head read NOW moves with the table, so it agrees. This is the limit.
+    expect(await verifyChain(shortened, await theHead())).toBe(true);
+
+    // A head from before the deletion catches it, and so does the one read before record 3.
+    expect(await verifyChain(shortened, head)).toBe(false);
+    expect(await verifyChain(shortened, beforeTheDeletion)).toBe(true);
+  });
+
   // The emptiest case, which had no test: a fresh log checked against its own fresh head. `lastHashOf`
   // has to answer the genesis hash for an empty run, and a review flipped that `=== 0` with all 223
   // tests passing — an empty log would have been reported as a broken chain.

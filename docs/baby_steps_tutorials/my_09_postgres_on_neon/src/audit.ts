@@ -248,13 +248,28 @@ export interface Head {
 }
 
 /**
- * The head of the chain, asked of the database rather than remembered.
+ * The head of the chain, as the database currently reports it.
  *
- * Step 08 held this in a variable beside the array. A variable is no use here: the point of a
- * database is that the records outlive the process, so a checkpoint the process remembers would be
- * reset by every restart and would vouch for nothing.
- */
-export async function theHead(): Promise<Head> {
+ * **Read what this cannot do.** It is a query over the same table it is meant to vouch for, so a row
+ * deleted from the end moves the head with it. Measured:
+ *
+ *     3 records, head count 3, last sha256:6feaa09…      verifies: true
+ *     DELETE the last row
+ *     2 records, head count 2, last sha256:934d65b…      verifies: TRUE
+ *
+ * Step 08 held this in a module variable updated on each write, which was independent of the log and
+ * therefore did catch a dropped tail. Making it a query fixed one problem — a variable is reset by
+ * every restart, so it would vouch for nothing after the thing this step exists for — and created
+ * another, and I claimed the old guarantee while shipping the new behaviour.
+ *
+ * So what it is actually good for: catching a **log you were handed** that has been shortened, which
+ * is what `verifyChain(records, head)` compares. Reading the head first and the records afterwards,
+ * or holding a head from earlier, both catch a deletion. Reading both at the same moment cannot.
+ *
+ * §30 says the real answer, and says it as a SHOULD: *"Implementations SHOULD anchor checkpoints
+ * outside the control-plane store."* A checkpoint computed from the thing it checks is not a
+ * checkpoint. `DSOR-AUD-04d` is not claimed, and this is why.
+ */ export async function theHead(): Promise<Head> {
   const { rows } = await theDatabase().query<{ count: string; last_hash: string | null }>(
     `SELECT count(*)::text AS count,
             (SELECT record_hash FROM audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
@@ -308,7 +323,40 @@ function canonical(value: unknown): string {
  */
 const ROOM_FOR_TEXT = 500;
 
-function clip(text: string): string {
+/**
+ * Caller-supplied text, as the database will actually store it.
+ *
+ * NEW IN STEP 09, and it fixes the worst bug this step had: **one request could break the chain for
+ * ever.** An operation id containing a lone surrogate — `"invoice.\uD800get"`, which a caller can
+ * send because JavaScript strings are not required to be valid Unicode — was hashed as written and
+ * then stored by PostgreSQL as something else, because UTF-8 cannot represent it:
+ *
+ *     sent     : "a\ud800b"
+ *     read back: "a\ufffdb"
+ *     identical: false
+ *
+ * So `verifyChain` recomputed the hash from the stored row, got a different answer, and reported the
+ * whole log as tampered with — permanently, and from a single malformed request. A NUL byte was the
+ * other half: PostgreSQL refuses it outright, so the INSERT failed and the caller was told
+ * `EVIDENCE_STORE_UNAVAILABLE` about a database that was perfectly healthy.
+ *
+ * The rule this establishes: **hash what the database will store, never what the caller sent.**
+ * `toWellFormed` replaces lone surrogates with U+FFFD, which is exactly what PostgreSQL does, so the
+ * two now agree. NUL is removed rather than replaced, because PostgreSQL has nowhere to put it.
+ */
+function storable(text: string): string {
+  return text.toWellFormed().replaceAll("\u0000", "");
+}
+
+/**
+ * Caller text, made storable and then capped.
+ *
+ * Both halves matter and they have to happen in this order: `storable` first, so the length that is
+ * measured is the length that will be stored, and the cap second.
+ */
+function clip(raw: string): string {
+  const text = storable(raw);
+
   return text.length <= ROOM_FOR_TEXT
     ? text
     : `${text.slice(0, ROOM_FOR_TEXT)}… (${text.length} characters, ${text.length - ROOM_FOR_TEXT} dropped)`;
