@@ -59,10 +59,7 @@ describe("decision 8: the inspector sees every kind of privilege", () => {
     expect(catalog.sequences).toStrictEqual([
       { name: "dsor.audit_sequence_seq", held: ["USAGE", "SELECT", "UPDATE"] },
     ]);
-    expect(catalog.schemas.find((s) => s.name === "dsor")?.held).toStrictEqual([
-      "USAGE",
-      "CREATE",
-    ]);
+    expect(catalog.schemas.find((s) => s.name === "dsor")?.held).toStrictEqual(["USAGE", "CREATE"]);
   });
 
   it("step 16's decision 8: asked about the owner, it names the owner's UPDATE on app.invoices", async () => {

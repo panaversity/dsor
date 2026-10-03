@@ -58,10 +58,13 @@ describe("C2: every schema and table is on the map, and everything on the map ex
     ["dsor.audit_copy", "materialized view"],
     ["dsor.bank_lines", "foreign table"],
     ["dsor.events", "partitioned table"],
-  ] as const)("step 16's decision 5: %s, a %s, is named, because no kind allows one", (name, kind) => {
-    const found = differencesWith((c) => c.relations.push(relationOf(name, kind)));
-    expect(found).toStrictEqual([`${name} is a ${kind}, and no kind in store.json allows one`]);
-  });
+  ] as const)(
+    "step 16's decision 5: %s, a %s, is named, because no kind allows one",
+    (name, kind) => {
+      const found = differencesWith((c) => c.relations.push(relationOf(name, kind)));
+      expect(found).toStrictEqual([`${name} is a ${kind}, and no kind in store.json allows one`]);
+    },
+  );
 
   // A view under a table's name in the map is still a view.
   it("step 16's decision 5: a view is named even when the map names it as a table", () => {
@@ -94,15 +97,12 @@ describe("C3: dsor_runtime's privileges are exactly the map's", () => {
     ]);
   });
 
-  it.each(["UPDATE", "DELETE", "TRUNCATE"])(
-    "DSOR-AUD-04a: %s on the log is named",
-    (privilege) => {
-      const found = differencesWith((c) => relationIn(c, "dsor.audit").held.push(privilege));
-      expect(found).toStrictEqual([
-        `dsor.audit: dsor_runtime holds ${privilege}, which store.json does not list`,
-      ]);
-    },
-  );
+  it.each(["UPDATE", "DELETE", "TRUNCATE"])("DSOR-AUD-04a: %s on the log is named", (privilege) => {
+    const found = differencesWith((c) => relationIn(c, "dsor.audit").held.push(privilege));
+    expect(found).toStrictEqual([
+      `dsor.audit: dsor_runtime holds ${privilege}, which store.json does not list`,
+    ]);
+  });
 
   // Break A3. A grant on one column is not a grant on the table, so a list of table
   // privileges cannot see it (step 09's review).
@@ -133,6 +133,18 @@ describe("C3: dsor_runtime's privileges are exactly the map's", () => {
     ]);
   });
 
+  // Found while writing the comparison: a column the map misspells would be compared with
+  // no column at all, and never named.
+  it("step 16's decision 4: a column the map lists and the table does not have is named", () => {
+    const found = differencesWith((c) => {
+      const audit = relationIn(c, "dsor.audit");
+      audit.columns = audit.columns.filter((col) => col.name !== "connector");
+    });
+    expect(found).toStrictEqual([
+      "store.json lists INSERT on the column connector of dsor.audit, which the table does not have",
+    ]);
+  });
+
   it("step 16's decision 3: CREATE on the schema dsor is named", () => {
     const found = differencesWith((c) => c.schemas[1]!.held.push("CREATE"));
     expect(found).toStrictEqual([
@@ -148,7 +160,9 @@ describe("C3: dsor_runtime's privileges are exactly the map's", () => {
   });
 
   it("step 16's decision 3: a privilege on a sequence the map never heard of is named", () => {
-    const found = differencesWith((c) => c.sequences.push({ name: "dsor.counter", held: ["UPDATE"] }));
+    const found = differencesWith((c) =>
+      c.sequences.push({ name: "dsor.counter", held: ["UPDATE"] }),
+    );
     expect(found).toStrictEqual([
       "dsor.counter: dsor_runtime holds UPDATE on a sequence, which no kind allows",
     ]);

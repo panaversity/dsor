@@ -37,7 +37,9 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
   });
 
   it("step 16's decision 3: a business table may not be written column by column either", () => {
-    const source = mapWith((m) => (m.tables["app.invoices"].runtime.columns = { UPDATE: ["status"] }));
+    const source = mapWith(
+      (m) => (m.tables["app.invoices"].runtime.columns = { UPDATE: ["status"] }),
+    );
     expect(problemsOf(source)).toStrictEqual([
       "store.json: app.invoices lists UPDATE on columns, which a business table does not allow",
     ]);
@@ -79,7 +81,8 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
 
   it("step 16's decision 3: DSoR's paperwork cannot be put in the company's schema", () => {
     const source = mapWith(
-      (m) => (m.tables["app.notes"] = { kind: "append-only", tenant: null, runtime: { table: [] } }),
+      (m) =>
+        (m.tables["app.notes"] = { kind: "append-only", tenant: null, runtime: { table: [] } }),
     );
     expect(problemsOf(source)).toStrictEqual([
       "store.json: app.notes is append-only, which lives on DSoR's side, and the schema app is the company's",
@@ -88,7 +91,8 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
 
   it("step 16's decision 3: the company's data cannot be put in DSoR's schema", () => {
     const source = mapWith(
-      (m) => (m.tables["dsor.invoices"] = { kind: "business", tenant: null, runtime: { table: [] } }),
+      (m) =>
+        (m.tables["dsor.invoices"] = { kind: "business", tenant: null, runtime: { table: [] } }),
     );
     expect(problemsOf(source)).toStrictEqual([
       "store.json: dsor.invoices is business, which lives on the company's side, and the schema dsor is DSoR's",
@@ -173,9 +177,7 @@ describe("C7: the map itself is checked", () => {
     const source = mapWith(
       (m) => (m.tables.invoices = { kind: "business", tenant: null, runtime: { table: [] } }),
     );
-    expect(problemsOf(source)).toStrictEqual([
-      'store.json: "invoices" must be named schema.table',
-    ]);
+    expect(problemsOf(source)).toStrictEqual(['store.json: "invoices" must be named schema.table']);
   });
 
   it("step 16's decision 1: a file that is not JSON is refused", () => {
