@@ -19,23 +19,24 @@ plane" means the part of a system that decides and remembers. The business data 
 the company's system.
 
 This tutorial opened that store in step 09. The log went into a schema of its own, `dsor`,
-beside `app`, which stands in for the company's system. A **schema** is a room inside one
-database. A **privilege** is one thing a database user may do to a room, a table, or a
-column: read it (`SELECT`), add a row (`INSERT`), change a row (`UPDATE`), and so on.
+beside `app`, which stands in for the company's system. A **schema** is a named group of
+tables inside one database. A **privilege** is one thing a database user may do to a
+schema, a table, or a column: read it (`SELECT`), add a row (`INSERT`), change a row
+(`UPDATE`), and so on.
 
-This step gives the store a **map**, one file: `store.json`. For every room and every table,
-it says whose it is, what kind of paperwork it holds, and the exact privileges of
-`dsor_runtime`, the database user the program logs in as. An **inspector** compares the real
-database with the map every time the program starts. On any difference, the program refuses
-to start, and names each one.
+Think of the new clerk from *Start here*. The clerk keeps a personal notebook: past work,
+notes, lessons. That notebook is the agent's context. DSoR's paperwork is never kept in the
+clerk's notebook, and never copied from it. DSoR keeps its own, and only DSoR's program
+writes it. That is what the specification means by a store "separate from agent context".
+The picture stops there.
 
-Think of the records office from *Start here*. The agent is the new clerk, and DSoR is the
-office. This step is about the office's back room, and the plan on its door. The plan lists
-each cabinet, what goes in it, and which keys open it. Every morning, before the window
-opens, the room is checked against the plan. A cabinet or a key that is not on the plan
-keeps the window shut. The picture stops there. A person checking a room can miss a
-cabinet. The inspector asks the database itself, which lists every table and every
-privilege.
+This step makes the store check itself. One file, `store.json`, lists every schema and
+every table: whose it is, what kind of paperwork it holds, and the exact privileges of
+`dsor_runtime`, the database user the program logs in as. The tutorial calls this file the
+**map** of the store. An **inspector**, a part of the program, compares the real database
+with the map every time the program starts. On any difference, the program refuses to
+start, and names each one. The inspector does not trust the map's list of tables. It asks
+PostgreSQL for every table there is, so a table nobody wrote down is found too.
 
 ## Why it matters
 
@@ -44,8 +45,8 @@ would forget what it approved, what it already executed, and how much of today's
 used. Every safety promise in this document depends on that memory."
 
 **Today, the program checks one table when it starts.** Step 09's start-up check refuses to
-run if the program could change or remove a record in the log, `dsor.audit`. It names the
-log, and nothing else. Suppose someone runs `GRANT UPDATE ON app.invoices TO dsor_runtime`.
+run if the program could change or remove a record in the log, `dsor.audit`. It also checks
+who the program logged in as. Of all the tables, it asks only about the log. Suppose someone runs `GRANT UPDATE ON app.invoices TO dsor_runtime`.
 Step 15 starts and serves as if nothing happened. The full list of privileges is checked
 only by a database test, `pnpm test:db`. Nothing runs that test before the program starts,
 and CI does not run it at all.
@@ -84,8 +85,8 @@ Written first, before the rules were split into claims.
 
 **Intent.** DSoR never forgets what it promised, and nobody can quietly widen what its
 program may do to its own paperwork. The store is DSoR's own, durable, and out of the
-agent's reach. The program runs only on a store that matches its map. The analogy is the
-plan on the back room's door, checked every morning before the window opens.
+agent's reach. The program runs only on a store that matches its map. The picture is the
+clerk's notebook: DSoR's paperwork is never kept there.
 
 **Outcome.** What is true when this step is done:
 
@@ -104,13 +105,14 @@ plan on the back room's door, checked every morning before the window opens.
    - a view, a materialized view, a foreign table, or a partitioned table: no kind allows
      one today (decision 5);
    - a privilege more or less than the map lists, on a schema, a table, or a column, and
-     any privilege on a sequence, on the database itself, or held `WITH GRANT OPTION`;
+     any privilege on a sequence (a counter the database keeps, such as the log's
+     numbering), on the database itself, or held `WITH GRANT OPTION`;
    - a column the database fills in, such as the log's `sequence` and `at`, that the map
      lets the program write;
    - a rule or a trigger on a table, or a `SECURITY DEFINER` function `dsor_runtime` may
      run;
    - a table with a company key that is not locked by row-level security, enabled and
-     forced.
+     forced. **Forced** means the lock applies to the table's owner too.
 4. Step 09's start-up line for the log stays, as a second lock (decision 6).
 5. A database test proves that today's database matches the map exactly. Another proves the
    inspector can see each kind of privilege, by asking it about the tables' owner, who holds
@@ -150,20 +152,21 @@ Checked on 2026-10-03:
 2. **"Durably"** was proven in step 09. The record is committed before the answer, so it
    survives a crash.
 3. **"Separate from agent context"** holds by construction, and earlier tests prove it:
-   - The agent has no database login. Its only door is `call`.
+   - The agent has no database login. Its only way in is `call`.
    - The code behind `call` gets a store bound to one company's invoices. It reaches
      nothing in `dsor` (step 10, C8).
    - Only DSoR's program writes the log, as `dsor_runtime`, which can add records and never
      change them (step 09).
 4. **Where the company's system lives.** In real deployments it is often separate. §1:
    "PostgreSQL, Salesforce, SAP, QuickBooks, Xero, Workday, Odoo, or custom applications MAY
-   remain the physical systems of record." DSOR-EXE-04a asks for one atomic commit **where**
-   the connector's store and the control-plane store share a transaction. Where they
+   remain the physical systems of record." DSOR-EXE-04a asks for one atomic commit, both
+   changes saved together or neither, **where** the connector's store and the
+   control-plane store share a transaction, one unit of work in one database. Where they
    cannot, DSoR relies on other rules:
    - an intent record, written before acting (DSOR-EXE-03a);
    - an idempotency key that the other system understands;
-   - and `OUTCOME_UNKNOWN`, never success or failure, until DSoR has checked (DSOR-UNK-01a
-     to DSOR-UNK-02).
+   - and, when DSoR cannot tell whether the change happened, `OUTCOME_UNKNOWN`, never
+     success or failure (DSOR-UNK-01a to DSOR-UNK-02).
 
    This tutorial takes the first case, as the reference profile does (decision 2).
 5. **The map is this tutorial's idea, not the specification's.** The specification asks for
@@ -213,8 +216,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
    The log's `INSERT` is granted column by column: twelve named columns, never `sequence`
    or `at` (step 09, decisions 5 and 6). So the map names column privileges, not only table
-   ones, under `columns`, one list for each privilege. `public` is PostgreSQL's default
-   room. Every user may enter it, and nothing of ours lives there. A sequence has no line:
+   ones, under `columns`, one list for each privilege. `public` is the schema every new
+   database has. Every user may use it, and nothing of ours lives there. A sequence has no line:
    it belongs to its table, and no kind allows a privilege on one (decision 3). A company
    key is a column named `tenant_id` or `tenant`, step 11's two names. *Downside:* every
    later step that adds a table adds a line here too. Forgetting it stops start-up, which
@@ -235,12 +238,14 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    | `append-only` | DSoR's | read, and add rows through named columns: `SELECT`, and `INSERT` column by column. Never `UPDATE`, `DELETE`, or `TRUNCATE` | required | `dsor.audit` |
    | `bookkeeping` | DSoR's | nothing | none | `dsor.migrations` |
 
-   No kind allows `REFERENCES`, `TRIGGER`, or `MAINTAIN`, and none allows a privilege on a
+   No kind allows `REFERENCES` (to point a foreign key at the table), `TRIGGER` (to add a
+   trigger), or `MAINTAIN` (to vacuum or reindex it), and none allows a privilege on a
    sequence or on the database, or one held `WITH GRANT OPTION`, which would let
    `dsor_runtime` hand it on. A schema allows `USAGE`, never `CREATE`. No kind lets the
    program write a column the database fills in: an identity, such as `sequence`, or a
-   column with a default, such as `at`. No kind allows a rule or a trigger on its table: a
-   rule `DO INSTEAD NOTHING` turns every `INSERT` into nothing, and the program would think
+   column with a default, such as `at`. No kind allows a rule or a trigger on its table. A
+   **rule** rewrites a statement before it runs, and a **trigger** runs code when a row
+   changes. A rule `DO INSTEAD NOTHING` turns every `INSERT` into nothing, and the program would think
    its records were kept. A company key is required where rows belong to a company, so
    the lock check can never be skipped by naming a column `org_id`. The last four sentences
    came from the review. Each later step adds its own kind beside the table that needs it,
@@ -252,33 +257,38 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    the files: the contracts, the roles, the inputs, the labels, and now the map. A broken
    map is refused there, before `operations:` is printed. Then the program logs in, and
    step 09's check asks who it is. Only then does the inspector read PostgreSQL's own
-   catalog as `dsor_runtime`, compare it with the map, and refuse to start on any
-   difference, naming each one. It comes after step 09's check because a wrong login, such
-   as the owner, would make every privilege it reads someone else's. It asks PostgreSQL's
-   `has_…_privilege` functions, as step 09's test does, so a privilege held through
-   `PUBLIC` or through a role counts too. It reads inside a transaction whose
+   catalog, its own list of every table and privilege, as `dsor_runtime`, compare it with
+   the map, and refuse to start on any difference, naming each one. It comes after step
+   09's check because a wrong login, such as the owner, would make every privilege it
+   reads someone else's. It asks PostgreSQL's `has_…_privilege` functions, which answer
+   "may this user do this?", as step 09's test does. So a privilege held through `PUBLIC`,
+   the group every user belongs to, or through another role counts too. It reads inside a transaction whose
    `search_path`, the list of schemas PostgreSQL looks in for a name, is `pg_catalog`
    first. Otherwise a function of the same name in `public` could answer for
-   PostgreSQL's own, and say "no" to every question (found by the review). A database test
-   proves that today's database matches the map. Unit tests prove the comparison itself, with planted catalogs.
-   *Downside:* a few catalog reads at every start, and one more reason the program will not
+   PostgreSQL's own, and say "no" to every question (found by the review). A database
+   test proves that today's database matches the map. Unit tests prove the comparison
+   itself, with planted catalogs. *Downside:* a few catalog reads at every start, and one more reason the program will not
    start.
 5. **The inspector covers every schema, relation, column, and sequence outside
    PostgreSQL's own.** Names that start with `pg_`, and `information_schema`, are
    PostgreSQL's own (step 11's rule). Step 09's review found privileges hiding on a column,
    on a sequence, and on a schema, where a list of whole-table grants could not see them.
-   A **relation** is anything a query can read rows from. Only plain tables have a kind
-   today, so a view, a materialized view, a foreign table, or a partitioned table stops
-   start-up. Changed on 2026-10-03, before any code: this decision first left them to step
-   11's database tests, which nothing runs before start-up. The learner asked for every
-   relation after a live run on a local PostgreSQL. Inside `org_456`, `dsor_runtime` read
-   `org_789`'s record through a view made by the owner, through the owner's materialized
-   copy, through one partition read by its own name, and through a foreign table.
-   PostgreSQL cannot lock a materialized view or a foreign table at all. A partition is a
-   table, so it needs its own line and its own forced lock. For the same reason, the
-   inspector refuses a `SECURITY DEFINER` function that `dsor_runtime` may run: it runs
-   with its owner's rights, and the review used one to delete log records (found by the
-   review). Step 11's catalog tests stay as a second lock. *Downside:* two places now read
+   A **relation** is anything a query can read rows from:
+   - a **table** stores its rows;
+   - a **view** is a saved query, which by default runs with its owner's rights;
+   - a **materialized view** is a stored copy of a query's answer;
+   - a **partitioned table** stores no rows itself: they live in its **partitions**, which
+     are tables of their own;
+   - a **foreign table** reads rows that live outside the database.
+
+   Only plain tables have a kind today, so a view, a materialized view, a foreign table, or
+   a partitioned table stops start-up. On a local PostgreSQL, inside `org_456`,
+   `dsor_runtime` read `org_789`'s record through each one but the plain table ("Think it
+   through"). PostgreSQL cannot lock a materialized view or a foreign table at all. A
+   partition is a table, so it needs its own line and its own forced lock. For the same
+   reason, the inspector refuses a `SECURITY DEFINER` function that `dsor_runtime` may
+   run. Such a function runs with the rights of the role that made it, and the review used
+   one to delete log records (found by the review). Step 11's catalog tests stay as a second lock. *Downside:* two places now read
    the catalog, and a later step that needs a view must first give it a kind.
 6. **Step 09's checks stay, as second locks.** The start-up line that names the log stays.
    The map is a file, and one wrong line in a file must not be enough to open the log. A
@@ -315,8 +325,9 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C3:** unit tests: `UPDATE` on `app.invoices`; no `SELECT` on `app.invoices`; `INSERT`
   on the log's column `sequence`; `SELECT` on one column of `dsor.migrations`; `CREATE` on
   the schema `dsor`; `USAGE` on the log's sequence; `CREATE` on the database;
-  `SELECT WITH GRANT OPTION` on the log; a map that lists `INSERT` on `at`. Each is named. On the database: the inspector, asked about the owner, sees
-  each of these (decision 8). The owner holds them on whole tables, so its run proves the
+  `SELECT WITH GRANT OPTION` on the log; a map that lists `INSERT` on `at`. Each is
+  named. On the database: the inspector, asked about the owner, sees each kind of
+  privilege (decision 8). The owner holds them on whole tables, so its run proves the
   catalog read, and the planted catalogs prove the comparison.
 - **C4:** maps that give `app.invoices` `UPDATE`, give `dsor.audit` `UPDATE`, give
   `dsor.migrations` a column, put an `append-only` table in `app`, or give a `business`
@@ -327,8 +338,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C6:** the program, started with a broken map, exits with code 1, names every problem,
   and prints no `operations:` line. Started on today's database with a map that leaves out
   `dsor.migrations`, it exits with code 1 and names the table. Unable to reach the
-  database, it prints the message and no stack trace. On a **throwaway Neon branch**, made from this step's
-  branch and deleted afterwards: `GRANT UPDATE ON app.invoices TO dsor_runtime`, then start
+  database, it prints the message and no stack trace. On a **throwaway Neon branch**, made
+  from this step's branch and deleted afterwards: `GRANT UPDATE ON app.invoices TO dsor_runtime`, then start
   the program. It exits with code 1, naming `app.invoices` and `UPDATE`, and gives no
   answer. Never on the step's own branch.
 - **C7:** maps with an unknown kind, an unknown side, a key written twice, or a table in a
@@ -385,14 +396,15 @@ this way:
 | File | What changed |
 | --- | --- |
 | `store.json` | **New.** The map: three schemas, each with its side and `dsor_runtime`'s privileges, and three tables, each with its kind, its company key, and `dsor_runtime`'s privileges on the table and its columns |
-| `src/store.ts` | **New.** Reads and checks the map, with no database: its form, the sides, and the kind table `KINDS` (decision 3). A broken map names every problem |
-| `src/inspector.ts` | **New.** `readCatalog` reads the catalog in one statement, for the login or for a user it is asked about (decision 8). `storeDifferences` compares it with the map and names every difference |
-| `src/main.ts` | Checks the map with the other files, before `operations:`. Compares the database with the map after step 09's login check, and refuses to start on any difference |
+| `src/store.ts` | **New.** Reads and checks the map, with no database: its form, the sides, and the kind table `KINDS`, with each kind's privileges and whether it needs a company key (decision 3). A broken map names every problem |
+| `src/catalog.ts` | **New.** `readCatalog` reads, in one statement and with `pg_catalog` first, every schema, relation, column, and sequence outside PostgreSQL's own, the database itself, and every definer function, for the login or for a user it is asked about (decision 8). It reads each privilege twice: plain, and `WITH GRANT OPTION` |
+| `src/inspector.ts` | **New.** `storeDifferences` compares the catalog with the map and names every difference |
+| `src/main.ts` | Checks the map with the other files, before `operations:`. Compares the database with the map after step 09's login check, and refuses to start on any difference. A database it cannot reach is named, with no stack trace |
 | `test/catalogs.ts` | **New.** `today()`, the catalog as steps 09 to 15 left it, for the unit tests to change one thing at a time |
 | `test/store-map.test.ts`, `test/inspector.test.ts` | **New.** C4 and C7, then C2, C3, and C5, with no database |
-| `test/store.db.test.ts` | **New.** The planted catalog is the real one, the store matches its map, and the inspector asked about the owner sees every kind of privilege |
-| `test/startup.test.ts` | C6: the program refuses to start with a broken map, or with none |
-| `test/db.ts` | Step 09's list of privileges starts from the catalog, not from three table names (decision 6) |
+| `test/store.db.test.ts`, `test/owner-catalog.ts` | **New.** The planted catalog is the real one, and the store matches its map. The inspector asked about the owner sees every kind of privilege. The owner's rolled-back view, materialized view, partitioned table, rule, trigger, definer function, disabled lock, and look-alike function are each seen |
+| `test/startup.test.ts`, `test/program.db.test.ts` | C6: the program refuses to start with a broken map, with none, with a database it cannot reach, and with a map that leaves out a real table |
+| `test/db.ts`, `test/audit.db.test.ts` | Step 09's list of privileges starts from the catalog, not from three table names, and checks `SELECT` on each column too (decision 6) |
 
 Every other file is step 15's, without its `NEW IN STEP` markers. No new dependency, and no
 new migration (decision 7).
@@ -510,19 +522,50 @@ branch afterwards.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Design first | "In plain words", "Why it matters", "The design, before any code", in a session before this one, with the predictions for A1 to A5 |
+| 2 | Neon | A branch `step-16` from `step-15`. `.env` written by a command, never shown. `pnpm migrate` ("no migration to run") and both suites green before any change: 990 unit, 113 database |
+| 3 | Check the design | Against the code and the real catalog. Two gaps went to the learner: views (every relation goes on the map, after a live run on a local PostgreSQL) and how to prove the SQL sees what today's database lacks (ask about the owner) |
+| 4 | Red | Every new test, against shells that answer "no problem". Predict which pass |
+| 5 | Green | Three commits: the map's checks, the inspector, start-up |
+| 6 | Break it | A1, A2, and A5 live on a throwaway branch, A3 and A4 in a copy. A clean start on the throwaway before the first break |
+| 7 | Review | Two reviewers who have not seen the conversation, each in a copy outside the repository. One reads and attacks. One breaks the code a line at a time |
+| 8 | Fix the review | Decide each finding: fix it, record it, or report it to the earliest step that has it. The design first, then the red tests, then one fix per commit |
+
+The prompt that started this session:
+
+```text
+Build step 16 in learner mode from the design in
+docs/baby_steps_tutorials/mj_16_the_control_plane_store/README.md (commit 6436ccd).
+Neon: branch step-16 from step-15, as its setup says. Breaks A1, A2 and C6's live run go
+on throwaway branches; delete them only when I say yes.
+```
+
+The learner's predictions, and what happened:
+
+| Moment | Prediction | Real |
+| --- | --- | --- |
+| A view, a materialized view, and a partition read by its own name, inside `org_456`: which show `org_789`'s record? | all three | **right**. A foreign table did too |
+| The red run, shells that answer "no problem": which of four new tests pass? | all four | **two**: the ones that expect "no problem". The two that expect a named problem fail |
+| Where will the review find a real hole? | the catalog SQL, the map's form check, start-up order | the SQL: **right**. The map: the kind rule, not the form check. Start-up: the order held, but nothing tested the database refusal |
+| The review's red run: how many of 15 new unit tests pass before any fix? | all 15 | **6**: the sweep's survivors, where the code was right and a test was missing. The 9 for the reviewer's holes fail |
+| The test that starts the program with a map that leaves out `dsor.migrations` | fails | **passes**: the code was right, and the test now notices if it goes |
+| A1 to A5 | as in "Break it" | A1 and A4 right. A2, A3, and A5 as recorded there |
 
 ## Check yourself
 
 1. DSoR does not own the company's data. What does it own, and why can it not do without
    it?
-2. What does "separate from agent context" protect against?
-3. In real life the company's system is often separate from DSoR's store. What changes then?
-4. `GRANT UPDATE ON dsor.audit` makes this step's program refuse to start. Why does that not
+2. Why must DSoR's paperwork never be kept in the clerk's notebook?
+3. `GRANT UPDATE ON dsor.audit` makes this step's program refuse to start. Why does that not
    prove this step works?
-5. Why does the inspector start from the database's own list of tables, and not from the
+4. Why does the inspector start from the database's own list of tables, and not from the
    map's?
-6. Why refuse to start, instead of printing a warning?
+5. The review found two kinds of holes. For one kind, the new test failed before the fix.
+   For the other, it passed. Which is which, and why keep a test that passed at once?
 
 <details>
 <summary>Answers</summary>
@@ -530,30 +573,95 @@ _To be written when the code exists._
 1. Its paperwork: the log today, and soon permission slips, "already done" records,
    commands waiting for approval, and counters. Without it DSoR would forget what it
    approved, what it already did, and how much of today's limit is used.
-2. An email with hidden instructions making the AI write "PAY-901 was approved" in its
-   notes. DSoR never takes its paperwork from the agent, and only DSoR's program writes it.
-3. There is no shared transaction. DSoR writes its intent first, sends a key the other
-   system understands, and reports `OUTCOME_UNKNOWN`, never success or failure, until it has
-   checked.
-4. Step 15 refuses it too, because step 09's line names the log. A test that passes with
-   this step's code deleted proves nothing about this step. `GRANT UPDATE ON app.invoices`
-   does: step 15 starts, and this step refuses.
-5. A check that starts from its own list cannot see what is missing from the list. A table
-   nobody wrote down is exactly the table nobody checks.
-6. Fail closed, like a lock that stays locked when the power fails. A program running on a
-   widened store looks fine and is wrong. A program that will not start is noticed at once.
+2. The notebook is the agent's context, and the agent can be fooled. An email with hidden
+   instructions can make it write "PAY-901 was approved" there. DSoR keeps its own
+   paperwork, and only DSoR's program writes it.
+3. Step 15 refuses it too, because step 09's line asks about the log. A test that passes
+   with this step's code deleted proves nothing about this step. `GRANT UPDATE ON
+   app.invoices` does: step 15 starts, and this step refuses.
+4. A check that starts from its own list cannot see what is missing from the list. A table
+   nobody wrote down is exactly the table nobody checks. Break A4 showed it: a table, a
+   view, a materialized view, a foreign table, and a partitioned table all got past.
+5. A hole in the code fails first: the code really let something through, such as a
+   rule that swallowed every record. A hole in the tests passes first: the code was right,
+   but nothing would notice if it changed, such as deleting the refusal in `main.ts`. The
+   passing test is kept because it fails the day someone breaks that code.
 
 </details>
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+**What the review found.** Two reviewers who had not seen the conversation, each in a copy
+outside the repository. One read the rules against the code, attacked with its own inputs,
+and checked the README: 16 findings, 4 of them high. The other changed the code one line at
+a time: 60 changes, 37 caught, 23 not. Of those 23, 12 were real gaps and 11 changed nothing
+that matters.
+
+**Fixed, each red first, one per commit:**
+
+- A function in `public` named `has_table_privilege`, found first through a search path
+  the owner set, answered "no" to every question. The catalog is now read with
+  `pg_catalog` first.
+- The map could let the program write the log's `at` and `sequence`, and a record was
+  backdated to 2001. The catalog now marks every column the database fills in.
+- An owner's `SECURITY DEFINER` function deleted log records for `dsor_runtime`. A rule
+  `DO INSTEAD NOTHING` on the log made the program report records it never kept. A
+  privilege held `WITH GRANT OPTION` let `dsor_runtime` hand it on, and `CREATE` on the
+  database let it make a schema of its own. The inspector now refuses each one.
+- A company column named `org_id` escaped the lock check. `business` and `append-only`
+  tables now name their company key.
+- A database out of reach stopped the program with a stack trace. It now names why.
+- Tests that were missing, though the code was right: the database refusal in `main.ts`,
+  the kinds of relation read from a real catalog, enabled against forced, `SELECT` on one
+  column, the column name `tenant`, the bookkeeping kind's columns, and fields the map
+  does not know. The owner makes each missing object inside a transaction that is rolled
+  back, so nothing is kept.
+- The test titled DSOR-MOD-01 proved only that the store matches its map. It is titled by
+  decision 7 now.
+
+**Left open, on purpose:**
+
+- **What a policy says.** The inspector checks that row-level security is on and forced,
+  not what its policies allow. A policy `USING (true)` beside the real one opens every
+  company's rows. Step 11's database test compares every policy, but nothing runs it
+  before start-up. A map of policies is a second idea.
+- **Which other roles may touch DSoR's store.** The inspector describes `dsor_runtime`
+  only. A new login given `UPDATE` on the log is not seen. This belongs with "who may read
+  the log" (DSOR-AUD-05b).
+- **A grant made while the program runs** is seen at the next start only.
+- **A foreign table read from a real catalog.** The owner's rolled-back test makes no
+  foreign table, because that needs an extension on Neon. The unit tests name one.
+
+**Reported to the earliest step that has it, to be fixed from there forward:**
+
+- **Step 09:** the log's `add` never checks that one row was written. With a rule on the
+  log, the program says records were kept that never were. This step refuses such a rule
+  at start-up, but one added later is not seen.
+- **Step 09:** the login check's SQL has the same search path weakness that this step fixed
+  in the catalog read.
+
+**Also worth knowing:**
+
+- The design changed twice before any code. Decision 5 first left views to step 11's
+  database tests, which nothing runs before start-up. On a local PostgreSQL on 2026-10-03,
+  inside `org_456`, `dsor_runtime` read `org_789`'s record through a view made by the
+  owner, through the owner's materialized copy, through one partition read by its own name,
+  and through a foreign table. The learner then chose to put every relation on the map.
+  Decision 8 came from the same check: today's database holds nothing on a sequence to see.
+- Neon allowed ten branches. One throwaway, `step-16-a1`, served A1, A2, and A5 in turn,
+  each from a state checked first, and was put back by `REVOKE`.
+- `src/store.ts` is 192 lines and `src/catalog.ts` 186, past the skill's guide of about
+  150. Most of it is comments and one SQL statement. The inspector was split in two for the
+  same reason. The next step that adds a kind could move the map's form check out of
+  `store.ts`.
 
 ## The rules this step meets
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-MOD-01 | DSoR durably owns its paperwork, in a control-plane store separate from agent context | [§1 Definition](../../../specs/dsor/01-model.md#1-definition) | _To be counted._ For audit evidence only: the other eight kinds arrive with their steps |
+| DSOR-MOD-01 | DSoR durably owns its paperwork, in a control-plane store separate from agent context | [§1 Definition](../../../specs/dsor/01-model.md#1-definition) | Carried, for audit evidence only: step 09's crash and restart tests, and step 10's tests of the bound store. This step adds the map that each later kind of paperwork joins |
+| DSOR-AUD-04a | The program's own login can never change or remove a log record | [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) | 11 tests here: the map refuses `UPDATE`, `DELETE`, and `TRUNCATE` on the log, on the table or one column. The inspector names each one held, a map that opens `at`, and a definer function. Step 09's tests stay |
+| DSOR-RP-01b | Company tables use forced row-level security | [§36](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) | 8 tests here: off, on but not forced, a company column with no key, a key the table lacks, a kind that needs a key and names none, and the owner's disabled lock read from the real catalog. Step 11's tests stay |
 
 ## Next
 
