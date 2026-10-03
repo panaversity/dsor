@@ -6,11 +6,11 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "start": "node src/main.ts",
+    "start": "node --env-file-if-exists=.env src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test",
-    "migrate": "node scripts/migrate.ts",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {

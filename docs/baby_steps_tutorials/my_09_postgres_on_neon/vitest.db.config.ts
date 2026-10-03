@@ -10,6 +10,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["test/**/*.db.test.ts"],
+
+    // Read `.env` first. Without this the tier skips itself for somebody who has set up a database
+    // correctly, which is worse than failing: it looks like the tests ran.
+    setupFiles: ["test/support/env.ts"],
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
     testTimeout: 30_000,
