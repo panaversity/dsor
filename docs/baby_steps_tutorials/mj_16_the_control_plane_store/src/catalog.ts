@@ -1,6 +1,6 @@
 // NEW IN STEP 16: what the database really holds, read from PostgreSQL's own catalog
 // (step 16's README, decisions 4, 5, and 8). src/inspector.ts compares it with the map.
-import type pg from "pg";
+import pg from "pg";
 
 /** A relation's kind, in words: PostgreSQL's relkind r, p, v, m, or f. */
 export type RelationKind =
@@ -111,10 +111,34 @@ type CatalogRow = {
   sequences: Catalog["sequences"];
 };
 
-/** Reads the catalog, as it describes this user: the pool's own login, unless one is named. */
-export async function readCatalog(pool: pg.Pool | pg.ClientBase, user?: string): Promise<Catalog> {
+/**
+ * Reads the catalog, as it describes this user: the login itself, unless one is named. A
+ * pool reads in a read-only transaction of its own. One connection reads inside the
+ * transaction its caller has open.
+ */
+export async function readCatalog(db: pg.Pool | pg.ClientBase, user?: string): Promise<Catalog> {
+  if (db instanceof pg.Pool) {
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN READ ONLY");
+      const catalog = await readCatalog(client, user);
+      await client.query("ROLLBACK");
+      client.release();
+      return catalog;
+    } catch (error) {
+      // A connection whose read failed is closed, never lent again, as in inCompany.
+      await client.query("ROLLBACK").catch(() => {});
+      client.release(true);
+      throw error;
+    }
+  }
+  // Every name in the statement is looked up in pg_catalog first, and in pg_temp last.
+  // Otherwise a function in public named has_table_privilege, or a temporary table named
+  // pg_class, could answer for PostgreSQL's own. SET LOCAL lasts until the transaction
+  // ends (step 16's README, decision 4). Found by the review.
+  await db.query("SET LOCAL search_path TO pg_catalog, pg_temp");
   const values = [user ?? null, ON_TABLES, ON_COLUMNS, ON_SEQUENCES, ON_SCHEMAS];
-  const row = (await pool.query<CatalogRow>(CATALOG, values)).rows[0]!;
+  const row = (await db.query<CatalogRow>(CATALOG, values)).rows[0]!;
   return {
     user: row.who,
     schemas: row.schemas,
