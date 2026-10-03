@@ -14,6 +14,7 @@ import { checkInputs, readInputs, type InputChecks, type InputSource } from "./i
 import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
 import { maskingProblems } from "./masking.ts";
+import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { logins } from "./principals.ts";
 
@@ -44,6 +45,9 @@ export type Registry = {
   // company's invoices (step 10's README, decision 13). Found by the Stage 2 review, and
   // fixed from step 10 on.
   invoices: InvoiceStore;
+  // NEW IN STEP 17: the store the commands write, held beside the invoices (step 17's
+  // README, outcome 1). Only the pipeline uses it, as it uses the invoices.
+  payments: PaymentStore;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -95,6 +99,9 @@ export function buildRegistry(
   // tests. Without one, every read fails (step 10's README, decision 13). Found by the
   // Stage 2 review, and fixed from step 10 on.
   invoices: InvoiceStore = NO_STORE,
+  // NEW IN STEP 17: the store of payments. Without one, every write fails, as every read
+  // fails without a store of invoices.
+  payments: PaymentStore = NO_PAYMENTS,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -173,7 +180,7 @@ export function buildRegistry(
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles, inputs, classifications: kinds, invoices };
+  return { contracts, handlers: code, roles, inputs, classifications: kinds, invoices, payments };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

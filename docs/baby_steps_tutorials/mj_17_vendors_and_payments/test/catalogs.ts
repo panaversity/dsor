@@ -35,7 +35,24 @@ const AUDIT_COLUMNS = [
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
 
-/** The catalog as steps 09 to 15 left it, seen by dsor_runtime. A fresh copy each call. */
+// NEW IN STEP 17: app.payments, as migration 009 makes it. The database numbers each
+// payment and writes its id from the number, so dsor_runtime writes neither. It writes
+// the other columns once, and changes only the status (step 17's README, decisions 3, 12,
+// and 15).
+const PAYMENT_COLUMNS = [
+  "number",
+  "id",
+  "tenant_id",
+  "invoice_id",
+  "vendor_id",
+  "amount_value",
+  "amount_currency",
+  "status",
+];
+const PAYMENT_FILLED = ["number", "id"];
+const PAYMENT_UPDATES = ["status"];
+
+/** The catalog as steps 09 to 17 left it, seen by dsor_runtime. A fresh copy each call. */
 export function today(): Catalog {
   return {
     user: "dsor_runtime",
@@ -50,6 +67,20 @@ export function today(): Catalog {
         kind: "table",
         held: ["SELECT"],
         columns: INVOICE_COLUMNS.map((name) => ({ name, held: ["SELECT"], filled: false })),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
+      },
+      {
+        name: "app.payments",
+        kind: "table",
+        held: ["SELECT"],
+        columns: PAYMENT_COLUMNS.map((name) => {
+          const filled = PAYMENT_FILLED.includes(name);
+          const held = filled ? ["SELECT"] : ["SELECT", "INSERT"];
+          if (PAYMENT_UPDATES.includes(name)) held.push("UPDATE");
+          return { name, held, filled };
+        }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [],
@@ -80,7 +111,12 @@ export function today(): Catalog {
         triggers: [],
       },
     ],
-    sequences: [{ name: "dsor.audit_sequence_seq", held: [] }],
+    // The counter behind each payment's number. dsor_runtime holds nothing on it: an
+    // identity column takes its next number without a privilege on the counter.
+    sequences: [
+      { name: "app.payments_number_seq", held: [] },
+      { name: "dsor.audit_sequence_seq", held: [] },
+    ],
     database: [],
     definers: [],
   };

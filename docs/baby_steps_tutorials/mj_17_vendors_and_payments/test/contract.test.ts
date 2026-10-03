@@ -16,13 +16,15 @@ import {
 } from "./helpers.ts";
 
 describe("C2: a contract passes the specification's own schema", () => {
-  it("DSOR-OPR-01: the three shipped contracts pass", async () => {
+  it("DSOR-OPR-01: the five shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
-    // invoice.list.
+    // invoice.list. Step 17's two commands, payment.cancel and payment.create.
     expect([...registry.contracts.keys()].sort()).toEqual([
       "invoice.get",
       "invoice.issue",
       "invoice.list",
+      "payment.cancel",
+      "payment.create",
     ]);
   });
 

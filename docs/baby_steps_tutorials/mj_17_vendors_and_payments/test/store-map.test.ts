@@ -251,3 +251,59 @@ describe("C7: the map itself is checked", () => {
     expect(problemsOf(source)).toHaveLength(2);
   });
 });
+
+// NEW IN STEP 17: a fourth kind, for a company table that DSoR writes (step 17's README,
+// C7 and decision 3).
+describe("step 17's C7: the kind business-written", () => {
+  it("step 17's decision 3: app.payments is read, gets rows by named columns, and changes only its status", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("app.payments")).toStrictEqual({
+      kind: "business-written",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["tenant_id", "invoice_id", "vendor_id", "amount_value", "amount_currency", "status"],
+          UPDATE: ["status"],
+        },
+      },
+    });
+  });
+
+  // Whole-table INSERT would include number and id, which the database writes.
+  it.each(["INSERT", "UPDATE", "DELETE", "TRUNCATE"])(
+    "step 17's decision 3: %s on the whole of a business-written table is refused",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["app.payments"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: app.payments lists ${privilege}, which a business-written table does not allow`,
+      ]);
+    },
+  );
+
+  it("step 17's decision 3: a business-written table may not list REFERENCES on columns", () => {
+    const source = mapWith(
+      (m) => (m.tables["app.payments"].runtime.columns.REFERENCES = ["invoice_id"]),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.payments lists REFERENCES on columns, which a business-written table does not allow",
+    ]);
+  });
+
+  it("step 17's decision 3: a business-written table lives on the company's side", () => {
+    const source = mapWith((m) => {
+      m.tables["dsor.payments"] = m.tables["app.payments"];
+      delete m.tables["app.payments"];
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.payments is business-written, which lives on the company's side, and the schema dsor is DSoR's",
+    ]);
+  });
+
+  it("DSOR-RP-01b: a business-written table needs a company key", () => {
+    const source = mapWith((m) => (m.tables["app.payments"].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.payments is business-written, which needs a company key, and names none",
+    ]);
+  });
+});

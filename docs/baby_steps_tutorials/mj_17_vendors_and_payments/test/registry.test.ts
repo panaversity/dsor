@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
 import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
+import { NO_PAYMENTS } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
@@ -106,6 +107,9 @@ describe("C1: nothing can be called without a contract", () => {
       // And the store its operations read. This one reads nothing (step 10's README,
       // decision 13).
       invoices: NO_STORE,
+      // And the store its commands write. This one writes nothing (step 17's README,
+      // outcome 1).
+      payments: NO_PAYMENTS,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
@@ -186,8 +190,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
   it("DSOR-OPR-02b: each loaded contract equals its file", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // An empty list would make the loop below prove nothing.
-    // invoice.list is the third.
-    expect(shipped).toHaveLength(3);
+    // invoice.list is the third, and step 17's two commands the fourth and fifth.
+    expect(shipped).toHaveLength(5);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);

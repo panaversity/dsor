@@ -20,5 +20,13 @@
     "asked": "public",
     "max": "public"
   },
+  "Payment": {
+    "id": "internal",
+    "tenant_id": "internal",
+    "invoice_id": "internal",
+    "vendor_id": "internal",
+    "status": "internal",
+    "amount": "confidential Money"
+  },
   "InvoiceIssueResult": {}
 }

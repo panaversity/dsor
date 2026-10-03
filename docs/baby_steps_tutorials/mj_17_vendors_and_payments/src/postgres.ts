@@ -10,6 +10,7 @@ import type { Freshness } from "./freshness.ts";
 import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import type { Decision, DecisionLog, DecisionRecord } from "./log.ts";
 import { money } from "./money.ts";
+import type { PaymentStore } from "./payment.ts";
 
 // The step's own .env, found from this file, so the program finds it whatever folder it
 // is started from. Found by step 06's review, for roles.json.
@@ -258,6 +259,16 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
       return { rows: rows.map(invoiceOf), freshness: fromPostgres(observed) };
     },
   };
+}
+
+// NEW IN STEP 17: the payments, in the table app.payments (step 17's README, outcome 1).
+// SHELL: the shape only. Every write says "not built yet" until the code is written.
+/** The payments, written to app.payments. */
+export function createDbPayments(_pool: pg.Pool): PaymentStore {
+  const notYet = async (): Promise<never> => {
+    throw new Error("not built yet");
+  };
+  return { create: notYet, cancel: notYet };
 }
 
 // A read from PostgreSQL, within this request, is current (DSOR-FRS-01a).

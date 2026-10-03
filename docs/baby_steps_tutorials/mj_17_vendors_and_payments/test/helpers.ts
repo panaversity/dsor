@@ -8,6 +8,7 @@ import type { Freshness } from "../src/freshness.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
 import { Refusal } from "../src/envelope.ts";
 import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
+import { memoryPayments, type Payment } from "../src/payment.ts";
 import { readClassifications, type ClassificationSource } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
@@ -88,9 +89,11 @@ export function notValid(name: string, problem: string): string {
 
 // What each role grants, typed out again from step 06's decision 6 rather
 // than read from roles.json, so a mistake in the file is not copied into the tests.
+// Step 17's decision 6 adds the payment permissions: the agent may create, the supervisor
+// may create and cancel, and the CFO neither.
 export const STARTING_ROLES: Record<string, string[]> = {
-  ap_agent: ["invoice:read"],
-  ap_supervisor: ["invoice:read", "invoice:issue"],
+  ap_agent: ["invoice:read", "payment:create"],
+  ap_supervisor: ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"],
   CFO: ["invoice:read"],
 };
 
@@ -323,7 +326,48 @@ export const registry: Registry = buildRegistry(
   shippedInputs,
   shippedLabels,
   memoryInvoices(),
+  // NEW IN STEP 17: and payments in memory, which the commands write (step 17's README,
+  // outcome 1). One list for every test that uses this registry.
+  memoryPayments(),
 );
+
+/**
+ * The shipped operations, writing payments into the list the test holds, so the test can
+ * look at every row a call wrote, or did not write (step 17's README, C5). Other contracts
+ * or other code, when the test gives them.
+ */
+export function paymentRegistry(
+  rows: Payment[],
+  sources: ContractSource[] = shipped,
+  code: Record<string, Handler> = handlers,
+): Registry {
+  return buildRegistry(
+    sources,
+    code,
+    shippedRoles,
+    shippedInputs,
+    shippedLabels,
+    memoryInvoices(),
+    memoryPayments(rows),
+  );
+}
+
+// The refusal at line ③, typed out rather than imported (step 17's README, decision 5).
+/** The message when an agent calls a command with no delegation. */
+export function needsDelegation(name: string): string {
+  return `"${name}" is a command, and an agent runs a command only under a person's delegation`;
+}
+
+// PAY-901, the running example's draft: INV-1008's open amount and vendor, typed out again
+// from step 17's README, outcome 2, rather than made from src.
+export const PAY_901_DRAFT = {
+  tenant_id: "org_456",
+  id: "PAY-901",
+  invoice_id: "INV-1008",
+  vendor_id: "VENDOR-44",
+  amount: { value: "31400.00", currency: "USD" },
+  status: "draft",
+};
 
 // A query whose code read nothing is refused, because its label would be
 // invented (step 15's README, decision 6). Planted code that answers with data the test made

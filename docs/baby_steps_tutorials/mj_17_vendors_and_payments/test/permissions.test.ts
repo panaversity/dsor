@@ -1,6 +1,7 @@
 // What a caller may do, by claim (C1 to C6 in step 06's README).
 import { describe, expect, it, vi } from "vitest";
 import { memoryInvoices } from "../src/invoice.ts";
+import { NO_PAYMENTS } from "../src/payment.ts";
 import type { ClassificationSource } from "../src/labels.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
@@ -255,13 +256,15 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
 });
 
 describe("C2: a caller holds the permissions of its roles, and only those", () => {
-  it("DSOR-AUT-01a: the shipped roles.json is step 06's decision 6", async () => {
+  it("DSOR-AUT-01a: the shipped roles.json is step 06's decision 6, with step 17's payment permissions", async () => {
     expect(JSON.parse(shippedRoles.text)).toStrictEqual(STARTING_ROLES);
   });
 
   it.each([
-    ["accounts-payable-fte", "tok_7f3a", ["invoice:read"]],
-    ["user_123", "tok_2c91", ["invoice:issue", "invoice:read"]],
+    // Step 17's decision 6: the agent holds payment:create, and user_123 both payment
+    // permissions.
+    ["accounts-payable-fte", "tok_7f3a", ["invoice:read", "payment:create"]],
+    ["user_123", "tok_2c91", ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
     ["cfo_100", "tok_d4e8", ["invoice:read"]],
   ])(
     "DSOR-AUT-01a: %s holds exactly the permissions its roles grant",
@@ -309,10 +312,13 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     const cfoApproves = { ...STARTING_ROLES, CFO: ["invoice:read", "payment:approve"] };
     const { roles } = checkRoles(rolesFile(cfoApproves), []);
     const twoRoles = person([{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }]);
+    // ap_supervisor's payment permissions are step 17's decision 6.
     expect([...permissionsOf(twoRoles, roles, "org_456")].sort()).toEqual([
       "invoice:issue",
       "invoice:read",
       "payment:approve",
+      "payment:cancel",
+      "payment:create",
     ]);
   });
 
@@ -490,6 +496,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         classifications: registry.classifications,
         // The invoices in memory (step 10's README, decision 13).
         invoices: registry.invoices,
+        // And no payments (step 17's README, outcome 1).
+        payments: NO_PAYMENTS,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

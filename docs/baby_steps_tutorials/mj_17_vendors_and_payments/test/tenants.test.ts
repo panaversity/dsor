@@ -296,8 +296,9 @@ describe("C2: a read looks only inside the active company", () => {
 
 describe("C3: only the caller's roles in the active company count", () => {
   it.each([
-    ["org_456", ["invoice:read"]],
-    ["org_789", ["invoice:issue", "invoice:read"]],
+    // ap_agent in org_456 and ap_supervisor in org_789, with step 17's payment permissions.
+    ["org_456", ["invoice:read", "payment:create"]],
+    ["org_789", ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
     ["org_999", []],
   ])(
     "DSOR-AUT-01b: in %s, the firm's agent holds only what its roles there grant",

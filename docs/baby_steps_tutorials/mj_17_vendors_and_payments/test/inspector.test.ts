@@ -323,3 +323,46 @@ describe("C6: every difference is named at once", () => {
     expect(found).toHaveLength(3);
   });
 });
+
+// NEW IN STEP 17: app.payments, a company table that DSoR writes through named columns
+// (step 17's README, C7 and decisions 3 and 12).
+describe("step 17's C7: app.payments is held exactly as the map says", () => {
+  it("step 17's decision 3: UPDATE on a payment's amount is named", () => {
+    const found = differencesWith((c) => {
+      columnIn(relationIn(c, "app.payments"), "amount_value").held.push("UPDATE");
+    });
+    expect(found).toStrictEqual([
+      "app.payments: dsor_runtime holds UPDATE on the column amount_value, which store.json does not list",
+    ]);
+  });
+
+  it.each(["UPDATE", "DELETE", "TRUNCATE"])(
+    "step 17's decision 3: %s on the whole of app.payments is named",
+    (privilege) => {
+      const found = differencesWith((c) => relationIn(c, "app.payments").held.push(privilege));
+      expect(found).toStrictEqual([
+        `app.payments: dsor_runtime holds ${privilege}, which store.json does not list`,
+      ]);
+    },
+  );
+
+  // A status the database fills in would take the program's UPDATE away (decision 12).
+  it("step 17's decision 12: a status the database fills in is named, for INSERT and for UPDATE", () => {
+    const found = differencesWith((c) => {
+      columnIn(relationIn(c, "app.payments"), "status").filled = true;
+    });
+    expect(found).toStrictEqual([
+      "app.payments: store.json lists INSERT on the column status, which the database fills in",
+      "app.payments: store.json lists UPDATE on the column status, which the database fills in",
+    ]);
+  });
+
+  it("DSOR-RP-01b: app.payments without forced row-level security is named", () => {
+    const found = differencesWith((c) => {
+      relationIn(c, "app.payments").rowSecurity.forced = false;
+    });
+    expect(found).toStrictEqual([
+      "app.payments has the company key tenant_id, and row-level security is not forced",
+    ]);
+  });
+});

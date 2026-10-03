@@ -33,6 +33,16 @@ const LABELS = {
   Money: { value: "confidential", currency: "confidential" },
   InvoicePage: { items: "Invoice[]", next_cursor: "internal", capped: "public Capped" },
   Capped: { asked: "public", max: "public" },
+  // A payment, labelled as an invoice is: its amount confidential, the rest internal (step
+  // 17's README, decision 15).
+  Payment: {
+    id: "internal",
+    tenant_id: "internal",
+    invoice_id: "internal",
+    vendor_id: "internal",
+    status: "internal",
+    amount: "confidential Money",
+  },
   InvoiceIssueResult: {},
 };
 
@@ -60,7 +70,7 @@ describe("decision 1: classifications.json, checked at start-up", () => {
     expect(FOUR).toStrictEqual(common.$defs.classification.enum);
   });
 
-  it("the shipped file gives every field of an invoice and of a page its label, and passes", () => {
+  it("the shipped file gives every field of an invoice, a page, and a payment its label, and passes", () => {
     const { kinds, problems } = checkClassifications(readClassifications());
     expect(problems).toStrictEqual([]);
     const asRead = Object.fromEntries(
@@ -110,19 +120,20 @@ describe("decision 1: classifications.json, checked at start-up", () => {
   // "confidential" alone, and name no row in its record (step 14's README, decisions 1
   // and 7). Found by the Stage 2 review, and fixed from step 14 on.
   it("a contract whose output kind the file does not have stops start-up, naming the contract", () => {
-    const payment = {
+    // A vendor, which no step has labelled yet. Step 17's Payment has its lines now.
+    const vendor = {
       ...contract("invoice.get"),
-      id: "payment.get",
-      output: { schema: "Payment" },
+      id: "vendor.get",
+      output: { schema: "Vendor" },
     };
     expect(
-      refusal(() => buildRegistry([...shipped, source(payment)], handlers, shippedRoles)),
+      refusal(() => buildRegistry([...shipped, source(vendor)], handlers, shippedRoles)),
     ).toBe(
-      'the registry refused to start:\n  payment.get: its output kind "Payment" has no entry in classifications.json',
+      'the registry refused to start:\n  vendor.get: its output kind "Vendor" has no entry in classifications.json',
     );
   });
 
-  it("the shipped contracts' three output kinds are each in the file: invoice.issue's too", () => {
+  it("the shipped contracts' output kinds are each in the file: invoice.issue's too", () => {
     const { InvoiceIssueResult: _left_out, ...without } = LABELS;
     const labels = file(JSON.stringify(without));
     expect(

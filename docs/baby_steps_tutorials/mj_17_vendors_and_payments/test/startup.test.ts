@@ -40,12 +40,14 @@ describe("reading the contracts folder", () => {
     ]);
   });
 
-  // invoice.list is the third.
-  it("the shipped folder holds the three contracts", () => {
+  // invoice.list is the third. Step 17's two commands follow, in name order.
+  it("the shipped folder holds the five contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "invoice.get.json",
       "invoice.issue.json",
       "invoice.list.json",
+      "payment.cancel.json",
+      "payment.create.json",
     ]);
   });
 });

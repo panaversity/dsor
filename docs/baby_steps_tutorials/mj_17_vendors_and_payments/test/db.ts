@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { createDbInvoices, requireEnv } from "../src/postgres.ts";
+import { createDbInvoices, createDbPayments, requireEnv } from "../src/postgres.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Registry } from "../src/registry.ts";
 import { shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
@@ -29,6 +29,8 @@ export function dbRegistry(pool: pg.Pool): Registry {
     shippedInputs,
     shippedLabels,
     createDbInvoices(pool),
+    // NEW IN STEP 17: and the payments the commands write (step 17's README, outcome 1).
+    createDbPayments(pool),
   );
 }
 
