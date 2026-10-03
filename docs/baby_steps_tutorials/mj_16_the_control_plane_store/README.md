@@ -351,7 +351,27 @@ this way:
 
 ## What changed since step 15
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `store.json` | **New.** The map: three schemas, each with its side and `dsor_runtime`'s privileges, and three tables, each with its kind, its company key, and `dsor_runtime`'s privileges on the table and its columns |
+| `src/store.ts` | **New.** Reads and checks the map, with no database: its form, the sides, and the kind table `KINDS` (decision 3). A broken map names every problem |
+| `src/inspector.ts` | **New.** `readCatalog` reads the catalog in one statement, for the login or for a user it is asked about (decision 8). `storeDifferences` compares it with the map and names every difference |
+| `src/main.ts` | Checks the map with the other files, before `operations:`. Compares the database with the map after step 09's login check, and refuses to start on any difference |
+| `test/catalogs.ts` | **New.** `today()`, the catalog as steps 09 to 15 left it, for the unit tests to change one thing at a time |
+| `test/store-map.test.ts`, `test/inspector.test.ts` | **New.** C4 and C7, then C2, C3, and C5, with no database |
+| `test/store.db.test.ts` | **New.** The planted catalog is the real one, the store matches its map, and the inspector asked about the owner sees every kind of privilege |
+| `test/startup.test.ts` | C6: the program refuses to start with a broken map, or with none |
+| `test/db.ts` | Step 09's list of privileges starts from the catalog, not from three table names (decision 6) |
+
+Every other file is step 15's, without its `NEW IN STEP` markers. No new dependency, and no
+new migration (decision 7).
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_15_freshness_labels/src mj_16_the_control_plane_store/src
+git diff --no-index mj_15_freshness_labels/test mj_16_the_control_plane_store/test
+```
 
 ## Run it
 

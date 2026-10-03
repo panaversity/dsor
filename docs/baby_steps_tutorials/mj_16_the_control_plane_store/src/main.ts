@@ -1,7 +1,8 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
-// The program checks every contract, the role table, the input schemas, and the labels,
-// then calls operations by name. The agent reads INV-1008 and gets it without its amounts,
+// The program checks every contract, the role table, the input schemas, the labels, and
+// the map of its own store. Then it checks the database against the map, and calls
+// operations by name. The agent reads INV-1008 and gets it without its amounts,
 // with a list of what was left out and a label. cfo_100, a person, reads the same invoice
 // whole. Then it prints the invoice's URI, six refusals, each an envelope, and the
 // correlation of a call by user_123. Then the firm's agent reads INV-1008 in each of its
@@ -16,6 +17,7 @@
 import { fileURLToPath } from "node:url";
 import { readClassifications } from "./labels.ts";
 import type { Answer } from "./envelope.ts";
+import { readCatalog, storeDifferences } from "./inspector.ts";
 import { invoiceUri, type Invoice } from "./invoice.ts";
 import type { DecisionLog } from "./log.ts";
 import { handlersFor } from "./operations.ts";
@@ -32,6 +34,7 @@ import {
 } from "./postgres.ts";
 import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 import type { RequestEnvelope } from "./request.ts";
+import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { parseUri } from "./uri.ts";
 
 // Start-up checks every contract first. If one is broken, the program stops here and
@@ -48,12 +51,16 @@ const INPUTS: string | undefined = process.argv[4];
 // Start-up checks the labels too (step 14's README, decision 1). A file of
 // them can be named after the inputs folder, so a test can start with a broken one.
 const CLASSIFICATIONS: string | undefined = process.argv[5];
+// NEW IN STEP 16: start-up checks the map of its store too (step 16's README, decision 4).
+// A map can be named after the labels file, so a test can start with a broken one.
+const STORE: string | undefined = process.argv[6];
 // The pool is made before the checks, because the registry holds the store
 // of invoices it reads. It connects only at its first query, after every check.
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
 loadDotEnv(["DSOR_DB_URL"]);
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 let registry: Registry;
+let store: StoreMap;
 try {
   registry = buildRegistry(
     readContracts(CONTRACTS),
@@ -65,6 +72,13 @@ try {
     // (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
     createDbInvoices(pool),
   );
+  // NEW IN STEP 16: a broken map stops start-up here, with the other files, before the
+  // program logs in (step 16's README, C7).
+  const { map, problems } = checkStore(readStore(STORE));
+  if (problems.length > 0) {
+    throw new Error(`the map of the store refused to start:\n  ${problems.join("\n  ")}`);
+  }
+  store = map;
 } catch (error) {
   console.error((error as Error).message);
   process.exit(1);
@@ -86,6 +100,17 @@ try {
 const problems = await runtimeRoleProblems(pool);
 if (problems.length > 0) {
   console.error(`DSOR_DB_URL must log in as dsor_runtime. Refused: ${problems.join("; ")}.`);
+  await pool.end();
+  process.exit(1);
+}
+
+// NEW IN STEP 16: then the database against the map. After the login check, because a
+// wrong login would make every privilege the inspector reads someone else's. On any
+// difference the program refuses to start, and names each one: it fails closed, as the
+// login check does (step 16's README, decision 4 and C6).
+const differences = storeDifferences(store, await readCatalog(pool));
+if (differences.length > 0) {
+  console.error(`The database does not match store.json. Refused:\n  ${differences.join("\n  ")}`);
   await pool.end();
   process.exit(1);
 }
