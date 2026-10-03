@@ -10,7 +10,8 @@ import { loadDotEnv, requireEnv, runtimeRoleProblems } from "../src/postgres.ts"
 import { redact } from "./db.ts";
 
 // One look-alike for each function the check calls that answers yes or no, with the same
-// argument types, so the search path alone decides which one answers.
+// argument types, and one for the catalog view it reads, so the search path alone decides
+// which one answers.
 const LOOK_ALIKES = [
   `CREATE FUNCTION public.has_table_privilege(text, text) RETURNS boolean
      LANGUAGE sql AS 'SELECT false'`,
@@ -18,6 +19,11 @@ const LOOK_ALIKES = [
      LANGUAGE sql AS 'SELECT false'`,
   `CREATE FUNCTION public.pg_has_role(oid, name, text) RETURNS boolean
      LANGUAGE sql AS 'SELECT false'`,
+  // A view can stand in for one of PostgreSQL's the same way. This one says no login holds
+  // BYPASSRLS, so a check that only wrote pg_catalog. in front of its functions would still
+  // be fooled. Found by a review of step 15's port, and fixed from step 09 on.
+  `CREATE VIEW public.pg_roles AS
+     SELECT oid, rolname, rolsuper, false AS rolbypassrls FROM pg_catalog.pg_roles`,
   "SET LOCAL search_path TO public, pg_catalog",
 ];
 
