@@ -403,8 +403,13 @@ the official tutorial's. A learner build does not change either. A maintainer de
 - **Step 17's entry in the map: vendors wait.** The map names step 17 "Vendors and
   payments: two more record types". The learner build makes payments only. The draft
   copies the invoice's `vendor_id`, and no check in step 17 reads a vendor. A vendors table
-  could arrive with the first step that reads a vendor's state: a blocked vendor as a
-  precondition (step 32), or a bank account when money moves (step 35).
+  must exist by step 29: §26.3's approval binds the version of `VENDOR-44`, beside PAY-901
+  and INV-1008.
+- **The map's steps 35 and 36: money before its note.** Step 35 builds `payment.execute`,
+  which sends money. Step 36 writes the note before the side effect (DSOR-EXE-03a, 03b).
+  So for one step, a payment can be sent and leave no record. AGENTS.md lists
+  DSOR-EXE-03b among the six rules that are easiest to break. Step 36 could come before
+  step 35, or step 35 could start with the note.
 
 ## The Stage 2 review (2026-10-01)
 
