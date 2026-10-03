@@ -400,6 +400,11 @@ the official tutorial's. A learner build does not change either. A maintainer de
   in `dsor`. So step 16's new idea was the map of the store, `store.json`, and the check
   at start-up against it. The map entry could say that. Or step 09 could keep the log in
   `app` until step 16.
+- **Step 17's entry in the map: vendors wait.** The map names step 17 "Vendors and
+  payments: two more record types". The learner build makes payments only. The draft
+  copies the invoice's `vendor_id`, and no check in step 17 reads a vendor. A vendors table
+  could arrive with the first step that reads a vendor's state: a blocked vendor as a
+  precondition (step 32), or a bank account when money moves (step 35).
 
 ## The Stage 2 review (2026-10-01)
 
