@@ -73,7 +73,7 @@ describe("C2: a read in the database looks only inside the active company", () =
   });
 
   it("DSOR-IDN-03b: the store finds an invoice by company and id together", async () => {
-    // NEW IN STEP 15: the store gives the invoice beside its read's label.
+    // The store gives the invoice beside its read's label.
     const store = createDbInvoices(pool);
     const found = async (tenant: string, id: string): Promise<unknown> =>
       (await store.get(tenant, id)).invoice;
@@ -275,7 +275,7 @@ describe("C8: in the database, the code reaches only the active company, and its
   // Stage 2 review, and fixed from step 10 on.
   it("step 10's decision 14: code that reads org_789 through a store of its own fails with INTERNAL_ERROR, recorded as ALLOW", async () => {
     const itsOwn = createDbInvoices(pool);
-    // NEW IN STEP 15: the invoice, out of what the store gives.
+    // The invoice, out of what the store gives.
     const reachesAround: Handler = async (input) =>
       (await itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id)).invoice;
     const planted = buildRegistry(

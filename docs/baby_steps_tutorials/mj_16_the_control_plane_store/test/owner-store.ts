@@ -36,7 +36,7 @@ try {
       const ids: string[] = [];
       let after: string | undefined;
       for (let page = 0; page < 20; page++) {
-        // NEW IN STEP 15: the store gives the rows beside its read's label.
+        // The store gives the rows beside its read's label.
         const { rows } = await invoices.list(company, after, 5);
         ids.push(...rows.map(({ tenant_id, id }) => `${tenant_id}/${id}`));
         if (rows.length < 5) break;

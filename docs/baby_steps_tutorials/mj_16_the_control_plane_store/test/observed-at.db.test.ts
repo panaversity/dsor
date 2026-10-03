@@ -1,4 +1,4 @@
-// NEW IN STEP 15: on the database, observed_at is the database's clock, read in the
+// On the database, observed_at is the database's clock, read in the
 // transaction that read the data. One clock for every server, as step 09 chose for the log
 // (DSOR-FRS-01a; step 15's README, C2 and decision 2).
 import pg from "pg";

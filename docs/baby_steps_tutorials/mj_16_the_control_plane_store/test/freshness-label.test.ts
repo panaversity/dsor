@@ -1,4 +1,4 @@
-// NEW IN STEP 15: every successful query's answer says how fresh its data is: the mode
+// Every successful query's answer says how fresh its data is: the mode
 // delivered, when it was read, and by which connector (DSOR-FRS-01a; step 15's README, C1).
 // The unit tests read the invoices in memory, so the connector is memory (decision 2).
 // test/freshness-label.db.test.ts asks the same of the database.

@@ -1,4 +1,4 @@
-// NEW IN STEP 15: the label comes from the store that served the read, through the bound
+// The label comes from the store that served the read, through the bound
 // store. The operation's code never writes it, and cannot change it (step 15's README, C4 and
 // decision 5). Each store here is planted under the bound store, where a connector sits.
 import { describe, expect, it } from "vitest";

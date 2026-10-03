@@ -1,4 +1,4 @@
--- NEW IN STEP 15: which connector served a read, in its record. `pnpm migrate` runs this
+-- Which connector served a read, in its record. `pnpm migrate` runs this
 -- file once, as the owner, after 007 (step 15's README, decision 7).
 
 -- The audit record's own field. NULL on a refusal, which returned nothing it read. The

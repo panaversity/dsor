@@ -1,4 +1,4 @@
-// NEW IN STEP 15: on the database, every successful query's answer says how fresh its data
+// On the database, every successful query's answer says how fresh its data
 // is. A read from PostgreSQL within the request is current, and its connector is postgres
 // (DSOR-FRS-01a; step 15's README, C1 and outcome 2).
 import { afterAll, describe, expect, it } from "vitest";

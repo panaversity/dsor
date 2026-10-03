@@ -39,7 +39,7 @@ describe("C5 on the database: a read of confidential data leaves a row with who,
         operation: "invoice.get@1",
         resources: ["dsor://org_456/invoice/INV-1008"],
         row_count: 1,
-        // NEW IN STEP 15: and how fresh the read was (step 15's README, decision 7).
+        // And how fresh the read was (step 15's README, decision 7).
         extensions: {
           [OUR_EXTENSIONS]: {
             classification: "confidential",

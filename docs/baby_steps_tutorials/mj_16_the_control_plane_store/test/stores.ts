@@ -1,4 +1,4 @@
-// NEW IN STEP 15: stores the tests plant under the bound store, where a real connector or a
+// Stores the tests plant under the bound store, where a real connector or a
 // cache would sit (step 15's README, decisions 5 and 8). Not a test file.
 // DSoR has no cache. The tests plant one, to show that the label follows whatever served
 // the read (DSOR-FRS-01b).

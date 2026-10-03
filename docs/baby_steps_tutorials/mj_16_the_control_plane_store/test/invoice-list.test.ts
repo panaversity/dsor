@@ -219,7 +219,7 @@ describe("C1: the store is asked for one row more than the page, and reads no mo
   });
 
   it("DSOR-QRY-01: the store in memory gives no more rows than it is asked for", async () => {
-    // NEW IN STEP 15: the store gives the rows beside its read's label.
+    // The store gives the rows beside its read's label.
     const { rows: three } = await memoryInvoices().list("org_456", undefined, 3);
     expect(three.map(({ id }) => id)).toStrictEqual(["INV-1001", "INV-1002", "INV-1003"]);
     const { rows: two } = await memoryInvoices().list("org_456", "INV-1003", 2);

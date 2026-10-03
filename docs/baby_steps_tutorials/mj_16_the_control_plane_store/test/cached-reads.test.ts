@@ -1,4 +1,4 @@
-// NEW IN STEP 15: a cached value is never labelled current (DSOR-FRS-01b; step 15's README,
+// A cached value is never labelled current (DSOR-FRS-01b; step 15's README,
 // C3). DSoR has no cache, so the tests plant one under the bound store (decision 8). Its
 // answer must say observational, with the time of the read it copied.
 // test/cached-reads.db.test.ts plants the same cache over the database.

@@ -113,7 +113,7 @@ type AuditRow = {
   // What a read returned. NULL on every other record.
   resources: string[] | null;
   row_count: number | null;
-  // NEW IN STEP 15: which connector served a read. NULL on every other record.
+  // Which connector served a read. NULL on every other record.
   connector: string | null;
 };
 
@@ -152,7 +152,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
             // The URIs a read returned, and how many (DSOR-CLS-05).
             decision.resources ?? null,
             decision.row_count ?? null,
-            // NEW IN STEP 15: which connector served the read (step 15's README, decision 7).
+            // Which connector served the read (step 15's README, decision 7).
             decision.connector ?? null,
           ],
         ),
@@ -254,13 +254,13 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   };
 }
 
-// NEW IN STEP 15: a read from PostgreSQL, within this request, is current (DSOR-FRS-01a).
+// A read from PostgreSQL, within this request, is current (DSOR-FRS-01a).
 /** The label of a read from PostgreSQL, made at this moment of the database's clock. */
 function fromPostgres(observed: Date): Freshness {
   return { mode: "current", observed_at: observed.toISOString(), connector: "postgres" };
 }
 
-// NEW IN STEP 15: the database's clock, in the transaction that reads the rows. now() is the
+// The database's clock, in the transaction that reads the rows. now() is the
 // moment the transaction began, a moment before the rows are read, so the label is never
 // younger than the data. One clock for every server, as the log's times are (step 15's
 // README, decision 2; step 09's README, decision 6).

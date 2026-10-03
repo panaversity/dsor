@@ -92,7 +92,7 @@ export function judge(answer: Answer): string | undefined {
 /** Why these answers are a finding, or undefined when they are the same. */
 export function compare(answers: Answer[]): string | undefined {
   // Word for word, once the request id is set aside: DSoR makes a new one for every call.
-  // NEW IN STEP 15: and the time of each read, which every call's read has of its own.
+  // And the time of each read, which every call's read has of its own.
   // A difference would tell the caller something about the other company, such as
   // whether it has the thing, or exists at all (DSOR-ERR-01b).
   const [first, ...others] = answers.map(forComparing);

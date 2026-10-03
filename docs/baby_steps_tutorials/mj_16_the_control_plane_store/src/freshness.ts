@@ -1,4 +1,4 @@
-// NEW IN STEP 15: how fresh a read was. Every query's answer states the mode delivered,
+// How fresh a read was. Every query's answer states the mode delivered,
 // observed_at, and the connector (DSOR-FRS-01a in specs/dsor/03-execution.md, section 27).
 // The store that served the read writes the label, never the operation's code (step 15's
 // README, decision 5).
@@ -22,8 +22,8 @@ const MODES: readonly string[] = [
 ];
 
 // not copied: common.schema.json's timestamp says only "format": "date-time". This is that
-// format, RFC 3339's date-time, typed out: a date, a time, and Z or an offset. NEW IN STEP 15,
-// from the review: at most 9 digits after the second, a nanosecond, so a label stays small.
+// format, RFC 3339's date-time, typed out: a date, a time, and Z or an offset. Found by
+// step 15's review: at most 9 digits after the second, a nanosecond, so a label stays small.
 const DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,9})?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
 
@@ -83,7 +83,7 @@ export function newReads(): Reads {
  * the connector that read it. A query that read nothing has none.
  */
 export function stalest({ labels: reads, broken }: Reads): Freshness {
-  // NEW IN STEP 15: one label that failed its check refuses the call, even when the code
+  // One label that failed its check refuses the call, even when the code
   // caught the error and read again (step 15's README, decision 6). Found by the review.
   if (broken) throw new Error("a store gave a label that failed its check");
   // A label for an answer that read nothing would be invented (step 15's README, decision 6).

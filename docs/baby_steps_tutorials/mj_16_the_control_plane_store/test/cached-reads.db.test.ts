@@ -1,4 +1,4 @@
-// NEW IN STEP 15: the planted cache, over the database's own store. The first read is
+// The planted cache, over the database's own store. The first read is
 // PostgreSQL's, current. The second is the cache's: observational, with the database's time
 // of the first read (DSOR-FRS-01b; step 15's README, C3 and decision 8).
 import { afterAll, describe, expect, it } from "vitest";

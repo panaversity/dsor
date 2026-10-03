@@ -280,7 +280,7 @@ describe("C2: a read looks only inside the active company", () => {
   });
 
   it("DSOR-IDN-03b: the store in memory finds an invoice by company and id together", async () => {
-    // NEW IN STEP 15: the store gives the invoice beside its read's label.
+    // The store gives the invoice beside its read's label.
     const store = memoryInvoices();
     const found = async (tenant: string, id: string): Promise<unknown> =>
       (await store.get(tenant, id)).invoice;
@@ -699,7 +699,7 @@ describe("C8: the code can reach only the active company, and its answer must be
   // store (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step
   // 10 on. From step 13, that store reads by id and lists by page.
   it("DSOR-IDN-03b: the code is given only the active company: its id, and its invoices to read by id or by page", async () => {
-    // NEW IN STEP 15: the code reads while its call runs. Once line ⑨ ends, the company
+    // The code reads while its call runs. Once line ⑨ ends, the company
     // reads nothing more (step 15's README, decision 5).
     const seen: { one?: unknown; listed?: unknown[] } = {};
     const spy = vi.fn<Handler>(async (_input, company) => {
@@ -776,7 +776,7 @@ describe("C8: the code can reach only the active company, and its answer must be
   // Found by the Stage 2 review, and fixed from step 13 on.
   it("step 10's decision 14: a page that holds one row of org_789 fails with INTERNAL_ERROR in org_456, and nothing of it leaks", async () => {
     const memory = memoryInvoices();
-    // NEW IN STEP 15: its rows come beside the label of the read, as every store's do.
+    // Its rows come beside the label of the read, as every store's do.
     const forgetful: InvoiceStore = {
       get: memory.get,
       list: async (tenant, after, count) => ({
@@ -811,7 +811,7 @@ describe("C8: the code can reach only the active company, and its answer must be
   // (step 10's README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
   it("step 10's decision 14: code that reads org_789 through a store of its own is caught by its answer", async () => {
     const itsOwn = memoryInvoices();
-    // NEW IN STEP 15: the invoice, out of what the store gives.
+    // The invoice, out of what the store gives.
     const reachesAround: Handler = async (input) =>
       (await itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id)).invoice;
     const answer = await call(registryWith(reachesAround), log, AGENT, "test.run", {

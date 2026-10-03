@@ -218,7 +218,7 @@ export const INV_2001_OF_789 = {
  * An answer without what each call makes anew, so two answers can be compared word for word:
  * its request id, and the time of its read.
  */
-// NEW IN STEP 15: and the time of the read, which each call's read has of its own (step 15's
+// And the time of the read, which each call's read has of its own (step 15's
 // README, decision 2). Found while building step 15: the cross-tenant suite's in-company
 // pair named two answers that differed only by a millisecond. Renamed from withoutRequestId.
 export function forComparing(answer: Answer): unknown {
@@ -273,7 +273,7 @@ export function notGranted(name: string, permission: string): string {
 // Test.run returns an Invoice, as invoice.get does, unless the test names
 // another kind for its output (step 14's README, decision 1). And the shipped labels, unless
 // the test gives others. Found by the Stage 2 review.
-// NEW IN STEP 15: the code reads INV-1008 once before it runs, so code that answers with
+// The code reads INV-1008 once before it runs, so code that answers with
 // data the test made is not refused for reading nothing (afterARead below).
 export function registryWith(
   handler: Handler,
@@ -283,7 +283,7 @@ export function registryWith(
   return registryRunning(afterARead(handler), output, labels);
 }
 
-// NEW IN STEP 15: for the tests of what the code reads. And the invoices in memory, unless
+// For the tests of what the code reads. And the invoices in memory, unless
 // the test plants a store of its own under the bound store (step 15's README, decisions 5
 // and 8).
 /** The same registry, with the code exactly as the test wrote it: it reads what it reads. */
@@ -325,7 +325,7 @@ export const registry: Registry = buildRegistry(
   memoryInvoices(),
 );
 
-// NEW IN STEP 15: a query whose code read nothing is refused, because its label would be
+// A query whose code read nothing is refused, because its label would be
 // invented (step 15's README, decision 6). Planted code that answers with data the test made
 // reads INV-1008 of its company first, so the tests of earlier steps test what they did.
 /** The handler, after one read of INV-1008 through the company it is given. */
@@ -409,7 +409,7 @@ export function refusedWith(code: ErrorCode): Promise<Answer> {
 export const REQUEST_ID: RegExp =
   /^req_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-// NEW IN STEP 15: the label of a read from memory: current, a time, and memory (step 15's
+// The label of a read from memory: current, a time, and memory (step 15's
 // README, decision 2). Typed out again rather than imported from src.
 export const FROM_MEMORY: { mode: string; observed_at: unknown; connector: string } = {
   mode: "current",

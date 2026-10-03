@@ -45,7 +45,7 @@ describe("C6: invoices come from the database, and money stays a string", () => 
   });
 
   it("the store gives back undefined for an invoice that is not there", async () => {
-    // NEW IN STEP 15: the store gives the invoice beside its read's label.
+    // The store gives the invoice beside its read's label.
     expect((await createDbInvoices(pool).get("org_456", "INV-9999")).invoice).toBeUndefined();
   });
 

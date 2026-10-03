@@ -96,7 +96,7 @@ describe("C1: every answer call gives has a record in the log", () => {
         // (DSOR-CLS-05; step 14's README, decision 7).
         resources: ["dsor://org_456/invoice/INV-1008"],
         row_count: 1,
-        // NEW IN STEP 15: and how fresh the read was (step 15's README, decision 7).
+        // And how fresh the read was (step 15's README, decision 7).
         connector: "memory",
         extensions: {
           [OUR_EXTENSIONS]: {

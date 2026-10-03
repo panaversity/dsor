@@ -72,7 +72,7 @@ function suiteWithList(
   };
   const registry = buildRegistry(
     [...shipped, source(browse, "invoice.browse.json")],
-    // NEW IN STEP 15: the code reads once first, so a page it makes is not refused for
+    // The code reads once first, so a page it makes is not refused for
     // reading nothing (step 15's README, decision 6).
     { ...handlers, "invoice.browse": afterARead(handler) },
     shippedRoles,

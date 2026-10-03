@@ -35,12 +35,12 @@ export function companyOf(store: InvoiceStore, tenant: string, reads: Reads = ne
   // get takes an id, and list a place and a count, and nothing more. The company is fixed
   // here, out of the code's reach, so an extra argument changes nothing. Frozen, so the
   // code cannot swap the company or the store for others (step 10's README, decision 13).
-  // NEW IN STEP 15: the store gives each read's label beside the rows. The label is checked
+  // The store gives each read's label beside the rows. The label is checked
   // and noted here, before the code gets the rows, and the code gets the rows only. A label
   // that fails the check throws, so the code gets nothing from that read. The list belongs
   // to the checklist, so the code cannot see, add to, or change a label (step 15's README,
   // decisions 5 and 6).
-  // NEW IN STEP 15: once line ⑨ has ended, the answer is fixed, and nothing more is read for
+  // Once line ⑨ has ended, the answer is fixed, and nothing more is read for
   // it: a Company the code kept for a later call reads nothing (step 15's README, decision 5).
   // Found by the review: such a read worked, and its label went into a list nobody read again.
   const open = (): void => {

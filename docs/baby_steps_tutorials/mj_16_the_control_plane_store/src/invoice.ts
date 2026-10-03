@@ -96,7 +96,7 @@ export function getInvoice(list: Invoice[], tenant: string, id: string): Invoice
 // Where invoices come from, in memory or in the database (step 09's
 // README, decision 12). One function, so the operations never know which.
 // The company comes first. The store never looks outside it (DSOR-IDN-03b).
-// NEW IN STEP 15: each read comes back with its label, written by the store that served it
+// Each read comes back with its label, written by the store that served it
 // (DSOR-FRS-01a; step 15's README, decision 5).
 export type InvoiceStore = {
   /** Finds one invoice of one company: a copy of it, or `undefined` when there is none, and the read's label. */
@@ -128,7 +128,7 @@ export function memoryInvoices(): InvoiceStore {
   };
 }
 
-// NEW IN STEP 15: memory is the unit tests' system of record, read within the request, so
+// Memory is the unit tests' system of record, read within the request, so
 // current. It has no database, so its clock is the program's (step 15's README, decision 2).
 /** The label of a read from memory, now. */
 function readNow(): Freshness {

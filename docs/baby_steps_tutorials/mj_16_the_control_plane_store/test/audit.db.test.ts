@@ -60,7 +60,7 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       {
         object: "dsor.audit INSERT",
         // Tenant too (step 10's README, decision 6). What a read returned,
-        // and how many (step 14's README, decision 7). NEW IN STEP 15: and which connector
+        // and how many (step 14's README, decision 7). And which connector
         // served it (step 15's README, decision 7).
         held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector",
       },

@@ -51,7 +51,7 @@ const DEEP = "[".repeat(100_000) + "]".repeat(100_000);
 const ANSWERED = {
   data: MASKED_1008_OF_456,
   classification: "internal",
-  // NEW IN STEP 15: the label of the read the planted code made first.
+  // The label of the read the planted code made first.
   freshness: FROM_MEMORY,
   correlation: correlationFor(THE_AGENT),
 };
@@ -625,7 +625,7 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
 });
 
 /** The shipped registry, with invoice.get's code replaced by the test's. */
-// NEW IN STEP 15: the code reads INV-1008 once first, from the invoices in memory, so code
+// The code reads INV-1008 once first, from the invoices in memory, so code
 // that answers without reading is not refused for it (step 15's README, decision 6).
 function registryWithGet(handler: Handler): Registry {
   const code = { ...handlers, "invoice.get": afterARead(handler) };

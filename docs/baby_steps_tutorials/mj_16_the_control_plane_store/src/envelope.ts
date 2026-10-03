@@ -69,7 +69,7 @@ export type Success = {
   data: unknown;
   classification: Label;
   redactions?: Redaction[];
-  // NEW IN STEP 15: how fresh the data is, from the store that read it (DSOR-FRS-01a; step
+  // How fresh the data is, from the store that read it (DSOR-FRS-01a; step
   // 15's README, decision 1).
   freshness: Freshness;
   correlation: Correlation;

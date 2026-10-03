@@ -400,7 +400,7 @@ describe("C4: the company lasts one transaction, even when a pool lends the conn
 
   it("DSOR-RP-01c: after the program reads org_456's INV-1008, the next request sees no invoice", async () => {
     const { rows } = await one.query("SELECT pg_backend_pid() AS connection");
-    // NEW IN STEP 15: the store gives the invoice beside its read's label.
+    // The store gives the invoice beside its read's label.
     const { invoice: found } = await createDbInvoices(one).get("org_456", "INV-1008");
     expect(found).toMatchObject({ tenant_id: "org_456", id: "INV-1008" });
     expect(await nextRequest()).toMatchObject({

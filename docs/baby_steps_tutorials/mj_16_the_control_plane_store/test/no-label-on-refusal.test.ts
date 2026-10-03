@@ -1,4 +1,4 @@
-// NEW IN STEP 15: only a successful query carries freshness, because a refusal holds no data.
+// Only a successful query carries freshness, because a refusal holds no data.
 // And a successful query whose code read nothing is refused: a label for it would be
 // invented (step 15's README, C6 and decision 6).
 import { describe, expect, it } from "vitest";

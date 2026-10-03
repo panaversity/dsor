@@ -1,4 +1,4 @@
-// NEW IN STEP 15: the record of a read keeps the answer's label, so the log can answer "what
+// The record of a read keeps the answer's label, so the log can answer "what
 // did DSoR know when it answered?" (step 15's README, C7 and decision 7). The connector goes
 // in the audit record's own field. The mode and observed_at have no field there, so they go
 // under this tutorial's extensions, beside step 14's classification (DSOR-SCH-02).

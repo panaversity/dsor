@@ -133,7 +133,7 @@ describe("decision 8: with no database named, the database tests fail and never 
 
 describe("step 09's decision 12: the invoices in memory, for the unit tests", () => {
   it("DSOR-MON-01: the store in memory gives INV-1008, its money a string", async () => {
-    // NEW IN STEP 15: the store gives the invoice beside its read's label.
+    // The store gives the invoice beside its read's label.
     expect((await memoryInvoices().get("org_456", "INV-1008")).invoice).toStrictEqual({
       tenant_id: "org_456",
       id: "INV-1008",

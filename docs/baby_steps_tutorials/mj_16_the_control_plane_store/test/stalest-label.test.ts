@@ -1,4 +1,4 @@
-// NEW IN STEP 15: an answer built from several reads is only as fresh as its stalest part:
+// An answer built from several reads is only as fresh as its stalest part:
 // the weakest mode and the oldest observed_at (step 15's README, C5 and decision 6). The
 // order, from strongest: current, bounded_staleness, connector_defined, observational.
 import { describe, expect, it } from "vitest";

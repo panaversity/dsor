@@ -24,7 +24,7 @@ export type Decision = {
   // Fields this tutorial adds, under a name of its own (DSOR-SCH-02): the company a
   // non-member asked for (step 10's README, decision 6), or the label of what a read
   // returned (step 14's README, decision 7).
-  // NEW IN STEP 15: and the mode and time of what a read returned (step 15's README, decision
+  // And the mode and time of what a read returned (step 15's README, decision
   // 7).
   extensions?: {
     [namespace: string]: {
@@ -36,14 +36,14 @@ export type Decision = {
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
   resources?: string[];
   row_count?: number;
-  // NEW IN STEP 15: which connector served the read, in the audit record's own field.
+  // Which connector served the read, in the audit record's own field.
   connector?: string;
 };
 
 // What a query's answer returned, for its record (step 14's README,
 // decision 7).
 /** The URIs a read returned, the label of its answer, and how fresh it was. */
-// NEW IN STEP 15: and its freshness (step 15's README, decision 7).
+// And its freshness (step 15's README, decision 7).
 export type Read = { resources: string[]; classification: Label; freshness: Freshness };
 
 // The reverse domain name this tutorial's own record fields sit under (DSOR-SCH-02).
@@ -122,7 +122,7 @@ export function decisionOf(
       : {
           resources: read.resources,
           row_count: read.resources.length,
-          // NEW IN STEP 15: the answer's freshness. The connector has a field of its own in
+          // The answer's freshness. The connector has a field of its own in
           // the audit record, and the mode and time do not (step 15's README, decision 7).
           connector: read.freshness.connector,
           extensions: {

@@ -1,4 +1,4 @@
-// NEW IN STEP 15: observed_at is the clock of the store that read. In memory there is no
+// Observed_at is the clock of the store that read. In memory there is no
 // database, so it is the program's clock (DSOR-FRS-01a; step 15's README, C2 and decision 2).
 // test/observed-at.db.test.ts holds the database's half.
 import { describe, expect, it } from "vitest";

@@ -1,4 +1,4 @@
-// NEW IN STEP 15: on the database, the record of a read keeps the answer's label. Migration
+// On the database, the record of a read keeps the answer's label. Migration
 // 008 adds the audit record's own column connector. The mode and observed_at go under
 // extensions, beside step 14's classification (step 15's README, C7 and decision 7).
 import { afterAll, describe, expect, it } from "vitest";

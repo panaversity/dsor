@@ -786,7 +786,7 @@ describe("C8: an operation's own code answers a same-company call with nothing o
     const dump = plant({
       id: "invoice.dump",
       output: "InvoicePage",
-      // NEW IN STEP 15: it reads its own company first, as the plants below do. A query that
+      // It reads its own company first, as the plants below do. A query that
       // reads nothing is refused anyway, and that refusal hid step 10's answer check: with that
       // check deleted, this test still passed. Found by the review (step 15's README, decision 6).
       handler: afterARead(async () => ({ items: invoices })),
@@ -823,7 +823,7 @@ describe("C8: an operation's own code answers a same-company call with nothing o
   });
 
   // The cache is filled in org_456, so only the suite's second company can see it.
-  // NEW IN STEP 15: every call reads first, so no call is refused for reading nothing, and the
+  // Every call reads first, so no call is refused for reading nothing, and the
   // cache's copy is labelled current. That is the review's finding F1, which step 15 records
   // and does not fix: the label covers the reads, not the data (step 15's README, the intent).
   it("DSOR-IDN-03b: invoice.cached, which keeps invoices by id alone, is a finding from org_789", async () => {
@@ -860,7 +860,7 @@ describe("C8: an operation's own code answers a same-company call with nothing o
     [
       "invoice.rewritten",
       "the other company's invoice, its tenant_id rewritten to the caller's",
-      // NEW IN STEP 15: it reads its own company first. A query that reads nothing is refused
+      // It reads its own company first. A query that reads nothing is refused
       // before the suite sees it (step 15's README, decision 6).
       (async (_input, company) => {
         await company.invoices.get("INV-1008");

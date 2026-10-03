@@ -64,7 +64,7 @@ export async function call(
   // What the answer returned, set only when it returns data. Its record
   // says so (DSOR-CLS-05; step 14's README, decision 7).
   let read: Read | undefined;
-  // NEW IN STEP 15: the label of each read the code makes, noted by the bound store. Only the
+  // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
 
@@ -177,7 +177,7 @@ export async function call(
         // (DSOR-CLS-02a; step 14's README, decision 8).
         throw maskRefusal(thrown, clearanceOf(caller));
       } finally {
-        // NEW IN STEP 15: line ⑨ ends here, so the company the code was given reads nothing
+        // Line ⑨ ends here, so the company the code was given reads nothing
         // more (step 15's README, decision 5). Found by the review.
         reads.closed = true;
       }
@@ -200,7 +200,7 @@ export async function call(
     // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
     // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
     checkResultSize(shown.data, shown.redactions);
-    // NEW IN STEP 15: the answer's label, from the labels its reads left. Nothing since the
+    // The answer's label, from the labels its reads left. Nothing since the
     // copy waited, so no read can have been noted after it: the label covers every read whose
     // rows could be in the copy. Last of the checks, so an answer refused for another reason
     // is refused for that one. A query that read nothing is a bug in its code (DSOR-FRS-01a;
