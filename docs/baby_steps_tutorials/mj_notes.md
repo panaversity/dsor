@@ -248,39 +248,42 @@ Step 08 found one more on 2026-09-27:
   then kept nothing, and the program answered every call and printed "14 calls answered,
   so 14 records were written". A trigger that returns NULL does the same. Step 16 refuses
   such a rule or trigger at start-up, but one added while the program runs is not seen.
-  **The plan, not yet done:**
-  1. Red first, in `mj_09`'s `test/audit.db.test.ts`, beside the tests whose `COMMIT` or
-     `INSERT` fails. Wrap the pooled client's `query`, as those tests do, so that the log's
-     `INSERT` runs as `INSERT … SELECT … WHERE false`: the real database takes it and keeps
-     no row. Expect `EVIDENCE_STORE_UNAVAILABLE`, no invoice, and no record
-     (DSOR-EXE-03b). No mock database: the statement is real.
-  2. The fix: `add` throws unless the `INSERT`'s `rowCount` is 1. One line in `mj_09`,
-     inside `inCompany`'s work from `mj_11` on.
-  3. By hand, once, on a throwaway branch: the owner adds the rule, and every call is
-     refused with `EVIDENCE_STORE_UNAVAILABLE`.
+  **Done, 2026-10-03, from `mj_09` to `mj_16`** (`c109581`, then one commit per build).
+  `add` throws unless its `INSERT` kept one row, inside `inCompany`'s work from `mj_11` on.
+  Red first in every build with `DSOR-EXE-03b: a log whose INSERT keeps no row gives no
+  invoice, and no record`, which swaps the log's `INSERT` for `INSERT … SELECT … WHERE
+  false` on the real database. By hand, once, on a local PostgreSQL where the owner added
+  the rule `DO INSTEAD NOTHING`: `mj_09` before the fix answered all 8 calls and kept 0
+  rows; after it, all 8 were refused with `EVIDENCE_STORE_UNAVAILABLE`.
 - **The login check reads names through the search path** (from `mj_09`). Found by step
   16's review on 2026-10-03, while fixing the same weakness in step 16's catalog read.
   `runtimeRoleProblems` calls `has_table_privilege`, `has_any_column_privilege`, and
   `pg_has_role`, and reads `pg_roles`, `pg_class`, and `pg_auth_members`, by bare name. The
   owner can set `dsor_runtime`'s search path to `public, pg_catalog` and put look-alikes in
   `public` that say "no". Then a login that can change the log passes the check.
-  **The plan, not yet done:**
-  1. Red first, a database test with an owner child program, as step 16's
-     `test/owner-catalog.ts` does. Inside one transaction that is rolled back, the owner
-     makes `public.has_table_privilege(text, text)` and
-     `public.has_any_column_privilege(text, text)` that return false, sets the search path
-     to `public, pg_catalog`, and runs the check on that connection. The owner can change
-     the log, so the check must still say so.
-  2. The fix: `runtimeRoleProblems` reads inside a transaction that starts with
-     `SET LOCAL search_path TO pg_catalog, pg_temp`, as step 16's `readCatalog` does. It
-     takes one connection as well as a pool, so the test can call it inside its
-     transaction.
-- **How both fixes travel** (the Stage 2 campaign's way). Fix `mj_09` first, then carry
-  each fix forward by hand to `mj_10` through `mj_16`, one commit per build. The code
-  differs from build to build: `add` runs inside `inCompany` from `mj_11`. Run each build's
-  `pnpm check`, and `pnpm test:db` on a Neon branch of its own. The project allows ten
-  branches, and nine are taken: `main` and `step-09` to `step-16`. One throwaway fits.
-  For more, free an old step's branch first, or reuse one build at a time.
+  **Done, 2026-10-03, from `mj_09` to `mj_16`.** `runtimeRoleProblems` reads inside a
+  transaction of its own that starts with `SET LOCAL search_path TO pg_catalog, pg_temp`,
+  and takes one connection as well as a pool. Red first with the owner's child program
+  `test/owner-login-check.ts`. A review of the `mj_15` port then found two breaks that
+  passed every test: `pg_catalog.` written on the three functions instead of the pin, and
+  the pin skipped for the pool's own connections. Fixed on 2026-10-04 in all eight builds:
+  the child also plants a `pg_roles` view, and the pool's test requires exactly
+  `BEGIN READ ONLY`, the pin, the check, and `ROLLBACK`. In `mj_16`, the catalog read got
+  the same two guards, a `pg_class` view and the list of statements, after removing its
+  pool's `BEGIN` passed every test.
+  **Left open:** the check run on one connection outside a transaction pins nothing,
+  because `SET LOCAL` only warns there; no caller does that today. And only an `INSERT`
+  that keeps 0 rows is tested. In `mj_09` and `mj_10` the `INSERT` commits before its count
+  is checked, so one that kept 2 rows would be refused and kept. From `mj_11` on it is
+  rolled back.
+- **How both fixes travelled** (the Stage 2 campaign's way). `mj_09` first, by hand, then
+  one agent per build for `mj_10` to `mj_16`, each on its own Neon branch, with every diff
+  checked and committed one build at a time. Two lessons:
+  - **Give each parallel agent its own scratch folder.** Two agents saved a copy under the
+    same file name, and one restore put `mj_14`'s code into `mj_12` for one break run. The
+    agent noticed a column its migrations lack, threw the run away, and redid it.
+  - **Database runs time out under load.** With seven suites on Neon at once, a few tests
+    timed out at 30 seconds, in runs before and after the fix. Every rerun was green.
 
 ## Proposed for the house list and the map
 
