@@ -125,3 +125,98 @@ top-level option, there is no deprecation warning, and three consecutive runs gi
 
 That is a shape worth remembering: a deprecation notice is not noise when the thing being deprecated
 is a setting you are relying on. It had been in every run's output and I had been reading past it.
+
+---
+
+## The second pass, 2026-10-04: what a full test of the step found
+
+The step was called complete on 2026-10-03 with 280 tests green. A full pass found **five broken
+guarantees**, and the first of them reversed the "complete" claim outright. Everything below was
+measured, and every fix was proved by breaking it again.
+
+### 1 · The program connected as a superuser
+
+The one that mattered most, because it made the step's whole claim false.
+
+```text
+PGlite connects as: postgres   superuser: true
+  UPDATE    SUCCEEDED  <-- the route pnpm start, pnpm migrate and all 280 tests used
+  DELETE    SUCCEEDED
+  TRUNCATE  SUCCEEDED
+```
+
+`002_runtime_user.sql` takes those rights away from `dsor_runtime`, and the tests proved it — by
+running `SET ROLE dsor_runtime` themselves. The program never did. 280 tests were green because not
+one of them asked who the program had connected as; none contained the words `current_user`.
+
+The real-server route was never affected: `DSOR_DB_URL` holds the application's own credentials.
+[Decision 75](decisions.md), [lesson 21](lessons.md).
+
+### 2 · A login whose Proxy trap throws
+
+`Object.hasOwn` sat outside `ownString`'s `try`, and it consults a `Proxy`'s
+`getOwnPropertyDescriptor`. So `callOperation THREW: boom` with **zero** audit records written — a
+raw `Error` where `DSOR-ERR-01a` promises an envelope. [Decision 76](decisions.md),
+[lesson 22](lessons.md).
+
+### 3 · A lost race left the chain unverifiable for good
+
+The clock was read before the tail, so an overtaken writer stamped an earlier time at a later
+position:
+
+```text
+seq 0  at 2026-10-04T00:00:01.000Z  req_fast
+seq 1  at 2026-10-04T00:00:00.000Z  req_slow
+verifyChain: false
+```
+
+Nothing tampered with, every hash agreeing, and no way to correct it because the application has no
+`UPDATE`. [Decision 77](decisions.md), [lesson 23](lessons.md).
+
+### 4 · A lost INSERT reply was reported as a failed write
+
+A database can commit and lose the reply. The caller was told the decision "could not be written
+down, so it was not carried out" while the row sat in the table saying `ALLOWED` — the log and the
+answer contradicting each other. [Decision 78](decisions.md), [lesson 24](lessons.md).
+
+### 5 · A temp table could catch the whole audit log
+
+`dsor_runtime` cannot `UPDATE` the log and can create a temporary table, and `pg_temp` is searched
+before `public`:
+
+```text
+after one audit() call:  public.audit has 0 row(s),  pg_temp.audit has 1
+theLog() reports 1 record(s)
+```
+
+The program reported a healthy audit trail while the real log stayed empty. A GRANT decides what may
+be done to a table, not which table a name means. [Decision 80](decisions.md),
+[lesson 26](lessons.md).
+
+### And the claims that were simply false
+
+- `recorded_at` was described as a column "the application cannot set", and the test with that title
+  said the opposite in its own body. A `DEFAULT` is not a permission. Now true, by granting `INSERT`
+  column by column. [Decision 81](decisions.md), [lesson 27](lessons.md).
+- `UNIQUE (chain, sequence)` **is** an index, so `CREATE INDEX ... (chain, sequence)` was a second
+  identical btree under a comment claiming reads would otherwise scan the table.
+- The db-tier race test claimed to be the only place `UNIQUE (chain, sequence)` could be seen, and
+  sent the same `record_id` three times — the primary key refused the losers, and dropping the unique
+  constraint left the test green. [Decision 82](decisions.md), [lesson 28](lessons.md).
+- A migration comment stated a false fact about PostgreSQL: that `REVOKE ... FROM PUBLIC` takes back
+  a grant made directly to a role. It does not. [Decision 79](decisions.md).
+- Three separate places read a grant catalogue to answer a security question. A catalogue row exists
+  only for a grant made to a role **by name**; PUBLIC, role membership, column grants and superuser
+  bypass are all invisible to it. [Lesson 25](lessons.md) is the general form.
+- Every number in the README's Break-it section was stale, and Break 1's was wrong when it was
+  written. All nine are now measured. [Decision 83](decisions.md), [lesson 29](lessons.md).
+
+### The shape of it
+
+Nine break-it exercises now, and **Break 6 — "let the program keep the owner's connection" — failed
+zero tests before `test/database.test.ts` existed.** That is the lesson of the whole second pass: a
+guarantee can be written in the spec, implemented in a migration, covered by nine tests, and held by
+nobody, because every test set up the identity it then tested.
+
+`pnpm check`: 23 files, **308 tests**. `pnpm test:db`: 5, against a real PostgreSQL with two real
+logins. Both routes verify their chain: 10 records on the server, 10 on disk.

@@ -63,7 +63,7 @@ one before it:
 | `my_06_permissions_deny_by_default` | 156 | deny by default, and "may you" is asked before "does it exist" |
 | `my_07_the_pipeline_skeleton` | 179 | the order of the checks becomes a list a test can read |
 | `my_08_write_the_decision_first` | 232 | every decision is recorded before the answer, refusals included, in a hash chain |
-| `my_09_postgres_on_neon` | 278 | the audit log moves into PostgreSQL, and the application may not rewrite it |
+| `my_09_postgres_on_neon` | 308 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -80,9 +80,9 @@ are true of all of them:
 - **Step 09 has a second test tier.** `pnpm check` proves its guarantees against
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers the two things one in-process connection cannot do — logging in
-  as a second user, and two writers racing. Those four have been run, against a local
-  PostgreSQL 17 with two real logins, on 2026-10-03; without a server they report
-  `4 skipped` rather than passing quietly.
+  as a second user, and two writers racing. Those five have been run, against a local
+  PostgreSQL 17 with two real logins, on 2026-10-04; without a server they report
+  `5 skipped` rather than passing quietly.
 - **A requirement id in a step's test title is a claim about that step, not about
   DSoR.** Step 08's 232 tests name 23 ids in their titles, and each step's README has a
   table saying which halves of which rules it does *not* meet. No L1, L2 or L3
