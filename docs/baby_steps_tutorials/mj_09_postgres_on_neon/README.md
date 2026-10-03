@@ -761,6 +761,44 @@ back after.
     call`, in `test/program.db.test.ts`. Each of the three changes to the SQL turns it
     red. Found by a hostile pass on the Stage 2 review's fix in step 11.
 
+**Found by step 16's review (2026-10-03), and fixed.**
+
+- **The log trusted an `INSERT` that kept nothing.** `add` sent its `INSERT` and never
+  asked how many rows the database wrote. A rule `DO INSTEAD NOTHING` on `dsor.audit`, or
+  a trigger that returns `NULL`, makes the database take the `INSERT` and keep no row. In
+  step 16's review, the program answered every call and kept no record of any of them.
+  - **Fixed from step 09 on:** `add` throws unless the `INSERT` wrote exactly one row. The
+    caller hears `EVIDENCE_STORE_UNAVAILABLE`, as with a closed pool (DSOR-EXE-03b).
+  - **Caught by** `DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no
+    record`, in `test/audit.db.test.ts`. It sends the log's own values in an
+    `INSERT … SELECT … WHERE false`: a real statement on the real database, which keeps no
+    row.
+- **The start-up check read PostgreSQL's names through the search path.** The **search
+  path** is the list of schemas PostgreSQL looks in to find a name such as
+  `has_table_privilege`. The owner can put `public` first, and make functions there with
+  PostgreSQL's names that answer "no". Then a login that can change the log passes the
+  check.
+  - **Fixed from step 09 on:** the check runs inside a transaction that starts with
+    `SET LOCAL search_path TO pg_catalog, pg_temp`, as step 16's catalog read does.
+    `SET LOCAL` lasts only until the transaction ends. The check takes one connection as
+    well as a pool, so a test can run it inside a transaction of its own.
+  - **Caught by** two tests in `test/audit.db.test.ts`. The first, `DSOR-AUD-04a: the
+    start-up check reads PostgreSQL's own names, whatever the search path finds first`,
+    runs a child program, `test/owner-login-check.ts`. As the owner, inside a transaction
+    that is rolled back, it makes look-alikes of `has_table_privilege`,
+    `has_any_column_privilege`, and `pg_has_role`, puts `public` first, and runs the check
+    on that connection. The owner can change the log, and the check must still say so.
+    The second, `DSOR-AUD-04a: the start-up check pins the search path inside a
+    transaction of its own`, guards the pool's path, the one the program uses. Outside a
+    transaction, PostgreSQL ignores `SET LOCAL` and warns, so the test expects no warning.
+- **Red first:** before the fixes, the first two tests failed. The call answered with
+  INV-1008's data, and the owner's problems left out "can change or remove records in
+  dsor.audit". The third test came from a break: with the pool's `BEGIN` removed, the
+  other 30 database tests all passed.
+- **Broken on purpose, three ways:** `add` ignoring the row count, the check without
+  `SET LOCAL`, and the pool's path without its `BEGIN`. Each turned its own test red, and
+  only that one. The database tests went from 28 to 31.
+
 **Left open on purpose:**
 
 - **A database failure while reading an invoice** (at line ⑨) becomes

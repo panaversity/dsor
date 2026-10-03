@@ -78,7 +78,7 @@ export function createDbLog(pool: pg.Pool): DecisionLog {
       // committed it, so when add returns, the record survives a crash: "durably" in
       // DSOR-EXE-02. The database gives the record its number and its time (step 09's
       // README, decision 6).
-      await pool.query(
+      const { rowCount } = await pool.query(
         `INSERT INTO dsor.audit
            (record_id, kind, operation, "authorization", result, reason, correlation)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -92,6 +92,11 @@ export function createDbLog(pool: pg.Pool): DecisionLog {
           decision.correlation,
         ],
       );
+      // The database can take an INSERT and keep no row: a rule DO INSTEAD NOTHING on the
+      // log, or a trigger that returns NULL. The record is kept only when one row was
+      // written, so anything else is a log that cannot take the record (DSOR-EXE-03b).
+      // Found by step 16's review, and fixed from step 09 on.
+      if (rowCount !== 1) throw new Error(`the log kept ${rowCount ?? 0} rows, not 1`);
     },
     records: async (): Promise<DecisionRecord[]> => {
       const { rows } = await pool.query<AuditRow>(
@@ -179,11 +184,35 @@ export function problemsOf(facts: RoleFacts): string[] {
   return problems;
 }
 
-/** Asks Postgres about the pool's own login, and gives back every problem with it. */
-export async function runtimeRoleProblems(pool: pg.Pool): Promise<string[]> {
+/**
+ * Asks Postgres about the login, and gives back every problem with it. A pool asks in a
+ * read-only transaction of its own. One connection asks inside the transaction its caller
+ * has open.
+ */
+export async function runtimeRoleProblems(db: pg.Pool | pg.ClientBase): Promise<string[]> {
+  if (db instanceof pg.Pool) {
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN READ ONLY");
+      const problems = await runtimeRoleProblems(client);
+      await client.query("ROLLBACK");
+      client.release();
+      return problems;
+    } catch (error) {
+      // A connection whose check failed is closed, never lent again.
+      await client.query("ROLLBACK").catch(() => {});
+      client.release(true);
+      throw error;
+    }
+  }
+  // Every name below is looked up in pg_catalog first, and in pg_temp last. Otherwise a
+  // function in public named has_table_privilege, found first through a search path the
+  // owner set, could answer for PostgreSQL's own. SET LOCAL lasts until the transaction
+  // ends. Found by step 16's review, and fixed from step 09 on.
+  await db.query("SET LOCAL search_path TO pg_catalog, pg_temp");
   // has_..._privilege counts privileges held directly, through PUBLIC, and through every
   // role this one belongs to. A grant on one column counts too.
-  const { rows } = await pool.query<RoleFacts>(
+  const { rows } = await db.query<RoleFacts>(
     `SELECT r.rolname AS who, r.rolsuper AS superuser, r.rolbypassrls AS bypassrls,
             pg_has_role(r.oid, 'pg_write_all_data', 'MEMBER') AS writes_all,
             (SELECT count(*)::int FROM pg_class c WHERE c.relowner = r.oid) AS owns,
