@@ -38,9 +38,17 @@ async function recordsIn(company: string, ids: string[]): Promise<Record<string,
 describe("the suite, on the database", () => {
   it("DSOR-TEN-02b: every operation, reading from the database, is attacked from both companies and refused", () => {
     expect(report.findings).toStrictEqual([]);
-    // invoice.list, checked by its rows, adds no attack to the 27.
-    expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list"]);
-    expect(report.attacks).toHaveLength(27);
+    // invoice.list, checked by its rows, adds no attack to the 36. Step 17's two commands are
+    // attacked by people only: an agent's command stops at line ③ (step 17's README,
+    // decision 5).
+    expect(report.attacked).toStrictEqual([
+      "invoice.get",
+      "invoice.issue",
+      "invoice.list",
+      "payment.cancel",
+      "payment.create",
+    ]);
+    expect(report.attacks).toHaveLength(36);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -76,7 +84,8 @@ describe("the suite, on the database", () => {
     async (home, other) => {
       const made = report.attacks.filter((attack) => attack.home === home);
       // Without this, a run that attacked nothing would find nothing wrong below.
-      expect(made).toHaveLength(home === "org_456" ? 15 : 12);
+      // (4 + 1 + 1 + 1) × 3 in org_456, and (2 + 1 + 1 + 1) × 3 in org_789.
+      expect(made).toHaveLength(home === "org_456" ? 21 : 15);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({

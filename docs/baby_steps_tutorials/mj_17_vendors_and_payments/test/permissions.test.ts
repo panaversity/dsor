@@ -351,10 +351,9 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
 });
 
 describe("C3: a call whose permission the caller does not hold is refused", () => {
-  it.each([
-    ["cfo_100", CFO, THE_CFO],
-    ["accounts-payable-fte", AGENT, THE_AGENT],
-  ])("DSOR-AUT-01b: %s, who may read, is denied invoice.issue", async (_who, request, caller) => {
+  // Until step 16 the agent was a second row here. Since step 17 an agent's command stops at
+  // line ③, before line ⑤ looks at its roles (step 17's README, decision 5).
+  it.each([["cfo_100", CFO, THE_CFO]])("DSOR-AUT-01b: %s, who may read, is denied invoice.issue", async (_who, request, caller) => {
     expect(await call(registry, log, request, "invoice.issue", {})).toStrictEqual(
       denied("invoice.issue", "invoice:issue", caller),
     );
@@ -432,7 +431,9 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
   // Nobody refused invoice.void. No role grants invoice:void, so nobody may call it.
   const voids = { ...contract("invoice.issue"), id: "invoice.void" };
   const withVoid = withOperation({ ...voids, authorization: { permission: "invoice:void" } });
-  it.each(CALLERS)(
+  // The people only: since step 17, line ③ refuses the agent's command before line ⑤ (step
+  // 17's README, decision 5).
+  it.each(CALLERS.filter(([who]) => who !== "accounts-payable-fte"))(
     "DSOR-AUT-01b: %s is denied invoice.void, which no role grants",
     async (_who, request, caller) => {
       const input = { invoice: "dsor://org_456/invoice/INV-1008" };
@@ -587,10 +588,12 @@ describe("C6: permissions never come from the caller", () => {
   it.each([
     ["a list of permissions", { permissions: ["invoice:issue"] }],
     ["a list of roles", { roles: ["ap_supervisor"] }],
-  ])("DSOR-AUT-01b: %s in the input grants the agent nothing", async (_why, claim) => {
+  // cfo_100, who may not issue. Until step 16 the agent made this call. Since step 17 an
+  // agent's command stops at line ③, before line ⑤ (step 17's README, decision 5).
+  ])("DSOR-AUT-01b: %s in the input grants cfo_100 nothing", async (_why, claim) => {
     const input = { invoice: "dsor://org_456/invoice/INV-1008", ...claim };
-    expect(await call(registry, log, AGENT, "invoice.issue", input)).toStrictEqual(
-      denied("invoice.issue", "invoice:issue", THE_AGENT),
+    expect(await call(registry, log, CFO, "invoice.issue", input)).toStrictEqual(
+      denied("invoice.issue", "invoice:issue", THE_CFO),
     );
   });
 

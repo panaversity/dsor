@@ -207,14 +207,16 @@ describe("C2 and C5: when call answers, its record is already a row of dsor.audi
     ]);
   });
 
+  // The agent's command, refused at line ③ since step 17, where line ⑤ refused it before
+  // (step 17's README, decision 5). Either way, a refusal.
   it("DSOR-EXE-02: a refusal is committed before the answer too", async () => {
     const id = requestId("c2-denied");
     const answer = await call(registry, log, { ...AGENT, request_id: id }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
-    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(answer).toMatchObject({ code: "DELEGATION_REQUIRED" });
     expect(await rowsFor(observer, "org_456", id)).toMatchObject([
-      { operation: "invoice.issue@1", authorization: "DENY", result: "AUTHORIZATION_DENIED" },
+      { operation: "invoice.issue@1", authorization: "DENY", result: "DELEGATION_REQUIRED" },
     ]);
   });
 

@@ -42,7 +42,10 @@ const RECORDED_AS: Record<string, ["ALLOW" | "DENY", string | undefined]> = {
   "a request id that is empty": ["DENY", "invoice.get@1"],
   "the agent naming cfo_100 in its arguments": ["DENY", "invoice.get@1"],
   "an operation with no contract": ["DENY", undefined],
-  "the agent calling invoice.issue, which no role of its grants": ["DENY", "invoice.issue@1"],
+  // Since step 17, cfo_100 makes the line ⑤ refusal, and the agent's command stops at line
+  // ③ (step 17's README, decision 5).
+  "cfo_100 calling invoice.issue, which no role of theirs grants": ["DENY", "invoice.issue@1"],
+  "the agent calling payment.create, which no delegation covers": ["DENY", "payment.create@1"],
   "invoice.issue, which has no code yet": ["DENY", "invoice.issue@1"],
   "invoice.issue given code, because it is a command": ["DENY", "invoice.issue@1"],
   "invoice.get with no invoice": ["DENY", "invoice.get@1"],
@@ -378,7 +381,7 @@ describe("C4: if the log cannot take the record, the answer is EVIDENCE_STORE_UN
       { invoice: "dsor://org_456/invoice/INV-1008" },
       (n) => lines.push(n),
     );
-    expect(lines).toStrictEqual([1, 2, 5, 6, 9, 11]);
+    expect(lines).toStrictEqual([1, 2, 3, 5, 6, 9, 11]);
   });
 
   it("the refusal passes the error envelope's schema", async () => {

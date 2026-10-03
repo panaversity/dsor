@@ -4,12 +4,18 @@
 // registered, and nobody has to remember to write its test (step 12's README).
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import { checkDelegation } from "../src/delegation.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { DecisionLog } from "../src/log.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
-import { logins } from "../src/principals.ts";
-import { readContracts, type ContractSource, type Registry } from "../src/registry.ts";
+import { logins, type Principal } from "../src/principals.ts";
+import {
+  readContracts,
+  type Contract,
+  type ContractSource,
+  type Registry,
+} from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   HOMES,
@@ -64,20 +70,36 @@ function permissionOf(registry: Registry, operation: string): unknown {
   return (authorization as { permission?: unknown } | undefined)?.permission;
 }
 
-/** Every principal whose roles in this company grant the operation's permission. */
+/** Every principal that line ③ lets call the operation, and whose roles in this company grant its permission. */
 export function attackersOf(registry: Registry, operation: string, home: string): Attacker[] {
   const permission = permissionOf(registry, operation);
+  const contract = registry.contracts.get(operation);
   const attackers: Attacker[] = [];
   // DSoR's own table of logins, in its order. A caller who may not call the operation
   // would be refused at line ⑤, before the URI's company is checked, and prove nothing
   // (step 12's README, decision 4).
   for (const [token, principal] of logins) {
-    if (typeof permission !== "string") continue;
+    if (typeof permission !== "string" || contract === undefined) continue;
+    // NEW IN STEP 17: the same for line ③. An agent's command is refused there, before the
+    // URI's company is checked. The suite asks line ③'s own question, so an agent that a
+    // delegation lets through in step 18 attacks again, with no change here (step 17's
+    // README, "Think it through").
+    if (!passesLineThree(principal, contract)) continue;
     if (permissionsOf(principal, registry.roles, home).has(permission)) {
       attackers.push({ id: principal.id, token });
     }
   }
   return attackers;
+}
+
+// NEW IN STEP 17: whether line ③ lets this caller call the operation at all.
+function passesLineThree(principal: Principal, contract: Contract): boolean {
+  try {
+    checkDelegation(principal, contract);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Why this answer to a foreign request is a finding, or undefined when it is a pass. */

@@ -33,6 +33,7 @@ import {
   MASKED_1008_OF_456,
   MASKED_1008_OF_789,
   MASKED_REDACTIONS,
+  needsDelegation,
   NOBODY,
   NOT_A_MEMBER,
   notGranted,
@@ -308,17 +309,39 @@ describe("C3: only the caller's roles in the active company count", () => {
     },
   );
 
-  it("DSOR-IDN-03a: the firm's agent is denied invoice.issue in org_456", async () => {
-    const answer = await call(registry, log, FIRM_IN_456, "invoice.issue", GOOD_ISSUE);
+  // Until step 16 the firm's agent made the two calls below. Since step 17 an agent's command
+  // stops at line ③, before line ⑤ looks at its roles (step 17's README, decision 5). So a
+  // person with the firm's two kinds of role makes them: reader in org_456, supervisor in
+  // org_789.
+  const clerk: Principal = {
+    id: "firm-clerk",
+    type: "human",
+    memberships: [
+      { tenant_id: "org_456", roles: ["CFO"] },
+      { tenant_id: "org_789", roles: ["ap_supervisor"] },
+    ],
+  };
+  const CLERK_IN = (tenant: string): RequestEnvelope => ({ token: "tok_clerk", tenant });
+
+  it("DSOR-IDN-03a: a person who supervises in org_789 is denied invoice.issue in org_456", async () => {
+    const answer = await withPlanted("tok_clerk", clerk, () =>
+      call(registry, log, CLERK_IN("org_456"), "invoice.issue", GOOD_ISSUE),
+    );
     expect(answer).toStrictEqual(
-      refused("AUTHORIZATION_DENIED", notGranted("invoice.issue", "invoice:issue"), THE_FIRM),
+      refused("AUTHORIZATION_DENIED", notGranted("invoice.issue", "invoice:issue"), {
+        principal_id: "firm-clerk",
+      }),
     );
   });
 
-  it("DSOR-IDN-03a: the firm's agent passes line ⑤ for invoice.issue in org_789", async () => {
-    const answer = await call(registry, log, FIRM_IN_789, "invoice.issue", FOREIGN_1008);
+  it("DSOR-IDN-03a: the same person passes line ⑤ for invoice.issue in org_789", async () => {
+    const answer = await withPlanted("tok_clerk", clerk, () =>
+      call(registry, log, CLERK_IN("org_789"), "invoice.issue", FOREIGN_1008),
+    );
     expect(answer).toStrictEqual(
-      refused("UNSUPPORTED_CAPABILITY", '"invoice.issue" is not built yet', THE_FIRM),
+      refused("UNSUPPORTED_CAPABILITY", '"invoice.issue" is not built yet', {
+        principal_id: "firm-clerk",
+      }),
     );
   });
 });
@@ -506,10 +529,12 @@ describe("C4: a company in the arguments that is not the active one is refused",
     );
   });
 
-  // Line ⑤ still comes first: the agent may not issue at all.
-  it("the agent sending a foreign URI to invoice.issue is denied at line ⑤ first", async () => {
+  // An earlier line still comes first. Until step 16 it was line ⑤: the agent may not issue.
+  // Since step 17 it is line ③: an agent runs no command without a delegation (step 17's
+  // README, decision 5).
+  it("the agent sending a foreign URI to invoice.issue is refused at line ③ first", async () => {
     expect(await call(registry, log, AGENT, "invoice.issue", FOREIGN_1008)).toStrictEqual(
-      refused("AUTHORIZATION_DENIED", notGranted("invoice.issue", "invoice:issue"), THE_AGENT),
+      refused("DELEGATION_REQUIRED", needsDelegation("invoice.issue"), THE_AGENT),
     );
   });
 });

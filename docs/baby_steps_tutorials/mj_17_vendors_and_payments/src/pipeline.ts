@@ -2,6 +2,7 @@
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
 import { randomUUID } from "node:crypto";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
+import { checkDelegation } from "./delegation.ts";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { newReads, stalest } from "./freshness.ts";
@@ -124,8 +125,12 @@ export async function call(
       throw new Refusal("UNSUPPORTED_CAPABILITY", `no operation named ${preview(name)}`);
     }
 
-    // ③ Resolve delegation; verify the actor chain; establish current authority. Not
-    //   checked yet: step 18.
+    // ③ Resolve delegation; verify the actor chain; establish current authority.
+    // NEW IN STEP 17: an agent's command needs a person's delegation, and none exists until
+    //   step 18, so it is refused here (DSOR-DEL-01a; step 17's README, decision 5). Before
+    //   line ⑤, so a permission alone never lets an agent change anything. The actor chain
+    //   and current authority: not checked yet, steps 18 and 19.
+    line(3, () => checkDelegation(caller, contract));
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).

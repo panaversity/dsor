@@ -95,8 +95,11 @@ describe("C4: an agent's command never runs without an active delegation", () =>
   it("DSOR-DEL-01a: a caller whose type DSoR does not know, such as Agent, is refused as an agent", async () => {
     const odd: RequestEnvelope = { token: "tok_planted", tenant: "org_456" };
     const rows: Payment[] = [];
+    // Built before the caller is planted: start-up refuses a table of logins that holds a
+    // type DSoR does not know (step 14's README, decision 5).
+    const on = paymentRegistry(rows);
     const answer = await withPlanted("tok_planted", plantedOfType("odd-fte", "Agent"), () =>
-      call(paymentRegistry(rows), createLog(), odd, "payment.create", CREATE),
+      call(on, createLog(), odd, "payment.create", CREATE),
     );
     expect(answer).toStrictEqual(delegationRequired("payment.create", { agent_id: "odd-fte" }));
     expect(rows).toStrictEqual([]);

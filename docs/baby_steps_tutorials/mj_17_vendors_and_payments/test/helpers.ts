@@ -518,12 +518,23 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
     'no operation named "invoice.delete"',
     THE_AGENT,
   ],
-  // The agent's one role grants invoice:read, and not invoice:issue.
+  // cfo_100's one role grants invoice:read, and not invoice:issue. Until step 16 the agent
+  // made this call. Since step 17 an agent's command stops at line ③, before line ⑤ looks
+  // at a role (step 17's README, decision 5).
   [
-    "the agent calling invoice.issue, which no role of its grants",
-    () => call(registry, log, AGENT, "invoice.issue", {}),
+    "cfo_100 calling invoice.issue, which no role of theirs grants",
+    () => call(registry, log, CFO, "invoice.issue", {}),
     "AUTHORIZATION_DENIED",
     notGranted("invoice.issue", "invoice:issue"),
+    THE_CFO,
+  ],
+  // NEW IN STEP 17: the agent's command, which no delegation covers yet. Its role grants
+  // payment:create, so only line ③ refuses it.
+  [
+    "the agent calling payment.create, which no delegation covers",
+    () => call(registry, log, AGENT, "payment.create", {}),
+    "DELEGATION_REQUIRED",
+    needsDelegation("payment.create"),
     THE_AGENT,
   ],
   // user_123 holds invoice:issue, so these two calls get past the
