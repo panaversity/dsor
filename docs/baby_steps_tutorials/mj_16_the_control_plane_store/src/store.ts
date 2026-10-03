@@ -29,8 +29,13 @@ export type StoreMap = {
 /** The map's file, as it was read from disk: its file name and its text. */
 export type StoreSource = { file: string; text: string };
 
-/** A kind of table: the side it lives on, and what dsor_runtime may do to it. */
-export type Kind = { side: Side; table: readonly string[]; columns: readonly string[] };
+/** A kind of table: its side, what dsor_runtime may do to it, and if it needs a company key. */
+export type Kind = {
+  side: Side;
+  table: readonly string[];
+  columns: readonly string[];
+  key: boolean;
+};
 
 // Each kind allows only its own privileges, on its own side. A later step adds a kind
 // here, beside the table that needs it (step 16's README, decision 3). No kind allows
@@ -38,14 +43,14 @@ export type Kind = { side: Side; table: readonly string[]; columns: readonly str
 /** Every kind of table the map may use. */
 export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // The company's data: dsor_runtime only reads it.
-  ["business", { side: "company", table: ["SELECT"], columns: [] }],
+  ["business", { side: "company", table: ["SELECT"], columns: [], key: true }],
   // DSoR's paperwork that grows and never changes, like the log: read it, and add rows
   // through named columns. INSERT on the whole table would include the columns the
   // database fills in (step 09's README, decision 6).
-  ["append-only", { side: "dsor", table: ["SELECT"], columns: ["INSERT"] }],
+  ["append-only", { side: "dsor", table: ["SELECT"], columns: ["INSERT"], key: true }],
   // The owner's own records, such as the list of migrations: dsor_runtime has no business
   // there at all.
-  ["bookkeeping", { side: "dsor", table: [], columns: [] }],
+  ["bookkeeping", { side: "dsor", table: [], columns: [], key: false }],
 ]);
 
 // USAGE lets dsor_runtime see into a schema. CREATE would let it make a table of its own,
@@ -140,9 +145,13 @@ function tableProblems(
         `${schemaName} is ${WHOSE[schema.side]}`,
     ];
   }
+  // Rows that belong to a company say which column says so, so the lock check is never
+  // skipped for a company column named org_id (DSOR-RP-01b). Found by the review.
+  const keyless = kind.key && line.tenant === null;
   const a = /^[aeiou]/.test(line.kind) ? "an" : "a";
   const refused = `which ${a} ${line.kind} table does not allow`;
   return [
+    ...(keyless ? [`${name} is ${line.kind}, which needs a company key, and names none`] : []),
     ...line.runtime.table
       .filter((p) => !kind.table.includes(p))
       .map((p) => `${name} lists ${p}, ${refused}`),
