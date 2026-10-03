@@ -375,11 +375,107 @@ git diff --no-index mj_15_freshness_labels/test mj_16_the_control_plane_store/te
 
 ## Run it
 
-_To be written when the code exists._
+Set up Neon first ("Before you build" above). Then, in this folder:
+
+```bash
+pnpm install
+pnpm migrate      # on a branch of step-15: "no migration to run"
+pnpm check        # typecheck and the unit tests
+pnpm test:db      # the database tests
+pnpm start        # the program, against the database
+```
+
+When the database matches the map, the program prints exactly what step 15's printed. The
+inspector says nothing when there is nothing to say. Its work shows when something
+differs, in "Break it".
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Every break below was run for real on 2026-10-03. The live ones ran on a throwaway Neon
+branch, `step-16-a1`, made from `step-16`, never on `step-16` itself. Before the first
+break, both steps started and served on it, so every refusal below comes from the break.
+
+**A2 · One privilege too many on the company's table.** The owner runs:
+
+```sql
+GRANT UPDATE ON app.invoices TO dsor_runtime;
+```
+
+Step 15 starts, answers every call, and exits with code 0. Its check asks only about the
+log. Step 16:
+
+```text
+operations: [ 'invoice.get', 'invoice.issue', 'invoice.list' ]
+The database does not match store.json. Refused:
+  app.invoices: dsor_runtime holds UPDATE, which store.json does not list
+```
+
+Exit code 1, and no answer. `operations:` is printed, because the files were checked
+first. The database can be compared only after the program logs in (decision 4). This is
+also C6's live run.
+
+**A1 · UPDATE on the log.** After `REVOKE` and a clean start, the owner runs
+`GRANT UPDATE ON dsor.audit TO dsor_runtime`. Step 15 and step 16 print the same line, and
+exit with code 1:
+
+```text
+DSOR_DB_URL must log in as dsor_runtime. Refused: can change or remove records in dsor.audit.
+```
+
+That is step 09's line. Step 16's map never got its turn, because the login check comes
+first. So A1 cannot prove this step. To see the second lock, step 09's line was broken in a
+copy of this step (`if (false && facts.can_change_audit)`) and started on the same branch:
+
+```text
+The database does not match store.json. Refused:
+  dsor.audit: dsor_runtime holds UPDATE, which store.json does not list
+```
+
+One lock broken, and the other still held.
+
+**A3 · The inspector skips columns.** In a copy, `privilegesOf` returns after the table's
+privileges. Four tests fail, and every one is about a column: `INSERT` on `sequence`,
+`UPDATE` on `result`, a missing column grant, and a misspelled column. `UPDATE` on
+`app.invoices` and `CREATE` on `dsor` are still named. So only `INSERT (sequence)` would
+get past start-up.
+
+**A4 · The inspector looks only at the map's tables.** In a copy, the loop reads
+`catalog.relations.filter((r) => map.tables.has(r.name))`. Six tests fail: the table that
+is not on the map, and also the view, the materialized view, the foreign table, and the
+partitioned table. An inspector that starts from its own list misses everything nobody
+wrote down.
+
+**A5 · The kind rule is gone.** In a copy, `tableProblems` returns no problem for any
+privilege. Nine of the map's tests fail, among them every test that guards the log. Then,
+live: the owner grants `UPDATE ON app.invoices`, and the program starts with a map that
+lists `UPDATE` for it. It starts, answers every call, and exits with code 0. The map and the
+database agree, so nothing at start-up objects. Step 09's database test does:
+
+```text
+-     "held": "SELECT",
++     "held": "SELECT UPDATE",
+      "object": "app.invoices",
+```
+
+but only when someone runs `pnpm test:db`. With the kind rule back, the same map stops
+start-up before the program logs in:
+
+```text
+the map of the store refused to start:
+  a5-store.json: app.invoices lists UPDATE, which a business table does not allow
+```
+
+| # | Learner's prediction | Real |
+| --- | --- | --- |
+| A1 | "It refuses to start" | Right, by step 09's line, in step 15 too. The map is the second lock, shown with step 09's line broken |
+| A2 | Step 15 "refuses to start" | Step 15 **serves**. Step 16 refuses, naming `app.invoices` and `UPDATE` |
+| A3 | "None of them" gets past | **`INSERT (sequence)` gets past.** Four column tests catch the change |
+| A4 | "A table not on the map" | Right, **and** every view, materialized view, foreign table, and partitioned table. Six tests catch the change |
+| A5 | "The start-up check" | **Nothing at start-up.** Nine map tests catch the change to the code. The grant itself: step 09's database test, when someone runs it |
+
+To try A2 yourself, make a branch of `step-16`, write a `.env` for it the same way as for
+`step-16`, run `pnpm migrate`, then run the `GRANT` as the owner and `pnpm start`. Delete the
+branch afterwards.
 
 ## Build it yourself with Claude Code
 
