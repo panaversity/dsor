@@ -100,12 +100,16 @@ plan on the back room's door, checked every morning before the window opens.
 3. At start-up, the program compares the database with the map. It refuses to start on any
    difference, and names each one:
    - a schema or table that is not on the map, or one on the map that does not exist;
+   - a view, a materialized view, a foreign table, or a partitioned table: no kind allows
+     one today (decision 5);
    - a privilege more or less than the map lists, on a schema, a table, a column, or a
      sequence;
    - a table with a company key that is not locked by row-level security, enabled and
      forced.
 4. Step 09's start-up line for the log stays, as a second lock (decision 6).
-5. A database test proves that today's database matches the map exactly.
+5. A database test proves that today's database matches the map exactly. Another proves the
+   inspector can see each kind of privilege, by asking it about the tables' owner, who holds
+   them all (decision 8).
 
 **Not the outcome of this step:**
 
@@ -167,11 +171,11 @@ Checked on 2026-10-03:
 | Rule | Claim | How we know |
 | --- | --- | --- |
 | DSOR-MOD-01 | **C1.** DSoR's paperwork lives in its own store, durable and out of the agent's reach | Carried: step 09's crash test and start-up check, and step 10's C8 tests of the bound store. This step adds the map that every later kind of paperwork joins |
-| (our decision) | **C2.** Every schema and table is on the map, and everything on the map exists | Planted catalogs with one table more (`dsor.notes`), one table less, and one schema more. Each is named. On the database, today's catalog matches `store.json` exactly |
-| (our decision, for DSOR-AUD-04a) | **C3.** `dsor_runtime`'s privileges are exactly the map's, on every schema, table, column, and sequence | Planted catalogs with `UPDATE` on `app.invoices`, no `SELECT` on `app.invoices`, `INSERT` on the log's column `sequence`, `CREATE` on the schema `dsor`, and `USAGE` on the log's sequence. Each is named |
+| (our decision) | **C2.** Every schema and table is on the map, everything on the map exists, and nothing but plain tables shows rows | Planted catalogs with one table more (`dsor.notes`), one table less, one schema more, and a view, a materialized view, a foreign table, and a partitioned table. Each is named. On the database, today's catalog matches `store.json` exactly |
+| (our decision, for DSOR-AUD-04a) | **C3.** `dsor_runtime`'s privileges are exactly the map's, on every schema, table, column, and sequence | Planted catalogs with `UPDATE` on `app.invoices`, no `SELECT` on `app.invoices`, `INSERT` on the log's column `sequence`, `CREATE` on the schema `dsor`, and `USAGE` on the log's sequence. Each is named. On the database, the inspector asked about the owner sees each of these |
 | (our decision) | **C4.** Each kind allows only its own privileges, on its own side | Maps that give `app.invoices` `UPDATE`, give `dsor.audit` `UPDATE`, or put an `append-only` table in `app`. Each is refused at start-up, named |
 | DSOR-RP-01b | **C5.** Every table with a company key is locked by row-level security, enabled and forced | Planted catalogs where `app.invoices` has row-level security off, or on but not forced, and a table with a `tenant_id` column whose line in the map names no key. Each is named |
-| (our decision) | **C6.** On any difference the program refuses to start, names every problem, and makes no call | The program, started with a broken map, exits with code 1. On a throwaway branch with `GRANT UPDATE ON app.invoices`, the same |
+| (our decision) | **C6.** On any difference the program refuses to start, names every problem, and makes no call | The program, started with a broken map, exits with code 1 before it prints `operations:`. On a throwaway branch with `GRANT UPDATE ON app.invoices`, it exits with code 1 after `operations:`, and gives no answer |
 | (our decision) | **C7.** The map itself is checked | An unknown kind, an unknown side, a key written twice, or a table in a schema the map does not name. Each stops start-up, named |
 
 ### Decisions the specification leaves to us
@@ -194,7 +198,7 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
                             "runtime": { "table": ["SELECT"] } },
        "dsor.audit":      { "kind": "append-only", "tenant": "tenant",
                             "runtime": { "table": ["SELECT"],
-                                         "insert": ["record_id", "kind", "…"] } },
+                                         "columns": { "INSERT": ["record_id", "kind", "…"] } } },
        "dsor.migrations": { "kind": "bookkeeping", "tenant": null,
                             "runtime": { "table": [] } }
      }
@@ -203,9 +207,12 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 
    The log's `INSERT` is granted column by column: twelve named columns, never `sequence`
    or `at` (step 09, decisions 5 and 6). So the map names column privileges, not only table
-   ones. `public` is PostgreSQL's default room. Every user may enter it, and nothing of ours
-   lives there. *Downside:* every later step that adds a table adds a line here too.
-   Forgetting it stops start-up, which is the point.
+   ones, under `columns`, one list for each privilege. `public` is PostgreSQL's default
+   room. Every user may enter it, and nothing of ours lives there. A sequence has no line:
+   it belongs to its table, and no kind allows a privilege on one (decision 3). A company
+   key is a column named `tenant_id` or `tenant`, step 11's two names. *Downside:* every
+   later step that adds a table adds a line here too. Forgetting it stops start-up, which
+   is the point.
 2. **One database, two schemas.** `app` stands in for the company's system, and `dsor` is
    DSoR's own. They share one Neon database, as the reference profile chooses. The payoff
    comes in step 36: a business change and DSoR's record of it can commit together, or not
@@ -227,22 +234,33 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
    beside the table that needs it, with its privileges and the reason. *Downside:* no step
    can borrow a kind before the step that defines it. Step 17's draft payments need a
    company table the program can write, so step 17 will add that kind.
-4. **The check runs at start-up, and in a database test.** At start-up, the program reads
-   PostgreSQL's own catalog as `dsor_runtime`, compares it with the map, and refuses to
-   start on any difference, naming each one, the way step 09's check does. It asks
-   PostgreSQL's `has_…_privilege` functions, as step 09's test does, so a privilege held
-   through `PUBLIC` or through a role counts too. A database test proves that today's
-   database matches the map. Unit tests prove the comparison itself, with planted catalogs.
+4. **The check runs at start-up, and in a database test.** Start-up has two halves. First
+   the files: the contracts, the roles, the inputs, the labels, and now the map. A broken
+   map is refused there, before `operations:` is printed. Then the program logs in, and
+   step 09's check asks who it is. Only then does the inspector read PostgreSQL's own
+   catalog as `dsor_runtime`, compare it with the map, and refuse to start on any
+   difference, naming each one. It comes after step 09's check because a wrong login, such
+   as the owner, would make every privilege it reads someone else's. It asks PostgreSQL's
+   `has_…_privilege` functions, as step 09's test does, so a privilege held through
+   `PUBLIC` or through a role counts too. A database test proves that today's database
+   matches the map. Unit tests prove the comparison itself, with planted catalogs.
    *Downside:* a few catalog reads at every start, and one more reason the program will not
    start.
-5. **The inspector covers every schema, table, column, and sequence outside PostgreSQL's
-   own.** Names that start with `pg_`, and `information_schema`, are PostgreSQL's own (step
-   11's rule). Step 09's review found privileges hiding on a column, on a sequence, and on a
-   schema, where a list of whole-table grants could not see them. Views, materialized views,
-   foreign tables, and `SECURITY DEFINER` functions stay with step 11's catalog tests: no
-   view may read with its owner's rights, no materialized view or foreign table may exist,
-   and `dsor_runtime` may run no `SECURITY DEFINER` function. *Downside:* two places now
-   read the catalog, for different questions.
+5. **The inspector covers every schema, relation, column, and sequence outside
+   PostgreSQL's own.** Names that start with `pg_`, and `information_schema`, are
+   PostgreSQL's own (step 11's rule). Step 09's review found privileges hiding on a column,
+   on a sequence, and on a schema, where a list of whole-table grants could not see them.
+   A **relation** is anything a query can read rows from. Only plain tables have a kind
+   today, so a view, a materialized view, a foreign table, or a partitioned table stops
+   start-up. Changed on 2026-10-03, before any code: this decision first left them to step
+   11's database tests, which nothing runs before start-up. The learner asked for every
+   relation after a live run on a local PostgreSQL. Inside `org_456`, `dsor_runtime` read
+   `org_789`'s record through a view made by the owner, through the owner's materialized
+   copy, through one partition read by its own name, and through a foreign table.
+   PostgreSQL cannot lock a materialized view or a foreign table at all. A partition is a
+   table, so it needs its own line and its own forced lock. Step 11's catalog tests stay as
+   a second lock, and `SECURITY DEFINER` functions stay with them. *Downside:* two places
+   now read the catalog, and a later step that needs a view must first give it a kind.
 6. **Step 09's checks stay, as second locks.** The start-up line that names the log stays.
    The map is a file, and one wrong line in a file must not be enough to open the log. A
    guarantee is never weakened to make the code simpler. Step 09's database test of exact
@@ -252,16 +270,26 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 7. **No new migration.** The map describes the database as steps 09 to 15 left it. If the
    build finds a difference, it fixes the map, or says why the database is wrong. It never
    changes the map to hide a real problem. *Downside:* none, unless a difference is found.
+8. **The inspector is asked about a user, and the program always names itself.** Today
+   `dsor_runtime` holds no privilege on a column alone, on a sequence, or `CREATE` on a
+   schema. An inspector that never looked at sequences would still find no difference, and
+   every test would stay green. So the catalog read takes the user to ask about. The
+   program asks about `current_user`. One database test asks about the tables' owner, who
+   holds every privilege, and must see each kind. `dsor_runtime` may ask this, and needs no
+   owner's password: checked live on 2026-10-03. Chosen by the learner. *Downside:* a
+   parameter the program never sets to anything else.
 
 ### The tests, by claim
 
 - **C1:** carried. Step 09's and step 10's tests stay green.
 - **C2:** unit tests of the comparison, with planted catalogs: one table more
-  (`dsor.notes`), one table less, one schema more (`crm`). Each is named. On the database:
-  today's catalog gives no difference.
+  (`dsor.notes`), one table less, one schema more (`crm`), a view, a materialized view, a
+  foreign table, and a partitioned table. Each is named. On the database: today's catalog
+  gives no difference.
 - **C3:** unit tests: `UPDATE` on `app.invoices`; no `SELECT` on `app.invoices`; `INSERT`
   on the log's column `sequence`; `CREATE` on the schema `dsor`; `USAGE` on the log's
-  sequence. Each is named.
+  sequence. Each is named. On the database: the inspector, asked about the owner, names
+  each of these (decision 8).
 - **C4:** maps that give `app.invoices` `UPDATE`, give `dsor.audit` `UPDATE`, or put an
   `append-only` table in `app`. Each is refused when the map is checked.
 - **C5:** planted catalogs: row-level security off on `app.invoices`; on but not forced; a
@@ -269,8 +297,8 @@ Each one is this tutorial's decision, not a rule of DSoR. Each has a downside.
 - **C6:** the program, started with a broken map, exits with code 1, names every problem,
   and prints no `operations:` line. On a **throwaway Neon branch**, made from this step's
   branch and deleted afterwards: `GRANT UPDATE ON app.invoices TO dsor_runtime`, then start
-  the program. It exits with code 1, naming `app.invoices` and `UPDATE`. Never on the
-  step's own branch.
+  the program. It exits with code 1, naming `app.invoices` and `UPDATE`, and gives no
+  answer. Never on the step's own branch.
 - **C7:** maps with an unknown kind, an unknown side, a key written twice, or a table in a
   schema the map does not name. Each stops start-up, named.
 
