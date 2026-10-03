@@ -60,6 +60,9 @@ const ON_TABLES = andWithGrant([
 export const ON_COLUMNS: string[] = andWithGrant(["SELECT", "INSERT", "UPDATE", "REFERENCES"]);
 const ON_SEQUENCES = andWithGrant(["USAGE", "SELECT", "UPDATE"]);
 const ON_SCHEMAS = andWithGrant(["USAGE", "CREATE"]);
+// On the database itself, only CREATE, which makes a schema. CONNECT and TEMPORARY are
+// every user's by default, and a temporary table lives only as long as its session.
+const ON_DATABASE = andWithGrant(["CREATE"]);
 // The relations a query can read rows from, by relkind. Indexes, sequences, and the like
 // hold no rows a query reads.
 const KIND_OF: Record<string, RelationKind> = {
@@ -80,6 +83,8 @@ const CATALOG = `
   outside AS (SELECT oid, nspname FROM pg_namespace
                WHERE nspname <> 'information_schema' AND nspname !~ '^pg_')
   SELECT (SELECT name::text FROM who) AS who,
+    array(SELECT p FROM unnest($6::text[]) WITH ORDINALITY u(p, i), who w
+           WHERE has_database_privilege(w.name, current_database(), p) ORDER BY i) AS database,
     (SELECT coalesce(json_agg(json_build_object('name', o.nspname, 'held',
         array(SELECT p FROM unnest($5::text[]) WITH ORDINALITY u(p, i)
                WHERE has_schema_privilege(w.name, o.oid, p) ORDER BY i)) ORDER BY o.nspname), '[]')
@@ -128,6 +133,7 @@ type CatalogRow = {
     forced: boolean;
   })[];
   sequences: Catalog["sequences"];
+  database: string[];
   definers: string[];
 };
 
@@ -157,7 +163,7 @@ export async function readCatalog(db: pg.Pool | pg.ClientBase, user?: string): P
   // pg_class, could answer for PostgreSQL's own. SET LOCAL lasts until the transaction
   // ends (step 16's README, decision 4). Found by the review.
   await db.query("SET LOCAL search_path TO pg_catalog, pg_temp");
-  const values = [user ?? null, ON_TABLES, ON_COLUMNS, ON_SEQUENCES, ON_SCHEMAS];
+  const values = [user ?? null, ON_TABLES, ON_COLUMNS, ON_SEQUENCES, ON_SCHEMAS, ON_DATABASE];
   const row = (await db.query<CatalogRow>(CATALOG, values)).rows[0]!;
   return {
     user: row.who,
@@ -174,7 +180,7 @@ export async function readCatalog(db: pg.Pool | pg.ClientBase, user?: string): P
       }),
     ),
     sequences: row.sequences,
-    database: [],
+    database: row.database,
     definers: row.definers,
   };
 }
