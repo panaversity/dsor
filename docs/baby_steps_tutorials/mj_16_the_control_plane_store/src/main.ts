@@ -96,20 +96,32 @@ try {
   process.exit(1);
 }
 
-// The program checks who it logged in as, before any call, and refuses to
-// run as a user that could change the log. It fails closed (step 09's README, decision 17).
-const problems = await runtimeRoleProblems(pool);
+// NEW IN STEP 16: both checks below read the database, which may be out of reach. Then the
+// program stops with the database's message, never a stack trace, and answers nothing.
+// Found by the review.
+let problems: string[];
+let differences: string[];
+try {
+  // The program checks who it logged in as, before any call, and refuses to
+  // run as a user that could change the log. It fails closed (step 09's README, decision 17).
+  problems = await runtimeRoleProblems(pool);
+  // Then the database against the map. After the login check, because a wrong login
+  // would make every privilege the inspector reads someone else's (step 16's README,
+  // decision 4).
+  differences = problems.length > 0 ? [] : storeDifferences(store, await readCatalog(pool));
+} catch (error) {
+  console.error(`The database could not be checked. Refused: ${(error as Error).message}`);
+  await pool.end().catch(() => {});
+  process.exit(1);
+}
 if (problems.length > 0) {
   console.error(`DSOR_DB_URL must log in as dsor_runtime. Refused: ${problems.join("; ")}.`);
   await pool.end();
   process.exit(1);
 }
 
-// NEW IN STEP 16: then the database against the map. After the login check, because a
-// wrong login would make every privilege the inspector reads someone else's. On any
-// difference the program refuses to start, and names each one: it fails closed, as the
-// login check does (step 16's README, decision 4 and C6).
-const differences = storeDifferences(store, await readCatalog(pool));
+// NEW IN STEP 16: on any difference with the map, the program refuses to start, and names
+// each one. It fails closed, as the login check does (step 16's README, C6).
 if (differences.length > 0) {
   console.error(`The database does not match store.json. Refused:\n  ${differences.join("\n  ")}`);
   await pool.end();
