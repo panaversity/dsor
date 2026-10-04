@@ -67,6 +67,52 @@ holds. It never gets more power than that person holds at the moment of the call
 - Tearing up a slip, and cancelling its waiting work (step 25).
 - An agent that works beside a logged-in person, `on_behalf_of` (step 45).
 
+### What the specification asks, and what this step can honestly give
+
+Checked on 2026-10-05:
+
+1. **DSOR-DEL-01a asks an agent's command to run under an active slip in DSoR's store.** Step
+   17 refused every such command, because no slip existed. Now line ③ finds the slip in
+   `dsor.delegations`, for this agent, in this company.
+2. **DSOR-DEL-01b asks that token claims and scopes never widen a slip.** This tutorial's tokens
+   are plain ids that carry no claims (decision 9), and the closed envelope refuses any added
+   field. So nothing in a token can widen a slip. This holds only because the tokens are
+   plain. Signed tokens, from step 43 on, must show it again.
+3. **DSOR-DEL-02 asks for three parts at the moment of the call.** The slip is read at every
+   call. The signer's current authority comes from DSoR's role table, as loaded at start-up
+   (decision 4). The token's scopes are none (decision 9), and the slip may carry no
+   constraints yet (decision 6). So "current" means current as DSoR last loaded its role
+   table.
+4. **DSOR-DEL-07 asks every `unattended` request for a slip that allows `unattended`.** Every
+   call from the agent is `unattended` (decision 1), reads too (decision 2). Early, from step
+   19's list.
+5. **DSOR-DEL-08 asks DSoR to take the subject from the slip, never from the request.** The
+   envelope cannot name a person, and an argument that names someone else is refused at line
+   ① (step 05). The subject is the slip's delegator. Early, from step 19's list.
+6. **DSOR-DEL-09 asks DSoR to refuse when two active slips could cover a call.** Not met. The
+   database keeps one active slip per agent and company instead (decision 7).
+7. **DSOR-DEL-10 asks every record for the mode, and for the source and time of the subject's
+   authority.** Not claimed. An agent's record names its slip, the mode, the subject, and the
+   actor chain, but not the source and time (decision 8).
+8. **DSOR-IDN-07 suspends a fired person's slips.** Step 18 cannot see a firing, because
+   nothing tells DSoR. No step on the map names the rule.
+9. **DSOR-SCH-01 asks every artifact to validate against its schema.** Records and answers
+   still do not. Recorded, not claimed.
+
+### What each rule really says
+
+| Rule | Claim | How we know |
+| --- | --- | --- |
+| DSOR-DEL-01a | **C1.** An agent's command runs only under an active slip that DSoR finds in its own store, for this agent, in this company | The agent drafts PAY-901 under `del_100`. With no slip: `DELEGATION_REQUIRED`. Torn up: `DELEGATION_REVOKED`. Past its date: `DELEGATION_EXPIRED`. Suspended: `DELEGATION_REQUIRED`. A slip for another agent, or a slip in another company, covers nothing. Each refusal is recorded and leaves no draft |
+| DSOR-DEL-01b | **C2.** Nothing the agent sends, and no role in its login, widens its slip | An envelope with an added `scopes` field: `VALIDATION_FAILED`. An agent login that holds a role stops start-up, named (decision 11) |
+| DSOR-DEL-02 | **C3.** At every call, the agent may use only what its slip lists and its signer holds now, in that company | With user_123's role cut down in a second registry, the agent's draft gets `AUTHORIZATION_DENIED`, while `del_100` still lists `payment:create`. A slip without `payment:cancel`: the agent's cancel is denied, though user_123 holds it. A signer who is not a member of the company gives nothing |
+| DSOR-DEL-02 | **C4.** A slip that carries a constraint is not usable | A slip with a per-payment limit, a running-total limit, a vendor rule, a resource list, or a time window: `DELEGATION_REQUIRED`, and the message names the constraint. A slip with `constraints: {}` works |
+| DSOR-DEL-07 | **C5.** Every call from the agent, read or command, needs a slip that allows `unattended` | The agent reads INV-1008 under `del_100`. With no slip, the read gets `DELEGATION_REQUIRED`. A slip whose only mode is `on_behalf_of`: `DELEGATION_REQUIRED` for a read and for a command |
+| DSOR-DEL-08 | **C6.** The subject comes from the slip, never from the request | The record's subject is `del_100`'s delegator, user_123. An input that names cfo_100 as `subject` is refused at line ① |
+| (our decision) | **C7.** An agent's record names its slip and its person. A person's record is unchanged | The draft's record holds `delegation: del_100` and `identity` with `unattended`, user_123, and `["accounts-payable-fte"]`. A call refused at line ③ names no slip and no subject. user_123's own draft has neither field |
+| (our decision) | **C8.** `dsor.delegations` is on `store.json` with its own kind, has row-level security by company, and holds one active slip per agent and company | Today's catalog matches `store.json`. As `dsor_runtime` in org_456, org_789's slip is invisible. The database refuses a second active slip for the same agent and company |
+| (step 17's open list) | **C9.** An agent's command answer is masked, as its reads are | The agent's PAY-901 answer leaves out the amount, and names it in `redactions` |
+
 ### Decisions the specification leaves to us
 
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside. The learner
@@ -144,9 +190,69 @@ makes them one at a time.
     changed records for step 39's demo. So the build starts by deleting `step-10`, at the
     learner's yes. *Downside:* step 10's database tests cannot run on Neon again until someone
     makes a fresh branch from `main` and runs its migrations.
+11. **An agent login that holds a role stops start-up.** Decision 2 takes the agent's own role
+    away. So each agent's line in DSoR's login table lists its companies with no roles. Start-up
+    refuses an agent that holds any role, and names it, as it has refused an unknown role since
+    step 06. So an agent's power can come only from a slip, and line ⑤ never weighs a role
+    against a slip. `firm-ap-fte` still gets different power in each company, from each
+    company's slip. *Downside:* old tests that plant agents with roles change, and
+    `firm-ap-fte` loses its `ap_supervisor` role in org_789.
 
-_Next session: the rules split into claims, the tests by claim, and the learner's story
-predictions for the breaks._
+### The tests, by claim
+
+- **C1:** the agent's draft under `del_100` succeeds. With no slip, a torn-up slip, a slip whose
+  status is `expired`, a slip whose `expires_at` has passed, and a suspended slip, each call is
+  refused with its code, recorded, and leaves no draft. A slip for another agent covers nothing.
+  A person who works in both companies signs a slip in org_789, and the agent's call in org_456
+  is refused.
+- **C2:** an envelope with `scopes`: `VALIDATION_FAILED`. Start-up with an agent login that holds
+  a role exits with code 1, named, before `operations:`.
+- **C3:** a second registry whose role table no longer gives user_123 `payment:create`: the
+  agent's draft gets `AUTHORIZATION_DENIED`, and its record says so. A slip without
+  `payment:cancel`: the agent's cancel is denied. A slip in org_456 signed by user_700, who works
+  only in org_789: every call is denied.
+- **C4:** one slip for each of the five constraint fields: `DELEGATION_REQUIRED`, and the message
+  names the field. `constraints: {}`: the draft is made.
+- **C5:** the agent's read under `del_100` is answered, with the amount left out. With no slip, the
+  read is refused. With a slip whose only mode is `on_behalf_of`, the read and the draft are
+  refused.
+- **C6:** the record's subject is user_123. An input with `"subject": "cfo_100"` is refused at
+  line ①, and no slip is looked up.
+- **C7:** the draft's record holds `delegation` and `identity`. A record of a refusal at line ③
+  holds neither. user_123's own draft's record holds neither.
+- **C8:** the database test that today's catalog matches `store.json`, with `dsor.delegations`. As
+  `dsor_runtime` in org_456, a read of org_789's slip finds no row. A second active slip for the
+  same agent and company is refused by the database. A torn-up slip beside an active one is
+  allowed. The owner, whom row-level security does not stop, runs the slip store for org_456
+  and finds only org_456's slip, so DSoR's own filter is tested too (DSOR-TEN-01b), as step
+  17's payments store is.
+- **C9:** the agent's PAY-901 answer has no amount, and `redactions` names `amount`.
+
+### Breaks we will try, and what we expect
+
+Run against the finished step. The learner's predictions are recorded before any code, as
+stories: what the agent hears, and what the database holds after. All four predictions describe
+DSoR with the deleted check still in place. So the build runs each break as a pair: the
+learner's case beside the real one.
+
+| # | The break | Expected to be caught by | Learner's prediction |
+| --- | --- | --- | --- |
+| B1 | Line ⑤ uses the slip's list alone, and skips the signer's current rights. user_123 lost `payment:create`, and the agent asks for a draft | C3. With B1 nothing reads user_123's rights, so the draft is made, with the amount hidden | `AUTHORIZATION_DENIED`, and no draft |
+| B2 | Line ③ ignores the slip's modes. The only slip says `on_behalf_of`, and the agent reads INV-1008 at night | C5. With B2 nothing reads the modes, so the read is answered, with the amount hidden | `DELEGATION_REQUIRED` |
+| B3 | The slip lookup ignores the company. `firm-ap-fte` has a slip only in org_789, signed by user_700, and asks for a draft in org_456 | C1. In memory, line ③ finds org_789's slip, and line ⑤ answers `AUTHORIZATION_DENIED`, because user_700 holds nothing in org_456: a second lock, shown by a sketch on 2026-10-05. With a signer who works in both companies, a draft would be made. On the database, row-level security also hides the slip (C8) | `DELEGATION_REQUIRED` |
+| B4 | Line ③ ignores the slip's status and date. `del_100` is torn up, and the agent asks for a draft | C1. With B4 nothing reads the status, so the torn-up slip passes line ③, line ⑤ allows `payment:create`, and the draft is made, with the amount hidden | `DELEGATION_REVOKED`, and no draft |
+
+### Left open, and not this step's idea
+
+- **Two active slips** (DSOR-DEL-09): no step on the map. The database prevents them (decision 7).
+- **The source and time of the subject's authority** (DSOR-DEL-10): step 45 (decision 8).
+- **A fired person's slips** (DSOR-IDN-07): no step on the map. Proposed for step 19.
+- **Signing a slip through DSoR:** no step on the map. Proposed in `../mj_notes.md`.
+- **Constraints:** limits from step 24. Vendors and the time window have no step (decision 6).
+- **A change to the role table** counts after a restart, until step 19's directory (decision 4).
+- **Token scopes:** with signed tokens, from step 43 on (decision 9).
+- **Tearing up a slip, and cancelling its waiting work:** step 25.
+- **Subdelegation** (DSOR-DEL-05a to 05d): no step on the map.
 
 ## Before you build: set up Neon
 
@@ -184,7 +290,30 @@ _To be written when the code exists._
 
 ## Check yourself
 
-_To be written with the design._
+1. `del_100` lists `payment:create`, but user_123 lost that right yesterday. What does the agent
+   hear when it asks for a draft, and which line answers?
+2. In step 17 the agent read invoices with no slip. Why does a read need a slip in step 18?
+3. At 2 a.m. the agent calls as itself. Where does DSoR find the person it works for, and why
+   never in the request?
+4. Why can a slip carry no limit in step 18?
+5. Two people each sign an active slip for the agent. Why must DSoR not use "the first" one?
+
+<details>
+<summary>Answers</summary>
+
+1. `AUTHORIZATION_DENIED`, from line ⑤. Line ③ finds a usable slip. Line ⑤ allows only what the
+   slip lists and user_123 holds now, and user_123 no longer holds `payment:create`
+   (DSOR-DEL-02).
+2. The agent calls as itself, with no person present, so every call is `unattended`. DSOR-DEL-07
+   accepts an `unattended` request, read or command, only under a slip that allows it.
+3. In the slip: its delegator is the subject (DSOR-DEL-08). A request comes from the agent, and
+   DSoR never takes the agent's word for whose authority it carries.
+4. Nothing checks a limit until step 24. A slip that promised a limit that nobody checks would
+   let the agent pass it, so step 18 refuses any slip that carries one.
+5. The order of rows in a table would decide whose name goes on a payment. DSOR-DEL-09 refuses
+   such a call instead. Step 18's database allows only one active slip per agent and company.
+
+</details>
 
 ## Think it through
 
