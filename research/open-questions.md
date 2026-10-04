@@ -421,3 +421,28 @@ for a human. An agent may gather evidence; it does not settle these alone.
     passes. The learner builds now pin the search path to `pg_catalog` in a transaction of
     their own, and their tests plant look-alikes. Should the reference profile require
     that every security check reads PostgreSQL's own catalog?
+64. **May a list of undo operations be empty?** The contract schema makes a
+    `compensatable` or `saga` command write `execution.compensated_by`, the operations
+    that undo it. It accepts `[]`, a name with no contract, and an operation that no role
+    may run. In each case the command says "can be undone", and nothing can undo it. Step
+    03's review found the empty list. Step 17's learner build refuses all three at
+    start-up. Should DSOR-EXE-05c say that the list names at least one command that DSoR
+    can run to the end, and that someone may run?
+65. **What does a caller hear when the record fails after a command ran?** DSOR-EXE-03b
+    says DSoR must not execute when its store cannot accept the decision record, and the
+    caller receives `EVIDENCE_STORE_UNAVAILABLE`. Its retry class, `safe_same_key`, is true
+    when nothing ran. Step 17's learner build writes a draft payment first and its record
+    after, so a failed record leaves the draft behind. Then a retry with no idempotency key
+    writes a second draft. DSOR-ERR-02 forbids `safe_same_key` for a command "unless the
+    side effect provably did not occur", but it names a connector error, and this is the
+    evidence store's. The build answers `INTERNAL_ERROR`, whose retry class is `never`.
+    Should §28 say which code applies when the evidence store fails after a side effect? Or
+    does the intent record of DSOR-EXE-03a, written before the side effect, mean that a
+    conforming DSoR never meets this case?
+66. **Is a payment's link to its invoice named `invoice` or `invoice_id`?** §6 names a
+    link with `_id`: an invoice holds `vendor_id`. §7's example contract for
+    `payment.execute` binds `invoice: state.payment.invoice` and
+    `vendor: state.payment.vendor`, which read fields named `invoice` and `vendor`. Step
+    17's learner build follows §6, with `invoice_id` and `vendor_id`. Should §7's example
+    read `state.payment.invoice_id`, or should §7 say how a bind follows a link to another
+    record?
