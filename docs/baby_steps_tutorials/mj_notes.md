@@ -453,6 +453,11 @@ the official tutorial's. A learner build does not change either. A maintainer de
   So for one step, a payment can be sent and leave no record. AGENTS.md lists
   DSOR-EXE-03b among the six rules that are easiest to break. Step 36 could come before
   step 35, or step 35 could start with the note.
+- **The build skill's questions** (`00_foundation`'s `build-baby-step`, learner mode). It
+  says to ask "which new tests will pass before any code exists". Step 17's copy now asks
+  what DSoR does in the story, never about tests, and settles each answer with a real run
+  (2690f49). See "Guessing test counts did not teach" above. The official skill could say
+  the same.
 - **Seven delegation rules have no step on the map.** A scan of the map against
   `requirements.json` on 2026-10-04 found no step for DSOR-IDN-07 (a fired person's slips
   are suspended), DSOR-DEL-09 (two slips and no name is a refusal), DSOR-DEL-04b
