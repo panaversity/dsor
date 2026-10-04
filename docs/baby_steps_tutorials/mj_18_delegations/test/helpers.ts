@@ -13,6 +13,7 @@ import { readClassifications, type ClassificationSource } from "../src/labels.ts
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
+import { memorySlips, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
 import {
   buildRegistry,
@@ -305,7 +306,56 @@ export function registryRunning(
     shippedInputs,
     labels,
     store,
+    undefined,
+    // NEW IN STEP 18: the story's slips, so the agent calls as before (step 18's README,
+    // decision 2).
+    storySlips(),
   );
+}
+
+// NEW IN STEP 18: the story's three slips, typed out again from step 18's README and
+// migration 010 rather than read from src. Each runs until 2099, so no test stops working
+// when a date passes (step 18's README, decision 12). firm-ap-fte has one slip in each
+// company, with the power its roles gave it before (decisions 2 and 11).
+/** A slip of the story, in the specification's shape, as a test may change it. */
+export type StorySlip = {
+  id: string;
+  tenant: string;
+  delegator: string;
+  delegate: string;
+  modes: string[];
+  permissions: string[];
+  constraints: Record<string, unknown>;
+  subdelegation: { allowed: boolean };
+  status: string;
+  expires_at: string;
+};
+export const DEL_100: StorySlip = {
+  id: "del_100",
+  tenant: "org_456",
+  delegator: "user_123",
+  delegate: "accounts-payable-fte",
+  modes: ["unattended"],
+  permissions: ["invoice:read", "payment:create"],
+  constraints: {},
+  subdelegation: { allowed: false },
+  status: "active",
+  expires_at: "2099-12-31T23:59:59Z",
+};
+export const DEL_101: StorySlip = { ...DEL_100, id: "del_101", delegate: "firm-ap-fte" };
+export const DEL_102: StorySlip = {
+  ...DEL_100,
+  id: "del_102",
+  tenant: "org_789",
+  delegator: "user_700",
+  delegate: "firm-ap-fte",
+  permissions: ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"],
+};
+export const STORY_SLIPS: readonly StorySlip[] = [DEL_100, DEL_101, DEL_102];
+
+/** The story's slips, in a store of their own. */
+export function storySlips(): SlipStore {
+  return memorySlips(STORY_SLIPS);
 }
 
 /** A log for the tests that do not read it. Each test that reads one makes its own. */
@@ -329,6 +379,8 @@ export const registry: Registry = buildRegistry(
   // And payments in memory, which the commands write (step 17's README,
   // outcome 1). One list for every test that uses this registry.
   memoryPayments(),
+  // NEW IN STEP 18: and the story's slips (step 18's README, decision 2).
+  storySlips(),
 );
 
 /**
@@ -340,6 +392,8 @@ export function paymentRegistry(
   rows: Payment[],
   sources: ContractSource[] = shipped,
   code: Record<string, Handler> = handlers,
+  // NEW IN STEP 18: the story's slips, unless the test gives others.
+  slips: SlipStore = storySlips(),
 ): Registry {
   return buildRegistry(
     sources,
@@ -349,6 +403,25 @@ export function paymentRegistry(
     shippedLabels,
     memoryInvoices(),
     memoryPayments(rows),
+    slips,
+  );
+}
+
+/** The shipped operations, with these slips, this role table, and these payments. */
+export function slipRegistry(
+  slips: SlipStore = storySlips(),
+  roles: RoleSource = shippedRoles,
+  rows: Payment[] = [],
+): Registry {
+  return buildRegistry(
+    shipped,
+    handlers,
+    roles,
+    shippedInputs,
+    shippedLabels,
+    memoryInvoices(),
+    memoryPayments(rows),
+    slips,
   );
 }
 

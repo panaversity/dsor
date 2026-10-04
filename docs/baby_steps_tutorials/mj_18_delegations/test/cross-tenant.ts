@@ -7,9 +7,10 @@ import { isDeepStrictEqual } from "node:util";
 import { checkDelegation } from "../src/delegation.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { DecisionLog } from "../src/log.ts";
-import { permissionsOf } from "../src/permissions.ts";
+import { effectivePermissions } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { logins, type Principal } from "../src/principals.ts";
+import type { Slip } from "../src/slips.ts";
 import {
   readContracts,
   type Contract,
@@ -70,8 +71,12 @@ function permissionOf(registry: Registry, operation: string): unknown {
   return (authorization as { permission?: unknown } | undefined)?.permission;
 }
 
-/** Every principal that line ③ lets call the operation, and whose roles in this company grant its permission. */
-export function attackersOf(registry: Registry, operation: string, home: string): Attacker[] {
+/** Every principal that lines ③ and ⑤ let call the operation in this company. */
+export async function attackersOf(
+  registry: Registry,
+  operation: string,
+  home: string,
+): Promise<Attacker[]> {
   const permission = permissionOf(registry, operation);
   const contract = registry.contracts.get(operation);
   const attackers: Attacker[] = [];
@@ -84,8 +89,13 @@ export function attackersOf(registry: Registry, operation: string, home: string)
     // URI's company is checked. The suite asks line ③'s own question, so an agent that a
     // delegation lets through in step 18 attacks again, with no change here (step 17's
     // README, "Think it through").
-    if (!passesLineThree(principal, contract)) continue;
-    if (permissionsOf(principal, registry.roles, home).has(permission)) {
+    // NEW IN STEP 18: with the registry's slips, in this company. An agent with a slip here
+    // attacks, as step 17's README said it would.
+    const lineThree = await passesLineThree(principal, contract, registry, home);
+    if (!lineThree.passes) continue;
+    // And line ⑤'s own question: a person's roles, or an agent's slip cut down to its signer
+    // (DSOR-DEL-02).
+    if (effectivePermissions(principal, registry.roles, home, lineThree.slip).has(permission)) {
       attackers.push({ id: principal.id, token });
     }
   }
@@ -93,12 +103,17 @@ export function attackersOf(registry: Registry, operation: string, home: string)
 }
 
 // Whether line ③ lets this caller call the operation at all.
-function passesLineThree(principal: Principal, contract: Contract): boolean {
+async function passesLineThree(
+  principal: Principal,
+  contract: Contract,
+  registry: Registry,
+  home: string,
+): Promise<{ passes: boolean; slip: Slip | undefined }> {
   try {
-    checkDelegation(principal, contract);
-    return true;
+    const slip = await checkDelegation(principal, contract, registry.delegations, home);
+    return { passes: true, slip };
   } catch {
-    return false;
+    return { passes: false, slip: undefined };
   }
 }
 
@@ -172,7 +187,7 @@ export async function crossTenantSuite(
     }
     let everywhere = example !== undefined;
     for (const home of HOMES) {
-      const attackers = attackersOf(registry, operation, home);
+      const attackers = await attackersOf(registry, operation, home);
       if (attackers.length === 0) {
         const permission = String(permissionOf(registry, operation));
         const why = `nobody in ${home} holds ${permission}, so nobody can attack it there`;
@@ -407,7 +422,7 @@ async function answersWithPage(
 ): Promise<boolean> {
   // Only a query is asked. A command that runs would change something. Found by the review.
   if (registry.contracts.get(operation)?.["kind"] !== "query") return false;
-  const first = attackersOf(registry, operation, WRITTEN_IN)[0];
+  const first = (await attackersOf(registry, operation, WRITTEN_IN))[0];
   if (first === undefined) return false;
   const request = { token: first.token, tenant: WRITTEN_IN };
   const answer = await send(registry, log, request, operation, example);

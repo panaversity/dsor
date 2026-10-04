@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { createDbInvoices, createDbPayments, requireEnv } from "../src/postgres.ts";
+import { createDbInvoices, createDbPayments, createDbSlips, requireEnv } from "../src/postgres.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Registry } from "../src/registry.ts";
 import { shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
@@ -31,6 +31,8 @@ export function dbRegistry(pool: pg.Pool): Registry {
     createDbInvoices(pool),
     // And the payments the commands write (step 17's README, outcome 1).
     createDbPayments(pool),
+    // NEW IN STEP 18: and the slips, in dsor.delegations (step 18's README, decision 3).
+    createDbSlips(pool),
   );
 }
 
@@ -101,6 +103,13 @@ function asOwner(program: string, args: string[] = []): unknown {
   const run = spawnSync(process.execPath, [file, ...args], { encoding: "utf8", timeout: 60_000 });
   if (run.status !== 0) throw new Error(`${program} failed: ${run.stderr}`);
   return JSON.parse(run.stdout);
+}
+
+// NEW IN STEP 18: the owner writes the slips a test needs, and asks DSoR's slip store with
+// no policy behind it (test/owner-slips.ts).
+/** What the owner's slip program printed, for these words. */
+export function ownerSlips(...args: string[]): unknown {
+  return asOwner("owner-slips.ts", args);
 }
 
 /** Every row of dsor.audit with this request id, read by the owner. */

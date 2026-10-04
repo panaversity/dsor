@@ -132,12 +132,14 @@ export async function call(
     //   step 18, so it is refused here (DSOR-DEL-01a; step 17's README, decision 5). Before
     //   line ⑤, so a permission alone never lets an agent change anything. The actor chain
     //   and current authority: not checked yet, steps 18 and 19.
-    line(3, () => checkDelegation(caller, contract));
+    const slip = await line(3, () =>
+      checkDelegation(caller, contract, registry.delegations, tenant),
+    );
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).
     // Only the caller's roles in the active company count.
-    line(5, () => checkPermission(caller, contract, registry.roles, tenant));
+    line(5, () => checkPermission(caller, contract, registry.roles, tenant, slip));
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
     //   computing its payload hash: not built yet, step 29.

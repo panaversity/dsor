@@ -38,7 +38,14 @@ export type Decision = {
   row_count?: number;
   // Which connector served the read, in the audit record's own field.
   connector?: string;
+  // NEW IN STEP 18: an agent's call names the slip it ran under, and the person who signed
+  // it, in the audit record's own fields (step 18's README, decision 8).
+  delegation?: string;
+  identity?: { mode: "unattended"; subject: string; actor_chain: string[] };
 };
+
+/** Whose authority an agent's call ran under: its slip, the person who signed it, and the agent. */
+export type Authority = { delegation: string; subject: string; actor: string };
 
 // What a query's answer returned, for its record (step 14's README,
 // decision 7).
@@ -97,6 +104,8 @@ export function decisionOf(
   claimed: string | undefined,
   // What the answer returned, when it returned data.
   read?: Read,
+  // The slip an agent's call ran under, once line ③ found it.
+  _under?: Authority,
 ): Decision {
   const refused = "code" in answer;
   return {

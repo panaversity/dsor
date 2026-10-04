@@ -452,27 +452,27 @@ describe("C2: the three foreign answers are the same, apart from the request id"
 });
 
 describe("C3: every principal who may call the operation attacks it, from each company", () => {
-  it("DSOR-IDN-03b: in org_456, invoice.get is attacked by all four readers, the firm's agent included", () => {
-    const ids = attackersOf(registry, "invoice.get", "org_456").map((attacker) => attacker.id);
+  it("DSOR-IDN-03b: in org_456, invoice.get is attacked by all four readers, the firm's agent included", async () => {
+    const ids = (await attackersOf(registry, "invoice.get", "org_456")).map((attacker) => attacker.id);
     expect(ids).toStrictEqual(READERS_456);
   });
 
   // The firm's agent may issue in org_789, and not in org_456, so it is no attacker here.
-  it("DSOR-IDN-03b: in org_456, invoice.issue is attacked by user_123 alone", () => {
-    const ids = attackersOf(registry, "invoice.issue", "org_456").map((attacker) => attacker.id);
+  it("DSOR-IDN-03b: in org_456, invoice.issue is attacked by user_123 alone", async () => {
+    const ids = (await attackersOf(registry, "invoice.issue", "org_456")).map((attacker) => attacker.id);
     expect(ids).toStrictEqual(["user_123"]);
   });
 
   // Found by the review: the suite worked in org_456 only, the firm's first company.
-  it("DSOR-IDN-03b: in org_789, invoice.get is attacked by the firm's agent and user_700", () => {
-    const ids = attackersOf(registry, "invoice.get", "org_789").map((attacker) => attacker.id);
+  it("DSOR-IDN-03b: in org_789, invoice.get is attacked by the firm's agent and user_700", async () => {
+    const ids = (await attackersOf(registry, "invoice.get", "org_789")).map((attacker) => attacker.id);
     expect(ids).toStrictEqual(READERS_789);
   });
 
   // The firm's agent may issue in org_789, but line ③ refuses an agent's command before the
   // URI's company is checked, so it would prove nothing (step 17's README, decision 5).
-  it("DSOR-IDN-03b: in org_789, invoice.issue is attacked by user_700 alone", () => {
-    const ids = attackersOf(registry, "invoice.issue", "org_789").map((attacker) => attacker.id);
+  it("DSOR-IDN-03b: in org_789, invoice.issue is attacked by user_700 alone", async () => {
+    const ids = (await attackersOf(registry, "invoice.issue", "org_789")).map((attacker) => attacker.id);
     expect(ids).toStrictEqual(["user_700"]);
   });
 
@@ -483,8 +483,8 @@ describe("C3: every principal who may call the operation attacks it, from each c
     ["org_789", "user_700"],
   ])(
     "step 17's decision 5: in %s, payment.create is attacked by %s alone: line ③ stops the agents first",
-    (home, person) => {
-      const ids = attackersOf(registry, "payment.create", home).map((attacker) => attacker.id);
+    async (home, person) => {
+      const ids = (await attackersOf(registry, "payment.create", home)).map((attacker) => attacker.id);
       expect(ids).toStrictEqual([person]);
     },
   );

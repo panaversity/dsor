@@ -502,6 +502,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         invoices: registry.invoices,
         // And no payments (step 17's README, outcome 1).
         payments: NO_PAYMENTS,
+        // And the story's slips (step 18's README, decision 2).
+        delegations: registry.delegations,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

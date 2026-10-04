@@ -32,6 +32,7 @@ import {
   createDbInvoices,
   createDbLog,
   createDbPayments,
+  createDbSlips,
   loadDotEnv,
   openPool,
   requireEnv,
@@ -78,6 +79,9 @@ try {
     createDbInvoices(pool),
     // And the payments the commands write, in app.payments.
     createDbPayments(pool),
+    // NEW IN STEP 18: and the permission slips, in dsor.delegations (step 18's README,
+    // decision 3).
+    createDbSlips(pool),
   );
   // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).

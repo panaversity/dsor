@@ -6,6 +6,7 @@ import { Refusal } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
 import type { Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
+import type { Slip } from "./slips.ts";
 
 /** The role table, as it was read from disk: its file name and its text. */
 export type RoleSource = { file: string; text: string };
@@ -98,6 +99,16 @@ export function permissionsOf(
   return held;
 }
 
+/** What this caller may do in this company. Step 18's red commit: its roles, as before. */
+export function effectivePermissions(
+  caller: Principal,
+  roles: Roles,
+  tenant: string,
+  _slip?: Slip,
+): ReadonlySet<string> {
+  return permissionsOf(caller, roles, tenant);
+}
+
 /** Refuses the call unless the caller holds the very permission the contract names. */
 export function checkPermission(
   caller: Principal,
@@ -105,6 +116,7 @@ export function checkPermission(
   roles: Roles,
   // The active company.
   tenant: string,
+  _slip?: Slip,
 ): void {
   const name = JSON.stringify(contract.id);
   const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;

@@ -11,6 +11,7 @@ import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import type { Decision, DecisionLog, DecisionRecord } from "./log.ts";
 import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
+import type { SlipStore } from "./slips.ts";
 
 // The step's own .env, found from this file, so the program finds it whatever folder it
 // is started from. Found by step 06's review, for roles.json.
@@ -432,4 +433,9 @@ export async function runtimeRoleProblems(db: pg.Pool | pg.ClientBase): Promise<
        FROM pg_roles r WHERE r.rolname = current_user`,
   );
   return problemsOf(rows[0]!);
+}
+
+/** The slips, read from dsor.delegations. Step 18's red commit: none yet. */
+export function createDbSlips(_pool: pg.Pool): SlipStore {
+  return Object.freeze({ find: async () => undefined });
 }

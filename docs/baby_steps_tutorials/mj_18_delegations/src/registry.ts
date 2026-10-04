@@ -17,6 +17,7 @@ import { maskingProblems } from "./masking.ts";
 import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { undoProblems } from "./semantics.ts";
+import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { logins } from "./principals.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
@@ -49,6 +50,9 @@ export type Registry = {
   // The store the commands write, held beside the invoices (step 17's
   // README, outcome 1). Only the pipeline uses it, as it uses the invoices.
   payments: PaymentStore;
+  // NEW IN STEP 18: the permission slips, held in DSoR's own store. Only line ③ reads them
+  // (DSOR-DEL-01a; step 18's README, decision 3).
+  delegations: SlipStore;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -103,6 +107,9 @@ export function buildRegistry(
   // The store of payments. Without one, every write fails, as every read
   // fails without a store of invoices.
   payments: PaymentStore = NO_PAYMENTS,
+  // NEW IN STEP 18: the store of slips. Without one, no agent holds a slip, so every call
+  // from an agent is refused at line ③.
+  delegations: SlipStore = NO_SLIPS,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -186,7 +193,16 @@ export function buildRegistry(
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
-  return { contracts, handlers: code, roles, inputs, classifications: kinds, invoices, payments };
+  return {
+    contracts,
+    handlers: code,
+    roles,
+    inputs,
+    classifications: kinds,
+    invoices,
+    payments,
+    delegations,
+  };
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

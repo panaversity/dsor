@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
 import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
 import { NO_PAYMENTS } from "../src/payment.ts";
+import { NO_SLIPS } from "../src/slips.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
@@ -110,6 +111,8 @@ describe("C1: nothing can be called without a contract", () => {
       // And the store its commands write. This one writes nothing (step 17's README,
       // outcome 1).
       payments: NO_PAYMENTS,
+      // And the slips. This one holds none (step 18's README, decision 3).
+      delegations: NO_SLIPS,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
