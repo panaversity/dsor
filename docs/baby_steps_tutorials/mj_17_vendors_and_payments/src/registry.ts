@@ -150,15 +150,15 @@ export function buildRegistry(
     code.set(name, handler);
   }
 
-  // NEW IN STEP 17: every undo a contract names is a real command that DSoR can run, so a
-  // label that says "can be undone" is true (DSOR-EXE-05c; step 17's README, decision 8).
-  // Its problems are named with the others.
-  problems.push(...undoProblems(contracts, code));
-
   // The role table, and every role in DSoR's table of logins, are checked too. Their
   // problems are named with the contracts' problems (DSOR-AUT-01a).
   const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
   problems.push(...roleProblems);
+  // NEW IN STEP 17: every undo a contract names is a real command that DSoR can run, and
+  // that some role may run, so a label that says "can be undone" is true (DSOR-EXE-05c; step
+  // 17's README, decision 8). After the roles, which it reads. Its problems are named with
+  // the others.
+  problems.push(...undoProblems(contracts, code, roles));
   // And every clearance in the table must be one of the four labels, or none, and every
   // type one of the four kinds of caller (step 14's README, decisions 2 and 5). Found by the
   // Stage 2 review, and fixed from step 14 on.

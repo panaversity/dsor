@@ -1,6 +1,7 @@
 // NEW IN STEP 17: execution semantics, the label that answers "can this be undone?".
 // Every command declares one in its contract (DSOR-EXE-05a), and its answer states it
 // (DSOR-EXE-05b). specs/dsor/03-execution.md, section 24.
+import type { Roles } from "./permissions.ts";
 import type { Contract } from "./registry.ts";
 
 /** The five labels of §24, written as common.schema.json writes them, in lower case. */
@@ -30,12 +31,14 @@ export function semanticsOf(contract: Contract): Semantics {
 
 /**
  * Every problem with the undo lists the contracts write. A list must name at least one
- * operation, and each must be another command, with a contract and with code, so that DSoR
- * can run it through the whole checklist (DSOR-EXE-05c; step 17's README, decision 8).
+ * operation, and each must be another command, with a contract and with code, whose
+ * permission some role grants, so that DSoR can run it through the whole checklist
+ * (DSOR-EXE-05c; step 17's README, decision 8).
  */
 export function undoProblems(
   contracts: ReadonlyMap<string, Contract>,
   code: ReadonlyMap<string, unknown>,
+  roles: Roles,
 ): string[] {
   const problems: string[] = [];
   for (const contract of contracts.values()) {
@@ -51,7 +54,7 @@ export function undoProblems(
       continue;
     }
     for (const name of list as string[]) {
-      const why = whyNotAnUndo(name, contract.id, contracts, code);
+      const why = whyNotAnUndo(name, contract.id, contracts, code, roles);
       if (why !== undefined) {
         problems.push(`${contract.id}: compensated_by names ${JSON.stringify(name)}, ${why}`);
       }
@@ -66,6 +69,7 @@ function whyNotAnUndo(
   undone: string,
   contracts: ReadonlyMap<string, Contract>,
   code: ReadonlyMap<string, unknown>,
+  roles: Roles,
 ): string | undefined {
   if (name === undone) return "which is the operation itself";
   const undo = contracts.get(name);
@@ -75,5 +79,11 @@ function whyNotAnUndo(
   if (undo["kind"] !== "command") return "which is a query";
   // A contract with no code cannot be run, so it cannot undo anything.
   if (!code.has(name)) return "which has no code";
+  // An undo that nobody may run undoes nothing, whoever asks. One role is enough. Found by
+  // step 17's review: with payment:cancel taken from every role, payment.create still said
+  // "compensatable", and every cancel was refused.
+  const needed = (undo["authorization"] as { permission?: unknown } | undefined)?.permission;
+  const granted = [...roles.values()].some((grants) => grants.has(String(needed)));
+  if (!granted) return "which no role may run";
   return undefined;
 }
