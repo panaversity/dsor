@@ -335,3 +335,50 @@ describe("the company the code is given writes only while its call runs", () => 
     expect(rows).toStrictEqual([PAY_901_DRAFT]);
   });
 });
+
+// NEW IN STEP 17: B1 showed it. A command writes at line ⑨ and its record fails at line ⑪,
+// so the side effect happened. EVIDENCE_STORE_UNAVAILABLE would tell the caller a retry is
+// safe, and with no idempotency key until step 20, a retry writes a second draft. DSOR-ERR-02
+// forbids such an answer for a command unless the side effect provably did not occur. Once a
+// command's code has run, DSoR cannot prove that, so it answers INTERNAL_ERROR, which is
+// never retried (step 17's README, decision 17).
+describe("decision 17: once a command's code has run, a failed record is never answered as safe to retry", () => {
+  const brokenLog = {
+    add: async (): Promise<never> => {
+      throw new Error("disk full");
+    },
+  };
+  const AFTER_IT_RAN =
+    "DSoR could not record its decision after the command ran, so a retry is not safe";
+
+  it("step 17's decision 17: payment.create's draft is written and its record fails: INTERNAL_ERROR, retry never", async () => {
+    const rows: Payment[] = [];
+    const answer = await call(paymentRegistry(rows), brokenLog, SUPERVISOR, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", AFTER_IT_RAN, THE_SUPERVISOR));
+    // The known gap of decision 1: the draft stays, with no record, until step 36.
+    expect(rows).toStrictEqual([PAY_901_DRAFT]);
+  });
+
+  // The code refused, but DSoR cannot see whether it wrote first, so the answer is the same.
+  it("step 17's decision 17: a command whose code refused, with a failed record: INTERNAL_ERROR too", async () => {
+    const answer = await call(paymentRegistry([]), brokenLog, SUPERVISOR, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1001",
+    });
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", AFTER_IT_RAN, THE_SUPERVISOR));
+  });
+
+  // Refused before its code ran, nothing happened, so a retry is safe, and it says so.
+  it("DSOR-EXE-03b: a command refused before its code, with a failed record: EVIDENCE_STORE_UNAVAILABLE", async () => {
+    const answer = await call(paymentRegistry([]), brokenLog, AGENT, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    expect(answer).toStrictEqual({
+      code: "EVIDENCE_STORE_UNAVAILABLE",
+      message: "DSoR could not record its decision, so it refuses the call",
+      retry: "safe_same_key",
+      correlation: correlationFor(THE_AGENT),
+    });
+  });
+});

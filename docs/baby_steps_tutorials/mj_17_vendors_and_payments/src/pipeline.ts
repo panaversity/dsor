@@ -261,6 +261,14 @@ export async function call(
       ),
     );
   } catch {
+    // NEW IN STEP 17: a command whose code ran may have changed something, and DSoR cannot
+    // prove it did not. So its answer never says a retry is safe: with no idempotency key
+    // until step 20, a retry could write a second draft (the reason behind DSOR-ERR-02;
+    // step 17's README, decision 17). Found by break B1.
+    if (reachedCode && registry.contracts.get(name)?.["kind"] !== "query") {
+      const ran = "DSoR could not record its decision after the command ran, so a retry is not safe";
+      return toEnvelope(new Refusal("INTERNAL_ERROR", ran), answer.correlation);
+    }
     // DSOR-EXE-03b, an L2 rule built early: with no record, there is no answer, not even a
     // "yes". Whatever the log threw stays inside: it can name paths and servers. This
     // refusal cannot be recorded, because the log is what failed (step 08's README,
