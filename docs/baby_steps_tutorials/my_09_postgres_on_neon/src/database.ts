@@ -56,18 +56,25 @@ const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
  * preference, so the program refuses to start rather than writing a log it could quietly edit.
  */
 export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
-  const { rows } = await db.query<{ who: string; may: boolean }>(
+  const held = (role: string): string =>
+    FORBIDDEN.map((p) => `has_table_privilege(${role}, 'public.audit', '${p}')`).join(" OR ");
+  const { rows } = await db.query<{ who: string; may: boolean; may_by_set_role: boolean }>(
     `SELECT current_user AS who,
-            ${FORBIDDEN.map(
-              (p) => `has_table_privilege(current_user, 'public.audit', '${p}')`,
-            ).join(" OR ")} AS may`,
+            ${held("current_user")} AS may,
+            EXISTS (
+              SELECT 1 FROM pg_roles r
+              WHERE r.rolname <> current_user
+                AND pg_has_role(current_user, r.oid, 'MEMBER')
+                AND (${held("r.oid")})
+            ) AS may_by_set_role`,
   );
 
   const answer = rows[0];
 
   // No row at all means the question was not answered, and an unanswered question about a
-  // guarantee is not a yes. Fail closed (AGENTS.md: never weaken a guarantee to simplify).
-  if (answer === undefined) {
+  // guarantee is not a yes. Fail closed (AGENTS.md: never weaken a guarantee to simplify). A row
+  // that does not say who it is answered a different question, and is refused the same way.
+  if (answer === undefined || typeof answer.who !== "string") {
     throw new Error(
       "the database did not say who this connection is, so the audit log cannot be trusted to be " +
         "append-only; refusing to start",
@@ -82,6 +89,18 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `An append-only log kept by an account that can rewrite it is not append-only. Point ` +
         `DSOR_DB_URL at the \`${APPLICATION_ROLE}\` account, not at the owner. ` +
         `See migrations/002_runtime_user.sql.`,
+    );
+  }
+
+  // The route `has_table_privilege` cannot see. A role granted `WITH INHERIT FALSE` membership of a
+  // role that may UPDATE holds nothing itself — and is one `SET ROLE` away from holding everything.
+  // `pg_has_role(…, 'MEMBER')` answers for membership whether or not it is inherited. A hostile
+  // review measured the hole: privilege check false, `SET ROLE editor`, `UPDATE audit` succeeded.
+  if (answer.may_by_set_role !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, which is a member of a role that may ` +
+        `${FORBIDDEN.join(", ")} the audit table — one SET ROLE away from rewriting it. ` +
+        `Revoke that membership from \`${APPLICATION_ROLE}\`.`,
     );
   }
 }

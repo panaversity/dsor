@@ -786,6 +786,11 @@ describe("the audit log", () => {
     await forgetTheLog();
 
     for (const spelling of [
+      // Year 0001, and it goes FIRST: the chain refuses a time that goes backwards, so this record
+      // has to be the oldest. PGlite parses a timestamp back with `new Date(string)`, and V8 reads
+      // `0001-01-01 …` as 2001 — so with the driver's Date in the hash path this record could never
+      // verify. `theLog` now has PostgreSQL form the string with `to_char`, the same on both routes.
+      "0001-01-01T00:00:00Z",
       "2026-10-04T00:00:00Z",
       "2026-10-04T05:00:00+05:00",
       "2026-10-04T00:00:00.5Z",
@@ -803,7 +808,30 @@ describe("the audit log", () => {
 
     const log = await theLog();
 
-    expect(log).toHaveLength(3);
+    expect(log).toHaveLength(4);
+    // Read back as year 0001, not 2001 — the exact string that was hashed.
+    expect(log[0]?.at).toBe("0001-01-01T00:00:00.000Z");
     expect(verifyChain(log, await theHead())).toBe(true);
+  });
+
+  it("DSOR-EXE-03b: a clock that is not a clock writes nothing, and says it was the clock", async () => {
+    // `new Date("").toISOString()` throws a RangeError, and the pipeline reported that as the
+    // STORE being unavailable — true about the outcome, wrong about the cause, and a lie an operator
+    // would act on. Now it is a TypeError that names the clock, nothing is written, and the next
+    // position is unchanged.
+    await forgetTheLog();
+
+    for (const broken of ["", "garbage", "2026-13-45T99:00:00Z"]) {
+      setClock(() => broken);
+
+      await expect(recorded({ requestId: "req_1" }), JSON.stringify(broken)).rejects.toThrow(
+        /clock returned/,
+      );
+    }
+
+    resetClock();
+
+    expect(await theLog()).toHaveLength(0);
+    expect((await recorded({ requestId: "req_2" })).sequence).toBe(0);
   });
 });

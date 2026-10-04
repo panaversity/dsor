@@ -29,7 +29,7 @@
 // Rule DSOR-SCH-01: every artifact named in Appendix A MUST validate against its JSON Schema
 // wherever it crosses an interface or is stored as evidence.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
@@ -121,6 +121,8 @@ export interface AuditRecord {
     readonly request_id: string;
     readonly tenant_id?: string;
     readonly principal_id?: string;
+    /** NEW IN STEP 09: a fresh UUID per attempt, so no two records can ever hash to the same bytes. */
+    readonly trace_id?: string;
   };
 }
 
@@ -516,7 +518,19 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   //
   // A hostile review found it. The trusted time source §30 asks for is exactly the kind of clock
   // that would have hit it.
-  const at = new Date(now()).toISOString();
+  const told = now();
+  const instant = Date.parse(told);
+
+  // A clock that returns something that is not a time is a broken clock, and the record is not
+  // written. Without this line the failure was a bare RangeError from `toISOString`, which the
+  // pipeline reported as the *store* being unavailable — true about the outcome, wrong about the cause.
+  if (Number.isNaN(instant)) {
+    throw new TypeError(
+      `the clock returned ${JSON.stringify(told)}, which is not a time; no record was written`,
+    );
+  }
+
+  const at = new Date(instant).toISOString();
 
   const body: Record<string, unknown> = {
     record_id: `${CHAIN}:${sequence}`,
@@ -541,6 +555,12 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
       request_id: requestId,
       tenant_id: TENANT,
       principal_id: subject,
+      // A fresh id for THIS attempt, and it is inside the hash. Two writers for the same request,
+      // subject, operation, result and millisecond used to produce byte-identical records, and the
+      // lost-reply recovery below then could not tell "my INSERT committed" from "someone else wrote
+      // the same bytes" — a hostile review measured two receipts for one row. With this, equal hashes
+      // mean one attempt. The schema already has the slot (`correlation.trace_id`).
+      trace_id: randomUUID(),
     },
   };
 
@@ -618,25 +638,27 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   try {
     await insert(db, written);
   } catch (failure) {
-    // A unique violation is PostgreSQL *telling* us the INSERT did not commit, so there is nothing
-    // to look for. This check comes first, and a hostile review is why: without it, a second writer
-    // whose record hashed to the same bytes — same subject, operation, result, request id and
-    // millisecond — found "its" record already there and was told it had been recorded, and two
-    // decisions became one row. The hash answers "is a record like mine here", not "did my INSERT
-    // commit", and only the second question matters.
+    // A unique violation is PostgreSQL *telling* us the INSERT did not commit: the position is
+    // taken. Nothing to look for, and the caller may safely be told the write failed.
     if (isUniqueViolation(failure)) {
       throw failure;
     }
 
-    // Is the record there? Asked by `record_id`, and checked by `record_hash` — because the
-    // question is not "did something land at this position" but "did **this** record land".
+    // Two kinds of failure, and they mean different things. A **server** error carries a SQLSTATE:
+    // the server received the statement and refused it, so the row is not there and never will be.
+    // Anything else is a **connection** that went quiet — a reply lost, a socket reset, a timeout —
+    // and nobody on this side knows what the server did with the statement. It may have committed.
+    // It may still be running. A review found the first version treating both the same.
+    const theServerDecided = isServerError(failure);
+
+    // Is the record there? Asked by `record_id`, and checked by `record_hash`.
     //
     // On the connection that just failed, which is usually a connection that is gone. So this read
     // can fail too, and the first version let that error escape and become
     // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` — the exact pre-fix behaviour, on the
-    // exact case that happens when a server restarts. Measured: "caller is told the write FAILED",
-    // one row in the table. Here the honest answer is that nobody knows, and the retry class that
-    // says so is `after_reconciliation`, which does not permit a fresh attempt.
+    // exact case that happens when a server restarts. Here the honest answer is that nobody knows,
+    // and the retry class that says so is `after_reconciliation`, which does not permit a fresh
+    // attempt.
     let found: { record_hash: string } | undefined;
 
     try {
@@ -654,14 +676,32 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
       );
     }
 
-    if (found?.record_hash !== written.record_hash) {
-      // Nothing landed. The caller is told so, and `EVIDENCE_STORE_UNAVAILABLE` with retry
-      // `safe_same_key` is then true.
+    // Four outcomes, in the order that makes each one a true statement.
+    //
+    // Mine is there: the reply was lost, not the record. Equal hashes mean THIS attempt, because
+    // `correlation.trace_id` is a fresh UUID per attempt and is inside the hash — without it a
+    // byte-identical record from another writer passed this test and two decisions became one row.
+    if (found !== undefined && found.record_hash === written.record_hash) {
+      // Returning it keeps the log and the answer agreeing: the decision is recorded, so the
+      // command may proceed. Falls through to `return written`.
+    } else if (found !== undefined) {
+      // Someone else's row holds my position. Mine cannot commit now — the primary key will refuse
+      // it even if the statement is still in flight — so "nothing was written" is true, and
+      // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is the right answer.
       throw failure;
+    } else if (theServerDecided) {
+      // Not there, and the server said no. Definitive. Same answer.
+      throw failure;
+    } else {
+      // Not there, and the server never answered. The statement may still be executing on a
+      // connection we no longer hold, and the row may land after this line. "Not found" is a
+      // snapshot, not a proof — a hostile review pointed at exactly this window. Unknown.
+      throw new OutcomeUnknown(
+        `the decision ${written.record_id} may or may not have been recorded: the connection ` +
+          `failed before the server answered, and the record is not there yet`,
+        failure,
+      );
     }
-
-    // It landed. The reply was lost, not the record. Returning it is honest and it is also what
-    // keeps the log and the answer agreeing: the decision is recorded, so the command may proceed.
   }
 
   return written;
@@ -680,6 +720,18 @@ export class OutcomeUnknown extends Error {
     super(message, { cause });
     this.name = "OutcomeUnknown";
   }
+}
+
+/**
+ * Did the **server** raise this? A SQLSTATE is five characters, digits and capitals, with at least
+ * one digit; `pg` and PGlite put one on every error the server itself produced. A connection that
+ * dropped carries a Node errno (`ECONNRESET`, `EPIPE`) or no code at all, and Node's errno names
+ * are letters only — so one digit is the tell. Measured 2026-10-04 against both.
+ */
+function isServerError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+
+  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) && /[0-9]/.test(code);
 }
 
 /** PostgreSQL's own word for "that row is already there": SQLSTATE 23505, from `pg` and PGlite alike. */
@@ -734,8 +786,10 @@ export async function theLog(): Promise<readonly AuditRecord[]> {
   const { rows } = await theDatabase().query<Record<string, unknown>>(
     // Same alias, same reason. Without it this returned the chain in text order — 0, 1, 10, 11, 2 —
     // and `verifyChain` would have reported a perfectly good log as broken.
-    `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash, at, tenant,
-            kind, identity, correlation, operation, payload_hash, "authorization", result, reason
+    `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash,
+            to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
+            tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
+            reason
      FROM public.audit WHERE chain = $1 ORDER BY sequence`,
     [CHAIN],
   );
@@ -748,7 +802,13 @@ export async function theLog(): Promise<readonly AuditRecord[]> {
         sequence: Number(row.at_position),
         previous_hash: row.previous_hash,
         record_hash: row.record_hash,
-        at: (row.at as Date).toISOString(),
+        // As text, formed by PostgreSQL, in the one spelling `audit` hashes. This was
+        // `(row.at as Date).toISOString()` and it put the driver's date parser inside the hash path:
+        // PGlite parses a timestamp with `new Date(string)`, and V8 reads `0001-01-01 …` as 2001 —
+        // so a record with a schema-valid year below 0100 could never verify again. `pg` would have
+        // got it right, which means the two routes disagreed about the same row. `to_char` is the
+        // same on both.
+        at: row.at as string,
         tenant: row.tenant,
         kind: row.kind,
         identity: row.identity,
@@ -795,6 +855,8 @@ export async function forgetTheLog(): Promise<void> {
   // This chain only. `theHead` and `theLog` filter by `chain`, and so must the eraser, or step 10's
   // second tenant finds its history gone the first time a test for the first tenant cleans up.
   await theDatabase().query("DELETE FROM public.audit WHERE chain = $1", [CHAIN]);
+  // Process-wide, while the DELETE above is per chain. One chain today; step 10 decides whether the
+  // flood counter is per tenant too.
   unauthenticated = 0;
 }
 

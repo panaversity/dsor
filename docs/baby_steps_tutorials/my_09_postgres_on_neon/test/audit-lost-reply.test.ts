@@ -17,6 +17,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { migrationsIn } from "../src/migrations.ts";
 import {
   audit,
+  forgetTheLog,
   OutcomeUnknown,
   resetClock,
   setClock,
@@ -77,7 +78,16 @@ function withOneBrokenInsert(mode: "lose the reply" | "fail the insert"): Databa
       if (breaking && mode === "fail the insert") {
         used = true;
 
-        throw new Error("connection terminated unexpectedly");
+        // A failure the SERVER reports, not a dropped connection: the `authorization` value is
+        // rewritten to one the CHECK constraint refuses, so PostgreSQL itself raises 23514. The
+        // first version threw a bare Error here, which — once connection errors were told apart
+        // from server errors — is a lost connection, not a refused write, and is reported as
+        // unknown. A server's own "no" is the only failure that is definitely a failure.
+        const refused = [...(params ?? [])];
+
+        refused[12] = "MAYBE";
+
+        return real.query<T>(sql, refused);
       }
 
       const rows = await real.query<T>(sql, params);
@@ -126,7 +136,7 @@ describe("an INSERT whose reply is lost", () => {
     expect(log[0]?.result).toBe("ALLOWED");
   });
 
-  it("DSOR-EXE-03b: a write that genuinely failed still refuses, and writes nothing", async () => {
+  it("DSOR-EXE-03b: a write the server refused still refuses, and writes nothing", async () => {
     // The other side of it, and the reason this cannot just assume success. `safe_same_key` is a
     // true statement here: the request never ran, so sending it again is safe.
     useDatabase(withOneBrokenInsert("fail the insert"));
@@ -139,7 +149,43 @@ describe("an INSERT whose reply is lost", () => {
 
     expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
     expect(answer.envelope.retry).toBe("safe_same_key");
+
+    useDatabase(real);
+
     expect(await theLog()).toHaveLength(0);
+  });
+
+  it("DSOR-UNK-01b: a connection that fails before the server answers is unknown, not failed", async () => {
+    // The window a review pointed at. The client sees "connection terminated" while the server may
+    // still be executing the statement — a `pg` query_timeout, a partition. The follow-up SELECT
+    // finds nothing *yet*, and the first version took that as proof and told the caller
+    // `safe_same_key`. Then the row lands, and a retry writes a second one. "Not found" after a
+    // connection error is a snapshot, not a proof; only a server's own SQLSTATE is a proof.
+    let used = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[]) {
+        if (!used && sql.includes("INSERT")) {
+          used = true;
+
+          // Never reaches the server; carries no SQLSTATE.
+          throw Object.assign(new Error("Connection terminated unexpectedly"), {
+            code: "ECONNRESET",
+          });
+        }
+
+        return real.query<T>(sql, params);
+      },
+    });
+
+    const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.envelope.retry).toBe("after_reconciliation");
   });
 
   it("DSOR-EXE-03b: another writer's record at our position is not mistaken for ours", async () => {
@@ -217,7 +263,7 @@ describe("an INSERT whose reply is lost on a connection that then stays dead", (
     };
   }
 
-  it("DSOR-UNK-01b: when the store cannot be asked, audit says it does not know", async () => {
+  it("when the store cannot be asked, audit says it does not know", async () => {
     useDatabase(withADeadConnectionAfterTheInsert());
 
     await expect(audit(aDecision("req_1"))).rejects.toBeInstanceOf(OutcomeUnknown);
@@ -243,17 +289,17 @@ describe("an INSERT whose reply is lost on a connection that then stays dead", (
 });
 
 describe("an INSERT refused because the row is already there", () => {
-  it("DSOR-EXE-02: two decisions that hash to the same bytes do not become one row", async () => {
-    // The hash comparison asks "is a record like mine here", not "did my INSERT commit". With a
-    // fixed clock, two writers for the same request, subject, operation and result hash
-    // identically — and the first version of the recovery found "its" record already present and
-    // told the second writer it had been recorded. One row, two callers holding a receipt for it.
+  it("DSOR-EXE-02: two writers at one position do not become one row, whatever their bytes", async () => {
+    // Two writers for the same request, subject, operation, result and millisecond. They used to
+    // hash identically, and the recovery then could not tell "my INSERT committed" from "someone
+    // else wrote the same bytes": the second writer found "its" record present and was told it had
+    // been recorded. One row, two receipts. Reachable without a fixed clock, because
+    // `nextRequestId` is a per-process counter and two instances of this program both mint `req_1`.
     //
-    // Reachable without a fixed clock: `nextRequestId` is a per-process counter, so two instances
-    // of this program against one database both mint `req_1`. Narrow, and the step's own target.
-    //
-    // PostgreSQL says SQLSTATE 23505 when an INSERT did not commit because the row exists. That is
-    // the answer, and the recovery now takes it instead of asking the hash question.
+    // Two things close it now, and both are asserted. The position collision is PostgreSQL's
+    // SQLSTATE 23505, taken as the answer it is before any hash is compared. And the two records are
+    // no longer byte-identical at all: `correlation.trace_id` is a fresh UUID per attempt, inside the
+    // hash, so equal hashes can only ever mean one attempt.
     setClock(() => "2026-10-04T00:00:00.000Z");
 
     let staleTailReads = 0;
@@ -283,5 +329,121 @@ describe("an INSERT refused because the row is already there", () => {
 
     expect(log).toHaveLength(1);
     expect(log[0]?.record_hash).toBe(first?.record_hash);
+  });
+
+  it("DSOR-EXE-02: two attempts at one decision never hash to the same bytes", async () => {
+    setClock(() => "2026-10-04T00:00:00.000Z");
+    useDatabase(real);
+
+    const one = await audit(aDecision("req_1"));
+
+    await forgetTheLog();
+
+    const two = await audit(aDecision("req_1"));
+
+    // Same position, same time, same everything a caller supplied — different record.
+    expect(two?.record_id).toBe(one?.record_id);
+    expect(two?.correlation.trace_id).not.toBe(one?.correlation.trace_id);
+    expect(two?.record_hash).not.toBe(one?.record_hash);
+  });
+
+  it("DSOR-EXE-02: a writer that lost its connection does not take a receipt for another writer's row", async () => {
+    // The interleaving a review measured as "two receipts, one row": my INSERT fails on the way to
+    // the server; in the gap before my follow-up SELECT, a second writer with the same bytes commits
+    // at my position; my SELECT finds a row at my record_id — and, before `trace_id`, with my hash.
+    // Now the hashes differ, the row is recognised as someone else's, and I am told the write failed,
+    // which is true: my statement can never commit into a position the primary key has given away.
+    setClock(() => "2026-10-04T00:00:00.000Z");
+
+    let interrupted = false;
+    let theOtherWriter: Promise<unknown> | undefined;
+
+    const wrapped: Database = {
+      async query<T>(sql: string, params?: unknown[]) {
+        if (!interrupted && sql.includes("INSERT")) {
+          interrupted = true;
+          // The other writer goes straight through to the real database while mine is "in flight".
+          useDatabase(real);
+          theOtherWriter = audit(aDecision("req_1"));
+          await theOtherWriter;
+          useDatabase(wrapped);
+
+          throw Object.assign(new Error("Connection terminated unexpectedly"), {
+            code: "ECONNRESET",
+          });
+        }
+
+        return real.query<T>(sql, params);
+      },
+    };
+
+    useDatabase(wrapped);
+
+    await expect(audit(aDecision("req_1"))).rejects.toThrow(/Connection terminated/);
+
+    useDatabase(real);
+
+    const log = await theLog();
+
+    expect(log).toHaveLength(1);
+    expect(log[0]?.correlation.request_id).toBe("req_1");
+    // Exactly one receipt was handed out, and it was the other writer's.
+    const theirs = (await theOtherWriter) as { record_hash: string } | undefined;
+
+    expect(theirs?.record_hash).toBe(log[0]?.record_hash);
+  });
+
+  it("DSOR-EXE-03b: another writer's row at my position is a failed write, not an unknown one", async () => {
+    // The case that keeps the record_hash comparison killable. Decision 78 said narrowing it to
+    // "is there a row" failed a test; once 23505 is short-circuited that test no longer reaches the
+    // comparison. This one does: a connection error (no SQLSTATE) while a different writer's row
+    // sits at my record_id. Not mine, but definitely not landing either — so EVIDENCE_STORE_UNAVAILABLE
+    // is true, and OUTCOME_UNKNOWN would be an over-statement.
+    useDatabase(real);
+
+    const theirs = await audit(aDecision("req_theirs"));
+
+    expect(theirs?.record_id).toBe("audit:org_456:0");
+
+    let firstTail = true;
+    let firstInsert = true;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[]) {
+        if (firstTail && sql.includes("AS at_position") && sql.includes("ORDER BY sequence DESC")) {
+          firstTail = false;
+
+          return { rows: [] as T[] }; // so I also compute position 0
+        }
+
+        if (firstInsert && sql.includes("INSERT")) {
+          firstInsert = false;
+
+          throw Object.assign(new Error("Connection terminated unexpectedly"), {
+            code: "ECONNRESET",
+          });
+        }
+
+        return real.query<T>(sql, params);
+      },
+    });
+
+    // One attempt, inspected two ways. The first version of this test called `audit` twice and the
+    // second call honestly succeeded at position 1 — the wrapper only interferes once.
+    const outcome: unknown = await audit(aDecision("req_mine")).then(
+      () => "resolved",
+      (failure: unknown) => failure,
+    );
+
+    expect(outcome).toBeInstanceOf(Error);
+    expect(outcome).not.toBeInstanceOf(OutcomeUnknown);
+    expect((outcome as Error).message).toMatch(/Connection terminated/);
+
+    useDatabase(real);
+
+    const log = await theLog();
+
+    expect(log).toHaveLength(1);
+    expect(log[0]?.correlation.request_id).toBe("req_theirs");
   });
 });

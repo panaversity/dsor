@@ -36,7 +36,7 @@ beforeEach(() => {
   // server instead of about the route they are named after. A review measured it: with a bogus
   // URL exported, five of these tests failed inside `openTheDatabase`; with a valid one, three
   // would have written to the real table. `pnpm check` does not read `.env`, so only an exported
-  // variable reaches here — which is exactly what the README's own setup section invites.
+  // variable reaches here — which a `source .env`, direnv, or a CI secret would do.
   vi.stubEnv("DSOR_DB_URL", "");
 });
 
@@ -200,7 +200,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.close();
   });
 
-  it("DSOR-AUD-04a: accepts the application's account", async () => {
+  it("accepts the application's account", async () => {
     const db = await aDatabase();
 
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
@@ -224,7 +224,13 @@ describe("refuseIfItCanRewriteHistory", () => {
     // `if (answer.may)` reads NULL — or a missing column — as "may not", which is the one branch
     // here that fails open. The sibling test above covers no row at all; this covers a row that
     // does not answer the question.
-    for (const evasive of [{ who: "x" }, { who: "x", may: null }, { who: "x", may: undefined }]) {
+    for (const evasive of [
+      { who: "x" },
+      { who: "x", may: null },
+      { who: "x", may: undefined },
+      { who: "x", may: false, may_by_set_role: null },
+      { may: false, may_by_set_role: false }, // no `who`: the question was not answered either
+    ]) {
       const db: Database = {
         query: async <T>() => ({ rows: [evasive as T] }),
       };
@@ -233,7 +239,33 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
-  it("DSOR-AUD-04a: a right reached through role membership is caught too", async () => {
+  it("DSOR-AUD-04a: a right one SET ROLE away is caught, though no privilege check can see it", async () => {
+    // `GRANT editor TO dsor_runtime WITH INHERIT FALSE`: the application holds nothing itself, and
+    // `has_table_privilege` says so — truthfully. It is also one `SET ROLE editor` away from UPDATE.
+    // A review measured the sequence: privilege check false, SET ROLE, UPDATE succeeded.
+    // `pg_has_role(current_user, role, 'MEMBER')` sees membership whether or not it is inherited.
+    const db = await PGlite.create();
+
+    await db.exec("CREATE ROLE dsor_runtime;");
+    await db.exec("CREATE TABLE audit (result TEXT);");
+    await db.exec("CREATE ROLE editor;");
+    await db.exec("GRANT UPDATE ON audit TO editor;");
+    await db.exec("GRANT editor TO dsor_runtime WITH INHERIT FALSE;");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    // Not testing nothing: the privilege check alone really does say "may not".
+    const { rows } = await db.query<{ may: boolean }>(
+      "SELECT has_table_privilege(current_user, 'public.audit', 'UPDATE') AS may",
+    );
+
+    expect(rows[0]?.may).toBe(false);
+
+    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/SET ROLE away/);
+
+    await db.close();
+  });
+
+  it("DSOR-AUD-04a: a right reached through inherited role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL
     // instead of reading the GRANT list.
@@ -253,7 +285,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 });
 
 describe("what the program prints about where its log is", () => {
-  it("DSOR-CNR-02: a password is not printed, even one with an @ in it", () => {
+  it("the printed location never contains the password, even one with an @ in it", () => {
     // The first mask was `url.replace(/\/\/[^@]*@/, "//…@")`, and `pa@ss-word` came out as
     // `…@ss-word@host`. `main.ts` prints this line. Parsing as a URL takes the last `@` as the
     // delimiter, the way the driver does.
@@ -272,29 +304,34 @@ describe("the one door to the audit log's database", () => {
   it("DSOR-AUD-04a: nothing in src/ points the log at a connection except openTheDatabase", () => {
     // `refuseIfItCanRewriteHistory` runs inside `openTheDatabase` and nowhere else. `useDatabase`
     // itself checks nothing — the tests hand it the owner's connection on purpose. So the guarantee
-    // is only as wide as the set of call sites, and this is what keeps that set at one. Break 6
-    // showed what a guarantee nobody is holding looks like; this is the test that would notice a
-    // second door being added.
+    // is only as wide as the set of call sites, and this is what keeps that set at one.
+    //
+    // Counted as an identifier, every file, every depth — not as a statement-position call. The
+    // first version matched `^\s*useDatabase\(` one directory deep, and two reviewers planted
+    // `const point = useDatabase; point(db)`, `log.useDatabase(db)`, `() => useDatabase(db)`,
+    // `void useDatabase(db)` and a file in a subdirectory past it. An identifier count cannot be
+    // dodged by any of those; only `audit["use" + "Database"]` would, and that is not a shape anyone
+    // writes by accident. The exact numbers are pinned so a new mention anywhere is a visible act:
+    // audit.ts holds the definition and one error-message string; database.ts holds the import, its
+    // two calls, and one comment that names the function. A comment counts, on purpose — the number
+    // is a tripwire, not a measure of doors, and a tripwire that ignores comments is one a comment
+    // can be used to hide behind.
     const src = fileURLToPath(new URL("../src", import.meta.url));
-    const callers: string[] = [];
+    const mentions: Record<string, number> = {};
 
-    for (const file of readdirSync(src)) {
-      if (!file.endsWith(".ts")) {
+    for (const entry of readdirSync(src, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) {
         continue;
       }
 
-      const source = readFileSync(join(src, file), "utf8");
+      const path = join(entry.parentPath, entry.name);
+      const count = readFileSync(path, "utf8").match(/\buseDatabase\b/g)?.length ?? 0;
 
-      for (const line of source.split("\n")) {
-        // Statement position: the line *is* a call. The first version matched the name anywhere
-        // and caught `"call useDatabase() before recording anything"` — a string inside an error
-        // message in audit.ts — which is a mention, not a door.
-        if (/^\s*useDatabase\(/.test(line)) {
-          callers.push(file);
-        }
+      if (count > 0) {
+        mentions[path.slice(src.length + 1)] = count;
       }
     }
 
-    expect([...new Set(callers)]).toStrictEqual(["database.ts"]);
+    expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4 });
   });
 });

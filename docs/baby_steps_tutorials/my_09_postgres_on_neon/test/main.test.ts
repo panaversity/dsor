@@ -46,7 +46,17 @@ beforeEach(() => {
 function demo(): { raw: string; report: string } {
   const raw = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
     encoding: "utf8",
+    // Pinned to the on-disk route. Without this the subprocess inherits whatever `DSOR_DB_URL` the
+    // shell has exported and `pnpm check` runs the demo — eight times, ten decisions each — against
+    // that server's audit log. Three independent reviewers found it; `database.test.ts` had closed
+    // the same hole for its own process a commit earlier and this file was left open.
+    env: { ...process.env, DSOR_DB_URL: "" },
   });
+
+  // And asserted, not assumed: the first thing the program says is where its log is.
+  if (!raw.includes("a PostgreSQL on disk at")) {
+    throw new Error(`the demo did not run on the on-disk route:\n${raw.split("\n")[1]}`);
+  }
 
   return { raw, report: raw.replace(/sha256:[0-9a-f]+/g, "sha256:HASH") };
 }

@@ -13,8 +13,9 @@
 
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
+import { openTheDatabase } from "../src/database.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
@@ -82,7 +83,7 @@ function aDecision(sequence: number, id = `audit:org_456:${sequence}`): [string,
 }
 
 describe.skipIf(!haveAServer)("against a real server, as a real second user", () => {
-  it("DSOR-AUD-04a: the application connects as itself and may add a record", async () => {
+  it("the application connects as itself and may add a record", async () => {
     const who = await application.query<{ user: string }>("SELECT current_user AS user");
 
     // Logged in as the application, not a role assumed from somewhere more privileged.
@@ -205,5 +206,44 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
       false,
       false,
     ]);
+  });
+});
+
+describe.skipIf(!haveAServer)("the program's own door, pointed at a real server", () => {
+  /**
+   * The `pg` branch of `openTheDatabase`, which no test on either tier executed. The in-process
+   * tests stub `DSOR_DB_URL` to "" so they never enter it; the demo subprocess is pinned the same
+   * way. A critic's prediction: delete the refusal on that branch and nothing fails. This file is
+   * what makes that prediction false — it needs the two real logins, so it lives in this tier.
+   */
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("DSOR-AUD-04a: pointed at the owner, the program refuses to start", async () => {
+    vi.stubEnv("DSOR_DB_URL", OWNER!);
+
+    await expect(openTheDatabase()).rejects.toThrow(/may UPDATE, DELETE, TRUNCATE/);
+  });
+
+  it("DSOR-AUD-04a: pointed at the application, it starts, says so, and still cannot UPDATE", async () => {
+    vi.stubEnv("DSOR_DB_URL", APPLICATION!);
+
+    const opened = await openTheDatabase();
+
+    try {
+      expect(opened.where).toContain("the PostgreSQL at");
+      expect(opened.where).not.toContain("on disk");
+
+      // Through the program's own connection, on a real server, as a real login.
+      const who = await opened.connection.query<{ u: string }>("SELECT current_user AS u");
+
+      expect(who.rows[0]?.u).toBe("dsor_runtime");
+      await expect(opened.connection.query("UPDATE public.audit SET result = 'x'")).rejects.toThrow(
+        /permission denied/,
+      );
+    } finally {
+      await opened.close();
+    }
   });
 });

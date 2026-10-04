@@ -1,11 +1,13 @@
 # Step 09 · PostgreSQL on Neon
 
-Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 278 tests, plus 4 in the
+Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 322 tests, plus 7 in the
 database tier
 Spec: [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) · `DSOR-AUD-04a`,
 `DSOR-AUD-02a`
-Both tiers have run: 278 under `pnpm check`, and 4 under `pnpm test:db` against a real server.
-Decisions [67 to 74](decisions.md). Lesson [20](lessons.md).
+Both tiers have run: 322 under `pnpm check`, and 7 under `pnpm test:db` against a real server.
+Decisions [67 to 85](decisions.md). Lessons [20 to 33](lessons.md). The header above was "278 tests,
+plus 4" and "decisions 67 to 74" for a day after both had changed — the two addenda at the bottom are
+where the step actually finished.
 
 ## What it does
 
@@ -73,7 +75,7 @@ day.
 | the in-process tests reach the application's account with `SET ROLE`, not a login | `audit.db.test.ts`, which needs a server. Run against a local PostgreSQL 17 on 2026-10-03: 4 passed, and 2 fail if the application is granted `UPDATE` |
 | `theHead()` is computed on demand and stored nowhere | §30 says to anchor a checkpoint outside the control-plane store. `DSOR-AUD-04d` is not claimed |
 | the **owner** can still do anything | the design, not a gap — migrations have to come from somewhere. The rule is met against the *application* |
-| `recorded_at` can be set on an INSERT; what makes the gap evidence is that the writer never does | a test says this plainly rather than implying the column is protected |
+| ~~`recorded_at` can be set on an INSERT~~ — superseded by [decision 81](decisions.md): `INSERT` is granted column by column and that column is left out | the application is refused, and a test checks every column of the table by name |
 | `theLog()` is a plain function, and reading it writes nothing | `DSOR-AUD-05b`: reading audit must itself be authorized and audited |
 | nothing deletes and nothing expires | `DSOR-AUD-05c`: retention is policy-controlled. "Forever" is not a policy |
 | the invoices are still an array | step 10, which the map had in this step and [decision 69](decisions.md) moved |
@@ -231,7 +233,7 @@ question the hash cannot answer, so two decisions with the same bytes became one
 
 Both fixed, with `OUTCOME_UNKNOWN` finally meaning something in this step; the step now claims
 `DSOR-UNK-01b` for the one unknown it can produce. Plus: `at` normalised to the stored spelling, the
-guard failing closed on NULL, the route pinned in `database.test.ts`, every table name in every file
+guard failing closed on NULL, the route pinned in `database.test.ts`, every table name in `src/`, `scripts/`, `migrations/` and `test/support/`
 qualified, one door to the database and a test that counts them, a credential mask that does not leak
 a password with `@` in it, and `forgetTheLog` erasing one chain rather than all of them.
 [Decision 84](decisions.md), [lessons 30 and 31](lessons.md).
@@ -257,3 +259,17 @@ compares the step's copy of `audit-record.schema.json` with the repository's and
 compare against outside it. It skips with its name in the report rather than passing quietly, which
 is the design — and the README's `pnpm check` line now says so, because "315 tests" was true only
 inside the repository.
+
+### And the pass over the pass
+
+Four reviewers in parallel, then a critic asking what none of them had looked at. The critic's
+answer: the real-server branch of `openTheDatabase` — the route the step is named after — had been
+executed by **no test on either tier**, and deleting its refusal failed nothing. It fails one of seven
+now. Three reviewers independently found `main.test.ts` spawning the demo with the inherited
+environment, so an exported `DSOR_DB_URL` made `pnpm check` write into a real server. And the
+recovery written the day before was wrong twice more: it could not tell its own row from an identical
+one, and it could not tell a server's "no" from a connection that went quiet.
+[Decision 85](decisions.md), [lessons 32 and 33](lessons.md).
+
+`pnpm check`: **322**. `pnpm test:db`: **7**. Nine break-it exercises, re-measured, Break 1 in both
+placements. Runs by itself from a clean copy, with one named skip.

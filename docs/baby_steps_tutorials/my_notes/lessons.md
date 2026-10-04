@@ -614,3 +614,22 @@ asserting things about PGlite.
 If a test's claim depends on which branch the code takes, the test sets the inputs that pick the
 branch and then asserts which branch was taken. `vi.stubEnv` for the first half; "`where` says *on
 disk*" for the second.
+
+## 32 · A reviewer's prediction is a test you have not written yet
+
+The critic said: delete the refusal on the real-server branch and nothing will fail. It was right,
+and the sentence was already the test — it named the mutation and the expected count. Every line of
+code that no mutation can reach is a guarantee nobody is holding, and the fastest way to find them is
+to ask someone to predict a zero. When they can, write the test that makes them wrong, then make
+them wrong.
+
+## 33 · A pin that matches a shape is dodged by another shape
+
+The one-door test matched `^\s*useDatabase\(` and was passed by `const point = useDatabase`, by
+`log.useDatabase(db)`, by `() => useDatabase(db)` and by a file one directory down. The schema scan
+matched uppercase keywords and was passed by `from audit`. Both were written as "find the honest form"
+and an attacker does not write the honest form.
+
+Count the **identifier**, everywhere, case-insensitively, and pin the number — comments included,
+because a tripwire that ignores comments is one a comment can be used to hide behind. The exact count
+is a worse description and a better alarm.

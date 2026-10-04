@@ -1510,7 +1510,9 @@ look-up itself can fail, and that case is `OUTCOME_UNKNOWN`, not a rethrow.*
 position" but "did **this** record land". A writer that beat us to the position makes the INSERT
 fail on the primary key and leaves a row at `audit:org_456:0` — someone else's. Accepting it would
 throw away a decision and tell the caller it was recorded. There is a test for precisely that, and
-narrowing the check to `found[0] === undefined` fails it.
+narrowing the check to `found[0] === undefined` fails it. *Decision 85: once `23505` was
+short-circuited that test never reached the comparison; "another writer's row at my position" is what
+kills it now, measured.*
 
 **Measured after the fix:**
 
@@ -1709,6 +1711,15 @@ So "which privileges does the application hold" means *table level **or** any co
 helper in `audit-permissions.test.ts` now asks that. This is the **third** place in step 09 that read
 a grant catalogue and got a security answer wrong; lesson 25 is the general form.
 
+**Proved by breaking it** (added 2026-10-04, after a critic noticed this entry had no table):
+
+| Sabotage | Result |
+| --- | --- |
+| `GRANT INSERT` on the whole table again (the original hole) | 2 fail |
+| `recorded_at` added to the column list | 2 fail |
+| README Break 1, `GRANT ALL` replacing the column grant | 6 fail (the two above plus the four privilege-shape tests) |
+| README Break 1, `GRANT ALL` appended | 21 fail (the start-up guard refuses every `openTheDatabase`) |
+
 ## 82 · The duplicate index, and the race test that tested the wrong constraint (2026-10-04)
 
 **The index.** `001_audit.sql` had `UNIQUE (chain, sequence)` *and*
@@ -1741,6 +1752,9 @@ restored:                                5 passed
 The primary key kept its own test, since the race test no longer covers it by accident.
 
 `pnpm check`: 23 files, 307 tests. `pnpm test:db`: 5. Both routes verify, 10 records each.
+
+**Proved by breaking it** (added 2026-10-04): re-adding `CREATE INDEX audit_chain_sequence ON audit
+(chain, sequence);` to `001_audit.sql` fails exactly one test, the index-count pin.
 
 ## 83 · Every number in the README's Break-it section was re-measured (2026-10-04)
 
@@ -1874,3 +1888,99 @@ so it was re-done as a function nobody calls.
 `DSOR-UNK-01b` tests fall with it), the rest are unchanged in their failure counts.
 
 `pnpm check`: 23 files, 315 tests. `pnpm test:db`: 5. Both routes verify, 10 records each.
+
+**Completing the list** (added after a critic counted ten entries against the nineteen claimed). The
+previous review's remaining findings, and what happened to each:
+
+- *3 · the `at(N) < at(N+1)` proof is single-process* — the premise is now stated in `audit.ts`,
+  decision 77, the README's Break 9, and the open question.
+- *5 · `refuseIfItCanRewriteHistory` is necessary, not sufficient* — the docstring and README limit 3
+  now say it checks a privilege, and name the `SECURITY DEFINER` / owner-trigger route it cannot see.
+- *7 · `DSOR-UNK-01b` claimed in three places and denied in a fourth* — the step claims it, with the
+  limit stated in the README, and `envelopes.test.ts` says which half arrives in step 37.
+- *9 · a program race fails on `audit_pkey`, not `UNIQUE (chain, sequence)`* — the comment in
+  `audit.ts` was corrected, and the db-tier test says why its distinct ids are synthetic.
+- *the eight false claims* — "4 passed" (five), "same insert three times" (retired), "in both cases
+  as dsor_runtime" (false on the server route), "airtight" (one clock), decision 78's rethrow
+  sentence, `audit.ts`'s UNIQUE claim, the credential mask, `forgetTheLog` across chains: all
+  corrected in commit ff6e99c or in this entry's commit.
+- *could not verify* — `pnpm test:db` (run by me, 5 then 7); every break-it count (re-measured at
+  315 and again at 322); whether `audit_chain_sequence_key` is ever the refusing constraint in a
+  **real** program race on a **real** server — still inferred from PGlite, recorded in
+  `open-questions.md`.
+
+## 85 · The second hostile pass, and the pg route that no test had ever run (2026-10-04)
+
+Four parallel reviewers attacked the fixes in decision 84; a critic then asked what none of them had
+looked at. **The critic's answer reversed "done" again**: the `pg` branch of `openTheDatabase` — the
+real-server route, including the refusal that is the point of the step — was executed by no test on
+either tier. The in-process tests stub `DSOR_DB_URL` to `""`; the db tier never imported
+`database.ts`. Its prediction: delete that refusal, zero failures. Measured: true. Two db-tier tests
+now point `openTheDatabase` at the owner (must refuse) and at the application (must start, say so,
+and still be refused `UPDATE`); deleting the refusal fails one of them.
+
+**Three reviewers independently found the same hole.** `main.test.ts` spawned `node src/main.ts`
+with the inherited environment, so an exported `DSOR_DB_URL` made `pnpm check` run the demo —
+eight times, ten decisions each — against that server's log. `database.test.ts` had closed exactly
+this for its own process a commit earlier. The subprocess now gets `DSOR_DB_URL: ""` and `demo()`
+throws unless the output says *on disk*. With the pin removed and a bogus URL exported: 6 of 6 fail.
+
+**The recovery written yesterday was wrong twice more.**
+
+- It asked "is a record with my hash here?", and two writers for the same request, subject,
+  operation, result and millisecond produced byte-identical records — so on a connection error
+  (which the `23505` short-circuit never sees) one writer took a receipt for the other's row. The
+  reviewer's interleaving, measured: one row, two receipts. `correlation.trace_id` is now a fresh
+  UUID per attempt, inside the hash; equal hashes can only mean one attempt. The schema already had
+  the slot.
+- It treated every INSERT error the same, and they are not the same. A **server** error carries a
+  SQLSTATE: the server refused the statement and the row will never exist. A **connection** error
+  carries a Node errno or nothing: the statement may still be executing, and "not found" is a
+  snapshot. The first version told that caller `safe_same_key`; a retry would then write a second
+  row when the first landed. Now: server said no → `EVIDENCE_STORE_UNAVAILABLE`; someone else's row
+  at my position → the same, because mine can never commit; connection quiet and nothing there →
+  `OUTCOME_UNKNOWN`. The discriminator is five characters with a digit — every SQLSTATE has one,
+  no Node errno does — measured against `pg` and PGlite.
+
+**`at` was still not hashed as stored, for one range of years.** PGlite parses a timestamp back with
+`new Date(string)`, and V8 reads `0001-01-01 …` as 2001, so a schema-valid year below 0100 made a
+record that could never verify — on one route only, which means the two routes disagreed about the
+same row. `theLog` now has PostgreSQL form the string: `to_char(at AT TIME ZONE 'UTC', …)`, identical
+on both drivers. The driver's date parser is out of the hash path entirely.
+
+**A `NOINHERIT` membership is one `SET ROLE` from `UPDATE` and invisible to `has_table_privilege`.**
+Measured: privilege check `false`, `SET ROLE editor`, `UPDATE` succeeded. The guard now also asks
+`pg_has_role(current_user, r.oid, 'MEMBER')` over every role that holds one of the three rights.
+
+**Smaller, each measured:** a clock returning garbage threw a bare `RangeError` that the pipeline
+reported as the *store* being down (now a `TypeError` that names the clock); the one-door pin matched
+statement-position calls one directory deep and was dodged by an alias, a namespace import, an arrow
+and a subdirectory (now an identifier count, recursive, pinned per file — `audit.ts: 2`,
+`database.ts: 4`, a comment included on purpose); the schema scan was case-sensitive and missed
+`'audit'::regclass`, `LOCK` and `REFERENCES` (now `gi`, with both); `forgetTheLog`'s chain filter
+had no test (now one, with a second chain that survives); `emptyTheLog` was unused and unfiltered
+(deleted); four success-only tests carried MUST-NOT ids (dropped); README Break 1 did not say where
+the line goes and the two placements give 6 and 21.
+
+**Proved by breaking each one**, targeted test file, totals held:
+
+| Sabotage | Result |
+| --- | --- |
+| the `pg`-branch refusal deleted — the critic's prediction | db tier 1 of 7 fails |
+| no `trace_id` | 2 fail |
+| every error treated as the server's / none treated as the server's | 1 fails each way |
+| the someone-else's-row branch removed | 2 fail |
+| the `SET ROLE` membership check removed | 2 fail |
+| the driver's `Date` back in the hash path | 1 fails |
+| the clock guard removed | 1 fails |
+| the subprocess pin removed, bogus URL exported | 6 of 6 fail; with the pin, 6 pass |
+| lowercase `from audit` in a source file | 1 fails |
+| `forgetTheLog` without its `WHERE` | 1 fails |
+| one more `useDatabase` mention | 1 fails |
+
+**All nine break-it exercises re-measured at 322.** B5 is 65, B8 and B9 are 5 (the new unknown-outcome
+tests fall with them), B1 is 6 replaced and 21 appended, the rest unchanged in their failure counts.
+
+`pnpm check`: 23 files, **322 tests**. `pnpm test:db`: **7**, two of them the first to ever execute the
+real-server branch. Both routes verify, 10 records each. From a clean copy outside the repository:
+`pnpm install --frozen-lockfile`, `pnpm check` (one skip, named), `pnpm start` twice.

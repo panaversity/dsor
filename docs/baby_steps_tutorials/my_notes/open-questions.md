@@ -157,3 +157,20 @@ Three ways out, none of them this step's:
 
 Option 3 is the one I would argue for, and it is a change to what `verifyChain` promises, so it is
 not a quiet edit. Left open.
+
+## Two routes to rewriting the log that no privilege check sees (raised 2026-10-04, step 09)
+
+`refuseIfItCanRewriteHistory` asks `has_table_privilege` and `pg_has_role`. Both answer for
+privileges. A `SECURITY DEFINER` function owned by the table's owner, or a trigger the owner installs,
+rewrites rows on the application's behalf with the application holding nothing — and `EXECUTE` on a
+new function goes to `PUBLIC` by default. No such function exists; the README states it as limit 3; a
+test pins the single call site so adding one is visible. Closing it means either forbidding
+`SECURITY DEFINER` functions in the migration review, or checking `pg_proc` for them at start-up,
+which is a longer list of things to be wrong about. Left open.
+
+## Which constraint refuses a real program race, on a real server (raised 2026-10-04, step 09)
+
+For the program's own rows a position collision also collides on `audit_pkey`, and PGlite names the
+primary key. PostgreSQL 17 checks indexes in the same order, so it should too — but every measurement
+of that is in-process, and the db tier's race test uses synthetic distinct ids on purpose. Unverified
+against the server, and recorded rather than assumed.

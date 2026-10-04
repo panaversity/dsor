@@ -29,7 +29,7 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrationsIn } from "../src/migrations.ts";
-import { audit, theLog, useDatabase } from "../src/audit.ts";
+import { audit, forgetTheLog, theLog, useDatabase } from "../src/audit.ts";
 
 let db: PGlite;
 
@@ -563,7 +563,7 @@ describe("the database's own witness", () => {
     expect(rows.rows).toHaveLength(0);
   });
 
-  it("DSOR-AUD-04b: the application can still write every other column, and read this one", async () => {
+  it("the application can still write every other column, and read this one", async () => {
     // The other half, and the reason a column-level grant is a real cost rather than free: leave a
     // column out by accident and the application stops being able to record anything at all. Each
     // column it does need is checked by name, so a future column added to `audit` without being
@@ -584,6 +584,32 @@ describe("the database's own witness", () => {
     await db.exec(A_DECISION);
 
     expect(await asTheApplication("SELECT recorded_at FROM public.audit")).toBe("allowed");
+  });
+});
+
+describe("erasing the log, which only a test may do", () => {
+  it("DSOR-AUD-04c: forgetTheLog erases this chain and leaves every other chain alone", async () => {
+    // The chain filter is claimed in audit.ts and was tested by nothing: `DELETE FROM public.audit`
+    // with no WHERE survived every test. One chain today; step 10 brings a second tenant, and a test
+    // for the first tenant that wipes the second's history is the bug this prevents.
+    await db.exec(A_DECISION);
+    await db.exec(
+      A_DECISION.replace(
+        "'audit:org_456:0:0', 'audit:org_456'",
+        "'audit:org_999:0:0', 'audit:org_999'",
+      ),
+    );
+
+    const before = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");
+
+    expect(before.rows[0]?.n).toBe("2");
+
+    useDatabase(db);
+    await forgetTheLog();
+
+    const left = await db.query<{ chain: string }>("SELECT chain FROM public.audit");
+
+    expect(left.rows.map((r) => r.chain)).toStrictEqual(["audit:org_999"]);
   });
 });
 
@@ -661,7 +687,7 @@ describe("a table the application makes to stand in front of the real one", () =
     // `TRUNCATE ON` as a match and skip the `audit` that follows.
     const root = fileURLToPath(new URL("..", import.meta.url));
     const files = [
-      ...readdirSync(join(root, "src")).map((f) => join("src", f)),
+      ...readdirSync(join(root, "src"), { recursive: true }).map((f) => join("src", String(f))),
       ...readdirSync(join(root, "scripts")).map((f) => join("scripts", f)),
       ...readdirSync(join(root, "migrations")).map((f) => join("migrations", f)),
       ...readdirSync(join(root, "test", "support")).map((f) => join("test", "support", f)),
@@ -677,6 +703,9 @@ describe("a table the application makes to stand in front of the real one", () =
         ? raw.replace(/--[^\n]*/g, "")
         : raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
+      // Case-insensitive, because SQL is: `from audit` and `From Audit` passed the first version. A
+      // review also added LOCK and REFERENCES, and the regclass cast — `'audit'::regclass` resolves
+      // through `search_path` exactly like a bare name, so `pg_temp.audit` wins there too.
       for (const keyword of [
         "FROM",
         "INTO",
@@ -684,19 +713,25 @@ describe("a table the application makes to stand in front of the real one", () =
         "JOIN",
         "TRUNCATE",
         "COPY",
+        "LOCK",
+        "REFERENCES",
         "ON",
         "TABLE",
         "EXISTS",
       ]) {
-        const each = new RegExp(`\\b${keyword}\\s+("?[\\w.]+"?)`, "g");
+        const each = new RegExp(`\\b${keyword}\\s+("?[\\w.]+"?)`, "gi");
 
         for (const match of code.matchAll(each)) {
-          const named = match[1]!.replace(/"/g, "");
+          const named = match[1]!.replace(/"/g, "").toLowerCase();
 
           if (named === "audit" || named === "applied_migrations") {
             unqualified.push(`${file}: ${keyword} ${named}`);
           }
         }
+      }
+
+      for (const match of code.matchAll(/'(audit|applied_migrations)'\s*::\s*regclass/gi)) {
+        unqualified.push(`${file}: ${match[0]}`);
       }
     }
 

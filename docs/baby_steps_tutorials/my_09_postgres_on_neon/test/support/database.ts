@@ -31,14 +31,3 @@ export async function aDatabase(): Promise<PGlite> {
 
   return db;
 }
-
-/**
- * Empty the log between tests, as the owner.
- *
- * `forgetTheLog()` in `audit.ts` runs `DELETE FROM audit`, which the application's account is refused.
- * It works here only because these tests hold the owner's connection — and that asymmetry is the
- * guarantee, not a convenience: a test can clear the log and the program cannot.
- */
-export async function emptyTheLog(db: PGlite): Promise<void> {
-  await db.exec("DELETE FROM public.audit");
-}
