@@ -270,7 +270,14 @@ describe("step 17's C7: the kind business-written", () => {
       runtime: {
         table: ["SELECT"],
         columns: {
-          INSERT: ["tenant_id", "invoice_id", "vendor_id", "amount_value", "amount_currency", "status"],
+          INSERT: [
+            "tenant_id",
+            "invoice_id",
+            "vendor_id",
+            "amount_value",
+            "amount_currency",
+            "status",
+          ],
           UPDATE: ["status"],
         },
       },

@@ -48,7 +48,10 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // NEW IN STEP 17: a company table that DSoR writes, such as app.payments: read it, add rows
   // and change them through named columns only. Never a whole-table INSERT or UPDATE, which
   // would include the columns the database fills in (step 17's README, decision 3).
-  ["business-written", { side: "company", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true }],
+  [
+    "business-written",
+    { side: "company", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true },
+  ],
   // DSoR's paperwork that grows and never changes, like the log: read it, and add rows
   // through named columns. INSERT on the whole table would include the columns the
   // database fills in (step 09's README, decision 6).

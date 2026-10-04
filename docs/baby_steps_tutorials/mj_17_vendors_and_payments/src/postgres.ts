@@ -272,7 +272,8 @@ type PaymentRow = {
   amount_currency: string;
   status: PaymentStatus;
 };
-const PAYMENT_COLUMNS = "tenant_id, id, invoice_id, vendor_id, amount_value, amount_currency, status";
+const PAYMENT_COLUMNS =
+  "tenant_id, id, invoice_id, vendor_id, amount_value, amount_currency, status";
 
 // NEW IN STEP 17: the payments, in the table app.payments (step 17's README, outcome 1).
 // Each write is one transaction that sets the company first, as every read is (step 11's

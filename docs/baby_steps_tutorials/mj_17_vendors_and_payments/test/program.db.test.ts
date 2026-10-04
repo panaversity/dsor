@@ -85,10 +85,18 @@ describe("the program", () => {
       // Step 17's commands. The draft, numbered by the database, holds INV-1008's open amount
       // and vendor, and says it can be undone. The cancel says atomic, a second cancel is
       // refused, and the agent is refused the command its role grants.
-      expect(output).toMatch(/^\s+id: 'PAY-\d+',\n\s+invoice_id: 'INV-1008',\n\s+vendor_id: 'VENDOR-44',$/m);
-      expect(output).toMatch(/^\s+status: 'draft'\n\s+\},\n\s+classification: 'confidential',\n\s+semantics: 'compensatable',$/m);
-      expect(output).toMatch(/^\s+status: 'cancelled'\n\s+\},\n\s+classification: 'confidential',\n\s+semantics: 'atomic',$/m);
-      expect(output).toMatch(/message: 'payment "PAY-\d+" is not a draft, so it cannot be cancelled'/);
+      expect(output).toMatch(
+        /^\s+id: 'PAY-\d+',\n\s+invoice_id: 'INV-1008',\n\s+vendor_id: 'VENDOR-44',$/m,
+      );
+      expect(output).toMatch(
+        /^\s+status: 'draft'\n\s+\},\n\s+classification: 'confidential',\n\s+semantics: 'compensatable',$/m,
+      );
+      expect(output).toMatch(
+        /^\s+status: 'cancelled'\n\s+\},\n\s+classification: 'confidential',\n\s+semantics: 'atomic',$/m,
+      );
+      expect(output).toMatch(
+        /message: 'payment "PAY-\d+" is not a draft, so it cannot be cancelled'/,
+      );
       expect(output).toMatch("message: `" + needsDelegation("payment.create") + "`");
     },
   );

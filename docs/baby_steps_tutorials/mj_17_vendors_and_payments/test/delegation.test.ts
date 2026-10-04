@@ -87,7 +87,13 @@ describe("C4: an agent's command never runs without an active delegation", () =>
   // In org_789 the firm's agent holds ap_supervisor, every payment permission there.
   it("DSOR-DEL-01a: the firm's agent, a supervisor in org_789, is refused there too", async () => {
     const cancel = { payment: "dsor://org_789/payment/PAY-901" };
-    const answer = await call(paymentRegistry([]), createLog(), FIRM_IN_789, "payment.cancel", cancel);
+    const answer = await call(
+      paymentRegistry([]),
+      createLog(),
+      FIRM_IN_789,
+      "payment.cancel",
+      cancel,
+    );
     expect(answer).toStrictEqual(delegationRequired("payment.cancel", THE_FIRM));
   });
 
@@ -130,8 +136,13 @@ describe("C4: an agent's command never runs without an active delegation", () =>
   // DSOR-DEL-01a is about commands. A query passes line ③ for the agent, as before.
   it("step 17's decision 5: the agent's query passes line ③", async () => {
     const lines: number[] = [];
-    const answer = await call(paymentRegistry([]), createLog(), AGENT, "invoice.get", CREATE, (line) =>
-      lines.push(line),
+    const answer = await call(
+      paymentRegistry([]),
+      createLog(),
+      AGENT,
+      "invoice.get",
+      CREATE,
+      (line) => lines.push(line),
     );
     expect(answer).toHaveProperty("data");
     expect(lines).toStrictEqual([1, 2, 3, 5, 6, 9, 11]);

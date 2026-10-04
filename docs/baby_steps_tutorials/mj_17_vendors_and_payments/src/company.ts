@@ -8,7 +8,13 @@ import { types } from "node:util";
 import { checkedLabel, newReads, type Reads } from "./freshness.ts";
 import { jsonCopy, NOT_JSON } from "./inputs.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
-import { NO_PAYMENTS, type Cancelled, type Draft, type Payment, type PaymentStore } from "./payment.ts";
+import {
+  NO_PAYMENTS,
+  type Cancelled,
+  type Draft,
+  type Payment,
+  type PaymentStore,
+} from "./payment.ts";
 
 /** One company's invoices. Whoever holds this can read that company's invoices, and no others. */
 export type CompanyInvoices = {

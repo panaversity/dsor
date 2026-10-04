@@ -79,7 +79,10 @@ describe("C1: every command declares its semantics in its contract", () => {
   // DSOR-OPR-02b: the registry infers no default for the semantics.
   it("DSOR-EXE-05a: a command contract whose execution names no semantics stops start-up, named", () => {
     expect(startWith(createWith({ compensated_by: ["payment.cancel"] }))).toBe(
-      refusedWith("payment.create.json: /execution must have required property 'semantics'", ORPHAN),
+      refusedWith(
+        "payment.create.json: /execution must have required property 'semantics'",
+        ORPHAN,
+      ),
     );
   });
 
@@ -116,7 +119,13 @@ describe("C1: every command declares its semantics in its contract", () => {
 
 describe("C2: every command's answer states the semantics that applied, from its contract", () => {
   it("DSOR-EXE-05b: payment.create answers compensatable", async () => {
-    const answer = await call(paymentRegistry([]), createLog(), SUPERVISOR, "payment.create", CREATE);
+    const answer = await call(
+      paymentRegistry([]),
+      createLog(),
+      SUPERVISOR,
+      "payment.create",
+      CREATE,
+    );
     expect(answer).toMatchObject({ semantics: "compensatable" });
   });
 

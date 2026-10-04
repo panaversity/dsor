@@ -161,7 +161,13 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     // Typed out, and the registry's own list: nothing skipped. invoice.list
     // has no URI to swap. Its rows are checked instead, and it adds no swap below. Step 17's
     // two commands are attacked like any other operation.
-    expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list", "payment.cancel", "payment.create"]);
+    expect(report.attacked).toStrictEqual([
+      "invoice.get",
+      "invoice.issue",
+      "invoice.list",
+      "payment.cancel",
+      "payment.create",
+    ]);
     expect(report.attacked).toStrictEqual([...registry.contracts.keys()]);
     // In org_456: invoice.get has 4 callers, and each command 1, user_123. In org_789:
     // invoice.get 2, and each command 1, user_700. An agent's command stops at line ③, so
@@ -539,7 +545,13 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       const report = await suiteOver(target);
       expect(report.findings).toStrictEqual(findings);
       // invoice.list, and step 17's two commands.
-      expect(report.attacked).toStrictEqual(["invoice.get", "invoice.issue", "invoice.list", "payment.cancel", "payment.create"]);
+      expect(report.attacked).toStrictEqual([
+        "invoice.get",
+        "invoice.issue",
+        "invoice.list",
+        "payment.cancel",
+        "payment.create",
+      ]);
     },
   );
 

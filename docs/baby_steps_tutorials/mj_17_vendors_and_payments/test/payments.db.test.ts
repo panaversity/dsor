@@ -108,7 +108,10 @@ describe("the drafts, on the database", () => {
 describe("the cancels, on the database", () => {
   it("step 17's decision 9: cancel, then cancel again: CONFLICT, and the row stays cancelled", async () => {
     const { id } = await draft();
-    expect(await cancel(id)).toMatchObject({ semantics: "atomic", data: { id, status: "cancelled" } });
+    expect(await cancel(id)).toMatchObject({
+      semantics: "atomic",
+      data: { id, status: "cancelled" },
+    });
     expect(await cancel(id)).toMatchObject({ code: "CONFLICT" });
     expect(await rowsOf("org_456", id)).toMatchObject([{ status: "cancelled" }]);
   });

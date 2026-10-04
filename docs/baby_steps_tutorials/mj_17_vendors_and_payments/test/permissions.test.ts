@@ -353,11 +353,14 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
 describe("C3: a call whose permission the caller does not hold is refused", () => {
   // Until step 16 the agent was a second row here. Since step 17 an agent's command stops at
   // line ③, before line ⑤ looks at its roles (step 17's README, decision 5).
-  it.each([["cfo_100", CFO, THE_CFO]])("DSOR-AUT-01b: %s, who may read, is denied invoice.issue", async (_who, request, caller) => {
-    expect(await call(registry, log, request, "invoice.issue", {})).toStrictEqual(
-      denied("invoice.issue", "invoice:issue", caller),
-    );
-  });
+  it.each([["cfo_100", CFO, THE_CFO]])(
+    "DSOR-AUT-01b: %s, who may read, is denied invoice.issue",
+    async (_who, request, caller) => {
+      expect(await call(registry, log, request, "invoice.issue", {})).toStrictEqual(
+        denied("invoice.issue", "invoice:issue", caller),
+      );
+    },
+  );
 
   // The other half of the map's "done when": a caller without invoice:read cannot read.
   it("DSOR-AUT-01b: cfo_100 is denied invoice.get when the CFO role grants nothing", async () => {
@@ -588,8 +591,8 @@ describe("C6: permissions never come from the caller", () => {
   it.each([
     ["a list of permissions", { permissions: ["invoice:issue"] }],
     ["a list of roles", { roles: ["ap_supervisor"] }],
-  // cfo_100, who may not issue. Until step 16 the agent made this call. Since step 17 an
-  // agent's command stops at line ③, before line ⑤ (step 17's README, decision 5).
+    // cfo_100, who may not issue. Until step 16 the agent made this call. Since step 17 an
+    // agent's command stops at line ③, before line ⑤ (step 17's README, decision 5).
   ])("DSOR-AUT-01b: %s in the input grants cfo_100 nothing", async (_why, claim) => {
     const input = { invoice: "dsor://org_456/invoice/INV-1008", ...claim };
     expect(await call(registry, log, CFO, "invoice.issue", input)).toStrictEqual(

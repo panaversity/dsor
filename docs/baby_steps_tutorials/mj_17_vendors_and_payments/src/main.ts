@@ -245,7 +245,9 @@ if ("data" in listed) {
 // invoice's open amount and vendor itself, and the answer says the draft can be undone:
 // compensatable (step 17's README, outcomes 2 and 4). The database numbers it: PAY-901 on a
 // fresh branch, a higher number on each run after.
-const drafted = await ask(USER_123, "payment.create", { invoice: "dsor://org_456/invoice/INV-1008" });
+const drafted = await ask(USER_123, "payment.create", {
+  invoice: "dsor://org_456/invoice/INV-1008",
+});
 console.log(drafted);
 if ("data" in drafted) {
   const payment = `dsor://org_456/payment/${(drafted.data as Payment).id}`;

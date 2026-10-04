@@ -126,9 +126,7 @@ describe("decision 1: classifications.json, checked at start-up", () => {
       id: "vendor.get",
       output: { schema: "Vendor" },
     };
-    expect(
-      refusal(() => buildRegistry([...shipped, source(vendor)], handlers, shippedRoles)),
-    ).toBe(
+    expect(refusal(() => buildRegistry([...shipped, source(vendor)], handlers, shippedRoles))).toBe(
       'the registry refused to start:\n  vendor.get: its output kind "Vendor" has no entry in classifications.json',
     );
   });
