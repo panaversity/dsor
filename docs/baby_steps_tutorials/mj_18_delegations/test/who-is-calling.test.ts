@@ -143,11 +143,12 @@ describe("C3: every principal has a type and at least one tenant membership", ()
   });
 
   // Found by the review: the test above checks the table, not what a call finds in it.
-  // The agent holds one role, ap_agent (step 06's README, decision 5).
+  // Since step 18 the agent holds no role: its power comes from its slip (step 18's README,
+  // decision 11). Until then it held ap_agent (step 06's README, decision 5).
   // The agent has a clearance too, and a person none (step 14's README,
   // decision 2).
   const FOUND: [string, string, string, string[], object][] = [
-    ["tok_7f3a", "accounts-payable-fte", "agent", ["ap_agent"], { clearance: "internal" }],
+    ["tok_7f3a", "accounts-payable-fte", "agent", [], { clearance: "internal" }],
     ["tok_2c91", "user_123", "human", ["ap_supervisor"], {}],
     ["tok_d4e8", "cfo_100", "human", ["CFO"], {}],
   ];
@@ -168,7 +169,7 @@ describe("C3: every principal has a type and at least one tenant membership", ()
       tok_7f3a: {
         id: "accounts-payable-fte",
         type: "agent",
-        memberships: inOrg456(["ap_agent"]),
+        memberships: inOrg456([]),
         clearance: "internal",
       },
       tok_2c91: { id: "user_123", type: "human", memberships: inOrg456(["ap_supervisor"]) },
@@ -177,9 +178,11 @@ describe("C3: every principal has a type and at least one tenant membership", ()
         id: "firm-ap-fte",
         type: "agent",
         clearance: "internal",
+        // Since step 18, no role in either company: the firm's agent works under del_101 and
+        // del_102 (step 18's README, decision 11).
         memberships: [
-          { tenant_id: "org_456", roles: ["ap_agent"] },
-          { tenant_id: "org_789", roles: ["ap_supervisor"] },
+          { tenant_id: "org_456", roles: [] },
+          { tenant_id: "org_789", roles: [] },
         ],
       },
       tok_e1a7: {

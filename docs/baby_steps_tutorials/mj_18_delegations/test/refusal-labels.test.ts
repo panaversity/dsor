@@ -103,7 +103,9 @@ function asPlanted(
   message: string,
   label: Label,
 ): Promise<{ answer: unknown; records: string }> {
-  const memberships = [{ tenant_id: "org_456", roles: ["ap_agent"] }];
+  // Since step 18 an agent holds no role. intake-fte works under its test slip, del_190
+  // (step 18's README, decision 11).
+  const memberships = [{ tenant_id: "org_456", roles: [] }];
   const intake: Principal = {
     id: "intake-fte",
     type: "agent",

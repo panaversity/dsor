@@ -48,19 +48,17 @@ function principal(id: string, type: PrincipalType, roles: string[]): Principal 
 // A token names nobody until it is looked up here (step 05's decision 2). §12 writes tenantId.
 // This tutorial spells every field the way the schemas do.
 export const logins: ReadonlyMap<string, Principal> = new Map([
-  // The agent holds a stand-in role of its own, ap_agent. It may read, and
-  // nothing more. Step 18 should replace it with a person's permission slip (step 06's
-  // README, decision 5).
+  // NEW IN STEP 18: the agent holds no role of its own. Its power comes from a person's
+  // slip, del_100 (step 18's README, decisions 2 and 11). Step 06's stand-in role, ap_agent,
+  // is gone, as step 06's README, decision 5, expected.
   // Internal, so amounts are masked. §19.2's example gives it
   // confidential (step 14's README, decision 2).
-  [
-    "tok_7f3a",
-    { ...principal("accounts-payable-fte", "agent", ["ap_agent"]), clearance: "internal" },
-  ],
+  ["tok_7f3a", { ...principal("accounts-payable-fte", "agent", []), clearance: "internal" }],
   ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
   ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
-  // An accounting firm's agent, working for two client companies, with
-  // different roles in each, and org_789's own supervisor (step 10's README, decision 7).
+  // An accounting firm's agent, working for two client companies, and org_789's own
+  // supervisor (step 10's README, decision 7). Since step 18 the firm's agent holds no role:
+  // its power in each company comes from that company's slip, del_101 and del_102.
   [
     "tok_9b52",
     {
@@ -69,8 +67,8 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
       // The firm's agent sees what our own agent sees.
       clearance: "internal",
       memberships: [
-        { tenant_id: "org_456", roles: ["ap_agent"] },
-        { tenant_id: "org_789", roles: ["ap_supervisor"] },
+        { tenant_id: "org_456", roles: [] },
+        { tenant_id: "org_789", roles: [] },
       ],
     },
   ],
@@ -83,6 +81,14 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
     },
   ],
 ]);
+
+// NEW IN STEP 18: the person who signed a slip, found by name in DSoR's own table (step
+// 18's README, decision 4).
+/** The principal with this id in DSoR's table of logins, if there is one. */
+export function principalNamed(id: string): Principal | undefined {
+  for (const principal of logins.values()) if (principal.id === id) return principal;
+  return undefined;
+}
 
 /** Finds who is calling, from the login token and DSoR's own table, or refuses the call. */
 export function whoIsCalling(request: RequestEnvelope): Principal {

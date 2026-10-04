@@ -6,11 +6,12 @@ import type { Company } from "../src/company.ts";
 import { Refusal, type Answer } from "../src/envelope.ts";
 import { invoiceUri, invoices, memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { createLog, type DecisionLog } from "../src/log.ts";
-import { permissionsOf } from "../src/permissions.ts";
+import { effectivePermissions } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { whoIsCalling, type Principal } from "../src/principals.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
+import type { Slip } from "../src/slips.ts";
 import { checkUrisInTenant } from "../src/tenants.ts";
 import { parseUri } from "../src/uri.ts";
 import {
@@ -58,6 +59,8 @@ import {
   forComparing,
   withPlanted,
   testSlips,
+  DEL_101,
+  DEL_102,
 } from "./helpers.ts";
 
 /** The error envelope a test expects, with a request id DSoR made. */
@@ -301,14 +304,18 @@ describe("C2: a read looks only inside the active company", () => {
 describe("C3: only the caller's roles in the active company count", () => {
   it.each([
     // ap_agent in org_456 and ap_supervisor in org_789, with step 17's payment permissions.
-    ["org_456", ["invoice:read", "payment:create"]],
-    ["org_789", ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
-    ["org_999", []],
+    ["org_456", DEL_101, ["invoice:read", "payment:create"]],
+    ["org_789", DEL_102, ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
+    ["org_999", undefined, []],
   ])(
-    "DSOR-AUT-01b: in %s, the firm's agent holds only what its roles there grant",
-    (tenant, held) => {
+    // Since step 18 the firm's agent holds no role. In each company it may do what its slip
+    // there lists and the signer holds now: del_101 from user_123, del_102 from user_700, and
+    // nothing in org_999 (step 18's README, decisions 2 and 4).
+    "DSOR-DEL-02: in %s, the firm's agent may do only what its slip there and its signer allow",
+    (tenant, slip, held) => {
       const firm = whoIsCalling({ token: "tok_9b52" });
-      expect([...permissionsOf(firm, registry.roles, tenant)].sort()).toStrictEqual(held);
+      const may = effectivePermissions(firm, registry.roles, tenant, slip as Slip | undefined);
+      expect([...may].sort()).toStrictEqual(held);
     },
   );
 
@@ -786,7 +793,9 @@ describe("C8: the code can reach only the active company, and its answer must be
   // Stage 2 review's fix: with the check moved after masking, every test passed. Fixed from
   // step 14 on.
   it("step 10's decision 14: an agent at public, whose code answers with org_789's row, fails with INTERNAL_ERROR, though masking would leave it nothing", async () => {
-    const memberships = [{ tenant_id: "org_456", roles: ["ap_agent"] }];
+    // Since step 18 an agent holds no role: intake-fte works under its test slip, del_190
+    // (step 18's README, decision 11).
+    const memberships = [{ tenant_id: "org_456", roles: [] }];
     const intake: Principal = { id: "intake-fte", type: "agent", memberships };
     const fresh = createLog();
     const answer = await withPlanted("tok_intake", intake, () =>
@@ -949,7 +958,16 @@ describe("C8: the code can reach only the active company, and its answer must be
   // the Stage 2 review, and fixed from step 10 on.
   it("step 10's decision 13: a registry built without a store reads no invoice, and fails with INTERNAL_ERROR", async () => {
     // Step 18: no store of invoices, and the slips, so the agent reaches the missing store.
-    const noStore = buildRegistry(shipped, handlers, shippedRoles, undefined, undefined, undefined, undefined, testSlips());
+    const noStore = buildRegistry(
+      shipped,
+      handlers,
+      shippedRoles,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      testSlips(),
+    );
     expect(
       await call(noStore, log, AGENT, "invoice.get", {
         invoice: "dsor://org_456/invoice/INV-1008",
@@ -960,7 +978,16 @@ describe("C8: the code can reach only the active company, and its answer must be
   // The same for a list. Found by the Stage 2 review, and fixed from step 13 on.
   it("step 10's decision 13: a registry built without a store lists no invoice, and fails with INTERNAL_ERROR", async () => {
     // Step 18: no store of invoices, and the slips, so the agent reaches the missing store.
-    const noStore = buildRegistry(shipped, handlers, shippedRoles, undefined, undefined, undefined, undefined, testSlips());
+    const noStore = buildRegistry(
+      shipped,
+      handlers,
+      shippedRoles,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      testSlips(),
+    );
     expect(await call(noStore, log, AGENT, "invoice.list", {})).toStrictEqual(
       refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT),
     );

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { Refusal } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
-import type { Principal } from "./principals.ts";
+import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
 import type { Slip } from "./slips.ts";
 
@@ -68,7 +68,21 @@ export function checkRoles(
   // A role that no line of the table names is a typo. It stops start-up, before any caller
   // arrives (step 06's README, decision 4). A role named with a problem is not named twice.
   const named = new Set(Object.keys(data));
-  for (const { id, memberships } of principals) {
+  for (const principal of principals) {
+    const { id, memberships } = principal;
+    // NEW IN STEP 18: an agent holds no role of its own. What it may do comes only from a
+    // person's slip, so line ⑤ never weighs a role against a slip (step 18's README,
+    // decisions 2 and 11).
+    if (actsAsAgent(principal)) {
+      for (const { tenant_id, roles: held } of memberships) {
+        for (const role of held) {
+          const why = "an agent's power comes only from a person's slip";
+          const holds = `holds the role ${JSON.stringify(role)} in ${tenant_id}`;
+          problems.push(`${id} is an agent, and ${holds}: ${why}`);
+        }
+      }
+      continue;
+    }
     for (const role of memberships.flatMap((membership) => membership.roles)) {
       if (!named.has(role)) {
         problems.push(
@@ -99,14 +113,29 @@ export function permissionsOf(
   return held;
 }
 
-/** What this caller may do in this company. Step 18's red commit: its roles, as before. */
+// NEW IN STEP 18: a person may do what its roles in this company grant, as since step 06.
+// An agent holds no role. It may use only what its slip lists and the person who signed it
+// holds now, in this company (DSOR-DEL-02; step 18's README, decisions 4 and 5). Only a
+// person signs a slip (§13: "a permission slip from a human to an agent"), so a slip that
+// names anyone else as its signer grants nothing. This tutorial's tokens carry no scopes, so
+// the token's part narrows nothing (decision 9).
+/** What this caller may do in this company: a person's roles, or an agent's slip cut down to its signer. */
 export function effectivePermissions(
   caller: Principal,
   roles: Roles,
   tenant: string,
-  _slip?: Slip,
+  slip?: Slip,
 ): ReadonlySet<string> {
-  return permissionsOf(caller, roles, tenant);
+  if (!actsAsAgent(caller)) return permissionsOf(caller, roles, tenant);
+  // Line ③ refuses an agent with no usable slip, so this is never reached without one. If it
+  // were, the agent may do nothing.
+  if (slip === undefined) return new Set();
+  const signer = principalNamed(slip.delegator);
+  if (signer === undefined || signer.type !== "human") return new Set();
+  // Read now, at the moment of the call: if user_123 loses a permission, the agent loses it
+  // at its next call, though the slip still lists it.
+  const held = permissionsOf(signer, roles, tenant);
+  return new Set(slip.permissions.filter((permission) => held.has(permission)));
 }
 
 /** Refuses the call unless the caller holds the very permission the contract names. */
@@ -116,7 +145,8 @@ export function checkPermission(
   roles: Roles,
   // The active company.
   tenant: string,
-  _slip?: Slip,
+  // NEW IN STEP 18: the slip line ③ found, for an agent.
+  slip?: Slip,
 ): void {
   const name = JSON.stringify(contract.id);
   const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;
@@ -127,10 +157,19 @@ export function checkPermission(
   }
   // Only the same text grants it. No wildcard, no "issue grants read", and the ".propose"
   // form does not stand in for the full one (step 06's README, decisions 2 and 3).
-  if (!permissionsOf(caller, roles, tenant).has(needed)) {
+  if (!effectivePermissions(caller, roles, tenant, slip).has(needed)) {
     throw new Refusal(
       "AUTHORIZATION_DENIED",
-      `${name} needs ${needed}, which the caller does not hold`,
+      `${name} needs ${needed}, ${whyNot(needed, caller, slip)}`,
     );
   }
+}
+
+// NEW IN STEP 18: why the permission is missing. For an agent, one code covers "the slip
+// does not list it" and "the signer no longer holds it", so the message tells them apart
+// (step 18's README, decision 5).
+function whyNot(needed: string, caller: Principal, slip: Slip | undefined): string {
+  if (!actsAsAgent(caller) || slip === undefined) return "which the caller does not hold";
+  if (!slip.permissions.includes(needed)) return `which slip ${slip.id} does not list`;
+  return `which ${slip.delegator}, who signed slip ${slip.id}, does not hold now`;
 }

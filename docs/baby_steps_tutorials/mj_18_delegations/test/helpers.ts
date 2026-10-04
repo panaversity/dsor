@@ -92,8 +92,8 @@ export function notValid(name: string, problem: string): string {
 // than read from roles.json, so a mistake in the file is not copied into the tests.
 // Step 17's decision 6 adds the payment permissions: the agent may create, the supervisor
 // may create and cancel, and the CFO neither.
+// Step 18 removes ap_agent: an agent holds no role (step 18's README, decision 11).
 export const STARTING_ROLES: Record<string, string[]> = {
-  ap_agent: ["invoice:read", "payment:create"],
   ap_supervisor: ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"],
   CFO: ["invoice:read"],
 };

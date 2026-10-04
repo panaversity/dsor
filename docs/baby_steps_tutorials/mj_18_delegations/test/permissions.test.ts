@@ -45,6 +45,7 @@ import {
   source,
   without,
   testSlips,
+  withPlanted,
 } from "./helpers.ts";
 
 /** The shipped operations plus one more, whose contract and code the test writes. */
@@ -61,14 +62,29 @@ function withOperation(
   const withCode = code === undefined ? handlers : { ...handlers, [id]: code };
   const sources = [...shipped, source(extra, `${id}.json`)];
   // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
-  return buildRegistry(sources, withCode, shippedRoles, inputs, labels, undefined, undefined, testSlips());
+  return buildRegistry(
+    sources,
+    withCode,
+    shippedRoles,
+    inputs,
+    labels,
+    undefined,
+    undefined,
+    testSlips(),
+  );
 }
 
 /** The whole refusal, when the caller does not hold the permission a call needs. */
+// Since step 18 the agent's refusal names its slip, del_100, which does not list the
+// permission (step 18's README, decision 5).
 function denied(name: string, permission: string, caller: Caller): Record<string, unknown> {
+  const message =
+    caller.agent_id === "accounts-payable-fte"
+      ? `"${name}" needs ${permission}, which slip del_100 does not list`
+      : notGranted(name, permission);
   return {
     code: "AUTHORIZATION_DENIED",
-    message: notGranted(name, permission),
+    message,
     retry: "never",
     correlation: correlationFor(caller),
   };
@@ -144,12 +160,18 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   });
 
   // Found by the review: the test above names a person, so a check that skipped agents
-  // passed it. The agent's role is looked up too.
+  // passed it. Since step 18 an agent may hold no role at all, so any role it holds stops
+  // start-up, one the table does not have too (step 18's README, decision 11).
   it("DSOR-AUT-01a: an agent holding a role that is not in the table stops start-up too", async () => {
-    const noAgentRole = rolesFile({ ap_supervisor: ["invoice:read"], CFO: ["invoice:read"] });
-    expect(refusal(() => buildRegistry(shipped, handlers, noAgentRole))).toMatch(
-      'roles.json: accounts-payable-fte holds the role "ap_agent", which the table does not have',
+    const odd: Principal = {
+      id: "odd-fte",
+      type: "agent",
+      memberships: [{ tenant_id: "org_456", roles: ["ap_agent"] }],
+    };
+    const message = await withPlanted("tok_odd", odd, () =>
+      refusal(() => buildRegistry(shipped, handlers, shippedRoles)),
     );
+    expect(message).toMatch('odd-fte is an agent, and holds the role "ap_agent" in org_456');
   });
 
   // A table kept in a plain object would find a role named toString (step 03). Found by
@@ -177,14 +199,15 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   });
 
   // Found by the review: JSON.parse keeps the last of two lines for one role, so a second
-  // ap_agent line could widen the agent to invoice:issue, and start-up saw nothing.
+  // line could widen a role, and start-up saw nothing. Since step 18 the table has no
+  // ap_agent, so the second line is the CFO's.
   it("DSOR-AUT-01a: a role written twice in the table stops start-up", async () => {
     const text = JSON.stringify(STARTING_ROLES).replace(
       "}",
-      ',"ap_agent":["invoice:read","invoice:issue"]}',
+      ',"CFO":["invoice:read","invoice:issue"]}',
     );
     expect(refusal(() => buildRegistry(shipped, handlers, { file: "roles.json", text }))).toMatch(
-      'roles.json: "ap_agent" is written twice in one object',
+      'roles.json: "CFO" is written twice in one object',
     );
   });
 
@@ -265,7 +288,9 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   it.each([
     // Step 17's decision 6: the agent holds payment:create, and user_123 both payment
     // permissions.
-    ["accounts-payable-fte", "tok_7f3a", ["invoice:read", "payment:create"]],
+    // Since step 18 an agent holds no role: its power comes from its slip, which
+    // slips.test.ts tests (step 18's README, decisions 2 and 11).
+    ["accounts-payable-fte", "tok_7f3a", []],
     ["user_123", "tok_2c91", ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
     ["cfo_100", "tok_d4e8", ["invoice:read"]],
   ])(
