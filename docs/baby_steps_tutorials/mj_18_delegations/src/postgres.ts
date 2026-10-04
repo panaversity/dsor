@@ -11,7 +11,7 @@ import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import type { Decision, DecisionLog, DecisionRecord } from "./log.ts";
 import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
-import type { SlipStore } from "./slips.ts";
+import type { FoundSlip, SlipStore } from "./slips.ts";
 
 // The step's own .env, found from this file, so the program finds it whatever folder it
 // is started from. Found by step 06's review, for roles.json.
@@ -435,7 +435,69 @@ export async function runtimeRoleProblems(db: pg.Pool | pg.ClientBase): Promise<
   return problemsOf(rows[0]!);
 }
 
-/** The slips, read from dsor.delegations. Step 18's red commit: none yet. */
-export function createDbSlips(_pool: pg.Pool): SlipStore {
-  return Object.freeze({ find: async () => undefined });
+// One row of dsor.delegations, as pg gives it back, with the database's own answer to "has
+// its time passed?" (step 18's README, decision 12).
+type SlipRow = {
+  tenant_id: string;
+  id: string;
+  delegator: string;
+  delegate: string;
+  modes: string[];
+  permissions: string[];
+  constraints: Record<string, unknown>;
+  subdelegation: Record<string, unknown>;
+  parent: string | null;
+  status: string;
+  expires_at: Date;
+  extensions: Record<string, unknown> | null;
+  past: boolean;
+};
+
+// NEW IN STEP 18: the permission slips, read from dsor.delegations, DSoR's own store
+// (DSOR-DEL-01a; step 18's README, decision 3).
+/** The slips, read from dsor.delegations, one company at a time. */
+export function createDbSlips(pool: pg.Pool): SlipStore {
+  return Object.freeze({
+    find: async (tenant: string, delegate: string): Promise<FoundSlip | undefined> => {
+      // Inside the company's transaction, so the database's lock filters too, and with
+      // DSoR's own WHERE, the company first (DSOR-TEN-01b). The database's clock decides the
+      // time, in the same statement (step 18's README, decision 12).
+      const { rows } = await inCompany(pool, tenant, (client) =>
+        client.query<SlipRow>(
+          `SELECT tenant_id, id, delegator, delegate, modes, permissions, constraints,
+                  subdelegation, parent, status, expires_at, extensions,
+                  expires_at <= now() AS past
+             FROM dsor.delegations WHERE tenant_id = $1 AND delegate = $2`,
+          [tenant, delegate],
+        ),
+      );
+      if (rows.length === 0) return undefined;
+      // The table keeps one slip per agent and company (step 18's README, decision 7). Two
+      // rows mean that rule is gone, and DSoR never chooses between two slips.
+      if (rows.length !== 1) {
+        throw new Error(`dsor.delegations holds ${rows.length} slips for one agent in one company`);
+      }
+      const row = rows[0]!;
+      return { slip: slipOf(row), past: row.past };
+    },
+  });
+}
+
+// The slip in the specification's shape: tenant, not tenant_id, and no field that the row
+// leaves empty. Line ③ checks it against the schema.
+function slipOf(row: SlipRow): unknown {
+  return {
+    id: row.id,
+    tenant: row.tenant_id,
+    delegator: row.delegator,
+    delegate: row.delegate,
+    modes: row.modes,
+    permissions: row.permissions,
+    constraints: row.constraints,
+    subdelegation: row.subdelegation,
+    ...(row.parent === null ? {} : { parent: row.parent }),
+    status: row.status,
+    expires_at: row.expires_at.toISOString(),
+    ...(row.extensions === null ? {} : { extensions: row.extensions }),
+  };
 }

@@ -44,6 +44,7 @@ import {
   shippedWith,
   source,
   without,
+  testSlips,
 } from "./helpers.ts";
 
 /** The shipped operations plus one more, whose contract and code the test writes. */
@@ -59,7 +60,8 @@ function withOperation(
   const id = extra["id"] as string;
   const withCode = code === undefined ? handlers : { ...handlers, [id]: code };
   const sources = [...shipped, source(extra, `${id}.json`)];
-  return buildRegistry(sources, withCode, shippedRoles, inputs, labels);
+  // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+  return buildRegistry(sources, withCode, shippedRoles, inputs, labels, undefined, undefined, testSlips());
 }
 
 /** The whole refusal, when the caller does not hold the permission a call needs. */
@@ -407,6 +409,9 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       shippedInputs,
       shippedLabels,
       memoryInvoices(),
+      undefined,
+      // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+      testSlips(),
     );
     expect(
       await call(changed, log, AGENT, "invoice.get", {

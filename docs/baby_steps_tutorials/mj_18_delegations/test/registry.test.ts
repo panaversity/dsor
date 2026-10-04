@@ -22,6 +22,7 @@ import {
   shippedWith,
   source,
   without,
+  testSlips,
 } from "./helpers.ts";
 
 // Every call carries the agent's login token (step 05's README, decision 1).
@@ -37,6 +38,9 @@ describe("C1: nothing can be called without a contract", () => {
     shippedInputs,
     shippedLabels,
     memoryInvoices(),
+    undefined,
+    // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+    testSlips(),
   );
 
   // The invoice comes back as the envelope's data.

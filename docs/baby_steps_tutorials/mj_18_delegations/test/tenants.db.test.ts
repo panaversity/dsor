@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { companyOf } from "../src/company.ts";
 import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
-import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
+import { createDbInvoices, createDbLog, createDbSlips, openPool } from "../src/postgres.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import { parseUri } from "../src/uri.ts";
 import {
@@ -288,6 +288,9 @@ describe("C8: in the database, the code reaches only the active company, and its
       shippedInputs,
       shippedLabels,
       createDbInvoices(pool),
+      undefined,
+      // Step 18: and the slips, so the agent reaches the code (step 18's README, decision 2).
+      createDbSlips(pool),
     );
     const id = requestId("c8-foreign-row");
     const answer = await call(planted, log, { ...AGENT, request_id: id }, "invoice.get", {

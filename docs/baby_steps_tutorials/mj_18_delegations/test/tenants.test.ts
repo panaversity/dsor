@@ -33,7 +33,6 @@ import {
   MASKED_1008_OF_456,
   MASKED_1008_OF_789,
   MASKED_REDACTIONS,
-  needsDelegation,
   NOBODY,
   NOT_A_MEMBER,
   notGranted,
@@ -58,6 +57,7 @@ import {
   USER_700,
   forComparing,
   withPlanted,
+  testSlips,
 } from "./helpers.ts";
 
 /** The error envelope a test expects, with a request id DSoR made. */
@@ -126,6 +126,9 @@ function registryWithFreeInput(): Registry {
     [...shippedInputs, source(schema, "TestFreeRequest.schema.json")],
     shippedLabels,
     memoryInvoices(),
+    undefined,
+    // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+    testSlips(),
   );
 }
 
@@ -530,12 +533,14 @@ describe("C4: a company in the arguments that is not the active one is refused",
   });
 
   // An earlier line still comes first. Until step 16 it was line ⑤: the agent may not issue.
-  // Since step 17 it is line ③: an agent runs no command without a delegation (step 17's
-  // README, decision 5).
-  it("the agent sending a foreign URI to invoice.issue is refused at line ③ first", async () => {
-    expect(await call(registry, log, AGENT, "invoice.issue", FOREIGN_1008)).toStrictEqual(
-      refused("DELEGATION_REQUIRED", needsDelegation("invoice.issue"), THE_AGENT),
-    );
+  // In step 17 it was line ③: an agent ran no command without a delegation. Since step 18
+  // the agent passes line ③ under del_100, which lists no invoice:issue, so line ⑤ refuses
+  // it again, before the URI's company is checked (step 18's README, decision 5).
+  it("the agent sending a foreign URI to invoice.issue is refused at line ⑤ first", async () => {
+    expect(await call(registry, log, AGENT, "invoice.issue", FOREIGN_1008)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      correlation: correlationFor(THE_AGENT),
+    });
   });
 });
 
@@ -824,6 +829,9 @@ describe("C8: the code can reach only the active company, and its answer must be
       shippedInputs,
       shippedLabels,
       forgetful,
+      undefined,
+      // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+      testSlips(),
     );
     const answer = await call(leaky, fresh, AGENT, "invoice.list", {});
     expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
@@ -940,7 +948,8 @@ describe("C8: the code can reach only the active company, and its answer must be
   // When the store is missing, the answer is no (step 10's README, decision 13). Found by
   // the Stage 2 review, and fixed from step 10 on.
   it("step 10's decision 13: a registry built without a store reads no invoice, and fails with INTERNAL_ERROR", async () => {
-    const noStore = buildRegistry(shipped, handlers, shippedRoles);
+    // Step 18: no store of invoices, and the slips, so the agent reaches the missing store.
+    const noStore = buildRegistry(shipped, handlers, shippedRoles, undefined, undefined, undefined, undefined, testSlips());
     expect(
       await call(noStore, log, AGENT, "invoice.get", {
         invoice: "dsor://org_456/invoice/INV-1008",
@@ -950,7 +959,8 @@ describe("C8: the code can reach only the active company, and its answer must be
 
   // The same for a list. Found by the Stage 2 review, and fixed from step 13 on.
   it("step 10's decision 13: a registry built without a store lists no invoice, and fails with INTERNAL_ERROR", async () => {
-    const noStore = buildRegistry(shipped, handlers, shippedRoles);
+    // Step 18: no store of invoices, and the slips, so the agent reaches the missing store.
+    const noStore = buildRegistry(shipped, handlers, shippedRoles, undefined, undefined, undefined, undefined, testSlips());
     expect(await call(noStore, log, AGENT, "invoice.list", {})).toStrictEqual(
       refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT),
     );

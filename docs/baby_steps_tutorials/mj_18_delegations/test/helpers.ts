@@ -13,7 +13,7 @@ import { readClassifications, type ClassificationSource } from "../src/labels.ts
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
-import { memorySlips, type SlipStore } from "../src/slips.ts";
+import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
 import {
   buildRegistry,
@@ -307,9 +307,8 @@ export function registryRunning(
     labels,
     store,
     undefined,
-    // NEW IN STEP 18: the story's slips, so the agent calls as before (step 18's README,
-    // decision 2).
-    storySlips(),
+    // NEW IN STEP 18: the slips, so the agents call as before (step 18's README, decision 2).
+    testSlips(),
   );
 }
 
@@ -358,6 +357,16 @@ export function storySlips(): SlipStore {
   return memorySlips(STORY_SLIPS);
 }
 
+// intake-fte is the agent that the tests of steps 14 and 15 plant, to try clearances and
+// types of caller. It works in org_456 under a slip from user_123, as accounts-payable-fte
+// does. Only the tests know it, so migration 010 does not write its slip.
+export const INTAKE_SLIP: StorySlip = { ...DEL_100, id: "del_190", delegate: "intake-fte" };
+
+/** The slips the shared test registries hold: the story's three, and intake-fte's. */
+export function testSlips(): SlipStore {
+  return memorySlips([...STORY_SLIPS, INTAKE_SLIP]);
+}
+
 /** A log for the tests that do not read it. Each test that reads one makes its own. */
 export const log: MemoryLog = createLog();
 
@@ -379,8 +388,8 @@ export const registry: Registry = buildRegistry(
   // And payments in memory, which the commands write (step 17's README,
   // outcome 1). One list for every test that uses this registry.
   memoryPayments(),
-  // NEW IN STEP 18: and the story's slips (step 18's README, decision 2).
-  storySlips(),
+  // NEW IN STEP 18: and the slips (step 18's README, decision 2).
+  testSlips(),
 );
 
 /**
@@ -392,8 +401,8 @@ export function paymentRegistry(
   rows: Payment[],
   sources: ContractSource[] = shipped,
   code: Record<string, Handler> = handlers,
-  // NEW IN STEP 18: the story's slips, unless the test gives others.
-  slips: SlipStore = storySlips(),
+  // NEW IN STEP 18: the slips, unless the test gives others.
+  slips: SlipStore = testSlips(),
 ): Registry {
   return buildRegistry(
     sources,
@@ -425,10 +434,15 @@ export function slipRegistry(
   );
 }
 
-// The refusal at line ③, typed out rather than imported (step 17's README, decision 5).
-/** The message when an agent calls a command with no delegation. */
-export function needsDelegation(name: string): string {
-  return `"${name}" is a command, and an agent runs a command only under a person's delegation`;
+// The refusal at line ③, typed out rather than imported. Since step 18 it names the agent
+// and the company where it holds no slip (step 18's README, decision 5).
+/** The message when an agent calls with no person's slip in this company. */
+export function needsDelegation(
+  name: string,
+  agent = "accounts-payable-fte",
+  tenant = "org_456",
+): string {
+  return `"${name}" needs a slip: ${agent} holds no person's slip in ${tenant}`;
 }
 
 // PAY-901, the running example's draft: INV-1008's open amount and vendor, typed out again
@@ -593,11 +607,11 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
     notGranted("invoice.issue", "invoice:issue"),
     THE_CFO,
   ],
-  // The agent's command, which no delegation covers yet. Its role grants
-  // payment:create, so only line ③ refuses it.
+  // The agent's command, with no slip in the store. Since step 18 the shared registry holds
+  // the story's slips, so this one holds none, and only line ③ refuses it.
   [
     "the agent calling payment.create, which no delegation covers",
-    () => call(registry, log, AGENT, "payment.create", {}),
+    () => call(slipRegistry(NO_SLIPS), log, AGENT, "payment.create", {}),
     "DELEGATION_REQUIRED",
     needsDelegation("payment.create"),
     THE_AGENT,

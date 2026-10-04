@@ -182,8 +182,8 @@ if ("data" in answer) {
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
 console.log(await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }));
-// invoice.issue is a command. Since step 17, an agent's command is refused at line ③,
-// because no person's delegation covers it yet (step 17's README, decision 5).
+// invoice.issue is a command. Since step 18 the agent calls under del_100, user_123's slip,
+// which lists no invoice:issue, so line ⑤ refuses it (step 18's README, decision 5).
 console.log(await ask(AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // A call with no login token is refused before DSoR checks anything else.
@@ -260,7 +260,9 @@ if ("data" in drafted) {
   // A cancelled payment is not a draft any more, so a second cancel is refused.
   console.log(await ask(USER_123, "payment.cancel", { payment }));
 }
-// The agent's role grants payment:create, and line ③ still refuses it: no delegation yet.
+// NEW IN STEP 18: the agent drafts a payment under del_100, which lists payment:create, and
+// user_123, who signed it, holds it now. Its answer leaves out the amount (step 18's README,
+// outcome 1).
 console.log(await ask(AGENT, "payment.create", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // Every call above left one record in the log before its answer was returned, the

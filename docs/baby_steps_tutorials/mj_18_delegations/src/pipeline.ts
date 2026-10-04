@@ -128,10 +128,11 @@ export async function call(
     }
 
     // ③ Resolve delegation; verify the actor chain; establish current authority.
-    // An agent's command needs a person's delegation, and none exists until
-    //   step 18, so it is refused here (DSOR-DEL-01a; step 17's README, decision 5). Before
-    //   line ⑤, so a permission alone never lets an agent change anything. The actor chain
-    //   and current authority: not checked yet, steps 18 and 19.
+    // NEW IN STEP 18: every call from an agent, a read too, runs only under an active slip
+    //   that a person signed and DSoR holds, and that allows `unattended`. The person comes
+    //   from the slip, never from the request (DSOR-DEL-01a, DSOR-DEL-07, DSOR-DEL-08; step
+    //   18's README, decisions 1, 2, and 5). Before line ⑤, which allows only what the slip
+    //   and its signer both allow. Whether the signer still holds the job: step 19.
     const slip = await line(3, () =>
       checkDelegation(caller, contract, registry.delegations, tenant),
     );

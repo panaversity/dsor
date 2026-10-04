@@ -40,6 +40,7 @@ import {
   THE_AGENT,
   THE_CFO,
   THE_SUPERVISOR,
+  testSlips,
 } from "./helpers.ts";
 
 // JSON text for a list nested 100,000 levels deep. JSON.parse reads it, but JSON.stringify
@@ -287,6 +288,11 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       { ...handlers, "invoice.get": spy },
       shippedRoles,
       withDefault,
+      undefined,
+      undefined,
+      undefined,
+      // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+      testSlips(),
     );
     await call(registry, log, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
     expect(spy).toHaveBeenCalledWith(
@@ -630,7 +636,17 @@ describe("C4: start-up is refused for an input schema that is missing, broken, o
 // that answers without reading is not refused for it (step 15's README, decision 6).
 function registryWithGet(handler: Handler): Registry {
   const code = { ...handlers, "invoice.get": afterARead(handler) };
-  return buildRegistry(shipped, code, shippedRoles, shippedInputs, shippedLabels, memoryInvoices());
+  // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+  return buildRegistry(
+    shipped,
+    code,
+    shippedRoles,
+    shippedInputs,
+    shippedLabels,
+    memoryInvoices(),
+    undefined,
+    testSlips(),
+  );
 }
 
 /**
@@ -647,7 +663,17 @@ function registryListing(field: string, handler: Handler): Registry {
   };
   const inputs = inputsWith("InvoiceGetRequest.schema.json", JSON.stringify(schema));
   const code = { ...handlers, "invoice.get": afterARead(handler) };
-  return buildRegistry(shipped, code, shippedRoles, inputs, shippedLabels, memoryInvoices());
+  // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+  return buildRegistry(
+    shipped,
+    code,
+    shippedRoles,
+    inputs,
+    shippedLabels,
+    memoryInvoices(),
+    undefined,
+    testSlips(),
+  );
 }
 
 /** An input whose field reads as `first` the first time, and as `later` every time after. */

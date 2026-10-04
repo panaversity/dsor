@@ -20,6 +20,7 @@ import {
   shippedLabels,
   shippedRoles,
   source,
+  testSlips,
 } from "./helpers.ts";
 
 // The callers of each company who may read, in the order of DSoR's table of logins.
@@ -43,6 +44,9 @@ function suiteWithListCode(handler: Handler, send: Send = call): Promise<Report>
     shippedInputs,
     shippedLabels,
     memoryInvoices(),
+    undefined,
+    // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+    testSlips(),
   );
   return crossTenantSuite(registry, createLog(), readExamples(), send);
 }
@@ -81,6 +85,9 @@ function suiteWithList(
     // The invoices in memory: the registry holds the store (step 10's README, decision 13).
     // Found by the Stage 2 review, and fixed from step 10 on.
     memoryInvoices(),
+    undefined,
+    // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
+    testSlips(),
   );
   const examples = [
     ...readExamples(),

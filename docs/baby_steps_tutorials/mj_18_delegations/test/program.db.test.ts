@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
 import { RUNTIME_URL, redact } from "./db.ts";
-import { needsDelegation } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
@@ -62,8 +61,9 @@ describe("the program", () => {
       expect(output).toMatch("dsor://org_456/invoice/INV-1008");
       expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
       expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
-      // Since step 17 the agent's invoice.issue stops at line ③ (step 17's README, decision 5).
-      expect(output).toMatch("message: `" + needsDelegation("invoice.issue") + "`");
+      // Since step 18 the agent's invoice.issue stops at line ⑤: its slip, del_100, lists no
+      // invoice:issue (step 18's README, decision 5).
+      expect(output).toMatch(`message: '"invoice.issue" needs invoice:issue, which`);
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
       expect(output).toMatch(
         `message: 'the input of "invoice.issue" is not valid: /invoice must match pattern`,
@@ -84,7 +84,8 @@ describe("the program", () => {
       );
       // Step 17's commands. The draft, numbered by the database, holds INV-1008's open amount
       // and vendor, and says it can be undone. The cancel says atomic, a second cancel is
-      // refused, and the agent is refused the command its role grants.
+      // refused. Since step 18 the agent drafts too, under del_100, and its answer leaves out
+      // the amount (step 18's README, outcome 1).
       expect(output).toMatch(
         /^\s+id: 'PAY-\d+',\n\s+invoice_id: 'INV-1008',\n\s+vendor_id: 'VENDOR-44',$/m,
       );
@@ -97,7 +98,9 @@ describe("the program", () => {
       expect(output).toMatch(
         /message: 'payment "PAY-\d+" is not a draft, so it cannot be cancelled'/,
       );
-      expect(output).toMatch("message: `" + needsDelegation("payment.create") + "`");
+      expect(output).toMatch(
+        /^\s+classification: 'internal',\n\s+redactions: \[ \{ field: 'amount', reason: 'clearance', treatment: 'omitted' \} \],\n\s+semantics: 'compensatable',$/m,
+      );
     },
   );
 
@@ -115,7 +118,7 @@ describe("the program", () => {
         const run = start(env, dir);
         expect(run.stderr).toBe("");
         expect(run.status).toBe(0);
-        expect(run.stdout).toMatch("message: `" + needsDelegation("invoice.issue") + "`");
+        expect(run.stdout).toMatch(`message: '"invoice.issue" needs invoice:issue, which`);
       } finally {
         rmSync(dir, { recursive: true });
       }
@@ -146,8 +149,9 @@ describe("the program's log", () => {
         // Cfo_100 reads INV-1008 whole.
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456",
-        // Since step 17, line ③ refuses the agent's command (step 17's README, decision 5).
-        "invoice.issue@1 DENY DELEGATION_REQUIRED org_456",
+        // Since step 18 the agent passes line ③ under del_100, which lists no invoice:issue,
+        // so line ⑤ refuses it (step 18's README, decision 5).
+        "invoice.issue@1 DENY AUTHORIZATION_DENIED org_456",
         "invoice.get@1 ALLOW ok org_456",
         "invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456",
         "invoice.issue@1 DENY VALIDATION_FAILED org_456",
@@ -156,11 +160,11 @@ describe("the program's log", () => {
         "invoice.issue@1 DENY TENANT_MISMATCH org_456",
         "invoice.list@1 ALLOW ok org_456",
         // Step 17's commands: a draft, its cancel, a second cancel refused by the code, so
-        // ALLOW, and the agent refused at line ③.
+        // ALLOW. Since step 18 the agent drafts too, under del_100.
         "payment.create@1 ALLOW ok org_456",
         "payment.cancel@1 ALLOW ok org_456",
         "payment.cancel@1 ALLOW CONFLICT org_456",
-        "payment.create@1 DENY DELEGATION_REQUIRED org_456",
+        "payment.create@1 ALLOW ok org_456",
       ]);
       // A fact and one inference, and the line says which: every call answered, and an
       // answer leaves only after its record is committed. Found by the review: the line

@@ -11,6 +11,7 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
+import { NO_SLIPS } from "../src/slips.ts";
 import {
   AGENT,
   CFO,
@@ -26,7 +27,6 @@ import {
   USER_700,
   correlationFor,
   handlers,
-  needsDelegation,
   notGranted,
   notValid,
   paymentRegistry,
@@ -268,13 +268,13 @@ describe("C3: the undo, payment.cancel, runs under the full checklist", () => {
     expect(rows).toStrictEqual([PAY_901_DRAFT]);
   });
 
-  it("DSOR-EXE-05c: payment.cancel by the agent is refused at line ③, recorded, and changes nothing", async () => {
+  // Since step 18 the agent holds del_100, which lists no payment:cancel, so line ⑤ refuses
+  // it (step 18's README, decision 5). Step 17's version stopped at line ③.
+  it("DSOR-EXE-05c: payment.cancel by the agent, whose slip does not list it, is refused, recorded, and changes nothing", async () => {
     const { answer, records, rows } = await cancelAs(AGENT);
-    expect(answer).toStrictEqual(
-      refused("DELEGATION_REQUIRED", needsDelegation("payment.cancel"), THE_AGENT),
-    );
+    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED", correlation: correlationFor(THE_AGENT) });
     expect(records).toMatchObject([
-      { operation: "payment.cancel@1", authorization: "DENY", result: "DELEGATION_REQUIRED" },
+      { operation: "payment.cancel@1", authorization: "DENY", result: "AUTHORIZATION_DENIED" },
     ]);
     expect(rows).toStrictEqual([PAY_901_DRAFT]);
   });
@@ -377,8 +377,10 @@ describe("decision 17: once a command's code has run, a failed record is never a
   });
 
   // Refused before its code ran, nothing happened, so a retry is safe, and it says so.
+  // An agent with no slip is refused at line ③, before its code (step 18's README, decision 2).
   it("DSOR-EXE-03b: a command refused before its code, with a failed record: EVIDENCE_STORE_UNAVAILABLE", async () => {
-    const answer = await call(paymentRegistry([]), brokenLog, AGENT, "payment.create", {
+    const noSlip = paymentRegistry([], shipped, handlers, NO_SLIPS);
+    const answer = await call(noSlip, brokenLog, AGENT, "payment.create", {
       invoice: "dsor://org_456/invoice/INV-1008",
     });
     expect(answer).toStrictEqual({
