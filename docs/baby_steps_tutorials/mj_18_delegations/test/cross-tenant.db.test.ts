@@ -12,16 +12,19 @@ import { FOREIGN_URI } from "./helpers.ts";
 const pool = newPool();
 afterAll(() => pool.end());
 
-// One run of the suite, which the tests below look at. 69 calls, each waiting for the
-// database, so it gets more time than one test: 36 for the attacks and the same-company
+// One run of the suite, which the tests below look at. 84 calls since step 18, each waiting
+// for the database, so it gets more time than one test: 51 for the attacks and the same-company
 // calls of invoice.get and invoice.issue, 12 for the in-company pairs, and 21 for
 // invoice.list: the one question, then each reader's two calls, and page 2 of both for each
 // reader in org_456. Found by the Stage 2 review, and fixed from step 12 on, the pages from
 // step 13 on.
 let report: Report;
+// Found live 2026-10-05: since step 18 the agents attack the commands too, 51 attacks, and
+// each call from an agent reads its slip first. The hook took longer than 180 seconds on
+// Neon, and vitest reported its five tests as skipped, not failed.
 beforeAll(async () => {
   report = await crossTenantSuite(dbRegistry(pool), createDbLog(pool), readExamples());
-}, 180_000);
+}, 600_000);
 
 /** The records with one of these request ids, read inside a company, in the order written. */
 async function recordsIn(company: string, ids: string[]): Promise<Record<string, unknown>[]> {
@@ -38,9 +41,8 @@ async function recordsIn(company: string, ids: string[]): Promise<Record<string,
 describe("the suite, on the database", () => {
   it("DSOR-TEN-02b: every operation, reading from the database, is attacked from both companies and refused", () => {
     expect(report.findings).toStrictEqual([]);
-    // invoice.list, checked by its rows, adds no attack to the 36. Step 17's two commands are
-    // attacked by people only: an agent's command stops at line ③ (step 17's README,
-    // decision 5).
+    // invoice.list, checked by its rows, adds no attack to the 51. Since step 18 the agents
+    // attack the commands their slips list too (step 18's README, decision 2).
     expect(report.attacked).toStrictEqual([
       "invoice.get",
       "invoice.issue",
@@ -48,7 +50,7 @@ describe("the suite, on the database", () => {
       "payment.cancel",
       "payment.create",
     ]);
-    expect(report.attacks).toHaveLength(36);
+    expect(report.attacks).toHaveLength(51);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -84,8 +86,9 @@ describe("the suite, on the database", () => {
     async (home, other) => {
       const made = report.attacks.filter((attack) => attack.home === home);
       // Without this, a run that attacked nothing would find nothing wrong below.
-      // (4 + 1 + 1 + 1) × 3 in org_456, and (2 + 1 + 1 + 1) × 3 in org_789.
-      expect(made).toHaveLength(home === "org_456" ? 21 : 15);
+      // (4 + 1 + 1 + 3) × 3 in org_456, and (2 + 2 + 2 + 2) × 3 in org_789: since step 18 the
+      // agents attack the commands their slips list too.
+      expect(made).toHaveLength(home === "org_456" ? 27 : 24);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({
