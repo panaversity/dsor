@@ -463,6 +463,15 @@ the official tutorial's. A learner build does not change either. A maintainer de
   are suspended), DSOR-DEL-09 (two slips and no name is a refusal), DSOR-DEL-04b
   (revocation within the §44 bound), or DSOR-DEL-05a to 05d (subdelegation). IDN-07 fits
   step 19, beside the role source that reports a firing. DEL-09 fits step 18 or 19.
+- **Step 18's entry in the map: "up to a limit".** The map says user_123 allows the agent "to
+  create payments, up to a limit, until a date". Limits are checked from step 24. So the
+  learner build's slips carry no constraints, and a slip that carries one is refused (step
+  18's decision 6). The entry could drop "up to a limit", or step 24 could add the limit to
+  `del_100`.
+- **No step lets a person sign a slip.** Step 18's learner build writes its slips with a
+  migration (step 18's decision 3), and step 25 tears slips up. No step adds an operation
+  for a person to sign one. A command for people only, never for agents, that grants no more
+  than the signer holds, could come beside revocation in step 25.
 
 ## The Stage 2 review (2026-10-01)
 
