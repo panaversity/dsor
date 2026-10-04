@@ -649,6 +649,58 @@ does, and a real run answered it within a minute.
   10. The code for a slip past its date: `DELEGATION_EXPIRED` or `DELEGATION_REQUIRED`.
   11. What line ⑤ checks for an agent: the effective set, not the agent's own role.
 
+### Step 17, again after the build (2026-10-04)
+
+The learner missed all three Check-yourself questions of step 17. A second session took each
+miss as one part. Real runs on `mj_17`'s code, and on a local PostgreSQL, settled each one.
+
+- **The lines need names, not only numbers.** "Lines that ran: 1, 2, 3, 11" meant nothing
+  until a table gave each line its question: ③ asks for a person's slip, ⑤ for a permission,
+  ⑨ runs the code, and ⑪ writes the record. Teach that table before a run that lists lines.
+- **"The role decides", a second time (Habit 1).** Step 14 expected a role to decide what a
+  caller sees. Here, `payment:cancel` added to `ap_agent` was expected to let the agent
+  cancel, and line ③ still refused it. Four runs side by side settled it: line ③ in place or
+  removed, and the role with or without the permission. Only "removed" and "with" cancelled.
+- **A rule of the specification, credited to the step's code (Habit 1, as with step 18's
+  firing).** Twice, for a create and for a cancel, the learner expected DSOR-EXE-03b's
+  answer: `EVIDENCE_STORE_UNAVAILABLE`, and nothing changed. In step 17, line ⑨ commits
+  before line ⑪, so a failed record leaves the change, and the caller hears `INTERNAL_ERROR`
+  (decision 17). The learner's answer is right for a call that never reaches line ⑨, such
+  as the agent's. Plain SQL showed the root: a failure takes back only the writes of its own
+  transaction. Two transactions, as in step 17, kept the cancel. One transaction, as step 36
+  plans, took it back.
+- **What a check asks.** An opposite operation does not make a command `compensatable`.
+  Start-up asks whether DSoR can run the undo: a contract, a command, code, and a role that
+  may run it. With no role for `payment:cancel`, start-up refused the label, and the opposite
+  still existed. The learner then chose `non_compensatable` for `payment.execute` with a
+  refund, as the specification's own example contract does.
+- **Design questions:** none new. Step 18's eleven stand, and question 11 has more weight:
+  a role alone must never let an agent act.
+- **The re-check missed too, and showed the belief underneath: an error answer means that
+  nothing happened.** After `INTERNAL_ERROR`, the same request was sent again. The learner
+  expected one draft. The run gave two, PAY-901 and PAY-902, and one record, for PAY-902
+  only. In most programs an error comes before the act. Here it comes after line ⑨. The
+  picture tried next: the bank teller posts the deposit, then finds the bank's journal
+  locked, and says "something went wrong". The deposit stays.
+- **What landed it: the old rule, and where it stops.** For 16 steps every operation read,
+  so "fail closed" (the door that stays locked when the power fails) always left the world
+  as it was. But a locked door keeps a person out only while the person is outside. A sketch
+  of two writes in two orders, with one journal that fails, showed that only the order
+  decides. The learner then placed a refusal at line ⑥ before the cancel, and a failure at
+  line ⑪ after it, right. The run also showed the log and the table disagree: the log holds
+  one refused cancel, and the table holds a cancelled PAY-901.
+- **To check again at step 20.** Step 20 exists to stop the second draft, so its session can
+  start from the retry run.
+- **Part 1, told a second way, landed half.** From step 06 to step 16, the role decided
+  every call. That is still true for reads and for a person's commands, and the learner got
+  the read right. Three checks of the order then missed: an empty role, a broken input, and
+  cfo_100's broken cancel. Each answer named the plainest problem, not the first line that
+  says no. DSoR does not weigh problems. It walks the lines in order and stops at the first
+  no. The gap is older than step 17: in step 09, the learner placed ⑤ before "which
+  operation?". Seven real calls in one table showed the pattern. Then a page for practice,
+  "Walk the Checklist" (a private artifact): 15 real calls of step 17, walked one line at a
+  time, each reason checked by a script against its run.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
