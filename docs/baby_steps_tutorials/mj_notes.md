@@ -658,6 +658,18 @@ does, and a real run answered it within a minute.
   10. The code for a slip past its date: `DELEGATION_EXPIRED` or `DELEGATION_REQUIRED`.
   11. What line ⑤ checks for an agent: the effective set, not the agent's own role.
 
+### Step 18, the design (2026-10-05)
+
+- **Eleven decisions, each with a spec sentence or a real run,** are in step 18's README.
+  Question 11 above became decision 5: line ③ finds a usable slip, and line ⑤ checks what the
+  slip and the signer both allow.
+- **Every break was predicted with its check still in place.** B1 to B4 each delete one check,
+  and each prediction gave the answer of the unbroken DSoR, after a note on what a break is,
+  and after a sketch of B3. The answers reason from the data ("there is no slip in org_456")
+  and not from the code that is left. This is Habit 1 once more: credit for a question that no
+  line asks any more. The build should run each break as a pair, the learner's case beside
+  the real one.
+
 ### Step 17, again after the build (2026-10-04)
 
 The learner missed all three Check-yourself questions of step 17. A second session took each
