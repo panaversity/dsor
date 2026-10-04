@@ -58,7 +58,13 @@ const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   const held = (role: string): string =>
     FORBIDDEN.map((p) => `has_table_privilege(${role}, 'public.audit', '${p}')`).join(" OR ");
-  const { rows } = await db.query<{ who: string; may: boolean; may_by_set_role: boolean }>(
+  const { rows } = await db.query<{
+    who: string;
+    may: boolean;
+    may_by_set_role: boolean;
+    may_by_function: boolean;
+    has_trigger: boolean;
+  }>(
     `SELECT current_user AS who,
             ${held("current_user")} AS may,
             EXISTS (
@@ -66,7 +72,18 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               WHERE r.rolname <> current_user
                 AND pg_has_role(current_user, r.oid, 'MEMBER')
                 AND (${held("r.oid")})
-            ) AS may_by_set_role`,
+            ) AS may_by_set_role,
+            EXISTS (
+              SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE p.prosecdef
+                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+                AND (${held("p.proowner")})
+            ) AS may_by_function,
+            EXISTS (
+              SELECT 1 FROM pg_trigger t
+              WHERE t.tgrelid = 'public.audit'::regclass AND NOT t.tgisinternal
+            ) AS has_trigger`,
   );
 
   const answer = rows[0];
@@ -101,6 +118,30 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, which is a member of a role that may ` +
         `${FORBIDDEN.join(", ")} the audit table — one SET ROLE away from rewriting it. ` +
         `Revoke that membership from \`${APPLICATION_ROLE}\`.`,
+    );
+  }
+
+  // The two routes no privilege check sees, because they are not privileges. A SECURITY DEFINER
+  // function runs with its *owner's* rights, and `EXECUTE` on a new function goes to PUBLIC by
+  // default — so the first helper a later migration adds would let the application rewrite the log
+  // while holding nothing. Measured: privilege check false, `SELECT rewrite('REWRITTEN')`, row
+  // changed. And a trigger on the table is code the owner attached that runs inside every INSERT
+  // this program makes, with the owner's rights; this program expects none. Both were README limit
+  // 3 for a day, as routes the check "would not notice". Now it does, and a later step that wants
+  // either has to come here and say so.
+  if (answer.may_by_function !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may EXECUTE a SECURITY DEFINER function whose ` +
+        `owner may ${FORBIDDEN.join(", ")} the audit table — a rewrite by proxy. Drop the function ` +
+        `or revoke EXECUTE on it from \`${APPLICATION_ROLE}\` and PUBLIC.`,
+    );
+  }
+
+  if (answer.has_trigger !== false) {
+    throw new Error(
+      `the audit table has a trigger on it, and this program expects none: code attached to the ` +
+        `log runs inside every INSERT with its owner's rights. Drop the trigger, or change this ` +
+        `check deliberately.`,
     );
   }
 }

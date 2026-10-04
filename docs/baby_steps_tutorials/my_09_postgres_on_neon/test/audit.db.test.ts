@@ -16,6 +16,15 @@ import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { openTheDatabase } from "../src/database.ts";
+import {
+  audit,
+  resetClock,
+  setClock,
+  theHead,
+  theLog,
+  useDatabase,
+  verifyChain,
+} from "../src/audit.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
@@ -245,5 +254,75 @@ describe.skipIf(!haveAServer)("the program's own door, pointed at a real server"
     } finally {
       await opened.close();
     }
+  });
+});
+
+describe.skipIf(!haveAServer)("the program's own writer, against a real server", () => {
+  /**
+   * Two questions every in-process measurement left open, answered where they can only be answered.
+   *
+   * Which constraint refuses a collision of the program's OWN row shape? `record_id` is
+   * `${chain}:${sequence}`, so two writers at one position collide on the primary key and the unique
+   * constraint both, and PGlite named `audit_pkey`. PostgreSQL 17 should check indexes in the same
+   * order. "Should" is the word this test removes.
+   *
+   * And does the writer survive genuine parallelism — three `audit()` calls on three real connections
+   * from one pool, no fault injection, no held reads?
+   */
+  afterEach(() => {
+    resetClock();
+  });
+
+  it("DSOR-AUD-01: a collision of the program's own row shape is refused by the primary key", async () => {
+    await owner.query("DELETE FROM audit");
+
+    const [sql, params] = aDecision(0); // record_id audit:org_456:0 AND (chain, sequence) = (…, 0)
+
+    await application.query(sql, params);
+
+    const refusal = await application.query(sql, [...params]).then(
+      () => "accepted",
+      (e: unknown) => e as { constraint?: string; code?: string },
+    );
+
+    expect(refusal).toMatchObject({ code: "23505", constraint: "audit_pkey" });
+  });
+
+  it("DSOR-AUD-01: three writers at once, on three real connections, leave one verifiable chain", async () => {
+    await owner.query("DELETE FROM audit");
+    setClock(() => "2026-10-04T00:00:00.000Z");
+    useDatabase(application); // a pool of three: the three calls really do run side by side
+
+    const decision = (id: string) =>
+      ({
+        kind: "decision",
+        subject: "user_123",
+        requestId: id,
+        operation: "invoice.get@1",
+        authorization: "ALLOW",
+        result: "ALLOWED",
+      }) as const;
+    const outcomes = await Promise.allSettled([
+      audit(decision("req_a")),
+      audit(decision("req_b")),
+      audit(decision("req_c")),
+    ]);
+    const won = outcomes.filter((o) => o.status === "fulfilled");
+    const lost = outcomes.filter((o): o is PromiseRejectedResult => o.status === "rejected");
+
+    // How many collide is up to the scheduler. What is not up to it: every loser was refused by the
+    // database with 23505 (never absorbed, never reported unknown), every winner is in the log, and
+    // the log is one chain that verifies.
+    expect(won.length).toBeGreaterThanOrEqual(1);
+    expect(won.length + lost.length).toBe(3);
+
+    for (const loser of lost) {
+      expect(loser.reason).toMatchObject({ code: "23505" });
+    }
+
+    const log = await theLog();
+
+    expect(log).toHaveLength(won.length);
+    expect(verifyChain(log, await theHead())).toBe(true);
   });
 });

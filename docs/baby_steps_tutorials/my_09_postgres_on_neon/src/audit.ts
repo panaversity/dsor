@@ -281,11 +281,19 @@ export interface Head {
   );
   const row = rows[0];
 
+  // An aggregate without GROUP BY always returns one row, so this branch is unreachable from a
+  // working PostgreSQL — which is exactly why it used to be wrong. It returned `{ count: 0, lastHash:
+  // GENESIS }`, the head of an EMPTY log, so a driver that answered nothing would have made an empty
+  // array verify as the whole history. A check no test can reach must at least fail closed.
+  if (row === undefined) {
+    throw new Error("the database did not answer the head query; refusing to invent an empty log");
+  }
+
   return Object.freeze({
     // `count(*)` comes back as a string, because a PostgreSQL bigint does not fit in a JavaScript
     // number and the driver will not quietly truncate it. Ten rows or ten billion, it is text here.
-    count: row === undefined ? 0 : Number(row.count),
-    lastHash: row?.last_hash ?? GENESIS,
+    count: Number(row.count),
+    lastHash: row.last_hash ?? GENESIS,
   });
 }
 

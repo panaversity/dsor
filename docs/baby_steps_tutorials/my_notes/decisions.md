@@ -1718,7 +1718,7 @@ a grant catalogue and got a security answer wrong; lesson 25 is the general form
 | `GRANT INSERT` on the whole table again (the original hole) | 2 fail |
 | `recorded_at` added to the column list | 2 fail |
 | README Break 1, `GRANT ALL` replacing the column grant | 6 fail (the two above plus the four privilege-shape tests) |
-| README Break 1, `GRANT ALL` appended | 21 fail (the start-up guard refuses every `openTheDatabase`) |
+| README Break 1, `GRANT ALL` appended | 21 fail at 322, 24 at 326 (the start-up guard refuses every `openTheDatabase`) |
 
 ## 82 · The duplicate index, and the race test that tested the wrong constraint (2026-10-04)
 
@@ -1984,3 +1984,47 @@ tests fall with them), B1 is 6 replaced and 21 appended, the rest unchanged in t
 `pnpm check`: 23 files, **322 tests**. `pnpm test:db`: **7**, two of them the first to ever execute the
 real-server branch. Both routes verify, 10 records each. From a clean copy outside the repository:
 `pnpm install --frozen-lockfile`, `pnpm check` (one skip, named), `pnpm start` twice.
+
+## 86 · Two limits became checks, and the real server answered the last open measurement (2026-10-04)
+
+"Fix everything before step 10." The two routes README limit 3 said the start-up check "would not
+notice" are both visible in the catalogue, so they stopped being limits:
+
+- **A `SECURITY DEFINER` function.** It runs with its owner's rights, and `EXECUTE` on a new one goes
+  to `PUBLIC`. Measured: privilege check `false`, `SELECT rewrite('REWRITTEN')`, row changed. The check
+  now asks `pg_proc` for a `prosecdef` function this connection may execute whose **owner** may
+  `UPDATE`, `DELETE` or `TRUNCATE` the table. The owner's rights are the condition, not the keyword — a
+  helper owned by a role with no such right is not refused, and a test holds that line, because a
+  check that fails closed on everything is a check somebody will switch off.
+- **A trigger on the table.** The owner's code, running inside every `INSERT` this program makes,
+  with the owner's rights. This step expects none; `pg_trigger` says whether there is one.
+
+Both refuse at start-up with a message that names the fix. `theHead` lost a branch that could never
+run from a working PostgreSQL and would have made an empty array verify as the whole history if it
+ever did — it throws now. And `database.test.ts` pins the on-disk route by the fact (PostgreSQL's
+files appear in the folder), not only by the display string.
+
+**The last open measurement, taken.** Every in-process run said a collision of the program's own row
+shape fails on `audit_pkey`; PostgreSQL 17 "should" agree. `audit.db.test.ts` now inserts that shape
+twice at one position through the real application login: `23505`, `audit_pkey`. And three `audit()`
+calls on three real connections — no held reads, no injected faults — leave one chain that verifies,
+every loser refused with `23505`. Two open questions closed by measurement, not by argument.
+
+**Proved by breaking it**, targeted file, totals held:
+
+| Sabotage | Result |
+| --- | --- |
+| `SECURITY DEFINER` check removed | 2 fail |
+| function check ignores the owner's rights | 1 fails — the harmless-helper test, which is the point |
+| trigger check removed | 2 fail |
+| `theHead` invents an empty log again | 1 fails |
+
+Nine break-it exercises re-measured at 326: Break 1 appended is 24 now (every test that opens the
+program's door), the rest keep their failure counts.
+
+**Left open on purpose, because it is the learner's decision:** `verifyChain`'s time check. Two
+instances of this program with skewed clocks still make an intact chain report as broken, and the
+hash already pins the order. Dropping the check is a change to what `verifyChain` promises; it is put
+to the learner in the step's handover, not taken here.
+
+`pnpm check`: 23 files, **326 tests**. `pnpm test:db`: **9**. Both routes verify.

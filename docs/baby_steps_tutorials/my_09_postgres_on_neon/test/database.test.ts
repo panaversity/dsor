@@ -78,8 +78,10 @@ describe("the identity the program itself connects as", () => {
     // a fresh connection would be a different session, and `SET ROLE` is per session.
     const me = await identity(opened.connection);
 
-    // The route this file is about, asserted rather than assumed.
+    // The route this file is about, asserted rather than assumed — by the display string a reader
+    // sees, and by the fact behind it: the on-disk route writes PostgreSQL's files into `folder`.
     expect(opened.where).toContain("on disk");
+    expect(readdirSync(folder).length).toBeGreaterThan(0);
     expect(me.who).toBe(APPLICATION_ROLE);
     expect(me.superuser).toBe(false);
 
@@ -229,7 +231,9 @@ describe("refuseIfItCanRewriteHistory", () => {
       { who: "x", may: null },
       { who: "x", may: undefined },
       { who: "x", may: false, may_by_set_role: null },
-      { may: false, may_by_set_role: false }, // no `who`: the question was not answered either
+      { who: "x", may: false, may_by_set_role: false, may_by_function: null, has_trigger: false },
+      { who: "x", may: false, may_by_set_role: false, may_by_function: false },
+      { may: false, may_by_set_role: false, may_by_function: false, has_trigger: false }, // no `who`
     ]) {
       const db: Database = {
         query: async <T>() => ({ rows: [evasive as T] }),
@@ -261,6 +265,63 @@ describe("refuseIfItCanRewriteHistory", () => {
     expect(rows[0]?.may).toBe(false);
 
     await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/SET ROLE away/);
+
+    await db.close();
+  });
+
+  it("DSOR-AUD-04a: a SECURITY DEFINER function that can rewrite the log is caught", async () => {
+    // The owner writes a helper. It runs with the owner's rights, and EXECUTE on it goes to PUBLIC
+    // by default. The application holds no privilege on the table and the privilege check says so —
+    // and one `SELECT rewrite(...)` changes a row. Measured before the check existed:
+    //
+    //     privilege says: may=false       after SECURITY DEFINER call, result = REWRITTEN
+    const db = await aDatabase();
+
+    await db.exec(`CREATE FUNCTION rewrite(t text) RETURNS void LANGUAGE sql SECURITY DEFINER
+                   AS $$ UPDATE public.audit SET result = t $$;`);
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    // Not testing nothing: the privilege check alone really does say "may not".
+    const { rows } = await db.query<{ may: boolean }>(
+      "SELECT has_table_privilege(current_user, 'public.audit', 'UPDATE') AS may",
+    );
+
+    expect(rows[0]?.may).toBe(false);
+
+    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/SECURITY DEFINER/);
+
+    await db.close();
+  });
+
+  it("DSOR-AUD-04a: a SECURITY DEFINER function whose owner cannot rewrite the log is not a reason", async () => {
+    // The check is about the owner's rights, not about the keyword. A helper owned by a role with
+    // no UPDATE is harmless, and refusing it would be a check that fails closed on everything.
+    const db = await aDatabase();
+
+    await db.exec("CREATE ROLE helper_owner;");
+    await db.exec(
+      `CREATE FUNCTION harmless() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$;`,
+    );
+    await db.exec("ALTER FUNCTION harmless() OWNER TO helper_owner;");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(db)).resolves.toBeUndefined();
+
+    await db.close();
+  });
+
+  it("DSOR-AUD-04a: a trigger on the audit table is refused", async () => {
+    // Code the owner attached to the table, running inside every INSERT this program makes, with the
+    // owner's rights. A BEFORE INSERT trigger rewrites the row on its way in; an AFTER trigger could
+    // do anything at all. This step expects none, and says so rather than hoping.
+    const db = await aDatabase();
+
+    await db.exec(`CREATE FUNCTION tamper() RETURNS trigger LANGUAGE plpgsql
+                   AS $$ BEGIN NEW.result := 'TAMPERED'; RETURN NEW; END $$;
+                   CREATE TRIGGER t BEFORE INSERT ON public.audit FOR EACH ROW EXECUTE FUNCTION tamper();`);
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/trigger/);
 
     await db.close();
   });

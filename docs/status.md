@@ -63,7 +63,7 @@ one before it:
 | `my_06_permissions_deny_by_default` | 156 | deny by default, and "may you" is asked before "does it exist" |
 | `my_07_the_pipeline_skeleton` | 179 | the order of the checks becomes a list a test can read |
 | `my_08_write_the_decision_first` | 232 | every decision is recorded before the answer, refusals included, in a hash chain |
-| `my_09_postgres_on_neon` | 322 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
+| `my_09_postgres_on_neon` | 326 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -81,18 +81,19 @@ are true of all of them:
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers what one in-process connection cannot do — logging in as a
   second user, two writers racing, and the program's own `openTheDatabase` pointed at a
-  real server, owner and application both. Those seven have been run, against a local
+  real server, owner and application both, and the program's own writer under real
+  parallelism. Those nine have been run, against a local
   PostgreSQL 17 with two real logins, on 2026-10-04; without a server they report
-  `7 skipped` rather than passing quietly.
+  `9 skipped` rather than passing quietly.
 - **A requirement id in a step's test title is a claim about that step, not about
   DSoR.** Step 08's 232 tests name 23 ids in their titles, and each step's README has a
   table saying which halves of which rules it does *not* meet. No L1, L2 or L3
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 85 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 86 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
-33 lessons, several of them about tests that passed while proving nothing.
+34 lessons, several of them about tests that passed while proving nothing.
 
 ## Learning-path stages
 

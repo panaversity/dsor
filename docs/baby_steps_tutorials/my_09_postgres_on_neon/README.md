@@ -159,7 +159,7 @@ Those refusals are PostgreSQL's own privilege system, not our code checking itse
 ## Two commands, and what each proves
 
 ```bash
-pnpm check     # 322 tests, no database and no network needed. Outside the repository one of
+pnpm check     # 326 tests, no database and no network needed. Outside the repository one of
                # them skips itself, and says so: it compares the step's copy of the audit-record
                # schema with the specification's, and a copy of one step has no specification
 pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
@@ -176,8 +176,8 @@ guarantee holds.** Two things one in-process connection cannot do, and `audit.db
   error names `audit_chain_sequence_key`. It used to send the same insert three times, and the primary
   key refused the losers — dropping the unique constraint left it green.
 
-With no connection string it reports `7 skipped`, which says so rather than passing quietly. With one,
-it reports `7 passed` — and those seven have been run, against a real PostgreSQL 17 with two real
+With no connection string it reports `9 skipped`, which says so rather than passing quietly. With one,
+it reports `9 passed` — and those nine have been run, against a real PostgreSQL 17 with two real
 logins. Granting the application `UPDATE` on that server fails two of them, which is how you know they
 are asserting something.
 
@@ -208,7 +208,7 @@ No table rights there on purpose — `002_runtime_user.sql` grants the one it ne
 rest, so the whole permission story is in a file you can read. `.env` is in `.gitignore` and must
 never be committed; `.env.example` has no secrets in it.
 
-**Or a PostgreSQL on your own machine**, which needs no account and is what these seven tests were
+**Or a PostgreSQL on your own machine**, which needs no account and is what these nine tests were
 first run against:
 
 ```bash
@@ -277,10 +277,10 @@ git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
 | `test/database.test.ts` | new — who the program connects as. Break 6 is zero failures without it |
 | `test/audit-race.test.ts` | new — a writer held at its tail read while another commits |
 | `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply, on a connection that may then be gone |
-| `test/audit.db.test.ts` | the program's own door pointed at a real server: at the owner it refuses to start, at the application it starts and still cannot `UPDATE` |
+| `test/audit.db.test.ts` | the program's own door pointed at a real server: at the owner it refuses to start, at the application it starts and still cannot `UPDATE`. And the program's own writer under real parallelism, which answered a question PGlite could only guess at: the constraint that refuses a collision of its row shape is `audit_pkey` |
 | everything in `test/` | async, and nine files now need a database |
 
-232 tests became 322.
+232 tests became 326.
 
 ## The pipeline became async, and that was a decision
 
@@ -314,7 +314,7 @@ GRANT ALL ON public.audit TO dsor_runtime;
 ```
 
 ```text
- Tests  6 failed | 316 passed (322)
+ Tests  6 failed | 320 passed (326)
 ```
 
 Where the line goes decides what you see, and the first version of this exercise did not say. Replaced,
@@ -322,8 +322,8 @@ the `REVOKE UPDATE, DELETE, TRUNCATE` line below it still takes those three back
 when" test **passes**, and the six that fail are the ones that read the privilege shape (INSERT is
 table-wide again) and the two that forge `recorded_at`, which `GRANT ALL` hands back column by column.
 **Appended** at the end of the file instead, nothing takes `UPDATE` back, `refuseIfItCanRewriteHistory`
-refuses every `openTheDatabase`, and `21 failed | 301 passed` — the start-up guard doing its job,
-loudly, in eleven `main.test.ts` and `database.test.ts` runs that never get a database.
+refuses every `openTheDatabase`, and `24 failed | 302 passed` — the start-up guard doing its job,
+loudly, in every test that opens the program's own door.
 
 ### Break 2 · leave `TRUNCATE` out of the revoke
 
@@ -332,7 +332,7 @@ REVOKE UPDATE, DELETE ON public.audit FROM dsor_runtime;   -- was UPDATE, DELETE
 ```
 
 ```text
- Tests  2 failed | 320 passed (322)
+ Tests  2 failed | 324 passed (326)
 ```
 
 `TRUNCATE` is its own privilege, not part of `DELETE`, and it empties the table in one statement. A
@@ -343,7 +343,7 @@ log the application can `TRUNCATE` is not append-only whatever else is true of i
 In `001_audit.sql`, replace `UNIQUE (chain, sequence)` with `CHECK (true)`.
 
 ```text
- Tests  2 failed | 320 passed (322)
+ Tests  2 failed | 324 passed (326)
 ```
 
 ### Break 4 · let a migration be edited after it ran
@@ -355,7 +355,7 @@ if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checks
 ```
 
 ```text
- Tests  2 failed | 320 passed (322)
+ Tests  2 failed | 324 passed (326)
 ```
 
 ### Break 5 · order the chain as text
@@ -367,7 +367,7 @@ SELECT sequence::text, record_hash FROM public.audit WHERE chain = $1 ORDER BY s
 ```
 
 ```text
- Tests  65 failed | 257 passed (322)
+ Tests  65 failed | 261 passed (326)
 ```
 
 This is the bug that actually happened, and it survived nine records before it bit. `SELECT
@@ -384,7 +384,7 @@ In `src/database.ts`, comment out the line that drops to the application's role:
 ```
 
 ```text
- Tests  11 failed | 311 passed (322)
+ Tests  11 failed | 315 passed (326)
 ```
 
 The largest number here after Break 5, and it was **zero** until `test/database.test.ts` existed.
@@ -397,7 +397,7 @@ holding, or it is testing the database and not the program.
 In `src/audit.ts`, write `INSERT INTO audit (` instead of `INSERT INTO public.audit (`.
 
 ```text
- Tests  2 failed | 320 passed (322)
+ Tests  2 failed | 324 passed (326)
 ```
 
 `dsor_runtime` cannot `UPDATE` or `DELETE` the log, and it *can* create a temporary table, because
@@ -421,7 +421,7 @@ In `src/audit.ts`, replace the `try`/`catch` around `insert(db, written)` with a
 `await insert(db, written);`.
 
 ```text
- Tests  5 failed | 317 passed (322)
+ Tests  5 failed | 321 passed (326)
 ```
 
 A database can commit an `INSERT` and lose the **reply**. Step 08's store was an array, which either
@@ -450,7 +450,7 @@ In `src/audit.ts`, move the block that reads the clock — from `const told = no
 `const at = new Date(instant).toISOString();` — back above `const db = theDatabase();`.
 
 ```text
- Tests  5 failed | 317 passed (322)
+ Tests  5 failed | 321 passed (326)
 ```
 
 A writer that gets overtaken then stamps an earlier time at a later position. Nothing is tampered
@@ -461,7 +461,7 @@ N in the tail, so N was committed, and N's time was sampled before N's `INSERT`.
 this program on one database with skewed clocks break the same check, and so does the system clock
 stepping backwards — neither is fixable here, and `my_notes/open-questions.md` holds both.
 
-Restore each break and confirm `pnpm check` prints `322 passed` again.
+Restore each break and confirm `pnpm check` prints `326 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -551,16 +551,15 @@ Three limits, stated plainly.
 2. The **owner** can still do anything, which is the design and not a gap: migrations have to come
    from somewhere. So this rule is met against the *application*, and a human with the owner's
    connection string is outside what any `GRANT` can say about.
-3. `refuseIfItCanRewriteHistory` is a check at start-up, not a boundary, and it checks a
-   **privilege**, not every route to the effect. It stops a misconfigured deployment from keeping a
-   log it could edit; it does not stop someone who can change the configuration, and it would not
-   notice a `SECURITY DEFINER` function or an owner's trigger rewriting rows on the application's
-   behalf. No such function exists, and a test pins `openTheDatabase` as the only place the log is
-   pointed at a connection, so adding one is a visible act. It *does* see a role membership granted
-   `WITH INHERIT FALSE` — invisible to `has_table_privilege`, one `SET ROLE` away from `UPDATE` —
-   because it asks `pg_has_role` as well; a review measured that hole open before it did. And it
-   runs on **both** routes: the database tier points `openTheDatabase` at the owner's connection
-   string and requires it to refuse.
+3. `refuseIfItCanRewriteHistory` is a check at start-up, not a boundary. It asks four questions and
+   each was measured open before it was asked: does this connection hold `UPDATE`, `DELETE` or
+   `TRUNCATE`; is it a member — inherited or `NOINHERIT`, one `SET ROLE` away — of a role that does;
+   may it `EXECUTE` a `SECURITY DEFINER` function whose owner does (a rewrite by proxy, with the
+   application holding nothing); and does the table carry a trigger, which is the owner's code
+   running inside every `INSERT` this program makes. It runs on **both** routes, and the database
+   tier points it at the owner's connection string and requires it to refuse. What it cannot stop is
+   someone who can change the configuration, the migrations, or the owner's own code — a start-up
+   check is a tripwire for mistakes, not a wall against the owner, and the owner is the design.
 
 `DSOR-AUD-02a` is met in the only sense it can be here: the log is in PostgreSQL, and there is no
 agent memory in this program for it to be in instead. The rule exists to stop an implementation

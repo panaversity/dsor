@@ -633,3 +633,14 @@ and an attacker does not write the honest form.
 Count the **identifier**, everywhere, case-insensitively, and pin the number — comments included,
 because a tripwire that ignores comments is one a comment can be used to hide behind. The exact count
 is a worse description and a better alarm.
+
+## 34 · A limit you can check is a check you have not written
+
+README limit 3 said the start-up guard "would not notice" a `SECURITY DEFINER` function or a trigger.
+Both are rows in `pg_proc` and `pg_trigger`, one query each, and the guard was already a query. The
+limit was true only because nobody had asked the catalogue.
+
+Before writing a sentence that begins "this cannot see", ask whether the system that enforces the
+guarantee can see it. If it can, the sentence is a to-do item dressed as a disclosure. The honest
+limits are the ones about *who*, not *what*: someone who can change the configuration or the owner's
+own code is outside any check the program can run on itself.

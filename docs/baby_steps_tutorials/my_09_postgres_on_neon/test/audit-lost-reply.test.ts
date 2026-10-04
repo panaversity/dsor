@@ -447,3 +447,15 @@ describe("an INSERT refused because the row is already there", () => {
     expect(log[0]?.correlation.request_id).toBe("req_theirs");
   });
 });
+
+describe("the head, when the store does not answer", () => {
+  it("DSOR-AUD-04b: a head query that returns no row is an error, not an empty log", async () => {
+    // `{ count: 0, lastHash: GENESIS }` is the head of an empty log, and `verifyChain([], thatHead)`
+    // is true. So a store that answered nothing used to make "no records" verify as the complete
+    // history. Unreachable from a working PostgreSQL — an aggregate always returns one row — and a
+    // branch no test can reach must at least fail closed.
+    useDatabase({ query: async <T>() => ({ rows: [] as T[] }) });
+
+    await expect(theHead()).rejects.toThrow(/did not answer the head query/);
+  });
+});
