@@ -105,7 +105,7 @@ export function decisionOf(
   // What the answer returned, when it returned data.
   read?: Read,
   // The slip an agent's call ran under, once line ③ found it.
-  _under?: Authority,
+  under?: Authority,
 ): Decision {
   const refused = "code" in answer;
   return {
@@ -121,6 +121,15 @@ export function decisionOf(
     ...(refused ? { reason: answer.message } : {}),
     correlation: answer.correlation,
     ...(tenant === undefined ? {} : { tenant }),
+    // NEW IN STEP 18: an agent's call names the slip it ran under, and the person who signed
+    // it, in the audit record's own fields. A person's record, and a refusal before line ③
+    // found a slip, name neither (step 18's README, decision 8).
+    ...(under === undefined
+      ? {}
+      : {
+          delegation: under.delegation,
+          identity: { mode: "unattended", subject: under.subject, actor_chain: [under.actor] },
+        }),
     // A claim is kept only when no company was checked: line ② refused the one named.
     ...(tenant === undefined && claimed !== undefined
       ? { extensions: { [OURS]: { requested_tenant: claimed } } }

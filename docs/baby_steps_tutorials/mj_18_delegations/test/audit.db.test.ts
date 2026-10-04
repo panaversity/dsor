@@ -450,12 +450,15 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
   // review, and fixed from step 09 on.
   it("DSOR-EXE-03b: a log whose INSERT keeps no row gives no invoice, and no record", async () => {
     const swallowing = new pg.Pool({ connectionString: RUNTIME_URL, max: 1 });
-    // The log's own columns, each value cast to its column's type in the migrations.
+    // The log's own columns, each value cast to its column's type in the migrations. Since
+    // step 18 the log writes two more, an agent's identity and slip (step 18's README,
+    // decision 8). Found by step 18's run on a local PostgreSQL: with 12, the swapped INSERT
+    // failed on its 14 values, so it kept no row for the wrong reason.
     const keepsNothing = `INSERT INTO dsor.audit
         (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-         extensions, resources, row_count, connector)
+         extensions, resources, row_count, connector, identity, delegation)
       SELECT $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::jsonb, $8::text,
-             $9::jsonb, $10::text[], $11::integer, $12::text
+             $9::jsonb, $10::text[], $11::integer, $12::text, $13::jsonb, $14::text
        WHERE false`;
     // How many rows each swapped INSERT kept, so the test knows the fault fired once, and
     // that the statement ran. An INSERT that failed would pass for the wrong reason.

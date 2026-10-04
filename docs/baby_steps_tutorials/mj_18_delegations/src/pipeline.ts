@@ -6,7 +6,7 @@ import { checkDelegation } from "./delegation.ts";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { newReads, stalest } from "./freshness.ts";
-import { decisionOf, type DecisionLog, type Read } from "./log.ts";
+import { decisionOf, type Authority, type DecisionLog, type Read } from "./log.ts";
 import { NO_PAYMENTS } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
@@ -67,6 +67,9 @@ export async function call(
   // What the answer returned, set only when it returns data. Its record
   // says so (DSOR-CLS-05; step 14's README, decision 7).
   let read: Read | undefined;
+  // NEW IN STEP 18: the slip an agent's call runs under, once line ③ found it. Its record
+  // names the slip and its person, refusals after line ③ too (step 18's README, decision 8).
+  let under: Authority | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
@@ -136,6 +139,9 @@ export async function call(
     const slip = await line(3, () =>
       checkDelegation(caller, contract, registry.delegations, tenant),
     );
+    if (slip !== undefined) {
+      under = { delegation: slip.id, subject: slip.delegator, actor: caller.id };
+    }
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).
@@ -265,6 +271,7 @@ export async function call(
           tenantOfRecord,
           claimedTenant,
           read,
+          under,
         ),
       ),
     );

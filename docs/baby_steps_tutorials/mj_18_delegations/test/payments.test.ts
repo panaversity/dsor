@@ -272,7 +272,10 @@ describe("C3: the undo, payment.cancel, runs under the full checklist", () => {
   // it (step 18's README, decision 5). Step 17's version stopped at line ③.
   it("DSOR-EXE-05c: payment.cancel by the agent, whose slip does not list it, is refused, recorded, and changes nothing", async () => {
     const { answer, records, rows } = await cancelAs(AGENT);
-    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED", correlation: correlationFor(THE_AGENT) });
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      correlation: correlationFor(THE_AGENT),
+    });
     expect(records).toMatchObject([
       { operation: "payment.cancel@1", authorization: "DENY", result: "AUTHORIZATION_DENIED" },
     ]);

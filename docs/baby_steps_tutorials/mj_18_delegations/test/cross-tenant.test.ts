@@ -459,26 +459,34 @@ describe("C2: the three foreign answers are the same, apart from the request id"
 
 describe("C3: every principal who may call the operation attacks it, from each company", () => {
   it("DSOR-IDN-03b: in org_456, invoice.get is attacked by all four readers, the firm's agent included", async () => {
-    const ids = (await attackersOf(registry, "invoice.get", "org_456")).map((attacker) => attacker.id);
+    const ids = (await attackersOf(registry, "invoice.get", "org_456")).map(
+      (attacker) => attacker.id,
+    );
     expect(ids).toStrictEqual(READERS_456);
   });
 
   // The firm's agent may issue in org_789, and not in org_456, so it is no attacker here.
   it("DSOR-IDN-03b: in org_456, invoice.issue is attacked by user_123 alone", async () => {
-    const ids = (await attackersOf(registry, "invoice.issue", "org_456")).map((attacker) => attacker.id);
+    const ids = (await attackersOf(registry, "invoice.issue", "org_456")).map(
+      (attacker) => attacker.id,
+    );
     expect(ids).toStrictEqual(["user_123"]);
   });
 
   // Found by the review: the suite worked in org_456 only, the firm's first company.
   it("DSOR-IDN-03b: in org_789, invoice.get is attacked by the firm's agent and user_700", async () => {
-    const ids = (await attackersOf(registry, "invoice.get", "org_789")).map((attacker) => attacker.id);
+    const ids = (await attackersOf(registry, "invoice.get", "org_789")).map(
+      (attacker) => attacker.id,
+    );
     expect(ids).toStrictEqual(READERS_789);
   });
 
   // Step 18: the firm's agent issues in org_789 under del_102, which lists invoice:issue, and
   // user_700, who signed it, holds it.
   it("DSOR-IDN-03b: in org_789, invoice.issue is attacked by the firm's agent and user_700", async () => {
-    const ids = (await attackersOf(registry, "invoice.issue", "org_789")).map((attacker) => attacker.id);
+    const ids = (await attackersOf(registry, "invoice.issue", "org_789")).map(
+      (attacker) => attacker.id,
+    );
     expect(ids).toStrictEqual(["firm-ap-fte", "user_700"]);
   });
 
@@ -490,7 +498,9 @@ describe("C3: every principal who may call the operation attacks it, from each c
   ])(
     "step 18's decision 2: in %s, payment.create is attacked by its people and the agents whose slips list it",
     async (home, callers) => {
-      const ids = (await attackersOf(registry, "payment.create", home)).map((attacker) => attacker.id);
+      const ids = (await attackersOf(registry, "payment.create", home)).map(
+        (attacker) => attacker.id,
+      );
       expect(ids).toStrictEqual(callers);
     },
   );

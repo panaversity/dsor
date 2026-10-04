@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
-import { AGENT, DEL_100, withPlanted } from "./helpers.ts";
+import { AGENT, DEL_100, UNDER_DEL_100, withPlanted } from "./helpers.ts";
 import { NO_PRIVILEGE, dbRegistry, newPool, ownerSlips, requestId, tryThenRollBack } from "./db.ts";
 
 // The program's own pool, and the test's window into the database, both dsor_runtime.
@@ -38,7 +38,9 @@ async function withOwnSlip<T>(
   const slip = { ...DEL_100, id: `del_${id}`, delegate: id, ...changed };
   ownerSlips("add", JSON.stringify(slip));
   try {
-    return await withPlanted(`tok_${id}`, agent, () => run({ token: `tok_${id}`, tenant: "org_456" }));
+    return await withPlanted(`tok_${id}`, agent, () =>
+      run({ token: `tok_${id}`, tenant: "org_456" }),
+    );
   } finally {
     ownerSlips("remove", "org_456", `del_${id}`);
   }
@@ -52,13 +54,7 @@ describe("the slips, on the database", () => {
     const sql = `SELECT result, delegation, identity FROM dsor.audit
                   WHERE correlation->>'request_id' = $1`;
     const { rows } = await tryThenRollBack(observer, sql, "org_456", [request_id]);
-    expect(rows).toStrictEqual([
-      {
-        result: "ok",
-        delegation: "del_100",
-        identity: { mode: "unattended", subject: "user_123", actor_chain: ["accounts-payable-fte"] },
-      },
-    ]);
+    expect(rows).toStrictEqual([{ result: "ok", ...UNDER_DEL_100 }]);
   });
 
   it("DSOR-TEN-01b: as dsor_runtime in org_456, org_789's slip is invisible", async () => {
@@ -77,8 +73,14 @@ describe("the slips, on the database", () => {
   });
 
   it.each([
-    ["INSERT", "INSERT INTO dsor.delegations (tenant_id, id, delegator, delegate, modes, permissions, constraints, subdelegation, status, expires_at) VALUES ('org_456', 'del_196', 'user_123', 'accounts-payable-fte', '{unattended}', '{invoice:read}', '{}', '{\"allowed\": false}', 'active', '2099-12-31T23:59:59Z')"],
-    ["UPDATE", "UPDATE dsor.delegations SET permissions = '{invoice:read,payment:create,payment:cancel}' WHERE id = 'del_100'"],
+    [
+      "INSERT",
+      "INSERT INTO dsor.delegations (tenant_id, id, delegator, delegate, modes, permissions, constraints, subdelegation, status, expires_at) VALUES ('org_456', 'del_196', 'user_123', 'accounts-payable-fte', '{unattended}', '{invoice:read}', '{}', '{\"allowed\": false}', 'active', '2099-12-31T23:59:59Z')",
+    ],
+    [
+      "UPDATE",
+      "UPDATE dsor.delegations SET permissions = '{invoice:read,payment:create,payment:cancel}' WHERE id = 'del_100'",
+    ],
     ["DELETE", "DELETE FROM dsor.delegations WHERE id = 'del_100'"],
   ])("step 18's decision 3: dsor_runtime may not %s a slip", async (_, sql) => {
     await expect(tryThenRollBack(observer, sql, "org_456")).rejects.toMatchObject(NO_PRIVILEGE);
@@ -90,8 +92,14 @@ describe("the slips, on the database", () => {
 
   // The owner holds BYPASSRLS, so only DSoR's own WHERE can keep the companies apart here.
   it("DSOR-TEN-01b: DSoR's own filter: the owner, whom no policy stops, gets each company's own slip of firm-ap-fte", () => {
-    expect(ownerSlips("store", "org_456", "firm-ap-fte")).toStrictEqual({ id: "del_101", tenant: "org_456" });
-    expect(ownerSlips("store", "org_789", "firm-ap-fte")).toStrictEqual({ id: "del_102", tenant: "org_789" });
+    expect(ownerSlips("store", "org_456", "firm-ap-fte")).toStrictEqual({
+      id: "del_101",
+      tenant: "org_456",
+    });
+    expect(ownerSlips("store", "org_789", "firm-ap-fte")).toStrictEqual({
+      id: "del_102",
+      tenant: "org_789",
+    });
   });
 
   it("step 18's decision 12: the database's clock decides that a slip is past its date", async () => {

@@ -9,10 +9,10 @@
 // two companies, without amounts, and two calls cross from one company into another and
 // are refused. Then the agent asks invoice.list for a million invoices, and gets ten, a
 // note that its limit was cut, and a cursor. Then user_123 drafts a payment
-// for INV-1008 and cancels it twice, and the agent is refused a command it holds the
-// permission for. Then it prints the log: the records it can read, one company at a time,
-// and how many it cannot read. Last, it shows that a log which cannot take a record turns a
-// "yes" into a refusal. Found by the Stage 2 review: this
+// for INV-1008 and cancels it twice. NEW IN STEP 18: then the agent drafts one too, under
+// del_100, user_123's permission slip. Then it prints the log: the records it can read,
+// one company at a time, and how many it cannot read. Last, it shows that a log which
+// cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.

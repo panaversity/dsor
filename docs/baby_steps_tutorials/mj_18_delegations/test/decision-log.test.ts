@@ -11,6 +11,7 @@ import {
   REFUSALS,
   SUPERVISOR,
   THE_AGENT,
+  UNDER_DEL_100,
   UNEXPECTED,
   correlationFor,
   log,
@@ -60,6 +61,14 @@ const AT_LINE_1 = [
   "the agent naming cfo_100 in its arguments",
 ];
 
+// The agent's refusals that come after line ③ found its slip, del_100, so their records name
+// the slip and its person (step 18's README, decision 8).
+const UNDER_A_SLIP = [
+  "invoice.get with no invoice",
+  "invoice.get for INV-9999",
+  "a bug in an operation's code",
+];
+
 /** The record a test expects: the fields DSoR fills in, and the decision itself. */
 function recordOf(sequence: number, decision: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -106,6 +115,8 @@ describe("C1: every answer call gives has a record in the log", () => {
             freshness: { mode: "current", observed_at: expect.any(String) },
           },
         },
+        // And the slip the agent read under, and its person (step 18's README, decision 8).
+        ...UNDER_DEL_100,
       }),
     ]);
   });
@@ -127,6 +138,7 @@ describe("C1: every answer call gives has a record in the log", () => {
         result: code,
         // A refusal at line ① comes before any company is checked.
         ...(AT_LINE_1.includes(why) ? {} : { tenant: "org_456" }),
+        ...(UNDER_A_SLIP.includes(why) ? UNDER_DEL_100 : {}),
         reason: message,
         correlation: answer.correlation,
       }),
@@ -199,6 +211,8 @@ describe("C2: a failure between the decision and the answer still leaves a recor
         tenant: "org_456",
         reason: UNEXPECTED,
         correlation: correlationFor(THE_AGENT),
+        // Since step 18 (step 18's README, decision 8).
+        ...UNDER_DEL_100,
       }),
     ]);
     // The bug's own message names internal details. It reaches neither the caller nor the log.

@@ -117,6 +117,9 @@ type AuditRow = {
   row_count: number | null;
   // Which connector served a read. NULL on every other record.
   connector: string | null;
+  // The slip an agent's call ran under, and its person. NULL on every other record.
+  identity: DecisionRecord["identity"] | null;
+  delegation: string | null;
 };
 
 /** The log in the database: add a decision, and read the records of one company. */
@@ -136,8 +139,8 @@ export function createDbLog(pool: pg.Pool): DbLog {
         const { rowCount } = await client.query(
           `INSERT INTO dsor.audit
              (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-              extensions, resources, row_count, connector)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              extensions, resources, row_count, connector, identity, delegation)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           [
             `aud_${randomUUID()}`,
             decision.kind,
@@ -156,6 +159,10 @@ export function createDbLog(pool: pg.Pool): DbLog {
             decision.row_count ?? null,
             // Which connector served the read (step 15's README, decision 7).
             decision.connector ?? null,
+            // NEW IN STEP 18: the slip an agent's call ran under, and its person (step 18's
+            // README, decision 8).
+            decision.identity ?? null,
+            decision.delegation ?? null,
           ],
         );
         // The database can take an INSERT and keep no row: a rule DO INSTEAD NOTHING on the
@@ -174,7 +181,8 @@ export function createDbLog(pool: pg.Pool): DbLog {
       const { rows } = await inCompany(pool, tenant, (client) =>
         client.query<AuditRow>(
           `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
-                  correlation, tenant, extensions, resources, row_count, connector
+                  correlation, tenant, extensions, resources, row_count, connector, identity,
+                  delegation
              FROM dsor.audit WHERE tenant = $1 ORDER BY sequence`,
           [tenant],
         ),
@@ -201,6 +209,8 @@ function recordOf(row: AuditRow): DecisionRecord {
     ...(row.resources === null ? {} : { resources: row.resources }),
     ...(row.row_count === null ? {} : { row_count: row.row_count }),
     ...(row.connector === null ? {} : { connector: row.connector }),
+    ...(row.identity === null ? {} : { identity: row.identity }),
+    ...(row.delegation === null ? {} : { delegation: row.delegation }),
   };
 }
 

@@ -362,6 +362,16 @@ export function storySlips(): SlipStore {
 // does. Only the tests know it, so migration 010 does not write its slip.
 export const INTAKE_SLIP: StorySlip = { ...DEL_100, id: "del_190", delegate: "intake-fte" };
 
+// What a record of the agent's gains once line ③ found del_100: the slip, and the person who
+// signed it (step 18's README, decision 8).
+export const UNDER_DEL_100: {
+  delegation: string;
+  identity: { mode: "unattended"; subject: string; actor_chain: string[] };
+} = {
+  delegation: "del_100",
+  identity: { mode: "unattended", subject: "user_123", actor_chain: ["accounts-payable-fte"] },
+};
+
 /** The slips the shared test registries hold: the story's three, and intake-fte's. */
 export function testSlips(): SlipStore {
   return memorySlips([...STORY_SLIPS, INTAKE_SLIP]);
