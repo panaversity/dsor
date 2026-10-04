@@ -40,7 +40,8 @@ the schema accepts `compensated_by: []` and `in_flight: {}`. Both fields are the
 neither says anything. `compensated_by` can also name an operation that has no
 contract. Step 03 found this in review and left it open. The question for the spec:
 should "required" here mean "present and not empty", and must each named operation
-exist?
+exist? Step 17 refuses all of it at start-up, and recorded the question as open question
+64.
 
 ### Does a weaker label remove a guard?
 
@@ -90,6 +91,12 @@ Step 16 recorded its questions there too:
 - 61: a store that takes a record and keeps no row.
 - 62: a foreign table that seems to share a transaction.
 - 63: a security check that reads look-alikes in `public`.
+
+Step 17 recorded three:
+
+- 64: an undo list that is empty, or names nothing DSoR can run.
+- 65: what a caller hears when the record fails after a command ran.
+- 66: whether a payment's link to its invoice is `invoice` or `invoice_id`.
 
 ## Our builds, compared with another learner's
 
@@ -213,6 +220,13 @@ reviewer for a mutation sweep too.
   sent no `SET LOCAL`, so nothing warned, and the test passed. Now the test records each
   statement and expects the exact list. This is Habit 1 in a test: credit for a question
   that the check does not ask.
+- **Guessing test counts did not teach** (step 17, 2026-10-04). The build asked, again and
+  again, how many old tests a change would break, and how many new tests would fail. The
+  learner said: "always asking me to guess next count of tests which make me feel lost and
+  i answer randomly". The answers show it: 0 for every change, then 28, 76, 4, and 1. A
+  count is a fact about this repository's tests, not about DSoR. The questions that
+  taught, in the understanding sessions, asked what DSoR does: who is refused, at which
+  line, and whether the draft is there.
 
 ## Bugs found in earlier builds
 
@@ -422,6 +436,18 @@ the official tutorial's. A learner build does not change either. A maintainer de
   copies the invoice's `vendor_id`, and no check in step 17 reads a vendor. A vendors table
   must exist by step 29: §26.3's approval binds the version of `VENDOR-44`, beside PAY-901
   and INV-1008.
+- **Analogies, from step 17.** A payment slip **stamped VOID**: it stays in the file, as a
+  cancelled payment stays in `app.payments`. Writing the slip was `compensatable`. Money
+  **sent by bank wire**: the office alone cannot call it back, which is
+  `non_compensatable`. The first version said "tear the slip up" and "a posted cheque".
+  The review found that a torn slip is gone, unlike a cancelled row, and that a cheque can
+  often be stopped before it is cashed.
+- **Step 17 refuses every agent's command.** The map gives DSOR-DEL-01a to step 18. But
+  step 17 is the first step where a command runs, so it must already say what an agent may
+  do with one. The learner build refuses every agent's command at line ③, before line ⑤
+  looks at a role, and claims DSOR-DEL-01a only in that sense. Step 12's cross-company
+  suite then asks line ③'s own question to pick its attackers. If the official steps
+  follow, step 17's entry could name DSOR-DEL-01a, "refused until step 18".
 - **The map's steps 35 and 36: money before its note.** Step 35 builds `payment.execute`,
   which sends money. Step 36 writes the note before the side effect (DSOR-EXE-03a, 03b).
   So for one step, a payment can be sent and leave no record. AGENTS.md lists

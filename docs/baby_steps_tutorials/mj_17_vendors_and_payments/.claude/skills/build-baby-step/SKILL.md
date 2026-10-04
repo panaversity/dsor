@@ -174,12 +174,16 @@ The learner is here to understand, not to receive a folder.
 - **Design before code.** Then write "The design, before any code" with the learner:
   split each rule into claims, list the decisions the specification leaves to the step
   and the downside of each, name the tests by claim, and record the learner's prediction
-  for each break. Section 3 checks this design against the specification before the
-  first test.
+  for each break, asked as a story: what DSoR answers, and what the database holds after.
+  Section 3 checks this design against the specification before the first test.
 - **Explain before each file**, in two or three plain sentences, and wait for "go".
-- **Ask before you tell.** Before running a test, ask what they expect, even which new
-  tests will pass before any code exists. Before the break-it exercise, ask them to
-  predict the failure.
+- **Ask before you tell, about DSoR, never about tests.** Before a run, ask what DSoR
+  will do in the story: who asks, which invoice, what DSoR answers, and what the database
+  holds after. Never ask how many tests pass or fail, or what a broken copy of the code
+  does. A real run settles each answer: show the learner's case beside the right one. For
+  a break: "PAY-901's draft is saved, then the log fails. What does user_123 hear, and is
+  PAY-901 still in the database?" Changed in step 17's copy on 2026-10-04: questions about
+  test counts made the learner guess.
 - **Let them type** when they want to: "Do you want to write this test yourself? I
   will review it."
 - **Do not open the finished official step** until the learner asks to compare. Then
