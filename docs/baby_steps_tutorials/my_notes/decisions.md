@@ -1478,6 +1478,10 @@ under genuine parallelism.
 **Proved by breaking it.** Clock read moved back above the tail: **all 4 fail**. Restored:
 `pnpm check` 22 files, 297 tests passed.
 
+*Decision 87, the same evening: the fourth check this race tripped was removed from `verifyChain`. The
+ordering fix above stands on its own — a log whose times contradict its order is evidence that lies —
+but the chain is no longer bricked by an honest earlier time.*
+
 ## 78 · A lost reply is not a failed write, so `audit` looks instead of guessing (2026-10-04)
 
 **The problem.** Step 08's store was a JavaScript array. An array has two answers: it took the
@@ -2028,3 +2032,45 @@ hash already pins the order. Dropping the check is a change to what `verifyChain
 to the learner in the step's handover, not taken here.
 
 `pnpm check`: 23 files, **326 tests**. `pnpm test:db`: **9**. Both routes verify.
+
+## 87 · `verifyChain` no longer rejects a time that goes backwards (2026-10-04)
+
+**Taken at the learner's request** — "you do it" — against my own recommendation to wait for step 10.
+Recorded here so it can be reversed in one line if the learner, having read it, disagrees.
+
+**The problem.** `verifyChain` had four checks. The fourth, "`at` never goes backwards", was added
+after a review and looked like tamper-evidence. It was not. A *changed* `at` breaks check 2, because
+`at` is inside the hash. What the fourth check caught was an **honestly recorded** earlier time, and
+that has exactly two causes, neither an attack:
+
+- a backdated clock — which `recorded_at`, the database's own witness, already exposes (`001_audit.sql`,
+  and the test "a backdated record is written, and its two times disagree");
+- two instances of this program on one database with clocks a few seconds apart — the normal shape
+  of a deployment, and the one the open question had been about since the morning.
+
+For both, the check turned an intact chain into one that could never verify again, because nothing
+can `UPDATE` the rows. A tamper-evidence check that cries wolf on an honest record, permanently, is a
+check that gets switched off the first time it fires in production. Then it protects nothing.
+
+**The decision.** Three checks: valid record, own hash, link to the record before. The hash chain pins
+the order. The times are evidence, not a rule.
+
+**What did not change.** `audit` still reads the clock after the tail (decision 77). The reason stands
+on its own: a log whose times contradict its order is evidence that lies about the order of events,
+whether or not anything rejects it. The four ordering tests in `audit-race.test.ts` still fall when
+the clock is read early (Break 9: 4, was 5).
+
+**Tests.** "A record whose time runs backwards does not verify" became "… is recorded faithfully and
+still verifies", and it now also asserts that *editing* that time is still caught — by the hash. The
+race test "an overtaken writer does not leave the chain unverifiable" was deleted: with the check gone
+it could not fail for the reason it named. The year-0001 spelling no longer needs to be written first,
+and its comment says so.
+
+**Measured consequence nobody predicted.** Break 5 (the chain ordered as text) went from 65 failures
+to 64: one of its failures had been the time check all along — text order puts `10` before `2`, and the
+times went "backwards" with it. The nine counts were re-measured rather than adjusted.
+
+**To reverse:** restore the `previousAt` comparison in `verifyChain`, flip the first test above back,
+and re-measure Breaks 5 and 9.
+
+`pnpm check`: 23 files, **325 tests**. `pnpm test:db`: 9. Both routes verify.

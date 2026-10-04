@@ -1,11 +1,11 @@
 # Step 09 · PostgreSQL on Neon
 
-Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 326 tests, plus 9 in the
+Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 325 tests, plus 9 in the
 database tier
 Spec: [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) · `DSOR-AUD-04a`,
 `DSOR-AUD-02a`
-Both tiers have run: 326 under `pnpm check`, and 9 under `pnpm test:db` against a real server.
-Decisions [67 to 86](decisions.md). Lessons [20 to 34](lessons.md). The header above was "278 tests,
+Both tiers have run: 325 under `pnpm check`, and 9 under `pnpm test:db` against a real server.
+Decisions [67 to 87](decisions.md). Lessons [20 to 34](lessons.md). The header above was "278 tests,
 plus 4" and "decisions 67 to 74" for a day after both had changed — the two addenda at the bottom are
 where the step actually finished.
 
@@ -282,5 +282,6 @@ answers nothing. And the real server answered the one measurement every in-proce
 guess at: a collision of the program's own row shape is `audit_pkey`, and three writers on three real
 connections leave one verifying chain. [Decision 86](decisions.md), [lesson 34](lessons.md).
 
-`pnpm check`: **326**. `pnpm test:db`: **9**. Two open questions closed by measurement; one — the
-time check under clock skew — left for the learner to decide.
+`pnpm check`: **325**. `pnpm test:db`: **9**. Two open questions closed by measurement, and the third —
+the time check under clock skew — closed at the learner's request by removing the check
+([decision 87](decisions.md)): it was never about tampering, and it bricked the chain on honest input.

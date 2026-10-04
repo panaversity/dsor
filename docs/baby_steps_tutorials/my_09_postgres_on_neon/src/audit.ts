@@ -502,10 +502,11 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   //     seq 1  at 2026-10-04T00:00:00.000Z  req_slow   <-- earlier time, later position
   //     verifyChain: false
   //
-  // Nothing was tampered with. Every hash agreed. `verifyChain` rejects a log whose times go
-  // backwards, so it called an intact chain broken — and the rows cannot be corrected, because the
-  // application has no UPDATE, which is the whole point of this step. One lost race and the
-  // evidence is unverifiable for good.
+  // Nothing was tampered with. Every hash agreed. At the time `verifyChain` also rejected a log whose
+  // times went backwards, so it called an intact chain broken — and the rows cannot be corrected,
+  // because the application has no UPDATE. That check is gone now (decision 87), but the reason to
+  // read the clock here stands on its own: a log whose times contradict its order is evidence that
+  // lies about the order of events, whether or not anything rejects it.
   //
   // Reading it here is airtight, and the reason is the UNIQUE constraint. A writer that takes
   // position N+1 saw N in the tail, so N was already committed; and N's time was sampled on this
@@ -515,7 +516,8 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // What this does not survive is the clock itself going backwards — an NTP correction between two
   // writes, or two instances of this program on one database with skewed clocks, since the argument
   // above needs ONE clock. Neither is fixable here: §30 wants a trusted time source, and this step
-  // has none. `recorded_at` is the database's own witness beside it.
+  // has none. `recorded_at` is the database's own witness beside it — and since decision 87 a
+  // backwards time is recorded faithfully and verifies, rather than bricking the chain.
   //
   // Normalised to the exact string the database will hand back, which is the rule `storable` sets
   // for text and `at` was exempt from. `theLog` rebuilds `at` with `Date.prototype.toISOString`, so a
@@ -876,7 +878,7 @@ export function validateAuditRecord(record: unknown): boolean {
 /**
  * Does this run of records still agree with itself?
  *
- * Four checks now, and the two that were added came from a review that broke the first two.
+ * Three checks. There were four, and the fourth was removed on purpose — see below.
  *
  *   1. **Each record is a valid audit record.** This is not bureaucracy. `hashOf` used to spread the
  *      object it was handed, and `JSON.stringify` calls `toJSON` before the replacer runs — so two
@@ -887,10 +889,16 @@ export function validateAuditRecord(record: unknown): boolean {
  *      one that catches an edit to the *last* record, where there is no link after it to break.
  *   3. **`previous_hash` matches the record before**, so no record can be removed from the middle,
  *      inserted, reordered, or spliced in from a different history.
- *   4. **`at` never goes backwards.** A backdated record is hashed *from* the backdated time, so the
- *      chain cannot see the lie — and the docstring's own rule says why this check belongs: a field of
- *      a record needs no check of its own, but a record's **relationship to its neighbours** does, and
- *      "later than the one before" is exactly that. Equal times are fine; a fixed clock gives them.
+ *
+ * **The fourth check, "`at` never goes backwards", was removed (decision 87).** It was never about
+ * tampering: a changed `at` breaks check 2, because `at` is inside the hash. What it caught was an
+ * honestly recorded earlier time — and that has two causes, neither of them an attack. One is a
+ * backdated clock, which `recorded_at` already witnesses (see `001_audit.sql`). The other is two
+ * instances of this program on one database with clocks a few seconds apart, which is the normal
+ * shape of a deployment, and for which the check turned an intact chain into one that could never
+ * verify again, because nothing can UPDATE the rows. A tamper-evidence check that cries wolf on an
+ * honest record, permanently, is a check that will be switched off the first time it fires in
+ * production. The hash chain already pins the order; the times are evidence, not a rule.
  *
  * There were two other checks once, on `sequence` and on `chain`, and both were removed after
  * mutating them away left every test passing: both fields are *inside* the record, so they are inside
@@ -920,7 +928,6 @@ export function verifyChain(records: readonly AuditRecord[], head?: Head): boole
   }
 
   let previous = GENESIS;
-  let previousAt = "";
 
   for (const record of records) {
     // `validateAuditRecord` is also the guard against rubbish — `null`, a hole in a sparse array, a
@@ -939,12 +946,7 @@ export function verifyChain(records: readonly AuditRecord[], head?: Head): boole
       return false;
     }
 
-    if (record.at < previousAt) {
-      return false;
-    }
-
     previous = record.record_hash;
-    previousAt = record.at;
   }
 
   return true;

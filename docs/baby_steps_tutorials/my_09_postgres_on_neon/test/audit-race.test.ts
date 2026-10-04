@@ -128,27 +128,11 @@ describe("a writer that loses the race", () => {
     //     seq 0  at 2026-10-04T00:00:01.000Z  req_fast
     //     seq 1  at 2026-10-04T00:00:00.000Z  req_slow
     //
-    // The sequence and the clock have to agree, because `verifyChain` rejects a log whose times
-    // go backwards.
+    // At the time `verifyChain` rejected that and the chain was unverifiable for good; the check is
+    // gone (decision 87) and the reason stands on its own: a log whose times contradict its order
+    // is evidence that lies about the order of events. There used to be a second test here asserting
+    // the chain verified; with the check gone it could not fail, so it went.
     expect(log[1]!.at >= log[0]!.at).toBe(true);
-  });
-
-  it("DSOR-AUD-04b: an overtaken writer does not leave the chain unverifiable", async () => {
-    // The severity, stated as the thing that actually goes wrong. Nothing here is tampered with and
-    // every hash agrees, yet before the fix this returned false — and the rows cannot be corrected,
-    // because the application has no UPDATE. One lost race and the evidence is unverifiable for
-    // good.
-    const { db, release } = withTheFirstTailReadHeld();
-
-    useDatabase(db);
-
-    const slow = audit(aDecision("req_slow"));
-
-    await audit(aDecision("req_fast"));
-    release();
-    await slow;
-
-    expect(verifyChain(await theLog(), await theHead())).toBe(true);
   });
 
   it("DSOR-AUD-04b: the clock is read after the tail, not before", async () => {

@@ -159,7 +159,7 @@ Those refusals are PostgreSQL's own privilege system, not our code checking itse
 ## Two commands, and what each proves
 
 ```bash
-pnpm check     # 326 tests, no database and no network needed. Outside the repository one of
+pnpm check     # 325 tests, no database and no network needed. Outside the repository one of
                # them skips itself, and says so: it compares the step's copy of the audit-record
                # schema with the specification's, and a copy of one step has no specification
 pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
@@ -280,7 +280,7 @@ git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
 | `test/audit.db.test.ts` | the program's own door pointed at a real server: at the owner it refuses to start, at the application it starts and still cannot `UPDATE`. And the program's own writer under real parallelism, which answered a question PGlite could only guess at: the constraint that refuses a collision of its row shape is `audit_pkey` |
 | everything in `test/` | async, and nine files now need a database |
 
-232 tests became 326.
+232 tests became 325.
 
 ## The pipeline became async, and that was a decision
 
@@ -314,7 +314,7 @@ GRANT ALL ON public.audit TO dsor_runtime;
 ```
 
 ```text
- Tests  6 failed | 320 passed (326)
+ Tests  6 failed | 319 passed (325)
 ```
 
 Where the line goes decides what you see, and the first version of this exercise did not say. Replaced,
@@ -322,7 +322,7 @@ the `REVOKE UPDATE, DELETE, TRUNCATE` line below it still takes those three back
 when" test **passes**, and the six that fail are the ones that read the privilege shape (INSERT is
 table-wide again) and the two that forge `recorded_at`, which `GRANT ALL` hands back column by column.
 **Appended** at the end of the file instead, nothing takes `UPDATE` back, `refuseIfItCanRewriteHistory`
-refuses every `openTheDatabase`, and `24 failed | 302 passed` — the start-up guard doing its job,
+refuses every `openTheDatabase`, and `24 failed | 301 passed` — the start-up guard doing its job,
 loudly, in every test that opens the program's own door.
 
 ### Break 2 · leave `TRUNCATE` out of the revoke
@@ -332,7 +332,7 @@ REVOKE UPDATE, DELETE ON public.audit FROM dsor_runtime;   -- was UPDATE, DELETE
 ```
 
 ```text
- Tests  2 failed | 324 passed (326)
+ Tests  2 failed | 323 passed (325)
 ```
 
 `TRUNCATE` is its own privilege, not part of `DELETE`, and it empties the table in one statement. A
@@ -343,7 +343,7 @@ log the application can `TRUNCATE` is not append-only whatever else is true of i
 In `001_audit.sql`, replace `UNIQUE (chain, sequence)` with `CHECK (true)`.
 
 ```text
- Tests  2 failed | 324 passed (326)
+ Tests  2 failed | 323 passed (325)
 ```
 
 ### Break 4 · let a migration be edited after it ran
@@ -355,7 +355,7 @@ if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checks
 ```
 
 ```text
- Tests  2 failed | 324 passed (326)
+ Tests  2 failed | 323 passed (325)
 ```
 
 ### Break 5 · order the chain as text
@@ -367,7 +367,7 @@ SELECT sequence::text, record_hash FROM public.audit WHERE chain = $1 ORDER BY s
 ```
 
 ```text
- Tests  65 failed | 261 passed (326)
+ Tests  64 failed | 261 passed (325)
 ```
 
 This is the bug that actually happened, and it survived nine records before it bit. `SELECT
@@ -384,7 +384,7 @@ In `src/database.ts`, comment out the line that drops to the application's role:
 ```
 
 ```text
- Tests  11 failed | 315 passed (326)
+ Tests  11 failed | 314 passed (325)
 ```
 
 The largest number here after Break 5, and it was **zero** until `test/database.test.ts` existed.
@@ -397,7 +397,7 @@ holding, or it is testing the database and not the program.
 In `src/audit.ts`, write `INSERT INTO audit (` instead of `INSERT INTO public.audit (`.
 
 ```text
- Tests  2 failed | 324 passed (326)
+ Tests  2 failed | 323 passed (325)
 ```
 
 `dsor_runtime` cannot `UPDATE` or `DELETE` the log, and it *can* create a temporary table, because
@@ -421,7 +421,7 @@ In `src/audit.ts`, replace the `try`/`catch` around `insert(db, written)` with a
 `await insert(db, written);`.
 
 ```text
- Tests  5 failed | 321 passed (326)
+ Tests  5 failed | 320 passed (325)
 ```
 
 A database can commit an `INSERT` and lose the **reply**. Step 08's store was an array, which either
@@ -450,18 +450,22 @@ In `src/audit.ts`, move the block that reads the clock — from `const told = no
 `const at = new Date(instant).toISOString();` — back above `const db = theDatabase();`.
 
 ```text
- Tests  5 failed | 321 passed (326)
+ Tests  4 failed | 321 passed (325)
 ```
 
-A writer that gets overtaken then stamps an earlier time at a later position. Nothing is tampered
-with, every hash agrees, and `verifyChain` reports the chain broken — permanently, because the
-application has no `UPDATE` to correct the rows with. Reading the clock after the tail closes it for
-**one process with one clock**, and the unique constraint is why: a writer that takes position N+1 saw
-N in the tail, so N was committed, and N's time was sampled before N's `INSERT`. Two instances of
-this program on one database with skewed clocks break the same check, and so does the system clock
-stepping backwards — neither is fixable here, and `my_notes/open-questions.md` holds both.
+A writer that gets overtaken then stamps an earlier time at a later position: a log whose times
+contradict its order, which is evidence that lies about the order of events. Nothing is tampered
+with and every hash agrees, so the chain itself still verifies — and for a day it did not, because
+`verifyChain` had a fourth check, "`at` never goes backwards", that turned this into a chain nothing
+could ever verify again. That check is gone (decision 87): it was never about tampering, since a
+changed `at` breaks the hash, and what it actually caught was an honest earlier time — a backdated
+clock, which `recorded_at` already witnesses, or two instances of this program with clocks a few
+seconds apart, which is a normal deployment. Reading the clock after the tail still matters on its
+own terms, and the unique constraint is why it works for **one process with one clock**: a writer
+that takes position N+1 saw N in the tail, so N was committed, and N's time was sampled before N's
+`INSERT`. The four tests that fall are the ordering tests, and they are what this break is about.
 
-Restore each break and confirm `pnpm check` prints `326 passed` again.
+Restore each break and confirm `pnpm check` prints `325 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -506,12 +510,13 @@ Restore each break and confirm `pnpm check` prints `326 passed` again.
    writers cannot both take one position under real parallelism; and that the program's own door,
    pointed at the owner's connection string, refuses to open. All three need a server and all are in
    `audit.db.test.ts`, which reports `9 skipped` without one — and which has been run, nine tests
-   against PostgreSQL 17 with two real logins. Beyond both tiers, one thing is still unproven and
-   written down as such: two instances of this program with skewed clocks make `verifyChain`'s time
-   check report an intact chain as broken, and whether that check should exist at all is a decision
-   still to be taken. Two others were open for a day and were closed by measurement — a
-   `SECURITY DEFINER` function and a trigger are refused at start-up now, and the real server named
-   `audit_pkey` as the constraint that refuses a collision of the program's own rows.
+   against PostgreSQL 17 with two real logins. Beyond both tiers, nothing this step claims is left
+   unproven. Three things were open for a day and closed: a `SECURITY DEFINER` function and a trigger
+   are refused at start-up now; the real server named `audit_pkey` as the constraint that refuses a
+   collision of the program's own rows; and the time check that two skewed clocks would have tripped
+   was removed from `verifyChain`, because it was never about tampering (decision 87). What remains
+   unprovable *here* is about who, not what: the owner can do anything, and a trusted time source is
+   §30's, not this step's.
 4. That the line was not what was protecting you. Measured: a freshly created table grants nobody
    anything, so there was nothing for a `REVOKE` to take away — the guarantee rested on the `GRANT`
    being narrow. The `REVOKE`s matter on a database with a history, and the tests now reach them by

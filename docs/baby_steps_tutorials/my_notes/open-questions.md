@@ -136,7 +136,7 @@ can see is the kind of edit that introduces a mistake while fixing a smell. That
 while the question was whether it deserved a detour. It stopped being right when the answer became
 "do all of it" — and the edit was mechanical, with all six suites green before and after.
 
-## The chain's time check trusts the system clock (raised 2026-10-04, step 09)
+## The chain's time check trusts the system clock (raised 2026-10-04, step 09) — CLOSED the same day
 
 `verifyChain` rejects a log whose `at` values go backwards. Decision 77 made the *sequence* and the
 clock agree with each other, so a lost race can no longer cause that. What it cannot do is make the
@@ -156,7 +156,14 @@ Three ways out, none of them this step's:
    check is a second, weaker statement about the same thing.
 
 Option 3 is the one I would argue for, and it is a change to what `verifyChain` promises, so it is
-not a quiet edit. Left open.
+not a quiet edit.
+
+**Closed 2026-10-04, option 3, at the learner's request** ("you do it"). The check was never about
+tampering — a changed `at` breaks the hash — and what it caught was an honest earlier time, which a
+deployment with two instances produces as a matter of course. The hash chain pins the order; the
+times are evidence; `recorded_at` is the witness for a backdated clock. [Decision 87](decisions.md).
+Reversible in one line if the learner disagrees, and the test that would then need to flip back is
+named in that decision.
 
 ## Two routes to rewriting the log that no privilege check sees (raised 2026-10-04, step 09) — CLOSED the same day
 
@@ -184,6 +191,5 @@ against the server, and recorded rather than assumed.
 **Closed 2026-10-04, by measuring.** `audit.db.test.ts` inserts the program's own row shape twice at
 one position through the application's real login on PostgreSQL 17: SQLSTATE `23505`, constraint
 `audit_pkey`. And three `audit()` calls on three real pool connections, no fault injection, leave one
-chain that verifies, every loser refused with `23505`. The clock-skew entry above is the one that
-stays open, and it is a design decision for the learner: whether `verifyChain` should keep its time
-check at all.
+chain that verifies, every loser refused with `23505`. The clock-skew entry above closed the same evening, by
+decision 87.

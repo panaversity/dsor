@@ -557,9 +557,13 @@ describe("the audit log", () => {
     }
   });
 
-  // A backdated record is hashed *from* the backdated time, so checks 2 and 3 cannot see it. "Later
-  // than the one before" is a relationship between neighbours, which is what this function is for.
-  it("DSOR-AUD-04b: a record whose time runs backwards does not verify", async () => {
+  // This test used to assert the opposite — that a record whose time runs backwards does NOT verify —
+  // and it was the fourth check in `verifyChain`. Decision 87 removed it. A changed `at` is caught by
+  // the hash; an *honestly recorded* earlier `at` has two causes, a backdated clock (which
+  // `recorded_at` witnesses) and two instances with skewed clocks (which is a normal deployment), and
+  // for both the old check turned an intact chain into one that could never verify again. The times
+  // are evidence. The hash chain is the rule.
+  it("DSOR-AUD-04b: a record whose time runs backwards is recorded faithfully and still verifies", async () => {
     await forgetTheLog();
 
     setClock(() => "2026-09-30T10:00:00.000Z");
@@ -568,10 +572,20 @@ describe("the audit log", () => {
     const backdated = await recorded({ requestId: "req_2" });
     resetClock();
 
-    // It is a genuine record: schema-valid, correctly linked, correctly hashed.
+    // It is a genuine record: schema-valid, correctly linked, correctly hashed — and it says 2019,
+    // because the log records what the clock said and does not edit it into plausibility.
     expect(validateAuditRecord(backdated)).toBe(true);
     expect(backdated.previous_hash).toBe((await theLog())[0]!.record_hash);
-    expect(verifyChain(await theLog())).toBe(false);
+    expect(backdated.at.startsWith("2019")).toBe(true);
+    expect(verifyChain(await theLog(), await theHead())).toBe(true);
+
+    // And tampering with that time is still caught, by the hash and not by a clock rule.
+    const log = await theLog();
+    const edited = log.map((r, i) =>
+      i === 1 ? ({ ...r, at: "2026-09-30T10:00:01.000Z" } as AuditRecord) : r,
+    );
+
+    expect(verifyChain(edited, await theHead())).toBe(false);
 
     // Equal times are fine, because a fixed clock gives them.
     await forgetTheLog();
@@ -786,8 +800,7 @@ describe("the audit log", () => {
     await forgetTheLog();
 
     for (const spelling of [
-      // Year 0001, and it goes FIRST: the chain refuses a time that goes backwards, so this record
-      // has to be the oldest. PGlite parses a timestamp back with `new Date(string)`, and V8 reads
+      // Year 0001, first so the log's times agree with its order. PGlite parses a timestamp back with `new Date(string)`, and V8 reads
       // `0001-01-01 …` as 2001 — so with the driver's Date in the hash path this record could never
       // verify. `theLog` now has PostgreSQL form the string with `to_char`, the same on both routes.
       "0001-01-01T00:00:00Z",
