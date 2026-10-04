@@ -59,6 +59,23 @@ DSOR-IDN-06 says DSoR denies a command when the delegator's authority is older t
 company directory can come back a minute later. Until the spec says, step 19's design
 must choose.
 
+### Which constraints does DSOR-DEL-02 cover, and what if DSoR cannot check one?
+
+DSOR-DEL-02 computes authority from "the delegation's grants and constraints". The slip's
+schema holds a time window, a list of counterparties, resources, and limits. Only the
+limits have rules of their own (DSOR-DEL-06a to 06e). No rule names `time_window` or
+`counterparties`. And no rule says what DSoR does with a constraint it cannot check, such
+as `approved_vendors_only` before vendor records exist. DSOR-MON-04 and DSOR-CTL-07 answer
+"restrictively" for limits and controls. The question for the spec: does the same hold
+for every constraint on a slip?
+
+### What does a token with no scopes allow?
+
+DSOR-DEL-02 puts the token's scopes into the intersection, and DSOR-DEL-01b says a token
+never widens a slip. But a token can carry no scopes at all, and this tutorial's tokens
+carry none. If "no scopes" means everything, the token never narrows. If it means
+nothing, every agent call is refused. The spec does not say which.
+
 Steps 04 and 05 recorded their questions in
 [`research/open-questions.md`](../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)
 instead: 19 and 20 from step 04, and 21 to 25 from step 05. Each one rests on a
@@ -410,6 +427,11 @@ the official tutorial's. A learner build does not change either. A maintainer de
   So for one step, a payment can be sent and leave no record. AGENTS.md lists
   DSOR-EXE-03b among the six rules that are easiest to break. Step 36 could come before
   step 35, or step 35 could start with the note.
+- **Seven delegation rules have no step on the map.** A scan of the map against
+  `requirements.json` on 2026-10-04 found no step for DSOR-IDN-07 (a fired person's slips
+  are suspended), DSOR-DEL-09 (two slips and no name is a refusal), DSOR-DEL-04b
+  (revocation within the §44 bound), or DSOR-DEL-05a to 05d (subdelegation). IDN-07 fits
+  step 19, beside the role source that reports a firing. DEL-09 fits step 18 or 19.
 
 ## The Stage 2 review (2026-10-01)
 
@@ -565,6 +587,36 @@ does, and a real run answered it within a minute.
   6. How `payment.cancel` refuses a payment that is not a draft, before preconditions
      arrive in step 32.
   7. Which roles get `payment:create` and `payment:cancel`.
+
+### Step 18, before design (2026-10-04)
+
+- **Habit 1 again: credit for a check that does not exist yet.** We expected a firing to
+  suspend the person's slips. That is DSOR-IDN-07, and it needs a role source that reports
+  the firing. In step 18 nothing tells DSoR, and no step on the map names the rule.
+- **Habit 2's family: a "yes" taken without asking whose.** With two slips that could
+  cover a request, we expected DSoR to use the first. Then the order of rows in a table
+  decides whose name goes on a payment. DSOR-DEL-09 refuses instead.
+- **Design questions for Phase A:**
+  1. Which way the agent calls. "Beside a logged-in person" needs token exchange (step
+     45), and "alone at night" has its own rules (step 19).
+  2. Whether `ap_agent` keeps its read role until step 19. DSOR-DEL-01a covers commands;
+     DSOR-DEL-07 covers every unattended request, reads too.
+  3. Where slips live: a table on the step 16 map, its kind (a slip's status changes),
+     row-level security, and who may write a slip. Never the agent.
+  4. The constraints step 18 cannot check yet (vendors, limits): leave them off the
+     tutorial's slip until their checks exist, refuse, or skip and record DSOR-DEL-02 as
+     partly met. See "Which constraints does DSOR-DEL-02 cover" above.
+  5. The time window: check it now in the slip's time zone, or wait. No step names it.
+  6. Token scopes: this tutorial's tokens have none. See "What does a token with no
+     scopes allow?" above.
+  7. Two slips and no name (DSOR-DEL-09): build it here, or record it.
+  8. A fired person (DSOR-IDN-07): step 18 cannot see it. Record it, and propose it for
+     step 19.
+  9. The record: `identity` (mode, subject, actor chain, the source and time of the
+     authority) and `delegation`. The schema requires `identity`, and DSOR-DEL-10 is on the
+     map only at step 45.
+  10. The code for a slip past its date: `DELEGATION_EXPIRED` or `DELEGATION_REQUIRED`.
+  11. What line ⑤ checks for an agent: the effective set, not the agent's own role.
 
 ## Still unknown
 
