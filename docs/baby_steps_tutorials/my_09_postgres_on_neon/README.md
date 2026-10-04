@@ -490,24 +490,36 @@ Restore each break and confirm `pnpm check` prints `322 passed` again.
 <details>
 <summary>Answers</summary>
 
-1. The account it connects as has `INSERT` and `SELECT` and nothing else. `UPDATE` comes back
-   `permission denied for table audit` from PostgreSQL, not from our code. Step 08's chain makes a
-   change *detectable*; this makes it refused.
+1. The account it connects as has `INSERT` on every column but `recorded_at`, and `SELECT`, and
+   nothing else. `UPDATE` comes back `permission denied for table audit` from PostgreSQL, not from
+   our code. Step 08's chain makes a change *detectable*; this makes it refused. And the second half
+   of the answer is the one this step got wrong for a day: the program has to actually **be** that
+   account — a `GRANT` protects nothing if the process connects as the owner, and a test that runs
+   `SET ROLE` itself proves the grant, not the program.
 2. Because the fingerprint covers `at`, and the fingerprint is computed before the row exists — and
    `UPDATE` is revoked afterwards, so there is no later moment to stamp it in. `recorded_at` is the
    database's own time, which the application cannot set — `INSERT` is granted column by column and
    that column is left out — and which the hash does not cover, so the two disagreeing is the
    evidence.
-3. That the application is refused when it **logs in** as itself rather than assuming the role, and
-   that two writers cannot both take one position in the chain. Both need a server and both are in
-   `audit.db.test.ts`, which reports `7 skipped` without one.
+3. Three things `pnpm check` cannot see, because one in-process connection cannot do them: that the
+   application is refused when it **logs in** as itself rather than assuming the role; that two
+   writers cannot both take one position under real parallelism; and that the program's own door,
+   pointed at the owner's connection string, refuses to open. All three need a server and all are in
+   `audit.db.test.ts`, which reports `7 skipped` without one — and which has been run. Beyond both
+   tiers, three things are still unproven and written down as such: a `SECURITY DEFINER` function
+   or an owner's trigger could rewrite rows past the start-up check; which constraint refuses a real
+   program race on a real server is inferred from PGlite; and two instances with skewed clocks still
+   break the time check.
 4. That the line was not what was protecting you. Measured: a freshly created table grants nobody
    anything, so there was nothing for a `REVOKE` to take away — the guarantee rested on the `GRANT`
    being narrow. The `REVOKE`s matter on a database with a history, and the tests now reach them by
    granting something first.
 5. Because the database recorded that it ran *that text*. Edit the file and the shape in front of you
-   was built from something that no longer exists anywhere, and `pnpm migrate` will say there is
-   nothing to do. The checksum is what notices.
+   was built from something that no longer exists anywhere. The checksum is what notices, and it
+   refuses rather than guesses: `pnpm migrate` stops with *"001_audit.sql has changed since it was
+   applied … an applied migration is never edited. Add a new migration instead."* That line fired
+   twice while this step was being fixed, and the answer in development — a database nobody but you
+   has ever used — was to drop the tables and re-apply. The answer anywhere real is `003`.
 6. Because it is a separate privilege. Revoking `DELETE` leaves `TRUNCATE`, and `TRUNCATE` empties
    the whole table in one statement.
 
