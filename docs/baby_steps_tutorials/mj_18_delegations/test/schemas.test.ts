@@ -19,6 +19,16 @@ describe("the schema copies", () => {
     },
   );
 
+  // NEW IN STEP 18: the slip's schema is a copy too. DSoR checks every slip it reads against
+  // it (step 18's README, decision 13).
+  it.skipIf(!existsSync(ORIGINALS))(
+    "DSOR-DEL-01a: schemas/delegation.schema.json equals the specification's own",
+    () => {
+      const file = "delegation.schema.json";
+      expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
+    },
+  );
+
   // The result envelope's schema is a copy too. The tests check an answer's
   // classification and redactions against it (step 14's README, decision 4).
   it.skipIf(!existsSync(ORIGINALS))(

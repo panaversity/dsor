@@ -32,8 +32,29 @@ const AUDIT_COLUMNS = [
   "resources",
   "row_count",
   "connector",
+  // NEW IN STEP 18: migration 011 adds the agent's slip and person (step 18's README,
+  // decision 8).
+  "identity",
+  "delegation",
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
+
+// NEW IN STEP 18: dsor.delegations, as migration 010 makes it. dsor_runtime reads every
+// column and writes none (step 18's README, decision 3).
+const DELEGATION_COLUMNS = [
+  "tenant_id",
+  "id",
+  "delegator",
+  "delegate",
+  "modes",
+  "permissions",
+  "constraints",
+  "subdelegation",
+  "parent",
+  "status",
+  "expires_at",
+  "extensions",
+];
 
 // app.payments, as migration 009 makes it. The database numbers each
 // payment and writes its id from the number, so dsor_runtime writes neither. It writes
@@ -52,7 +73,7 @@ const PAYMENT_COLUMNS = [
 const PAYMENT_FILLED = ["number", "id"];
 const PAYMENT_UPDATES = ["status"];
 
-/** The catalog as steps 09 to 17 left it, seen by dsor_runtime. A fresh copy each call. */
+/** The catalog as steps 09 to 18 left it, seen by dsor_runtime. A fresh copy each call. */
 export function today(): Catalog {
   return {
     user: "dsor_runtime",
@@ -93,6 +114,15 @@ export function today(): Catalog {
           const filled = FILLED_BY_THE_DATABASE.includes(name);
           return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
         }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
+      },
+      {
+        name: "dsor.delegations",
+        kind: "table",
+        held: ["SELECT"],
+        columns: DELEGATION_COLUMNS.map((name) => ({ name, held: ["SELECT"], filled: false })),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [],

@@ -46,10 +46,17 @@
             "extensions",
             "resources",
             "row_count",
-            "connector"
+            "connector",
+            "identity",
+            "delegation"
           ]
         }
       }
+    },
+    "dsor.delegations": {
+      "kind": "control-read",
+      "tenant": "tenant_id",
+      "runtime": { "table": ["SELECT"] }
     },
     "dsor.migrations": {
       "kind": "bookkeeping",

@@ -22,13 +22,15 @@ describe("the shipped map", () => {
   });
 
   // Step 17 adds app.payments (step 17's README, outcome 1).
-  it("step 16's decision 1: it names three schemas and four tables", () => {
+  // Step 18 adds a fifth table, the slips (step 18's README, decision 3).
+  it("step 16's decision 1: it names three schemas and five tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
       "app.invoices",
       "app.payments",
       "dsor.audit",
+      "dsor.delegations",
       "dsor.migrations",
     ]);
   });
@@ -180,8 +182,8 @@ describe("C7: the map itself is checked", () => {
   it("step 16's decision 1: a kind the map does not know is refused", () => {
     const source = mapWith((m) => (m.tables["dsor.migrations"].kind = "ledger"));
     expect(problemsOf(source)).toStrictEqual([
-      // Step 17's business-written is a fourth kind.
-      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, or bookkeeping',
+      // Step 17's business-written is a fourth kind, and step 18's control-read a fifth.
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, control-read, or bookkeeping',
     ]);
   });
 

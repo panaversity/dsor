@@ -82,11 +82,19 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         // Tenant too (step 10's README, decision 6). What a read returned,
         // and how many (step 14's README, decision 7). And which connector
         // served it (step 15's README, decision 7).
-        held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector",
+        // And step 18's identity and delegation, for an agent's call (step 18's README,
+        // decision 8).
+        held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation",
       },
       {
         object: "dsor.audit SELECT",
-        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector",
+        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation",
+      },
+      // Step 18's slips: read only, every column (step 18's README, decision 3).
+      { object: "dsor.delegations", held: "SELECT" },
+      {
+        object: "dsor.delegations SELECT",
+        held: "tenant_id id delegator delegate modes permissions constraints subdelegation parent status expires_at extensions",
       },
       { object: "schema app", held: "USAGE" },
       { object: "schema dsor", held: "USAGE" },
