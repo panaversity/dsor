@@ -101,10 +101,12 @@ function definersRuntimeMayRun(rows: string): string {
 describe("C1: every table with a company column has its lock", () => {
   // A new table with a company column changes this list, so it fails here until it has
   // its own lock and this list names it (step 11's README, decision 1).
-  it("DSOR-RP-01b: app.invoices and dsor.audit have row-level security enabled, forced, and policies", async () => {
+  // Step 17's app.payments joined the list with its own lock (step 17's README, outcome 1).
+  it("DSOR-RP-01b: app.invoices, app.payments, and dsor.audit have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
+      { table: "app.payments", enabled: true, forced: true, policies: 1 },
       { table: "dsor.audit", enabled: true, forced: true, policies: 2 },
     ]);
   });
@@ -121,6 +123,15 @@ describe("C1: every table with a company column has its lock", () => {
     expect(rows).toStrictEqual([
       {
         table: "app.invoices",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+      },
+      // Step 17's app.payments: the same rule, which checks the rows written too.
+      {
+        table: "app.payments",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],

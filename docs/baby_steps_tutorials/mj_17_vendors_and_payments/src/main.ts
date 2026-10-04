@@ -8,9 +8,11 @@
 // correlation of a call by user_123. Then the firm's agent reads INV-1008 in each of its
 // two companies, without amounts, and two calls cross from one company into another and
 // are refused. Then the agent asks invoice.list for a million invoices, and gets ten, a
-// note that its limit was cut, and a cursor. Then it prints the log: the records it can
-// read, one company at a time, and how many it cannot read. Last, it shows that a log which
-// cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
+// note that its limit was cut, and a cursor. NEW IN STEP 17: then user_123 drafts a payment
+// for INV-1008 and cancels it twice, and the agent is refused a command it holds the
+// permission for. Then it prints the log: the records it can read, one company at a time,
+// and how many it cannot read. Last, it shows that a log which cannot take a record turns a
+// "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
@@ -20,6 +22,7 @@ import type { Answer } from "./envelope.ts";
 import { readCatalog } from "./catalog.ts";
 import { storeDifferences } from "./inspector.ts";
 import { invoiceUri, type Invoice } from "./invoice.ts";
+import type { Payment } from "./payment.ts";
 import type { DecisionLog } from "./log.ts";
 import { handlersFor } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
@@ -28,6 +31,7 @@ import { readInputs } from "./inputs.ts";
 import {
   createDbInvoices,
   createDbLog,
+  createDbPayments,
   loadDotEnv,
   openPool,
   requireEnv,
@@ -72,6 +76,8 @@ try {
     // The registry holds the store, and the code gets only the active company's invoices
     // (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
     createDbInvoices(pool),
+    // NEW IN STEP 17: and the payments the commands write, in app.payments.
+    createDbPayments(pool),
   );
   // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).
@@ -172,8 +178,8 @@ if ("data" in answer) {
 // A refusal comes back as an error envelope, never as a throw. Each one
 // has a code, and the retry class the §28 table gives that code.
 console.log(await ask(AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }));
-// The agent's role grants invoice:read and not invoice:issue. So this call
-// is denied at line ⑤, before DSoR looks at the input or asks whether it is built.
+// invoice.issue is a command. Since step 17, an agent's command is refused at line ③,
+// because no person's delegation covers it yet (step 17's README, decision 5).
 console.log(await ask(AGENT, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // A call with no login token is refused before DSoR checks anything else.
@@ -234,6 +240,22 @@ if ("data" in listed) {
   const { items, ...rest } = listed.data as { items: Invoice[] };
   console.log(items.map(({ id }) => id).join(" "), rest);
 }
+
+// NEW IN STEP 17: the first commands. user_123 drafts a payment for INV-1008. DSoR reads the
+// invoice's open amount and vendor itself, and the answer says the draft can be undone:
+// compensatable (step 17's README, outcomes 2 and 4). The database numbers it: PAY-901 on a
+// fresh branch, a higher number on each run after.
+const drafted = await ask(USER_123, "payment.create", { invoice: "dsor://org_456/invoice/INV-1008" });
+console.log(drafted);
+if ("data" in drafted) {
+  const payment = `dsor://org_456/payment/${(drafted.data as Payment).id}`;
+  // The undo, through the same checklist. Its answer says atomic.
+  console.log(await ask(USER_123, "payment.cancel", { payment }));
+  // A cancelled payment is not a draft any more, so a second cancel is refused.
+  console.log(await ask(USER_123, "payment.cancel", { payment }));
+}
+// The agent's role grants payment:create, and line ③ still refuses it: no delegation yet.
+console.log(await ask(AGENT, "payment.create", { invoice: "dsor://org_456/invoice/INV-1008" }));
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

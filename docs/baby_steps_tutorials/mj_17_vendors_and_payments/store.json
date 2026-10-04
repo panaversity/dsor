@@ -10,6 +10,24 @@
       "tenant": "tenant_id",
       "runtime": { "table": ["SELECT"] }
     },
+    "app.payments": {
+      "kind": "business-written",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "tenant_id",
+            "invoice_id",
+            "vendor_id",
+            "amount_value",
+            "amount_currency",
+            "status"
+          ],
+          "UPDATE": ["status"]
+        }
+      }
+    },
     "dsor.audit": {
       "kind": "append-only",
       "tenant": "tenant",

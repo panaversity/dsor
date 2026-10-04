@@ -10,7 +10,7 @@ import type { Freshness } from "./freshness.ts";
 import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import type { Decision, DecisionLog, DecisionRecord } from "./log.ts";
 import { money } from "./money.ts";
-import type { PaymentStore } from "./payment.ts";
+import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
 
 // The step's own .env, found from this file, so the program finds it whatever folder it
 // is started from. Found by step 06's review, for roles.json.
@@ -261,14 +261,75 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   };
 }
 
+// NEW IN STEP 17: one row of app.payments, as pg gives it back. The amount comes back as
+// text, as an invoice's does.
+type PaymentRow = {
+  tenant_id: string;
+  id: string;
+  invoice_id: string;
+  vendor_id: string;
+  amount_value: string;
+  amount_currency: string;
+  status: PaymentStatus;
+};
+const PAYMENT_COLUMNS = "tenant_id, id, invoice_id, vendor_id, amount_value, amount_currency, status";
+
 // NEW IN STEP 17: the payments, in the table app.payments (step 17's README, outcome 1).
-// SHELL: the shape only. Every write says "not built yet" until the code is written.
+// Each write is one transaction that sets the company first, as every read is (step 11's
+// README, decision 3). The company is in every statement too: DSoR's own lock.
 /** The payments, written to app.payments. */
-export function createDbPayments(_pool: pg.Pool): PaymentStore {
-  const notYet = async (): Promise<never> => {
-    throw new Error("not built yet");
+export function createDbPayments(pool: pg.Pool): PaymentStore {
+  return {
+    // The database gives the number and the id. The status is written as draft here, never
+    // taken from the caller (step 17's README, decisions 12 and 15).
+    create: async (tenant, draft) => {
+      const { rows } = await inCompany(pool, tenant, (client) =>
+        client.query<PaymentRow>(
+          `INSERT INTO app.payments
+             (tenant_id, invoice_id, vendor_id, amount_value, amount_currency, status)
+           VALUES ($1, $2, $3, $4, $5, 'draft')
+           RETURNING ${PAYMENT_COLUMNS}`,
+          [tenant, draft.invoice_id, draft.vendor_id, draft.amount.value, draft.amount.currency],
+        ),
+      );
+      // A rule or a trigger could keep no row, and the code would think it had a draft
+      // (step 16's README, decision 3).
+      if (rows.length !== 1) throw new Error(`the payments table kept ${rows.length} rows, not 1`);
+      return paymentOf(rows[0]!);
+    },
+    // One UPDATE decides: only a draft changes, so two cancels at the same moment cannot both
+    // succeed. When it changes nothing, one look in the same transaction says why: a payment
+    // that is not a draft, or none at all (step 17's README, decision 9).
+    cancel: async (tenant, id) =>
+      inCompany(pool, tenant, async (client) => {
+        const changed = await client.query<PaymentRow>(
+          `UPDATE app.payments SET status = 'cancelled'
+            WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
+            RETURNING ${PAYMENT_COLUMNS}`,
+          [tenant, id],
+        );
+        const row = changed.rows[0];
+        if (row !== undefined) return { payment: paymentOf(row), changed: true };
+        const now = await client.query<PaymentRow>(
+          `SELECT ${PAYMENT_COLUMNS} FROM app.payments WHERE tenant_id = $1 AND id = $2`,
+          [tenant, id],
+        );
+        const found = now.rows[0];
+        return { payment: found === undefined ? undefined : paymentOf(found), changed: false };
+      }),
   };
-  return { create: notYet, cancel: notYet };
+}
+
+// NEW IN STEP 17: one row as a payment. money() checks the text again, as for an invoice.
+function paymentOf(row: PaymentRow): Payment {
+  return {
+    tenant_id: row.tenant_id,
+    id: row.id,
+    invoice_id: row.invoice_id,
+    vendor_id: row.vendor_id,
+    amount: money(row.amount_value, row.amount_currency),
+    status: row.status,
+  };
 }
 
 // A read from PostgreSQL, within this request, is current (DSOR-FRS-01a).

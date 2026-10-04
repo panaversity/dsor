@@ -39,11 +39,16 @@ export type Kind = {
 
 // Each kind allows only its own privileges, on its own side. A later step adds a kind
 // here, beside the table that needs it (step 16's README, decision 3). No kind allows
-// UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, or MAINTAIN.
+// DELETE, TRUNCATE, REFERENCES, TRIGGER, or MAINTAIN, and only business-written allows
+// UPDATE, on named columns.
 /** Every kind of table the map may use. */
 export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // The company's data: dsor_runtime only reads it.
   ["business", { side: "company", table: ["SELECT"], columns: [], key: true }],
+  // NEW IN STEP 17: a company table that DSoR writes, such as app.payments: read it, add rows
+  // and change them through named columns only. Never a whole-table INSERT or UPDATE, which
+  // would include the columns the database fills in (step 17's README, decision 3).
+  ["business-written", { side: "company", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true }],
   // DSoR's paperwork that grows and never changes, like the log: read it, and add rows
   // through named columns. INSERT on the whole table would include the columns the
   // database fills in (step 09's README, decision 6).
@@ -135,7 +140,9 @@ function tableProblems(
   line.runtime.columns ??= {};
   const kind = KINDS.get(line.kind);
   if (kind === undefined) {
-    const known = "which is not business, append-only, or bookkeeping";
+    // NEW IN STEP 17: every kind the map knows, from the list above, so a new kind is named.
+    const names = [...KINDS.keys()];
+    const known = `which is not ${names.slice(0, -1).join(", ")}, or ${names.at(-1)}`;
     return [`${name} has the kind ${JSON.stringify(line.kind)}, ${known}`];
   }
   const schema = schemas.get(schemaName);

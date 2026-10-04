@@ -63,6 +63,19 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         object: "app.invoices SELECT",
         held: "id vendor_id amount_value amount_currency open_amount_value open_amount_currency status tenant_id",
       },
+      // Step 17's app.payments: read it, add a draft through named columns, change only its
+      // status. Nothing on number or id, which the database writes (step 17's README,
+      // decision 3).
+      { object: "app.payments", held: "SELECT" },
+      {
+        object: "app.payments INSERT",
+        held: "tenant_id invoice_id vendor_id amount_value amount_currency status",
+      },
+      {
+        object: "app.payments SELECT",
+        held: "number id tenant_id invoice_id vendor_id amount_value amount_currency status",
+      },
+      { object: "app.payments UPDATE", held: "status" },
       { object: "dsor.audit", held: "SELECT" },
       {
         object: "dsor.audit INSERT",

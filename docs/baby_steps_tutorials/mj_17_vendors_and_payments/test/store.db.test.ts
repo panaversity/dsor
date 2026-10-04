@@ -99,7 +99,9 @@ describe("decision 8: the inspector sees every kind of privilege", () => {
     expect(columnIn(audit, "sequence").held).toStrictEqual(
       andWithGrant(["SELECT", "INSERT", "UPDATE", "REFERENCES"]),
     );
+    // Since step 17, the counter behind each payment's number too.
     expect(catalog.sequences).toStrictEqual([
+      { name: "app.payments_number_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
       { name: "dsor.audit_sequence_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
     ]);
     expect(catalog.schemas.find((s) => s.name === "dsor")?.held).toStrictEqual(

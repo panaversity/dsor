@@ -153,12 +153,20 @@ describe("C3: dsor_runtime's privileges are exactly the map's", () => {
     ]);
   });
 
-  it("step 16's decision 3: USAGE on the log's sequence is named", () => {
-    const found = differencesWith((c) => c.sequences[0]!.held.push("USAGE"));
-    expect(found).toStrictEqual([
-      "dsor.audit_sequence_seq: dsor_runtime holds USAGE on a sequence, which no kind allows",
-    ]);
-  });
+  // Found by name: since step 17, app.payments' counter sorts first. And the new counter
+  // the same way: the database numbers a payment, never the program (step 17's README,
+  // decision 15).
+  it.each(["dsor.audit_sequence_seq", "app.payments_number_seq"])(
+    "step 16's decision 3: USAGE on the counter %s is named",
+    (name) => {
+      const found = differencesWith((c) => {
+        c.sequences.find((sequence) => sequence.name === name)!.held.push("USAGE");
+      });
+      expect(found).toStrictEqual([
+        `${name}: dsor_runtime holds USAGE on a sequence, which no kind allows`,
+      ]);
+    },
+  );
 
   it("step 16's decision 3: a privilege on a sequence the map never heard of is named", () => {
     const found = differencesWith((c) =>

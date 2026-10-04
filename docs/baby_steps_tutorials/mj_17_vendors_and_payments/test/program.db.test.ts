@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
 import { RUNTIME_URL, redact } from "./db.ts";
-import { notGranted } from "./helpers.ts";
+import { needsDelegation } from "./helpers.ts";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
@@ -41,8 +41,10 @@ describe("the program", () => {
       expect(run.stderr).toBe("");
       expect(run.status).toBe(0);
       const output = run.stdout;
-      // invoice.list.
-      expect(output).toMatch("operations: [ 'invoice.get', 'invoice.issue', 'invoice.list' ]");
+      // invoice.list, and step 17's two commands. Five names no longer fit on one line.
+      expect(output).toMatch(
+        /operations: \[\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'payment\.cancel',\s+'payment\.create'\s+\]/,
+      );
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.
       expect(output).toMatch("data: {");
@@ -60,7 +62,8 @@ describe("the program", () => {
       expect(output).toMatch("dsor://org_456/invoice/INV-1008");
       expect(output).toMatch("{ tenant_id: 'org_456', entity: 'invoice', id: 'INV-1008' }");
       expect(output).toMatch("code: 'RESOURCE_NOT_FOUND'");
-      expect(output).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
+      // Since step 17 the agent's invoice.issue stops at line ③ (step 17's README, decision 5).
+      expect(output).toMatch("message: `" + needsDelegation("invoice.issue") + "`");
       expect(output).toMatch(`message: '"invoice.issue" is not built yet'`);
       expect(output).toMatch(
         `message: 'the input of "invoice.issue" is not valid: /invoice must match pattern`,
@@ -79,6 +82,14 @@ describe("the program", () => {
       expect(output).toMatch(
         "INV-1001 INV-1002 INV-1003 INV-1004 INV-1005 INV-1006 INV-1007 INV-1008 INV-1009 INV-1010 { next_cursor: 'INV-1010', capped: { asked: 1000000, max: 10 } }",
       );
+      // Step 17's commands. The draft, numbered by the database, holds INV-1008's open amount
+      // and vendor, and says it can be undone. The cancel says atomic, a second cancel is
+      // refused, and the agent is refused the command its role grants.
+      expect(output).toMatch(/^\s+id: 'PAY-\d+',\n\s+invoice_id: 'INV-1008',\n\s+vendor_id: 'VENDOR-44',$/m);
+      expect(output).toMatch(/^\s+status: 'draft'\n\s+\},\n\s+classification: 'confidential',\n\s+semantics: 'compensatable',$/m);
+      expect(output).toMatch(/^\s+status: 'cancelled'\n\s+\},\n\s+classification: 'confidential',\n\s+semantics: 'atomic',$/m);
+      expect(output).toMatch(/message: 'payment "PAY-\d+" is not a draft, so it cannot be cancelled'/);
+      expect(output).toMatch("message: `" + needsDelegation("payment.create") + "`");
     },
   );
 
@@ -96,7 +107,7 @@ describe("the program", () => {
         const run = start(env, dir);
         expect(run.stderr).toBe("");
         expect(run.status).toBe(0);
-        expect(run.stdout).toMatch(`message: '${notGranted("invoice.issue", "invoice:issue")}'`);
+        expect(run.stdout).toMatch("message: `" + needsDelegation("invoice.issue") + "`");
       } finally {
         rmSync(dir, { recursive: true });
       }
@@ -109,7 +120,7 @@ describe("the program's log", () => {
   // company. The program reads org_456's and org_789's, and says how many it cannot read
   // (step 11's README, decision 6).
   it(
-    "DSOR-EXE-02: prints the 11 records of its 14 calls that it can read, in order, and says it cannot read 3",
+    "DSOR-EXE-02: prints the 15 records of its 18 calls that it can read, in order, and says it cannot read 3",
     { timeout: 60_000 },
     () => {
       const run = start();
@@ -119,7 +130,7 @@ describe("the program's log", () => {
       // any more. They still go up, in the order of the calls.
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
-      expect(new Set(numbers).size).toBe(11);
+      expect(new Set(numbers).size).toBe(15);
       // Each record ends with its company. The three calls refused before line ② have
       // none, and are not here.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
@@ -127,7 +138,8 @@ describe("the program's log", () => {
         // Cfo_100 reads INV-1008 whole.
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW RESOURCE_NOT_FOUND org_456",
-        "invoice.issue@1 DENY AUTHORIZATION_DENIED org_456",
+        // Since step 17, line ③ refuses the agent's command (step 17's README, decision 5).
+        "invoice.issue@1 DENY DELEGATION_REQUIRED org_456",
         "invoice.get@1 ALLOW ok org_456",
         "invoice.issue@1 DENY UNSUPPORTED_CAPABILITY org_456",
         "invoice.issue@1 DENY VALIDATION_FAILED org_456",
@@ -135,12 +147,18 @@ describe("the program's log", () => {
         "invoice.get@1 ALLOW ok org_789",
         "invoice.issue@1 DENY TENANT_MISMATCH org_456",
         "invoice.list@1 ALLOW ok org_456",
+        // Step 17's commands: a draft, its cancel, a second cancel refused by the code, so
+        // ALLOW, and the agent refused at line ③.
+        "payment.create@1 ALLOW ok org_456",
+        "payment.cancel@1 ALLOW ok org_456",
+        "payment.cancel@1 ALLOW CONFLICT org_456",
+        "payment.create@1 DENY DELEGATION_REQUIRED org_456",
       ]);
       // A fact and one inference, and the line says which: every call answered, and an
       // answer leaves only after its record is committed. Found by the review: the line
       // used to state the 3 as if it had read them.
       expect(run.stdout).toMatch(
-        "14 calls answered, so 14 records were written. dsor_runtime reads 11 of them, in org_456 and org_789, and cannot read the other 3",
+        "18 calls answered, so 18 records were written. dsor_runtime reads 15 of them, in org_456 and org_789, and cannot read the other 3",
       );
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },

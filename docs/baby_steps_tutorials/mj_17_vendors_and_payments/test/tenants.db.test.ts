@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { companyOf } from "../src/company.ts";
+import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbInvoices, createDbLog, openPool } from "../src/postgres.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
@@ -278,9 +279,11 @@ describe("C8: in the database, the code reaches only the active company, and its
     // The invoice, out of what the store gives.
     const reachesAround: Handler = async (input) =>
       (await itsOwn.get("org_789", parseUri((input as { invoice: string }).invoice).id)).invoice;
+    // The shipped code, with invoice.get replaced. Since step 17, start-up refuses a registry
+    // whose payment.create names an undo with no code (step 17's README, decision 8).
     const planted = buildRegistry(
       shipped,
-      { "invoice.get": reachesAround },
+      { ...handlersFor(), "invoice.get": reachesAround },
       shippedRoles,
       shippedInputs,
       shippedLabels,
