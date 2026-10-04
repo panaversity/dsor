@@ -119,7 +119,8 @@ Checked on 2026-10-05:
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside. The learner
 made decisions 1 to 11 on 2026-10-05, one at a time. The build checked this design against
 the specification, the schemas, and step 17's code the same day, before the first test, and
-found three gaps. The learner changed decision 7, and added decisions 12 and 13.
+found three gaps. The learner changed decision 7, and added decisions 12 and 13. Setting up
+Neon changed decision 10.
 
 1. **The agent calls `unattended`, and its slip must allow that mode.** The agent keeps its own
    token, as in step 17. A real run on 2026-10-05 showed that its envelope names no person, and
@@ -193,10 +194,13 @@ found three gaps. The learner changed decision 7, and added decisions 12 and 13.
    narrowing" is this tutorial's reading, not the specification's ("What does a token with no
    scopes allow?" in `../mj_notes.md`), until signed tokens arrive with real logins.
 10. **The database tests run on Neon, on a branch `step-18` made from `step-17`.** Neon allows
-    ten branches, and `main` and `step-09` to `step-17` use all ten. `step-09` keeps the
-    changed records for step 39's demo. So the build starts by deleting `step-10`, at the
-    learner's yes. *Downside:* step 10's database tests cannot run on Neon again until someone
-    makes a fresh branch from `main` and runs its migrations.
+    ten branches, and `main` and `step-09` to `step-17` use all ten. So the build starts by
+    deleting `step-14`, at the learner's yes. Changed when the build set up Neon: the first
+    version deleted `step-10`. But Neon cannot delete a branch that has child branches (its
+    "Manage branches" page, read on 2026-10-05), and `step-10` is the parent of `step-11`. Only
+    `step-14` and `step-17` had no children, and step 18 grows from `step-17`. *Downside:* step
+    14's database tests cannot run on Neon again until someone makes a fresh branch from `main`
+    and runs its migrations.
 11. **An agent login that holds a role stops start-up.** Decision 2 takes the agent's own role
     away. So each agent's line in DSoR's login table lists its companies with no roles. Start-up
     refuses an agent that holds any role, and names it, as it has refused an unknown role since
@@ -291,7 +295,7 @@ learner's case beside the real one.
 The rule is: **a secret never passes through a chat.** Claude Code may do this setup itself,
 this way:
 
-1. Delete the branch `step-10`, at the learner's yes (decision 10).
+1. Delete the branch `step-14`, at the learner's yes (decision 10).
 2. Create a branch `step-18` **from `step-17`**, with `neonctl branches create`.
 3. Write `.env` with `neonctl connection-string`, sending its output into the file and never
    printing it:
