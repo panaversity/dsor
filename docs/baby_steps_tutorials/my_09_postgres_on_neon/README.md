@@ -505,11 +505,13 @@ Restore each break and confirm `pnpm check` prints `326 passed` again.
    application is refused when it **logs in** as itself rather than assuming the role; that two
    writers cannot both take one position under real parallelism; and that the program's own door,
    pointed at the owner's connection string, refuses to open. All three need a server and all are in
-   `audit.db.test.ts`, which reports `7 skipped` without one — and which has been run. Beyond both
-   tiers, three things are still unproven and written down as such: a `SECURITY DEFINER` function
-   or an owner's trigger could rewrite rows past the start-up check; which constraint refuses a real
-   program race on a real server is inferred from PGlite; and two instances with skewed clocks still
-   break the time check.
+   `audit.db.test.ts`, which reports `9 skipped` without one — and which has been run, nine tests
+   against PostgreSQL 17 with two real logins. Beyond both tiers, one thing is still unproven and
+   written down as such: two instances of this program with skewed clocks make `verifyChain`'s time
+   check report an intact chain as broken, and whether that check should exist at all is a decision
+   still to be taken. Two others were open for a day and were closed by measurement — a
+   `SECURITY DEFINER` function and a trigger are refused at start-up now, and the real server named
+   `audit_pkey` as the constraint that refuses a collision of the program's own rows.
 4. That the line was not what was protecting you. Measured: a freshly created table grants nobody
    anything, so there was nothing for a `REVOKE` to take away — the guarantee rested on the `GRANT`
    being narrow. The `REVOKE`s matter on a database with a history, and the tests now reach them by
