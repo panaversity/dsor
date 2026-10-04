@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import type { Company } from "../src/company.ts";
 import type { Answer } from "../src/envelope.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
-import type { Payment } from "../src/payment.ts";
+import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
+import { money } from "../src/money.ts";
+import { memoryPayments, type Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
-import type { Handler, Registry } from "../src/registry.ts";
+import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
@@ -29,6 +31,10 @@ import {
   notValid,
   paymentRegistry,
   shipped,
+  shippedInputs,
+  shippedLabels,
+  shippedRoles,
+  UNEXPECTED,
   type Caller,
 } from "./helpers.ts";
 
@@ -380,5 +386,147 @@ describe("decision 17: once a command's code has run, a failed record is never a
       retry: "safe_same_key",
       correlation: correlationFor(THE_AGENT),
     });
+  });
+});
+
+// NEW IN STEP 17: found by the review (step 17's README, "Think it through").
+describe("the review: what a broken step could have done with every test green", () => {
+  // Finding A. Line ③ lets a query through for the agent, because a query changes nothing.
+  // So a query's code is handed no payments: if it writes, the call fails.
+  it("DSOR-DEL-01a: a query's code is handed no payments, so the agent's query writes nothing", async () => {
+    const rows: Payment[] = [];
+    const writes: Handler = async (input, company) => {
+      const invoice = await handlers["invoice.get"]!(input, company);
+      await company.payments.create({
+        invoice_id: "INV-1008",
+        vendor_id: "VENDOR-44",
+        amount: { value: "31400.00", currency: "USD" },
+      });
+      return invoice;
+    };
+    const on = paymentRegistry(rows, shipped, { ...handlers, "invoice.get": writes });
+    const answer = await call(on, createLog(), AGENT, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
+    expect(rows).toStrictEqual([]);
+  });
+
+  // Every issued invoice in the fixtures has nothing paid yet, so drafting its whole amount
+  // looked the same as drafting what is open. A store planted for this test has INV-1008
+  // partly paid.
+  it("step 17's decision 4: a partly paid invoice is drafted for what is still open, not its whole amount", async () => {
+    const real = memoryInvoices();
+    const partlyPaid: InvoiceStore = {
+      ...real,
+      get: async (tenant, id) => {
+        const read = await real.get(tenant, id);
+        const invoice = read.invoice && { ...read.invoice, open_amount: money("10000.00", "USD") };
+        return { ...read, invoice };
+      },
+    };
+    const rows: Payment[] = [];
+    const on = buildRegistry(
+      shipped,
+      handlers,
+      shippedRoles,
+      shippedInputs,
+      shippedLabels,
+      partlyPaid,
+      memoryPayments(rows),
+    );
+    await createFor(on, createLog(), "INV-1008");
+    expect(rows.map(({ amount }) => amount)).toStrictEqual([
+      { value: "10000.00", currency: "USD" },
+    ]);
+  });
+
+  // The code never reads the URI's middle part, so line ⑥'s /payment/ is the only guard.
+  it.each([
+    [
+      "an invoice's URI that ends in a payment's id",
+      { payment: "dsor://org_456/invoice/PAY-901" },
+      '/payment must match pattern "^dsor://[^/]+/payment/"',
+    ],
+    [
+      "an extra field",
+      { payment: PAY_901, reason: "duplicate" },
+      'must NOT have additional properties: "reason"',
+    ],
+    ["nothing at all", {}, "must have required property 'payment'"],
+  ])(
+    "DSOR-EXE-05c: payment.cancel given %s is refused at line ⑥, and PAY-901 stays a draft",
+    async (_what, input, problem) => {
+      const { on, rows, log } = fresh();
+      await createFor(on, log, "INV-1008");
+      expect(await call(on, log, SUPERVISOR, "payment.cancel", input)).toStrictEqual(
+        refused("VALIDATION_FAILED", notValid("payment.cancel", problem), THE_SUPERVISOR),
+      );
+      expect(rows).toStrictEqual([PAY_901_DRAFT]);
+    },
+  );
+
+  it("step 17's decision 4: payment.create given nothing at all is refused at line ⑥, and writes nothing", async () => {
+    const { on, rows, log } = fresh();
+    expect(await call(on, log, SUPERVISOR, "payment.create", {})).toStrictEqual(
+      refused(
+        "VALIDATION_FAILED",
+        notValid("payment.create", "must have required property 'invoice'"),
+        THE_SUPERVISOR,
+      ),
+    );
+    expect(rows).toStrictEqual([]);
+  });
+
+  // A registry built without a store of payments writes nothing: when the store is missing,
+  // the answer is no (as step 10's NO_STORE does for invoices).
+  it.each([
+    ["payment.create", { invoice: "dsor://org_456/invoice/INV-1008" }],
+    ["payment.cancel", { payment: PAY_901 }],
+  ])(
+    "step 17's outcome 1: with no store of payments, %s fails with INTERNAL_ERROR",
+    async (name, input) => {
+      const noPayments = buildRegistry(
+        shipped,
+        handlers,
+        shippedRoles,
+        shippedInputs,
+        shippedLabels,
+        memoryInvoices(),
+      );
+      expect(await call(noPayments, createLog(), SUPERVISOR, name, input)).toStrictEqual(
+        refused("INTERNAL_ERROR", UNEXPECTED, THE_SUPERVISOR),
+      );
+    },
+  );
+
+  // The memory store, alone. The pipeline copies every answer, so these can only be seen
+  // here.
+  it("step 17's decision 15: the memory store numbers after the rows it already holds", async () => {
+    const rows: Payment[] = [structuredClone(PAY_901_DRAFT) as Payment];
+    const made = await memoryPayments(rows).create("org_456", {
+      invoice_id: "INV-1008",
+      vendor_id: "VENDOR-44",
+      amount: money("31400.00", "USD"),
+    });
+    expect(made.id).toBe("PAY-902");
+  });
+
+  it("step 17's outcome 1: the memory store keeps its own copies, so a caller cannot change a stored payment", async () => {
+    const rows: Payment[] = [];
+    const store = memoryPayments(rows);
+    const amount = money("31400.00", "USD");
+    const made = await store.create("org_456", {
+      invoice_id: "INV-1008",
+      vendor_id: "VENDOR-44",
+      amount,
+    });
+    made.status = "cancelled";
+    made.amount.value = "1.00";
+    amount.value = "2.00";
+    const { payment } = await store.cancel("org_456", "PAY-901");
+    payment!.amount.value = "3.00";
+    expect(rows.map(({ amount }) => amount.value)).toStrictEqual(["31400.00"]);
+    expect(rows.map(({ status }) => status)).toStrictEqual(["cancelled"]);
   });
 });

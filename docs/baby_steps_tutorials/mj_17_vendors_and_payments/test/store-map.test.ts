@@ -321,3 +321,14 @@ describe("step 17's C7: the kind business-written", () => {
     ]);
   });
 });
+
+// NEW IN STEP 17: found by the review's sweep. DELETE is never a column privilege, so a kind
+// that let it in under columns would pass every other test.
+describe("the review: business-written lists only INSERT and UPDATE under columns", () => {
+  it("step 17's decision 3: DELETE under a business-written table's columns is refused", () => {
+    const source = mapWith((m) => (m.tables["app.payments"].runtime.columns.DELETE = ["status"]));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.payments lists DELETE on columns, which a business-written table does not allow",
+    ]);
+  });
+});

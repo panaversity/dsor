@@ -7,9 +7,14 @@
 // Run by the tests as:  node test/owner-store.ts
 // Or as  node test/owner-store.ts list,  which lists org_456's invoices
 // through the store instead (step 13's README, C7).
+// NEW IN STEP 17: or as  node test/owner-store.ts payments,  which drafts a payment in
+// org_456 and asks the payments store to cancel it inside org_789. Found by step 17's
+// sweep: with tenant_id dropped from the cancel's SQL, every test stayed green, because
+// the database's lock hid it.
 import {
   createDbInvoices,
   createDbLog,
+  createDbPayments,
   loadDotEnv,
   openPool,
   requireEnv,
@@ -27,7 +32,20 @@ try {
   const invoices = createDbInvoices(pool);
   const bypassrls = rows[0]?.["bypassrls"] === true;
   let result: unknown;
-  if (process.argv[2] === "list") {
+  if (process.argv[2] === "payments") {
+    const payments = createDbPayments(pool);
+    const amount = { value: "31400.00", currency: "USD" };
+    const draft = await payments.create("org_456", {
+      invoice_id: "INV-1008",
+      vendor_id: "VENDOR-44",
+      amount,
+    });
+    const crossCancel = await payments.cancel("org_789", draft.id);
+    const { rows: after } = await pool.query("SELECT status FROM app.payments WHERE id = $1", [
+      draft.id,
+    ]);
+    result = { bypassrls, crossCancel, statusAfter: after[0]?.["status"] ?? null };
+  } else if (process.argv[2] === "list") {
     // Page after page, five rows at a time, so the SQL after a cursor runs too. Found by the
     // review: one read of every row never ran it (step 13's README, C7). Both companies, so
     // a lister that kept only org_456's rows would be seen. Found by the sweep.

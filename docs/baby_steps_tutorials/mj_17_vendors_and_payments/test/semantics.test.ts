@@ -12,11 +12,13 @@ import { createLog } from "../src/log.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
+  STARTING_ROLES,
   SUPERVISOR,
   contract,
   handlers,
   paymentRegistry,
   refusal,
+  rolesFile,
   shipped,
   shippedRoles,
   shippedWith,
@@ -247,4 +249,28 @@ describe("C3: a compensatable command names a real undo, checked at start-up", (
       expect(run.stdout).not.toContain("operations:");
     },
   );
+});
+
+// NEW IN STEP 17: finding B of the review. An undo that no role may run cannot undo anything,
+// whoever asks: payment.create still said "compensatable", and every cancel was refused.
+describe("the review: an undo must be one that some role may run", () => {
+  it("DSOR-EXE-05c: an undo whose permission no role grants stops start-up, named", () => {
+    const noCancel = rolesFile({
+      ...STARTING_ROLES,
+      ap_supervisor: ["invoice:read", "invoice:issue", "payment:create"],
+    });
+    expect(refusal(() => buildRegistry(shipped, handlers, noCancel))).toBe(
+      refusedWith('payment.create: compensated_by names "payment.cancel", which no role may run'),
+    );
+  });
+
+  // The CFO alone may cancel: one role is enough.
+  it("DSOR-EXE-05c: one role that grants the undo's permission is enough", () => {
+    const cfoCancels = rolesFile({
+      ...STARTING_ROLES,
+      ap_supervisor: ["invoice:read", "invoice:issue", "payment:create"],
+      CFO: ["invoice:read", "payment:cancel"],
+    });
+    expect(refusal(() => buildRegistry(shipped, handlers, cfoCancels))).toBe("");
+  });
 });

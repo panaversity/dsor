@@ -122,6 +122,13 @@ export function ownerLoginCheck(): string[] {
   return asOwner("owner-login-check.ts") as string[];
 }
 
+// NEW IN STEP 17: the payments store's own SQL, with no policy behind it (step 17's README,
+// "Think it through").
+/** What the payments store does for the owner, whom no policy stops, across companies. */
+export function ownerPayments(): unknown {
+  return asOwner("owner-store.ts", ["payments"]);
+}
+
 // The list's own SQL, with no policy behind it (step 13's README, C7).
 /** The ids DSoR's store lists for each company to the owner, whom no policy stops, and whether it bypasses them. */
 export function ownerList(): unknown {
