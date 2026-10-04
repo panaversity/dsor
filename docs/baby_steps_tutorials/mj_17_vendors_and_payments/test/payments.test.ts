@@ -345,9 +345,10 @@ describe("the company the code is given writes only while its call runs", () => 
 // NEW IN STEP 17: B1 showed it. A command writes at line ⑨ and its record fails at line ⑪,
 // so the side effect happened. EVIDENCE_STORE_UNAVAILABLE would tell the caller a retry is
 // safe, and with no idempotency key until step 20, a retry writes a second draft. DSOR-ERR-02
-// forbids such an answer for a command unless the side effect provably did not occur. Once a
-// command's code has run, DSoR cannot prove that, so it answers INTERNAL_ERROR, which is
-// never retried (step 17's README, decision 17).
+// forbids a safe_same_key answer to a connector error unless the side effect provably did not
+// occur. A failed record is not a connector error, so this follows the rule's reason, not its
+// words: once a command's code has run, DSoR cannot prove that nothing happened, so it answers
+// INTERNAL_ERROR, which is never retried (step 17's README, decision 17).
 describe("decision 17: once a command's code has run, a failed record is never answered as safe to retry", () => {
   const brokenLog = {
     add: async (): Promise<never> => {

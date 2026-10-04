@@ -7,13 +7,10 @@ step that reads a vendor's state (decision 11).
 
 ## In plain words
 
-Until now, DSoR only answered questions. Each operation was a **query**: it reads, and
-changes nothing. This step adds the first **commands**: operations that change something in
-the company's data.
-
-Before anyone runs a command, they need one answer: can this be undone? The agent needs it
-to choose what to do. The person who supervises the agent needs it to know how careful to
-be. So every command's contract declares its **execution semantics**, one of five labels:
+Until now, every operation was a **query**: it reads, and changes nothing. This step adds the
+first **commands**, operations that change the company's data. Before anyone runs a command,
+its contract must answer one question: can this be undone? The answer is one of five words,
+the command's **execution semantics**. This README calls it the command's *label*:
 
 | Label | Meaning | Example |
 | --- | --- | --- |
@@ -26,34 +23,36 @@ be. So every command's contract declares its **execution semantics**, one of fiv
 A **compensating operation** is the declared undo. It is a normal operation, and DSoR runs it
 through the same checklist as every other call.
 
-Think of the new clerk from *Start here*. The clerk writes a payment slip for VENDOR-44 and
-leaves it on the desk. The office can tear the slip up: that is `payment.cancel`, and the slip
-was `compensatable`. A cheque already posted to the vendor cannot be torn up. That will be
-`payment.execute`, and it will be `non_compensatable`. The picture stops there. In DSoR, the
-label is not the clerk's opinion: the contract declares it, and the program checks at
-start-up that the declared undo exists.
+Think of the new clerk from *Start here*. The clerk writes a payment slip for VENDOR-44. The
+office can stamp the slip VOID, and the slip stays in the file: that is `payment.cancel`, so
+writing the slip was `compensatable`. Money already sent by bank wire cannot be called back by
+the office alone: that will be `payment.execute`, `non_compensatable`. The picture stops
+there. In DSoR the contract declares the label, and start-up checks that the undo it names
+can really run.
 
 ## Why it matters
 
-**Without the label, "make a draft" and "send money" look the same.** An agent that cannot
-tell them apart is equally bold with both. A person who supervises the agent learns the risk
-only after the action.
+The agent is told to deal with INV-1008. It has two tools: one drafts PAY-901 for 31,400.00
+USD, and one sends 31,400.00 USD to VENDOR-44. **Without the label, the two look the same.**
+The agent is as bold with the second as with the first, and its supervisor learns which one it
+used only afterwards. The draft can be voided. The money cannot be called back.
 
 **A label that promises an undo that does not exist is worse than no label.** The contract
 schema accepts `"compensated_by": []`, and it accepts a misspelled name. Then the label says
-"can be undone", and nothing can undo it. The understanding session found a second form of
-the same mistake: "`payment.execute` is undone by `payment.refund`". A refund needs the vendor
-to send the money back. DSoR cannot run it to the end by itself, so it is not an undo.
+"can be undone", and nothing can undo it. The understanding session found a second form of the
+same mistake: "`payment.execute` is undone by `payment.refund`". A refund needs the vendor to
+send the money back, so DSoR cannot finish it by itself.
 
 **A command changes the company's data, and the agent is the caller to distrust.** The
 specification lets an agent run a state-changing command only under a permission slip from a
 person, a **delegation** (DSOR-DEL-01a). Delegations arrive in step 18. Until then, the agent
 must not run any command at all.
 
-**Common mistake:** choosing the label by how the operation feels. "Cancel is the opposite of
-create, so create is compensatable" is right only because DSoR can run `payment.cancel` to the
-end by itself. Ask: can DSoR run the undo alone, through the full checklist, and finish it?
-If not, the operation is not compensatable.
+**Common mistake:** choosing the label by how the operation feels. §24 says only that a
+`compensatable` command "can be reversed by a declared compensating operation". This tutorial
+reads that as: DSoR can run the undo alone, through the checklist, and finish it. "Cancel is the
+opposite of create" is not the reason `payment.create` is `compensatable`. The reason is that
+DSoR can run `payment.cancel` to the end by itself, and some role may run it.
 
 ## The design, before any code
 
@@ -95,7 +94,7 @@ checklist. The agent runs no command until a person's delegation exists.
 3. `payment.cancel` is a command, `atomic`. Its input is the payment's URI. It changes a
    draft to `cancelled`. It refuses a payment that is not a draft with `CONFLICT`, and a
    payment that does not exist with `RESOURCE_NOT_FOUND` (decision 9).
-4. Every command's answer holds the draft as data, its label, and `semantics`, taken from
+4. Every command's answer holds the draft as data, its classification, and `semantics`, taken from
    the contract, never from the code (DSOR-EXE-05b). It carries no freshness (decision 2).
 5. At line ③, a caller that step 14's rule treats as an agent gets `DELEGATION_REQUIRED`
    for any command, and the refusal is recorded (DSOR-DEL-01a, decision 5).
@@ -110,7 +109,10 @@ checklist. The agent runs no command until a person's delegation exists.
 **Not the outcome of this step:**
 
 - Vendors, as records of their own (decision 11).
-- Proposals and payload hashes (steps 22 and 29), so an answer has no outcome word yet.
+- Proposals and payload hashes (steps 22 and 29), so an answer has no outcome word yet. A
+  **proposal** is the record of one command call and its state. A **payload hash** is a
+  fingerprint of the request, so an approval can say exactly what it approved. An **outcome
+  word**, such as `COMMITTED`, is what the result envelope uses to say how a command ended.
 - The draft and its record in one transaction (step 36, decision 1).
 - Idempotency keys (step 20), concurrency checks (step 21), preconditions in the contract
   (step 32), controls (step 27), approvals (step 29), and `payment.execute` (step 35).
@@ -134,8 +136,11 @@ Checked on 2026-10-04:
 2. **DSOR-EXE-05b asks every command result to state the semantics that applied.** The
    answer carries `semantics`, copied from the contract after line ⑨.
 3. **DSOR-EXE-05c asks a `compensatable` operation to name its compensating operations,
-   "which run under the full pipeline".** `payment.cancel` is an ordinary operation. Every
-   line of the checklist applies to it, and the tests show it for each kind of refusal.
+   "which run under the full pipeline".** `payment.cancel` is an ordinary operation, and it
+   runs the same checklist as every call, as far as the checklist is built today. Lines ④, ⑦,
+   ⑧, ⑩, and ⑫ to ⑰ are still comments, so the "full pipeline" does not exist yet. The rule is
+   met in that sense only. The tests show the undo refused at lines ①, ③, ⑤, and ⑥, and by
+   the company check.
 4. **DSOR-DEL-01a asks a state-changing command from an agent to run under an active
    delegation.** No delegation exists yet, so every such command is refused. The rule is met
    only in that narrow sense until step 18.
@@ -150,9 +155,9 @@ Checked on 2026-10-04:
 7. **DSOR-MOD-03 and DSOR-MOD-04 ask DSoR to read state itself.** The amount and the vendor
    come from the invoice that DSoR reads. The request names only the invoice.
 8. **DSOR-FRS-01a and DSOR-CLS-03 name query results only.** A command's answer carries
-   its label anyway, because masking runs for every answer (DSOR-CLS-02a). It carries no
+   its classification anyway, because masking runs for every answer (DSOR-CLS-02a). It carries no
    freshness: the result envelope has no field for one, and `payment.cancel` reads nothing
-   to label (decision 2).
+   for a freshness to describe (decision 2).
 9. **A command contract must have six more fields** than a query's: `delegation`,
    `idempotency`, `concurrency`, `execution`, `preconditions`, and `controls`. This step
    checks only `execution`, and the agent's delegation by refusing every agent. The other
@@ -168,7 +173,7 @@ Checked on 2026-10-04:
 | DSOR-DEL-01a | **C4.** An agent's command never runs without an active delegation | The agent gets `DELEGATION_REQUIRED` for both commands, before line ⑤, with `payment:create` in its role. So does an agent whose type DSoR does not know. A planted application runs the command. The refusal is recorded |
 | (our decision) | **C5.** A draft is made only for an issued invoice, with the amount and vendor DSoR read | PAY-901 holds 31,400.00 USD and VENDOR-44 from INV-1008. A request that adds an amount gets `VALIDATION_FAILED`. INV-1001 (paid) and INV-1005 (a draft) get `CONFLICT`. Another company's invoice gets `TENANT_MISMATCH`, and an unknown one `RESOURCE_NOT_FOUND`. None of them leaves a draft |
 | (our decision) | **C6.** A cancel changes only a draft | A second cancel gets `CONFLICT`, and the payment stays `cancelled`. PAY-999 gets `RESOURCE_NOT_FOUND` |
-| (our decision) | **C7.** `app.payments` is on the map with its own kind, and the program holds exactly that | Today's database matches `store.json`. Planted catalogs with `UPDATE` on the amount, or `DELETE`, are named. A payment cannot point at another company's invoice |
+| (our decision) | **C7.** `app.payments` is on `store.json`, step 16's map of DSoR's store, with its own kind, and the program holds exactly that | Today's database matches `store.json`. Planted catalogs with `UPDATE` on the amount, or `DELETE`, are named. A payment cannot point at another company's invoice |
 
 ### Decisions the specification leaves to us
 
@@ -179,21 +184,22 @@ and decision 10 after a real run. The build checked this design against the spec
 and the schemas before the first test, on 2026-10-04, and found five gaps. The learner
 changed decisions 2, 5, and 9, and added 13 and 14. Decisions 15 and 16 are the build's:
 names, and step 11's decision 9 carried out. Decision 17 came from break B1, the learner's
-choice.
+choice. The review added decision 18 and one rule to decision 8.
 
 1. **The draft commits before its record, and the gap is shown.** A command's code writes at
    line ⑨, and the record is written at line ⑪. One idea per step: step 36 makes them commit
-   together, as the map plans. Break B1 fails the record after the draft, for real.
+   together, as the map of steps (`../readme.md`) plans. Break B1 makes the record fail after
+   the draft is written, for real.
    *Downside:* until step 36, a failed record can leave a draft behind.
-2. **The answer is the draft, its label, and its semantics.** `{ data, classification,
-   redactions?, semantics, correlation }`. Masking and the label run for every answer,
+2. **The answer is the draft, its classification, and its semantics.** `{ data, classification,
+   redactions?, semantics, correlation }`. Masking and the classification run for every answer,
    because step 18 lets agents call commands. Freshness does not: DSOR-FRS-01a names query
    results, the result envelope has no field for it, and a write is not a read. Changed at
-   the design check: the first version said "a query's answer plus the label", and a
+   the design check: the first version said "a query's answer plus the label" (the semantics), and a
    query's answer carries freshness. *Downside:* no outcome word, such as `COMMITTED`, until
    a proposal and a payload hash exist (steps 22 and 29). The two kinds of answer differ by
    one field, and the record of a command names no connector.
-3. **A new kind on the map: a company table that DSoR writes.** Company side, company key
+3. **A new kind on `store.json`: a company table that DSoR writes.** Company side, company key
    required, and `SELECT`, with `INSERT` and `UPDATE` on named columns only. `app.payments`
    lists `INSERT` on its company, invoice, vendor, amount, and status, and `UPDATE` on the
    status alone. The build names the kind. In production, this is the shape for one
@@ -222,7 +228,8 @@ choice.
    `atomic`.** The specification's own example. DSoR can run a cancel to the end by itself.
    *Downside:* nothing undoes a cancel.
 8. **Start-up checks every undo list.** Not empty, every name a contract, a command, built,
-   and not the operation itself. *Downside:* more start-up rules. Whether an empty list is
+   and not the operation itself. The review added one more: some role must grant the undo's
+   permission (finding B). *Downside:* more start-up rules. Whether an empty list is
    allowed is still a question for the specification ("Can a list of undo operations be
    empty?" in `../mj_notes.md`).
 9. **A cancel is one statement, and a second look when it changes nothing.** `UPDATE … SET
@@ -244,7 +251,7 @@ choice.
 11. **Vendors wait.** The draft copies the invoice's `vendor_id`. A vendors table arrives with
     the first step that reads a vendor's state: a blocked vendor (step 32), or a bank account
     (step 35). *Downside:* this folder's name promises vendors. Recorded as a proposal for the
-    map.
+    map of steps.
 12. **The status has no default.** The program writes `draft` itself. Step 16's inspector
     refuses any privilege on a column that the database fills in, and `payment.cancel` needs
     `UPDATE` on the status. *Downside:* every insert must name the status.
@@ -282,13 +289,22 @@ choice.
 17. **A command whose code ran never hears that a retry is safe.** Added after break B1. The
     draft committed, the record failed, and the caller heard `EVIDENCE_STORE_UNAVAILABLE`,
     whose retry class is `safe_same_key`. With no idempotency key until step 20, a retry
-    writes a second draft. DSOR-ERR-02 forbids a `safe_same_key` answer for a command unless
-    the side effect provably did not occur, and once a command's code has run, DSoR cannot
-    prove that. So it answers `INTERNAL_ERROR`, which is never retried. A query, and a
-    command refused before its code, keep `EVIDENCE_STORE_UNAVAILABLE`, which is true for
-    them. *Downside:* the caller is not told that the evidence store failed, and the draft
+    writes a second draft. DSOR-ERR-02 says: "For a command, a connector error MUST NOT be
+    mapped to a code with retry class `safe_same_key` unless the side effect provably did not
+    occur." A failed record is the evidence store's error, not a connector's, so the rule does
+    not apply word for word. This tutorial follows its reason: once a command's code has run,
+    DSoR cannot prove that nothing happened. So it answers `INTERNAL_ERROR`, which is never
+    retried, in place of the `EVIDENCE_STORE_UNAVAILABLE` that DSOR-EXE-03b names. DSOR-EXE-03b
+    expects the record to come before the side effect, and decision 1 already breaks that order.
+    A query, and a command refused before its code, keep `EVIDENCE_STORE_UNAVAILABLE`, which is
+    true for them. *Downside:* the caller is not told that the evidence store failed, and the draft
     still has no record until step 36. A command whose code refused gets `INTERNAL_ERROR`
     too, because DSoR cannot see whether the code wrote something first.
+18. **A query's code is handed no payments.** Added by the review (finding A). Line ③ lets
+    the agent's query through because a query changes nothing. But every operation's code was
+    handed the company's payments, and planted `invoice.get` code wrote PAY-901 for the agent.
+    Now a query's code gets the store that writes nothing, so a write fails the call with
+    `INTERNAL_ERROR`. *Downside:* one more branch at line ⑨.
 
 ### The tests, by claim
 
@@ -319,7 +335,7 @@ Run against the finished step. The learner's predictions are recorded before any
 
 | # | The break | Expected to be caught by | Learner's prediction |
 | --- | --- | --- | --- |
-| B1 | The record fails after the draft commits (fault injection on the log) | Nothing: it is the known gap. The caller hears `EVIDENCE_STORE_UNAVAILABLE`, and PAY-901 exists with no record | `EVIDENCE_STORE_UNAVAILABLE`, and "no draft" |
+| B1 | The record fails after the draft commits: a log made to throw on purpose, which is called fault injection | Nothing: it is the known gap. The caller hears `EVIDENCE_STORE_UNAVAILABLE`, and PAY-901 exists with no record | `EVIDENCE_STORE_UNAVAILABLE`, and "no draft" |
 | B2 | Line ③'s new check is removed. The agent calls `payment.create` | C4 | `AUTHORIZATION_DENIED` |
 | B3 | Two creates for INV-1008 at the same moment. Since decision 10 changed, the design allows it until step 20 | Nothing: it is a known gap. Two drafts exist | "One" draft, predicted while the design still had the index |
 | B4 | Start-up's undo-list check is removed. A contract says `"compensated_by": []` | C3 | "It starts" |
@@ -339,9 +355,21 @@ exist, and an agent that acts without a person's permission.
 - **The invoice can change between its read and the draft.** The code reads INV-1008, then
   writes the draft, in two transactions. Nothing in this step changes an invoice, so the
   gap cannot be shown yet. Step 21's version checks close it.
-- **An undo's own label is not checked.** Start-up checks that the undo is a built command.
-  It does not check that the undo is itself `atomic` or `compensatable`, so a `best_effort`
-  undo would pass.
+- **An undo's own label is not checked.** Start-up checks that the undo is a built command
+  that some role may run. It does not check that the undo is itself `atomic` or
+  `compensatable`, so a `best_effort` undo would pass. Nor does it check that the undo's input
+  can name the record it must undo.
+- **The database lets a cancel be undone** (the review's finding C, recorded by the
+  learner's choice). `dsor_runtime` may set the status to `draft` or `cancelled` at any time,
+  and the CHECK refuses only other words. Only the program's SQL keeps "nothing undoes a
+  cancel". A trigger could enforce the order, but step 16's inspector refuses every trigger.
+  Step 32's preconditions are where the order of statuses moves.
+- **No operation reads a payment back.** There is no `payment.get` yet. After decision 17's
+  `INTERNAL_ERROR`, the draft exists, and its id is in no answer and no record.
+- **What an agent would see of a command's answer** (a refusal's classification, the
+  redactions) cannot be tested while line ③ refuses every agent. Step 18 needs those tests.
+- **No code reads `delegation.required`, `idempotency.required`, or `effect` yet** (decision
+  14), so changing them in a contract changes nothing that a test can see.
 - **The contracts promise checks that come later** (decision 14): an idempotency key from
   step 20, a version check from step 21.
 - **One counter numbers every company's payments.** If `org_456` makes PAY-901 to PAY-940,
@@ -389,8 +417,8 @@ this way:
 | `src/envelope.ts`, `src/log.ts` | A command's answer as a type of its own. A record with no freshness, for a command |
 | `src/postgres.ts` | `createDbPayments`: one `INSERT … RETURNING`, and one `UPDATE` with a second look (decision 9) |
 | `migrations/009_payments.sql` | **New.** `app.payments`: numbered by the database from 901, a key to the invoice that starts with `tenant_id`, row-level security, and `dsor_runtime`'s exact grants (decisions 3, 12, 15, and 16) |
-| `store.json`, `src/store.ts` | A fourth kind, `business-written`, and `app.payments` on the map (decision 3) |
-| `roles.json`, `classifications.json`, `examples/` | The payment permissions (decision 6), the labels of a payment, and an example request for each command |
+| `store.json`, `src/store.ts` | A fourth kind, `business-written`, and `app.payments` on step 16's map (decision 3) |
+| `roles.json`, `classifications.json`, `examples/` | The payment permissions (decision 6), the classification of each field of a payment, and an example request for each command |
 | `src/main.ts` | user_123 drafts a payment and cancels it twice. The agent is refused |
 | `test/semantics.test.ts`, `test/delegation.test.ts`, `test/payments.test.ts`, `test/payments.db.test.ts` | **New.** C1 to C7, and decision 17 |
 | `test/cross-tenant.ts` | The suite picks its attackers with line ③'s own question too, so an agent attacks no command until step 18 ("Think it through") |
@@ -412,8 +440,8 @@ git diff --no-index mj_16_the_control_plane_store/test mj_17_vendors_and_payment
 pnpm install
 pnpm migrate      # only 009 runs
 pnpm start
-pnpm check        # typecheck and the unit tests: 1127
-pnpm test:db      # the database tests: 139, about 10 minutes
+pnpm check        # typecheck and the unit tests: 1140
+pnpm test:db      # the database tests: 142, about 10 minutes on Neon
 ```
 
 The new part of `pnpm start`, on a fresh branch. The database numbers each draft, so a later
@@ -467,15 +495,16 @@ The second cancel says `ALLOW`, because its code ran and refused (step 08's deci
 
 ## Break it
 
-Each break was run for real on 2026-10-04, against the finished step, then restored.
-`pnpm check` was green after each one.
+Each break was run for real on 2026-10-04, then restored, and `pnpm check` was green after
+each one. The outputs come from the first runs. The counts of failing tests were taken again
+on the finished step, after the review.
 
 | # | The break | Caught by | The learner's prediction |
 | --- | --- | --- | --- |
 | B1 | The record fails after the draft commits | Nothing: the known gap. It also showed decision 17 was needed | "No draft". **Wrong**: the draft stays |
-| B2 | Line ③'s check removed | 22 unit tests, 6 of them C4's | `AUTHORIZATION_DENIED`. **Wrong**: the draft is made |
+| B2 | Line ③'s check removed | 23 unit tests, 6 of them C4's | `AUTHORIZATION_DENIED`. **Wrong**: the draft is made |
 | B3 | Two creates for INV-1008 at the same moment | Nothing: the known gap of decision 10 | "One". **Wrong**: two, as decision 10 now says |
-| B4 | The undo-list check removed, with `"compensated_by": []` | 9 unit tests, all of C3's start-up | "It starts". **Right** |
+| B4 | The undo-list check removed, with `"compensated_by": []` | 10 unit tests: C3's start-up, and the review's role check | "It starts". **Right** |
 
 **B1.** A log that throws "disk full", on the real table. The call left no record, and the
 draft is there:
@@ -529,12 +558,12 @@ The database tests roll back two such inserts on purpose.)
   correlation: { request_id: 'req_…', agent_id: 'accounts-payable-fte' }
 }
 drafts: 1
-unit: failed 22 of 1124
+unit: failed 23 of 1140
 ```
 
 Line ⑤ said yes, because `ap_agent` grants `payment:create` (decision 6). Masking still hid the
-amount from the agent. The 22 failing tests: 6 of C4, 12 of the cross-company suite, and the
-agent's refusals in four other files.
+amount from the agent. The 23 failing tests: 6 of C4, 12 of the cross-company suite, and 5
+more in four other files where the agent is refused a command.
 
 **B3.** Two creates at the same moment, on Neon:
 
@@ -577,7 +606,7 @@ This is how the step was built:
 | 2 | Design | "In plain words", "Why it matters", "The design, before any code", with the predictions for B1 to B4 |
 | 3 | Neon | A branch `step-17` from `step-16`, the project's tenth and last. `.env` written by a command, never shown. `pnpm migrate` ("no migration to run"), then both suites green before any change: 1059 unit, 129 database |
 | 4 | Check the design | Against the specification and the schemas, before the first test. Five gaps went to the learner, one at a time, each with a real run: decisions 2, 5, 9, 13, and 14 |
-| 5 | Red | The configuration and shells, then every new test. Predict how many fail |
+| 5 | Red | The configuration, and shells: code with the right shape that does nothing yet, so a new test fails on what it checks, not on a missing file. Then every new test. Predict how many fail |
 | 6 | Green | One requirement per commit: line ③, commands run, the undo-list check, then the database. Predict how many old tests break at each |
 | 7 | Break it | B1 and B3 on Neon, B2 and B4 in the folder, each restored from a backup copy. A break that changes the database would go to a local PostgreSQL |
 | 8 | Review | Reviewers who have not seen the conversation, each in a copy outside the repository |
@@ -595,13 +624,15 @@ The learner's predictions, and what happened:
 
 | Moment | Prediction | Real |
 | --- | --- | --- |
-| The configuration alone (two contracts, two input schemas, labels, roles, examples): how many of 1059 old tests fail? | 6 to 20 | **28**: 12 typed the configuration out, 16 belong to the cross-company suite, which walks every operation |
+| The configuration alone (two contracts, two input schemas, classifications, roles, examples): how many of 1059 old tests fail? | 6 to 20 | **28**: 12 typed the configuration out, 16 belong to the cross-company suite, which walks every operation |
 | The red run: how many of 63 new unit tests fail? | all 63 | **53**. Ten pass already: C1's five (the schema has asked every command for its semantics since step 03), three refusals that line ⑥ and step 10 already give, and two "yes" tests |
 | The red run: how many of 10 new database tests fail? | all 10 | **right** |
-| Line ③: how many old tests break? | 0 | **75 unit and 1 database**: 61 of the suite, whose agents now stop at line ③, 8 that pin the order of lines, and 7 that used the agent to reach line ⑤ |
+| Line ③: how many old tests break? | 0 | **75 unit and 1 database**: 58 of the suite, whose agents now stop at line ③, 8 that pin the order of lines, and 10 that used the agent to reach line ⑤ |
 | Commands run: how many old tests break? | 0 | **4**: step 04's "a command never runs", in two forms, the refusal it gave, and the company's pinned keys |
 | The undo-list check: how many old tests break? | 0 | **1**: step 03's `compensatable` test, whose undo had no contract. Exactly what the check is for |
 | B1 to B4 | as in "Break it" | 1 of 4 right |
+| Where will the review find a real hole? | line ③, the undo check, the payments table, the tests | **right**: findings A, B, and C, and 15 holes in the tests |
+| The review's red run: how many of 13 new unit tests fail? | all 13 | **2**: the holes in the code. The 11 for holes in the tests pass at once |
 
 ## Check yourself
 
@@ -625,13 +656,83 @@ The learner's predictions, and what happened:
    examples, the CFO rule reads the payment's amount from state, and an approval binds the
    payment's version, so nothing needs an amount in the request.
 5. The draft commits at line ⑨, and the record is written at line ⑪. If the record fails, a
-   draft exists with no record. Step 36 makes them commit together.
+   draft exists with no record. Step 36 makes them commit together. Until then, the caller
+   hears `INTERNAL_ERROR`, never "retry is safe", because a retry would write a second draft
+   (decision 17).
 
 </details>
 
 ## Think it through
 
-_To be written after the review, with the result of every break in the table above._
+**Before the first test,** the design was checked against the specification and the schemas.
+Five gaps went to the learner, one at a time, each with a real run: decisions 2, 5, and 9
+changed, and 13 and 14 were added.
+
+**While building,** two more changes came up.
+- **The cross-company suite of step 12 asks line ③ too.** It sends every caller who holds an
+  operation's permission, and expects `TENANT_MISMATCH` from each. Line ③ now refuses an
+  agent's command first, so 15 attacks reported `DELEGATION_REQUIRED`. The suite already asked
+  line ⑤'s own question (`permissionsOf`) to pick its attackers. It now asks line ③'s too
+  (`checkDelegation`). So until step 18, a command is attacked by people only: 36 attacks, no
+  findings. In step 18 an agent with a delegation passes line ③, and attacks again with no
+  change to the suite. Removing that question fails 62 suite tests. Removing line ③ fails 12.
+- **Decision 17,** from break B1.
+
+**The review.** Two reviewers who had not seen the conversation worked in copies outside the
+repository, against a local PostgreSQL. One read and attacked: no high finding, 5 medium, 13
+low. No attack through a request got an agent's command to run, reached another company, or
+set the amount. One broke the code 132 times, one small change at a time: 101 breaks were
+caught, and 31 left every test green. 16 of the 31 change nothing anyone can see today. 15
+were real holes in the tests.
+
+The learner's guess was "holes in all four places": line ③, the undo check, the payments
+table, and the tests. Right this time. The review's red run: 13 new unit tests, and the learner
+expected all 13 to fail. Two failed: the two holes in the code. Eleven passed at once, because
+the code was right and only a test was missing. A hole in the code fails first. A hole in the
+tests passes first.
+
+| Finding | What was done |
+| --- | --- |
+| **A.** A query's code was handed the payments, so planted `invoice.get` code wrote a draft for the agent, through line ③ | **Fixed** (decision 18), red first |
+| **B.** An undo that no role may run passed start-up. `payment.create` still said `compensatable`, and every cancel was refused | **Fixed:** start-up asks the role table (decision 8), red first |
+| **C.** The database lets a cancel be undone | **Recorded** ("Left open"), by the learner's choice. A test pins the status CHECK |
+| A partly paid invoice would be drafted in full: no fixture had a partly paid issued invoice | **Test added** with a planted store |
+| `dsor://org_456/invoice/PAY-901` would cancel PAY-901 without the input schema's `/payment/`. An empty input gave `INTERNAL_ERROR` without the schema's `required` | **Tests added** for line ⑥ |
+| DSoR's own `tenant_id` in the payments SQL was hidden by the database's lock | **Test added:** the owner, whom no policy stops, runs the store across companies |
+| A registry with no payments store, the memory store's numbering and copies, `DELETE` under a map's columns, the status and currency checks | **Tests added** |
+| DSOR-ERR-02 misquoted, DSOR-EXE-05c claimed in full, "label" and "map" used for two things, an analogy that did not fit, terms not defined, "In plain words" too long and "Why it matters" with no story, counts taken before the end | **README fixed** |
+| A query's record no longer has to carry freshness: `freshness` became optional in the record's type for every read | **Recorded.** The tests of step 15 still pin a query's record. A query/command split of the type would be a change of its own |
+
+**One idea, or more?** The map of steps gives this step DSOR-EXE-05a, 05b, and 05c only. To let
+a command run at all, the step also had to decide three more things: what the agent may do
+with a command before step 18 (refuse it: the smallest honest answer to DSOR-DEL-01a), which
+map kind lets DSoR write a company table (`business-written`), and what a caller hears when a
+command's record fails (decision 17). Each is the least that the first command needs. None
+builds a second feature.
+
+**Old tests that changed,** each with a one-line reason beside it:
+
+| Moment | Old tests changed | Why |
+| --- | --- | --- |
+| The configuration | 28 | 12 typed the configuration out. 16 belong to the suite, which walks every operation |
+| Line ③ | 76 (1 of them a database test) | 58 of the suite, 8 that pin the order of lines, 10 that used the agent to reach line ⑤ (1 of them the database test) |
+| Commands run | 4 | Step 04's "a command never runs", in two forms, its refusal, and the company's pinned keys |
+| The undo check | 1 | Step 03's `compensatable` test, whose undo had no contract |
+| The database | 8 | The program's output (3), and five that typed out the database: privileges, policies, row security, the owner's counters, and a registry with no cancel code |
+
+**Analogies.** The new clerk and the permission slip are on the house list, and so is the
+checklist. Two are new, and flagged for review: a slip stamped VOID (it stays in the file, as
+a cancelled payment stays in the table), and money sent by bank wire (the office cannot call
+it back). "Label" for the execution semantics is §24's own word ("a label that answers one
+question"), and this README uses it for nothing else.
+
+**What step 18 starts from.**
+- Line ③ refuses every agent's command. Delegations replace that refusal with a real check,
+  and the suite's agents attack commands again.
+- What an agent sees of a command's answer is untested, because no agent reaches one.
+- The contracts say `"idempotency": { "required": true }`, and nothing reads it until step 20.
+- A draft can still commit with no record (decision 1, step 36), and two drafts for one invoice
+  can exist (decision 10, step 20).
 
 ## The rules this step meets
 
@@ -639,15 +740,15 @@ _To be written after the review, with the result of every break in the table abo
 | --- | --- | --- | --- |
 | DSOR-EXE-05a | Every command declares one of the five execution semantics in its contract | [§24 Execution semantics](../../../specs/dsor/03-execution.md#24-execution-semantics) | `test/semantics.test.ts`, 5 tests: a command with no `execution`, with no semantics, or with a label that is not one of the five stops start-up, named, the program too, and every shipped command declares one (C1). The schema has asked for it since step 03 |
 | DSOR-EXE-05b | Every command result states the execution semantics that applied | [§24 Execution semantics](../../../specs/dsor/03-execution.md#24-execution-semantics) | `test/semantics.test.ts`, 4 tests: `payment.create` answers `compensatable` and `payment.cancel` `atomic`, code cannot choose its own, and a changed contract changes the answer (C2). `test/payments.test.ts` pins the whole answer. **Partly:** a command's answer is this tutorial's shape, not a result envelope (decision 2) |
-| DSOR-EXE-05c | A compensatable or saga operation names its compensating operations, which run under the full pipeline | [§24 Execution semantics](../../../specs/dsor/03-execution.md#24-execution-semantics) | `test/semantics.test.ts`, 9 tests: an empty list, a name with no contract, a query, an operation with no code, and the operation itself stop start-up, for a saga too, and the program refuses (C3). `test/payments.test.ts`, 5 tests: `payment.cancel` is refused with no login, for the agent, for cfo_100, and with another company's payment, each recorded, and user_123's cancel runs every line a command reaches |
-| DSOR-DEL-01a | A state-changing command from an agent runs only under an active delegation | [§13 Delegation](../../../specs/dsor/02-security.md#13-delegation) | `test/delegation.test.ts`, 6 tests: the agent, the firm's agent in the company where it supervises, and a caller of a type DSoR does not know are refused at line ③, before line ⑤, with no code run, and recorded (C4). **Partly:** every such command is refused, because no delegation exists until step 18 |
+| DSOR-EXE-05c | A compensatable or saga operation names its compensating operations, which run under the full pipeline | [§24 Execution semantics](../../../specs/dsor/03-execution.md#24-execution-semantics) | `test/semantics.test.ts`, 11 tests: an empty list, a name with no contract, a query, an operation with no code, the operation itself, and an undo no role may run stop start-up, for a saga too, and the program refuses (C3). `test/payments.test.ts`, 8 tests: `payment.cancel` is refused with no login, for the agent, for cfo_100, with another company's payment, and with three wrong inputs at line ⑥, each leaving the draft as it was, and user_123's cancel runs every line a command reaches. **Partly:** lines ④, ⑦, ⑧, ⑩, and ⑫ to ⑰ are not built yet, so the "full pipeline" is today's checklist |
+| DSOR-DEL-01a | A state-changing command from an agent runs only under an active delegation | [§13 Delegation](../../../specs/dsor/02-security.md#13-delegation) | `test/delegation.test.ts`, 6 tests: the agent, the firm's agent in the company where it supervises, and a caller of a type DSoR does not know are refused at line ③, before line ⑤, with no code run, and recorded (C4). `test/payments.test.ts`, 1 test: a query's code cannot write for the agent (decision 18). **Partly:** every such command is refused, because no delegation exists until step 18 |
 
 Also built, as this tutorial's decisions: a draft only for an issued invoice, with the amount
 and vendor DSoR read (C5, decisions 4 and 13); a cancel that changes only a draft, decided by
-the database (C6, decision 9); `app.payments` held exactly as the map says, with a key that
+the database (C6, decision 9); `app.payments` held exactly as `store.json` says, with a key that
 stays inside its company (C7, decisions 3 and 16); and a command whose code ran is never told
 that a retry is safe (decision 17). They are proved in `test/payments.test.ts`,
-`test/payments.db.test.ts`, and the map and inspector tests.
+`test/payments.db.test.ts`, and the `store.json` and inspector tests.
 
 ## Next
 
