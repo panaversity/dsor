@@ -8,7 +8,7 @@
 // correlation of a call by user_123. Then the firm's agent reads INV-1008 in each of its
 // two companies, without amounts, and two calls cross from one company into another and
 // are refused. Then the agent asks invoice.list for a million invoices, and gets ten, a
-// note that its limit was cut, and a cursor. NEW IN STEP 17: then user_123 drafts a payment
+// note that its limit was cut, and a cursor. Then user_123 drafts a payment
 // for INV-1008 and cancels it twice, and the agent is refused a command it holds the
 // permission for. Then it prints the log: the records it can read, one company at a time,
 // and how many it cannot read. Last, it shows that a log which cannot take a record turns a
@@ -76,7 +76,7 @@ try {
     // The registry holds the store, and the code gets only the active company's invoices
     // (step 10's README, decision 13). Found by the Stage 2 review, and fixed from step 10 on.
     createDbInvoices(pool),
-    // NEW IN STEP 17: and the payments the commands write, in app.payments.
+    // And the payments the commands write, in app.payments.
     createDbPayments(pool),
   );
   // A broken map stops start-up here, with the other files, before the
@@ -241,7 +241,7 @@ if ("data" in listed) {
   console.log(items.map(({ id }) => id).join(" "), rest);
 }
 
-// NEW IN STEP 17: the first commands. user_123 drafts a payment for INV-1008. DSoR reads the
+// The first commands. user_123 drafts a payment for INV-1008. DSoR reads the
 // invoice's open amount and vendor itself, and the answer says the draft can be undone:
 // compensatable (step 17's README, outcomes 2 and 4). The database numbers it: PAY-901 on a
 // fresh branch, a higher number on each run after.

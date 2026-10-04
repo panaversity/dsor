@@ -1,4 +1,4 @@
--- NEW IN STEP 17: the company's payments, the first company table that DSoR writes.
+-- The company's payments, the first company table that DSoR writes.
 -- `pnpm migrate` runs this file once, as the owner, after 008 (step 17's README, outcome 1).
 
 CREATE TABLE app.payments (

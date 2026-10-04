@@ -1,4 +1,4 @@
-// NEW IN STEP 17: line ③ of the checklist. An agent runs a command only under a person's
+// Line ③ of the checklist. An agent runs a command only under a person's
 // delegation, its permission slip (DSOR-DEL-01a in specs/dsor/02-security.md, section 13).
 // Delegations arrive in step 18, so today line ③ refuses every command an agent calls
 // (step 17's README, decision 5).

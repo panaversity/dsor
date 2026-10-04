@@ -261,7 +261,7 @@ export function createDbInvoices(pool: pg.Pool): InvoiceStore {
   };
 }
 
-// NEW IN STEP 17: one row of app.payments, as pg gives it back. The amount comes back as
+// One row of app.payments, as pg gives it back. The amount comes back as
 // text, as an invoice's does.
 type PaymentRow = {
   tenant_id: string;
@@ -275,7 +275,7 @@ type PaymentRow = {
 const PAYMENT_COLUMNS =
   "tenant_id, id, invoice_id, vendor_id, amount_value, amount_currency, status";
 
-// NEW IN STEP 17: the payments, in the table app.payments (step 17's README, outcome 1).
+// The payments, in the table app.payments (step 17's README, outcome 1).
 // Each write is one transaction that sets the company first, as every read is (step 11's
 // README, decision 3). The company is in every statement too: DSoR's own lock.
 /** The payments, written to app.payments. */
@@ -321,7 +321,7 @@ export function createDbPayments(pool: pg.Pool): PaymentStore {
   };
 }
 
-// NEW IN STEP 17: one row as a payment. money() checks the text again, as for an invoice.
+// One row as a payment. money() checks the text again, as for an invoice.
 function paymentOf(row: PaymentRow): Payment {
   return {
     tenant_id: row.tenant_id,

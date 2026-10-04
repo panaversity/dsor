@@ -1,4 +1,4 @@
-// NEW IN STEP 17: payments in the database. The unit tests prove the commands in memory.
+// Payments in the database. The unit tests prove the commands in memory.
 // These prove the table: the database numbers each draft, keeps it inside its company,
 // lets dsor_runtime change only its status, decides between two cancels, and refuses a
 // key into another company (step 17's README, C5 to C7, and decisions 3, 9, and 16).
@@ -169,7 +169,7 @@ describe("what dsor_runtime may do to app.payments", () => {
   });
 });
 
-// NEW IN STEP 17: found by the review's sweep. Each of these could be broken with every test
+// Found by the review's sweep. Each of these could be broken with every test
 // green (step 17's README, "Think it through").
 describe("the review: what the database's lock hid, and the table's own checks", () => {
   // The owner holds BYPASSRLS, so no policy stops it, and only DSoR's own WHERE keeps the

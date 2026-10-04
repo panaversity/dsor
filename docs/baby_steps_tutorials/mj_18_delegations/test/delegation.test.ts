@@ -1,4 +1,4 @@
-// NEW IN STEP 17: an agent runs no command without a person's delegation, and none exists
+// An agent runs no command without a person's delegation, and none exists
 // until step 18, so line ③ refuses every command an agent calls (DSOR-DEL-01a in
 // specs/dsor/02-security.md, section 13; step 17's README, C4 and decision 5).
 import { describe, expect, it, vi } from "vitest";

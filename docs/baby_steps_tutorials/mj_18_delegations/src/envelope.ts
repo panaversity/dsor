@@ -76,7 +76,7 @@ export type Success = {
   correlation: Correlation;
 };
 
-// NEW IN STEP 17: a command's answer. Its data, its label, what was withheld, and the
+// A command's answer. Its data, its label, what was withheld, and the
 // semantics its contract declares (DSOR-EXE-05b). No freshness: a write is not a read. This
 // shape is step 17's decision 2, not the specification's: it has no outcome word, such as
 // COMMITTED, until a proposal and a payload hash exist (steps 22 and 29).

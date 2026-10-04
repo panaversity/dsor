@@ -259,7 +259,7 @@ describe("C7: the map itself is checked", () => {
   });
 });
 
-// NEW IN STEP 17: a fourth kind, for a company table that DSoR writes (step 17's README,
+// A fourth kind, for a company table that DSoR writes (step 17's README,
 // C7 and decision 3).
 describe("step 17's C7: the kind business-written", () => {
   it("step 17's decision 3: app.payments is read, gets rows by named columns, and changes only its status", () => {
@@ -322,7 +322,7 @@ describe("step 17's C7: the kind business-written", () => {
   });
 });
 
-// NEW IN STEP 17: found by the review's sweep. DELETE is never a column privilege, so a kind
+// Found by the review's sweep. DELETE is never a column privilege, so a kind
 // that let it in under columns would pass every other test.
 describe("the review: business-written lists only INSERT and UPDATE under columns", () => {
   it("step 17's decision 3: DELETE under a business-written table's columns is refused", () => {

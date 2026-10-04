@@ -45,7 +45,7 @@ export type Kind = {
 export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // The company's data: dsor_runtime only reads it.
   ["business", { side: "company", table: ["SELECT"], columns: [], key: true }],
-  // NEW IN STEP 17: a company table that DSoR writes, such as app.payments: read it, add rows
+  // A company table that DSoR writes, such as app.payments: read it, add rows
   // and change them through named columns only. Never a whole-table INSERT or UPDATE, which
   // would include the columns the database fills in (step 17's README, decision 3).
   [
@@ -143,7 +143,7 @@ function tableProblems(
   line.runtime.columns ??= {};
   const kind = KINDS.get(line.kind);
   if (kind === undefined) {
-    // NEW IN STEP 17: every kind the map knows, from the list above, so a new kind is named.
+    // Every kind the map knows, from the list above, so a new kind is named.
     const names = [...KINDS.keys()];
     const known = `which is not ${names.slice(0, -1).join(", ")}, or ${names.at(-1)}`;
     return [`${name} has the kind ${JSON.stringify(line.kind)}, ${known}`];

@@ -43,7 +43,7 @@ export type Decision = {
 // What a query's answer returned, for its record (step 14's README,
 // decision 7).
 /** The URIs a read returned, the label of its answer, and how fresh it was. */
-// And its freshness (step 15's README, decision 7). NEW IN STEP 17: a command's answer has
+// And its freshness (step 15's README, decision 7). A command's answer has
 // no freshness, so its record names its rows and its label only (step 17's README,
 // decision 2).
 export type Read = { resources: string[]; classification: Label; freshness?: Freshness };

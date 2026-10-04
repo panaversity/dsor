@@ -332,7 +332,7 @@ describe("C6: every difference is named at once", () => {
   });
 });
 
-// NEW IN STEP 17: app.payments, a company table that DSoR writes through named columns
+// app.payments, a company table that DSoR writes through named columns
 // (step 17's README, C7 and decisions 3 and 12).
 describe("step 17's C7: app.payments is held exactly as the map says", () => {
   it("step 17's decision 3: UPDATE on a payment's amount is named", () => {

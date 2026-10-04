@@ -476,7 +476,7 @@ describe("C3: every principal who may call the operation attacks it, from each c
     expect(ids).toStrictEqual(["user_700"]);
   });
 
-  // NEW IN STEP 17: the suite asks line ③'s own question. ap_agent grants payment:create, so
+  // The suite asks line ③'s own question. ap_agent grants payment:create, so
   // a suite that asked line ⑤ alone would send the agents, and hear DELEGATION_REQUIRED.
   it.each([
     ["org_456", "user_123"],

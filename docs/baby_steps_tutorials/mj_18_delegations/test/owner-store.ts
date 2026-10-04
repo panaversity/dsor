@@ -7,7 +7,7 @@
 // Run by the tests as:  node test/owner-store.ts
 // Or as  node test/owner-store.ts list,  which lists org_456's invoices
 // through the store instead (step 13's README, C7).
-// NEW IN STEP 17: or as  node test/owner-store.ts payments,  which drafts a payment in
+// Or as  node test/owner-store.ts payments,  which drafts a payment in
 // org_456 and asks the payments store to cancel it inside org_789. Found by step 17's
 // sweep: with tenant_id dropped from the cancel's SQL, every test stayed green, because
 // the database's lock hid it.

@@ -27,7 +27,7 @@ export type CompanyInvoices = {
   readonly list: (after: string | undefined, count: number) => Promise<Invoice[]>;
 };
 
-// NEW IN STEP 17: the payments of one company, bound as its invoices are (step 17's README,
+// The payments of one company, bound as its invoices are (step 17's README,
 // outcome 1).
 /** One company's payments. Whoever holds this can write that company's payments, and no others. */
 export type CompanyPayments = {
@@ -53,7 +53,7 @@ export function companyOf(
   store: InvoiceStore,
   tenant: string,
   reads: Reads = newReads(),
-  // NEW IN STEP 17: the store the commands write. Without one, every write fails.
+  // The store the commands write. Without one, every write fails.
   paymentStore: PaymentStore = NO_PAYMENTS,
 ): Company {
   // get takes an id, and list a place and a count, and nothing more. The company is fixed
@@ -96,7 +96,7 @@ export function companyOf(
       return rows;
     },
   });
-  // NEW IN STEP 17: the payments, bound the same way. The company is fixed here, out of the
+  // The payments, bound the same way. The company is fixed here, out of the
   // code's reach, and a Company kept after line ⑨ writes nothing more. A write leaves no
   // label: a command's answer carries no freshness (step 17's README, decision 2).
   const payments: CompanyPayments = Object.freeze({

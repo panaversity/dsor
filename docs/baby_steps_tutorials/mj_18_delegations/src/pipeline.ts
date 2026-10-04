@@ -128,7 +128,7 @@ export async function call(
     }
 
     // ③ Resolve delegation; verify the actor chain; establish current authority.
-    // NEW IN STEP 17: an agent's command needs a person's delegation, and none exists until
+    // An agent's command needs a person's delegation, and none exists until
     //   step 18, so it is refused here (DSOR-DEL-01a; step 17's README, decision 5). Before
     //   line ⑤, so a permission alone never lets an agent change anything. The actor chain
     //   and current authority: not checked yet, steps 18 and 19.
@@ -156,7 +156,7 @@ export async function call(
     // decision 5).
     const handler = registry.handlers.get(name);
     if (!handler) throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
-    // NEW IN STEP 17: a command's code runs. Step 04's decision 1 refused every command
+    // A command's code runs. Step 04's decision 1 refused every command
     // here, because its success needs a proposal (step 22). Its answer has a shape of its
     // own until then (step 17's README, outcome 8 and decision 2).
 
@@ -165,7 +165,7 @@ export async function call(
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
     //   reads here, and each read is labelled (step 15). A required freshness and
     //   preconditions: not built yet, step 32.
-    // NEW IN STEP 17: a command's code reads and writes here, and its record follows at line
+    // A command's code reads and writes here, and its record follows at line
     //   ⑪. So a record that fails leaves the write behind, until step 36 commits the two
     //   together (step 17's README, decision 1).
     // The code may read the database, so call waits for it. A refusal it
@@ -178,7 +178,7 @@ export async function call(
       // itself, so it cannot name another company (step 10's README, decision 13). Found
       // by the Stage 2 review, and fixed from step 10 on.
       try {
-        // NEW IN STEP 17: and, for a command, that company's payments, bound the same way. A
+        // And, for a command, that company's payments, bound the same way. A
         // query's code gets none, so a query that writes fails: line ③ lets the agent's query
         // through because a query changes nothing, and this makes that true (step 17's README,
         // "Think it through", finding A).
@@ -233,7 +233,7 @@ export async function call(
       answer = { data: shown.data, classification, ...listed, freshness, correlation };
       read = { resources, classification, freshness };
     } else {
-      // NEW IN STEP 17: a command's answer states the semantics its contract declares, never
+      // A command's answer states the semantics its contract declares, never
       // a word of its code (DSOR-EXE-05b). No freshness: DSOR-FRS-01a names query results,
       // and a write is not a read (step 17's README, decision 2).
       const semantics = semanticsOf(contract);
@@ -266,7 +266,7 @@ export async function call(
       ),
     );
   } catch {
-    // NEW IN STEP 17: a command whose code ran may have changed something, and DSoR cannot
+    // A command whose code ran may have changed something, and DSoR cannot
     // prove it did not. So its answer never says a retry is safe: with no idempotency key
     // until step 20, a retry could write a second draft (the reason behind DSOR-ERR-02;
     // step 17's README, decision 17). Found by break B1.

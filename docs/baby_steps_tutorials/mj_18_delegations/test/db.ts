@@ -29,7 +29,7 @@ export function dbRegistry(pool: pg.Pool): Registry {
     shippedInputs,
     shippedLabels,
     createDbInvoices(pool),
-    // NEW IN STEP 17: and the payments the commands write (step 17's README, outcome 1).
+    // And the payments the commands write (step 17's README, outcome 1).
     createDbPayments(pool),
   );
 }
@@ -122,7 +122,7 @@ export function ownerLoginCheck(): string[] {
   return asOwner("owner-login-check.ts") as string[];
 }
 
-// NEW IN STEP 17: the payments store's own SQL, with no policy behind it (step 17's README,
+// The payments store's own SQL, with no policy behind it (step 17's README,
 // "Think it through").
 /** What the payments store does for the owner, whom no policy stops, across companies. */
 export function ownerPayments(): unknown {

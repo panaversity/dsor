@@ -1,4 +1,4 @@
-// NEW IN STEP 17: execution semantics, the label that answers "can this be undone?".
+// Execution semantics, the label that answers "can this be undone?".
 // Every command declares one in its contract (DSOR-EXE-05a), and its answer states it
 // (DSOR-EXE-05b). specs/dsor/03-execution.md, section 24.
 import type { Roles } from "./permissions.ts";

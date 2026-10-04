@@ -46,7 +46,7 @@ export function handlersFor(): Record<string, Handler> {
       const rows = await company.invoices.list(cursor, pageSize(limit) + 1);
       return pageOf(rows, limit);
     },
-    // NEW IN STEP 17: a draft payment for an issued invoice: its open amount and its vendor,
+    // A draft payment for an issued invoice: its open amount and its vendor,
     // which DSoR reads itself. The request names only the invoice (step 17's README,
     // decisions 4 and 13).
     "payment.create": async (input, company) => {
@@ -72,7 +72,7 @@ export function handlersFor(): Record<string, Handler> {
         amount: invoice.open_amount,
       });
     },
-    // NEW IN STEP 17: the undo of payment.create. Only a draft is cancelled. The store decides
+    // The undo of payment.create. Only a draft is cancelled. The store decides
     // in one statement, and looks again when it changed nothing (step 17's README,
     // decision 9).
     "payment.cancel": async (input, company) => {

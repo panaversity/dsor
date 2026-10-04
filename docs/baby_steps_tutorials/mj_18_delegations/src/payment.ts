@@ -1,4 +1,4 @@
-// NEW IN STEP 17: payments, the second kind of business record, and the first that DSoR
+// Payments, the second kind of business record, and the first that DSoR
 // writes. payment.create makes a draft, and payment.cancel undoes it (step 17's README,
 // outcomes 2 and 3). The program keeps payments in the table app.payments (postgres.ts);
 // the unit tests keep them in memory (memoryPayments below).

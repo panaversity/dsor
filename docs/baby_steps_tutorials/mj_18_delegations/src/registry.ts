@@ -46,7 +46,7 @@ export type Registry = {
   // company's invoices (step 10's README, decision 13). Found by the Stage 2 review, and
   // fixed from step 10 on.
   invoices: InvoiceStore;
-  // NEW IN STEP 17: the store the commands write, held beside the invoices (step 17's
+  // The store the commands write, held beside the invoices (step 17's
   // README, outcome 1). Only the pipeline uses it, as it uses the invoices.
   payments: PaymentStore;
 };
@@ -100,7 +100,7 @@ export function buildRegistry(
   // tests. Without one, every read fails (step 10's README, decision 13). Found by the
   // Stage 2 review, and fixed from step 10 on.
   invoices: InvoiceStore = NO_STORE,
-  // NEW IN STEP 17: the store of payments. Without one, every write fails, as every read
+  // The store of payments. Without one, every write fails, as every read
   // fails without a store of invoices.
   payments: PaymentStore = NO_PAYMENTS,
 ): Registry {
@@ -154,7 +154,7 @@ export function buildRegistry(
   // problems are named with the contracts' problems (DSOR-AUT-01a).
   const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
   problems.push(...roleProblems);
-  // NEW IN STEP 17: every undo a contract names is a real command that DSoR can run, and
+  // Every undo a contract names is a real command that DSoR can run, and
   // that some role may run, so a label that says "can be undone" is true (DSOR-EXE-05c; step
   // 17's README, decision 8). After the roles, which it reads. Its problems are named with
   // the others.

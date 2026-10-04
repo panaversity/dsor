@@ -80,7 +80,7 @@ export function attackersOf(registry: Registry, operation: string, home: string)
   // (step 12's README, decision 4).
   for (const [token, principal] of logins) {
     if (typeof permission !== "string" || contract === undefined) continue;
-    // NEW IN STEP 17: the same for line ③. An agent's command is refused there, before the
+    // The same for line ③. An agent's command is refused there, before the
     // URI's company is checked. The suite asks line ③'s own question, so an agent that a
     // delegation lets through in step 18 attacks again, with no change here (step 17's
     // README, "Think it through").
@@ -92,7 +92,7 @@ export function attackersOf(registry: Registry, operation: string, home: string)
   return attackers;
 }
 
-// NEW IN STEP 17: whether line ③ lets this caller call the operation at all.
+// Whether line ③ lets this caller call the operation at all.
 function passesLineThree(principal: Principal, contract: Contract): boolean {
   try {
     checkDelegation(principal, contract);

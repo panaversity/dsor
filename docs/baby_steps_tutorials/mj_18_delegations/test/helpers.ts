@@ -326,7 +326,7 @@ export const registry: Registry = buildRegistry(
   shippedInputs,
   shippedLabels,
   memoryInvoices(),
-  // NEW IN STEP 17: and payments in memory, which the commands write (step 17's README,
+  // And payments in memory, which the commands write (step 17's README,
   // outcome 1). One list for every test that uses this registry.
   memoryPayments(),
 );
@@ -520,7 +520,7 @@ export const REFUSALS: [string, () => Promise<Answer>, ErrorCode, string, Caller
     notGranted("invoice.issue", "invoice:issue"),
     THE_CFO,
   ],
-  // NEW IN STEP 17: the agent's command, which no delegation covers yet. Its role grants
+  // The agent's command, which no delegation covers yet. Its role grants
   // payment:create, so only line ③ refuses it.
   [
     "the agent calling payment.create, which no delegation covers",

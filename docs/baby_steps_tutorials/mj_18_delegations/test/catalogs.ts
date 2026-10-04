@@ -35,7 +35,7 @@ const AUDIT_COLUMNS = [
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
 
-// NEW IN STEP 17: app.payments, as migration 009 makes it. The database numbers each
+// app.payments, as migration 009 makes it. The database numbers each
 // payment and writes its id from the number, so dsor_runtime writes neither. It writes
 // the other columns once, and changes only the status (step 17's README, decisions 3, 12,
 // and 15).

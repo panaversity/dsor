@@ -1,4 +1,4 @@
-// NEW IN STEP 17: every command declares whether it can be undone, its answer says which
+// Every command declares whether it can be undone, its answer says which
 // label applied, and a declared undo is a real command that DSoR can run (DSOR-EXE-05a,
 // DSOR-EXE-05b, DSOR-EXE-05c in specs/dsor/03-execution.md, section 24; step 17's README,
 // C1 to C3).
@@ -251,7 +251,7 @@ describe("C3: a compensatable command names a real undo, checked at start-up", (
   );
 });
 
-// NEW IN STEP 17: finding B of the review. An undo that no role may run cannot undo anything,
+// Finding B of the review. An undo that no role may run cannot undo anything,
 // whoever asks: payment.create still said "compensatable", and every cancel was refused.
 describe("the review: an undo must be one that some role may run", () => {
   it("DSOR-EXE-05c: an undo whose permission no role grants stops start-up, named", () => {
