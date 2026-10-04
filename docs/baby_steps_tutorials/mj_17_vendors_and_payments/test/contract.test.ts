@@ -140,13 +140,17 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
       ...contract("invoice.issue"),
       execution: { semantics: "compensatable", compensated_by: ["invoice.cancel"] },
     };
+    // Since step 17, the undo must be a real command, with a contract and code (DSOR-EXE-05c;
+    // step 17's README, decision 8). Until then, a name alone was accepted.
+    const cancel = { ...contract("invoice.issue"), id: "invoice.cancel" };
+    const withCancel = [source(cancel, "invoice.cancel.json")];
+    const cancelCode = { "invoice.cancel": () => ({}) };
     // Only the input schema these contracts name, or start-up refuses the
     // others as unused. invoice.list's is one of them.
     const inputs = shippedInputs.filter((s) => s.file === "InvoiceIssueRequest.schema.json");
     for (const good of [neverUndone, undoable]) {
-      expect(
-        buildRegistry([source(good)], {}, shippedRoles, inputs).contracts.has("invoice.issue"),
-      ).toBe(true);
+      const built = buildRegistry([source(good), ...withCancel], cancelCode, shippedRoles, inputs);
+      expect(built.contracts.has("invoice.issue")).toBe(true);
     }
   });
 });

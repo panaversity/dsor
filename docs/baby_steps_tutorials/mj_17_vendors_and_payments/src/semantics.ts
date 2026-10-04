@@ -27,3 +27,53 @@ export function semanticsOf(contract: Contract): Semantics {
   }
   return declared as Semantics;
 }
+
+/**
+ * Every problem with the undo lists the contracts write. A list must name at least one
+ * operation, and each must be another command, with a contract and with code, so that DSoR
+ * can run it through the whole checklist (DSOR-EXE-05c; step 17's README, decision 8).
+ */
+export function undoProblems(
+  contracts: ReadonlyMap<string, Contract>,
+  code: ReadonlyMap<string, unknown>,
+): string[] {
+  const problems: string[] = [];
+  for (const contract of contracts.values()) {
+    // The schema makes a compensatable or saga command write a list, and makes each entry an
+    // operation's id. It accepts an empty list and any id, so those are checked here. A list
+    // that a contract writes under another label is checked too (decision 8).
+    const list = (contract["execution"] as { compensated_by?: unknown } | undefined)
+      ?.compensated_by;
+    if (list === undefined) continue;
+    // The label would say "can be undone", and nothing could undo it.
+    if (!Array.isArray(list) || list.length === 0) {
+      problems.push(`${contract.id}: compensated_by is empty, so it names nothing that undoes it`);
+      continue;
+    }
+    for (const name of list as string[]) {
+      const why = whyNotAnUndo(name, contract.id, contracts, code);
+      if (why !== undefined) {
+        problems.push(`${contract.id}: compensated_by names ${JSON.stringify(name)}, ${why}`);
+      }
+    }
+  }
+  return problems;
+}
+
+// Why this operation cannot undo the other one, or undefined when it can.
+function whyNotAnUndo(
+  name: string,
+  undone: string,
+  contracts: ReadonlyMap<string, Contract>,
+  code: ReadonlyMap<string, unknown>,
+): string | undefined {
+  if (name === undone) return "which is the operation itself";
+  const undo = contracts.get(name);
+  if (undo === undefined) return "which has no contract";
+  // A query changes nothing, so it undoes nothing. Anything but a command is refused: when
+  // the answer is missing, the answer is no.
+  if (undo["kind"] !== "command") return "which is a query";
+  // A contract with no code cannot be run, so it cannot undo anything.
+  if (!code.has(name)) return "which has no code";
+  return undefined;
+}

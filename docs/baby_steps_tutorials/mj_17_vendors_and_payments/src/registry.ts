@@ -16,6 +16,7 @@ import { keysWrittenTwice } from "./json.ts";
 import { maskingProblems } from "./masking.ts";
 import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
+import { undoProblems } from "./semantics.ts";
 import { logins } from "./principals.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
@@ -148,6 +149,11 @@ export function buildRegistry(
     if (!fileOf.has(name)) problems.push(`${name} has code but no contract`);
     code.set(name, handler);
   }
+
+  // NEW IN STEP 17: every undo a contract names is a real command that DSoR can run, so a
+  // label that says "can be undone" is true (DSOR-EXE-05c; step 17's README, decision 8).
+  // Its problems are named with the others.
+  problems.push(...undoProblems(contracts, code));
 
   // The role table, and every role in DSoR's table of logins, are checked too. Their
   // problems are named with the contracts' problems (DSOR-AUT-01a).
