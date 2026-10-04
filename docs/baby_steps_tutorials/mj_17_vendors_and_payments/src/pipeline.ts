@@ -7,6 +7,7 @@ import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.t
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { newReads, stalest } from "./freshness.ts";
 import { decisionOf, type DecisionLog, type Read } from "./log.ts";
+import { NO_PAYMENTS } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
@@ -177,8 +178,12 @@ export async function call(
       // itself, so it cannot name another company (step 10's README, decision 13). Found
       // by the Stage 2 review, and fixed from step 10 on.
       try {
-        // NEW IN STEP 17: and that company's payments, bound the same way.
-        return await handler(copy, companyOf(registry.invoices, tenant, reads, registry.payments));
+        // NEW IN STEP 17: and, for a command, that company's payments, bound the same way. A
+        // query's code gets none, so a query that writes fails: line ③ lets the agent's query
+        // through because a query changes nothing, and this makes that true (step 17's README,
+        // "Think it through", finding A).
+        const payments = contract["kind"] === "query" ? NO_PAYMENTS : registry.payments;
+        return await handler(copy, companyOf(registry.invoices, tenant, reads, payments));
       } catch (thrown) {
         // A refusal the code throws is masked as its answer would be
         // (DSOR-CLS-02a; step 14's README, decision 8).
