@@ -237,3 +237,23 @@ a password with `@` in it, and `forgetTheLog` erasing one chain rather than all 
 [Decision 84](decisions.md), [lessons 30 and 31](lessons.md).
 
 `pnpm check`: **315 tests**. `pnpm test:db`: 5. Nine break-it exercises, all re-measured.
+
+### Does it run by itself? (2026-10-04)
+
+The `build-baby-step` skill's last check: copy the folder outside the repository, with no
+`node_modules`, no `.env`, no `.local-database`, and run it cold.
+
+```text
+pnpm install --frozen-lockfile   ->  Done in 305ms
+pnpm check                       ->  Tests  314 passed | 1 skipped (315)
+pnpm start                       ->  a PostgreSQL on disk at ./.local-database, as `dsor_runtime`
+                                     20 records, chain verifies against the head: true
+pnpm start (again)               ->  30 records, chain verifies against the head: true
+pnpm test:db (no server)         ->  Tests  5 skipped (5)
+```
+
+The one skip is `audit.test.ts`'s "the schema is byte for byte the specification's own", which
+compares the step's copy of `audit-record.schema.json` with the repository's and has nothing to
+compare against outside it. It skips with its name in the report rather than passing quietly, which
+is the design — and the README's `pnpm check` line now says so, because "315 tests" was true only
+inside the repository.

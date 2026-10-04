@@ -159,7 +159,9 @@ Those refusals are PostgreSQL's own privilege system, not our code checking itse
 ## Two commands, and what each proves
 
 ```bash
-pnpm check     # 315 tests, no database and no network needed
+pnpm check     # 315 tests, no database and no network needed. Outside the repository one of
+               # them skips itself, and says so: it compares the step's copy of the audit-record
+               # schema with the specification's, and a copy of one step has no specification
 pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
 ```
 
