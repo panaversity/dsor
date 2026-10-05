@@ -80,9 +80,9 @@ are true of all of them:
   a restart; from step 10 the invoices are rows there too. Up to step 09 the invoice store is
   an array in one process.
 - **Step 10 is one lock, not two.** The program filters by company; PostgreSQL does not yet.
-  Its database tier (nine tests, the same as step 09's) has not been run for this step: it
-  needs a `.env` naming a database of the step's own on the learner's server, and the file
-  is the learner's to create.
+  Its database tier (nine tests, the same as step 09's) has been run against a local
+  PostgreSQL 17 with two real logins and a database of the step's own, on 2026-10-05; the
+  four migrations applied and the demo ran against that server, both chains verifying.
 - **Step 09 has a second test tier.** `pnpm check` proves its guarantees against
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers what one in-process connection cannot do — logging in as a

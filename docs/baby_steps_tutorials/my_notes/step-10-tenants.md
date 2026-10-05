@@ -3,8 +3,16 @@
 Folder: [`my_10_tenants`](../my_10_tenants/README.md) · 373 tests, plus 9 in the database tier
 Spec: [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) · `DSOR-TEN-01a`, `DSOR-IDN-03a`,
 `DSOR-SRC-02b`
-`pnpm check` has run: 373. The database tier awaits this step's own `.env` (the database
-`dsor_step10` exists; the file is the learner's to create).
+Both tiers have run: 373 under `pnpm check`, and 9 under `pnpm test:db` against a real server —
+the step's own database, `dsor_step10`, four migrations applied, the demo verifying both chains
+there too:
+
+```text
+pnpm migrate   ->  applied 001_audit.sql … 004_running_example.sql
+pnpm test:db   ->  Tests  9 passed (9)
+pnpm start     ->  the PostgreSQL at …@localhost:55432/dsor_step10
+                   COMMITTED; org_456: 15 records, org_789: 2, both chains verifying
+```
 Decisions [88 to 92](decisions.md). Lesson [35](lessons.md).
 
 ## What the step is

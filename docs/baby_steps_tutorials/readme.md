@@ -500,8 +500,11 @@ other, and sensitive fields are hidden from agents.
 A `tenant_id` on every row. Every request works inside exactly one company.
 **Spec:** [§14](../../specs/dsor/02-security.md#14-multi-tenancy) · DSOR-TEN-01a,
 DSOR-IDN-03a, DSOR-SRC-02b.
-**Done when:** a URI for another company returns the same "not found" as a URI that
-does not exist.
+**Done when:** a URI for another company is refused with `TENANT_MISMATCH` that reveals
+nothing — the same words whether that company or that invoice exists — before any
+lookup. (This line said "the same not found as a URI that does not exist"; DSOR-SRC-02b
+names `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`, and the spec is authoritative over
+this map.)
 
 ### 11 · `11_row_level_security`
 
