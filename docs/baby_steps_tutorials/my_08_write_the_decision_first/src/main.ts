@@ -1,7 +1,7 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
 import { greet } from "./greet.ts";
-// NEW IN STEP 06: the same invoice, asked for by two people, one line apart.
+// STEP 06: the same invoice, asked for by two people, one line apart.
 import { callOperation } from "./operations.ts";
 import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
 import type { Login } from "./login.ts";
@@ -48,7 +48,7 @@ console.log(
 );
 console.log();
 
-// NEW IN STEP 06, and this is the step in four lines. The CFO reads INV-1009 and is told what
+// STEP 06, and this is the step in four lines. The CFO reads INV-1009 and is told what
 // it is. She asks to issue it and is refused. Then the agent issues the very same invoice and
 // it works. Nothing about the invoice changed between those lines -- only who asked.
 console.log(show(callOperation(CFO, "invoice.get", { invoice: INV_1009 })));

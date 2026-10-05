@@ -12,7 +12,7 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 
-// NEW IN STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
+// STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
 // `approver` grants invoice:read and payment:approve, and not invoice:issue — so they ask as
 // the agent, which holds it. Nothing about what they test has changed. A new gate in front of
 // the program changing which caller a test needs is exactly what it looks like when permissions
@@ -138,6 +138,27 @@ describe("who you are comes from the login, never from the arguments", () => {
 
     expect(answer.envelope.code).toBe("AUTHENTICATION_REQUIRED");
     expect(answer.envelope.retry).toBe("never");
+  });
+
+  // The test at the top of this file plants a principal beside a real login. This plants one beside
+  // **no** login, which is the case a careless `authenticate` gets wrong: with nobody logged in, the
+  // name in the arguments is the only name on the request, and it is still not a login. The id is
+  // earned by sabotage — let `authenticate` fall back to `args.principal` when there is no login,
+  // and this is the test that goes red while the no-login test above stays green.
+  it("DSOR-SRC-02a: with nobody logged in, a principal planted in the arguments is still refused", () => {
+    const answer = callOperation(undefined, "invoice.get", {
+      invoice: INV_1008,
+      principal: "cfo_100",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("AUTHENTICATION_REQUIRED");
+    // And the planted name reached nothing: not the answer's `askedBy`, not its correlation block.
+    expect(answer.askedBy).toBe("(nobody)");
+    expect(answer.envelope.correlation.principal_id).toBeUndefined();
   });
 
   // The login is checked before anything else, which is what DSOR-IDN-01's "before any

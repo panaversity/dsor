@@ -16,6 +16,9 @@ runs before the answer leaves, and it runs for a refusal exactly as it does for 
 The record is not a log line. It is a structured record that has to validate against the
 specification's own `audit-record.schema.json`, and each record carries the **hash** of the record
 before it — so the records form a chain. Edit one record and every hash after it stops agreeing.
+The chain itself is pulled forward from step 39, where the map puts "a log nobody can quietly edit"
+and its verifier script: this step needs it now, in its smallest form, because *written first* is
+only checkable if a record edited afterwards can be told from one that was not.
 
 Two words for two ideas you will meet in the code:
 
@@ -67,6 +70,49 @@ refusal, and every denial would have gone unrecorded. §21's diagram is emphatic
 So a refusal is now *carried* instead of returned. The remaining checks are skipped — there is no
 point asking "may you" after "who are you" has already failed — and the stages marked to run anyway
 still run. The first no is still the answer; it just no longer ends the walk.
+
+## What changed since step 07
+
+```bash
+git diff --no-index ../my_07_the_pipeline_skeleton ../my_08_write_the_decision_first
+```
+
+20 paths change, counted with `git diff --no-index --name-status` and ignoring `node_modules`.
+The ones that matter:
+
+| File | What |
+| --- | --- |
+| `src/audit.ts` | new — the record, the chain, the clock, the log, the counter |
+| `src/schemas/audit-record.schema.json` | new — copied byte for byte from `packages/spec/schemas/` |
+| `src/pipeline.ts` | `Stage.evenAfterARefusal`, `Context.refusal` and `Context.requestId`, a walker that carries a refusal, two new list rules |
+| `src/operations.ts` | the `recordTheDecision` stage, `alsoAfterARefusal`, and one request id threaded everywhere |
+| `src/envelopes.ts` | no behaviour change: `correlationFor` moved up the file, and the comment on the message cap now tells the story of the fuzz run that found it |
+| `src/login.ts`, `src/invoice.ts` | the request id reaches `principalFrom`; `resetInvoices` is a new test seam |
+| `src/main.ts` | prints the log |
+| `test/audit.test.ts`, `test/decision-first.test.ts`, `test/request-id.test.ts` | new |
+| `test/main.test.ts` | step 07 compared the program's output byte for byte; the log's hash column changes on every run, so this checks the lines that cannot move and masks the one column that can |
+| `test/pipeline.test.ts`, `test/login.test.ts` | the fifth stage, and the new signature |
+| `test/deny-by-default.test.ts`, `test/who-is-calling.test.ts` | one refusal test each: a principal with no role at all, and a principal planted in the arguments with nobody logged in |
+| `test/operations.test.ts`, `test/registry.test.ts` | comments only |
+
+179 tests became 234, of which 36 came after the step first looked finished — it was green at 198
+then; see the review section at the bottom.
+
+## One repair came first
+
+`correlation.request_id` is a **required** field of `audit-record.schema.json`, so this step had to put
+something there. It turned out the request id was being minted lazily, inside whichever envelope
+happened to be built first:
+
+```ts
+const request_id = requestId ?? nextRequestId();   // minted when the envelope is built
+```
+
+So it named *an answer*, not *a request*. A record minting its own id would carry a different id from
+the answer it was about, and nothing could ever join the two — which is the only job a correlation id
+has. The door now mints one id when the request arrives and hands the same one to every refusal, every
+success, and the record. It landed as its own commit, before the record, so the repair and the feature
+stay separable.
 
 ## Run it
 
@@ -135,8 +181,8 @@ the step — see below.
 
 A record here says what was **decided**. It does not say what **happened**.
 
-§21 keeps those apart on purpose. Step 11 records the decision; step 15, `FINALIZE`, records the
-outcome as `COMMITTED`, `FAILED` or `OUTCOME_UNKNOWN`. This step has step 11 and no step 15. So a call
+§21 keeps those apart on purpose. §21.11 records the decision; §21.15, `FINALIZE`, records the
+outcome as `COMMITTED`, `FAILED` or `OUTCOME_UNKNOWN`. This step has §21.11 and no §21.15. So a call
 that is authorized and then fails while it is being carried out is on the record as `ALLOW`, and the
 caller is told `VALIDATION_FAILED`. Both are true. The record is incomplete.
 
@@ -171,47 +217,10 @@ Measured on the demo above: twelve calls, ten records, and **four** of the answe
 who caused them cannot cite. For a correlation id that is the whole job, and this
 is the one place it is not done.
 
-It is not a bug in this step; it is the shape of the result envelope, and step 19 is where reads get
-their own governed answer. It is written here because `src/operations.ts` and
+It is not a bug in this step; it is the shape of the result envelope. Step 14, where the
+specification's §19 (classification and read-side governance) arrives, is where a read's answer gets
+governed in its own right. It is written here because `src/operations.ts` and
 `test/request-id.test.ts` both promise that it is.
-
-## What changed since step 07
-
-```bash
-git diff --no-index ../my_07_the_pipeline_skeleton ../my_08_write_the_decision_first
-```
-
-Sixteen paths change, ignoring `node_modules`. The ones that matter:
-
-| File | What |
-| --- | --- |
-| `src/audit.ts` | new — the record, the chain, the clock, the log, the counter |
-| `src/schemas/audit-record.schema.json` | new — copied byte for byte from `packages/spec/schemas/` |
-| `src/pipeline.ts` | `Stage.evenAfterARefusal`, `Context.refusal` and `Context.requestId`, a walker that carries a refusal, two new list rules |
-| `src/operations.ts` | the `recordTheDecision` stage, `alsoAfterARefusal`, and one request id threaded everywhere |
-| `src/login.ts`, `src/invoice.ts` | the request id reaches `principalFrom`; `resetInvoices` is a new test seam |
-| `src/main.ts` | prints the log |
-| `test/audit.test.ts`, `test/decision-first.test.ts`, `test/request-id.test.ts` | new |
-| `test/pipeline.test.ts`, `test/login.test.ts` | the fifth stage, and the new signature |
-
-169 tests became 229, of which 55 were written *after* the step looked finished — see the review
-section at the bottom.
-
-## One repair came first
-
-`correlation.request_id` is a **required** field of `audit-record.schema.json`, so this step had to put
-something there. It turned out the request id was being minted lazily, inside whichever envelope
-happened to be built first:
-
-```ts
-const request_id = requestId ?? nextRequestId();   // minted when the envelope is built
-```
-
-So it named *an answer*, not *a request*. A record minting its own id would carry a different id from
-the answer it was about, and nothing could ever join the two — which is the only job a correlation id
-has. The door now mints one id when the request arrives and hands the same one to every refusal, every
-success, and the record. It landed as its own commit, before the record, so the repair and the feature
-stay separable.
 
 ## Break it
 
@@ -225,36 +234,63 @@ In `src/operations.ts`, change one word:
 stage(11, "record the decision", "both", recordTheDecision),   // was alsoAfterARefusal
 ```
 
-Every allowed call is still recorded. Every test about an answer still passes. Nothing about the
-program's output changes at all — and denials have silently stopped being written down.
+If this were allowed to run, every allowed call would still be recorded, every test about an answer
+would still pass, and nothing about the program's output would change — while denials silently
+stopped being written down. It is not allowed to run:
 
 ```text
+$ pnpm start
+TypeError: record the decision must run even after a refusal, or denials go unrecorded
+```
+
+`pnpm check` stops one step earlier, because `alsoAfterARefusal` is now a helper nothing uses and
+this project's compiler treats an unused local as an error:
+
+```text
+src/operations.ts(564,7): error TS6133: 'alsoAfterARefusal' is declared but its value is never read.
+```
+
+So run the tests on their own to see what the start-up check does to them:
+
+```text
+$ pnpm test
  Test Files  8 failed | 9 passed (17)
-      Tests  5 failed | 120 passed (125)
+      Tests  5 failed | 122 passed (127)
 
 TypeError: record the decision must run even after a refusal, or denials go unrecorded
 ```
 
-**Read the total, not the failures: 229 tests were collected before, and 104 of them never ran**,
-because eight files import a module that throws while loading. `pnpm start` will not start either.
+**Read the total, not the failures: 234 tests were collected before, and 107 of them never ran**,
+because eight files import a module that throws while loading.
 
 Only five failures show, and all five are in `main.test.ts` — the one file that runs the program as a
-subprocess, so it reports a failure where the others simply never start. Before `main.test.ts` existed
-this same break printed `119 passed (119)` with **nothing** failing at all. That is the strongest
-result a break can get, the program refusing to exist, and it looks exactly like a break nothing
-caught. A test that runs the real program is what turns it into something you can see.
+subprocess, so it reports a failure where the others simply never start. Set `main.test.ts` aside for
+a moment and run this break again:
+
+```text
+ Test Files  7 failed | 9 passed (16)
+      Tests  122 passed (122)
+```
+
+**Nothing** failing at all. That is the strongest result a break can get, the program refusing to
+exist, and it looks exactly like a break nothing caught. A test that runs the real program is what
+turns it into something you can see.
 
 ### Break 2 · record after the response, the way a `finally` block would
 
 This one cannot be done any more without disabling a guard first, and that is worth noticing. Taking
-`record the decision` out of the list is refused when the program loads:
+`record the decision` out of the list is refused when the program loads — and the guard that fires is
+step 07's `REQUIRED` check, which sees the name missing before any of this step's three new checks
+get a turn:
 
 ```text
-TypeError: the pipeline has no record the decision stage
+$ pnpm start
+TypeError: the pipeline is missing record the decision, which every call needs
 ```
 
-So to perform §21's actual mistake you now have to take the name out of `REQUIRED`, make that check
-return instead of throwing, **and then** call the recording from the door after the answer is built,
+So to perform §21's actual mistake you now have to take the name out of `REQUIRED` in
+`src/pipeline.ts`, make the `records === undefined` check under it return instead of throw, take the
+stage out of `PIPELINE`, **and then** call the recording from the door after the answer is built,
 with an ordinary bug in between:
 
 ```ts
@@ -265,38 +301,46 @@ if (walked.kind === "refused") {
     throw new Error("something went wrong on the way out");   // any bug on the way out
   }
 
-  recordTheDecision(walked.context);
+  recordTheDecision((walked as unknown as { context: Context }).context);
   return answer;
 }
 ```
 
-Then ask for the refusal:
+The cast is part of the lesson: a refused walk no longer *carries* a context, because nothing after
+it is supposed to need one, and the compiler will not let you reach for it without saying so.
+
+Then ask for the refusal — `callOperation(CFO, "invoice.issue", { invoice: INV_1009 })` inside a
+`try`, and count `theLog()` afterwards:
 
 ```text
 THREW: something went wrong on the way out
 records written: 0
-
- Test Files  7 failed | 9 passed (16)
-      Tests  76 failed | 147 passed (223)
 ```
 
 The refusal vanished. This is §21's "common mistake" performed on purpose: the record was written
 *after* the thing that could fail, so the one case you most needed evidence for is the one case that
-left none.
+left none. The tests agree, loudly. `pnpm check` stops at the compiler again (`alsoAfterARefusal` is
+unused), and `pnpm test` on its own prints:
+
+```text
+ Test Files  8 failed | 9 passed (17)
+      Tests  83 failed | 151 passed (234)
+```
 
 ### Break 3 · move the recording above the checks
 
 Swap `authorize` and `record the decision` in the list.
 
 ```text
- Test Files  7 failed | 9 passed (16)
-      Tests  119 passed (119)
+ Test Files  8 failed | 9 passed (17)
+      Tests  5 failed | 122 passed (127)
 
 TypeError: the pipeline is out of order: §21.6 (validate the input) comes after §21.11
 ```
 
 Refused at start-up by the §21 numbers, which step 07 put there. A decision cannot be recorded before
-it has been made.
+it has been made. The totals are break 1's exactly, and for the same reason: eight files cannot load
+the module, 107 tests never run, and the five that fail are `main.test.ts` watching the program die.
 
 ### Break 4 · break the chain
 
@@ -307,9 +351,13 @@ const previous = GENESIS;   // was log[sequence - 1]?.record_hash ?? GENESIS
 ```
 
 ```text
- Test Files  2 failed | 14 passed (16)
-      Tests  8 failed | 215 passed (223)
+ Test Files  3 failed | 14 passed (17)
+      Tests  9 failed | 225 passed (234)
 ```
+
+Nine tests in three files: the chain tests in `audit.test.ts`, the one in `decision-first.test.ts`
+that walks a run of allows and denials, and `main.test.ts`, which reads `chain verifies against the
+head: false` off the real program where it expects `true`.
 
 ### Break 5 · take away the checkpoint
 
@@ -320,15 +368,26 @@ export function verifyChain(records: readonly AuditRecord[], head?: Head): boole
   // if (head !== undefined && lastHashOf(records) !== head.lastHash) { return false; }
 ```
 
+The compiler objects first, because `head` and `lastHashOf` are now never read:
+
 ```text
- Test Files  1 failed | 15 passed (16)
-      Tests  1 failed | 222 passed (223)
+src/audit.ts(512,62): error TS6133: 'head' is declared but its value is never read.
+src/audit.ts(552,10): error TS6133: 'lastHashOf' is declared but its value is never read.
 ```
 
-One test, and it is the one that drops the record holding a denial and checks that somebody notices.
+`pnpm test` on its own:
 
-Restore each break and confirm `pnpm check` prints `229 passed` again — or
-`228 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
+```text
+ Test Files  2 failed | 15 passed (17)
+      Tests  3 failed | 231 passed (234)
+```
+
+Three tests. The one that drops the record holding a denial and checks that somebody notices; the one
+that hands an empty log a head saying one record exists; and `main.test.ts`, which reads `but against
+the head: false` off the real program and now finds `true`.
+
+Restore each break and confirm `pnpm check` prints `234 passed` again — or
+`233 passed | 1 skipped` if you are running the folder from outside the dsor repository, where the
 byte-for-byte schema comparison has nothing to compare against.
 
 ## Build it yourself with Claude Code
@@ -357,7 +416,8 @@ byte-for-byte schema comparison has nothing to compare against.
    out?
 5. `verifyChain` once had a check on each record's `sequence` and on its `chain`. Both were deleted.
    What made them pointless?
-6. In break 1 the output says `119 passed` and nothing failed. What actually happened?
+6. In break 1, `pnpm test` says `5 failed | 122 passed (127)`. Where did the other 107 tests go, and
+   why are the five failures all in one file?
 7. Could someone who can reach the log still rewrite history?
 8. A successful read leaves a record carrying a `request_id`, and the caller never learns it. Why?
 9. `verifyChain` said `true` for a log with its last record deleted. What was missing, and why is
@@ -384,15 +444,18 @@ byte-for-byte schema comparison has nothing to compare against.
    anything. Both were removed after mutating them away left every test passing. What `verifyChain`
    checks now is each record against the schema, its own hash, its link to the record before, and that
    its time does not run backwards — plus the checkpoint, before the loop starts.
-6. Seven test files failed to *load*, because the list check throws while the module is being
-   imported, so 100 tests never ran. Nothing failed because almost nothing ran. Always read the total.
+6. Eight test files failed to *load*, because the list check throws while the module is being
+   imported, so 107 of the 234 tests never ran. The five failures are all in `main.test.ts`, the one
+   file that runs the program as a subprocess and so reports the crash instead of being part of it.
+   Set that file aside and the same break prints `122 passed (122)` with nothing failing. Always read
+   the total.
 7. Yes. The log is an array in memory, so anyone holding it can edit a record — and a chain that is
    fully recomputed from the beginning **together with its checkpoint** verifies cleanly. What the chain
    buys is that a *quiet* edit is impossible. Making it impossible outright needs a store that refuses
    an `UPDATE`: step 09 gives the application's database user no `UPDATE` and no `DELETE` on the log.
 8. Because a query's success comes back as `{ kind: "data" }` with no envelope, and the correlation
    block lives on the envelope. `result-envelope.schema.json` has no outcome value meaning "here is the
-   data you asked for", so a read has nowhere to carry it. See the section above, and step 19.
+   data you asked for", so a read has nowhere to carry it. See the section above, and step 14.
 9. A **checkpoint** — the count and last hash that `theHead()` holds apart from the records. Chaining
    proves each record still matches its neighbours, and a shortened chain still does: every link holds,
    every hash matches, there is simply less of it. Chaining catches an *edit*; only something outside
@@ -424,8 +487,8 @@ byte-for-byte schema comparison has nothing to compare against.
 its answer is returned, refusals included, with the refusal's code and message as the reason. Two
 halves of the sentence are **not** met. "Controls evaluated" needs controls, which are step 27 —
 nothing evaluates a control here, so the field is absent rather than empty. And "durably" is doing a
-lot of work for an array in memory; step 09 puts the log in PostgreSQL and step 39 makes it
-append-only for real.
+lot of work for an array in memory; step 09 puts the log in PostgreSQL, where the application's
+database user may insert a row and not change or delete one, and step 39 adds the chain's verifier.
 
 `DSOR-AUD-01` is met for the one command, `invoice.issue`: its decisions produce records that validate
 against the specification's own schema — and the test for that runs over the records the **pipeline**
@@ -433,7 +496,7 @@ writes, not only over records a test built itself, which is a distinction a revi
 second test compares the schema byte for byte with `packages/spec/schemas/` so it cannot have been
 quietly edited to fit the code; that one is skipped, and reported as skipped, when the folder is sitting
 outside the dsor repository, because there is then nothing to compare against. The rule covers two
-other things this step does not have — proposal transitions (step 21) and reads covered by
+other things this step does not have — proposal transitions (step 22) and reads covered by
 `DSOR-CLS-05`, which are reads returning `CONFIDENTIAL` or `RESTRICTED` data. Neither contract here
 carries a classification, so no read needs a record. Queries are recorded anyway, which is more than
 the rule asks for, not less.
@@ -443,11 +506,11 @@ Rules nearby this step does **not** claim:
 | Rule | Why not |
 | --- | --- |
 | `DSOR-EXE-03a` | A durable intent record before any side effect, holding the proposal id, operation and version, payload hash, idempotency key, connector and security context. There are no proposals, no idempotency keys and no connectors, so four of six fields do not exist. §21.13, step 36. |
-| `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Steps 34 and 37. |
-| `DSOR-AUD-02a` | Operational audit must not be stored only as agent memory. There is no agent memory to store it in, so there is nothing to get wrong. Step 40. |
-| `DSOR-AUD-03a` | A decision bundle per consequential command, validating against `decision-bundle.schema.json`. §21.17, and a different artifact. Step 29. |
+| `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Step 36, with `DSOR-EXE-03a`. |
+| `DSOR-AUD-02a` | Operational audit must not be stored only as agent memory. There is no agent memory to store it in, so there is nothing to get wrong. Step 09, where the map puts it beside `DSOR-AUD-04a`. |
+| `DSOR-AUD-03a` | A decision bundle per consequential command, validating against `decision-bundle.schema.json`. §21.17, and a different artifact. Step 33. |
 | `DSOR-AUD-04a` | The audit store's own immutability: the runtime identity MUST NOT be able to update or delete audit records. Here the runtime identity is this process, and `forgetTheLog()` erases everything — a test seam guarded by nothing but a comment saying so. Step 09 gives the application's database user no `UPDATE` and no `DELETE`; step 39 hardens it. |
-| `DSOR-CLS-05` | Reads of `CONFIDENTIAL` or `RESTRICTED` data must be audited with principal, actor chain, operation, resource scope and row count. Nothing is classified yet, and `resources` and `row_count` are not written. Step 19. |
+| `DSOR-CLS-05` | Reads of `CONFIDENTIAL` or `RESTRICTED` data must be audited with principal, actor chain, operation, resource scope and row count. Nothing is classified yet, and `resources` and `row_count` are not written. Step 14. |
 
 `DSOR-AUD-04b` is met as **detection**, and only against a checkpoint: `verifyChain(theLog(),
 theHead())` catches an edit, a removal, a reordering, a record spliced in from another history, a

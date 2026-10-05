@@ -18,7 +18,7 @@ import {
   type ErrorEnvelope,
   type ResultEnvelope,
 } from "./envelopes.ts";
-// Every call says who is asking, and NEW IN STEP 06 every call is checked against what that
+// Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
 import { principalFrom, type Login } from "./login.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
@@ -270,7 +270,7 @@ export function assertPaired(
 // "delete a line" to "delete a line and keep a number right as the lists change".
 export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 
-// NEW IN STEP 07: the checklist.
+// STEP 07: the checklist.
 //
 // Each of these four did exactly this before, in this order, inside callOperation. What changed is
 // that the order is now a value: something a test can read, a later step can add a line to, and a
@@ -728,7 +728,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
 /**
  * The one door this program has.
  *
- * NEW IN STEP 07: this is no longer a function whose *shape* is the order of the checks. It is a
+ * STEP 07: this is no longer a function whose *shape* is the order of the checks. It is a
  * door built from the checklist in `PIPELINE`, and the order lives there where a test can read it.
  */
 export const callOperation: Door = makeDoor(PIPELINE);

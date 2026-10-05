@@ -569,7 +569,11 @@ describe("the audit log", () => {
   });
 
   // The clock is real, and the seam exists so a test can be exact and the README stable.
-  it("DSOR-COR-01b: the time on a record comes from a real clock", () => {
+  //
+  // No rule id, and it used to carry DSOR-COR-01b. That rule is "DSoR MUST generate a `request_id`
+  // when the caller supplies none", and nothing here is a request id: this asserts that `now()`
+  // reads the real clock. A correct clock is ordinary correctness, not a sentence of the spec.
+  it("the time on a record comes from a real clock", () => {
     resetClock();
 
     const before = Date.now();

@@ -1,17 +1,16 @@
-// NEW IN STEP 08: the demo program itself is tested.
+// STEP 07 was the first to run the program the README tells a learner to run, as a subprocess, and
+// to compare what it printed byte for byte. NEW IN STEP 08: the output now ends with the audit log,
+// and one column of it — the hash — covers the time each decision was made, so it differs on every
+// run. The byte-for-byte literal had to go. This file checks the lines that cannot move, and
+// normalises the one column that can.
 //
-// Four hostile reviews and a mutation sweep agreed on one thing about every step of this tutorial so
-// far: `src/main.ts` is imported by no test. It is the program the README tells a learner to run and
-// whose output the README pastes as proof — and flipping a single `===` inside it left every test
-// green while `pnpm start` printed the *opposite* of what the README promises, or crashed outright.
+// Why the file exists has not changed. `src/main.ts` is imported by no other test. It is the program
+// whose output the README pastes as proof — and flipping a single `===` inside it leaves every other
+// test green while `pnpm start` prints the *opposite* of what the README promises, or crashes
+// outright.
 //
-// So this runs the real program, as a learner would, and checks what it prints. It is a subprocess
-// rather than an import because `main.ts` *is* a script: it does its work at the top level, so
-// importing it would mean running it, and there would be nothing to call.
-//
-// One thing has to be normalised. A record's hash covers the time the decision was made, so the hash
-// column differs on every run. That is correct behaviour, documented in the README, and it is the only
-// part of the output that moves.
+// It is a subprocess rather than an import because `main.ts` *is* a script: it does its work at the
+// top level, so importing it would mean running it, and there would be nothing to call.
 
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";

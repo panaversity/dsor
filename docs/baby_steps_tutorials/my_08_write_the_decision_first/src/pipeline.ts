@@ -1,4 +1,4 @@
-// NEW IN STEP 07: the order of the checks becomes a list.
+// STEP 07: the order of the checks becomes a list.
 //
 // Every check this program makes already happened in the right order. What it did not have was
 // anywhere that *said* the order. It was the order some lines sat in inside one function — and
