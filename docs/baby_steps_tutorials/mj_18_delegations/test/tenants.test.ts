@@ -302,15 +302,16 @@ describe("C2: a read looks only inside the active company", () => {
 });
 
 describe("C3: only the caller's roles in the active company count", () => {
+  // Since step 18 the firm's agent holds no role. In each company it may do what its slip
+  // there lists and the signer holds now: del_101 from user_123, del_102 from user_700, and
+  // nothing in org_999 (step 18's README, decisions 2 and 4). The comment stands here, not
+  // inside the call, so the spec guard can read the title.
   it.each([
     // ap_agent in org_456 and ap_supervisor in org_789, with step 17's payment permissions.
     ["org_456", DEL_101, ["invoice:read", "payment:create"]],
     ["org_789", DEL_102, ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
     ["org_999", undefined, []],
   ])(
-    // Since step 18 the firm's agent holds no role. In each company it may do what its slip
-    // there lists and the signer holds now: del_101 from user_123, del_102 from user_700, and
-    // nothing in org_999 (step 18's README, decisions 2 and 4).
     "DSOR-DEL-02: in %s, the firm's agent may do only what its slip there and its signer allow",
     (tenant, slip, held) => {
       const firm = whoIsCalling({ token: "tok_9b52" });

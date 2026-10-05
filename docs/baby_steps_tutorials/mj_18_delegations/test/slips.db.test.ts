@@ -144,26 +144,28 @@ describe("the slips, on the database", () => {
   // slipOf could drop a constraint, a parent, or a mode, with every test green.
   it.each([
     [
-      "DSOR-DEL-02: a slip the database holds with a per_transaction_limit gets DELEGATION_REQUIRED",
+      "a per_transaction_limit",
       { constraints: { per_transaction_limit: { value: "100.00", currency: "USD" } } },
       "carries per_transaction_limit",
     ],
-    [
-      "DSOR-DEL-02: a sub-slip the database holds gets DELEGATION_REQUIRED",
-      { parent: "del_100" },
-      "is a sub-slip of del_100",
-    ],
-    [
-      "DSOR-DEL-07: a slip the database holds for on_behalf_of only gets DELEGATION_REQUIRED",
-      { modes: ["on_behalf_of"] },
-      "does not allow unattended calls",
-    ],
-  ])("%s", async (_, changed, why) => {
-    const answer = await withOwnSlip(changed, (who) =>
+    ["a parent, as a sub-slip", { parent: "del_100" }, "is a sub-slip of del_100"],
+  ])(
+    "DSOR-DEL-02: a slip the database holds with %s gets DELEGATION_REQUIRED",
+    async (_, changed, why) => {
+      const answer = await withOwnSlip(changed, (who) =>
+        call(registry, log, who, "invoice.get", INV_1008),
+      );
+      expect(answer).toMatchObject({ code: "DELEGATION_REQUIRED" });
+      expect((answer as { message: string }).message).toContain(why);
+    },
+  );
+
+  it("DSOR-DEL-07: a slip the database holds for on_behalf_of only gets DELEGATION_REQUIRED", async () => {
+    const answer = await withOwnSlip({ modes: ["on_behalf_of"] }, (who) =>
       call(registry, log, who, "invoice.get", INV_1008),
     );
     expect(answer).toMatchObject({ code: "DELEGATION_REQUIRED" });
-    expect((answer as { message: string }).message).toContain(why);
+    expect((answer as { message: string }).message).toContain("does not allow unattended calls");
   });
 
   it("step 18's decision 13: a slip the database holds whose subdelegation breaks the schema gets INTERNAL_ERROR", async () => {
