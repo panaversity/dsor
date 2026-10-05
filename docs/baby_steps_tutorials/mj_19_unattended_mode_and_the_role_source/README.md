@@ -329,7 +329,35 @@ this way:
 
 ## What changed since step 18
 
-_To be written when the code exists._
+| File | What changed |
+| --- | --- |
+| `role-sources.json` | **New.** Each company's role source, in the schema's own shape: org_456 `idp_lookup` with `PT1H`, org_789 `idp_lookup` with `PT4H` (decision 8) |
+| `schemas/tenant-policy.schema.json` | **New.** The specification's tenant policy schema, copied byte for byte. Start-up checks each setting against its `role_source` part |
+| `src/directory.ts` | **New.** The fake directory: its people, their status and roles, and a switch for on, off, and stuck (decision 1) |
+| `src/authority.ts` | **New.** The start-up check of the settings (C1). Line ③'s last question: ask the directory of the slip's company, wait at most 2 seconds, keep each good answer per company and person, use a kept one only within the bound, and refuse in four ways (C2 to C10, decisions 3 to 6, 9, and 11) |
+| `src/delegation.ts` | The check of the slip's signer leaves the slip check. The directory answers it now (decision 2) |
+| `src/pipeline.ts` | Line ③ asks the role source last, after the named-slip check (decision 12), and hands its answer to line ⑤ and to the record |
+| `src/permissions.ts` | Line ⑤ takes the signer's roles from line ③, not from DSoR's login table. Step 06's `RoleSource` becomes `RoleTableSource` |
+| `src/log.ts` | An agent's record gains `subject_authority` (decision 7) |
+| `src/registry.ts` | Start-up checks the settings with everything else, and the registry holds the role source |
+| `src/main.ts` | The night: the agent's record, a job change, a suspension, a directory that goes off, and a restart |
+| `roles.json` | `ap_clerk`, which may only read invoices: the job that user_123 moves to in the story |
+| `test/role-source.test.ts`, `test/role-source.db.test.ts` | **New.** C1 to C12 |
+| `test/helpers.ts`, `test/db.ts`, `test/cross-tenant.ts`, and eleven more test files | Every registry that lets an agent call gets the story's directories. The cross-company suite asks line ③'s new part too |
+
+Some old tests changed with the step, because they typed out the old role table or the old
+record, or asked line ⑤ in its old way. Each change has a one-line reason in the test, and
+"Build it yourself" counts them, move by move.
+
+To see every line, from `docs/baby_steps_tutorials`:
+
+```bash
+git diff --no-index mj_18_delegations/src mj_19_unattended_mode_and_the_role_source/src
+```
+
+```bash
+git diff --no-index mj_18_delegations/test mj_19_unattended_mode_and_the_role_source/test
+```
 
 ## Run it
 
@@ -337,11 +365,121 @@ _To be written when the code exists._
 
 ## Break it
 
-_To be written when the code exists, with real output._
+Each break was made in a copy of the step outside the repository, never in the step itself,
+and run as a story on the copy's own code, with the clock set by the story. The script is
+not part of the step. Then the whole unit suite ran on the copy. The learner predicted each
+story before any code existed ("Breaks we will try" above). Each prediction stands beside the
+real run here.
+
+**B1, the map's own: switch the directory off.** No code changes. org_456's directory is
+off from the start, so DSoR has no kept answer.
+
+```text
+02:00 agent, payment.create INV-1008 (org_456's directory off, nothing kept)
+   hears: FRESHNESS_UNSATISFIABLE: "payment.create": no answer about user_123, who signed slip del_100, came from the directory of org_456 within PT1H
+   drafts in memory: 0
+02:01 user_123 herself, payment.create INV-1008
+   hears: answered (PAY-901)
+02:02 firm-ap-fte in org_789, invoice.get INV-1008
+   hears: answered (INV-1008)
+```
+
+The learner predicted line ③, `FRESHNESS_UNSATISFIABLE`, and no draft. That is what happened.
+The agent was refused, not waved through, which is what the map asks.
+
+**B2: delete the age check.** In `src/authority.ts`, the condition becomes `last ===
+undefined`, so any kept answer counts, however old.
+
+```text
+01:30 agent, invoice.get (directory on, answer kept)
+   hears: answered (INV-1008)
+02:45 agent, payment.create INV-1008 (directory off)
+   hears: answered (PAY-901)
+   record: ok, as of 2026-10-06T01:30:00.000Z
+   drafts in memory: 1
+```
+
+6 of 1289 unit tests fail: the five tests of C3 with a kept answer 75 minutes old, and C5's test
+of each company's bound. The learner predicted the draft, with a record "as of 01:30". That
+is what happened.
+
+**B3: keep answers by person only.** In `src/authority.ts`, `keptKey` leaves the company out.
+C10's check of every answer stays.
+
+```text
+01:30 firm-ap-fte in org_456 under del_101, invoice.get (answer about user_123 kept)
+   hears: answered (INV-1008)
+02:10 firm-ap-fte in org_789 under del_103 (signed by user_123), payment.create INV-2001
+   hears: INTERNAL_ERROR: the directory of org_789 answered with something DSoR cannot use
+   drafts in memory: 0
+```
+
+1 of 1289 unit tests fails: C6's test, which expects `FRESHNESS_UNSATISFIABLE`. The learner
+predicted a draft in org_789. The broken lookup does find org_456's answer about user_123, as
+the learner traced. But that answer still names org_456, and line ③ checks the company of every
+answer before it uses one. So the second check refused the call. Without it, the learner's
+answer would be right.
+
+**B4: delete the 2-second limit.** In `src/authority.ts`, DSoR waits for the directory's
+answer alone. The directory is stuck from 02:00: it takes every question and never answers.
+
+```text
+01:30 agent, invoice.get (directory on, answer kept)
+   hears: answered (INV-1008)
+02:10 agent, payment.create INV-1008 (directory stuck)
+   hears: NOTHING after 10 seconds, the call is still open
+   drafts in memory: 0
+```
+
+The same story on the step as built:
+
+```text
+02:10 agent, payment.create INV-1008 (directory stuck)
+   hears: answered (PAY-901)
+   record: ok, as of 2026-10-06T01:30:00.000Z
+```
+
+2 of 1289 unit tests fail: C4's two tests. The learner predicted the draft, with a record "as
+of 01:30": that is what the step as built does, after 2 seconds. With the limit deleted, DSoR
+waits for ever, and one stuck directory silently stops the whole night's work.
+
+Each copy was put back and checked to be the same as the step, byte for byte, after its break.
 
 ## Build it yourself with Claude Code
 
-_To be written when the code exists._
+This is how the step was built:
+
+| # | Move | What you do |
+|---|---|---|
+| 1 | Understand | A session with no code, on 2026-10-05, after a course on the specification from the start: "The foundations course, and step 19 before design" in `../mj_notes.md` |
+| 2 | Design | "In plain words", "Why it matters", and "The design, before any code": decisions 1 to 9, one per turn, each judged by two tests the learner named, closest to production and deepest understanding. Then the predictions for B1 to B4, asked as stories with a fact card |
+| 3 | Check the design | Against the specification, the schemas, and step 18's code, before the first test. One gap (decision 11) and one question of order (decision 12) went to the learner. Four small fixes followed from the rules |
+| 4 | Neon | Decision 10: the learner deletes `step-13`. A branch `step-19` from `step-18`. `.env` written by a command, never shown |
+| 5 | Markers and configuration | Step 18's markers removed. The settings file, the schema copy, `ap_clerk`, and the renamed type. No check reads them yet |
+| 6 | Red | Shells: code with the new shape and step 18's behaviour, so a new test fails on what it checks, not on a missing file. The story's directories in every registry. Then every new test |
+| 7 | Green | `src/authority.ts` and the record. The learner predicted one story of C10 before the run, and the run agreed |
+| 8 | The program | The night in `pnpm start`. The learner predicted the restart before it was written |
+| 9 | Break it | Each break in a copy outside the repository, beside the step as built, with the whole unit suite |
+| 10 | Review | Reviewers who have not seen the conversation, each in a copy outside the repository |
+
+The build continued from the design in the same session, with the learner's "go" before each
+move. To start it in a new session:
+
+```text
+Build step 19 in learner mode from the design in
+docs/baby_steps_tutorials/mj_19_unattended_mode_and_the_role_source/README.md.
+```
+
+The learner's predictions, and what each break really did, are under "Break it".
+
+What each move broke, measured. These were not predictions:
+
+| Move | What failed |
+| --- | --- |
+| Configuration | 1 old unit test, which types out `roles.json` |
+| Red | 57 of 66 new unit tests. While the shells went in, 40 old unit tests failed until they were fixed: 38 in the cross-company suite, which asks line ③ itself, and 2 that asked line ⑤ in its old way. None changed what it proves |
+| Green | 5 old unit tests, which type out an agent's record exactly. The record gained `subject_authority` (decision 7) |
+| The program | None |
 
 ## Check yourself
 

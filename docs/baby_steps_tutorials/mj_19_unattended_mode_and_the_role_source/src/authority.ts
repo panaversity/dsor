@@ -61,6 +61,8 @@ const validateSetting = ajv.compile({
 // §44's limit for L2: the signer's authority may be at most 24 hours old (DSOR-BND-02).
 const DAY = 24 * 60 * 60 * 1000;
 // The schema's own pattern for a duration has passed, so each part is a number or missing.
+// not copied: it only splits a duration that already matched the specification's pattern,
+// common.schema.json's duration, into its days, hours, minutes, and seconds.
 const PARTS = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
 
 /** A duration that passed the schema, in milliseconds. */
