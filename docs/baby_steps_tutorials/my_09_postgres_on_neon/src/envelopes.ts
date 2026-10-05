@@ -204,7 +204,7 @@ function idFor(requestId: string | undefined): string {
 }
 
 /**
- * NEW IN STEP 08: how long a refusal's message may be.
+ * STEP 08: how long a refusal's message may be.
  *
  * Every error envelope in this program is built here, which is why the cap lives here. A fuzz run of
  * 20,412 hostile calls found two messages the caller had filled out: 200,026 characters from an

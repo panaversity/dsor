@@ -1,4 +1,4 @@
-// NEW IN STEP 07: the order of the checks, as something a test can read.
+// STEP 07: the order of the checks, as something a test can read.
 //
 // Nothing here calls an operation. The whole point of this step is that the order stopped being
 // the order some lines happened to sit in, and became a list — so these tests are about the list.
@@ -17,7 +17,7 @@ function fake(
   at: number | null,
   name: string,
   applies: Stage["applies"] = "both",
-  // NEW IN STEP 08. `record the decision` is the only stage that needs it true, so it defaults to
+  // STEP 08. `record the decision` is the only stage that needs it true, so it defaults to
   // the answer that is right for every other stage — and a list built with the wrong one is exactly
   // what the two new checks in assertPipeline refuse.
   evenAfterARefusal = name === "record the decision",
@@ -344,7 +344,7 @@ describe("the pipeline", () => {
     expect(await theLog()).toHaveLength(0);
   });
 
-  // NEW IN STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.
+  // STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.
   it("DSOR-EXE-01a: an unnumbered stage may not float anywhere it likes", () => {
     const floating = fake(null, "do the side effect");
 
@@ -396,7 +396,7 @@ describe("the pipeline", () => {
   });
 
   // A door is checked when it is built, and then walks a frozen copy — not the array it was handed.
-  it("DSOR-OPR-04a: a door cannot be rewritten after it has been checked", async () => {
+  it("DSOR-EXE-01b: a door cannot be rewritten after it has been checked", async () => {
     const list = [...PIPELINE];
     const door = makeDoor(list);
 
@@ -495,7 +495,7 @@ describe("the pipeline", () => {
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
   // *same* pipeline, so a door is built from a list and the list is checked as the door is built —
   // not on the first request, and not by trusting whoever builds it.
-  it("DSOR-OPR-04a: a door cannot be built from a list that does not pass the check", () => {
+  it("DSOR-EXE-01b: a door cannot be built from a list that does not pass the check", () => {
     expect(() => makeDoor([fake(1, "authenticate")])).toThrow(/missing/);
     expect(() => makeDoor([])).toThrow(/is empty/);
   });

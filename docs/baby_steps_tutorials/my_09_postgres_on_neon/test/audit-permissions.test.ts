@@ -588,7 +588,7 @@ describe("the database's own witness", () => {
 });
 
 describe("erasing the log, which only a test may do", () => {
-  it("DSOR-AUD-04c: forgetTheLog erases this chain and leaves every other chain alone", async () => {
+  it("forgetTheLog erases this chain and leaves every other chain alone", async () => {
     // The chain filter is claimed in audit.ts and was tested by nothing: `DELETE FROM public.audit`
     // with no WHERE survived every test. One chain today; step 10 brings a second tenant, and a test
     // for the first tenant that wipes the second's history is the bug this prevents.

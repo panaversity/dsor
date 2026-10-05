@@ -204,7 +204,7 @@ describe("logging in", () => {
   // passing one where the other belongs typechecks cleanly. These two refusals pass neither,
   // which is exactly where such a swap would go unnoticed. The request id is generated, so
   // it has a shape, and a name does not have that shape.
-  it("DSOR-IDN-01: an identity refusal carries a generated request id, not a name", () => {
+  it("DSOR-COR-01b: an identity refusal carries a generated request id, not a name", () => {
     for (const login of [undefined, { loggedInAs: "cfo_100_evil" }]) {
       const who = principalFrom(login, "req_1");
 

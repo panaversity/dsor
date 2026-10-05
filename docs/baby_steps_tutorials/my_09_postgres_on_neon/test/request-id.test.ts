@@ -1,4 +1,4 @@
-// NEW IN STEP 08: one id per request, minted before the first stage.
+// STEP 08: one id per request, minted before the first stage.
 //
 // This is not a new feature; it is a repair, and it has to land before the audit record does.
 // `correlation.request_id` is a *required* field of audit-record.schema.json, so step 08 has to put

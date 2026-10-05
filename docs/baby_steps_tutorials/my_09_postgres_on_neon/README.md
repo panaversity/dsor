@@ -67,6 +67,31 @@ the database whether this connection could rewrite the log, refusing to start if
 routes, because a connection string pointing at the owner is a configuration mistake, not a
 preference.
 
+## What changed since step 08
+
+```bash
+git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
+```
+
+| File | What |
+| --- | --- |
+| `migrations/001_audit.sql` | new — the table, with the primary key and `UNIQUE (chain, sequence)` |
+| `migrations/002_runtime_user.sql` | new — the grant and the revokes. The step |
+| `src/migrations.ts` | new — finding the migrations, deciding which are left, applying them |
+| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk. On disk it drops to `dsor_runtime`; on a server it is whatever the connection string names, and either way it refuses to start holding `UPDATE` |
+| `src/audit.ts` | the log is SQL now: `INSERT`, `SELECT`, and a head that is a query. Every table name says `public.`; every record carries a per-attempt `trace_id` |
+| `src/login.ts` | one line moved inside a `try`, because `Object.hasOwn` can throw |
+| `src/pipeline.ts`, `src/operations.ts` | async, because a database write is |
+| `scripts/migrate.ts` | new — `pnpm migrate` |
+| `test/database.test.ts` | new — who the program connects as. Break 6 is zero failures without it |
+| `test/audit-race.test.ts` | new — a writer held at its tail read while another commits |
+| `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply, on a connection that may then be gone |
+| `test/audit.db.test.ts` | the program's own door pointed at a real server: at the owner it refuses to start, at the application it starts and still cannot `UPDATE`. And the program's own writer under real parallelism, which answered a question PGlite could only guess at: the constraint that refuses a collision of its row shape is `audit_pkey` |
+| `test/who-is-calling.test.ts`, `test/deny-by-default.test.ts` | one refusal each that nothing earlier asked for: no login plus `cfo_100` planted in the arguments is still nobody; and a principal wearing a role nobody defined is refused a *query*, through a door `makeDoor` built from the real checklist — every role in the story can read, so no other test can show a read being refused |
+| everything in `test/` | async, and nine files now need a database |
+
+232 tests became 327.
+
 ## Run it
 
 ```bash
@@ -159,7 +184,7 @@ Those refusals are PostgreSQL's own privilege system, not our code checking itse
 ## Two commands, and what each proves
 
 ```bash
-pnpm check     # 325 tests, no database and no network needed. Outside the repository one of
+pnpm check     # 327 tests, no database and no network needed. Outside the repository one of
                # them skips itself, and says so: it compares the step's copy of the audit-record
                # schema with the specification's, and a copy of one step has no specification
 pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
@@ -193,8 +218,14 @@ throwaway database the answer is `rm -rf .local-database` and run again.
 cp .env.example .env     # then fill in both connection strings
 ```
 
-`.env` is read by `pnpm start`, `pnpm migrate` and `pnpm test:db` — through
-`process.loadEnvFile`, which is Node's own, so there is no dependency for it.
+`.env` is read two ways, both Node's own, so there is no dependency for it: `pnpm start` and
+`pnpm migrate` pass `--env-file-if-exists=.env` to Node (see `package.json`), and `pnpm test:db`
+calls `process.loadEnvFile` from `test/support/env.ts` before any test reads `process.env`.
+
+One warning before you fill it in: `test/audit.db.test.ts` runs `DELETE FROM audit` as the owner,
+before its tests and again after them, against whatever database `.env` names — the map's
+"separate Neon branch" is not something this step makes for you — so point both strings at a
+database of its own, never at one whose log you want to keep.
 
 **Neon**, which is what the map names: make a project at [neon.tech](https://neon.tech), then in its
 SQL editor:
@@ -258,30 +289,6 @@ Detection by an independent witness, not prevention. A `CHECK` that `at` is near
 it and would also refuse an innocent slow request — and a refused audit write means the operation does
 not run at all.
 
-## What changed since step 08
-
-```bash
-git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
-```
-
-| File | What |
-| --- | --- |
-| `migrations/001_audit.sql` | new — the table, with the primary key and `UNIQUE (chain, sequence)` |
-| `migrations/002_runtime_user.sql` | new — the grant and the revokes. The step |
-| `src/migrations.ts` | new — finding the migrations, deciding which are left, applying them |
-| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk. On disk it drops to `dsor_runtime`; on a server it is whatever the connection string names, and either way it refuses to start holding `UPDATE` |
-| `src/audit.ts` | the log is SQL now: `INSERT`, `SELECT`, and a head that is a query. Every table name says `public.`; every record carries a per-attempt `trace_id` |
-| `src/login.ts` | one line moved inside a `try`, because `Object.hasOwn` can throw |
-| `src/pipeline.ts`, `src/operations.ts` | async, because a database write is |
-| `scripts/migrate.ts` | new — `pnpm migrate` |
-| `test/database.test.ts` | new — who the program connects as. Break 6 is zero failures without it |
-| `test/audit-race.test.ts` | new — a writer held at its tail read while another commits |
-| `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply, on a connection that may then be gone |
-| `test/audit.db.test.ts` | the program's own door pointed at a real server: at the owner it refuses to start, at the application it starts and still cannot `UPDATE`. And the program's own writer under real parallelism, which answered a question PGlite could only guess at: the constraint that refuses a collision of its row shape is `audit_pkey` |
-| everything in `test/` | async, and nine files now need a database |
-
-232 tests became 325.
-
 ## The pipeline became async, and that was a decision
 
 A database write is not synchronous, so the moment `audit()` writes a row the `await` reaches every
@@ -302,7 +309,9 @@ await expect(door(...)).rejects.toThrow(/power went out/)  // what it has to be
 Nine of them, because this step has nine separate guarantees and a break that takes down half the
 suite does not tell you which one you broke. Every number below was produced by actually making the
 change and running `pnpm check`, never written from memory — and several of them were wrong until
-they were re-run.
+they were re-run. Three of the breaks trip the typecheck before a single test runs, because
+`noUnusedLocals` notices the helper nothing calls any more; for those the README shows what
+`pnpm check` prints, then the count from `pnpm test`, which skips the typecheck.
 
 ### Break 1 · let the application change the log
 
@@ -314,7 +323,7 @@ GRANT ALL ON public.audit TO dsor_runtime;
 ```
 
 ```text
- Tests  6 failed | 319 passed (325)
+ Tests  6 failed | 321 passed (327)
 ```
 
 Where the line goes decides what you see, and the first version of this exercise did not say. Replaced,
@@ -322,7 +331,7 @@ the `REVOKE UPDATE, DELETE, TRUNCATE` line below it still takes those three back
 when" test **passes**, and the six that fail are the ones that read the privilege shape (INSERT is
 table-wide again) and the two that forge `recorded_at`, which `GRANT ALL` hands back column by column.
 **Appended** at the end of the file instead, nothing takes `UPDATE` back, `refuseIfItCanRewriteHistory`
-refuses every `openTheDatabase`, and `24 failed | 301 passed` — the start-up guard doing its job,
+refuses every `openTheDatabase`, and `24 failed | 303 passed` — the start-up guard doing its job,
 loudly, in every test that opens the program's own door.
 
 ### Break 2 · leave `TRUNCATE` out of the revoke
@@ -332,7 +341,7 @@ REVOKE UPDATE, DELETE ON public.audit FROM dsor_runtime;   -- was UPDATE, DELETE
 ```
 
 ```text
- Tests  2 failed | 323 passed (325)
+ Tests  2 failed | 325 passed (327)
 ```
 
 `TRUNCATE` is its own privilege, not part of `DELETE`, and it empties the table in one statement. A
@@ -343,7 +352,7 @@ log the application can `TRUNCATE` is not append-only whatever else is true of i
 In `001_audit.sql`, replace `UNIQUE (chain, sequence)` with `CHECK (true)`.
 
 ```text
- Tests  2 failed | 323 passed (325)
+ Tests  2 failed | 325 passed (327)
 ```
 
 ### Break 4 · let a migration be edited after it ran
@@ -355,7 +364,14 @@ if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checks
 ```
 
 ```text
- Tests  2 failed | 323 passed (325)
+src/migrations.ts(167,22): error TS6133: 'checksum' is declared but its value is never read.
+```
+
+`pnpm check` stops there: nothing reads `checksum` any more, and the typecheck says so — a smaller
+version of the test's job, done earlier. `pnpm test` runs the suite anyway:
+
+```text
+ Tests  2 failed | 325 passed (327)
 ```
 
 ### Break 5 · order the chain as text
@@ -367,8 +383,13 @@ SELECT sequence::text, record_hash FROM public.audit WHERE chain = $1 ORDER BY s
 ```
 
 ```text
- Tests  64 failed | 261 passed (325)
+ Tests  65 failed | 262 passed (327)
 ```
+
+Read the failures before reading on, because they are not the ordering bug: the code reads
+`at_position`, so with the alias gone the tail's position is `undefined`, the next sequence is `NaN`,
+and the schema refuses the second record on every chain — `data/sequence must be integer`. That is
+the alias being load-bearing a second way. The bug it was added for is the one below.
 
 This is the bug that actually happened, and it survived nine records before it bit. `SELECT
 sequence::text` names its output column `sequence`, and PostgreSQL resolves a bare name in `ORDER BY`
@@ -384,7 +405,13 @@ In `src/database.ts`, comment out the line that drops to the application's role:
 ```
 
 ```text
- Tests  11 failed | 314 passed (325)
+src/database.ts(178,16): error TS6133: 'becomeTheApplication' is declared but its value is never read.
+```
+
+The typecheck again, for the same reason. `pnpm test`:
+
+```text
+ Tests  11 failed | 316 passed (327)
 ```
 
 The largest number here after Break 5, and it was **zero** until `test/database.test.ts` existed.
@@ -397,7 +424,7 @@ holding, or it is testing the database and not the program.
 In `src/audit.ts`, write `INSERT INTO audit (` instead of `INSERT INTO public.audit (`.
 
 ```text
- Tests  2 failed | 323 passed (325)
+ Tests  2 failed | 325 passed (327)
 ```
 
 `dsor_runtime` cannot `UPDATE` or `DELETE` the log, and it *can* create a temporary table, because
@@ -421,7 +448,14 @@ In `src/audit.ts`, replace the `try`/`catch` around `insert(db, written)` with a
 `await insert(db, written);`.
 
 ```text
- Tests  5 failed | 320 passed (325)
+src/audit.ts(674,10): error TS6133: 'isServerError' is declared but its value is never read.
+src/audit.ts(681,10): error TS6133: 'isUniqueViolation' is declared but its value is never read.
+```
+
+Two helpers with nothing left to call them. `pnpm test`:
+
+```text
+ Tests  5 failed | 322 passed (327)
 ```
 
 A database can commit an `INSERT` and lose the **reply**. Step 08's store was an array, which either
@@ -450,7 +484,7 @@ In `src/audit.ts`, move the block that reads the clock — from `const told = no
 `const at = new Date(instant).toISOString();` — back above `const db = theDatabase();`.
 
 ```text
- Tests  4 failed | 321 passed (325)
+ Tests  3 failed | 324 passed (327)
 ```
 
 A writer that gets overtaken then stamps an earlier time at a later position: a log whose times
@@ -463,9 +497,10 @@ clock, which `recorded_at` already witnesses, or two instances of this program w
 seconds apart, which is a normal deployment. Reading the clock after the tail still matters on its
 own terms, and the unique constraint is why it works for **one process with one clock**: a writer
 that takes position N+1 saw N in the tail, so N was committed, and N's time was sampled before N's
-`INSERT`. The four tests that fall are the ordering tests, and they are what this break is about.
+`INSERT`. The three tests that fall are `audit-race.test.ts`'s ordering tests, and they are what this break is
+about.
 
-Restore each break and confirm `pnpm check` prints `325 passed` again.
+Restore each break and confirm `pnpm check` prints `327 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -484,12 +519,12 @@ Restore each break and confirm `pnpm check` prints `325 passed` again.
 
 ## Check yourself
 
-1. The log is a database table now. What stops the program rewriting a row?
+1. The log is a database table now. What stops the program rewriting a row — and why does the
+   revoke name `TRUNCATE` separately from `DELETE`?
 2. Why does `at` have to be the application's time rather than the database's?
 3. `pnpm check` is green. Which of this step's guarantees is still unproven?
 4. A `REVOKE` line was removed and every test still passed. What does that tell you?
 5. Why must an applied migration never be edited, when the file is still right there?
-6. Why is `TRUNCATE` named separately from `DELETE`?
 
 <details>
 <summary>Answers</summary>
@@ -499,7 +534,9 @@ Restore each break and confirm `pnpm check` prints `325 passed` again.
    our code. Step 08's chain makes a change *detectable*; this makes it refused. And the second half
    of the answer is the one this step got wrong for a day: the program has to actually **be** that
    account — a `GRANT` protects nothing if the process connects as the owner, and a test that runs
-   `SET ROLE` itself proves the grant, not the program.
+   `SET ROLE` itself proves the grant, not the program. `TRUNCATE` is named on its own because it
+   is a separate privilege: revoking `DELETE` leaves it, and it empties the whole table in one
+   statement.
 2. Because the fingerprint covers `at`, and the fingerprint is computed before the row exists — and
    `UPDATE` is revoked afterwards, so there is no later moment to stamp it in. `recorded_at` is the
    database's own time, which the application cannot set — `INSERT` is granted column by column and
@@ -511,7 +548,11 @@ Restore each break and confirm `pnpm check` prints `325 passed` again.
    pointed at the owner's connection string, refuses to open. All three need a server and all are in
    `audit.db.test.ts`, which reports `9 skipped` without one — and which has been run, nine tests
    against PostgreSQL 17 with two real logins. Beyond both tiers, nothing this step claims is left
-   unproven. Three things were open for a day and closed: a `SECURITY DEFINER` function and a trigger
+   unproven — and one claim was dropped rather than proven. `DSOR-AUD-02a`, which the map names for
+   this step, sat in the list of rules met with no test behind it. There is no agent memory in this
+   program for the log to be in instead, so no test could fail for that rule, and a claim no test
+   can fail for is not a claim; it is in the table of rules not claimed, with the reason. Three
+   things were open for a day and closed: a `SECURITY DEFINER` function and a trigger
    are refused at start-up now; the real server named `audit_pkey` as the constraint that refuses a
    collision of the program's own rows; and the time check that two skewed clocks would have tripped
    was removed from `verifyChain`, because it was never about tampering (decision 87). What remains
@@ -527,8 +568,6 @@ Restore each break and confirm `pnpm check` prints `325 passed` again.
    applied … an applied migration is never edited. Add a new migration instead."* That line fired
    twice while this step was being fixed, and the answer in development — a database nobody but you
    has ever used — was to drop the tables and re-apply. The answer anywhere real is `003`.
-6. Because it is a separate privilege. Revoking `DELETE` leaves `TRUNCATE`, and `TRUNCATE` empties
-   the whole table in one statement.
 
 </details>
 
@@ -536,8 +575,6 @@ Restore each break and confirm `pnpm check` prints `325 passed` again.
 
 - **[DSOR-AUD-04a · L2]** The DSoR runtime identity MUST NOT be able to update or delete audit
   records. ([§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention))
-- **[DSOR-AUD-02a · L1]** Operational audit MUST NOT be stored only as agent memory.
-  ([§29](../../../specs/dsor/03-execution.md#29-audit-and-decision-evidence))
 
 `DSOR-AUD-04a` is met for the account the application connects as: `INSERT` on every column except
 `recorded_at`, and `SELECT`, with `UPDATE`, `DELETE` and `TRUNCATE` revoked — proven by tests that run
@@ -568,10 +605,6 @@ Three limits, stated plainly.
    someone who can change the configuration, the migrations, or the owner's own code — a start-up
    check is a tripwire for mistakes, not a wall against the owner, and the owner is the design.
 
-`DSOR-AUD-02a` is met in the only sense it can be here: the log is in PostgreSQL, and there is no
-agent memory in this program for it to be in instead. The rule exists to stop an implementation
-treating a model's recollection as the record, and nothing here could.
-
 `DSOR-EXE-02`'s *durably* half, which step 08 explicitly did not claim, now holds: the records survive
 the process, which `pnpm start` demonstrates by being run twice.
 
@@ -589,6 +622,7 @@ Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
+| `DSOR-AUD-02a` | Operational audit must not be stored only as agent memory. The map names this rule for the step, and an earlier version of this README listed it as met with no test behind it. The log is in PostgreSQL, and there is no agent memory in this program for it to be in instead — so nothing here could break the rule, and a test that cannot fail proves nothing. The rule exists to stop an implementation treating a model's recollection as the record; the claim arrives with the agent memory, in the step that adds one. |
 | `DSOR-AUD-04c` | Every record belongs to exactly one chain. There is one chain, so nothing is partitioned and nothing can belong to two. Step 10 brings a second tenant and makes this a real question. |
 | `DSOR-AUD-04d` | Every chain covered by each checkpoint. `theHead()` is a checkpoint of one chain, computed on demand and stored nowhere — §30 says to anchor checkpoints outside the control-plane store, and this is inside it. |
 | `DSOR-AUD-05b` | Reading audit must itself be authorized and audited. `theLog()` is a plain function any code can call, and reading it writes nothing. |

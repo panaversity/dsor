@@ -1,4 +1,4 @@
-// NEW IN STEP 08: the log, on its own.
+// STEP 08: the log, on its own.
 //
 // Nothing here calls an operation. These tests are about what an audit record is, and about the
 // chain that makes one hard to change quietly — before anything writes one.
@@ -679,7 +679,7 @@ describe("the audit log", () => {
   });
 
   // The clock is real, and the seam exists so a test can be exact and the README stable.
-  it("DSOR-COR-01b: the time on a record comes from a real clock", () => {
+  it("the time on a record comes from a real clock", () => {
     resetClock();
 
     const before = Date.now();

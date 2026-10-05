@@ -1,11 +1,13 @@
-// NEW IN STEP 06: the test the whole step exists for.
+// STEP 06: the test the whole step exists for.
 //
 // The map's "done when" for this step reads: a caller with `invoice:read` can read and cannot
 // issue. That caller is cfo_100 — she approves payments, and does not type invoices into the
 // accounts-payable system.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { callOperation, makeDoor, PIPELINE, type OperationAnswer } from "../src/operations.ts";
+import type { Context } from "../src/pipeline.ts";
+import type { Principal } from "../src/people.ts";
 import { aDatabase } from "./support/database.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -37,7 +39,7 @@ afterAll(async () => {
 });
 
 describe("anything not granted is refused", () => {
-  it("DSOR-AUT-01b: cfo_100 may read an invoice", async () => {
+  it("DSOR-AUT-01a: cfo_100 may read an invoice", async () => {
     const answer = await callOperation(CFO, "invoice.get", { invoice: INV_1008 });
 
     if (answer.kind !== "data") {
@@ -199,11 +201,51 @@ describe("anything not granted is refused", () => {
     expect(seen.size).toBe(1);
   });
 
+  // NEW IN STEP 09. Every role in the story holds invoice:read, so nothing above can show a *query*
+  // being refused — and an `authorize` that waved every read through would have passed all of it.
+  // `permissions.test.ts` asks `holds` directly; this asks the door. It is built from the real
+  // checklist with one stage swapped: `authenticate` hands back user_123 wearing a role nobody
+  // defined, so the real `authorize` meets a principal who was granted nothing and must refuse even
+  // a read. Nobody is added to the cast: user_123 is the same person with a role that is not his.
+  it("DSOR-AUT-01b: a principal whose role nobody defined is refused a query, not only a command", async () => {
+    const stranger: Principal = Object.freeze({
+      id: "user_123",
+      type: "human" as const,
+      role: "a-role-nobody-defined",
+      memberships: Object.freeze([Object.freeze({ tenantId: "org_456" })]),
+    });
+
+    const planted = PIPELINE.map((stage) =>
+      stage.name === "authenticate"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({
+              kind: "carry_on" as const,
+              context: { ...context, principal: stranger },
+            }),
+          })
+        : stage,
+    );
+
+    const door = makeDoor(planted);
+
+    for (const [id, args] of [
+      ["invoice.get", { invoice: INV_1008 }],
+      ["invoice.issue", { invoice: INV_1009 }],
+    ] as const) {
+      const envelope = refusalFrom(await door({ loggedInAs: "user_123" }, id, args));
+
+      expect(envelope.code, id).toBe("AUTHORIZATION_DENIED");
+      expect(envelope.retry, id).toBe("never");
+      expect(envelope.correlation.principal_id, id).toBe("user_123");
+    }
+  });
+
   // The agent holds invoice:issue, so it must get past the gate. INV-1008 is already issued, so
   // the honest proof is the refusal it gets *instead* of AUTHORIZATION_DENIED: CONFLICT comes
   // from the business rule, which only runs once authority is settled. That way this test does
   // not need the one draft invoice, which the last test uses.
-  it("DSOR-AUT-01b: a caller who was granted invoice:issue gets past the gate", async () => {
+  it("DSOR-AUT-01a: a caller who was granted invoice:issue gets past the gate", async () => {
     const envelope = refusalFrom(
       await callOperation(AGENT, "invoice.issue", { invoice: INV_1008 }),
     );
@@ -211,7 +253,7 @@ describe("anything not granted is refused", () => {
     expect(envelope.code).toBe("CONFLICT");
   });
 
-  it("DSOR-AUT-01b: everyone in the story may read", async () => {
+  it("DSOR-AUT-01a: everyone in the story may read", async () => {
     for (const login of [CFO, SUPERVISOR, AGENT]) {
       const answer = await callOperation(login, "invoice.get", { invoice: INV_1008 });
 
@@ -220,7 +262,7 @@ describe("anything not granted is refused", () => {
   });
 
   // Last in the file on purpose: it uses up the only draft invoice.
-  it("DSOR-AUT-01b: the supervisor may issue, and does", async () => {
+  it("DSOR-AUT-01a: the supervisor may issue, and does", async () => {
     const answer = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
     if (answer.kind !== "result") {

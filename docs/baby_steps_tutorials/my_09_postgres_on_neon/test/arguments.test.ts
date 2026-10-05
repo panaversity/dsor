@@ -86,7 +86,7 @@ describe("the caller's arguments", () => {
   // and again to fingerprint the receipt. A caller could make those two reads disagree, so the
   // receipt described a request that never happened. Here the getter hands back a decoy on any
   // read after the first, and the fingerprint must still be of INV-1009.
-  it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", async () => {
+  it("the arguments are read once, so the receipt describes what was done", async () => {
     resetRequestIds();
     resetProposalIds();
 

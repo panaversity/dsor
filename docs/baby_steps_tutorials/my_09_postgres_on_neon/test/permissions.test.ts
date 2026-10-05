@@ -1,4 +1,4 @@
-// NEW IN STEP 06: what a role grants, and what it does not.
+// STEP 06: what a role grants, and what it does not.
 //
 // This tests the permission table on its own. It knows nothing about operations — you hand it
 // a person and a permission string, and it answers yes or no. The smallest thing that can be
@@ -182,7 +182,7 @@ describe("permissions", () => {
   // Every person's role is one the table knows. Without this, a typo in people.ts would take
   // every permission away from somebody and no test would notice — deny-by-default means the
   // mistake is silent.
-  it("DSOR-AUT-01b: everybody in the story has a role the table defines", () => {
+  it("DSOR-AUT-01a: everybody in the story has a role the table defines", () => {
     for (const who of everyone()) {
       expect(Object.keys(ROLES), who.id).toContain(who.role);
       expect(permissionsOf(who).length, who.id).toBeGreaterThan(0);

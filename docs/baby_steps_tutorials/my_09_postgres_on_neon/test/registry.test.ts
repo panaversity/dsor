@@ -101,7 +101,7 @@ describe("the operation registry", () => {
   // ajv can be told to rewrite the document it is checking. Both options are off, and
   // this test is what keeps them off: `coerceTypes` would turn the string "1" into the
   // number 1 rather than refusing it.
-  it("DSOR-OPR-02b: a version written as text is refused, not quietly converted", () => {
+  it("DSOR-OPR-01: a version written as text is refused, not quietly converted", () => {
     const broken = contractCopy("invoice.issue");
     broken["version"] = "1";
 
@@ -230,7 +230,7 @@ describe("validateContract", () => {
   // authorization. This walks the whole contract instead, so a nested object nobody thought of
   // cannot arrive mutable. Object.freeze is one level deep, which is the whole reason deepFreeze
   // exists.
-  it("DSOR-OPR-02b: every object and array inside a contract is frozen, all the way down", () => {
+  it("every object and array inside a contract is frozen, all the way down", () => {
     const registry = loadRegistry(contractsFromDisk());
 
     expect(registry.size).toBeGreaterThan(0);
@@ -260,7 +260,7 @@ describe("validateContract", () => {
 
   // deepFreeze used to return early on anything already frozen, which is the wrong test: a frozen
   // object can still hold mutable children, because Object.freeze is one level deep.
-  it("DSOR-OPR-02b: a document whose top level is already frozen is still frozen inside", () => {
+  it("a document whose top level is already frozen is still frozen inside", () => {
     const document = {
       where: "test",
       expectedId: "invoice.get",

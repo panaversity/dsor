@@ -2,7 +2,7 @@
 //
 // A *principal* is whoever is asking: a person, an agent, or an application.
 //
-// NEW IN STEP 06: each one carries a **role**, which is what decides may-you. What each role
+// STEP 06: each one carries a **role**, which is what decides may-you. What each role
 // grants is in permissions.ts, deliberately in a file of its own.
 //
 // Rule DSOR-IDN-01: DSoR MUST normalize every caller into a principal with a type and
@@ -37,7 +37,7 @@ export interface Principal {
    */
   readonly memberships: readonly Membership[];
   /**
-   * NEW IN STEP 06. The name of this principal's role, which is what they may do.
+   * STEP 06. The name of this principal's role, which is what they may do.
    *
    * A name, not a list of permissions. The list lives in one place, beside the other roles,
    * so changing what a job may do is one edit instead of one per person. A role nobody
@@ -63,7 +63,7 @@ const person = (id: string, type: PrincipalType, role: string): Principal =>
 // exactly as the two people do. That is the *shape* DSOR-IDN-02a asks for — an agent with
 // credentials of its own rather than a borrowed session — but it is not the rule, which is
 // about authenticating with them. Nothing here authenticates anything. Step 44.
-// NEW IN STEP 06: the third column. cfo_100 is an `approver`, and that one word is the whole
+// STEP 06: the third column. cfo_100 is an `approver`, and that one word is the whole
 // reason she cannot issue an invoice.
 const people: readonly Principal[] = Object.freeze([
   person("user_123", "human", "ap_supervisor"),

@@ -18,7 +18,7 @@ import {
   type ErrorEnvelope,
   type ResultEnvelope,
 } from "./envelopes.ts";
-// Every call says who is asking, and NEW IN STEP 06 every call is checked against what that
+// Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
 import { principalFrom, type Login } from "./login.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
@@ -33,7 +33,7 @@ import {
   type StageResult,
 } from "./pipeline.ts";
 import { parseUri } from "./uri.ts";
-// NEW IN STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
+// STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
 import { audit, OutcomeUnknown } from "./audit.ts";
 
@@ -270,7 +270,7 @@ export function assertPaired(
 // "delete a line" to "delete a line and keep a number right as the lists change".
 export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
 
-// NEW IN STEP 07: the checklist.
+// STEP 07: the checklist.
 //
 // Each of these four did exactly this before, in this order, inside callOperation. What changed is
 // that the order is now a value: something a test can read, a later step can add a line to, and a
@@ -596,7 +596,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(null, "resolve the operation", "both", resolveTheOperation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
-  // NEW IN STEP 08. §21.11, and the only stage in the list that runs after a refusal.
+  // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
   alsoAfterARefusal(11, "record the decision", "both", recordTheDecision),
 ]);
 
@@ -660,7 +660,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
   assertPipeline(checked);
 
   return async (login, id, args) => {
-    // NEW IN STEP 08: one id for this request, minted here — before the first stage, because the
+    // STEP 08: one id for this request, minted here — before the first stage, because the
     // request exists before any answer does. Every refusal and every success below is handed this
     // same id, so the record step 08 writes and the answer the caller reads name the same request.
     // It used to be minted inside whichever envelope was built first, which made it the name of an
@@ -689,7 +689,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
         ? handlers[contract.id]
         : undefined;
 
-    // NEW IN STEP 08: nothing executes without the receipt from §21.11.
+    // STEP 08: nothing executes without the receipt from §21.11.
     //
     // The first five clauses are a type guard. A systematic mutation sweep showed they were also
     // *unreachable*: flipping every `||` here to `&&` changed no test, because every way of arriving
@@ -750,7 +750,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
 /**
  * The one door this program has.
  *
- * NEW IN STEP 07: this is no longer a function whose *shape* is the order of the checks. It is a
+ * STEP 07: this is no longer a function whose *shape* is the order of the checks. It is a
  * door built from the checklist in `PIPELINE`, and the order lives there where a test can read it.
  */
 export const callOperation: Door = makeDoor(PIPELINE);
