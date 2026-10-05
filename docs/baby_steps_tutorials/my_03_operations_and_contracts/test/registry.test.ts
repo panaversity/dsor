@@ -191,14 +191,41 @@ describe("validateContract", () => {
   // The schema says a contract may not carry fields it does not know about, so a
   // friendly "description" has to go under `extensions` with a reverse-DNS key
   // (DSOR-SCH-02). Worth meeting once, because the urge to add one is strong.
-  // DSOR-SCH-02 is the rule about added fields belonging under `extensions`. This shows the
-  // half that is enforced here: a bare extra field is refused.
+  //
+  // This is the first half of the rule: a bare extra field is refused, and a namespaced one
+  // under `extensions` is accepted. The second half — that the key MUST be reverse-DNS — is
+  // the test below.
   it("DSOR-SCH-02: a helpful extra field is refused, and extensions is the way in", () => {
     const extra = contractCopy("invoice.get");
     extra["description"] = "Reads one invoice";
 
     expect(() => validateContract(extra, "extra.json")).toThrow(TypeError);
 
+    const proper = contractCopy("invoice.get");
+    proper["extensions"] = { "com.example.notes": { description: "Reads one invoice" } };
+
+    expect(() => validateContract(proper, "proper.json")).not.toThrow();
+  });
+
+  // The second half of DSOR-SCH-02. "Under `extensions`" alone is not the rule: the key has to
+  // be a reverse-DNS namespace, and a review found no test here refused one that was not. What
+  // the schema checks is the *shape*: `common.schema.json` gives `extensions` a `propertyNames`
+  // pattern of lowercase labels joined by dots, at least two of them, so a key with no dot in it
+  // is refused. What no schema can check is that `com.example` is a real domain backwards, or
+  // that it is yours.
+  //
+  // Green on arrival: the specification's own schema already carried the pattern, so this pins
+  // what was true and untested. Relaxing the pattern to accept any key turns it red.
+  it("DSOR-SCH-02: an extensions key that is not a reverse-DNS namespace is refused", () => {
+    for (const key of ["notes", "example"]) {
+      const bare = contractCopy("invoice.get");
+      bare["extensions"] = { [key]: { description: "Reads one invoice" } };
+
+      expect(() => validateContract(bare, `${key}.json`), key).toThrow(TypeError);
+      expect(() => validateContract(bare, `${key}.json`), key).toThrow(/extensions/);
+    }
+
+    // And a namespaced key still works, so this is not a test that refuses everything.
     const proper = contractCopy("invoice.get");
     proper["extensions"] = { "com.example.notes": { description: "Reads one invoice" } };
 

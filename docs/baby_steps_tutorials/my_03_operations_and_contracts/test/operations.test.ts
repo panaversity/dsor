@@ -123,7 +123,14 @@ describe("callOperation", () => {
     //
     // Fifth appearance of this shape in six steps: getInvoice's id, parseUri's entity, this
     // tenant, step 05's findPerson, step 06's holds. Two of the five became real defects.
-    it("DSOR-RID-01b: a tenant that is only part of ours is refused, both ways round", () => {
+    //
+    // No rule id, and it used to carry DSOR-RID-01b. 01b is about a display name, slug or alias
+    // appearing in a URI, and about `tenant_id` being opaque. Every address here is well formed
+    // and its tenant is opaque; it is the *wrong* tenant. That is a tenant-mismatch check, and
+    // real tenant isolation is DSOR-TEN territory in step 10, so claiming either id would count
+    // coverage this step has not earned. `test/main.test.ts` says the same about its own
+    // wrong-company test.
+    it("a tenant that is only part of ours is refused, both ways round", () => {
       for (const tenant of ["org_45", "org_4", "org_4567", "org_456789"]) {
         expect(
           () => callOperation("invoice.get", { invoice: `dsor://${tenant}/invoice/INV-1008` }),

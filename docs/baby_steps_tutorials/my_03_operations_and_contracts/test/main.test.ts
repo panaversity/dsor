@@ -150,10 +150,15 @@ describe("the program a learner runs", () => {
     expect(out).not.toContain("org_999/invoice/INV-1008  ");
   });
 
-  it("DSOR-OPR-01: an operation is refused an address whose entity it is not named for", () => {
-    // `invoice.get` is named for `invoice`. That the name and the contract agree on what the
-    // operation works on is the whole reason an operation has a contract rather than a
-    // signature, so the refusal belongs to DSOR-OPR-01.
+  // No rule id, and it used to carry DSOR-OPR-01. That rule says every operation MUST have a
+  // contract that validates against the schema. The entity check reads one thing from the
+  // contract — the first word of its id, `invoice` — and nothing about whether the contract
+  // validates. Ship a contract that fails the schema but still carries an id and this refusal
+  // prints exactly the same, so the test cannot fail when the rule is broken, and a test that
+  // cannot fail when a rule is broken does not prove it. What it does prove is step 02's promise,
+  // kept here: an operation is named for the entity it works on, and the two must agree.
+  // `test/operations.test.ts` says the same about the entity check there.
+  it("an operation is refused an address whose entity it is not named for", () => {
     expect(demo()).toContain(
       "refused  wrong entity: invoice.get is named for invoice, and dsor://org_456/vendor/VENDOR-44 names vendor",
     );

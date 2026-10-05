@@ -67,7 +67,14 @@ describe("getInvoice", () => {
 
   // Step 01 froze both invoices and only tested one. INV-1009 is the draft every later step
   // issues, so it is the one whose freeze matters most.
-  it("DSOR-MON-01: every invoice in the list is frozen, not just the first", () => {
+  //
+  // No rule id, and it used to carry DSOR-MON-01. The rule is about how an amount is *written*:
+  // a decimal string and a currency code. This test checks only that the records are locked, and
+  // the two are independent: Object.isFrozen answers true for a bare number, so replacing
+  // "2500.00" with the number 2500 would break the rule outright while every line below still
+  // passed. A test that cannot fail when a rule is broken does not prove that rule. The tests
+  // above pin the amount text, so they keep the id; this one makes a different, honest claim.
+  it("every invoice in the list is frozen, not just the first", () => {
     for (const id of ["INV-1008", "INV-1009"]) {
       const invoice = getInvoice(id);
 

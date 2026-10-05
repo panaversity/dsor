@@ -125,7 +125,7 @@ my_03_operations_and_contracts/
   src/registry.ts          NEW  validateContract, loadRegistry, contractsFromDisk
   src/operations.ts        NEW  callOperation, assertPaired, and the invoice.get handler
   src/tenant.ts            NEW  the one company id, in a file of its own
-  test/registry.test.ts    NEW  fifteen tests: what the registry refuses, and what it keeps
+  test/registry.test.ts    NEW  sixteen tests: what the registry refuses, and what it keeps
   test/operations.test.ts  NEW  twenty tests: calling by name, and the refusals
   src/main.ts          CHANGED  calls through the registry, and no longer imports getInvoice
   src/invoice.ts       CHANGED  reads TENANT from src/tenant.ts; markers removed
@@ -185,7 +185,7 @@ broken contract stops the program before it prints anything: that needs a broken
 on disk, so it is Break 1 below.
 
 ```bash
-pnpm check                 # typecheck, then test. 71 tests pass
+pnpm check                 # typecheck, then test. 72 tests pass
 ```
 
 ### A contract without a handler, on purpose
@@ -260,8 +260,10 @@ So an empty `predicates: []` validates. So does `predicates: ["not CEL at all !!
 because the schema's `cel` definition is only "a string with at least one character".
 
 The same is true of `input.schema: "InvoiceIssueRequest"`. No such schema exists anywhere
-in this repository, and nothing checks an operation's arguments against it until step 07,
-where "is the input valid" becomes a line of the pipeline's checklist.
+in this repository, and no step built so far reads the field: nothing checks an
+operation's arguments against `input.schema`, or an answer against `output.schema`, in any
+step through 10. Step 07 adds a "validate the input" line to its checklist, and that line
+copies the arguments once and fingerprints them; it never opens either field.
 
 So the schema proves a contract **has the fields**. It never proves the fields **say
 anything true**. That is the third time this tutorial has met the same lesson, and it is
@@ -283,10 +285,10 @@ The program printed nothing at all — not the greeting, not the operation list.
 
 ```text
  Test Files  3 failed | 4 passed (7)
-      Tests  11 failed | 40 passed (51)
+      Tests  11 failed | 41 passed (52)
 ```
 
-Read the totals. **51 collected, not 71.** Twenty tests did not fail — they never ran,
+Read the totals. **52 collected, not 72.** Twenty tests did not fail — they never ran,
 because `operations.test.ts` imports a module that throws while it is loading. That is
 what "refused at start-up" looks like from the outside.
 
@@ -321,8 +323,13 @@ colliding:
 "extensions": { "com.example.notes": { "description": "Issues an invoice" } }
 ```
 
-That is rule `DSOR-SCH-02`, and `test/registry.test.ts` tests both halves: the bare field
-refused, the namespaced one accepted.
+That is rule `DSOR-SCH-02`, and `test/registry.test.ts` tests both halves of it. The first
+half is that added fields go under `extensions`: the bare field is refused, the namespaced
+one is accepted. The second half is that the key is a reverse-DNS namespace: `notes` and
+`example` under `extensions` are refused too. What the schema checks there is the shape.
+`common.schema.json` gives `extensions` a `propertyNames` pattern of lowercase labels
+joined by dots, at least two of them, so a key with no dot is refused. What no schema can
+check is that `com.example` is a real domain backwards, or that it is yours.
 
 Note the refusal never says *which* field is extra. ajv reports each problem as an object;
 the offending field name sits in that object's `params`, and this step prints only its
@@ -352,10 +359,10 @@ at all**. Now `pnpm test`:
 
 ```text
  Test Files  1 failed | 6 passed (7)
-      Tests  4 failed | 67 passed (71)
+      Tests  4 failed | 68 passed (72)
 ```
 
-All 71 collected this time, because nothing threw while loading. Only the four tests in
+All 72 collected this time, because nothing threw while loading. Only the four tests in
 `registry.test.ts` that expect a refusal failed. `main.test.ts` passed, and it was right
 to: the program's output really is identical. A test of what a program prints cannot
 catch a rule that was never enforced, because an unenforced rule changes nothing. Only a
@@ -461,7 +468,9 @@ general directions are in the
 - **[DSOR-SCH-02 · L1]** An implementation that adds fields MUST place them under an
   `extensions` object keyed by a reverse-DNS namespace.
   ([§0.5](../../../specs/dsor/00-conventions.md#05-normative-artifacts)) — this is
-  Break 3, and `test/registry.test.ts` tests both halves of it.
+  Break 3, and `test/registry.test.ts` tests both halves of it: a field outside
+  `extensions` is refused, and a key under `extensions` with no dot in it is refused. The
+  schema checks the shape of the key, not that the domain is real or yours.
 
 Steps 01 and 02's rules are still named by tests here, because the code they cover is
 still running: `DSOR-MON-01` on the amounts, `DSOR-RID-01a` and `DSOR-RID-01b` on the
@@ -524,7 +533,7 @@ step:
 | `preconditions` | steps 15, 27, 32 |
 | `controls`, `risk.level` | steps 27, 28 |
 | `audit.level` | steps 08, 33 |
-| `input.schema`, `output.schema` | step 07 |
+| `input.schema`, `output.schema` | not read by any step yet, through step 10 |
 
 Where a field can say nothing, it does: `delegation` and `idempotency` are `false`,
 `concurrency` is `none`, `controls` is empty. The rest cannot — `tenancy` has to say
@@ -532,5 +541,5 @@ Where a field can say nothing, it does: `delegation` and `idempotency` are `fals
 carry the value the operation will have once the step that reads them arrives.
 
 **Next:** step 04, result and error envelopes — the thrown `TypeError`s above become
-structured errors with a code and a retry class, and "this needs approval" becomes a
-result rather than a failure.
+structured errors with a code and a retry class, and `invoice.issue` gets its handler,
+with a result envelope that says `COMMITTED`.
