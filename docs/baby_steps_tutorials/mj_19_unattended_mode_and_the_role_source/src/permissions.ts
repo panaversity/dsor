@@ -8,8 +8,10 @@ import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
 import type { Slip } from "./slips.ts";
 
+// NEW IN STEP 19: called RoleSource until now. From this step, the role source is the company's
+// directory, as in §12.1 (step 19's README, the small fixes).
 /** The role table, as it was read from disk: its file name and its text. */
-export type RoleSource = { file: string; text: string };
+export type RoleTableSource = { file: string; text: string };
 
 /** What each role grants: a role's name, and its permissions. */
 export type Roles = ReadonlyMap<string, ReadonlySet<string>>;
@@ -21,13 +23,13 @@ export type Roles = ReadonlyMap<string, ReadonlySet<string>>;
 const PERMISSION = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*(\.propose)?$/;
 
 /** Reads the role table from a file. */
-export function readRoles(path: string): RoleSource {
+export function readRoles(path: string): RoleTableSource {
   return { file: basename(path), text: readFileSync(path, "utf8") };
 }
 
 /** Checks the role table and every role a principal holds, and names every problem. */
 export function checkRoles(
-  source: RoleSource,
+  source: RoleTableSource,
   principals: Iterable<Principal>,
 ): { roles: Roles; problems: string[] } {
   const { file, text } = source;

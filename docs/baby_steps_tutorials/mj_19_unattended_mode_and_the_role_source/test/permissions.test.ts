@@ -281,7 +281,7 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
 });
 
 describe("C2: a caller holds the permissions of its roles, and only those", () => {
-  it("DSOR-AUT-01a: the shipped roles.json is step 06's decision 6, with step 17's payment permissions", async () => {
+  it("DSOR-AUT-01a: the shipped roles.json is step 06's decision 6, with step 17's payment permissions and step 19's ap_clerk", async () => {
     expect(JSON.parse(shippedRoles.text)).toStrictEqual(STARTING_ROLES);
   });
 

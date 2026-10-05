@@ -11,7 +11,7 @@ import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
 import { readClassifications, type ClassificationSource } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
-import { readRoles, type RoleSource } from "../src/permissions.ts";
+import { readRoles, type RoleTableSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
@@ -31,7 +31,7 @@ export const shipped: ContractSource[] = readContracts(CONTRACTS);
 
 // The role table this step ships, read from disk the way start-up reads it.
 const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
-export const shippedRoles: RoleSource = readRoles(ROLES);
+export const shippedRoles: RoleTableSource = readRoles(ROLES);
 
 // The input schemas this step ships, read from disk the way start-up reads
 // them (step 07's README, decision 2).
@@ -93,13 +93,16 @@ export function notValid(name: string, problem: string): string {
 // Step 17's decision 6 adds the payment permissions: the agent may create, the supervisor
 // may create and cancel, and the CFO neither.
 // Step 18 removes ap_agent: an agent holds no role (step 18's README, decision 11).
+// NEW IN STEP 19: ap_clerk, which may only read invoices: the job user_123 moves to in the
+// directory, in step 19's story (step 19's README, outcome 2).
 export const STARTING_ROLES: Record<string, string[]> = {
   ap_supervisor: ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"],
   CFO: ["invoice:read"],
+  ap_clerk: ["invoice:read"],
 };
 
 /** A role table as a file would hold it. */
-export function rolesFile(table: unknown): RoleSource {
+export function rolesFile(table: unknown): RoleTableSource {
   return { file: "roles.json", text: JSON.stringify(table) };
 }
 
@@ -429,7 +432,7 @@ export function paymentRegistry(
 /** The shipped operations, with these slips, this role table, and these payments. */
 export function slipRegistry(
   slips: SlipStore = storySlips(),
-  roles: RoleSource = shippedRoles,
+  roles: RoleTableSource = shippedRoles,
   rows: Payment[] = [],
 ): Registry {
   return buildRegistry(

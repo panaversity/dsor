@@ -15,7 +15,7 @@ import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
 import { maskingProblems } from "./masking.ts";
 import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
-import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
+import { checkRoles, type RoleTableSource, type Roles } from "./permissions.ts";
 import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { loginProblems, logins } from "./principals.ts";
@@ -95,7 +95,7 @@ export function buildRegistry(
   sources: ContractSource[],
   handlers: Record<string, Handler>,
   // The role table, checked with the contracts (step 06's README, decision 1).
-  roleSource: RoleSource,
+  roleTable: RoleTableSource,
   // The input schemas. This step's own, unless the caller gives others.
   inputSources: InputSource[] = readInputs(),
   // The labels. This step's own, unless the caller gives others.
@@ -159,7 +159,7 @@ export function buildRegistry(
 
   // The role table, and every role in DSoR's table of logins, are checked too. Their
   // problems are named with the contracts' problems (DSOR-AUT-01a).
-  const { roles, problems: roleProblems } = checkRoles(roleSource, logins.values());
+  const { roles, problems: roleProblems } = checkRoles(roleTable, logins.values());
   problems.push(...roleProblems);
   // Every undo a contract names is a real command that DSoR can run, and
   // that some role may run, so a label that says "can be undone" is true (DSOR-EXE-05c; step
