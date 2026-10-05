@@ -45,7 +45,9 @@ export type Decision = {
     mode: "unattended";
     subject: string;
     actor_chain: string[];
-    subject_authority?: { source: "role_source"; as_of: string };
+    // NEW IN STEP 19: where DSoR learned what the subject holds, and as of when (step 19's
+    // README, decision 7).
+    subject_authority: { source: "role_source"; as_of: string };
   };
 };
 
@@ -141,7 +143,14 @@ export function decisionOf(
       ? {}
       : {
           delegation: under.delegation,
-          identity: { mode: "unattended", subject: under.subject, actor_chain: [under.actor] },
+          identity: {
+            mode: "unattended",
+            subject: under.subject,
+            actor_chain: [under.actor],
+            // NEW IN STEP 19: her company's directory, and the time of the answer DSoR used
+            // (DSOR-DEL-10; step 19's README, decision 7).
+            subject_authority: { source: under.source, as_of: under.as_of },
+          },
         }),
     // A claim is kept only when no company was checked: line ② refused the one named.
     ...(tenant === undefined && claimed !== undefined

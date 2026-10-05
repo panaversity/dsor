@@ -375,13 +375,24 @@ export function storySlips(): SlipStore {
 export const INTAKE_SLIP: StorySlip = { ...DEL_100, id: "del_190", delegate: "intake-fte" };
 
 // What a record of the agent's gains once line ③ found del_100: the slip, and the person who
-// signed it (step 18's README, decision 8).
+// signed it (step 18's README, decision 8). NEW IN STEP 19: and where her authority came from,
+// as of a time that each test's clock decides (step 19's README, decision 7).
 export const UNDER_DEL_100: {
   delegation: string;
-  identity: { mode: "unattended"; subject: string; actor_chain: string[] };
+  identity: {
+    mode: "unattended";
+    subject: string;
+    actor_chain: string[];
+    subject_authority: { source: "role_source"; as_of: unknown };
+  };
 } = {
   delegation: "del_100",
-  identity: { mode: "unattended", subject: "user_123", actor_chain: ["accounts-payable-fte"] },
+  identity: {
+    mode: "unattended",
+    subject: "user_123",
+    actor_chain: ["accounts-payable-fte"],
+    subject_authority: { source: "role_source", as_of: expect.any(String) },
+  },
 };
 
 // NEW IN STEP 19: the story's people in each company's directory, typed out again from step
