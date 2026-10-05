@@ -406,7 +406,8 @@ _To be written when the code exists._
 ## Break it
 
 Each break was made in a copy of the step outside the repository, never in the step itself,
-and run as a story on the copy's own code, with the clock set by the story. The script is
+and run as a story on the copy's own code, with the clock set by the story. All four ran
+again on the final code, after the review's fixes, and the output below is from that run. The script is
 not part of the step. Then the whole unit suite ran on the copy. The learner predicted each
 story before any code existed ("Breaks we will try" above). Each prediction stands beside the
 real run here.
@@ -416,7 +417,7 @@ off from the start, so DSoR has no kept answer.
 
 ```text
 02:00 agent, payment.create INV-1008 (org_456's directory off, nothing kept)
-   hears: FRESHNESS_UNSATISFIABLE: "payment.create": no answer about user_123, who signed slip del_100, came from the directory of org_456 within PT1H
+   hears: FRESHNESS_UNSATISFIABLE: "payment.create": DSoR has no answer about user_123, who signed slip del_100, from the directory of org_456 that is recent enough
    drafts in memory: 0
 02:01 user_123 herself, payment.create INV-1008
    hears: answered (PAY-901)
@@ -428,7 +429,7 @@ The learner predicted line ③, `FRESHNESS_UNSATISFIABLE`, and no draft. That is
 The agent was refused, not waved through, which is what the map asks.
 
 **B2: delete the age check.** In `src/authority.ts`, the condition becomes `last ===
-undefined`, so any kept answer counts, however old.
+undefined`, so any kept answer counts, however old, even one from the future.
 
 ```text
 01:30 agent, invoice.get (directory on, answer kept)
@@ -439,8 +440,8 @@ undefined`, so any kept answer counts, however old.
    drafts in memory: 1
 ```
 
-6 of 1289 unit tests fail: the five tests of C3 with a kept answer 75 minutes old, and C5's test
-of each company's bound. The learner predicted the draft, with a record "as of 01:30". That
+8 of 1306 unit tests fail: the five tests of C3 with a kept answer 75 minutes old, the test at
+exactly 60 minutes, the test of a clock that went back, and C5's test of each company's bound. The learner predicted the draft, with a record "as of 01:30". That
 is what happened.
 
 **B3: keep answers by person only.** In `src/authority.ts`, `keptKey` leaves the company out.
@@ -454,7 +455,7 @@ C10's check of every answer stays.
    drafts in memory: 0
 ```
 
-1 of 1289 unit tests fails: C6's test, which expects `FRESHNESS_UNSATISFIABLE`. The learner
+1 of 1306 unit tests fails: C6's test, which expects `FRESHNESS_UNSATISFIABLE`. The learner
 predicted a draft in org_789. The broken lookup does find org_456's answer about user_123, as
 the learner traced. But that answer still names org_456, and line ③ checks the company of every
 answer before it uses one. So the second check refused the call. Without it, the learner's
@@ -479,7 +480,8 @@ The same story on the step as built:
    record: ok, as of 2026-10-06T01:30:00.000Z
 ```
 
-2 of 1289 unit tests fail: C4's two tests. The learner predicted the draft, with a record "as
+3 of 1306 unit tests fail: C4's two tests, and the test of an answer that comes after 2.001
+seconds. The learner predicted the draft, with a record "as
 of 01:30": that is what the step as built does, after 2 seconds. With the limit deleted, DSoR
 waits for ever, and one stuck directory silently stops the whole night's work.
 
@@ -494,13 +496,13 @@ This is how the step was built:
 | 1 | Understand | A session with no code, on 2026-10-05, after a course on the specification from the start: "The foundations course, and step 19 before design" in `../mj_notes.md` |
 | 2 | Design | "In plain words", "Why it matters", and "The design, before any code": decisions 1 to 9, one per turn, each judged by two tests the learner named, closest to production and deepest understanding. Then the predictions for B1 to B4, asked as stories with a fact card |
 | 3 | Check the design | Against the specification, the schemas, and step 18's code, before the first test. One gap (decision 11) and one question of order (decision 12) went to the learner. Four small fixes followed from the rules |
-| 4 | Neon | Decision 10: the learner deletes `step-13`. A branch `step-19` from `step-18`. `.env` written by a command, never shown |
+| 4 | Neon | Decision 10: the learner deleted `step-13`, because Claude Code deletes no data. A branch `step-19` from `step-18`. `.env` written by a command, never shown. Then `pnpm migrate`: no migration to run, because step 19 adds no table |
 | 5 | Markers and configuration | Step 18's markers removed. The settings file, the schema copy, `ap_clerk`, and the renamed type. No check reads them yet |
 | 6 | Red | Shells: code with the new shape and step 18's behaviour, so a new test fails on what it checks, not on a missing file. The story's directories in every registry. Then every new test |
-| 7 | Green | `src/authority.ts` and the record. The learner predicted one story of C10 before the run, and the run agreed |
+| 7 | Green | `src/authority.ts` and the record. The learner predicted one story of C10 before the run, and the run agreed. The review later showed that this behaviour broke decision 11's own reason, so the prediction, the test, and the code were wrong together (H1 in "Think it through") |
 | 8 | The program | The night in `pnpm start`. The learner predicted the restart before it was written |
 | 9 | Break it | Each break in a copy outside the repository, beside the step as built, with the whole unit suite |
-| 10 | Review | Reviewers who have not seen the conversation, each in a copy outside the repository |
+| 10 | Review | Two reviewers who have not seen the conversation: one attacked the rules and the code, and one made 87 small breaks in a copy outside the repository. The learner chose each fix: decisions 11 and 13 to 17. Then the breaks and the database suite ran again on the final code |
 
 The build continued from the design in the same session, with the learner's "go" before each
 move. To start it in a new session:
@@ -520,6 +522,8 @@ What each move broke, measured. These were not predictions:
 | Red | 57 of 66 new unit tests. While the shells went in, 40 old unit tests failed until they were fixed: 38 in the cross-company suite, which asks line ③ itself, and 2 that asked line ⑤ in its old way. None changed what it proves |
 | Green | 5 old unit tests, which type out an agent's record exactly. The record gained `subject_authority` (decision 7) |
 | The program | None |
+| The database, first run | 4 old database tests: three tests of the program, which type out its output and gave it 60 seconds, when one run now took 66, and one test that types out the firm's record |
+| The review's tests | 31 of 83 tests in `test/role-source.test.ts`: 22 that expect the shorter messages of decision 16, and 9 that expect a fix. No old test |
 
 ## Check yourself
 
@@ -624,14 +628,23 @@ The next step starts from this list: step 19b builds DSOR-IDN-07.
 
 | Rule | What it says | Where in the spec | Proved by |
 | --- | --- | --- | --- |
-| DSOR-IDN-05 | Each company configures a role source, from which DSoR reads the current roles of a person who is not in the request | [§12.1 Role source](../../../specs/dsor/02-security.md#121-role-source) | _To be counted._ |
-| DSOR-IDN-06 | When the signer's current authority cannot be established within the bound of §44, DSoR denies the command | [§12.1 Role source](../../../specs/dsor/02-security.md#121-role-source) | _To be counted._ |
-| DSOR-DEL-07 | An `unattended` call is accepted only under a slip that allows `unattended` | [§13.2 Identity modes on the wire](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) | Step 18's tests, kept |
-| DSOR-DEL-08 | In `unattended` mode, DSoR takes the person from the slip, never from the request | [§13.2 Identity modes on the wire](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) | Step 18's tests, kept |
-| DSOR-DEL-10 | Every record states the mode, and the source and time of the subject's authority | [§13.2 Identity modes on the wire](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) | _To be counted._ Early, from step 45, for agents only (decision 7) |
-| DSOR-IDN-04b | A role fact from any other origin is not used in an authorization decision | [§12.1 Role source](../../../specs/dsor/02-security.md#121-role-source) | _To be counted._ Early, from step 43, for the absent signer only |
-| DSOR-TEN-02a | Caches are keyed by company | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | _To be counted._ The kept answers |
-| DSOR-BND-02 | A company's setting does not loosen a bound of §44 beyond the limit for the level | [§44 Operational bounds](../../../specs/dsor/06-conformance.md#44-operational-bounds) | _To be counted._ The role source's bound only |
+| DSOR-IDN-05 | Each company configures a role source, from which DSoR reads the current roles of a person who is not in the request | [§12.1 Role source](../../../specs/dsor/02-security.md#121-role-source) | `test/role-source.test.ts`, 21 tests: start-up refuses each broken settings file and names the problem, and reads a duration whole (C1). The agent's draft follows user_123's job in the directory, call by call, with no restart (C2, the map's "Done when" of step 18). A company with no directory refuses its agents. `test/schemas.test.ts`, 1 test: the copied tenant-policy schema |
+| DSOR-IDN-06 | When the signer's current authority cannot be established within the bound of §44, DSoR denies the command | [§12.1 Role source](../../../specs/dsor/02-security.md#121-role-source) | `test/role-source.test.ts`, 18 tests: with the directory off, a kept answer 40 minutes old counts, and one 75 minutes old, or none, refuses each of the five operations at line ③ (C3). The millisecond before the bound, and the bound itself. A stuck directory, waited for 2 seconds at most (C4). A directory that throws at once. §47's case: the signer suspended, moved to `ap_clerk`, or no longer listed, and then the directory goes off. **Partly:** the code, `FRESHNESS_UNSATISFIABLE`, is this tutorial's choice, and reads are refused too (decisions 4 and 5) |
+| DSOR-DEL-07 | An `unattended` call is accepted only under a slip that allows `unattended` | [§13.2 Identity modes on the wire](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) | Step 18's tests, kept: `test/slips.test.ts`, 4 tests, and `test/slips.db.test.ts`, 1 test |
+| DSOR-DEL-08 | In `unattended` mode, DSoR takes the person from the slip, never from the request | [§13.2 Identity modes on the wire](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) | Step 18's tests, kept: `test/slips.test.ts`, 4 tests, and `test/slips.db.test.ts`, 2 tests, whose records now carry `subject_authority` too |
+| DSOR-DEL-10 | Every record states the mode, and the source and time of the subject's authority | [§13.2 Identity modes on the wire](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) | `test/role-source.test.ts`, 4 tests: a draft on a fresh answer records `role_source` as of that answer, a draft on a kept answer records the time of the kept answer, a refusal at line ⑤ records them too, and a person's own record has neither. `test/role-source.db.test.ts`, 2 tests: the fresh and the kept answer, read back from the database. **Partly:** the records of agents' calls that pass line ③ only (decision 7). Early, from step 45 |
+| DSOR-IDN-04b | A role fact from any other origin is not used in an authorization decision | [§12.1 Role source](../../../specs/dsor/02-security.md#121-role-source) | `test/role-source.test.ts`, 2 tests: DSoR's login table says `ap_supervisor` while the directory says `ap_clerk`, and the directory decides. A signer whom the directory lists counts, though the login table does not list her in that company. **Partly:** the absent signer only. Early, from step 43 |
+| DSOR-TEN-02a | Caches are keyed by company | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/role-source.test.ts`, 2 tests: org_456's kept answer about user_123 never answers for a slip in org_789, and a kept answer from another company is a fault. **Partly:** the kept answers only |
+| DSOR-BND-02 | A company's setting does not loosen a bound of §44 beyond the limit for the level | [§44 Operational bounds](../../../specs/dsor/06-conformance.md#44-operational-bounds) | `test/role-source.test.ts`, 2 tests: 24 hours exactly, and zero, are allowed, and each company's own bound decides. C1's tests refuse two days, and a day and a second or a minute. **Partly:** the role source's bound only |
+| DSOR-IDN-03a | Each request resolves to one company in which the subject holds a membership | [§12 Identity and principals](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/role-source.test.ts`, 1 test: a slip in org_456 signed by user_700, whom org_456's directory does not list. `test/slips.test.ts`, 5 tests from step 18, now answered by the directory. **Partly:** the subject part only. Step 10 checks the caller |
+
+Also built, as this tutorial's decisions, and proved in `test/role-source.test.ts`: a person
+needs no directory (decision 2, 1 test), a suspended or deprovisioned signer gives her agent
+nothing (decision 6, 10 tests), the 2-second edge and no timer left behind (decision 9, 3
+tests), answers DSoR cannot use (decision 11, 9 tests), the directory asked last (decision 12,
+2 tests), only a person whom DSoR knows signs (decision 13, 3 tests), older news never replaces
+newer (decision 14, 1 test), an answer from the future (decision 15, 1 test), and an answer
+read once (decision 17, 2 tests). Decision 16's messages are in every refusal test above.
 
 ## Next
 
