@@ -485,3 +485,20 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `DELEGATION_EXPIRED` from 2027-01-01. Step 18's learner build dates its slips 2099-12-31
     for this reason. Should the example's date move far ahead, or should §0.4 say that its
     dates are only examples?
+73. **Which code does a denial under DSOR-IDN-06 give?** DSOR-IDN-06 says DSoR denies the
+    command when the delegator's current authority cannot be established within the bound of
+    §44, and names no code. `AUTHORIZATION_DENIED` and the `DELEGATION_*` codes all carry the
+    retry class `never`, though a directory may answer again a minute later. Step 19's learner
+    build answers `FRESHNESS_UNSATISFIABLE`, retry `after_delay`. But DSOR-FRS-02b, which
+    defines that code for a connector, also says DSoR must "not fall back to a cache", and the
+    learner build keeps the directory's last answer for an outage, inside the bound. Should §28
+    name a code for DSOR-IDN-06? And is an answer inside its bound fresh, or the cache that
+    DSOR-FRS-02b forbids?
+74. **Does DSOR-IDN-06 cover reads?** It says DSoR denies "the command". DSOR-DEL-02 computes an
+    agent's authority at decision time from the delegator's current authority, so a read needs
+    that authority too. Step 19's learner build refuses an agent's reads as well. Should the
+    rule say "request"?
+75. **Should a duration accept `PT` and `P1DT`?** The duration pattern of `common.schema.json`
+    accepts `PT`, with nothing after the `T`, and `P1DT`. ISO 8601 allows neither. Step 19's
+    learner build follows the schema, and reads `PT` as zero. Should the pattern require a
+    number after `T`?

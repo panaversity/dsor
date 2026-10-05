@@ -65,7 +65,7 @@ and found a second question beside it. DSOR-FRS-02b, the rule that defines that 
 says "not fall back to a cache". Step 19 keeps the directory's last answer for an outage, and
 uses it while it is younger than the bound. Is an answer inside the bound of DSOR-IDN-06 fresh,
 or is it the cache that DSOR-FRS-02b forbids? And does DSOR-IDN-06, which says "command", cover
-an agent's reads? Step 19 refuses them too (decision 5).
+an agent's reads? Step 19 refuses them too (decision 5). Recorded as open questions 73 and 74.
 
 ### Which constraints does DSOR-DEL-02 cover, and what if DSoR cannot check one?
 
@@ -829,6 +829,34 @@ pages for the parts that did not land.
   to its end and left out the check that stays (C10): the opposite of step 18's habit. B4
   described DSoR with its time limit still in place: Habit 1 again. Step 18's predictions were
   0 of 4. The fact card in every question may be what changed.
+
+### Step 19, the build (2026-10-05)
+
+- **A prediction that matches the code is not yet a right answer.** Before the green run the
+  learner predicted C10's story: a strange answer at 01:40, the directory off at 01:50, and the
+  agent answered on the 01:30 answer. The run agreed, and Claude Code said "right". The
+  hostile review then showed that this behaviour broke decision 11's own reason, so the
+  prediction, the test, and the code were wrong together (H1). Settle a prediction against the
+  decision's reason too, not only against a run.
+- **A check that moves can lose part of what it asked.** Step 18's signer check asked two
+  questions: is she a person, and does she work here. Step 19 moved it to the directory, which
+  answers only the second, and a slip signed by an agent drafted a payment (H2). When a check
+  moves, list each question it asked, and ask each one again in its new place.
+- **"Aren't we logging all?"** The learner took the kept answer for the log. A two-column table
+  (the log is for people afterwards, and DSoR never reads it to decide; the kept answer is
+  DSoR's note for the next outage) and a sticky note beside a filing cabinet settled it.
+- **Predictions in the build:** the restart (part 5 of the program) right; C10's story right
+  by the code, wrong by the decision; breaks 2 of 4 at design time (B3 left out the check
+  that stays, B4 kept the 2-second limit in place).
+- **Deleting data stays the learner's.** The learner asked three times for Claude Code to delete
+  Neon's `step-13`. It would not, and the learner ran the command, one click.
+- **Neon from here:** each call took 2 to 3 seconds, so `pnpm start` took 66 seconds, and the
+  program's tests now wait up to 180. The step adds no table.
+- **Check yourself: 2 of 5 right, and half of the fifth.** Q1 used H1's bin for a silent
+  directory: the note goes in the bin only after a strange answer, and silence reads it. Q3 sent
+  a job change to line ③: a change of status stops at line ③, and a change of job at line ⑤,
+  the ③-and-⑤ split again in a new form. Q5 gave the right code and predicted step 19b's write
+  to the slip. One card settled all three: what the directory says, and where DSoR stops.
 
 ## Still unknown
 
