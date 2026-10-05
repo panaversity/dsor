@@ -3,7 +3,7 @@
 Folder: [`my_10_tenants`](../my_10_tenants/README.md) · 376 tests, plus 9 in the database tier
 Spec: [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) · `DSOR-TEN-01a`, `DSOR-IDN-03a`,
 `DSOR-SRC-02b`
-Both tiers have run: 373 under `pnpm check`, and 9 under `pnpm test:db` against a real server —
+Both tiers have run: 376 under `pnpm check`, and 9 under `pnpm test:db` against a real server —
 the step's own database, `dsor_step10`, four migrations applied, the demo verifying both chains
 there too:
 
@@ -13,7 +13,7 @@ pnpm test:db   ->  Tests  9 passed (9)
 pnpm start     ->  the PostgreSQL at …@localhost:55432/dsor_step10
                    COMMITTED; org_456: 15 records, org_789: 2, both chains verifying
 ```
-Decisions [88 to 92](decisions.md). Lesson [35](lessons.md).
+Decisions [88 to 93](decisions.md). Lesson [35](lessons.md).
 
 ## What the step is
 
@@ -70,13 +70,13 @@ stays, with a comment saying why.
 - The map's done-when says "the same not found"; the spec says `TENANT_MISMATCH`. The spec won and
   the README says so.
 
-## Does it run by itself? (2026-10-05)
+## Does it run by itself? (2026-10-05, re-measured 2026-10-06 at 376)
 
 Copied outside the repository with no `node_modules`, no `.env`, no `.local-database`:
 
 ```text
-pnpm install --frozen-lockfile   ->  Done in 299ms
-pnpm check                       ->  Tests  372 passed | 1 skipped (373)
+pnpm install --frozen-lockfile   ->  Done in 307ms
+pnpm check                       ->  Tests  375 passed | 1 skipped (376)
 pnpm start                       ->  COMMITTED; org_456: 15 records, org_789: 2, both verifying
 pnpm start (again)               ->  CONFLICT;  org_456: 30 records, org_789: 4, both verifying
 pnpm test:db (no server)         ->  Tests  9 skipped (9)
@@ -94,3 +94,14 @@ Four reviewers and a critic, after the README was written. Six code fixes and a 
 every one measured first and sabotaged after — [decision 92](decisions.md). The one that changes an
 earlier step's lesson: a principal or tenant planted in the arguments that disagrees with the
 security context is **refused** now, where step 05 ignored it, because `DSOR-SRC-02b` says so.
+
+## The complete-testing sweep (2026-10-06)
+
+After all ten steps were evaluated together ([decision 93](decisions.md)), step 10 gained three
+tests, 373 to 376: a company or address nested inside an argument is *not* walked at §21.6 — a limit,
+titled as one, with teeth; a planted principal with nobody logged in is refused; and a query is
+refused when the caller's role grants nothing. `DSOR-ERR-01b` is now claimed for the mismatch
+refusal only, so the two tests that prove it keep their id. Every Break-it count was re-measured at
+376, and the one a fixer got wrong (Break 2, written as 7) is the measured 6. Both tiers re-run
+today: `376 passed (376)` in the repository, `9 passed (9)` against the server, and the clean copy
+above.
