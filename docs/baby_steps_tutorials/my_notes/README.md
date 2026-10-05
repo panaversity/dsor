@@ -27,6 +27,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-07-the-pipeline-skeleton.md](step-07-the-pipeline-skeleton.md) | The order of the checks becomes a list |
 | [step-08-write-the-decision-first.md](step-08-write-the-decision-first.md) | Every decision is written down before the answer, refusals included |
 | [step-09-postgres-on-neon.md](step-09-postgres-on-neon.md) | The log lives in a database the application may not rewrite |
+| [step-10-tenants.md](step-10-tenants.md) | Two companies in one program, resolved from the login and kept apart |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
@@ -69,13 +70,13 @@ they are listed here where the next session will see them.
 | ~~07~~ | ~~the ordered checklist~~ — paid, 2026-09-29 | step 06's README |
 | ~~08~~ | ~~the audit log, with the §30 hash chain~~ — paid, 2026-09-30. `DSOR-AUD-01` and `DSOR-AUD-04b` are both claimed, 04b as detection against a checkpoint | [open question 1](open-questions.md) |
 | ~~08~~ | ~~`DSOR-EXE-02`: §21.11~~ — paid, 2026-09-30 | step 07's README |
-| 09 | The log must survive a restart, the database must stamp the time, and the read-then-write that claims a sequence must become one atomic statement with a unique constraint on `(chain, sequence)` — proven by a real parallel `*.db.test.ts`, never a mock | step 08's `audit.ts`, `// found live 2026-09-30` |
-| 09 | `DSOR-AUD-04a`: an application database user with no `UPDATE` and no `DELETE` on the log. Step 08's `forgetTheLog()` erases everything and is guarded by nothing but a comment | [decision 65](decisions.md), step 08's README |
+| ~~09~~ | ~~The log must survive a restart, the database must stamp the time, and the read-then-write that claims a sequence must become one atomic statement with a unique constraint on `(chain, sequence)`~~ — paid, 2026-10-04, proven by a real parallel `*.db.test.ts` | step 08's `audit.ts`, `// found live 2026-09-30` |
+| ~~09~~ | ~~`DSOR-AUD-04a`: an application database user with no `UPDATE` and no `DELETE` on the log~~ — paid, 2026-10-04, and the program refuses to start if its account could rewrite the log (decision 75) | [decision 65](decisions.md), step 08's README |
 | 19 | A query's success has no envelope, so the caller never learns the `request_id` of the record its read produced. Ten of twelve records in step 08's demo are reads | step 08's README, "The gap a query leaves" |
 | 27 | `DSOR-EXE-02` says the decision record holds the **controls evaluated**. Nothing evaluates a control until then, so step 08's records have no `controls` array | step 08's README |
 | 36 | `DSOR-EXE-03a` and the intent-record half of `DSOR-EXE-03b`: §21.13. It needs a proposal id, an idempotency key and a connector, so four of its six fields do not exist yet | [decision 54](decisions.md#54--the-intent-record-is-step-36s-not-step-08s-2026-09-30) |
 | 36, 37 | A record says what was **decided**, never what happened. §21.15 `FINALIZE` — `COMMITTED`, `FAILED`, `OUTCOME_UNKNOWN` — is what makes the outcome evidence, and step 08 records a call as `ALLOW` even when it then fails | [decision 58](decisions.md) |
-| 10 | Resolve the company from the caller's `memberships`, which step 05 created and never reads, instead of comparing against one hard-coded value | [decision 22](decisions.md) |
+| ~~10~~ | ~~Resolve the company from the caller's `memberships`, which step 05 created and never reads, instead of comparing against one hard-coded value~~ — paid, 2026-10-05 | [decision 22](decisions.md) |
 | 18 | The delegation, so an agent can act *for* a person — the running example's normal case, which no step before it can build | [decision 23](decisions.md) |
 | 18, 19 | A **role source**. Step 06's roles are in the source code, so `DSOR-IDN-04a` is not met | step 06's README |
 | 20 | The idempotency claim, §21.7 — the first stage that applies to commands only, which is what step 07's `applies` flag exists for | step 07's README |
