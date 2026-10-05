@@ -10,9 +10,13 @@ import { openTheDatabase } from "./database.ts";
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
+const THEIR_INV_1008 = "dsor://org_789/invoice/INV-1008";
+
 const SUPERVISOR: Login = { loggedInAs: "user_123" };
 // NEW IN STEP 10: the agent works for two companies, so it says which one it is working for.
 const AGENT: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
+const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
 function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
@@ -94,26 +98,79 @@ for (const [what, run] of [
   console.log(`${what.padEnd(23)} ${show(await run())}`);
 }
 
-// STEP 08, and this is the step. Everything above already happened; this is what was written
-// down while it did. Read the `authorization` column: the four DENY lines are the ones a program that
-// logged only its successes would have lost, and they are the most interesting lines here.
-//
-// `previous_hash` is the record before it, so the whole run is one chain. Change any line of it and
-// every hash after it stops agreeing.
+// NEW IN STEP 10, and this is the step. A second company, org_789, shares this program and this
+// database. It has an INV-1008 of its own — the same number as org_456's, a different invoice — and
+// the agent works for both companies, so every request it makes says which one it is working for.
 console.log();
-console.log("The audit log:");
+console.log("Two companies, one program:");
+console.log();
+console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
+console.log(show(await callOperation(AGENT_FOR_789, "invoice.get", { invoice: THEIR_INV_1008 })));
 console.log();
 
-for (const record of await theLog("org_456")) {
+// The three ways a request can fail to be inside one company, and what each is told.
+//
+// The agent that did not say which employer is refused before anything is looked at. user_123, who
+// belongs to one company, is refused org_789's address — and org_000's, which does not exist, with
+// the same words: the refusal echoes the address and says nothing else, not which company this is,
+// not whether that one is real. And naming a company in the login that is not yours is refused too.
+for (const [what, run] of [
+  [
+    "agent, company unsaid",
+    async () => await callOperation(AGENT_UNSAID, "invoice.get", { invoice: INV_1008 }),
+  ],
+  [
+    "their address, real",
+    async () => await callOperation(SUPERVISOR, "invoice.get", { invoice: THEIR_INV_1008 }),
+  ],
+  [
+    "their address, no such co",
+    async () =>
+      await callOperation(SUPERVISOR, "invoice.get", {
+        invoice: "dsor://org_000/invoice/INV-1008",
+      }),
+  ],
+  [
+    "login names their company",
+    async () =>
+      await callOperation({ loggedInAs: "user_123", tenant: "org_789" }, "invoice.get", {
+        invoice: THEIR_INV_1008,
+      }),
+  ],
+] as const) {
+  console.log(`${what.padEnd(26)} ${show(await run())}`);
+}
+
+// STEP 08: everything above already happened; this is what was written down while it did. Read the
+// `authorization` column: the DENY lines are the ones a program that logged only its successes would
+// have lost, and they are the most interesting lines here.
+//
+// NEW IN STEP 10: one chain per company. org_789's log holds org_789's decisions and nothing of
+// org_456's — and the agent's request that never said which employer is in BOTH, because both
+// employers should know. `previous_hash` is the record before it in the same chain; change any line
+// and every hash after it in that chain stops agreeing.
+for (const company of ["org_456", "org_789"]) {
+  console.log();
+  console.log(`The audit log of ${company}:`);
+  console.log();
+
+  for (const record of await theLog(company)) {
+    console.log(
+      [
+        String(record.sequence).padStart(2),
+        (record.authorization ?? "-").padEnd(5),
+        (record.operation ?? "(no such operation)").padEnd(19),
+        record.identity.subject.padEnd(21),
+        record.result.padEnd(22),
+        `${record.record_hash.slice(0, 14)}...`,
+      ].join("  "),
+    );
+  }
+
+  const log = await theLog(company);
+
   console.log(
-    [
-      String(record.sequence).padStart(2),
-      (record.authorization ?? "-").padEnd(5),
-      (record.operation ?? "(no such operation)").padEnd(19),
-      record.identity.subject.padEnd(21),
-      record.result.padEnd(22),
-      `${record.record_hash.slice(0, 14)}...`,
-    ].join("  "),
+    `${company}: ${log.length} records, chain verifies against the head: ${verifyChain(log, await theHead(company))}`,
   );
 }
 
@@ -132,9 +189,6 @@ const whole = await theLog("org_456");
 const head = await theHead("org_456");
 const tampered = whole.slice(0, whole.length - 1);
 
-console.log(
-  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, head)}`,
-);
 console.log(
   `drop one from the copy we are holding: the chain alone still says ${verifyChain(tampered)}, ` +
     `and against the head ${verifyChain(tampered, head)}`,

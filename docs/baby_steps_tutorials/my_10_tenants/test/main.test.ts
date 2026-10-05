@@ -106,19 +106,23 @@ describe("the program a learner runs", () => {
     const out = demo().report;
     const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
 
-    expect(rows).toHaveLength(10);
+    // NEW IN STEP 10: two logs, printed one after the other — org_456's fifteen records and
+    // org_789's two.
+    expect(rows).toHaveLength(17);
 
-    // Four denials recorded, which is the step's point: a program that logged only its successes
-    // would have lost every one of them.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(4);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(6);
+    // Nine denials recorded, which is step 08's point: a program that logged only its successes
+    // would have lost every one of them. Five of the nine are this step's — four refusals for being
+    // outside one company, and the agent's unsaid request counted once in each employer's log.
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(9);
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(8);
 
-    // Sequences 0..9, in order, with no gaps.
+    // Sequences 0..14 for org_456 and then 0..1 for org_789: each chain counts from zero.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1,
     ]);
 
-    expect(out).toContain("10 records, chain verifies against the head: true");
+    expect(out).toContain("org_456: 15 records, chain verifies against the head: true");
+    expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
     // The line that shows what a checkpoint is for — and only as far as it goes. Hash chaining alone
@@ -147,25 +151,35 @@ describe("the program a learner runs", () => {
    * the last record of run one is what run two's first record points at.
    */
   it("DSOR-AUD-01: the log survives the program stopping, and the chain survives with it", () => {
-    const records = (out: string): number =>
-      Number(/^(\d+) records, chain verifies/m.exec(out)?.[1] ?? "-1");
+    const records = (out: string, company: string): number =>
+      Number(new RegExp(`^${company}: (\\d+) records, chain verifies`, "m").exec(out)?.[1] ?? "-1");
 
     const first = demo().report;
 
-    expect(records(first)).toBe(10);
-    expect(first).toContain("chain verifies against the head: true");
+    expect(records(first, "org_456")).toBe(15);
+    expect(records(first, "org_789")).toBe(2);
+    expect(first).toContain("org_456: 15 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second)).toBe(20);
-    expect(second).toContain("chain verifies against the head: true");
+    expect(records(second, "org_456")).toBe(30);
+    expect(records(second, "org_789")).toBe(4);
+    expect(second).toContain("org_456: 30 records, chain verifies against the head: true");
+    expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      20,
+      34,
     );
+
+    // NEW IN STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
+    // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
+    // died with the process — every run issued it afresh.
+    expect(first).toContain("accounts-payable-fte  COMMITTED");
+    expect(second).toContain("accounts-payable-fte  CONFLICT");
+    expect(second).not.toContain("accounts-payable-fte  COMMITTED");
   });
 
   // The hashes move every run, because the time a decision was made is part of what is hashed.
@@ -182,8 +196,54 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(10);
-    expect(hashesOf(second.raw)).toHaveLength(10);
+    expect(hashesOf(first.raw)).toHaveLength(17);
+    expect(hashesOf(second.raw)).toHaveLength(17);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
+  });
+
+  // NEW IN STEP 10: what the demo shows about two companies.
+  it("DSOR-IDN-03b: the same invoice number is two different invoices, one per company", () => {
+    const out = demo().report;
+
+    expect(out).toContain("dsor://org_456/invoice/INV-1008  31400.00 USD  issued");
+    expect(out).toContain("dsor://org_789/invoice/INV-1008  18000.00 USD  draft");
+  });
+
+  it("DSOR-ERR-01b: the four refusals, and the same words for a real company and one that does not exist", () => {
+    const out = demo().report;
+    // The envelope lines (they carry a retry class), not the audit rows that also say TENANT_MISMATCH.
+    const labelled = out
+      .split("\n")
+      .filter((line) => line.includes("TENANT_MISMATCH") && line.includes("retry:"));
+
+    expect(labelled).toHaveLength(4);
+
+    const real = labelled.find((line) => line.startsWith("their address, real"));
+    const fake = labelled.find((line) => line.startsWith("their address, no such co"));
+
+    if (real === undefined || fake === undefined) {
+      throw new Error("both refusals should be in the output");
+    }
+
+    // Same words but for the address echoed back, and nothing about the company the caller is in.
+    expect(real.split("TENANT_MISMATCH")[1]?.replace("org_789", "X")).toBe(
+      fake.split("TENANT_MISMATCH")[1]?.replace("org_000", "X"),
+    );
+
+    for (const line of labelled) {
+      expect(line).not.toContain("serves");
+      expect(line.split("TENANT_MISMATCH")[1]).not.toContain("org_456");
+    }
+  });
+
+  it("DSOR-TEN-02a: the agent's unsaid request is in both employers' logs, and nothing else crosses", () => {
+    const out = demo().report;
+    const [, ours = "", theirs = ""] = out.split(/The audit log of org_\d+:/);
+
+    expect(ours).toContain("accounts-payable-fte   TENANT_MISMATCH");
+    expect(theirs).toContain("accounts-payable-fte   TENANT_MISMATCH");
+    // org_789's log holds nothing of user_123 or the CFO, who belong to org_456 only.
+    expect(theirs).not.toContain("user_123");
+    expect(theirs).not.toContain("cfo_100");
   });
 });
