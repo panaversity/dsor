@@ -17,7 +17,7 @@ import {
   type ErrorEnvelope,
   type ResultEnvelope,
 } from "./envelopes.ts";
-// Every call says who is asking, and NEW IN STEP 06 every call is checked against what that
+// Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
 import { principalFrom, type Login } from "./login.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";

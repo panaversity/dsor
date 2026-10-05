@@ -12,7 +12,7 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 
-// NEW IN STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
+// STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
 // `approver` grants invoice:read and payment:approve, and not invoice:issue — so they ask as
 // the agent, which holds it. Nothing about what they test has changed. A new gate in front of
 // the program changing which caller a test needs is exactly what it looks like when permissions
@@ -167,8 +167,8 @@ describe("who you are comes from the login, never from the arguments", () => {
 
   // No rule id, for the reason given on the walk below: this step has no audit, no
   // connectors and no events, so it supports DSOR-COR-01a in part and claims neither it nor
-  // DSOR-COR-01b for attribution. DSOR-COR-01b is about generating a request id, and the two
-  // tests that prove that live in test/envelopes.test.ts.
+  // DSOR-COR-01b for attribution. DSOR-COR-01b is about generating a request id, and the tests
+  // that prove that live in test/envelopes.test.ts and test/login.test.ts.
   it("the answer records who asked", () => {
     const answer = callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-9999",
@@ -293,6 +293,39 @@ describe("who you are comes from the login, never from the arguments", () => {
       .digest("hex");
 
     expect(answer.envelope.payload_hash).toBe(`sha256:${honest}`);
+  });
+
+  // Added 2026-10-05. The one shape of "from the arguments" that no test above sends: no login
+  // at all, and a real person's name planted in the arguments. Every planted-principal test
+  // above logs in first, so a fallback that read `args.principal` only when the login was
+  // missing would never fire under them. It was tried here: with that fallback inside
+  // `authenticate`, this test was the only one of 181 that went red. The answer must still be
+  // the refusal nobody-is-logged-in gets, attributed to nobody — a program that believed the
+  // arguments here would file the call under cfo_100 and then ask the permission question on
+  // her behalf.
+  it("DSOR-SRC-02a: with nobody logged in, a principal planted in the arguments is not the caller", () => {
+    const planted = [
+      { principal: "cfo_100" },
+      { principal: "user_123" },
+      { loggedInAs: "cfo_100" },
+      { principal_id: "user_123", subject: "user_123" },
+    ] as const;
+
+    for (const id of ["invoice.get", "invoice.issue"]) {
+      for (const extra of planted) {
+        const answer = callOperation(undefined, id, { invoice: INV_1008, ...extra });
+        const where = `${id} ${JSON.stringify(extra)}`;
+
+        if (answer.kind !== "error") {
+          throw new Error(`${where}: expected a refusal, got ${answer.kind}`);
+        }
+
+        // Not AUTHORIZATION_DENIED, not CONFLICT: those would mean a person was found first.
+        expect(answer.envelope.code, where).toBe("AUTHENTICATION_REQUIRED");
+        expect(answer.askedBy, where).toBe("(nobody)");
+        expect(answer.envelope.correlation.principal_id, where).toBeUndefined();
+      }
+    }
   });
 
   // Losing a name is bad. Inventing one is worse: an unauthenticated request stamped with

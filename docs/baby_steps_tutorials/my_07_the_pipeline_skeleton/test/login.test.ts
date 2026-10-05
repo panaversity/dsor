@@ -204,7 +204,13 @@ describe("logging in", () => {
   // passing one where the other belongs typechecks cleanly. These two refusals pass neither,
   // which is exactly where such a swap would go unnoticed. The request id is generated, so
   // it has a shape, and a name does not have that shape.
-  it("DSOR-IDN-01: an identity refusal carries a generated request id, not a name", () => {
+  //
+  // DSOR-COR-01b, and it used to say DSOR-IDN-01. IDN-01 is about normalizing a caller into a
+  // principal with a type and tenant memberships; these two logins are refused, so there is no
+  // principal here and the test asserts nothing about a type or a membership. What it does
+  // assert is that a caller who supplied no request id got one generated, which is COR-01b's
+  // own sentence. The other tests of that rule are in test/envelopes.test.ts.
+  it("DSOR-COR-01b: an identity refusal carries a generated request id, not a name", () => {
     for (const login of [undefined, { loggedInAs: "cfo_100_evil" }]) {
       const who = principalFrom(login);
 

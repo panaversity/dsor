@@ -64,17 +64,18 @@ real number:
 | 6 | validate the input | steps 02–04 |
 | 2 | resolve the tenant | step 10 |
 | 3 | resolve the delegation, verify the actor chain | steps 18–19 |
-| 4 | check operational status: suspension, freeze, breaker | step 26 |
+| 4 | check operational status: suspension, freeze, breaker | step 25 |
 | 7 | claim the idempotency key | step 20 |
 | 8 | create or load the proposal | step 22 |
-| 9 | read bound state, check preconditions | steps 11–13 |
-| 10 | evaluate controls, segregation of duties, limits | steps 27–30 |
+| 9 | read bound state at the required freshness, check preconditions | steps 15, 32 |
+| 10 | evaluate controls, segregation of duties, limits | steps 24, 27–30 |
 | 11 | **record the decision, always, including DENY** | step 08 |
+| 12 | stop here when a `REQUIRE_*` outcome is not yet satisfied, or the mode is `propose_only` or `validate_only` | steps 23, 29 |
 | 13 | **write the intent record, before any side effect** | step 36 |
 | 14 | execute through the connector | step 34 |
 | 15 | finalize: COMMITTED, FAILED or OUTCOME_UNKNOWN | step 37 |
-| 16 | commit or release reservations, enqueue events | steps 30, 39 |
-| 17 | seal the decision bundle | step 40 |
+| 16 | commit or release reservations, enqueue events | steps 24, 40 |
+| 17 | seal the decision bundle | step 33 |
 
 **The gaps in the numbering are the roadmap.** A list that jumps 1 → 5 → 6 says what is missing
 more honestly than thirteen stages that do nothing.
@@ -120,32 +121,53 @@ function's meaning out of a list.
 
 So the check is not the only thing guarding the order. Behaviour is: a door whose `authorize` does
 nothing lets `cfo_100` issue an invoice, and that is a failing test in three files at once.
-`test/pipeline.test.ts` builds that hollow door on purpose and catches it; the five tests in
-`test/deny-by-default.test.ts` that ask what `cfo_100` may do go red; and `test/main.test.ts`, which
-runs the program, finds her issuing an invoice on the screen. Break 4 below is that door.
+`test/pipeline.test.ts` builds that hollow door on purpose and catches it twice, once for a command
+and once for a query; the five tests in `test/deny-by-default.test.ts` that ask what `cfo_100` may
+do go red; and `test/main.test.ts`, which runs the program, finds her issuing an invoice on the
+screen. Break 4 below is that door.
 
 ## What changed since step 06
+
+What this step's idea touched:
 
 ```text
 my_07_the_pipeline_skeleton/
   src/pipeline.ts          NEW  Stage, Context, assertPipeline, applies, runPipeline
-  test/pipeline.test.ts    NEW  24 tests: the list, its rules, and the walk
-  test/main.test.ts        NEW   6 tests: starts src/main.ts and reads what it printed
+  test/pipeline.test.ts    NEW  25 tests: the list, its rules, and the walk
   src/operations.ts    CHANGED  the four stages, PIPELINE, makeDoor; callOperation walks the list
+  test/main.test.ts    CHANGED  rewritten: 6 tests that start src/main.ts and read what it printed
   package.json         CHANGED  name and description only
 ```
 
 Five files. For a step that moved every check in the program, that is the point: the checks
 themselves did not change, only where the order lives.
 
-`test/main.test.ts` is the odd one out, and it is here because a review asked which test imports
-`src/main.ts` and the answer was none — in this step or any step before it. That is the program the
-section above tells you to run, and the block below is its output pasted in as proof. Flip one
-`===` inside `show` and all 173 of the other tests stayed green — measured, by doing it — while
-`pnpm start` crashed. So that file starts the program as a child process, the way you do, and reads
-what came back: the whole output byte for byte, and then five separate claims the story turns on,
-each titled with the rule it proves. A promise nobody tests is a promise nobody has, and the output
-was a promise.
+`test/main.test.ts` is the odd one out. It exists because a review on 2026-10-01 asked which test
+imports `src/main.ts`, and the answer was none — not here and, on that day, not in any step before
+it. That is the program the section above tells you to run, and the block below is its output
+pasted in as proof. Flip one `===` inside `show` and, measured then, all 173 of the other tests
+stayed green while `pnpm start` crashed. So that file starts the program as a child process, the
+way you do, and reads what came back: the whole output byte for byte, and then five separate
+claims the story turns on, each titled with the rule it proves. A promise nobody tests is a promise
+nobody has, and the output was a promise.
+
+The same change gave step 06 a `test/main.test.ts` of its own, which is why the file is CHANGED
+here and not new. The two differ in one decision. Step 06's reads the expected output out of its
+README's "Run it" block, so the README and the program cannot drift apart. This one holds the
+expected output as a literal inside the test, which is plainer to read and means the README's block
+has to be kept in step by hand.
+
+The command below lists **fourteen** paths, not five. Run on 2026-10-05, the other nine were:
+
+- `src/main.ts`, `src/people.ts`, `src/permissions.ts` and `test/permissions.test.ts` differ by
+  comment markers only. Step 06's `NEW IN STEP 06` reads `STEP 06` here, so that a search for
+  "NEW IN STEP" finds this step's lesson and nothing older.
+- `test/deny-by-default.test.ts` differs by that marker and by one comment that records a review
+  of this step. `test/who-is-calling.test.ts` differs by that marker and by a test added on
+  2026-10-05, which the note at the end of this README describes.
+- `test/registry.test.ts` and `test/operations.test.ts` differ because this step's second review
+  corrected three titles and two comments in them. The last section of this README says why.
+- `README.md` is this file.
 
 To see every difference yourself:
 
@@ -161,7 +183,7 @@ diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
 cd docs/baby_steps_tutorials/my_07_the_pipeline_skeleton
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 179 tests pass
+pnpm check                 # typecheck, then test. 181 tests pass
 ```
 
 ```text
@@ -207,7 +229,7 @@ TypeError: the pipeline runs resolve the operation where authenticate belongs: t
 authenticate then resolve the operation then authorize then validate the input
 ```
 
-**Read the totals.** 105 collected, not 179. Seventy-four tests did not fail; they never ran,
+**Read the totals.** 105 collected, not 181. Seventy-six tests did not fail; they never ran,
 because five test files import a module that throws while it is loading. The program refuses to
 start. That is what "refused at start-up" looks like from the outside, and it is the strongest
 answer a break can get.
@@ -220,7 +242,7 @@ silently went missing.
 
 The shrunken total is still the trap, and it is worth seeing why. Park `test/main.test.ts` somewhere
 else for a moment and run this break again: it prints `99 passed (99)` with **nothing failed** — a
-total that has quietly lost seventy-four tests, reading exactly like a break nobody caught. When you
+total that has quietly lost seventy-six tests, reading exactly like a break nobody caught. When you
 run these, read the total first, every time.
 
 **2. Make the walker take the list backwards.** In `src/pipeline.ts`, change
@@ -228,10 +250,10 @@ run these, read the total first, every time.
 `runPipeline`**, not either of the two inside `assertPipeline`. Run `pnpm test`:
 
 ```text
-      Tests  50 failed | 129 passed (179)
+      Tests  52 failed | 129 passed (181)
 ```
 
-Fifty. The order is load-bearing for nearly every test in the step.
+Fifty-two. The order is load-bearing for nearly every test in the step.
 
 Three loops in that file open with that same line: two in `assertPipeline`, one in `runPipeline`.
 Reversing one of `assertPipeline`'s is a different experiment — it breaks the start-up check
@@ -241,7 +263,7 @@ instead, and you get break 1's shrinking total. That caught me four times while 
 `continue`. Run `pnpm test`:
 
 ```text
-      Tests  19 failed | 160 passed (179)
+      Tests  21 failed | 160 passed (181)
 ```
 
 The first no has to be the answer. Without that, a caller who failed a check has later checks run
@@ -252,15 +274,16 @@ function with `(context) => carryOn(context)`. Run `pnpm test`:
 
 ```text
      × DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here
+     × DSOR-AUT-01b: a query is refused when the caller's role grants nothing
      × DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries
      × DSOR-AUT-01b: the refusal does not say which permission was missing
      × DSOR-SRC-02a: the permission comes from the contract, never from the arguments
      × DSOR-AUT-01b: being refused for authority tells the caller nothing about the data
-     × DSOR-AUT-01b: the supervisor may issue, and does
+     × DSOR-AUT-01a: the supervisor may issue, and does
      × prints what the README shows, byte for byte
      × DSOR-AUT-01b: cfo_100 is refused invoice.issue and the agent is not, for the same invoice
      × DSOR-EXE-01a: the two denied lines are the same refusal, word for word
-      Tests  9 failed | 170 passed (179)
+      Tests  10 failed | 171 passed (181)
 ```
 
 This is the break to sit with. **`assertPipeline` is perfectly happy** — the list still holds four
@@ -276,7 +299,7 @@ calls. Run `pnpm test`:
 
 ```text
      × DSOR-EXE-01a: a stage cannot edit the context it was given
-      Tests  1 failed | 178 passed (179)
+      Tests  1 failed | 180 passed (181)
 ```
 
 A stage is meant to *return* what it learned, not edit what it was handed. Without the freeze a
@@ -351,15 +374,15 @@ And the part that finds real bugs:
    Placed earlier, there is no kind to ask about, so the walker steps over it on every call
    including commands — a step that is silently never reached, which is what `DSOR-EXE-01b` forbids.
 6. The **105**. The six failures tell you something broke; the total tells you *how* it broke. 105
-   collected where 179 should be means seventy-four tests never ran at all, because the module they
+   collected where 181 should be means seventy-six tests never ran at all, because the module they
    import threw while it was loading — the program refused to start, which is the strongest answer a
    break can get. The trap is that a shrunken total with nothing failing reads exactly like a break
    nobody caught, and that is what this break printed before `test/main.test.ts` existed. Always
    read the total.
 7. `test/main.test.ts`, because it is the only one that runs `src/main.ts`. Every other file imports
    a function and calls it, and `main.ts` exports nothing to call — it does its work at the top
-   level, so importing it would just run it. Until that file existed, `src/main.ts` was imported by
-   no test in this step or any step before it, and the README's output block was an untested claim.
+   level, so importing it would just run it. Until 2026-10-01 no step had such a test — this step and
+   step 06 got theirs in the same change — and the README's output block was an untested claim.
 8. No more than step 06 was. Nothing here is authenticated, the roles are in the source, and
    thirteen of §21's seventeen steps do not exist — including the two that matter most for evidence:
    recording the decision, which is step 08, and writing the intent record, which is step 36. What
@@ -396,7 +419,7 @@ Rules nearby this step does **not** claim:
 | `DSOR-EXE-02` | The decision must be recorded before the response, denials included. Nothing is recorded anywhere yet: §21.11 is step 08. |
 | `DSOR-EXE-03a` | A durable intent record before any side effect. §21.13, step 36 — it needs a proposal id, an idempotency key and a connector, none of which exist before then. The refusal of arguments that cannot be written down is the smallest shape of it and not the rule. |
 | `DSOR-EXE-03b` | No execution if the evidence cannot be written. Its sentence covers the decision record *or* the intent record: step 08 meets the decision branch, step 36 the intent branch. |
-| `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Steps 34 and 37. |
+| `DSOR-EXE-04a`, `04b` | Atomic commit of state, outcome and outbox; an intent record with no outcome is `OUTCOME_UNKNOWN`. Step 36, with `DSOR-EXE-03a` and `03b`. |
 | `DSOR-AUT-02a` | `ALLOW`, `DENY` and `REQUIRE_APPROVAL`. Two answers here. Step 22. |
 | `DSOR-IDM-01a`–`01c` | The idempotency claim, §21.7 — the first stage that will apply to commands only. Step 20. |
 
@@ -427,9 +450,10 @@ mutation sweep are not enough, and the person least able to see it is the one wh
 A nine-reviewer pass came back later and went after the things the first pass had not thought to
 look at: the tests themselves, and this README.
 
-- **No test imported `src/main.ts`** — not here, and not in any earlier step. The program the "Run
-  it" section tells you to run, whose output this README pastes as proof, was the one file in the
-  step nothing checked. `test/main.test.ts` is the fix: it starts the program for real and reads
+- **No test imported `src/main.ts`** — not here, and on that day not in any earlier step. The program
+  the "Run it" section tells you to run, whose output this README pastes as proof, was the one file
+  in the step nothing checked. `test/main.test.ts` is the fix, and the same change gave step 06 one
+  of its own: it starts the program for real and reads
   what came back. Seventeen single-line edits to `src/main.ts` were then tried one at a time, and
   fifteen turned a test red. The two survivors are written down at the top of that file, because an
   output that genuinely cannot differ is not a gap and the next reader should not have to rediscover
@@ -447,6 +471,20 @@ look at: the tests themselves, and this README.
 The pattern across both passes is the same, and it is the one worth taking out of this step: the
 thing nobody tests is the thing nobody is looking at, and a number nobody re-measures is a number
 that has already stopped being true.
+
+> Corrected 2026-10-05. A third pass over this copy found what step 06's correction of 2026-10-01
+> had fixed there and not here. Five inherited titles named a rule the test does not prove: four
+> `DSOR-AUT-01b` on tests that show a caller being *allowed* (now `DSOR-AUT-01a`), `DSOR-IDN-01` on a
+> request-id test (now `DSOR-COR-01b`), and `DSOR-SCH-01` and `DSOR-MON-01` on a read-once test and
+> a freeze test (now no id). Two tests were added, each green on arrival because the code already
+> refused, and each proven by sabotage to be the only test in the folder that catches its break:
+> with nobody logged in, a principal planted in the arguments is still nobody (`DSOR-SRC-02a`); and
+> a query is refused when the caller's role grants nothing (`DSOR-AUT-01b`). Every person in the
+> story holds `invoice:read`, so until that test an `authorize` that waved queries through passed
+> everything here. The §21 table above had five rows pointing at the wrong step of the map and was
+> missing §21.12; the rules table said `DSOR-EXE-04a` and `04b` were steps 34 and 37 where the map
+> says 36; and this file called `test/main.test.ts` new when step 06 has one too. Every count and
+> every break-it output was re-run, and the numbers above are what they printed.
 
 **Next:** step 08, write the decision first — §21.11, the line of the checklist that matters most for
 evidence: the decision is recorded before the response even when the answer is no.

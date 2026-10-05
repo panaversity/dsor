@@ -9,6 +9,8 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 import { getInvoice } from "../src/invoice.ts";
+import type { Principal } from "../src/people.ts";
+import { ROLES } from "../src/permissions.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(at: number | null, name: string, applies: Stage["applies"] = "both"): Stage {
@@ -301,6 +303,53 @@ describe("the pipeline", () => {
     }
 
     expect(real.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  // Added 2026-10-05. A query is refused for authority too, and until then nothing showed it.
+  // Every person in the story holds invoice:read, so no call through the real door can be refused
+  // invoice.get for want of a permission — and an `authorize` that waved queries through was
+  // tried: this test was the only one of 181 that went red. So this door's `authenticate` carries
+  // on with a caller
+  // whose role the table does not define, which is the one caller deny-by-default is about: a
+  // role nobody defined grants nothing, and nothing includes reading.
+  //
+  // The caller is made up here and not added to people.ts, the way permissions.test.ts does it.
+  // The story's cast does not grow because a test needs a stranger.
+  it("DSOR-AUT-01b: a query is refused when the caller's role grants nothing", () => {
+    const visitor: Principal = Object.freeze({
+      id: "someone",
+      type: "human",
+      role: "visitor",
+      memberships: Object.freeze([Object.freeze({ tenantId: "org_456" })]),
+    });
+
+    // So the refusal below is for the reason claimed, and not because somebody defined the role.
+    expect(Object.hasOwn(ROLES, visitor.role)).toBe(false);
+
+    const list = PIPELINE.map((stage) =>
+      stage.name === "authenticate"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({
+              kind: "carry_on" as const,
+              context: { ...context, principal: visitor },
+            }),
+          })
+        : stage,
+    );
+
+    const answer = makeDoor(list)(undefined, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+    expect(answer.envelope.retry).toBe("never");
+    expect(answer.askedBy).toBe(visitor.id);
+    expect(answer.envelope.correlation.principal_id).toBe(visitor.id);
   });
 
   // Every path out of the door hands back a frozen answer. `readonly` is erased before Node runs, so

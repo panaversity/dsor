@@ -1,4 +1,4 @@
-// NEW IN STEP 06: what a caller may do.
+// STEP 06: what a caller may do.
 //
 // Step 05 answered *who are you*. This answers *may you do this*, and the answer is no unless
 // somebody said yes. That is the whole idea, and it is the opposite of how most programs grow:
@@ -48,7 +48,7 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
  */
 const NOTHING: readonly string[] = Object.freeze([]);
 
-// NEW IN STEP 06. The shape of a permission, read out of the specification's own schema
+// STEP 06. The shape of a permission, read out of the specification's own schema
 // instead of written again here. `common.schema.json` is the same file the contracts are
 // validated against, so the two cannot drift: change the schema and this follows. Writing
 // `/^[a-z]+:[a-z]+$/` by hand would have been shorter and wrong — it refuses
