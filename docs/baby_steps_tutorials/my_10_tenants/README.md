@@ -68,8 +68,10 @@ git diff --no-index ../my_09_postgres_on_neon ../my_10_tenants
 | `src/main.ts` | the two-companies section, one log printed per company, and the planted-principal line is a refusal now |
 | `test/support/database.ts` | `resetInvoices`, as the owner, from 004 |
 | `test/tenant.test.ts`, `test/cross-tenant.test.ts`, `test/invoices-in-postgres.test.ts`, `test/audit-per-tenant.test.ts` | new |
+| `test/invoice.test.ts`, `test/audit.test.ts`, `test/decision-first.test.ts`, `test/main.test.ts`, `test/pipeline.test.ts`, `test/who-is-calling.test.ts` | every test that read an invoice or the log now says which company |
+| `test/deny-by-default.test.ts` | a role nobody defined is refused even a read through the whole door, not only through `holds` |
 
-325 tests became 373. One test from step 09 changed its example (Break 5 says why), and two of
+325 tests became 376. One test from step 09 changed its example (Break 5 says why), and two of
 step 05's changed their answer (the rules section says why).
 
 ## Run it
@@ -132,9 +134,10 @@ The invoices are durable now too. Step 09's list died with the process, so every
 
 ### The database tier
 
-`pnpm check` needs no server: 373 tests on PostgreSQL compiled to WebAssembly, in-process. The nine
-tests in `pnpm test:db` need two real logins, and this step needs a database of its own — the
-migrations are checksummed, and step 09's database has applied two of them while this step has four.
+`pnpm check` needs no server; the tests that need a database use PGlite, PostgreSQL compiled to
+WebAssembly, in-process. The nine tests in `pnpm test:db` need two real logins, and this step needs
+a database of its own — the migrations are checksummed, and step 09's database has applied two of
+them while this step has four.
 Copy step 09's `.env` and change the database name in both URLs:
 
 ```bash
@@ -145,7 +148,9 @@ pnpm migrate && pnpm test:db
 ## Break it
 
 Eight, measured on the full suite after the hostile review. Two of them are not counts, and that
-is the lesson of each.
+is the lesson of each. The counts are what `pnpm test` prints. Five of the eight leave a variable
+unused, so `pnpm check` stops earlier, at `tsc` with `TS6133`, before a test runs — a type checker
+noticing a sabotage is a lock of its own, and the count below is what the tests say about it.
 
 ### Break 1 · leave the stage out of the list
 
@@ -158,7 +163,7 @@ input then record the decision
 ```
 
 Not a failing test — the program refuses to **load**. `assertPipeline` requires the stage by name, so
-`pnpm start` stops before it has opened a database, and `pnpm check` reports `9 failed | 199 passed
+`pnpm start` stops before it has opened a database, and `pnpm test` reports `9 failed | 199 passed
 (208)`: the total shrinks, because every file that imports `operations.ts` dies at import. A
 shrinking total is the tell that the guard fired at load, not that a test caught something.
 
@@ -167,7 +172,7 @@ shrinking total is the tell that the guard fired at load, not that a test caught
 In `src/tenant.ts`, make `tenantFor` return `{ tenant: claim.tenant }` for any named claim.
 
 ```text
- Tests  6 failed | 367 passed (373)
+ Tests  6 failed | 370 passed (376)
 ```
 
 `user_123` naming `org_789` is now inside `org_789`, and reads its invoice.
@@ -178,7 +183,7 @@ In `src/invoice.ts`, change `getInvoice`'s query to `WHERE id = $1 ORDER BY tena
 and its parameters to `[id]`.
 
 ```text
- Tests  6 failed | 367 passed (373)
+ Tests  6 failed | 370 passed (376)
 ```
 
 This is step 09's store, the day a second company exists: `INV-1008` is whichever row sorts first.
@@ -192,7 +197,7 @@ proved nothing about the leak. A reviewer measured it.
 In `src/audit.ts`, make `chainOf` return `` `audit:org_456` `` whatever the company.
 
 ```text
- Tests  14 failed | 359 passed (373)
+ Tests  15 failed | 361 passed (376)
 ```
 
 ### Break 5 · let validate forget the address
@@ -201,7 +206,7 @@ In `src/operations.ts`, in `validateTheInput`, change `if (address.tenant !== co
 `if (false)`.
 
 ```text
- Tests  14 failed | 359 passed (373)
+ Tests  14 failed | 362 passed (376)
 ```
 
 Fourteen, not one, and the reason is worth the paragraph. The address check first lived in the
@@ -217,7 +222,7 @@ was" — lost that example, because it is no longer one.
 In `src/operations.ts`, in `invoiceIdFrom`, change `if (parsed.tenant !== tenant)` to `if (false)`.
 
 ```text
- Tests  1 failed | 372 passed (373)
+ Tests  1 failed | 375 passed (376)
 ```
 
 One test, and it is the only one that can reach this line: a door built with a validate stage that
@@ -237,7 +242,7 @@ constraint matching the ON CONFLICT specification
 
 The running example cannot be loaded: it holds an `INV-1008` for each company, and its `ON CONFLICT
 (tenant_id, id)` names a key that no longer exists. `pnpm check` reports `61 failed | 130 passed |
-182 skipped` — the skipped ones are every file whose setup applies the migrations. Skipped is the
+185 skipped` — the skipped ones are every file whose setup applies the migrations. Skipped is the
 tell of a guard that fired before a test could, and it is written here as what it is.
 
 ### Break 8 · grant UPDATE on every column
@@ -245,7 +250,7 @@ tell of a guard that fired before a test could, and it is written here as what i
 In `migrations/003_invoices.sql`, change `GRANT UPDATE (status)` to `GRANT UPDATE`.
 
 ```text
- Tests  17 failed | 356 passed (373)
+ Tests  17 failed | 359 passed (376)
 ```
 
 The application may now move an invoice to another company. One test asks about the grant — and
@@ -253,7 +258,7 @@ sixteen more fall because the program **refuses to start**: since the review, th
 whether the application could move, renumber, add or delete invoices, and every test that opens the
 program's own door is refused. That is the guard a critic's "next attack" asked for.
 
-Restore each break and confirm `pnpm check` prints `373 passed` again.
+Restore each break and confirm `pnpm check` prints `376 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -313,13 +318,29 @@ Copy `my_09_postgres_on_neon` to a new folder and ask:
   refused and recorded as the `DENY` it is. Four argument names count: `tenant`, `tenant_id`
   (→ `TENANT_MISMATCH`), `principal`, `principal_id` (→ `AUTHORIZATION_DENIED`). One that *agrees*
   still changes nothing. A delegation identifier joins the list in step 18, when delegations exist.
-  Any other name a caller plants stays ignored, as before.
+  Any other name a caller plants stays ignored, as before. **The scan reads the caller's own
+  top-level string arguments only.** A company id or an address nested inside an object —
+  `{ filter: { tenant: "org_789" } }`, or `{ filter: { invoice: "dsor://org_789/…" } }` — is not
+  walked: validate carries on, the record says `ALLOW`, and the handler reads only its own `invoice`,
+  so the answer is the caller's own company's invoice. Today no handler reads a nested value, which
+  is why that is a limit and not a leak. A test in `cross-tenant.test.ts` pins it, without a rule id,
+  so the step that adds a nested argument meets it on purpose.
 - **[DSOR-IDN-03b · L1]** An operation MUST NOT read or write across tenants — met for the two
   operations that exist, by the store taking the company first.
 - **[DSOR-TEN-02a · L1]** Audit partitions keyed by tenant — met for the audit partition only. The
   caches, idempotency records, holds and proposals the rule also names do not exist yet. One
   counter does: the flood count of refusals with no subject or no company, which is process-wide on
   purpose, because those refusals have no tenant to key by.
+- **[DSOR-ERR-01b · L1]** An error MUST NOT reveal the existence or attributes of a resource the
+  caller is not authorized to read — **claimed for the mismatch refusal only.** It is the first error
+  in this tutorial given to a caller who may not read what they asked about: `user_123` may not read
+  `org_789`'s invoice, and the refusal is computed from the address alone, before any lookup, with the
+  same words whether that company exists or not. Every other error this program gives goes to a
+  caller who *may* read what they asked about — `RESOURCE_NOT_FOUND` for your own company's missing
+  invoice tells you something you are allowed to know — so the rule's other cases are not exercised
+  here. Only the tests about the mismatch refusal carry the id: two in `cross-tenant.test.ts` and one
+  in `main.test.ts`. The test that tells `RESOURCE_NOT_FOUND` and `TENANT_MISMATCH` apart does not,
+  because it would still pass if the mismatch refusal looked the invoice up first.
 
 **The map and the spec disagreed, and the spec won.** The map's done-when says an address for another
 company returns "the same not found as a URI that does not exist". `DSOR-SRC-02b` says it MUST be
@@ -338,7 +359,6 @@ Rules nearby this step does **not** claim:
 | `DSOR-TEN-01b` | Two independent layers. This is the first: the program filters. PostgreSQL still answers any query it is sent. Step 11. |
 | `DSOR-TEN-01c` | Isolation must not depend on agent behaviour or prompts. Nothing here does, and nothing ever did — but a rule about what is *absent* is not met by a step that adds nothing; it is held by every step. |
 | `DSOR-TEN-02b` | A cross-tenant test suite over every operation. `cross-tenant.test.ts` covers `invoice.get` by hand; the generated suite that grows with each operation is step 12. |
-| `DSOR-ERR-01b` | The mismatch refusal reveals nothing, but the rule is about every error, and `RESOURCE_NOT_FOUND` for your own company's missing invoice still says it is missing. |
 
 Everything earlier steps claimed still holds. `DSOR-EXE-02` now holds for a refusal with no company
 too, which step 09 could not have asked.

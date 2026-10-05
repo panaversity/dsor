@@ -8,7 +8,8 @@
 // Rule DSOR-SRC-02b: a tenant identifier inside operation arguments that disagrees with the
 // security context MUST cause TENANT_MISMATCH or AUTHORIZATION_DENIED.
 // Rule DSOR-ERR-01b: an error MUST NOT reveal the existence or attributes of a resource the caller
-// is not authorized to read.
+// is not authorized to read. Claimed for the mismatch refusal only: it is the one error this program
+// gives a caller who may not read what they asked about, so only the tests about it carry the id.
 //
 // The map's "done when" says a foreign address returns "the same not found as a URI that does not
 // exist". Decision 88 chose TENANT_MISMATCH instead, because the spec names it and the spec is
@@ -132,6 +133,36 @@ describe("an address for another company", () => {
     expect(refused.code).toBe("TENANT_MISMATCH");
   });
 
+  // A limit, pinned, so a later step meets it on purpose and not by accident. The §21.6 scan reads
+  // the caller's own TOP-LEVEL string arguments. A company id or an address nested inside an object
+  // is not walked. Measured through the whole pipeline: validate carries on, §21.11 records ALLOW,
+  // and the handler reads only its own `invoice`, so the answer is the caller's own company's
+  // invoice and nothing of org_789's is touched. Today no handler reads a nested value, which is
+  // why this is a limit and not a leak — the day one does, this is the test that says so.
+  //
+  // No rule id: it asserts a success, so it proves nothing about a MUST NOT.
+  it("a limit: a company or an address nested inside an argument is not walked at §21.6", async () => {
+    await forgetTheLog("org_456");
+    await forgetTheLog("org_789");
+
+    const answer = await callOperation(SUPERVISOR, "invoice.get", {
+      invoice: OURS,
+      filter: { tenant: "org_789", invoice: THEIRS },
+    });
+
+    if (answer.kind !== "data") {
+      throw new Error(`expected the caller's own invoice, got ${answer.kind}`);
+    }
+
+    expect(answer.invoice.uri).toBe(OURS);
+    expect(answer.invoice.tenantId).toBe("org_456");
+
+    const [record] = await theLog("org_456");
+
+    expect(record?.authorization).toBe("ALLOW");
+    expect(await theLog("org_789")).toHaveLength(0);
+  });
+
   it("DSOR-TEN-01a: a command run inside org_789 gets a proposal address inside org_789", async () => {
     // `success()` used to build `dsor://org_456/proposal/...` for every tenant; a review ran this
     // exact command and got a receipt in the wrong company's proposal space.
@@ -146,10 +177,14 @@ describe("an address for another company", () => {
     expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_789\/proposal\/prop_\d{4}$/);
   });
 
-  it("DSOR-ERR-01b: a missing invoice in your own company is a different answer, on purpose", async () => {
-    // Decision 88: TENANT_MISMATCH for another company's address, RESOURCE_NOT_FOUND for a missing
-    // one of yours. The two are told apart — and the first still reveals nothing, because it is
-    // computed from the address alone, before any lookup.
+  // No rule id. This pins decision 88 — TENANT_MISMATCH for another company's address,
+  // RESOURCE_NOT_FOUND for a missing one of yours — and it would still pass if the mismatch
+  // refusal looked the invoice up first, so it proves nothing about DSOR-ERR-01b. The test above
+  // is the one with teeth: same words whether their company exists or not.
+  it("decision 88: a missing invoice in your own company is a different answer, on purpose", async () => {
+    // The two are told apart on purpose, and the first still reveals nothing, because it is
+    // computed from the address alone, before any lookup. RESOURCE_NOT_FOUND tells user_123 that
+    // org_456 has no INV-9999, which is something user_123 may know.
     const mine = await refusalFor(SUPERVISOR, MISSING);
     const theirs = await refusalFor(SUPERVISOR, THEIRS);
 

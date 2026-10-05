@@ -305,6 +305,26 @@ describe("who you are comes from the login, never from the arguments", () => {
     }
   });
 
+  // NEW IN STEP 10: the planted principal with nobody logged in. The test at the top of this file plants cfo_100
+  // beside a real login; this one plants her beside none. A program that fell back to the
+  // arguments when the login is missing would answer as cfo_100 here, so the refusal has to be the
+  // one for no login, attributed to nobody — never recorded as a request she made.
+  it("DSOR-SRC-02a: with nobody logged in, a principal in the arguments is not a login", async () => {
+    const answer = await callOperation(undefined, "invoice.get", {
+      invoice: INV_1008,
+      principal: "cfo_100",
+      principal_id: "cfo_100",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("AUTHENTICATION_REQUIRED");
+    expect(answer.askedBy).toBe("(nobody)");
+    expect(answer.envelope.correlation.principal_id).toBeUndefined();
+  });
+
   it("DSOR-IDN-01: the agent asks as itself, and is a principal like any other", async () => {
     const answer = await callOperation(
       { loggedInAs: "accounts-payable-fte", tenant: "org_456" },

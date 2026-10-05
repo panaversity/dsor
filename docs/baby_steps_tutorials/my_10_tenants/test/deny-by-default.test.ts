@@ -5,7 +5,9 @@
 // accounts-payable system.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { callOperation, makeDoor, PIPELINE, type OperationAnswer } from "../src/operations.ts";
+import type { Context } from "../src/pipeline.ts";
+import { forgetTheLog, theLog } from "../src/audit.ts";
 import { aDatabase } from "./support/database.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -197,6 +199,50 @@ describe("anything not granted is refused", () => {
 
     // One message for all ten, so the words cannot be compared either.
     expect(seen.size).toBe(1);
+  });
+
+  // NEW IN STEP 10: "a role nobody granted anything holds nothing", through the whole door and not only
+  // through `holds`. Unreachable from people.ts, whose three principals each carry a role the table
+  // defines — so a door is built whose authenticate stage hands the pipeline user_123 with a role
+  // nobody defined, and then with no role at all: `role` is a TypeScript type, and types are erased
+  // before Node runs, so a principal from a future role source can arrive without one. Both are
+  // refused even a read, and the DENY is in org_456's log.
+  it("DSOR-AUT-01b: a principal whose role nobody defined is refused even a read, through the whole door", async () => {
+    for (const role of ["admin", undefined]) {
+      const roleless = PIPELINE.map((stage) =>
+        stage.name === "authenticate"
+          ? {
+              ...stage,
+              run: (context: Context) => ({
+                kind: "carry_on" as const,
+                context: {
+                  ...context,
+                  principal: Object.freeze({
+                    id: SUPERVISOR.loggedInAs,
+                    type: "human" as const,
+                    role: role as string,
+                    memberships: Object.freeze([Object.freeze({ tenantId: "org_456" })]),
+                  }),
+                },
+              }),
+            }
+          : stage,
+      );
+
+      await forgetTheLog("org_456");
+
+      const envelope = refusalFrom(
+        await makeDoor(roleless)(SUPERVISOR, "invoice.get", { invoice: INV_1008 }),
+      );
+
+      expect(envelope.code, String(role)).toBe("AUTHORIZATION_DENIED");
+      expect(envelope.retry, String(role)).toBe("never");
+
+      const [record] = await theLog("org_456");
+
+      expect(record?.authorization, String(role)).toBe("DENY");
+      expect(record?.result, String(role)).toBe("AUTHORIZATION_DENIED");
+    }
   });
 
   // The agent holds invoice:issue, so it must get past the gate. INV-1008 is already issued, so
