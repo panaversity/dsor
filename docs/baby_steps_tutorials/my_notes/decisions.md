@@ -2255,3 +2255,32 @@ message lying, the invoices grant unchecked, an unserved membership resolving, `
 chain name. Eight break-it exercises re-measured at 373.
 
 `pnpm check`: 27 files, **373 tests**. Clean copy: 372 passed, 1 skipped.
+
+## 93 · Complete testing, steps 01 to 10 (2026-10-05)
+
+An independent evaluation of all ten copies (five reviewers, grades A–F) gave 01, 02, 07 and 10 a B,
+03 and 09 a C, and 04, 05, 06 and 08 a D — the D's for a README line the folder contradicted. Three
+things were worth doing across every step, and were done by one fixer per folder, each verified by
+me afterwards (every suite re-run, every marker and every claimed id re-grepped, two sabotages
+re-done by hand):
+
+1. **Two real holes.** Every test that planted a principal in the arguments also sent a valid login,
+   so a fallback to `args.principal` with nobody logged in survived the suites of 05 to 10. And
+   deny-by-default was never exercised for a *query*, because every role in the cast may read. Both
+   have tests now, each proved to have teeth by adding the hole and pasting the failure. Step 06
+   could not close the query half without adding a person, and says so in one sentence; 07 to 10
+   close it through a door whose authenticate stage carries a role nobody defined.
+2. **Corrections repeated forward.** Wrong rule ids on tests — the frozen-list test re-acquiring
+   `MON-01` that step 01 removed, `OPR-02b` on freeze-only tests, five mis-titles in 07–09 that 06
+   had fixed, `OPR-04a` with one interface, `COR-01b` on a clock test, `AUD-04c` in a title the README
+   disclaimed — all now match the earliest correction. Steps 07, 08 and 09 retire the markers of
+   the steps before them. A claimed-ids-versus-titles check now finds nothing in any folder.
+3. **Step 08's Break-it rewritten from real output**, including the error line the program could
+   never print. Every count in every README was re-measured by the fixer that touched the folder.
+
+One false claim of my own in the sweep: a fixer wrote step 10's Break 2 as 7 failures; measured twice
+at 376, it is 6, and the README says 6. And one near-miss: my backup for that re-measurement failed
+silently, which left `tenant.ts` sabotaged until the diff showed it — the diff is the check, not the
+intention.
+
+Counts after: 19 · 36 · 72 · 104 · 133 · 157 · 181 · 234 · 327 · 376.

@@ -1,6 +1,6 @@
 # Step 08 · Write the decision first
 
-Folder: [`my_08_write_the_decision_first`](../my_08_write_the_decision_first/README.md) · 232 tests
+Folder: [`my_08_write_the_decision_first`](../my_08_write_the_decision_first/README.md) · 234 tests
 Spec: [§21](../../../specs/dsor/03-execution.md#21-command-pipeline),
 [§29](../../../specs/dsor/03-execution.md#29-audit-and-decision-evidence),
 [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) ·

@@ -1,6 +1,6 @@
 # Step 09 · PostgreSQL on Neon
 
-Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 325 tests, plus 9 in the
+Folder: [`my_09_postgres_on_neon`](../my_09_postgres_on_neon/README.md) · 327 tests, plus 9 in the
 database tier
 Spec: [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) · `DSOR-AUD-04a`,
 `DSOR-AUD-02a`

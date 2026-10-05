@@ -1,6 +1,6 @@
 # Step 10 · Tenants
 
-Folder: [`my_10_tenants`](../my_10_tenants/README.md) · 373 tests, plus 9 in the database tier
+Folder: [`my_10_tenants`](../my_10_tenants/README.md) · 376 tests, plus 9 in the database tier
 Spec: [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) · `DSOR-TEN-01a`, `DSOR-IDN-03a`,
 `DSOR-SRC-02b`
 Both tiers have run: 373 under `pnpm check`, and 9 under `pnpm test:db` against a real server —

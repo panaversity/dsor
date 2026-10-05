@@ -1,6 +1,6 @@
 # Step 07 · The pipeline skeleton
 
-Folder: [`my_07_the_pipeline_skeleton`](../my_07_the_pipeline_skeleton/README.md) · 179 tests
+Folder: [`my_07_the_pipeline_skeleton`](../my_07_the_pipeline_skeleton/README.md) · 181 tests
 Spec: [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) · `DSOR-EXE-01a`,
 `DSOR-EXE-01b`
 Decisions [46 to 50](decisions.md).
