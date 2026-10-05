@@ -18,7 +18,7 @@ import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
 import { checkRoles, type RoleSource, type Roles } from "./permissions.ts";
 import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
-import { logins } from "./principals.ts";
+import { loginProblems, logins } from "./principals.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -170,6 +170,9 @@ export function buildRegistry(
   // type one of the four kinds of caller (step 14's README, decisions 2 and 5). Found by the
   // Stage 2 review, and fixed from step 14 on.
   problems.push(...maskingProblems(logins.values()));
+  // NEW IN STEP 18: and one name, one principal, because line ③ finds a slip's signer by
+  // name (step 18's README, decision 19).
+  problems.push(...loginProblems(logins.values()));
 
   // Every contract's input schema must have a file, and compile. A contract
   // with no check for its input would let anything through line ⑥.

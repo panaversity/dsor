@@ -74,8 +74,9 @@ function loadSchema(file: string): object {
 // As registry.ts builds its checker: name every problem, and never change the slip while
 // checking it. validateFormats is off, because ajv knows no formats without a package of
 // its own. So "date-time" is not checked here. The database's timestamptz column refuses a
-// bad time, and the memory store counts one it cannot read as passed (step 18's README,
-// decision 13).
+// time it cannot read, the database's store leaves out one that JavaScript cannot write,
+// such as infinity, and the memory store counts one it cannot read as passed (step 18's
+// README, decision 13).
 const ajv = new Ajv2020({
   allErrors: true,
   useDefaults: false,
@@ -87,10 +88,17 @@ const ajv = new Ajv2020({
 ajv.addSchema(loadSchema("common.schema.json"));
 const validateSlip = ajv.compile(loadSchema("delegation.schema.json"));
 
-/** Every way this slip breaks the specification's schema. None for a good slip. */
+/** Every way this slip breaks the specification's schema, or this tutorial's rule beyond it. None for a good slip. */
 export function slipProblems(slip: unknown): string[] {
-  if (validateSlip(slip)) return [];
-  return (validateSlip.errors ?? []).map(explain);
+  if (!validateSlip(slip)) return (validateSlip.errors ?? []).map(explain);
+  // The schema allows an empty id and an empty signer. The record would then name no slip,
+  // or no person, so DSoR counts either as a broken slip. Found by step 18's review (step
+  // 18's README, decision 13).
+  const { id, delegator } = slip as Slip;
+  return [
+    ...(id === "" ? ["/id is empty"] : []),
+    ...(delegator === "" ? ["/delegator is empty"] : []),
+  ];
 }
 
 // One problem, as ajv found it: where in the slip, and what is wrong there.

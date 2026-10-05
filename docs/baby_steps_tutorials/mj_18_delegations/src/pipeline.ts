@@ -2,7 +2,7 @@
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
 import { randomUUID } from "node:crypto";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
-import { checkDelegation } from "./delegation.ts";
+import { checkDelegation, checkNamedSlips } from "./delegation.ts";
 import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { newReads, stalest } from "./freshness.ts";
@@ -136,9 +136,13 @@ export async function call(
     //   from the slip, never from the request (DSOR-DEL-01a, DSOR-DEL-07, DSOR-DEL-08; step
     //   18's README, decisions 1, 2, and 5). Before line ⑤, which allows only what the slip
     //   and its signer both allow. Whether the signer still holds the job: step 19.
-    const slip = await line(3, () =>
-      checkDelegation(caller, contract, registry.delegations, tenant),
-    );
+    const slip = await line(3, async () => {
+      const found = await checkDelegation(caller, contract, registry.delegations, tenant);
+      // And any slip the arguments name must be this one. A person calls under none
+      // (DSOR-SRC-02b; step 18's README, decision 17). Found by step 18's review.
+      checkNamedSlips(copy, found);
+      return found;
+    });
     if (slip !== undefined) {
       under = { delegation: slip.id, subject: slip.delegator, actor: caller.id };
     }

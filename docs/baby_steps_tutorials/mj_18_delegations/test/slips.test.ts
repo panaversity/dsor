@@ -14,6 +14,7 @@ import {
   AGENT,
   CFO,
   DEL_100,
+  DEL_101,
   DEL_102,
   FIRM_IN_456,
   FIRM_IN_789,
@@ -23,6 +24,7 @@ import {
   STORY_SLIPS,
   SUPERVISOR,
   UNDER_DEL_100,
+  UNEXPECTED,
   handlers,
   refusal,
   rolesFile,
@@ -131,8 +133,21 @@ describe("C1: an agent's command runs only under an active slip in DSoR's store"
 
   it("DSOR-DEL-01a: a slip for another agent covers nothing", async () => {
     const other = memorySlips([{ ...DEL_100, delegate: "other-fte" }]);
-    const answer = await call(slipRegistry(other), createLog(), AGENT, "payment.create", CREATE);
+    const rows: Payment[] = [];
+    const log = createLog();
+    const answer = await call(
+      slipRegistry(other, undefined, rows),
+      log,
+      AGENT,
+      "payment.create",
+      CREATE,
+    );
     expect(answer).toMatchObject({ code: "DELEGATION_REQUIRED" });
+    // Found by step 18's review: the record and the rows were not checked.
+    expect(await log.records()).toMatchObject([
+      { authorization: "DENY", result: "DELEGATION_REQUIRED" },
+    ]);
+    expect(rows).toStrictEqual([]);
   });
 
   // A person who works in both companies signs a slip in org_789. If DSoR found slips by
@@ -300,39 +315,73 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
     expect(rows[0]?.status).toBe("draft");
   });
 
-  it("DSOR-DEL-02: a slip signed by someone who is not a member of the company grants nothing", async () => {
-    const answer = await call(
-      slipRegistry(with100({ delegator: "user_700" })),
-      createLog(),
-      AGENT,
-      "invoice.get",
-      READ,
-    );
-    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
-  });
+  // Since step 18 the subject is the slip's signer, so the company must be one where the
+  // signer holds a membership (DSOR-IDN-03a). Found by step 18's review: line ⑤ refused these
+  // calls, but its record named user_700 as the subject in org_456 (step 18's README,
+  // decision 18).
+  it.each([
+    ["invoice.get", READ],
+    ["invoice.list", {}],
+    ["invoice.issue", READ],
+    ["payment.create", CREATE],
+    ["payment.cancel", CANCEL],
+  ])(
+    "DSOR-IDN-03a: a slip in org_456 signed by user_700, who works only in org_789, refuses %s at line ③",
+    async (name, input) => {
+      const log = createLog();
+      const lines: number[] = [];
+      const answer = await call(
+        slipRegistry(with100({ delegator: "user_700" })),
+        log,
+        AGENT,
+        name,
+        input,
+        (n) => lines.push(n),
+      );
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: `"${name}": slip del_100 is signed by user_700, who is not a person in org_456`,
+        retry: "never",
+      });
+      expect(lines).toStrictEqual([1, 2, 3, 11]);
+      const [record] = await log.records();
+      expect(record).toMatchObject({ authorization: "DENY", result: "AUTHORIZATION_DENIED" });
+      expect(record).not.toHaveProperty("identity");
+    },
+  );
 
-  // Only a person signs a slip (§13: "a permission slip from a human to an agent").
+  // Only a person signs a slip (§13: "a permission slip from a human to an agent"). Since
+  // step 18's review, line ③ refuses it, with the check above (step 18's README, decisions
+  // 15 and 18).
   it.each([
     ["an agent", "firm-ap-fte"],
     ["nobody DSoR knows", "user_999"],
-  ])("DSOR-DEL-02: a slip signed by %s grants nothing", async (_, delegator) => {
+  ])("step 18's decision 15: a slip signed by %s is refused at line ③", async (_, delegator) => {
+    const lines: number[] = [];
     const answer = await call(
       slipRegistry(with100({ delegator })),
       createLog(),
       AGENT,
       "invoice.get",
       READ,
+      (n) => lines.push(n),
     );
-    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: `"invoice.get": slip del_100 is signed by ${delegator}, who is not a person in org_456`,
+    });
+    expect(lines).toStrictEqual([1, 2, 3, 11]);
   });
 
-  it("DSOR-DEL-02: a slip signed by an application grants nothing, though the application's role holds the permission", async () => {
+  it("step 18's decision 15: a slip signed by an application is refused at line ③, though the application's role holds the permission", async () => {
     const app = person("ap-batch", ["ap_supervisor"], "application");
     const on = slipRegistry(with100({ delegator: "ap-batch" }));
+    const lines: number[] = [];
     const answer = await withPlanted("tok_app", app, () =>
-      call(on, createLog(), AGENT, "invoice.get", READ),
+      call(on, createLog(), AGENT, "invoice.get", READ, (n) => lines.push(n)),
     );
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(lines).toStrictEqual([1, 2, 3, 11]);
   });
 
   // Start-up refuses an agent with a role, so only a planted one can hold one. Line ⑤ still
@@ -540,6 +589,10 @@ describe("C10: a slip that breaks the specification's schema is a fault in DSoR'
     ["the permission payment:*", { permissions: ["payment:*"] }],
     ["a status the schema does not know", { status: "paused" }],
     ["no expires_at", { expires_at: undefined }],
+    // Found by step 18's review: the schema allows both, and an empty id let the draft
+    // through with a record that named no slip (step 18's README, decision 13).
+    ["an empty id", { id: "" }],
+    ["an empty signer", { delegator: "" }],
   ])(
     "DSOR-DEL-01a: a slip with %s gets INTERNAL_ERROR, recorded, with no draft",
     async (_, changed) => {
@@ -586,5 +639,182 @@ describe("the memory store: one slip per agent and company, and a clock of its o
       READ,
     );
     expect(answer).toMatchObject({ code: "DELEGATION_EXPIRED" });
+  });
+
+  // Found by step 18's review: a store that did not say whether the slip was past its date
+  // let the draft through. When the answer is missing, the answer is no.
+  it("step 18's decision 12: a store that does not say whether the slip is past its date counts it as past", async () => {
+    const unsure: SlipStore = {
+      find: async () => ({ slip: structuredClone(DEL_100), past: undefined as unknown as boolean }),
+    };
+    const answer = await call(slipRegistry(unsure), createLog(), AGENT, "invoice.get", READ);
+    expect(answer).toMatchObject({ code: "DELEGATION_EXPIRED" });
+  });
+});
+
+describe("found by step 18's review", () => {
+  // A slip id in the arguments must be the slip line ③ found. A person calls under none
+  // (DSOR-SRC-02b; step 18's README, decision 17). Before, line ⑥ refused them as unknown
+  // fields, with VALIDATION_FAILED, after lines ③ and ⑤ had run.
+  it.each([
+    ["delegation", { delegation: "del_102" }],
+    ["delegation_id", { delegation_id: "del_102" }],
+    ["delegationId", { delegationId: "del_102" }],
+    ["correlation.delegation_id", { correlation: { delegation_id: "del_102" } }],
+  ])(
+    "DSOR-SRC-02b: the agent naming del_102 in %s is refused at line ③, recorded, with no draft",
+    async (place, named) => {
+      const rows: Payment[] = [];
+      const log = createLog();
+      const lines: number[] = [];
+      const answer = await call(
+        slipRegistry(undefined, undefined, rows),
+        log,
+        AGENT,
+        "payment.create",
+        { ...CREATE, ...named },
+        (n) => lines.push(n),
+      );
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: `the arguments name a slip the caller does not call under, in ${place}`,
+        retry: "never",
+      });
+      expect(lines).toStrictEqual([1, 2, 3, 11]);
+      expect(await log.records()).toMatchObject([
+        { authorization: "DENY", result: "AUTHORIZATION_DENIED" },
+      ]);
+      expect(rows).toStrictEqual([]);
+    },
+  );
+
+  it("DSOR-SRC-02b: the agent naming its own slip, del_100, passes line ③, and line ⑥ refuses the field", async () => {
+    const lines: number[] = [];
+    const answer = await call(
+      slipRegistry(),
+      createLog(),
+      AGENT,
+      "payment.create",
+      { ...CREATE, delegation: "del_100" },
+      (n) => lines.push(n),
+    );
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(lines).toStrictEqual([1, 2, 3, 5, 6, 11]);
+  });
+
+  it("DSOR-SRC-02b: a person, who calls under no slip, naming del_100 is refused at line ③", async () => {
+    const lines: number[] = [];
+    const answer = await call(
+      slipRegistry(),
+      createLog(),
+      SUPERVISOR,
+      "payment.create",
+      { ...CREATE, delegation: "del_100" },
+      (n) => lines.push(n),
+    );
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "the arguments name a slip the caller does not call under, in delegation",
+    });
+    expect(lines).toStrictEqual([1, 2, 3, 11]);
+  });
+
+  // The slip's own word for its person, and §13.2's mode, join step 05's list (step 18's
+  // README, decision 17).
+  it.each(["delegator", "on_behalf_of"])(
+    "DSOR-SRC-02b: an input that names cfo_100 in %s is refused at line ①",
+    async (field) => {
+      const lines: number[] = [];
+      const answer = await call(
+        slipRegistry(),
+        createLog(),
+        AGENT,
+        "invoice.get",
+        { ...READ, [field]: "cfo_100" },
+        (n) => lines.push(n),
+      );
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: `the arguments name someone other than the caller, in ${field}`,
+      });
+      expect(lines).toStrictEqual([1, 11]);
+    },
+  );
+
+  // The record's person must come from the slip found, not from a constant: a second slip
+  // proves it (DSOR-DEL-08). Found by step 18's review, which hard-coded user_123 and saw
+  // every test pass.
+  it("DSOR-DEL-08: firm-ap-fte's record in org_789 names del_102, user_700, and firm-ap-fte", async () => {
+    const log = createLog();
+    await call(slipRegistry(), log, FIRM_IN_789, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+    expect(await log.records()).toMatchObject([
+      {
+        result: "ok",
+        delegation: "del_102",
+        identity: { mode: "unattended", subject: "user_700", actor_chain: ["firm-ap-fte"] },
+      },
+    ]);
+  });
+
+  // The other half of decision 14: right company, wrong agent. Found by step 18's review,
+  // which deleted the agent's half of the check and saw every test pass.
+  it("DSOR-TEN-01b: another agent's slip, from a store that should not give it, is never used", async () => {
+    const leaky: SlipStore = {
+      find: async () => ({ slip: structuredClone(DEL_101), past: false }),
+    };
+    const rows: Payment[] = [];
+    const log = createLog();
+    const answer = await call(
+      slipRegistry(leaky, undefined, rows),
+      log,
+      AGENT,
+      "payment.create",
+      CREATE,
+    );
+    expect(answer).toMatchObject({
+      code: "INTERNAL_ERROR",
+      message: "the store answered with a slip of someone else",
+    });
+    expect(await log.records()).toMatchObject([
+      { authorization: "DENY", result: "INTERNAL_ERROR" },
+    ]);
+    expect(rows).toStrictEqual([]);
+  });
+
+  it("DSOR-EXE-02: a slip store that fails gives INTERNAL_ERROR, recorded, with no draft, and its message goes nowhere", async () => {
+    const down: SlipStore = {
+      find: async () => {
+        throw new Error("connect ECONNREFUSED 10.0.0.9:5432, password hunter2");
+      },
+    };
+    const rows: Payment[] = [];
+    const log = createLog();
+    const answer = await call(
+      slipRegistry(down, undefined, rows),
+      log,
+      AGENT,
+      "payment.create",
+      CREATE,
+    );
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+    const records = await log.records();
+    expect(records).toMatchObject([{ authorization: "DENY", result: "INTERNAL_ERROR" }]);
+    expect(JSON.stringify([answer, records])).not.toMatch(/10\.0\.0\.9|hunter2/);
+    expect(rows).toStrictEqual([]);
+  });
+
+  // Line ③ finds a slip's signer by name, so one name must be one principal (step 18's
+  // README, decision 19). Found by step 18's review: with two, the order of the logins
+  // decided the signer's power.
+  it("step 18's decision 19: two logins that name one principal stop start-up, named", async () => {
+    const twin = person("user_123", ["CFO"]);
+    const message = await withPlanted("tok_twin", twin, () =>
+      refusal(() => buildRegistry(shipped, handlers, shippedRoles)),
+    );
+    expect(message).toBe(
+      "the registry refused to start:\n  two logins name user_123, so DSoR could not tell which of them signed a slip",
+    );
   });
 });

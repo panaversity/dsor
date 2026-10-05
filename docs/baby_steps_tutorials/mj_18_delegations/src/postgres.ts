@@ -458,7 +458,8 @@ type SlipRow = {
   subdelegation: Record<string, unknown>;
   parent: string | null;
   status: string;
-  expires_at: Date;
+  // pg gives infinity as a number, and a year past 275760 as a date JavaScript cannot write.
+  expires_at: Date | number;
   extensions: Record<string, unknown> | null;
   past: boolean;
 };
@@ -507,7 +508,15 @@ function slipOf(row: SlipRow): unknown {
     subdelegation: row.subdelegation,
     ...(row.parent === null ? {} : { parent: row.parent }),
     status: row.status,
-    expires_at: row.expires_at.toISOString(),
+    // A time JavaScript cannot write is left out, so the schema check refuses the slip.
+    // Found by step 18's review: infinity failed here by accident, with DSoR's message for a
+    // bug (step 18's README, decision 13).
+    expires_at: writable(row.expires_at),
     ...(row.extensions === null ? {} : { extensions: row.extensions }),
   };
+}
+
+// The time as the specification writes it, or nothing.
+function writable(time: Date | number): string | undefined {
+  return time instanceof Date && Number.isFinite(time.getTime()) ? time.toISOString() : undefined;
 }

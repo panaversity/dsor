@@ -4,11 +4,11 @@
 // decides a slip's date, and the record names the slip (step 18's README, C1, C7, C8, and
 // decisions 7, 8, 12, and 13).
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
-import { AGENT, DEL_100, UNDER_DEL_100, withPlanted } from "./helpers.ts";
+import { AGENT, DEL_100, FIRM_IN_789, UNDER_DEL_100, withPlanted } from "./helpers.ts";
 import { NO_PRIVILEGE, dbRegistry, newPool, ownerSlips, requestId, tryThenRollBack } from "./db.ts";
 
 // The program's own pool, and the test's window into the database, both dsor_runtime.
@@ -107,6 +107,55 @@ describe("the slips, on the database", () => {
       call(registry, log, who, "invoice.get", INV_1008),
     );
     expect(answer).toMatchObject({ code: "DELEGATION_EXPIRED" });
+  });
+
+  // The test above passes with either clock: both call 2001 past. Here the program's clock
+  // says 2100, past del_100's 2099, and the database's says today. Found by step 18's review,
+  // which made the store read the program's clock and saw every test pass.
+  it("step 18's decision 12: in the program's 2100, del_100 still works, because the database's clock decides", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2100-01-01T00:00:00Z"));
+    try {
+      const answer = await call(registry, log, AGENT, "invoice.get", INV_1008);
+      expect(answer).toMatchObject({ data: { id: "INV-1008" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // PostgreSQL keeps times that JavaScript cannot write. Found by step 18's review: these
+  // failed with DSoR's message for a bug, by accident, inside slipOf (step 18's README,
+  // decision 13).
+  it.each(["infinity", "-infinity"])(
+    "step 18's decision 13: a slip the database holds with the time %s is not a valid slip",
+    async (expires_at) => {
+      const answer = await withOwnSlip({ expires_at }, (who) =>
+        call(registry, log, who, "invoice.get", INV_1008),
+      );
+      expect(answer).toMatchObject({
+        code: "INTERNAL_ERROR",
+        message: "the slip DSoR holds for this agent is not a valid slip",
+      });
+    },
+  );
+
+  // The record's person comes from the slip found, on the database too (DSOR-DEL-08).
+  it("DSOR-DEL-08: firm-ap-fte's read in org_789 is recorded under del_102, with user_700 and firm-ap-fte", async () => {
+    const request_id = requestId("s18-del-102");
+    const answer = await call(registry, log, { ...FIRM_IN_789, request_id }, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+    expect(answer).toMatchObject({ data: { id: "INV-1008" } });
+    const sql = `SELECT result, delegation, identity FROM dsor.audit
+                  WHERE correlation->>'request_id' = $1`;
+    const { rows } = await tryThenRollBack(observer, sql, "org_789", [request_id]);
+    expect(rows).toStrictEqual([
+      {
+        result: "ok",
+        delegation: "del_102",
+        identity: { mode: "unattended", subject: "user_700", actor_chain: ["firm-ap-fte"] },
+      },
+    ]);
   });
 
   it("step 18's decision 13: a slip the database holds with a status the schema does not know gets INTERNAL_ERROR", async () => {

@@ -2,7 +2,7 @@
 // DSoR finds in its own store (DSOR-DEL-01a, DSOR-DEL-07, and DSOR-DEL-08 in
 // specs/dsor/02-security.md, section 13).
 import { Refusal } from "./envelope.ts";
-import { actsAsAgent, type Principal } from "./principals.ts";
+import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
 import { slipProblems, type Slip, type SlipStore } from "./slips.ts";
 
@@ -50,7 +50,9 @@ export async function checkDelegation(
   if (slip.status === "revoked") {
     throw new Refusal("DELEGATION_REVOKED", `${name}: slip ${slip.id} was torn up`);
   }
-  if (slip.status === "expired" || found.past) {
+  // A store that does not say whether the time has passed counts as "passed": when the
+  // answer is missing, the answer is no. Found by step 18's review.
+  if (slip.status === "expired" || found.past !== false) {
     throw new Refusal("DELEGATION_EXPIRED", `${name}: slip ${slip.id} is past its date`);
   }
   if (slip.status !== "active") {
@@ -75,5 +77,41 @@ export async function checkDelegation(
     const why = `slip ${slip.id} carries ${constraints.join(", ")}, which DSoR cannot check yet`;
     throw new Refusal("DELEGATION_REQUIRED", `${name}: ${why}`);
   }
+  // The slip's signer is the subject (DSOR-DEL-08), so the company must be one where the
+  // signer works (DSOR-IDN-03a). And only a person signs a slip (§13: "a permission slip
+  // from a human to an agent"). Found by step 18's review: line ⑤ refused these calls, but
+  // the record named a subject from another company (step 18's README, decisions 15 and 18).
+  const signer = principalNamed(slip.delegator);
+  const works = signer?.memberships.some((membership) => membership.tenant_id === tenant);
+  if (signer?.type !== "human" || works !== true) {
+    const why = `slip ${slip.id} is signed by ${slip.delegator}, who is not a person in ${tenant}`;
+    throw new Refusal("AUTHORIZATION_DENIED", `${name}: ${why}`);
+  }
   return slip;
+}
+
+// The places where the arguments may name a slip: the record's own word, the token claim of
+// §37, and §12's security context. Another spelling is refused only by line ⑥, as in steps
+// 05 and 10 (step 18's README, decision 17).
+const SLIP_FIELDS = ["delegation", "delegation_id", "delegationId"];
+
+/** Refuses the call when its arguments name any slip but the one line ③ found (DSOR-SRC-02b). */
+export function checkNamedSlips(input: unknown, slip: Slip | undefined): void {
+  // The input comes from outside the program, so it has no types yet.
+  const top = input as { [field: string]: unknown } | null | undefined;
+  const correlationInInput = top?.["correlation"] as { [field: string]: unknown } | undefined;
+  for (const field of SLIP_FIELDS) {
+    refuseUnlessFound(top?.[field], field, slip);
+    refuseUnlessFound(correlationInInput?.[field], `correlation.${field}`, slip);
+  }
+}
+
+// Anything there but the found slip's id is refused. A person calls under no slip, so for a
+// person anything there is refused. DSoR never looks the name up, so the refusal cannot tell
+// the caller which slips exist.
+function refuseUnlessFound(named: unknown, place: string, slip: Slip | undefined): void {
+  if (named !== undefined && named !== slip?.id) {
+    const message = `the arguments name a slip the caller does not call under, in ${place}`;
+    throw new Refusal("AUTHORIZATION_DENIED", message);
+  }
 }

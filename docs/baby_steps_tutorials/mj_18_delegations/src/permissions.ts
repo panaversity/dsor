@@ -115,10 +115,9 @@ export function permissionsOf(
 
 // NEW IN STEP 18: a person may do what its roles in this company grant, as since step 06.
 // An agent holds no role. It may use only what its slip lists and the person who signed it
-// holds now, in this company (DSOR-DEL-02; step 18's README, decisions 4 and 5). Only a
-// person signs a slip (§13: "a permission slip from a human to an agent"), so a slip that
-// names anyone else as its signer grants nothing. This tutorial's tokens carry no scopes, so
-// the token's part narrows nothing (decision 9).
+// holds now, in this company (DSOR-DEL-02; step 18's README, decisions 4 and 5). Line ③ has
+// checked that a person of this company signed the slip (decision 18). This tutorial's
+// tokens carry no scopes, so the token's part narrows nothing (decision 9).
 /** What this caller may do in this company: a person's roles, or an agent's slip cut down to its signer. */
 export function effectivePermissions(
   caller: Principal,
@@ -131,7 +130,7 @@ export function effectivePermissions(
   // were, the agent may do nothing.
   if (slip === undefined) return new Set();
   const signer = principalNamed(slip.delegator);
-  if (signer === undefined || signer.type !== "human") return new Set();
+  if (signer === undefined) return new Set();
   // Read now, at the moment of the call: if user_123 loses a permission, the agent loses it
   // at its next call, though the slip still lists it.
   const held = permissionsOf(signer, roles, tenant);

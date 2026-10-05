@@ -90,6 +90,24 @@ export function principalNamed(id: string): Principal | undefined {
   return undefined;
 }
 
+// NEW IN STEP 18: line ③ finds a slip's signer by name, so one name must be one principal.
+// With two, the order of the table would decide the signer's power. Found by step 18's
+// review (step 18's README, decision 19).
+/** Every name that two different principals in a table of logins share. */
+export function loginProblems(principals: Iterable<Principal>): string[] {
+  const first = new Map<string, Principal>();
+  const problems: string[] = [];
+  for (const principal of principals) {
+    const seen = first.get(principal.id);
+    if (seen === undefined) first.set(principal.id, principal);
+    else if (seen !== principal) {
+      const why = "so DSoR could not tell which of them signed a slip";
+      problems.push(`two logins name ${principal.id}, ${why}`);
+    }
+  }
+  return problems;
+}
+
 /** Finds who is calling, from the login token and DSoR's own table, or refuses the call. */
 export function whoIsCalling(request: RequestEnvelope): Principal {
   // The envelope comes from outside the program, so it may even be null.
@@ -128,6 +146,10 @@ const AT_THE_TOP = [
   "actor_chain",
   "agent_id",
   "user",
+  // NEW IN STEP 18: the slip's own word for its person, and §13.2's mode. Found by step 18's
+  // review (step 18's README, decision 17).
+  "delegator",
+  "on_behalf_of",
 ];
 const IN_CORRELATION = ["principal_id", "agent_id"];
 
