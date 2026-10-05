@@ -1,4 +1,4 @@
-// NEW IN STEP 09: applying the migrations, once each, against a real PostgreSQL.
+// STEP 09: applying the migrations, once each, against a real PostgreSQL.
 //
 // `migrations.test.ts` covers the deciding — which files exist, which are still to apply — without a
 // database. This covers the applying, which needs one, and uses PGlite for the reason the permission

@@ -40,7 +40,7 @@ async function fresh(): Promise<void> {
   resetInvoices();
 }
 
-// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
 let db: Awaited<ReturnType<typeof aDatabase>>;
 
@@ -255,7 +255,7 @@ describe("the decision is written down first", () => {
 
     const door = makeDoor([...PIPELINE, explode]);
 
-    // `.rejects`, not `.toThrow`. NEW IN STEP 09 and a real change: the door is async now, so a stage
+    // `.rejects`, not `.toThrow`. STEP 09 and a real change: the door is async now, so a stage
     // that throws produces a **rejected promise** rather than throwing where the caller stands. The
     // guarantee under test is unchanged — the record is already written — but the shape a caller has
     // to catch is not, and a test that still said `.toThrow` would pass by never running its body.

@@ -98,7 +98,7 @@ export interface Context {
  * the answer, which is what makes the order matter.
  */
 /**
- * NEW IN STEP 09: a stage answers with a promise, because one of them talks to a database.
+ * STEP 09: a stage answers with a promise, because one of them talks to a database.
  *
  * Only `record the decision` needs this — it writes a row, and a row is on the other side of a
  * network. But a walker that awaits one stage has to await all of them, and a door that awaits the

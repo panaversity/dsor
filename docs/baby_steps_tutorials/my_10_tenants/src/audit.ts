@@ -121,7 +121,7 @@ export interface AuditRecord {
     readonly request_id: string;
     readonly tenant_id?: string;
     readonly principal_id?: string;
-    /** NEW IN STEP 09: a fresh UUID per attempt, so no two records can ever hash to the same bytes. */
+    /** STEP 09: a fresh UUID per attempt, so no two records can ever hash to the same bytes. */
     readonly trace_id?: string;
   };
 }
@@ -192,7 +192,7 @@ export function resetClock(): void {
 }
 
 /**
- * NEW IN STEP 09: anything that can run SQL and give back rows.
+ * STEP 09: anything that can run SQL and give back rows.
  *
  * One method, because that is all this file needs. `pg`'s Pool satisfies it, and so does PGlite, so
  * the same SQL runs against Neon in production and against PostgreSQL-in-process in the tests.
@@ -336,7 +336,7 @@ const ROOM_FOR_TEXT = 500;
 /**
  * Caller-supplied text, as the database will actually store it.
  *
- * NEW IN STEP 09, and it fixes the worst bug this step had: **one request could break the chain for
+ * STEP 09, and it fixes the worst bug this step had: **one request could break the chain for
  * ever.** An operation id containing a lone surrogate — `"invoice.\uD800get"`, which a caller can
  * send because JavaScript strings are not required to be valid Unicode — was hashed as written and
  * then stored by PostgreSQL as something else, because UTF-8 cannot represent it:
@@ -453,7 +453,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     return undefined;
   }
 
-  // NEW IN STEP 09: the position comes from the table.
+  // STEP 09: the position comes from the table.
   //
   // Step 08 took it from `log.length` and left a note saying this is where it has to become real.
   // It is still a read and then a write, and it has to be: `sequence` and `previous_hash` are both
@@ -626,7 +626,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // `reason` holds a caller's own words, and a caller's words in a SQL string is how an audit log
   // ends up executing them.
   //
-  // NEW IN STEP 09: and a failure here is not the same thing as a failure to write.
+  // STEP 09: and a failure here is not the same thing as a failure to write.
   //
   // Step 08's store was a JavaScript array. An array either takes the record or throws, and there is
   // no third answer. A database on the other side of a network has one: the INSERT commits and the
@@ -718,7 +718,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
 }
 
 /**
- * NEW IN STEP 09: the third answer a database can give.
+ * STEP 09: the third answer a database can give.
  *
  * A write succeeded, failed, or **nobody knows** — the reply was lost and the follow-up question
  * could not be asked either. This is that third one, as a type the pipeline can tell apart from a

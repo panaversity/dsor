@@ -1,4 +1,4 @@
-// NEW IN STEP 09: finding the migrations, in the right order, before anything is applied.
+// STEP 09: finding the migrations, in the right order, before anything is applied.
 //
 // None of these tests touches a database. That is deliberate: this half of the runner is about
 // *which files exist and in what order*, and it is the half where a mistake is quiet and permanent.

@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 /**
  * The program's own database, which it keeps on disk between runs.
  *
- * NEW IN STEP 09: these tests have to delete it first. The log is durable now, so a second run finds
+ * STEP 09: these tests have to delete it first. The log is durable now, so a second run finds
  * the first run's records still there — which is the step's whole point, and which makes "the demo
  * prints ten records" true only on a fresh database.
  */

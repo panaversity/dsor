@@ -26,7 +26,7 @@ import { findPerson, type Principal } from "./people.ts";
  * - a property that is a *getter* and throws when it is read. A hostile review found that one:
  *   `{ get loggedInAs() { throw new Error("boom") } }` used to come out of here as an exception
  *   rather than a refusal, and a stack trace is not an envelope a caller can act on.
- * - a `Proxy` whose traps throw. NEW IN STEP 09, and it is the getter hole one layer further out:
+ * - a `Proxy` whose traps throw. STEP 09, and it is the getter hole one layer further out:
  *   `Object.hasOwn` is not a passive question, it consults the object's own
  *   `getOwnPropertyDescriptor` trap, so it used to throw *before* the `try` below was reached.
  *   Measured: `callOperation THREW: boom`, and zero audit records written. A raw Error and an

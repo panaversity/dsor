@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the shape of the database has a history, and the history is a list of files.
+// STEP 09: the shape of the database has a history, and the history is a list of files.
 //
 // A **migration** is one `.sql` file that changes the database's shape. `001_audit.sql` creates the
 // table; `002_runtime_user.sql` takes away the application's right to rewrite it. They are applied

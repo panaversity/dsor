@@ -1,4 +1,4 @@
-// NEW IN STEP 09: who the program connects as.
+// STEP 09: who the program connects as.
 //
 // These tests exist because 280 others did not catch the thing they catch. `002_runtime_user.sql`
 // takes UPDATE, DELETE and TRUNCATE away from `dsor_runtime`, and `audit-permissions.test.ts`

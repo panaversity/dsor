@@ -1,4 +1,4 @@
-// NEW IN STEP 09: where the program's database comes from, and who it connects as.
+// STEP 09: where the program's database comes from, and who it connects as.
 //
 // Two shapes, and the program does not care which it gets, because both run the same SQL.
 //

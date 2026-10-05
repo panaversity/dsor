@@ -1,4 +1,4 @@
-// NEW IN STEP 09: a lost reply is not a failed write.
+// STEP 09: a lost reply is not a failed write.
 //
 // Step 08's store was a JavaScript array, and an array has two answers: it took the record, or it
 // threw. A database on the other side of a network has a third — the INSERT commits and the reply

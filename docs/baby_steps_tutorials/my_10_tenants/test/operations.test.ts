@@ -47,7 +47,7 @@ const SUPERVISOR = { loggedInAs: "user_123" } as const;
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
-// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
 let db: Awaited<ReturnType<typeof aDatabase>>;
 

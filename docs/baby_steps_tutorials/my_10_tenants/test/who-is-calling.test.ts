@@ -20,7 +20,7 @@ const SUPERVISOR = { loggedInAs: "user_123" } as const;
 // start working.
 const ISSUER = { loggedInAs: "accounts-payable-fte" } as const;
 
-// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
 let db: Awaited<ReturnType<typeof aDatabase>>;
 
@@ -142,7 +142,7 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(two.envelope.code).toBe("VALIDATION_FAILED");
   });
 
-  // NEW IN STEP 09, and it is the same hole one layer further out. The test above sends an object
+  // STEP 09, and it is the same hole one layer further out. The test above sends an object
   // with a throwing *getter*, and `ownString` catches that because the read sits inside a `try`.
   // `Object.hasOwn` sat **outside** it — and `Object.hasOwn` consults a Proxy's
   // `getOwnPropertyDescriptor` trap, so a caller who sends a Proxy with a throwing trap never

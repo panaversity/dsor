@@ -1,6 +1,6 @@
 // Load `.env`, if there is one, before any test reads `process.env`.
 //
-// NEW IN STEP 09, and it closes a real hole: `.env.example` existed, the README told a learner to copy
+// STEP 09, and it closes a real hole: `.env.example` existed, the README told a learner to copy
 // it and fill it in, and **nothing in the step read the file**. The database tier would have reported
 // `4 skipped` to somebody who had set everything up correctly, and said nothing about why.
 //

@@ -9,7 +9,7 @@ import { money } from "../src/money.ts";
 import { parseUri } from "../src/uri.ts";
 import { aDatabase } from "./support/database.ts";
 
-// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
 let db: Awaited<ReturnType<typeof aDatabase>>;
 

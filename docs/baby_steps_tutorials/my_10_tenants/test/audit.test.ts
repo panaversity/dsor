@@ -66,7 +66,7 @@ const specCopy = new URL(
 );
 const insideTheRepository = existsSync(specCopy);
 
-// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
 let db: Awaited<ReturnType<typeof aDatabase>>;
 
@@ -407,7 +407,7 @@ describe("the audit log", () => {
 
     // And the real log is untouched by all of that.
     //
-    // NEW IN STEP 09: this assertion means something weaker than it did, and is kept for what it
+    // STEP 09: this assertion means something weaker than it did, and is kept for what it
     // still covers. In step 08 `theLog()` handed out the array the program was writing to, so the
     // freeze was the only thing between a reader and the log. Now it hands out rows built fresh from
     // a query, so mutating them could not reach the database whatever we did — the freeze stops a
@@ -607,7 +607,7 @@ describe("the audit log", () => {
     const written = await recorded();
 
     expect(written.chain).toBe("audit:org_456");
-    // NEW IN STEP 09: `${chain}:${sequence}`, with no reset counter in it. Step 08 needed one
+    // STEP 09: `${chain}:${sequence}`, with no reset counter in it. Step 08 needed one
     // because `forgetTheLog` rewound the sequence while the old records were still in the array.
     // Here the reset is a DELETE, so the id it frees belongs to nothing.
     expect(written.record_id).toBe("audit:org_456:0");

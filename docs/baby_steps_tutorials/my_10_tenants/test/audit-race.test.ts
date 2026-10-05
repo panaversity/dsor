@@ -1,4 +1,4 @@
-// NEW IN STEP 09: what a lost race does to the log.
+// STEP 09: what a lost race does to the log.
 //
 // §47 says a guarantee about a race is proven by fault injection, not by reading the code. These
 // tests do not hope for an unlucky interleaving — they force the exact one, by holding the first

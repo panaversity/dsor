@@ -1,4 +1,4 @@
-// NEW IN STEP 09: the guarantee, against a real PostgreSQL.
+// STEP 09: the guarantee, against a real PostgreSQL.
 //
 // This is the step's "done when": `UPDATE audit …` must fail with a permission error. Step 08's
 // chain makes tampering *detectable*; this makes it *refused*, and the thing doing the refusing is

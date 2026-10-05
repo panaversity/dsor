@@ -39,7 +39,7 @@ function idOf(answer: Awaited<ReturnType<typeof callOperation>>): string {
   return answer.envelope.correlation.request_id;
 }
 
-// NEW IN STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
+// STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
 let db: Awaited<ReturnType<typeof aDatabase>>;
 
