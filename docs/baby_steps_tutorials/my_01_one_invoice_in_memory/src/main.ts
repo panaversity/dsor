@@ -1,0 +1,22 @@
+// Run with:  pnpm start
+// Node runs this TypeScript file directly. There is no build step in this tutorial.
+import { greet } from "./greet.ts";
+// NEW IN STEP 01: the program now reads an invoice as well as greeting.
+import { getInvoice } from "./invoice.ts";
+
+console.log(greet("accounts-payable-fte"));
+
+// NEW IN STEP 01: read the invoice from the running example and print it.
+// The amount is printed from its two parts, because an amount without a currency
+// is not money.
+const invoice = getInvoice("INV-1008");
+if (invoice === undefined) {
+  console.log("INV-1008: not found.");
+} else {
+  console.log(
+    `${invoice.id}: ${invoice.amount.value} ${invoice.amount.currency} to ${invoice.vendor} (${invoice.status})`,
+  );
+}
+
+// NEW IN STEP 01: asking for something that is not there is an ordinary answer.
+console.log(getInvoice("INV-9999") === undefined ? "INV-9999: not found." : "INV-9999: found.");

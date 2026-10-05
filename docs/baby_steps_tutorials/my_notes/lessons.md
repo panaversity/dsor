@@ -1,0 +1,658 @@
+# Lessons
+
+The mistakes that repeated across steps 01 to 06, and what catches each one. Fifteen of them now,
+and lesson 15 is the one to read if you only read one. Kept
+separately from [decisions.md](decisions.md) because these are not choices — they are
+things that went wrong more than once.
+
+---
+
+## 1 · A shape check is not a meaning check
+
+This turned up in all four steps, in the same form every time. A pattern or a type proves
+something has the right *shape* and says nothing about whether it *means* anything.
+
+| Step | The shape check | What it accepted |
+| --- | --- | --- |
+| 01 | `currency: string` matching `^[A-Z]{3}$` | `ZZZ`, `QQQ` — not assigned currencies |
+| 02 | the normative URI pattern | `dsor://acme/...` — a company name as the tenant |
+| 03 | `operation-contract.schema.json` | `predicates: []`, and `"not CEL at all !!!"` |
+| 04 | `error-envelope.schema.json` | `CONFLICT` with `retry: "safe_same_key"` |
+
+Every one of these is now either checked in code or written down as a limit. The habit
+that works: after writing a check, ask what it accepts that it should not, and either close
+the gap or say so where a reader will meet it.
+
+## 2 · Passing tests prove nothing until you break the code
+
+Every step where guards were mutated one at a time turned up something no test protected.
+Not a few — the counts:
+
+| Step | Guards found unprotected |
+| --- | --- |
+| 02 | 2 (`parseUri`'s freeze, `formatUri`'s round-trip compare) |
+| 03 | 5 of 19 mutations survived |
+| 04 | 9 in the first sweep, then 11 in a second, wider one |
+
+The worst single case: **22 of the 32 rows** of step 04's retry table were reached by no
+test. Mutating all 22 at once left all 76 tests green. A wrong row is a wrong instruction —
+`AUTHORIZATION_DENIED` marked retry-safe re-sends a forbidden request for ever.
+
+What catches it: delete or weaken each check in turn, run the tests, and record which
+survive. Assert the target text appears exactly once before editing, or a no-op edit scores
+as a kill. For every survivor, prove the guard does real work with a throwaway probe before
+writing a test for it — otherwise it may be an equivalent mutant and not a gap at all.
+
+## 3 · Quoted output goes stale the moment anything moves
+
+Every README quotes real command output. Every time the code or the test count changed,
+some of it became wrong, and it was never obvious by reading.
+
+Cases: step 02's `TS2353` line moved when the formatter reflowed a signature. Step 03's
+`execute_sql` message changed in code and stayed old in two README transcripts, where it
+also read backwards. Step 04's break counts moved three times as tests were added.
+
+What catches it: re-run every quoted command after any change, and diff the block against
+the real output rather than reading it. A one-line script that extracts the fenced block
+and compares it is worth more than care.
+
+## 4 · Writing counts from memory
+
+Test counts were wrong in step 03 twice — `fourteen` for 13 and `fifteen` for 16 — and the
+second contradicted the README's own arithmetic six lines later. Both were written from
+memory instead of counted.
+
+It happened again while writing these notes: the step 03 note said "three tests fail" for a
+break its own README records as four. Verification caught it. The tendency is real and
+persistent, not a one-off.
+
+What catches it: `grep -cE '^\s*it\(' test/*.ts`, or reading the number out of the README
+that already has it. Never a recollection.
+
+## 5 · Describing a file instead of reading it
+
+Step 04's centrepiece claim — "the schema pins exactly one code's retry class" — was wrong.
+It pins three. The step's own `BATCH_PARTIAL` test proved it at the time, so the README
+contradicted its own test suite.
+
+Also in this class: "seven places" for what is eleven `$ref`s to seven definitions, and a
+strict-mode explanation that named the wrong cause for nine of thirteen failures.
+
+Two more of the same kind, found by verifying these notes: the step 01 note blamed the money
+gaps on "nothing tests trailing junk", when trailing junk on the *value* is tested and is
+what protects that pattern — the untested parts are its two quantifiers and the currency
+pattern. And the step 04 note said all three pinned codes are unknown-outcome cases, when
+`BATCH_PARTIAL` is pinned for the opposite reason: every item's outcome is known.
+
+What catches it: read the file and count, in the same minute as writing the sentence. And
+have someone else check the finished text against the code — all three of these survived
+writing and were only caught by verification.
+
+## 6 · Claiming a rule without its condition
+
+`DSOR-ERR-01b` was paraphrased as "an error must not leak whether a resource exists",
+dropping *"the caller is not authorized to read"* — which is the whole rule. With no caller
+and no permissions in step 04, the step was safe; the paraphrase made it look guilty.
+
+What catches it: quote a rule from
+[`requirements.json`](../../../packages/spec/requirements.json), never from memory, and
+keep every clause.
+
+## 7 · A commit that was never run
+
+One step 04 commit was red: `main.ts` could not compile against the new answer type, and
+splitting it from the operations change left a commit whose typecheck failed. It was
+committed without reading the check output.
+
+What catches it: run the check before each commit and read what it printed, and verify the
+whole series afterwards by checking each commit out into a clean directory. That history
+was rewritten into one commit, with the reason in its message.
+
+## 8 · One large reviewer stalls; narrow ones finish
+
+A single hostile-review agent given the whole step stalled twice with no output, once after
+ten minutes. Splitting the same work into five passes with one job each — outputs, claims,
+readability, leftovers, cross-references — finished every time and found 38 and 41 findings
+respectively.
+
+What works: one job per pass, named explicitly, with instructions to stay inside it.
+
+## 9 · Narrow reviewers must not sabotage the same folder at once
+
+Lesson 8 is still right — five narrow passes finish where one wide pass stalls. What step 05
+added is the other half of it: several of those passes **break the code on purpose** to see
+whether a test goes red, and running them together in one folder means each one is measuring
+a folder the others are also editing.
+
+What it actually caused, in step 05:
+
+- One pass reported failure counts that were contaminated until it re-ran the breaks in an
+  isolated copy. Its final numbers are right *because* it noticed and re-ran; had it not
+  noticed, wrong counts would have gone into the README as verified output.
+- Another pass snapshotted `src/login.ts` as a backup **while a different pass's sabotage was
+  applied**, so the backup held code with the unknown-name refusal removed. Restoring from
+  that file would have silently deleted a guard and turned three tests red, and it would have
+  looked like a restore rather than a change.
+
+What to do instead: give each sabotaging pass its own copy of the folder, or run the
+sabotaging passes one at a time and only the read-only passes in parallel. Either way, never
+trust a backup file another agent left behind, and check `git status` and `pnpm check` before
+believing any count that came out of a shared folder.
+
+## 10 · Mutating one guard at a time cannot find a test that expects a constant
+
+[Lesson 2](#2--passing-tests-prove-nothing-until-you-break-the-code) says break each guard in
+turn. Step 05 found the limit of that method.
+
+The caller's name is attached in twenty-two places. Each one was mutated separately and every
+one was caught, so the guarantee was recorded as proven. A hostile review then replaced **all
+of them at once** with the literal `"cfo_100"` — and all 100 tests passed. The test that
+guarded attribution walked twelve call shapes with a single login, `cfo_100`, and asserted the
+name was `"cfo_100"`. So the suite could never tell "carries the caller's name" from "carries
+that one string", and `user_123`'s refusal could be stamped with the CFO's id.
+
+One-at-a-time mutation cannot find this, because each single site still disagrees with the
+others and something goes red. Only replacing every site with the same constant makes the code
+self-consistent and wrong.
+
+What catches it: when a test asserts a value, ask where the expected value came from. If it is
+a literal that appears in the input as well, the test cannot distinguish the two. Vary the
+input — here, three different logins — and assert against the **input**, not a constant. Then
+mutate the whole family of sites together as well as one at a time.
+
+## 11 · Check the mutation before you believe the survivor
+
+Step 06's first sweep ran thirteen mutations and reported four survivors. Two of the four were
+**my mistakes, not test gaps**:
+
+- One cut the wrong lines out of `permissions.ts`, so the file no longer loaded. The run
+  reported `74 passed (74)` — a *smaller total* than the real 126, because two whole files
+  failed to import. A shrinking total is the tell, and "all passed" on a broken file reads
+  exactly like a survivor.
+- One claimed to move the may-you check after the arguments and moved it somewhere that
+  changed nothing observable, because the argument that mattered is parsed inside the handler,
+  further down. Redone properly, the test killed it at once.
+
+So a survivor is a claim about two things: the test, **and** the mutation. Before believing it,
+check that the mutation compiled, that the test total did not shrink, and that the mutated code
+really does the wrong thing — run it and look at the output, not the diff.
+
+Combined with [lesson 10](#10--mutating-one-guard-at-a-time-cannot-find-a-test-that-expects-a-constant),
+the sweep now has three failure modes of its own: too narrow (one site at a time), too weak (a
+mutation that changes nothing), and broken (a mutation that does not load).
+
+## 12 · A sentinel that says `true` proves nothing
+
+Step 04 marked "this check ran at start-up" with a boolean:
+
+```ts
+export const WIRING_CHECKED: boolean = ((): boolean => {
+  assertPaired(registry, handlers);
+
+  return true;
+})();
+```
+
+Step 06 copied the idea for its role table, and a mutation found the hole: delete the call,
+keep `return true`, and every test stays green. The sentinel says the check ran; all it really
+proves is that somebody wrote `true`.
+
+The fix is to make the sentinel carry a value that can only come from doing the work. The
+checker now returns how many permissions it looked at, and the constant holds that number:
+
+```ts
+export const PERMISSIONS_CHECKED: number = checkPermissions(ROLES);
+```
+
+A test compares it with the table's real total, so deleting the call and leaving a plausible
+number behind fails. It is not a proof — hardcoding today's correct answer still passes, and
+only a child process could close that — but it moves the mistake from "delete a line" to
+"delete a line, work out the right number, and keep it right as the table changes".
+
+Where this applies: any flag that means "something happened". Prefer a count, a hash, or the
+result itself over `true`.
+
+## 13 · A fix belongs everywhere its shape lives
+
+In step 05, `login.ts` gained `Object.hasOwn` with a comment explaining it: *a name the object
+merely inherits is a name nobody in this program chose.* A test was written for it, titled "a name
+inherited from a prototype is not a login".
+
+One day later, step 06 looked up roles with `ROLES[principal.role] ?? NOTHING` — the same bug, in
+the same file tree, with the fix already written eighty lines away. A role named `toString`
+returned a function; `Object.prototype` pollution granted a permission no role in the table had.
+A hostile review found it; my own mutation sweep could not, because the sweep mutates guards that
+*exist* and this was a guard that did not.
+
+The pattern is not "inherited properties". It is **the same question asked about a different
+noun**:
+
+| Step | The noun | The question |
+| --- | --- | --- |
+| 05 | a login's name | is this key the object's own? |
+| 06 | a role's name | is this key the object's own? |
+| 05 | `findPerson` | is this a whole match or a prefix? |
+| 06 | `holds` | is this a whole match or a prefix? |
+
+Both rows repeated, and the second one repeated *after* it had been written down as a lesson.
+
+What to do: when a guard is added, ask what kind of thing it protects, then list every other place
+that kind of thing arrives, and check each. It takes a minute, and it is the only one of these
+three methods — tests, mutation sweep, sideways check — that finds a guard that was never written.
+
+## 14 · A safety net you have never tested is not a safety net
+
+For four steps I wrote, and told the learner, that `pnpm guard` would catch a rule id that does
+not exist. It never could. The guard strips inline code spans before it looks for identifiers, and
+the tutorial writes every id in backticks — so of the 171 distinct ids across six steps and these
+notes, the check had seen **none**.
+
+It cost something real: `DSOR-SOD-01`, which is not a rule, was cited in four files including the
+promises table the next session is told to act on. Two wrong step numbers travelled the same way.
+
+The tell was available the whole time and nobody looked for it. It takes one probe:
+
+```text
+`DSOR-FAKE-99`  in backticks  ->  guard passes
+ DSOR-FAKE-99   bare          ->  error: known-id ... which the spec does not define
+```
+
+So: **before relying on a check, make it fail once.** Not read its source, not trust its name —
+feed it the thing it is supposed to catch and watch it complain. This is the same discipline as
+breaking a guard to see a test go red ([lesson 2](#2--passing-tests-prove-nothing-until-you-break-the-code)),
+applied to the tools instead of the code, and it had never occurred to me to apply it there.
+
+The general shape: every claim of the form "X protects us from Y" is a testable claim. If it has
+not been tested, it is a hope.
+
+## 15 · The same wrong shape appeared in five places before anybody looked for it
+
+"Is this a whole match or a prefix?" has now been the answer five times in six steps:
+
+| Step | The code | What a prefix match would do |
+| --- | --- | --- |
+| 01 | `getInvoice`'s `invoice.id === id` | `getInvoice("")` hands back INV-1008 |
+| 02 | `parseUri`'s entity segment | a payment address parses as an invoice |
+| 03 | the tenant check's `tenant !== TENANT` | `org_45` reads org_456's records |
+| 05 | `findPerson`'s `p.id === id` | `cfo_100_evil` logs in as `cfo_100` |
+| 06 | `holds`'s `includes` | asking for `invoice:i` is granted |
+
+Two of the five were real defects when they were found. The other three were correct code that
+**no test protected**: every one of them passed its whole suite after the change.
+
+What is worth extracting is not "watch out for prefixes". It is the method that found them, and
+what it cost that nothing else did:
+
+- Steps 05 and 06 each had a hostile review. Each review found real bugs **in that step**, and
+  neither looked back at the same shape in the steps below.
+- The arc audit read all six steps and found stale numbers and broken promises — things that can
+  only be wrong *between* steps — and did not find these, because they need running code.
+- Only attacking steps 01 to 03 found them, and only because the attackers were told to look for
+  the shapes this codebase had already got wrong. That instruction came from
+  [lesson 13](#13--a-fix-belongs-everywhere-its-shape-lives), which existed because the shape had
+  already repeated twice.
+
+So the lesson compounds: **write down the shape of a bug, and then go looking for that shape
+everywhere, including in the code you wrote before you knew.** Lesson 13 said a fix belongs
+everywhere its shape lives. This says the same about a *test*.
+
+## 16 · "Read the caller's data once" is a rule about every function the data reaches
+
+Step 05's review found a *getter* in the arguments that answered differently on a second read, so a
+receipt could describe a request that never happened. The fix was to copy the arguments once, in
+`callOperation`, and the comment beside it says exactly that.
+
+Step 07's review found the same bug again, past that guard. `success()` — the function that builds
+a result envelope — called `JSON.stringify` on the arguments a **second** time to compute the
+payload hash, *after* the invoice had been issued. An object whose `toJSON` throws on its second
+call committed the change and then threw at the caller:
+
+```text
+toJSON calls: 2   ->  THREW at the caller, INV-1009 already issued
+toJSON calls: 1   ->  result                (after the fix)
+```
+
+The guard did not help because the second read was not of the *arguments*. It was of the copy, one
+layer down, by a function nobody thought of as reading anything — it was thought of as *building an
+envelope*.
+
+So the rule is not "copy the arguments at the door". It is: **follow the value.** For every piece of
+caller-supplied data, list every function it reaches, and ask each one whether it reads it again.
+`JSON.stringify`, template interpolation, a logger, a hash, an equality check — each is a read, and
+each can see something different from the last one.
+
+Three appearances now, of the shape "the same caller-supplied value, read twice":
+
+| Where | The second reader | What it cost |
+| --- | --- | --- |
+| step 05 | the receipt's hash, in `success()` | a receipt for a request that never happened |
+| step 07 | `success()` again, via `toJSON` | a commit, then a crash, with no evidence |
+| step 02 | `formatUri`'s round-trip compare | an address minted from a value that changed |
+
+The one method that finds it is following the value through every call, and no amount of mutating
+the guard would have.
+
+## 17 · A guard written twice can be half-broken
+
+Step 08's audit clock existed in two places: the initial value of `clock`, and the body of
+`resetClock`.
+
+```ts
+let clock: () => string = () => new Date().toISOString();   // here
+export function resetClock(): void {
+  clock = () => new Date().toISOString();                   // and here
+}
+```
+
+To check that the test really watched the clock, I replaced the first copy with a constant. All 178
+tests passed. The test calls `resetClock()` before it reads the time — so the mutation was healed by
+the second copy before the assertion ran. The test was fine. The *mutation* could not reach the code
+the test used, and I nearly recorded that as "this guard cannot be killed, and here is why".
+
+One name fixed it:
+
+```ts
+const realClock = (): string => new Date().toISOString();
+let clock: () => string = realClock;
+```
+
+The mutation then killed a test, as it should have. The general shape: **when a mutation survives,
+ask whether the thing you changed is the thing the test runs.** Duplicated logic means the answer can
+be no, and then a survivor tells you nothing about the test — only about your mutation.
+
+## 18 · Overlapping checks cannot be tested together
+
+`verifyChain` started with four checks: the sequence matched the position, the chain name was this
+chain, the link backwards was right, and the record's own hash was right. Three tests covered them,
+and every test was caught by two checks at once.
+
+So I removed checks one at a time and ran the suite:
+
+| Removed | Result |
+| --- | --- |
+| the `sequence` check | 181 passed |
+| the `chain` check | 181 passed |
+| the link check | 181 passed |
+| the record-hash check | 2 failed |
+
+Three of four checks were unkillable — not because the tests were weak in general, but because **no
+test fed any check a case only that check could catch.** Two of the three turned out to be genuinely
+redundant, and the reason is worth more than they were: `sequence` and `chain` are *inside* the
+record, so they are inside the hash. Changing either breaks `record_hash` first. They were deleted.
+
+The link check was not redundant; it was untested. Two new tests fixed that, each reaching exactly one
+check:
+
+- a tampered **last** record, where no link follows it to break — only the contents check can catch it
+- a **genuine** record spliced in from a different history: right sequence, valid against the schema,
+  untouched — only the link check can catch it
+
+The method generalises. For each guard, ask: *what case does this catch that no other guard catches?*
+If there is no answer, the guard is redundant — delete it. If there is one, that case is a test you do
+not have yet. This is [lesson 14](#14--a-safety-net-you-have-never-tested-is-not-a-safety-net) told
+from the other end: there, a net had never been thrown anything; here, four nets were stacked so
+nothing ever reached the lower three.
+
+## 19 · A `GRANT` or a `REVOKE` that does nothing does not say so
+
+I wrote step 09's permission migration believing the `REVOKE` lines were what made the audit log
+safe. A mutation sweep deleted each one and every test still passed. Measured against PostgreSQL 18:
+
+```text
+fresh table, nothing granted:  privileges = (none)
+after GRANT INSERT, SELECT:    privileges = INSERT, SELECT
+after REVOKE UPDATE, DELETE:   privileges = INSERT, SELECT   <- unchanged
+```
+
+A freshly created table grants nobody anything, so there was nothing for a `REVOKE` to take away.
+**The guarantee rested on the `GRANT` being narrow, not on the `REVOKE` being present** — and my
+comments said the opposite, in a file whose whole purpose is that one guarantee.
+
+Then the sharper half. Running `GRANT UPDATE ON audit TO dsor_runtime` **as the account that does not
+own the table** raises no error at all. PostgreSQL issues a warning and grants nothing. So:
+
+```ts
+// proves nothing
+expect(await asTheApplication("GRANT UPDATE ON audit TO dsor_runtime")).toBe("allowed");
+
+// the only thing worth asserting
+expect(await privilegesOfTheApplication()).toEqual(["INSERT", "SELECT"]);
+```
+
+Two rules come out of it:
+
+1. **Never judge a `GRANT` or a `REVOKE` by whether the statement threw.** A migration full of
+   `REVOKE`s can run perfectly and leave every privilege in place. Ask the catalogue
+   (`information_schema.role_table_grants`) what the role actually holds.
+2. **To test a `REVOKE`, grant the thing first.** On a fresh table the line is unreachable. The test
+   has to create the situation the line defends against — a privilege arriving via `PUBLIC`, or granted
+   directly — and then re-run **the migration**, not a hand-written copy of the `REVOKE`. My first
+   attempt issued its own, which proved PostgreSQL works and said nothing about our file.
+
+This is [lesson 18](#18--overlapping-checks-cannot-be-tested-together) wearing different clothes: a
+line that cannot fail is not protecting anything yet, and the fix is to reach it rather than to trust
+it.
+
+## 20 · A cast is a promise you did not check
+
+Step 09 connects to PostgreSQL two ways: `pg` against a real server, PGlite in-process. Both run the
+same SQL, so one interface describes both — and `pg`'s pool went in through a cast:
+
+```ts
+const applied = await applyMigrations(pool as unknown as Runner, FOLDER);
+```
+
+It typechecks. It cannot work. `Runner` has `exec` and `query`; `pg` has only `query`. The cast says
+"trust me" about a method that is not there, and the first migration would have died on
+`db.exec is not a function` — on the real server, which is the one place I could not test.
+
+An adapter is four lines and asserts nothing:
+
+```ts
+export function asRunner(pool: { query: (sql: string, params?: unknown[]) => Promise<…> }): Runner {
+  return { exec: (sql) => pool.query(sql), query: (sql, params) => pool.query(sql, params) };
+}
+```
+
+The general shape: **`as unknown as T` turns a question into an assumption.** Every time I reached for
+one in this step it was hiding something — this, and `db as unknown as Database`, where PGlite and
+`pg` genuinely do differ in their generics and the cast was load-bearing in a way worth a comment
+rather than a shrug.
+
+And the test for it needs no database at all. A stub recording what it was asked to run proves the
+adapter calls through, which is the whole of what an adapter does:
+
+```text
+[ [ 'CREATE TABLE a (x int)', undefined ], [ 'SELECT $1', [ 'one' ] ] ]
+```
+
+`undefined` for the parameters on the first one is the point: that is what makes `pg` use the simple
+protocol and accept several statements in one string, which is what `exec` is for.
+
+## 21 · A test that borrows the right identity proves the GRANT, not the program
+
+`audit-permissions.test.ts` ran `SET ROLE dsor_runtime` and then proved the application's account
+cannot UPDATE the audit table. True, and it says nothing about the program, which was connecting as
+a superuser the whole time. The test and the program were authenticating differently, and only the
+test was being checked.
+
+Ask of any permission test: **whose connection is this?** If the test sets up the identity it then
+tests, it is testing the database's GRANT machinery. To test the program you have to use the
+connection the program itself ended up holding — which is why `openTheDatabase` now returns it.
+
+The tell was there to find: 280 tests, and not one of them contained the words `current_user`.
+
+## 22 · `Object.hasOwn` is not a passive question
+
+It reads like one, which is why it sat outside the `try` for four steps. It consults the object's
+own `getOwnPropertyDescriptor`, and a `Proxy` can trap that and throw. So can `in`, `Object.keys`,
+`JSON.stringify`, spreading, and `String(x)` — anything that touches an object a caller handed you
+is a call into code the caller wrote.
+
+The rule that follows: when hardening a reader of untrusted data, do not ask "does this line read a
+*value*?" Ask "does this line touch the object **at all**?" If it does, it belongs inside the
+`try`. The guard outside may test only `null` and `typeof`, the two questions no object can
+intercept.
+
+## 23 · "It cannot be tested in-process" usually means "not with real concurrency"
+
+The comment in `audit` said the race was untestable in-process, because one PGlite connection cannot
+race itself. Both halves of that are true and the conclusion was wrong. A race test needs **control
+over the order**, not parallelism — and a wrapper around the store gives it, deterministically, with
+no sleeps and no flakiness. Holding one writer at its read while another commits is a two-line
+`Database` and it reproduced the defect every single run.
+
+Real concurrency is still needed for what the *database* guarantees: the UNIQUE constraint, the
+atomic reservation, the isolation level. It is not needed to prove what *my own code* does when the
+order is unkind to it.
+
+The tell: a comment that explains why a guarantee is not tested. That is where the untested
+guarantees live.
+
+## 24 · A network gives a third answer, and step 08's code only knew two
+
+An in-memory store either accepts the write or throws. Everything written against one quietly
+assumes that, and the assumption survives the move to a real database because the *types* do not
+change — `await db.query(...)` still either returns or throws. What changes is what a throw
+**means**: it can now mean "it worked and you did not hear about it".
+
+So when a store moves from memory to a network, the question to ask of every `catch` around a write
+is not "do I handle the error" but "do I know which of the two things happened". If the answer is
+no, the `catch` is making a claim it cannot support — and the fix is to go and look, not to pick the
+likelier case.
+
+## 25 · Ask the database what a role may do, never the grant list
+
+Twice in one day, in two unrelated files, the same mistake: reading
+`information_schema` to find out what an account is allowed to do. A catalogue row exists only for a
+grant made to the role **by name**. Four routes to a privilege, and a grant list shows one of them:
+
+| route | in the grant list? | `has_table_privilege`? |
+| --- | --- | --- |
+| granted directly to the role | yes | yes |
+| granted to `PUBLIC` | **no** | yes |
+| inherited through role membership | **no** | yes |
+| superuser bypass | **no** | yes |
+
+`has_table_privilege(role, table, privilege)` answers the question that actually matters — what will
+happen when the statement runs — and it is not harder to write. The grant list answers "what did
+somebody type", which is a question about history, not about security.
+
+The general shape: when a guarantee is enforced by a system, ask the system whether it holds. Do not
+reconstruct the answer from the inputs that were supposed to produce it.
+
+## 26 · A privilege cannot stop a name from resolving somewhere else
+
+The audit table was protected by GRANTs, which decide *what may be done to a table*. They have
+nothing to say about *which table a name means*. `pg_temp` is searched before `public`, the
+application is allowed to create temp tables, and so the application could decide where its own
+audit writes went — without holding UPDATE, DELETE, or TRUNCATE on anything.
+
+Two defences for two different questions, and a step that only had the first:
+
+| question | answered by |
+| --- | --- |
+| what may this account do to this table? | GRANT / REVOKE |
+| which table does this name mean? | the schema-qualified name |
+
+So: in any SQL that carries a guarantee, write `public.thing`. The cost is nine characters and the
+alternative is a guarantee that holds only while nobody creates an awkwardly named table.
+
+## 27 · A DEFAULT is not a permission
+
+`recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()` reads like the database owns that column. It does
+not. A default fills a value nobody supplied; it says nothing about who is allowed to supply one.
+The column was writable by the application for as long as the table-level `GRANT INSERT` existed.
+
+The same confusion, in other clothes, is worth watching for: a `CHECK` is not a permission either,
+and neither is a `NOT NULL`, a trigger that normalises a value, or a comment. Constraints describe
+what a row may look like. Privileges describe who may write it. When a column exists to be evidence
+*against* the writer, it needs the second kind, and in PostgreSQL that means a column-level GRANT.
+
+## 28 · Ask which constraint refused, not just whether something did
+
+A test that asserts "exactly one writer won" passes whatever did the refusing. Three writers sent the
+same `record_id` and the primary key turned two of them away, while the test's own comment said it
+was the only place `UNIQUE (chain, sequence)` could be seen. Dropping that constraint changed
+nothing.
+
+Two habits come out of it. Build the fixture so **only** the constraint under test can fire — here,
+different ids racing for one position. And assert the constraint's **name** from the error, because
+that is the difference between testing a guarantee and testing that the database is not completely
+broken.
+
+## 29 · A break-it exercise that fails nothing is the finding
+
+Break 6 — "let the program keep the owner's connection" — failed **zero** tests. The guarantee was
+written down, the migration implemented it, nine tests covered it, and removing the thing that made
+it true changed nothing, because every test set up the identity it then tested.
+
+So the break-it list is not documentation written after the fact. It is a mutation sweep with
+sentences, and the useful ones are the breaks whose number is **lower than expected**. Write the
+exercise, run it, and when the count is 0 or 1 for something the step calls its whole point, the test
+suite is the thing that is broken.
+
+## 30 · Read what the error already says before asking the store a question
+
+The lost-reply recovery asked the database "is a record with my hash here?" — a question that cannot
+distinguish *my INSERT committed* from *someone wrote the same bytes*. PostgreSQL had already answered
+the real question: SQLSTATE `23505` means "that row exists and yours did not commit". The recovery
+threw that answer away and asked a weaker one.
+
+And the follow-up question ran on the connection that had just failed, which is usually a connection
+that is gone. A recovery that needs the thing that broke is not a recovery; it is the same failure
+with an extra step. When the store cannot be asked, the honest state is *unknown*, and the repo has a
+word for it.
+
+## 31 · A route chosen by an environment variable is not chosen by the test
+
+`test/database.test.ts` passed a throwaway folder to `openTheDatabase` and believed that chose the
+on-disk route. `openTheDatabase` reads `DSOR_DB_URL` first. One `export` in the shell — the thing
+the README tells a learner to do — and those tests were writing into a real server's audit log while
+asserting things about PGlite.
+
+If a test's claim depends on which branch the code takes, the test sets the inputs that pick the
+branch and then asserts which branch was taken. `vi.stubEnv` for the first half; "`where` says *on
+disk*" for the second.
+
+## 32 · A reviewer's prediction is a test you have not written yet
+
+The critic said: delete the refusal on the real-server branch and nothing will fail. It was right,
+and the sentence was already the test — it named the mutation and the expected count. Every line of
+code that no mutation can reach is a guarantee nobody is holding, and the fastest way to find them is
+to ask someone to predict a zero. When they can, write the test that makes them wrong, then make
+them wrong.
+
+## 33 · A pin that matches a shape is dodged by another shape
+
+The one-door test matched `^\s*useDatabase\(` and was passed by `const point = useDatabase`, by
+`log.useDatabase(db)`, by `() => useDatabase(db)` and by a file one directory down. The schema scan
+matched uppercase keywords and was passed by `from audit`. Both were written as "find the honest form"
+and an attacker does not write the honest form.
+
+Count the **identifier**, everywhere, case-insensitively, and pin the number — comments included,
+because a tripwire that ignores comments is one a comment can be used to hide behind. The exact count
+is a worse description and a better alarm.
+
+## 34 · A limit you can check is a check you have not written
+
+README limit 3 said the start-up guard "would not notice" a `SECURITY DEFINER` function or a trigger.
+Both are rows in `pg_proc` and `pg_trigger`, one query each, and the guard was already a query. The
+limit was true only because nobody had asked the catalogue.
+
+Before writing a sentence that begins "this cannot see", ask whether the system that enforces the
+guarantee can see it. If it can, the sentence is a to-do item dressed as a disclosure. The honest
+limits are the ones about *who*, not *what*: someone who can change the configuration or the owner's
+own code is outside any check the program can run on itself.
+
+## 35 · Anything the handler refuses was already recorded as allowed
+
+The pipeline records the decision at §21.11 and runs the handler at §21.14. A refusal raised inside
+the handler is therefore a refusal the log has already called an `ALLOW`. That is correct for an
+*execution* outcome — the invoice was not there, the status had moved on — and wrong for anything
+that is really a decision about the request: whose company an address belongs to, whether the
+arguments are the shape the contract asks for.
+
+So the question to ask of every refusal in a handler is: **is this a fact about what happened, or a
+fact about the request?** The second kind belongs before §21.11, or the log lies. Piece 2 of step 10
+put a fact about the request in the handler; piece 4's first assertion about the log found it.
