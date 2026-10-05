@@ -47,8 +47,8 @@ Then five pieces, each red first, each committed, each broken on purpose:
 **Piece 4 caught piece 2.** The address check lived in the handler, at §21.14 — after the decision is
 recorded at §21.11 — so a request refused for another company's address sat in the log as `ALLOWED`.
 The test "a mismatching address, once the request has a company, is recorded there" said `expected
-'ALLOWED' to be 'TENANT_MISMATCH'`. The check moved to §21.6, generically for every `dsor://` address
-in the arguments; the handler keeps a re-check that answers `INTERNAL_ERROR`, and a test builds the
+'ALLOWED' to be 'TENANT_MISMATCH'`. The check moved to §21.6, for every own top-level string argument that is a `dsor://`
+address (nested values are not walked); the handler keeps a re-check that answers `INTERNAL_ERROR`, and a test builds the
 only door that can reach it. [Decision 91](decisions.md), [lesson 35](lessons.md).
 
 **Two sabotages were not counts.** Leaving the stage out of the list is refused at *load* by
