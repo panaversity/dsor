@@ -49,7 +49,7 @@ before it plus **one** new idea. Steps named `my_NN_*` are a learner's own copie
 built in the open with their reasoning recorded in
 [`my_notes/`](baby_steps_tutorials/my_notes/README.md).
 
-Ten of the 52 are built. Test counts are cumulative, because each step inherits the
+Eleven of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -64,6 +64,7 @@ one before it:
 | `my_07_the_pipeline_skeleton` | 179 | the order of the checks becomes a list a test can read |
 | `my_08_write_the_decision_first` | 232 | every decision is recorded before the answer, refusals included, in a hash chain |
 | `my_09_postgres_on_neon` | 325 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
+| `my_10_tenants` | 363 | a second company shares the program and the database: every row carries its company, every request is inside exactly one, another company's address is refused without revealing anything |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -77,6 +78,9 @@ are true of all of them:
 - **Nothing is authenticated, and only the audit log is durable.** There is no real
   login until steps 43 and 44. From step 09 the audit log is in PostgreSQL and survives
   a restart; the invoice store is still an array in one process.
+- **Step 10 is one lock, not two.** The program filters by company; PostgreSQL does not yet.
+  Its database tier (nine tests, the same as step 09's) has not been run for this step: it
+  needs a `.env` naming the step's own database, which exists, and the file is the learner's.
 - **Step 09 has a second test tier.** `pnpm check` proves its guarantees against
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers what one in-process connection cannot do — logging in as a
@@ -91,9 +95,9 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 87 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 91 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
-34 lessons, several of them about tests that passed while proving nothing.
+35 lessons, several of them about tests that passed while proving nothing.
 
 ## Learning-path stages
 

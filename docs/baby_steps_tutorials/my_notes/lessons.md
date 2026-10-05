@@ -644,3 +644,15 @@ Before writing a sentence that begins "this cannot see", ask whether the system 
 guarantee can see it. If it can, the sentence is a to-do item dressed as a disclosure. The honest
 limits are the ones about *who*, not *what*: someone who can change the configuration or the owner's
 own code is outside any check the program can run on itself.
+
+## 35 · Anything the handler refuses was already recorded as allowed
+
+The pipeline records the decision at §21.11 and runs the handler at §21.14. A refusal raised inside
+the handler is therefore a refusal the log has already called an `ALLOW`. That is correct for an
+*execution* outcome — the invoice was not there, the status had moved on — and wrong for anything
+that is really a decision about the request: whose company an address belongs to, whether the
+arguments are the shape the contract asks for.
+
+So the question to ask of every refusal in a handler is: **is this a fact about what happened, or a
+fact about the request?** The second kind belongs before §21.11, or the log lies. Piece 2 of step 10
+put a fact about the request in the handler; piece 4's first assertion about the log found it.

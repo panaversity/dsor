@@ -2136,3 +2136,55 @@ The pieces themselves:
    org_789 gets org_789's INV-1008 (18,000.00), not org_456's (31,400.00).
 
 `pnpm check`: 350.
+
+## 90 · A refusal with no company is written to every company the caller belongs to (2026-10-05)
+
+Asked in plain words, one question, during piece 4. A request refused at §21.2 — the shared agent
+that did not say which employer, `user_123` naming `org_789` — resolved to no company, and denials
+are evidence (`DSOR-EXE-02`). Three places it could go:
+
+- **every company the caller belongs to** — taken. `user_123`'s lands in `org_456`'s log, where
+  their supervisor looks. The agent's lands in both employers' logs, because both should know their
+  agent made a request without saying who it was working for. No log ever carries a stranger's
+  attempt to reach it. A caller who belongs to no company at all is counted, like one who is not
+  logged in.
+- count it, do not write it — simplest, and an agent probing other companies would leave no record,
+  which is exactly what a log exists to show.
+- a log that belongs to no company — an audit partition keyed by nothing, which `DSOR-TEN-02a` does
+  not allow, and nobody would own it.
+
+`recordTheDecision` computes the homes: the resolved company, or every membership, or `[undefined]`
+(counted). `audit` itself still writes one record in one chain.
+
+## 91 · The address check moved from the handler to §21.6, because the log said ALLOW (2026-10-05)
+
+**Found by my own piece 4 in my own piece 2.** Piece 2 put the "is this address in your company?"
+check inside the handler, where the step-09 constant comparison had been. Piece 4's test asked what
+the log said about a refused address:
+
+```text
+expected 'ALLOWED' to be 'TENANT_MISMATCH'
+```
+
+The handler runs at §21.14. The decision is recorded at §21.11. So the record said the request was
+allowed, and the caller was told it was refused — the log and the answer disagreeing, the one thing
+a decision record exists to prevent, and the thing step 09 fought for a day.
+
+**The decision.** `DSOR-SRC-02b` is a fact about the *arguments*, and §21.6 is where facts about the
+arguments are decided. `validateTheInput` now refuses any own argument that is a `dsor://` address
+for another company — generically, not only `invoice` — before the record. An address that does not
+parse is left for the handler's `VALIDATION_FAILED`, as before: that gap is step 04's, is stated in
+the previous step's test, and is not this step's idea.
+
+**The handler keeps a re-check, as `INTERNAL_ERROR`.** Unreachable through the real pipeline, and by
+lesson 18 a guard no test can reach protects nothing — so a test builds the one door that reaches
+it: a validate stage that copies and hashes the arguments and forgot the address. It answers
+`INTERNAL_ERROR`, this program's bug, not a refusal the caller could act on, for the same reason the
+door refuses without a receipt. Removing the re-check fails exactly that test.
+
+**One example moved out of step 09's test.** "A call that fails while executing is recorded as the
+ALLOW it was" listed an address for another company as an execution-time failure. It is a decision
+now. A missing invoice took its place, because that one really is answered after the decision.
+
+Measured: with the check in validate, Break 5 fails 11 tests; with it in the handler alone, the
+audit says ALLOW and one test fails for the right reason.

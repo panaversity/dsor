@@ -1,602 +1,326 @@
-# Step 09 · PostgreSQL on Neon
+# Step 10 · Tenants
 
-**New in this step:** the audit log lives in a real database, and the application is not allowed to
-change it.
+**New in this step:** a second company shares the program and the database, and every request
+works inside exactly one company — decided from who is logged in, never from the address.
 
 ## In plain words
 
-Step 08 was careful. Every decision written down before the answer, refusals included, each record
-carrying the fingerprint of the one before it so tampering shows.
+Until now this program served one company, `org_456`, and said so with a constant. Every person
+belonged to it, every invoice was assumed to be its, every audit record joined one chain named after
+it.
 
-Then you close the program and all of it is gone.
+A **tenant** is one company's share of a system that many companies use. This step adds a second
+one, `org_789`, and makes four things true at once:
 
-The log was a plain array inside one running process. This step moves it into **PostgreSQL**, and
-gives the program an account that may **add** rows and may not change or delete them. Not because our
-code is careful — because the database refuses.
+- **Every row says whose it is.** The invoices moved into PostgreSQL, and every row carries a
+  `tenant_id`. The key is the company *and* the invoice number, because `org_456` and `org_789` both
+  have an `INV-1008` and they are different invoices.
+- **Every request is inside one company**, decided at §21 step 2 from the caller's memberships. One
+  membership, and it is implied. Two — the agent `accounts-payable-fte` now works for both companies
+  — and the login has to say which, and it has to be one of theirs.
+- **An address for another company is refused, and the refusal says nothing.** The same words
+  whether that company exists or not, nothing about which company you are in, decided before any
+  lookup so it cannot say whether the invoice exists either.
+- **Each company has its own audit chain.** Nothing in `org_789`'s log ever links to `org_456`'s.
 
-Three words you will meet:
-
-- a **migration** is one numbered `.sql` file that changes the database's shape. `001_audit.sql`
-  creates the table.
-- **GRANT** and **REVOKE** are how PostgreSQL says who may do what.
-- an **account** (PostgreSQL calls it a *role*) is who you connect as. This step has two.
+What this step does **not** do is make PostgreSQL enforce any of it. The database still answers
+any query the program sends; the program is what filters. That is one lock. Step 11 adds the second,
+row-level security, so a buggy query still cannot leak.
 
 ## Why it matters
 
-> At 09:14 `cfo_100` is refused `invoice.issue`. The record is written. The chain verifies. At 09:15
-> the process restarts — a deploy, a crash, anything. **The record is gone.** The one piece of
-> evidence that somebody tried is gone, and nothing says it ever existed.
-
-Step 08's own README admits it: `DSOR-EXE-02` says the decision must be *durably* recorded, and
-"durably is doing a lot of work for an array in one process".
-
-And the program could do worse than lose it. `forgetTheLog()` was exported and nothing stopped
-anything calling it. §30 is blunt about that:
-
-> The account DSoR itself runs under has no permission to edit or delete log rows.
-
-Ours had every permission.
-
-## The two accounts
-
-| Account | May |
-| --- | --- |
-| the **owner** | create and change tables. Used by `pnpm migrate`, and never by the program |
-| **`dsor_runtime`** | `INSERT` on every column except `recorded_at`, and `SELECT`. Not `UPDATE`, not `DELETE`, not `TRUNCATE` |
-
-That is `002_runtime_user.sql`, and it is the whole step. Step 08's chain makes tampering
-**detectable**; this makes it **refused**.
-
-**And the program has to actually *be* `dsor_runtime`.** This is the part that was wrong here for a
-while, and it is worth a paragraph because the mistake is easy and quiet. The migration took
-`UPDATE` away from `dsor_runtime` and the tests proved it — by running `SET ROLE dsor_runtime`
-themselves first. The program never ran that line. On the in-process route it connected as
-`postgres`, a superuser, and a superuser is allowed everything no matter what any `GRANT` says:
+Measured on step 09, the day before this step, by asking it for another company's invoice:
 
 ```text
-PGlite connects as: postgres   superuser: true
-  UPDATE    SUCCEEDED
-  DELETE    SUCCEEDED
-  TRUNCATE  SUCCEEDED
+user_123 asks for another company's invoice:
+   TENANT_MISMATCH   "dsor://org_789/invoice/INV-1008 is for org_789, and this program serves org_456"
+the store, asked for INV-1008 with no company at all:
+   getInvoice('INV-1008') -> org_456's invoice        (no tenant parameter exists)
 ```
 
-280 tests were green, because not one of them asked who the program had connected as. A test that
-borrows the right identity proves the `GRANT`. Only a test that uses the program's **own**
-connection proves the program. `src/database.ts` now drops to the application's role and then asks
-the database whether this connection could rewrite the log, refusing to start if it could — on both
-routes, because a connection string pointing at the owner is a configuration mistake, not a
-preference.
+Two failures hide in those lines, and a third behind them. The store had no idea of company: the
+day `org_789` had an `INV-1008` too, `getInvoice("INV-1008")` would return whichever row came first
+— a leak between customers, which §14 calls the kind of bug that ends a product. The refusal told a
+stranger which company this is. And the only "tenant check" there was compared the address against a
+constant, which means the company came from the address — an argument, which is data, which the
+specification says can never decide who you are or where you belong.
+
+## What changed since step 09
+
+```bash
+git diff --no-index ../my_09_postgres_on_neon ../my_10_tenants
+```
+
+| File | What |
+| --- | --- |
+| `src/tenant.ts` | the constant is gone. The companies this program serves, and `tenantFor`: which one THIS request is for |
+| `src/people.ts` | `org_789` exists, and the agent belongs to both companies |
+| `src/login.ts` | a login may name a company. `tenantClaimed` reads it as data, like `loggedInAs` |
+| `src/pipeline.ts` | `Context.tenant`, and "resolve the tenant" is required by name, right after "authenticate" |
+| `src/operations.ts` | the new stage at §21.2; the address check moved into §21.6; a refusal with no company is recorded in every company the caller belongs to; handlers are async |
+| `migrations/003_invoices.sql` | new — the table, keyed `(tenant_id, id)`, with `UPDATE` granted on `status` alone |
+| `migrations/004_running_example.sql` | new — the story as rows, including `org_789`'s `INV-1008` |
+| `src/invoice.ts` | SQL now, and every function takes the company first |
+| `src/store.ts` | new — the one database handle, shared by both stores |
+| `src/audit.ts` | one chain per company; `theLog`, `theHead` and `forgetTheLog` take the company; no company is named in its code |
+| `test/tenant.test.ts`, `test/cross-tenant.test.ts`, `test/invoices-in-postgres.test.ts`, `test/audit-per-tenant.test.ts` | new |
+
+325 tests became 363. One test from step 09 changed its example, and the README says why under
+Break 5.
 
 ## Run it
 
 ```bash
 pnpm install
-pnpm migrate
-```
-
-```text
-applied 001_audit.sql
-applied 002_runtime_user.sql
-
-2 migration(s) applied to this database:
-  001_audit.sql                2026-10-02T16:55:14.235Z
-  002_runtime_user.sql         2026-10-02T16:55:14.239Z
-```
-
-Run it again and it says so, which is a different sentence on purpose:
-
-```text
-Already up to date. Nothing was applied.
-```
-
-Then the program:
-
-```bash
 pnpm start
 ```
 
-```text
-10 records, chain verifies against the head: true
-drop one from the copy we are holding: the chain alone still says true, and against the head false
-2 refusals counted without a record, because nobody was logged in
-```
-
-**Now run it again.**
+The part that is this step:
 
 ```text
-20 records, chain verifies against the head: true
+Two companies, one program:
+
+accounts-payable-fte  (no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+accounts-payable-fte  (no envelope)            dsor://org_789/invoice/INV-1008  18000.00 USD  draft
+
+agent, company unsaid      accounts-payable-fte  TENANT_MISMATCH   retry: never   you belong to more than one company; say which one this request is for
+their address, real        user_123              TENANT_MISMATCH   retry: never   dsor://org_789/invoice/INV-1008 is not an address in your company
+their address, no such co  user_123              TENANT_MISMATCH   retry: never   dsor://org_000/invoice/INV-1008 is not an address in your company
+login names their company  user_123              TENANT_MISMATCH   retry: never   org_789 is not a company you belong to
+
+The audit log of org_456:
+
+ 0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:8987d94...
+ …
+10  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:6f3fdd5...
+11  DENY   (no such operation)  accounts-payable-fte   TENANT_MISMATCH         sha256:c385e34...
+12  DENY   invoice.get@1        user_123               TENANT_MISMATCH         sha256:f28be66...
+13  DENY   invoice.get@1        user_123               TENANT_MISMATCH         sha256:fc52f83...
+14  DENY   (no such operation)  user_123               TENANT_MISMATCH         sha256:55046d5...
+org_456: 15 records, chain verifies against the head: true
+
+The audit log of org_789:
+
+ 0  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:4a2dd56...
+ 1  DENY   (no such operation)  accounts-payable-fte   TENANT_MISMATCH         sha256:8fe61e7...
+org_789: 2 records, chain verifies against the head: true
 ```
 
-That line is step 09. The first run's records are still there, written by a process that no longer
-exists — and the second run's records link onto them, so the whole chain still verifies.
+Read the first two lines together: the same agent, the same invoice number, two different invoices,
+and the only thing that changed between the lines is which company the agent said it was working
+for. Read the four refusals: `org_789` is real and `org_000` is not, and the two answers are the
+same words. Read `(no such operation)` on records 11 and 14: a request refused at §21.2 was refused
+before the operation was even looked up, so the record truthfully has no operation in it. And read
+`org_789`'s log: the agent's request that never said which employer is there too, because both
+employers should know — and nothing of `user_123`'s or the CFO's is, because they are not members.
 
-### What the second line of that output does and does not show
-
-Hash chaining proves no record was **edited**. It is no evidence at all that none was **deleted from
-the end** — drop the last record and every link still holds, there is simply less of it. A
-*checkpoint* is what notices, and §30 names checkpoints beside hash chaining for exactly that.
-
-But read it carefully, because step 09 claimed more than it delivers. The log is read once and that
-line drops a record from **the copy being held**, so what it catches is a shortened log you were
-handed. A row deleted from the **table** moves `theHead()` with it, because `theHead()` is a query
-over that same table — and then the two agree again:
+Run it again:
 
 ```text
-3 records, head count 3   verifies: true
-DELETE the last row
-2 records, head count 2   verifies: true
+accounts-payable-fte  CONFLICT   retry: never   INV-1009 is issued, and only a draft invoice can be issued
+org_456: 30 records, chain verifies against the head: true
+org_789: 4 records, chain verifies against the head: true
 ```
 
-§30 says the answer and says it as a SHOULD: *anchor checkpoints outside the control-plane store.*
-This step has nowhere outside to put one, which is why `DSOR-AUD-04d` is not claimed — and
-`test/audit.test.ts` pins the limit, so the day something anchors a checkpoint, a test says so.
+The invoices are durable now too. Step 09's list died with the process, so every run issued
+`INV-1009` afresh; this run finds it issued.
 
-### Which database is that?
+### The database tier
 
-With no connection string set, the program opens a PostgreSQL **on disk in this folder**, through
-PGlite — the PostgreSQL engine compiled to WebAssembly. It is not a pretend database; it is the
-engine, keeping its data in `.local-database/`, which is in `.gitignore`.
-
-That is why the step runs with no account and no network, and why the guarantee below is proven on a
-fresh checkout rather than taken on trust.
-
-## Proving it: `UPDATE audit` must fail
-
-The map's "done when" is one line, and `test/audit-permissions.test.ts` is it:
-
-```text
-INSERT a decision        allowed
-SELECT it back           allowed
-UPDATE it                permission denied for table audit
-DELETE it                permission denied for table audit
-TRUNCATE the whole log   permission denied for table audit
-DROP the table           must be owner of table audit
-create its own table     permission denied for schema public
-```
-
-Those refusals are PostgreSQL's own privilege system, not our code checking itself.
-
-## Two commands, and what each proves
+`pnpm check` needs no server: 363 tests on PostgreSQL compiled to WebAssembly, in-process. The nine
+tests in `pnpm test:db` need two real logins, and this step needs a database of its own — the
+migrations are checksummed, and step 09's database has applied two of them while this step has four.
+Copy step 09's `.env` and change the database name in both URLs:
 
 ```bash
-pnpm check     # 325 tests, no database and no network needed. Outside the repository one of
-               # them skips itself, and says so: it compares the step's copy of the audit-record
-               # schema with the specification's, and a copy of one step has no specification
-pnpm test:db   # needs DSOR_DB_URL and DSOR_DB_OWNER_URL; skipped without them
-```
-
-Being honest about the split matters: **`pnpm check` being green does not mean every database
-guarantee holds.** Two things one in-process connection cannot do, and `audit.db.test.ts` is for them:
-
-- **log in as a second user.** PGlite has one connection, so the tests reach the application's
-  account with `SET ROLE`. The privilege checks are identical; what is untested is whether
-  `dsor_runtime` *connecting* gets the same answers.
-- **race.** One connection cannot race itself, so `UNIQUE (chain, sequence)` under two writers
-  needs a server. That test races three *different* record ids for one position and asserts that the
-  error names `audit_chain_sequence_key`. It used to send the same insert three times, and the primary
-  key refused the losers — dropping the unique constraint left it green.
-
-With no connection string it reports `9 skipped`, which says so rather than passing quietly. With one,
-it reports `9 passed` — and those nine have been run, against a real PostgreSQL 17 with two real
-logins. Granting the application `UPDATE` on that server fails two of them, which is how you know they
-are asserting something.
-
-`pnpm check` deletes `.local-database` before it runs, because `main.test.ts` needs a fresh database
-to count the demo's records — so the log `pnpm start` showed you does not survive it. And if
-`pnpm start` ever stops with *a migration has changed since it was applied*, that is the checksum
-guard noticing that `.local-database` was built by an older version of a migration file; for this
-throwaway database the answer is `rm -rf .local-database` and run again.
-
-### Pointing it at a real server
-
-```bash
-cp .env.example .env     # then fill in both connection strings
-```
-
-`.env` is read by `pnpm start`, `pnpm migrate` and `pnpm test:db` — through
-`process.loadEnvFile`, which is Node's own, so there is no dependency for it.
-
-**Neon**, which is what the map names: make a project at [neon.tech](https://neon.tech), then in its
-SQL editor:
-
-```sql
-CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'something-long';
-GRANT CONNECT ON DATABASE neondb TO dsor_runtime;
-```
-
-No table rights there on purpose — `002_runtime_user.sql` grants the one it needs and revokes the
-rest, so the whole permission story is in a file you can read. `.env` is in `.gitignore` and must
-never be committed; `.env.example` has no secrets in it.
-
-**Or a PostgreSQL on your own machine**, which needs no account and is what these nine tests were
-first run against:
-
-```bash
-brew install postgresql@17
-initdb -D /tmp/dsor-pg -U dsor_owner --auth=trust
-pg_ctl -D /tmp/dsor-pg -o "-p 55432 -k /tmp" -l /tmp/dsor-pg.log start
-createdb -h /tmp -p 55432 -U dsor_owner dsor_step09
-psql -h /tmp -p 55432 -U dsor_owner -d dsor_step09 \
-  -c "CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'pick-something';" \
-  -c "GRANT CONNECT ON DATABASE dsor_step09 TO dsor_runtime;"
-```
-
-Then two connection strings against `localhost:55432`, and `pnpm migrate && pnpm test:db`. Stop it
-afterwards with `pg_ctl -D /tmp/dsor-pg stop`.
-
-## What `at` and `recorded_at` are both for
-
-The table has two times, and the reason is worth knowing.
-
-`at` is the application's claim, and it has to be: the fingerprint is computed **before** the row
-exists, and `UPDATE` is revoked afterwards, so there is no moment at which the database could stamp it
-and still be covered by the hash.
-
-So the database stamps `recorded_at` as well — which the application cannot set or change, and which
-the hash does not cover. "Cannot set" is a recent repair: `recorded_at TIMESTAMPTZ NOT NULL DEFAULT
-now()` reads as though the database owns the column, and a `DEFAULT` only fills a value nobody
-supplied. `GRANT INSERT ON audit` covers **every column**, so the application could simply name it:
-
-```text
-INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
-```
-
-The point of `recorded_at` is to be a time the application did not choose, so `002_runtime_user.sql`
-grants `INSERT` **column by column** and leaves this one out. A `DEFAULT` is not a permission. The
-cost is worth knowing: add a column to `audit` and that list must gain it, or every `INSERT` starts
-failing — which fails closed, and a test checks every column of the table by name so it fails in
-`pnpm check` rather than in production.
-
-A backdated record arrives with its two times far apart:
-
-```text
- at          = 2019-01-01 00:00:00
- recorded_at = 2026-10-02 16:55:14
-```
-
-Detection by an independent witness, not prevention. A `CHECK` that `at` is near `now()` would prevent
-it and would also refuse an innocent slow request — and a refused audit write means the operation does
-not run at all.
-
-## What changed since step 08
-
-```bash
-git diff --no-index ../my_08_write_the_decision_first ../my_09_postgres_on_neon
-```
-
-| File | What |
-| --- | --- |
-| `migrations/001_audit.sql` | new — the table, with the primary key and `UNIQUE (chain, sequence)` |
-| `migrations/002_runtime_user.sql` | new — the grant and the revokes. The step |
-| `src/migrations.ts` | new — finding the migrations, deciding which are left, applying them |
-| `src/database.ts` | new — a real server if `DSOR_DB_URL` is set, otherwise one on disk. On disk it drops to `dsor_runtime`; on a server it is whatever the connection string names, and either way it refuses to start holding `UPDATE` |
-| `src/audit.ts` | the log is SQL now: `INSERT`, `SELECT`, and a head that is a query. Every table name says `public.`; every record carries a per-attempt `trace_id` |
-| `src/login.ts` | one line moved inside a `try`, because `Object.hasOwn` can throw |
-| `src/pipeline.ts`, `src/operations.ts` | async, because a database write is |
-| `scripts/migrate.ts` | new — `pnpm migrate` |
-| `test/database.test.ts` | new — who the program connects as. Break 6 is zero failures without it |
-| `test/audit-race.test.ts` | new — a writer held at its tail read while another commits |
-| `test/audit-lost-reply.test.ts` | new — an `INSERT` that commits and loses its reply, on a connection that may then be gone |
-| `test/audit.db.test.ts` | the program's own door pointed at a real server: at the owner it refuses to start, at the application it starts and still cannot `UPDATE`. And the program's own writer under real parallelism, which answered a question PGlite could only guess at: the constraint that refuses a collision of its row shape is `audit_pkey` |
-| everything in `test/` | async, and nine files now need a database |
-
-232 tests became 325.
-
-## The pipeline became async, and that was a decision
-
-A database write is not synchronous, so the moment `audit()` writes a row the `await` reaches every
-call site — 129 of them across eight test files. The `build-baby-step` skill says to stop when a step
-needs two ideas, so this was put to the learner rather than assumed. The answer: async is the **cost**
-of a real database, not a second idea, and it arrives where the reason for it is visible.
-
-It is worth knowing one thing changed shape, not just signature. A stage that throws now produces a
-**rejected promise** instead of throwing where the caller stands:
-
-```ts
-expect(() => door(...)).toThrow(/power went out/)          // passes without running its body
-await expect(door(...)).rejects.toThrow(/power went out/)  // what it has to be
+cp ../my_09_postgres_on_neon/.env .env     # then dsor_step09 -> dsor_step10 in both lines
+pnpm migrate && pnpm test:db
 ```
 
 ## Break it
 
-Nine of them, because this step has nine separate guarantees and a break that takes down half the
-suite does not tell you which one you broke. Every number below was produced by actually making the
-change and running `pnpm check`, never written from memory — and several of them were wrong until
-they were re-run.
+Eight, measured on the full suite. Two of them are not counts, and that is the lesson of each.
 
-### Break 1 · let the application change the log
+### Break 1 · leave the stage out of the list
 
-In `migrations/002_runtime_user.sql`, **replace** the `GRANT INSERT (…), SELECT ON public.audit`
-statement with:
-
-```sql
-GRANT ALL ON public.audit TO dsor_runtime;
-```
+In `src/operations.ts`, delete the line `stage(2, "resolve the tenant", "both", resolveTheTenant),`.
 
 ```text
- Tests  6 failed | 319 passed (325)
+TypeError: the pipeline runs resolve the operation where resolve the tenant belongs: the order must
+be authenticate then resolve the tenant then resolve the operation then authorize then validate the
+input then record the decision
 ```
 
-Where the line goes decides what you see, and the first version of this exercise did not say. Replaced,
-the `REVOKE UPDATE, DELETE, TRUNCATE` line below it still takes those three back — so the step's "done
-when" test **passes**, and the six that fail are the ones that read the privilege shape (INSERT is
-table-wide again) and the two that forge `recorded_at`, which `GRANT ALL` hands back column by column.
-**Appended** at the end of the file instead, nothing takes `UPDATE` back, `refuseIfItCanRewriteHistory`
-refuses every `openTheDatabase`, and `24 failed | 301 passed` — the start-up guard doing its job,
-loudly, in every test that opens the program's own door.
+Not a failing test — the program refuses to **load**. `assertPipeline` requires the stage by name, so
+`pnpm start` stops before it has opened a database, and `pnpm check` reports `9 failed | 198 passed
+(207)`: the total shrinks, because every file that imports `operations.ts` dies at import. A
+shrinking total is the tell that the guard fired at load, not that a test caught something.
 
-### Break 2 · leave `TRUNCATE` out of the revoke
+### Break 2 · accept any company the login names
 
-```sql
-REVOKE UPDATE, DELETE ON public.audit FROM dsor_runtime;   -- was UPDATE, DELETE, TRUNCATE
-```
+In `src/tenant.ts`, make `tenantFor` return `{ tenant: claim.tenant }` for any named claim.
 
 ```text
- Tests  2 failed | 323 passed (325)
+ Tests  6 failed | 357 passed (363)
 ```
 
-`TRUNCATE` is its own privilege, not part of `DELETE`, and it empties the table in one statement. A
-log the application can `TRUNCATE` is not append-only whatever else is true of it.
+`user_123` naming `org_789` is now inside `org_789`, and reads its invoice.
 
-### Break 3 · take away the unique constraint
+### Break 3 · let the store ignore the company
 
-In `001_audit.sql`, replace `UNIQUE (chain, sequence)` with `CHECK (true)`.
+In `src/invoice.ts`, change `getInvoice`'s `WHERE tenant_id = $1 AND id = $2` to
+`WHERE id = $2 ORDER BY tenant_id LIMIT 1`.
 
 ```text
- Tests  2 failed | 323 passed (325)
+ Tests  67 failed | 296 passed (363)
 ```
 
-### Break 4 · let a migration be edited after it ran
+This is step 09's store, the day a second company exists: `INV-1008` is whichever row sorts first.
+Sixty-seven, because the demo and every test that reads an invoice now gets the wrong one.
 
-In `src/migrations.ts`, make the checksum comparison always false:
+### Break 4 · one audit chain for everyone again
 
-```ts
-if (false) {   // was: if (file !== undefined && checksumOf(file.sql) !== checksum)
-```
+In `src/audit.ts`, make `chainOf` return `` `audit:org_456` `` whatever the company.
 
 ```text
- Tests  2 failed | 323 passed (325)
+ Tests  10 failed | 353 passed (363)
 ```
 
-### Break 5 · order the chain as text
+### Break 5 · let validate forget the address
 
-In `src/audit.ts`, drop the alias:
-
-```sql
-SELECT sequence::text, record_hash FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1
-```
+In `src/operations.ts`, in `validateTheInput`, change `if (address.tenant !== context.tenant)` to
+`if (false)`.
 
 ```text
- Tests  64 failed | 261 passed (325)
+ Tests  11 failed | 352 passed (363)
 ```
 
-This is the bug that actually happened, and it survived nine records before it bit. `SELECT
-sequence::text` names its output column `sequence`, and PostgreSQL resolves a bare name in `ORDER BY`
-to an **output** column first — so the ordering becomes text, where `"9"` sorts after `"10"`. The tail
-freezes at 9 and every write after that computes 10 and dies on the primary key.
+Eleven, not one, and the reason is worth the paragraph. The address check first lived in the
+handler, at §21.14 — and §21.14 runs *after* the decision is recorded at §21.11. So a request refused
+for another company's address sat in the log as `ALLOWED` while the caller held a refusal: the log
+and the answer disagreeing, which is the one thing a decision record exists to prevent. The audit
+tests for this step caught it. The check moved to §21.6, where facts about the arguments are
+decided, and a test from step 09 — "a call that fails while executing is recorded as the ALLOW it
+was" — lost that example, because it is no longer one.
 
-### Break 6 · let the program keep the owner's connection
+### Break 6 · remove the handler's re-check
 
-In `src/database.ts`, comment out the line that drops to the application's role:
-
-```ts
-// await becomeTheApplication(db);
-```
+In `src/operations.ts`, in `invoiceIdFrom`, change `if (parsed.tenant !== tenant)` to `if (false)`.
 
 ```text
- Tests  11 failed | 314 passed (325)
+ Tests  1 failed | 362 passed (363)
 ```
 
-The largest number here after Break 5, and it was **zero** until `test/database.test.ts` existed.
-Every privilege test still passed, because each one ran `SET ROLE dsor_runtime` itself. This is the
-step's sharpest lesson: a permission test has to use the connection the **program** ended up
-holding, or it is testing the database and not the program.
+One test, and it is the only one that can reach this line: a door built with a validate stage that
+copies and hashes the arguments and forgot the address. Through the real pipeline the line is
+unreachable, because validate refused first — so it answers `INTERNAL_ERROR`, this program's bug,
+not a refusal the caller could act on. It is here for the same reason the door refuses without a
+receipt: a list check cannot see what a stage does.
 
-### Break 7 · leave the schema off a table name
+### Break 7 · make the key the number alone
 
-In `src/audit.ts`, write `INSERT INTO audit (` instead of `INSERT INTO public.audit (`.
+In `migrations/003_invoices.sql`, change `PRIMARY KEY (tenant_id, id)` to `PRIMARY KEY (id)`.
 
 ```text
- Tests  2 failed | 323 passed (325)
+TypeError: 004_running_example.sql failed and was rolled back: there is no unique or exclusion
+constraint matching the ON CONFLICT specification
 ```
 
-`dsor_runtime` cannot `UPDATE` or `DELETE` the log, and it *can* create a temporary table, because
-`TEMPORARY` is granted to `PUBLIC` by default. `pg_temp` is searched before `public` unless
-`search_path` names `pg_temp` explicitly — a session setting, not a grant — so an unqualified `INSERT INTO audit` goes to the application's own throwaway
-table:
+The running example cannot be loaded: it holds an `INV-1008` for each company, and its `ON CONFLICT
+(tenant_id, id)` names a key that no longer exists. `pnpm check` reports `60 failed | 129 passed |
+174 skipped` — the skipped ones are every file whose setup applies the migrations. Skipped is the
+tell of a guard that fired before a test could, and it is written here as what it is.
+
+### Break 8 · grant UPDATE on every column
+
+In `migrations/003_invoices.sql`, change `GRANT UPDATE (status)` to `GRANT UPDATE`.
 
 ```text
-after one audit() call:  public.audit has 0 row(s),  pg_temp.audit has 1
-theLog() reports 1 record(s)
+ Tests  1 failed | 362 passed (363)
 ```
 
-The program reports a healthy audit trail, the real log stays empty, and the evidence disappears when
-the connection closes. No privilege a migration can portably write closes this one — `REVOKE TEMPORARY ON
-DATABASE` would, and needs the database's name — and a GRANT decides what may be done to a table, not
-which table a name means.
+The application may now move an invoice to another company. One test asks.
 
-### Break 8 · treat a lost reply as a failed write
-
-In `src/audit.ts`, replace the `try`/`catch` around `insert(db, written)` with a bare
-`await insert(db, written);`.
-
-```text
- Tests  5 failed | 320 passed (325)
-```
-
-A database can commit an `INSERT` and lose the **reply**. Step 08's store was an array, which either
-takes the record or throws; a network has a third answer. Treating it as failure told the caller the
-decision "could not be written down, so it was not carried out" while the row sat in the table saying
-`ALLOWED` — the log and the answer contradicting each other, which is the one thing a decision record
-exists to prevent.
-
-The recovery looks for its own record and, if it **cannot look** because the connection is gone, says
-so: `OUTCOME_UNKNOWN`, retry `after_reconciliation`. That is `DSOR-UNK-01b`, and the first version of
-this fix got it wrong — the look-up ran on the dead connection, its error escaped, and the caller was
-back to `EVIDENCE_STORE_UNAVAILABLE` / `safe_same_key` on exactly the case a restart produces.
-
-Three more things a second review made precise. A `23505` from PostgreSQL closes the case where the
-other writer landed first — "that row exists, yours did not commit". `correlation.trace_id`, a fresh
-UUID per attempt and inside the hash, closes the other: two attempts can no longer produce the same
-bytes, so an equal hash means *this* attempt and nothing else (before it, two writers for the same
-request and millisecond were one row with two receipts). And a failure the **server** reported, which
-carries a SQLSTATE, is told apart from a connection that went quiet, which does not: only the first is
-a failure. The second, when the record is not there, is unknown — the statement may still be running
-on a connection this side no longer holds, and "not found" is a snapshot, not a proof.
-
-### Break 9 · read the clock before the tail
-
-In `src/audit.ts`, move the block that reads the clock — from `const told = now();` down to
-`const at = new Date(instant).toISOString();` — back above `const db = theDatabase();`.
-
-```text
- Tests  4 failed | 321 passed (325)
-```
-
-A writer that gets overtaken then stamps an earlier time at a later position: a log whose times
-contradict its order, which is evidence that lies about the order of events. Nothing is tampered
-with and every hash agrees, so the chain itself still verifies — and for a day it did not, because
-`verifyChain` had a fourth check, "`at` never goes backwards", that turned this into a chain nothing
-could ever verify again. That check is gone (decision 87): it was never about tampering, since a
-changed `at` breaks the hash, and what it actually caught was an honest earlier time — a backdated
-clock, which `recorded_at` already witnesses, or two instances of this program with clocks a few
-seconds apart, which is a normal deployment. Reading the clock after the tail still matters on its
-own terms, and the unique constraint is why it works for **one process with one clock**: a writer
-that takes position N+1 saw N in the tail, so N was committed, and N's time was sampled before N's
-`INSERT`. The four tests that fall are the ordering tests, and they are what this break is about.
-
-Restore each break and confirm `pnpm check` prints `325 passed` again.
+Restore each break and confirm `pnpm check` prints `363 passed` again.
 
 ## Build it yourself with Claude Code
 
-> Move my audit log out of memory and into PostgreSQL. Write the migrations by hand as numbered
-> `.sql` files and apply them with a runner I can read — no migration library.
->
-> Two accounts: an owner that runs the migrations, and the application, which may `INSERT` and
-> `SELECT` on the log and nothing else. Prove it: a test that runs `UPDATE audit` and passes only
-> when PostgreSQL refuses.
->
-> Before you write the store, tell me what has to become async and how many call sites that is, and
-> let me decide whether that belongs in this step.
->
-> Then break every `REVOKE` line one at a time. If removing one leaves every test passing, tell me —
-> do not quietly keep it.
+Copy `my_09_postgres_on_neon` to a new folder and ask:
+
+> Start step 10, tenants. Before any code: explain what goes wrong the day a second company shares
+> this program, measured on this step. Then ask me, one at a time, where a request's company comes
+> from, what an address for another company is answered with, whether the invoices move into
+> PostgreSQL now, and who the second company is. Then build it a piece at a time, red first, and
+> break each piece on purpose.
 
 ## Check yourself
 
-1. The log is a database table now. What stops the program rewriting a row?
-2. Why does `at` have to be the application's time rather than the database's?
-3. `pnpm check` is green. Which of this step's guarantees is still unproven?
-4. A `REVOKE` line was removed and every test still passed. What does that tell you?
-5. Why must an applied migration never be edited, when the file is still right there?
-6. Why is `TRUNCATE` named separately from `DELETE`?
+1. Two companies both have an `INV-1008`. What makes them two invoices and not one?
+2. Where does a request's company come from, and why not from the address in it?
+3. `user_123` asks for `dsor://org_789/invoice/INV-1008` and for `dsor://org_000/invoice/INV-1008`.
+   What is the difference between the two answers?
+4. The agent's request that never said which employer is in both companies' logs. Why not in
+   neither, and why not in a log of its own?
+5. The address check used to live in the handler. What was wrong with that, and which test noticed?
 
 <details>
 <summary>Answers</summary>
 
-1. The account it connects as has `INSERT` on every column but `recorded_at`, and `SELECT`, and
-   nothing else. `UPDATE` comes back `permission denied for table audit` from PostgreSQL, not from
-   our code. Step 08's chain makes a change *detectable*; this makes it refused. And the second half
-   of the answer is the one this step got wrong for a day: the program has to actually **be** that
-   account — a `GRANT` protects nothing if the process connects as the owner, and a test that runs
-   `SET ROLE` itself proves the grant, not the program.
-2. Because the fingerprint covers `at`, and the fingerprint is computed before the row exists — and
-   `UPDATE` is revoked afterwards, so there is no later moment to stamp it in. `recorded_at` is the
-   database's own time, which the application cannot set — `INSERT` is granted column by column and
-   that column is left out — and which the hash does not cover, so the two disagreeing is the
-   evidence.
-3. Three things `pnpm check` cannot see, because one in-process connection cannot do them: that the
-   application is refused when it **logs in** as itself rather than assuming the role; that two
-   writers cannot both take one position under real parallelism; and that the program's own door,
-   pointed at the owner's connection string, refuses to open. All three need a server and all are in
-   `audit.db.test.ts`, which reports `9 skipped` without one — and which has been run, nine tests
-   against PostgreSQL 17 with two real logins. Beyond both tiers, nothing this step claims is left
-   unproven. Three things were open for a day and closed: a `SECURITY DEFINER` function and a trigger
-   are refused at start-up now; the real server named `audit_pkey` as the constraint that refuses a
-   collision of the program's own rows; and the time check that two skewed clocks would have tripped
-   was removed from `verifyChain`, because it was never about tampering (decision 87). What remains
-   unprovable *here* is about who, not what: the owner can do anything, and a trusted time source is
-   §30's, not this step's.
-4. That the line was not what was protecting you. Measured: a freshly created table grants nobody
-   anything, so there was nothing for a `REVOKE` to take away — the guarantee rested on the `GRANT`
-   being narrow. The `REVOKE`s matter on a database with a history, and the tests now reach them by
-   granting something first.
-5. Because the database recorded that it ran *that text*. Edit the file and the shape in front of you
-   was built from something that no longer exists anywhere. The checksum is what notices, and it
-   refuses rather than guesses: `pnpm migrate` stops with *"001_audit.sql has changed since it was
-   applied … an applied migration is never edited. Add a new migration instead."* That line fired
-   twice while this step was being fixed, and the answer in development — a database nobody but you
-   has ever used — was to drop the tables and re-apply. The answer anywhere real is `003`.
-6. Because it is a separate privilege. Revoking `DELETE` leaves `TRUNCATE`, and `TRUNCATE` empties
-   the whole table in one statement.
+1. The key of the table: `(tenant_id, id)`. An invoice number is an identity only inside one
+   company, and the database says so — a second `INV-1008` in the *same* company is refused by
+   `invoices_pkey`, and one in *another* company is a different row.
+2. From who is logged in: their memberships, and the company the login names if they have more than
+   one. The address is an argument, and arguments are data — `DSOR-SRC-02a` says the security context
+   comes only from the authenticated envelope and the control-plane store. A program that believed the
+   address would let anyone be in any company by typing it.
+3. None but the address echoed back. Both are `TENANT_MISMATCH`, the same words, computed from the
+   address alone before any lookup. `org_789` is real and `org_000` is not, and the caller cannot tell
+   — which is `DSOR-ERR-01b`'s point.
+4. Denials are evidence (`DSOR-EXE-02`), so not neither. A log of its own would be an audit partition
+   keyed by no company, which `DSOR-TEN-02a` does not allow, and nobody would own it. Every company
+   the caller belongs to is the answer: both employers of a shared agent should know it made a request
+   without saying who it was working for, and neither log carries a stranger.
+5. The handler runs at §21.14, after the decision is recorded at §21.11, so the record said `ALLOW`
+   for a request that was then refused — the log contradicting the answer. `audit-per-tenant.test.ts`'s
+   "a mismatching address, once the request has a company, is recorded there" noticed, and the check
+   moved to §21.6.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-AUD-04a · L2]** The DSoR runtime identity MUST NOT be able to update or delete audit
-  records. ([§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention))
-- **[DSOR-AUD-02a · L1]** Operational audit MUST NOT be stored only as agent memory.
-  ([§29](../../../specs/dsor/03-execution.md#29-audit-and-decision-evidence))
+- **[DSOR-TEN-01a · L1]** Every tenant-owned resource MUST carry its `tenant_id`.
+  ([§14](../../../specs/dsor/02-security.md#14-multi-tenancy))
+- **[DSOR-IDN-03a · L1]** Each request MUST resolve to exactly one active tenant in which the subject
+  holds a membership.
+- **[DSOR-SRC-02b · L1]** A tenant, principal, or delegation identifier inside operation arguments
+  that disagrees with the security context MUST cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`.
+- **[DSOR-IDN-03b · L1]** An operation MUST NOT read or write across tenants — met for the two
+  operations that exist, by the store taking the company first.
+- **[DSOR-TEN-02a · L1]** Audit partitions keyed by tenant — met for the audit partition only. The
+  caches, idempotency records, counters, holds and proposals the rule also names do not exist yet.
 
-`DSOR-AUD-04a` is met for the account the application connects as: `INSERT` on every column except
-`recorded_at`, and `SELECT`, with `UPDATE`, `DELETE` and `TRUNCATE` revoked — proven by tests that run
-each one and require PostgreSQL to refuse, **through the connection the program itself ends up
-holding**. That last clause is the whole of Break 6, and it was the gap: the rule says the *runtime
-identity* must not be able to update or delete records, and for a while the runtime identity was
-`postgres`.
+**The map and the spec disagreed, and the spec won.** The map's done-when says an address for another
+company returns "the same not found as a URI that does not exist". `DSOR-SRC-02b` says it MUST be
+`TENANT_MISMATCH` or `AUTHORIZATION_DENIED`, and `RESOURCE_NOT_FOUND` is neither. So it is
+`TENANT_MISMATCH`, and what the done-when *means* — reveal nothing — is held to the letter: the same
+words for a company that exists and one that does not, nothing about yours, before any lookup.
+Decision 88 in `my_notes` records it.
 
-Three limits, stated plainly.
-
-1. On the in-process route there are no logins at all — PGlite hands out one connection and it
-   belongs to the owner — so the program reaches the application's account with `SET ROLE`. On a real
-   server the limit is the **server's**, because the program only ever holds `dsor_runtime`'s
-   password; here it is the program's own choice, and a `RESET ROLE` would lift it. What the choice
-   does prove is that the grants are enough for the program to do its job and no more, which would
-   otherwise stay untested until the day it ran against Neon. `audit.db.test.ts` is the test that
-   logs in properly, and it needs a server.
-2. The **owner** can still do anything, which is the design and not a gap: migrations have to come
-   from somewhere. So this rule is met against the *application*, and a human with the owner's
-   connection string is outside what any `GRANT` can say about.
-3. `refuseIfItCanRewriteHistory` is a check at start-up, not a boundary. It asks four questions and
-   each was measured open before it was asked: does this connection hold `UPDATE`, `DELETE` or
-   `TRUNCATE`; is it a member — inherited or `NOINHERIT`, one `SET ROLE` away — of a role that does;
-   may it `EXECUTE` a `SECURITY DEFINER` function whose owner does (a rewrite by proxy, with the
-   application holding nothing); and does the table carry a trigger, which is the owner's code
-   running inside every `INSERT` this program makes. It runs on **both** routes, and the database
-   tier points it at the owner's connection string and requires it to refuse. What it cannot stop is
-   someone who can change the configuration, the migrations, or the owner's own code — a start-up
-   check is a tripwire for mistakes, not a wall against the owner, and the owner is the design.
-
-`DSOR-AUD-02a` is met in the only sense it can be here: the log is in PostgreSQL, and there is no
-agent memory in this program for it to be in instead. The rule exists to stop an implementation
-treating a model's recollection as the record, and nothing here could.
-
-`DSOR-EXE-02`'s *durably* half, which step 08 explicitly did not claim, now holds: the records survive
-the process, which `pnpm start` demonstrates by being run twice.
-
-`DSOR-UNK-01b` — an unknown outcome is reported as unknown, never as success, failure or a retryable
-error — is met **for the two unknowns this step can produce**, both about the evidence write rather
-than the command: an `INSERT` whose reply is lost on a connection that then cannot be asked, and an
-`INSERT` whose connection failed before the server answered and whose record is not there *yet*. Both
-get `OUTCOME_UNKNOWN` with retry `after_reconciliation`, and `test/audit-lost-reply.test.ts` holds
-each by injecting the exact fault. Read the rule's own words and its subject is "whether the action
-happened"; here it is applied to the record *of* the action, by analogy and on purpose, because a
-decision record that may or may not exist is the same shape of problem. The command's outcome itself
-cannot be unknown until a command reaches a connector, and that is step 37.
+**"Active"** in `DSOR-IDN-03a` means a tenant that exists and is not suspended. Suspension is a later
+step; here a tenant is active when it is on the list in `tenant.ts`.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-AUD-04c` | Every record belongs to exactly one chain. There is one chain, so nothing is partitioned and nothing can belong to two. Step 10 brings a second tenant and makes this a real question. |
-| `DSOR-AUD-04d` | Every chain covered by each checkpoint. `theHead()` is a checkpoint of one chain, computed on demand and stored nowhere — §30 says to anchor checkpoints outside the control-plane store, and this is inside it. |
-| `DSOR-AUD-05b` | Reading audit must itself be authorized and audited. `theLog()` is a plain function any code can call, and reading it writes nothing. |
-| `DSOR-AUD-05c` | Retention must be policy-controlled and support legal holds. Nothing deletes and nothing expires; "keeps everything forever" is not a policy. |
-| `DSOR-EXE-04a` | The state change, the outcome and the outbox commit atomically. The invoices are still an array, so there is nothing to share a transaction with. Step 34. |
+| `DSOR-TEN-01b` | Two independent layers. This is the first: the program filters. PostgreSQL still answers any query it is sent. Step 11. |
+| `DSOR-TEN-01c` | Isolation must not depend on agent behaviour or prompts. Nothing here does, and nothing ever did — but a rule about what is *absent* is not met by a step that adds nothing; it is held by every step. |
+| `DSOR-TEN-02b` | A cross-tenant test suite over every operation. `cross-tenant.test.ts` covers `invoice.get` by hand; the generated suite that grows with each operation is step 12. |
+| `DSOR-ERR-01b` | The mismatch refusal reveals nothing, but the rule is about every error, and `RESOURCE_NOT_FOUND` for your own company's missing invoice still says it is missing. |
 
-Everything earlier steps claimed still holds, including step 08's `DSOR-EXE-02`, `DSOR-AUD-01`,
-`DSOR-AUD-04b`, `DSOR-EXE-03b`, `DSOR-MOD-04` and `DSOR-COR-01a`.
+Everything earlier steps claimed still holds. `DSOR-EXE-02` now holds for a refusal with no company
+too, which step 09 could not have asked.
 
-**Next:** step 10, `tenants` — a second company shares the database and cannot see the first one's
-rows. The invoices move out of memory there too, which this step deliberately left alone.
+**Next:** step 11, `row_level_security` — the second lock. PostgreSQL itself filters rows by company,
+so a buggy query still cannot leak, and three traps come with it.
