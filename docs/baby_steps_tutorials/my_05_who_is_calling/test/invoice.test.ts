@@ -67,7 +67,13 @@ describe("getInvoice", () => {
 
   // Step 01 froze both invoices and only tested one. INV-1009 is the draft every later step
   // issues, so it is the one whose freeze matters most.
-  it("DSOR-MON-01: every invoice in the list is frozen, not just the first", () => {
+  //
+  // No rule id, and it used to carry DSOR-MON-01. That rule is about how an amount is
+  // *represented* — a money object with a decimal-string value and a currency code. This test
+  // asserts a freeze and a status and never looks at how the amount is written, so it could not
+  // fail when that rule was broken, and a title that claimed it would be a lie about what the
+  // test checks.
+  it("every invoice in the list is frozen, not just the first", () => {
     for (const id of ["INV-1008", "INV-1009"]) {
       const invoice = getInvoice(id);
 

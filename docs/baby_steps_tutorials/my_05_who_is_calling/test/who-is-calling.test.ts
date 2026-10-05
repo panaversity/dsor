@@ -30,6 +30,31 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(honest.askedBy).toBe("user_123");
   });
 
+  // The test above plants a name beside a **real** login, and so does every other test that
+  // plants one. That left a hole: a fallback that takes the name from `args.principal` only when
+  // nobody is logged in would pass every one of them, because every one of them is logged in.
+  // This call is not. A name in the arguments is not a login either, so the answer is the same
+  // refusal a bare `undefined` gets, attributed to nobody — never to cfo_100.
+  it("DSOR-SRC-02a: a principal named in the arguments is not a login either", () => {
+    const answer = callOperation(undefined, "invoice.get", {
+      invoice: INV_1008,
+      principal: "cfo_100",
+      loggedInAs: "cfo_100",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("AUTHENTICATION_REQUIRED");
+    expect(answer.envelope.retry).toBe("never");
+    expect(answer.askedBy).toBe("(nobody)");
+    expect(answer.envelope.correlation.principal_id).toBeUndefined();
+  });
+
+  // `kind === "data"` on its own proved too little: it would still pass if the planted tenant had
+  // quietly chosen which company's record came back. The record has to be org_456's INV-1008, and
+  // the caller has to still be the supervisor.
   it("DSOR-SRC-02a: a tenant named in the arguments is ignored too", () => {
     const answer = callOperation(SUPERVISOR, "invoice.get", {
       invoice: INV_1008,
@@ -37,7 +62,13 @@ describe("who you are comes from the login, never from the arguments", () => {
       active_tenant: "org_999",
     });
 
-    expect(answer.kind).toBe("data");
+    if (answer.kind !== "data") {
+      throw new Error(`expected the invoice, got ${answer.kind}`);
+    }
+
+    expect(answer.askedBy).toBe("user_123");
+    expect(answer.invoice.id).toBe("INV-1008");
+    expect(answer.invoice.uri).toBe(INV_1008);
   });
 
   // The test above only shows a useless extra field is harmless. This one sends what an

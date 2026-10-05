@@ -132,21 +132,26 @@ my_05_who_is_calling/
   src/people.ts            NEW  the three principals, with their type and company
   src/login.ts             NEW  a login becomes a principal, or is refused
   test/login.test.ts       NEW  15 tests: who exists, and what a login may be
-  test/who-is-calling.test.ts NEW 14 tests: the arguments are ignored
-  test/main.test.ts        NEW  5 tests: runs src/main.ts and reads what it printed
+  test/who-is-calling.test.ts NEW 15 tests: the arguments are ignored
   src/operations.ts    CHANGED  callOperation takes a login, first; answers say who asked
   src/envelopes.ts     CHANGED  correlation carries principal_id once a caller exists
   src/main.ts          CHANGED  every line shows who asked
   test/operations.test.ts CHANGED every call passes a login
   test/arguments.test.ts CHANGED every call passes a login; a title dropped a wrong rule id
+  test/main.test.ts    CHANGED  the expected output gains a name column; 5 tests about who asked replace step 04's 6
   src/invoice.ts       CHANGED  nothing but a dropped step 04 comment marker
-  test/invoice.test.ts CHANGED  nothing but a dropped step 04 comment marker
   test/envelopes.test.ts CHANGED a marker, and one note that principal_id is filled now
   package.json         CHANGED  name and description only
+  test/invoice.test.ts CHANGED  a dropped step 04 marker, and one title dropped a DSOR-MON-01 it never earned
+  test/registry.test.ts CHANGED two titles dropped a DSOR-OPR-02b that a freeze does not earn
 ```
 
-The last four are in the list because `diff -rq` shows them to a reader and a list that
-leaves them out looks like something is hidden. Three of them are comments only.
+The last five are in the list because `diff -rq` shows them to a reader and a list that
+leaves them out looks like something is hidden. The first two of those are comments only, and
+`package.json` is its name and description. The last two each drop a rule id from a test title
+and change nothing the test checks. A title that starts with a rule id claims the test would
+fail if that rule were broken; a test that only checks a freeze cannot fail for a rule about
+defaults, or for one about how money is written, so the claim was not true and it is gone.
 
 ```bash
 cd docs/baby_steps_tutorials
@@ -179,13 +184,15 @@ logged in, no contract  user_123              UNSUPPORTED_CAPABILITY   retry: ne
 ```
 
 Those thirteen lines are not pasted from memory. `test/main.test.ts` starts the same program in
-a second copy of Node, reads what it printed, and compares it to exactly that block — so if the
-program and this page ever disagree, `pnpm test` says so. It is the only test file here that
-runs the *program* rather than calling a function, because `src/main.ts` does its work at the
-top level and leaves nothing to call.
+a second copy of Node, reads what it printed, and compares it to **its own copy** of that block —
+the `EXPECTED` list at the top of the test file. So if the program and the test's copy ever
+disagree, `pnpm test` says so. What no test reads is this page: the block above is kept in step
+with the test's copy by hand, and if someone edits one and not the other, the test stays green
+and the page is wrong. It is the only test file here that runs the *program* rather than calling
+a function, because `src/main.ts` does its work at the top level and leaves nothing to call.
 
 ```bash
-pnpm check                 # typecheck, then test. 132 tests pass
+pnpm check                 # typecheck, then test. 133 tests pass
 ```
 
 Read those lines carefully, because two things are happening.
@@ -235,7 +242,7 @@ was refused.
 
 ## Break it
 
-Five breaks. Change the code back after each. Every number below was produced by running it.
+Five breaks, and a second version of the first. Change the code back after each. Every number below was produced by running it.
 
 **1. Read the principal from the arguments.** In `src/operations.ts`, take the name from
 `args["principal"]` when it is there, instead of from the login. Run `pnpm test`:
@@ -246,7 +253,7 @@ Five breaks. Change the code back after each. Every number below was produced by
      × prints exactly what the README shows
      × DSOR-SRC-02a: the printed answer ignores a principal planted in the arguments
 AssertionError: expected 'cfo_100' to be 'user_123' // Object.is equality
-      Tests  4 failed | 128 passed (132)
+      Tests  4 failed | 129 passed (133)
 ```
 
 This is the break the step exists for, and it is the map's own "done when". Notice how small
@@ -254,6 +261,21 @@ the change is — one line with a ternary, and it looks helpful. Notice also tha
 tests down, not one. The query and the command are asked the same question, because a hole in
 one of them is a hole. And the last two are the program itself: line three of its output starts
 saying `cfo_100`, so the block printed above stops being true.
+
+**1b. The same hole, written as a fallback.** Keep the login first, and only when it is
+*missing* take the name from `args["principal"]`. Run `pnpm test`:
+
+```text
+     × DSOR-SRC-02a: a principal named in the arguments is not a login either
+Error: expected a refusal, got data
+      Tests  1 failed | 132 passed (133)
+```
+
+One failure — and before that test existed, none. Every other test that plants a name in the
+arguments also sends a real login, so a fallback that only runs when nobody is logged in slipped
+past all of them: the suite was asking "is the login preferred?" and never "is the argument
+*ever* believed?". The program's output does not change either, because its "not logged in"
+line plants nothing. That is why the new test logs nobody in and plants `cfo_100` anyway.
 
 **2. Let a missing login through.** In `src/login.ts`, default to `user_123` instead of
 refusing when there is no login. Run `pnpm test`:
@@ -264,17 +286,19 @@ refusing when there is no login. Run `pnpm test`:
      × DSOR-IDN-01: a login that is not a login is refused, never thrown at
      × DSOR-IDN-01: a name inherited from a prototype is not a login
      × DSOR-IDN-01: an identity refusal carries a generated request id, not a name
+     × DSOR-SRC-02a: a principal named in the arguments is not a login either
      × DSOR-ERR-01a: an object that throws when read is refused, not thrown at
      × DSOR-IDN-01: with nobody logged in, nothing happens at all
      × DSOR-IDN-01: the login is checked before the operation or the arguments
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
      × prints exactly what the README shows
      × DSOR-IDN-01: a caller who is not a principal is refused, and named as nobody
-      Tests  11 failed | 121 passed (132)
+      Tests  12 failed | 121 passed (133)
 ```
 
-Eleven. A default caller is not one bug: it takes out the refusal, its retry class, the
-ordering, the attribution of a refused call, and every check on what a login may be. The
+Twelve. A default caller is not one bug: it takes out the refusal, its retry class, the
+ordering, the attribution of a refused call, and every check on what a login may be. Break 1b's
+test goes too, because its caller logged nobody in and is now filed as the supervisor. The
 program's own output goes with them —
 
 ```text
@@ -295,7 +319,7 @@ it up in the people list. Run `pnpm test`:
      × DSOR-IDN-01: a refused login is attributed to nobody, never to a real person
      × prints exactly what the README shows
      × DSOR-IDN-01: a caller who is not a principal is refused, and named as nobody
-      Tests  6 failed | 126 passed (132)
+      Tests  6 failed | 127 passed (133)
 ```
 
 **4. Check the login after the operation.** Move the "no such operation" lookup and refusal so
@@ -306,7 +330,7 @@ they come *before* the login check. Run `pnpm test`:
      × every answer says who asked, and so does the envelope inside it
      × prints exactly what the README shows
      × DSOR-IDN-01: a caller who is not a principal is refused, and named as nobody
-      Tests  4 failed | 128 passed (132)
+      Tests  4 failed | 129 passed (133)
 ```
 
 Nothing is insecure yet — the caller is still checked. But an unknown caller now learns which
@@ -329,7 +353,7 @@ in the name column instead of `answer.askedBy`. Run `pnpm test`:
      × shows the same read by two callers, differing only in who asked
      × DSOR-IDN-01: a caller who is not a principal is refused, and named as nobody
      × shows the agent issuing INV-1009, and says the agent asked
-      Tests  4 failed | 128 passed (132)
+      Tests  4 failed | 129 passed (133)
 ```
 
 Nothing under `src/` except the demo program changed, so every check on the library is still
