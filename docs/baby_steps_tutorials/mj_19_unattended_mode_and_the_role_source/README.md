@@ -401,7 +401,77 @@ git diff --no-index mj_18_delegations/test mj_19_unattended_mode_and_the_role_so
 
 ## Run it
 
-_To be written when the code exists._
+From this folder, with `.env` written as in "Before you build":
+
+```bash
+pnpm install
+```
+
+```bash
+pnpm check
+```
+
+```bash
+pnpm migrate
+```
+
+```bash
+pnpm start
+```
+
+```bash
+pnpm test:db
+```
+
+`pnpm check` runs the typecheck and 1306 unit tests. `pnpm migrate` finds nothing to run,
+because step 19 adds no table. `pnpm test:db` runs 165 database tests on Neon. `pnpm start`
+takes about a minute from Pakistan, because each call to Neon takes 2 to 3 seconds.
+
+The program tells step 18's story first, unchanged. Then the night. This is real output from
+2026-10-05. The draft's number comes from the database, and goes up with every run:
+
+```text
+night, the agent drafts: answered, PAY-1246
+its record's identity: {
+  mode: 'unattended',
+  subject: 'user_123',
+  actor_chain: [ 'accounts-payable-fte' ],
+  subject_authority: { as_of: '2026-10-05T16:11:14.056Z', source: 'role_source' }
+}
+ap_clerk, the agent drafts: AUTHORIZATION_DENIED: "payment.create" needs payment:create, which user_123, who signed slip del_100, does not hold now
+ap_clerk, the agent reads: answered, INV-1008
+suspended, the agent reads: DELEGATION_REQUIRED: "invoice.get": slip del_100 is signed by user_123, whom the directory of org_456 does not list as active
+active, the agent reads: answered, INV-1008
+directory off, the agent reads: answered, INV-1008
+after a restart, the agent reads: FRESHNESS_UNSATISFIABLE: "invoice.get": DSoR has no answer about user_123, who signed slip del_100, from the directory of org_456 that is recent enough
+after a restart, user_123 reads: answered, INV-1008
+```
+
+- The agent's draft is made, and its record says where user_123's authority came from, and as
+  of when (outcome 1, decision 7).
+- The directory moves her to `ap_clerk`. Line ③ says yes, because she is still active, and line
+  ⑤ refuses the draft. Her read still works, because `ap_clerk` may read (outcome 2).
+- The directory suspends her, and line ③ refuses (outcome 4).
+- She is active again, and then the directory goes off. The answer DSoR kept a moment ago
+  counts (outcome 3).
+- DSoR restarts. The kept answers lived in memory, so they are gone, and the agent is refused.
+  user_123, calling for herself, needs no directory (outcome 5, decisions 2 and 3).
+
+The log's lines for the night, and the program's last count:
+
+```text
+8793 payment.create@1 ALLOW ok org_456
+8794 payment.create@1 DENY AUTHORIZATION_DENIED org_456
+8795 invoice.get@1 ALLOW ok org_456
+8796 invoice.get@1 DENY DELEGATION_REQUIRED org_456
+8797 invoice.get@1 ALLOW ok org_456
+8798 invoice.get@1 ALLOW ok org_456
+8799 invoice.get@1 DENY FRESHNESS_UNSATISFIABLE org_456
+8800 invoice.get@1 ALLOW ok org_456
+26 calls answered, so 26 records were written. dsor_runtime reads 23 of them, in org_456 and org_789, and cannot read the other 3
+```
+
+Every refusal of the night left its record before its answer, as since step 08.
 
 ## Break it
 
