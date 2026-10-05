@@ -32,14 +32,14 @@ const AUDIT_COLUMNS = [
   "resources",
   "row_count",
   "connector",
-  // NEW IN STEP 18: migration 011 adds the agent's slip and person (step 18's README,
+  // Migration 011 adds the agent's slip and person (step 18's README,
   // decision 8).
   "identity",
   "delegation",
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
 
-// NEW IN STEP 18: dsor.delegations, as migration 010 makes it. dsor_runtime reads every
+// The table dsor.delegations, as migration 010 makes it. dsor_runtime reads every
 // column and writes none (step 18's README, decision 3).
 const DELEGATION_COLUMNS = [
   "tenant_id",

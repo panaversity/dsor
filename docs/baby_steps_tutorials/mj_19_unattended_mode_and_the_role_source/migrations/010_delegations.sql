@@ -1,4 +1,4 @@
--- NEW IN STEP 18: the permission slips, in DSoR's own store (DSOR-DEL-01a). `pnpm migrate`
+-- The permission slips, in DSoR's own store (DSOR-DEL-01a). `pnpm migrate`
 -- runs this file once, as the owner, after 009 (step 18's README, decision 3).
 
 CREATE TABLE dsor.delegations (

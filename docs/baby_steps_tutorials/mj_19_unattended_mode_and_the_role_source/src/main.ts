@@ -9,7 +9,7 @@
 // two companies, without amounts, and two calls cross from one company into another and
 // are refused. Then the agent asks invoice.list for a million invoices, and gets ten, a
 // note that its limit was cut, and a cursor. Then user_123 drafts a payment
-// for INV-1008 and cancels it twice. NEW IN STEP 18: then the agent drafts one too, under
+// for INV-1008 and cancels it twice. Then the agent drafts one too, under
 // del_100, user_123's permission slip. Then it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
@@ -79,7 +79,7 @@ try {
     createDbInvoices(pool),
     // And the payments the commands write, in app.payments.
     createDbPayments(pool),
-    // NEW IN STEP 18: and the permission slips, in dsor.delegations (step 18's README,
+    // And the permission slips, in dsor.delegations (step 18's README,
     // decision 3).
     createDbSlips(pool),
   );
@@ -260,7 +260,7 @@ if ("data" in drafted) {
   // A cancelled payment is not a draft any more, so a second cancel is refused.
   console.log(await ask(USER_123, "payment.cancel", { payment }));
 }
-// NEW IN STEP 18: the agent drafts a payment under del_100, which lists payment:create, and
+// The agent drafts a payment under del_100, which lists payment:create, and
 // user_123, who signed it, holds it now. Its answer leaves out the amount (step 18's README,
 // outcome 1).
 console.log(await ask(AGENT, "payment.create", { invoice: "dsor://org_456/invoice/INV-1008" }));

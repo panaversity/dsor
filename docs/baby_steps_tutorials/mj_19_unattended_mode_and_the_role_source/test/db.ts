@@ -31,7 +31,7 @@ export function dbRegistry(pool: pg.Pool): Registry {
     createDbInvoices(pool),
     // And the payments the commands write (step 17's README, outcome 1).
     createDbPayments(pool),
-    // NEW IN STEP 18: and the slips, in dsor.delegations (step 18's README, decision 3).
+    // And the slips, in dsor.delegations (step 18's README, decision 3).
     createDbSlips(pool),
   );
 }
@@ -105,7 +105,7 @@ function asOwner(program: string, args: string[] = []): unknown {
   return JSON.parse(run.stdout);
 }
 
-// NEW IN STEP 18: the owner writes the slips a test needs, and asks DSoR's slip store with
+// The owner writes the slips a test needs, and asks DSoR's slip store with
 // no policy behind it (test/owner-slips.ts).
 /** What the owner's slip program printed, for these words. */
 export function ownerSlips(...args: string[]): unknown {

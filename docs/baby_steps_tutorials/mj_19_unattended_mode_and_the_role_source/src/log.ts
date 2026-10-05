@@ -38,7 +38,7 @@ export type Decision = {
   row_count?: number;
   // Which connector served the read, in the audit record's own field.
   connector?: string;
-  // NEW IN STEP 18: an agent's call names the slip it ran under, and the person who signed
+  // An agent's call names the slip it ran under, and the person who signed
   // it, in the audit record's own fields (step 18's README, decision 8).
   delegation?: string;
   identity?: { mode: "unattended"; subject: string; actor_chain: string[] };
@@ -121,7 +121,7 @@ export function decisionOf(
     ...(refused ? { reason: answer.message } : {}),
     correlation: answer.correlation,
     ...(tenant === undefined ? {} : { tenant }),
-    // NEW IN STEP 18: an agent's call names the slip it ran under, and the person who signed
+    // An agent's call names the slip it ran under, and the person who signed
     // it, in the audit record's own fields. A person's record, and a refusal before line ③
     // found a slip, name neither (step 18's README, decision 8).
     ...(under === undefined

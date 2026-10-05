@@ -10,7 +10,7 @@ import { slipProblems, type Slip, type SlipStore } from "./slips.ts";
  * Finds the usable slip an agent calls under, or refuses the call. A person, an
  * application, or the system calls in its own name, and needs none.
  */
-// NEW IN STEP 18: every call from an agent needs a slip, a read too, because the agent calls
+// Every call from an agent needs a slip, a read too, because the agent calls
 // as itself with no person present: `unattended` (DSOR-DEL-07; step 18's README, decisions 1
 // and 2). Step 17 refused every agent's command here, because no slip existed yet.
 export async function checkDelegation(

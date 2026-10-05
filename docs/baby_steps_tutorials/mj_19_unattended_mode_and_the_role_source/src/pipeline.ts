@@ -67,7 +67,7 @@ export async function call(
   // What the answer returned, set only when it returns data. Its record
   // says so (DSOR-CLS-05; step 14's README, decision 7).
   let read: Read | undefined;
-  // NEW IN STEP 18: the slip an agent's call runs under, once line ③ found it. Its record
+  // The slip an agent's call runs under, once line ③ found it. Its record
   // names the slip and its person, refusals after line ③ too (step 18's README, decision 8).
   let under: Authority | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
@@ -131,7 +131,7 @@ export async function call(
     }
 
     // ③ Resolve delegation; verify the actor chain; establish current authority.
-    // NEW IN STEP 18: every call from an agent, a read too, runs only under an active slip
+    // Every call from an agent, a read too, runs only under an active slip
     //   that a person signed and DSoR holds, and that allows `unattended`. The person comes
     //   from the slip, never from the request (DSOR-DEL-01a, DSOR-DEL-07, DSOR-DEL-08; step
     //   18's README, decisions 1, 2, and 5). Before line ⑤, which allows only what the slip

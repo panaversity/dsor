@@ -1,4 +1,4 @@
-// NEW IN STEP 18: the owner writes and reads permission slips. Not a test file: the database
+// The owner writes and reads permission slips. Not a test file: the database
 // tests start it through ownerSlips in test/db.ts.
 // dsor_runtime may only read slips, so a test that needs a slip of its own asks the owner,
 // who wrote the story's slips in migration 010. The owner holds BYPASSRLS, so no policy

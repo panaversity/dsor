@@ -159,7 +159,7 @@ export function createDbLog(pool: pg.Pool): DbLog {
             decision.row_count ?? null,
             // Which connector served the read (step 15's README, decision 7).
             decision.connector ?? null,
-            // NEW IN STEP 18: the slip an agent's call ran under, and its person (step 18's
+            // The slip an agent's call ran under, and its person (step 18's
             // README, decision 8).
             decision.identity ?? null,
             decision.delegation ?? null,
@@ -464,7 +464,7 @@ type SlipRow = {
   past: boolean;
 };
 
-// NEW IN STEP 18: the permission slips, read from dsor.delegations, DSoR's own store
+// The permission slips, read from dsor.delegations, DSoR's own store
 // (DSOR-DEL-01a; step 18's README, decision 3).
 /** The slips, read from dsor.delegations, one company at a time. */
 export function createDbSlips(pool: pg.Pool): SlipStore {

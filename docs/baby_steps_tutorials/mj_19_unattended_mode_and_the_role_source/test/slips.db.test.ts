@@ -1,4 +1,4 @@
-// NEW IN STEP 18: permission slips in the database. The unit tests prove line ③ and line ⑤
+// Permission slips in the database. The unit tests prove line ③ and line ⑤
 // in memory. These prove the table: the story's slips are there, each company sees only its
 // own, dsor_runtime only reads them, one slip per agent and company, the database's clock
 // decides a slip's date, and the record names the slip (step 18's README, C1, C7, C8, and

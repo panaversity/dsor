@@ -1,4 +1,4 @@
-// NEW IN STEP 18: the permission slip, which the specification calls a delegation. A person
+// The permission slip, which the specification calls a delegation. A person
 // signs it for an agent, and DSoR keeps it in its own store (DSOR-DEL-01a in
 // specs/dsor/02-security.md, section 13). Its shape is the specification's own,
 // schemas/delegation.schema.json, copied byte for byte (step 18's README, decision 13).

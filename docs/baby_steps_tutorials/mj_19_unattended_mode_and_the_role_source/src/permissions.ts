@@ -70,7 +70,7 @@ export function checkRoles(
   const named = new Set(Object.keys(data));
   for (const principal of principals) {
     const { id, memberships } = principal;
-    // NEW IN STEP 18: an agent holds no role of its own. What it may do comes only from a
+    // An agent holds no role of its own. What it may do comes only from a
     // person's slip, so line ⑤ never weighs a role against a slip (step 18's README,
     // decisions 2 and 11).
     if (actsAsAgent(principal)) {
@@ -113,7 +113,7 @@ export function permissionsOf(
   return held;
 }
 
-// NEW IN STEP 18: a person may do what its roles in this company grant, as since step 06.
+// A person may do what its roles in this company grant, as since step 06.
 // An agent holds no role. It may use only what its slip lists and the person who signed it
 // holds now, in this company (DSOR-DEL-02; step 18's README, decisions 4 and 5). Line ③ has
 // checked that a person of this company signed the slip (decision 18). This tutorial's
@@ -145,7 +145,7 @@ export function checkPermission(
   roles: Roles,
   // The active company.
   tenant: string,
-  // NEW IN STEP 18: the slip line ③ found, for an agent.
+  // The slip line ③ found, for an agent.
   slip?: Slip,
 ): void {
   const name = JSON.stringify(contract.id);
@@ -165,7 +165,7 @@ export function checkPermission(
   }
 }
 
-// NEW IN STEP 18: why the permission is missing. For an agent, one code covers "the slip
+// Why the permission is missing. For an agent, one code covers "the slip
 // does not list it" and "the signer no longer holds it", so the message tells them apart
 // (step 18's README, decision 5).
 function whyNot(needed: string, caller: Principal, slip: Slip | undefined): string {

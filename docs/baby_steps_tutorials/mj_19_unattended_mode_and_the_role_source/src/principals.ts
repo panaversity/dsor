@@ -48,7 +48,7 @@ function principal(id: string, type: PrincipalType, roles: string[]): Principal 
 // A token names nobody until it is looked up here (step 05's decision 2). §12 writes tenantId.
 // This tutorial spells every field the way the schemas do.
 export const logins: ReadonlyMap<string, Principal> = new Map([
-  // NEW IN STEP 18: the agent holds no role of its own. Its power comes from a person's
+  // The agent holds no role of its own. Its power comes from a person's
   // slip, del_100 (step 18's README, decisions 2 and 11). Step 06's stand-in role, ap_agent,
   // is gone, as step 06's README, decision 5, expected.
   // Internal, so amounts are masked. §19.2's example gives it
@@ -82,7 +82,7 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   ],
 ]);
 
-// NEW IN STEP 18: the person who signed a slip, found by name in DSoR's own table (step
+// The person who signed a slip, found by name in DSoR's own table (step
 // 18's README, decision 4).
 /** The principal with this id in DSoR's table of logins, if there is one. */
 export function principalNamed(id: string): Principal | undefined {
@@ -90,7 +90,7 @@ export function principalNamed(id: string): Principal | undefined {
   return undefined;
 }
 
-// NEW IN STEP 18: line ③ finds a slip's signer by name, so one name must be one principal.
+// Line ③ finds a slip's signer by name, so one name must be one principal.
 // With two, the order of the table would decide the signer's power. Found by step 18's
 // review (step 18's README, decision 19).
 /** Every name that two different principals in a table of logins share. */
@@ -146,7 +146,7 @@ const AT_THE_TOP = [
   "actor_chain",
   "agent_id",
   "user",
-  // NEW IN STEP 18: the slip's own word for its person, and §13.2's mode. Found by step 18's
+  // The slip's own word for its person, and §13.2's mode. Found by step 18's
   // review (step 18's README, decision 17).
   "delegator",
   "on_behalf_of",

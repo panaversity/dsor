@@ -89,7 +89,7 @@ export async function attackersOf(
     // URI's company is checked. The suite asks line ③'s own question, so an agent that a
     // delegation lets through in step 18 attacks again, with no change here (step 17's
     // README, "Think it through").
-    // NEW IN STEP 18: with the registry's slips, in this company. An agent with a slip here
+    // With the registry's slips, in this company. An agent with a slip here
     // attacks, as step 17's README said it would.
     const lineThree = await passesLineThree(principal, contract, registry, home);
     if (!lineThree.passes) continue;

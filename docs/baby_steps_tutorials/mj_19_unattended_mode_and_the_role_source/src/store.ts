@@ -56,7 +56,7 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // through named columns. INSERT on the whole table would include the columns the
   // database fills in (step 09's README, decision 6).
   ["append-only", { side: "dsor", table: ["SELECT"], columns: ["INSERT"], key: true }],
-  // NEW IN STEP 18: DSoR's own records that it reads and never writes, such as the
+  // DSoR's own records that it reads and never writes, such as the
   // permission slips: read them, inside their company. Nobody signs a slip through DSoR yet
   // (step 18's README, decision 3).
   ["control-read", { side: "dsor", table: ["SELECT"], columns: [], key: true }],

@@ -324,7 +324,7 @@ describe("step 17's C7: the kind business-written", () => {
   });
 });
 
-// NEW IN STEP 18: the kind control-read, for DSoR's own records that it reads and never
+// The kind control-read, for DSoR's own records that it reads and never
 // writes, such as the permission slips (step 18's README, decision 3). Found by step 18's
 // sweep: the kind, and the slips' line, could change with every test green.
 describe("step 18's decision 3: the kind control-read", () => {

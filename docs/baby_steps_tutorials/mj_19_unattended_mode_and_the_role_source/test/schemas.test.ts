@@ -19,7 +19,7 @@ describe("the schema copies", () => {
     },
   );
 
-  // NEW IN STEP 18: the slip's schema is a copy too. DSoR checks every slip it reads against
+  // The slip's schema is a copy too. DSoR checks every slip it reads against
   // it (step 18's README, decision 13).
   it.skipIf(!existsSync(ORIGINALS))(
     "DSOR-DEL-01a: schemas/delegation.schema.json equals the specification's own",

@@ -50,7 +50,7 @@ export type Registry = {
   // The store the commands write, held beside the invoices (step 17's
   // README, outcome 1). Only the pipeline uses it, as it uses the invoices.
   payments: PaymentStore;
-  // NEW IN STEP 18: the permission slips, held in DSoR's own store. Only line ③ reads them
+  // The permission slips, held in DSoR's own store. Only line ③ reads them
   // (DSOR-DEL-01a; step 18's README, decision 3).
   delegations: SlipStore;
 };
@@ -107,7 +107,7 @@ export function buildRegistry(
   // The store of payments. Without one, every write fails, as every read
   // fails without a store of invoices.
   payments: PaymentStore = NO_PAYMENTS,
-  // NEW IN STEP 18: the store of slips. Without one, no agent holds a slip, so every call
+  // The store of slips. Without one, no agent holds a slip, so every call
   // from an agent is refused at line ③.
   delegations: SlipStore = NO_SLIPS,
 ): Registry {
@@ -170,7 +170,7 @@ export function buildRegistry(
   // type one of the four kinds of caller (step 14's README, decisions 2 and 5). Found by the
   // Stage 2 review, and fixed from step 14 on.
   problems.push(...maskingProblems(logins.values()));
-  // NEW IN STEP 18: and one name, one principal, because line ③ finds a slip's signer by
+  // And one name, one principal, because line ③ finds a slip's signer by
   // name (step 18's README, decision 19).
   problems.push(...loginProblems(logins.values()));
 

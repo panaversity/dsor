@@ -1,4 +1,4 @@
--- NEW IN STEP 18: the record of an agent's call names its slip and its person, in the audit
+-- The record of an agent's call names its slip and its person, in the audit
 -- record schema's own fields, identity and delegation. A person's record leaves both empty
 -- (step 18's README, decision 8). `pnpm migrate` runs this file once, after 010.
 ALTER TABLE dsor.audit ADD COLUMN identity jsonb, ADD COLUMN delegation text;

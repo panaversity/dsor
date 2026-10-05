@@ -1,4 +1,4 @@
-// NEW IN STEP 18: delegations, the permission slip. An agent calls only under a slip that a
+// Delegations, the permission slip. An agent calls only under a slip that a
 // person signed and DSoR holds, and never with more power than that person holds now
 // (DSOR-DEL-01a, DSOR-DEL-01b, DSOR-DEL-02, DSOR-DEL-07, and DSOR-DEL-08 in
 // specs/dsor/02-security.md, section 13; step 18's README, C1 to C10).

@@ -307,12 +307,12 @@ export function registryRunning(
     labels,
     store,
     undefined,
-    // NEW IN STEP 18: the slips, so the agents call as before (step 18's README, decision 2).
+    // The slips, so the agents call as before (step 18's README, decision 2).
     testSlips(),
   );
 }
 
-// NEW IN STEP 18: the story's three slips, typed out again from step 18's README and
+// The story's three slips, typed out again from step 18's README and
 // migration 010 rather than read from src. Each runs until 2099, so no test stops working
 // when a date passes (step 18's README, decision 12). firm-ap-fte has one slip in each
 // company, with the power its roles gave it before (decisions 2 and 11).
@@ -398,7 +398,7 @@ export const registry: Registry = buildRegistry(
   // And payments in memory, which the commands write (step 17's README,
   // outcome 1). One list for every test that uses this registry.
   memoryPayments(),
-  // NEW IN STEP 18: and the slips (step 18's README, decision 2).
+  // And the slips (step 18's README, decision 2).
   testSlips(),
 );
 
@@ -411,7 +411,7 @@ export function paymentRegistry(
   rows: Payment[],
   sources: ContractSource[] = shipped,
   code: Record<string, Handler> = handlers,
-  // NEW IN STEP 18: the slips, unless the test gives others.
+  // The slips, unless the test gives others.
   slips: SlipStore = testSlips(),
 ): Registry {
   return buildRegistry(
