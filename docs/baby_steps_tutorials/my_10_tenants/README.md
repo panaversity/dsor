@@ -132,7 +132,7 @@ The invoices are durable now too. Step 09's list died with the process, so every
 
 ### The database tier
 
-`pnpm check` needs no server: 363 tests on PostgreSQL compiled to WebAssembly, in-process. The nine
+`pnpm check` needs no server: 373 tests on PostgreSQL compiled to WebAssembly, in-process. The nine
 tests in `pnpm test:db` need two real logins, and this step needs a database of its own — the
 migrations are checksummed, and step 09's database has applied two of them while this step has four.
 Copy step 09's `.env` and change the database name in both URLs:
