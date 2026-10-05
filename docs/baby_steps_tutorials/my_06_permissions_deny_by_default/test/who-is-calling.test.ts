@@ -295,6 +295,38 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(answer.envelope.payload_hash).toBe(`sha256:${honest}`);
   });
 
+  // NEW IN STEP 06. The one shape of "from the arguments" that no test above sends: no login at
+  // all, and a real person's name planted in the arguments. Every planted-principal test so far
+  // logs in first, so a fallback that read `args.principal` only when the login was missing
+  // would never fire under them. It was tried: with that fallback in place, the whole suite
+  // stayed green. The answer must still be the refusal nobody-is-logged-in gets, attributed to
+  // nobody — a program that believed the arguments here would file the call under cfo_100 and
+  // then ask the permission question on her behalf.
+  it("DSOR-SRC-02a: with nobody logged in, a principal planted in the arguments is not the caller", () => {
+    const planted = [
+      { principal: "cfo_100" },
+      { principal: "user_123" },
+      { loggedInAs: "cfo_100" },
+      { principal_id: "user_123", subject: "user_123" },
+    ] as const;
+
+    for (const id of ["invoice.get", "invoice.issue"]) {
+      for (const extra of planted) {
+        const answer = callOperation(undefined, id, { invoice: INV_1008, ...extra });
+        const where = `${id} ${JSON.stringify(extra)}`;
+
+        if (answer.kind !== "error") {
+          throw new Error(`${where}: expected a refusal, got ${answer.kind}`);
+        }
+
+        // Not AUTHORIZATION_DENIED, not CONFLICT: those would mean a person was found first.
+        expect(answer.envelope.code, where).toBe("AUTHENTICATION_REQUIRED");
+        expect(answer.askedBy, where).toBe("(nobody)");
+        expect(answer.envelope.correlation.principal_id, where).toBeUndefined();
+      }
+    }
+  });
+
   // Losing a name is bad. Inventing one is worse: an unauthenticated request stamped with
   // a real person's id would put a caller in the record who never asked for anything.
   it("DSOR-IDN-01: a refused login is attributed to nobody, never to a real person", () => {

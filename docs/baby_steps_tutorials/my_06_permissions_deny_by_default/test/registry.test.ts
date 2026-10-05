@@ -230,7 +230,13 @@ describe("validateContract", () => {
   // authorization. This walks the whole contract instead, so a nested object nobody thought of
   // cannot arrive mutable. Object.freeze is one level deep, which is the whole reason deepFreeze
   // exists.
-  it("DSOR-OPR-02b: every object and array inside a contract is frozen, all the way down", () => {
+  //
+  // No rule id, and it used to carry DSOR-OPR-02b. That rule is "the registry MUST NOT infer a
+  // default for risk level, execution semantics, effect, or idempotency", and nothing here is
+  // about a default: a registry that filled every one of those in and then froze the result
+  // would pass this test unchanged. Freezing is ordinary correctness. The tests that do prove
+  // OPR-02b are the two above that delete a field and watch the load refuse.
+  it("every object and array inside a contract is frozen, all the way down", () => {
     const registry = loadRegistry(contractsFromDisk());
 
     expect(registry.size).toBeGreaterThan(0);
@@ -260,7 +266,10 @@ describe("validateContract", () => {
 
   // deepFreeze used to return early on anything already frozen, which is the wrong test: a frozen
   // object can still hold mutable children, because Object.freeze is one level deep.
-  it("DSOR-OPR-02b: a document whose top level is already frozen is still frozen inside", () => {
+  //
+  // No rule id, for the same reason as the test above: this is about freezing, and OPR-02b is
+  // about defaults.
+  it("a document whose top level is already frozen is still frozen inside", () => {
     const document = {
       where: "test",
       expectedId: "invoice.get",

@@ -130,17 +130,18 @@ my_06_permissions_deny_by_default/
   src/permissions.ts           NEW  the roles, the shape check, and may-you
   test/permissions.test.ts     NEW  12 tests: the table on its own
   test/deny-by-default.test.ts NEW  10 tests: cfo_100 can read and cannot issue
-  test/main.test.ts            NEW  7 tests: the demo program's own output, run as a subprocess
+  test/main.test.ts        CHANGED  rewritten, 5 tests to 7: reads the "Run it" block out of this README; two tests watch the CFO's lines
   src/people.ts            CHANGED  every principal carries a role
   src/operations.ts        CHANGED  the may-you gate, after the lookup and before the arguments
-  src/login.ts             CHANGED  every caller-supplied read goes through one helper
+  src/login.ts             CHANGED  step 05's NEW IN STEP marker removed and one comment reworded, nothing else
   src/main.ts              CHANGED  the CFO reads an invoice, then is refused when she issues it
-  test/who-is-calling.test.ts CHANGED two tests issued as cfo_100 and now ask as the agent
+  test/who-is-calling.test.ts CHANGED two tests issued as cfo_100 and now ask as the agent; one new test, no login and a planted principal
   package.json             CHANGED  name and description only
   src/envelopes.ts         CHANGED  step 05's NEW IN STEP markers removed, nothing else
   test/login.test.ts       CHANGED  one wrong rule id in a title, and the markers
   test/operations.test.ts  CHANGED  one comment that contradicted its own title, and the markers
-  test/arguments.test.ts   CHANGED  one wrong rule id in a title
+  test/arguments.test.ts   CHANGED  one comment reworded; no title changed
+  test/registry.test.ts    CHANGED  two wrong rule ids dropped from titles
   test/invoice.test.ts     CHANGED  one wrong rule id in a title
 ```
 
@@ -152,20 +153,29 @@ nothing was being checked.
 
 The "wrong rule id" changes are the other kind. Every test title here starts with the id of the
 rule it proves, and that title is how this project counts coverage — so an id on a test that does
-not prove that rule's own sentence is a wrong number, not a cosmetic slip. Eight titles were
-corrected, each with a comment beside it saying which sentence was read and why the id moved:
+not prove that rule's own sentence is a wrong number, not a cosmetic slip. Four titles in
+inherited tests were corrected in this step, each with a comment beside it saying which sentence
+was read and why the id moved:
 
-- **Five moved from `DSOR-AUT-01b` to `DSOR-AUT-01a`.** 01b is one sentence — "MUST deny any
-  operation for which no permission is granted" — and all five showed a caller being *allowed*.
-  That is 01a's sentence, "role-based access control using the `<resource>:<action>` permission
-  format". The step needs both halves, because a program that denied everything would satisfy
-  01b's words and be useless.
-- **One moved from `DSOR-IDN-01` to `DSOR-COR-01b`.** It asserts that a refused login's envelope
-  got a generated request id; IDN-01 is about normalizing a caller into a principal with a type
-  and memberships, and a refused login has no principal to assert anything about.
-- **Two lost their id entirely**, one that carried `DSOR-MON-01` while asserting only that an
-  invoice is frozen, and one that carried `DSOR-SCH-01` while asserting nothing about schema
-  validation. A test that proves no rule and claims none is a correct answer, not a gap.
+- **One moved from `DSOR-IDN-01` to `DSOR-COR-01b`** (`test/login.test.ts`). It asserts that a
+  refused login's envelope got a generated request id; IDN-01 is about normalizing a caller into
+  a principal with a type and memberships, and a refused login has no principal to assert
+  anything about.
+- **One lost `DSOR-MON-01`** (`test/invoice.test.ts`). It asserts only that an invoice is frozen,
+  and says nothing about an amount being a money object. A test that proves no rule and claims
+  none is a correct answer, not a gap.
+- **Two lost `DSOR-OPR-02b`** (`test/registry.test.ts`). Both assert that a loaded contract is
+  frozen all the way down; 02b is "the registry MUST NOT infer a default for risk level,
+  execution semantics, effect, or idempotency", and a registry that filled every one of those in
+  and then froze the result would pass both unchanged.
+
+Five more titles were corrected inside this step's own new files, so they do not show in the
+diff against step 05: they **moved from `DSOR-AUT-01b` to `DSOR-AUT-01a`**, and the comments
+beside them in `test/deny-by-default.test.ts` and `test/permissions.test.ts` say why. 01b is one
+sentence — "MUST deny any operation for which no permission is granted" — and all five showed a
+caller being *allowed*. That is 01a's sentence, "role-based access control using the
+`<resource>:<action>` permission format". The step needs both halves, because a program that
+denied everything would satisfy 01b's words and be useless.
 
 To see every difference yourself:
 
@@ -181,7 +191,7 @@ diff -ru --exclude node_modules --exclude pnpm-lock.yaml \
 cd docs/baby_steps_tutorials/my_06_permissions_deny_by_default
 pnpm install
 pnpm start
-pnpm check                 # typecheck, then test. 156 tests pass
+pnpm check                 # typecheck, then test. 157 tests pass
 ```
 
 ```text
@@ -236,7 +246,7 @@ Five breaks. Change the code back after each. Every number below was produced by
      × DSOR-AUT-01b: a denied caller cannot tell a real invoice from one that does not exist
 AssertionError: expected 'INV-1009 is issued, and only a draft …' to contain 'cfo_100'
 AssertionError: expected 'cfo_100               COMMITTED      …' to contain 'AUTHORIZATION_DENIED'
-      Tests  8 failed | 148 passed (156)
+      Tests  8 failed | 149 passed (157)
 ```
 
 Read that first assertion carefully. With the gate gone, `cfo_100` **issued INV-1009**. The
@@ -254,7 +264,7 @@ One note on doing this break by hand: deleting the block leaves the `holds` impo
 **2. Say yes to everything.** Make `holds` return `true`. Run `pnpm test`:
 
 ```text
-      Tests  12 failed | 144 passed (156)
+      Tests  12 failed | 145 passed (157)
 ```
 
 Twelve. The useful ones are in `permissions.test.ts`: a role nobody defined now holds things, a
@@ -275,7 +285,7 @@ because "just allow it while I debug" is a real thing people type.
      × prints exactly the output the README pastes
      × DSOR-AUT-01b: the CFO is refused the invoice the agent issues one line later
      × DSOR-AUT-01b: a denied caller cannot tell a real invoice from one that does not exist
-      Tests  10 failed | 146 passed (156)
+      Tests  10 failed | 147 passed (157)
 ```
 
 No code was touched. One word in a table, and the separation between approving a payment and
@@ -288,7 +298,7 @@ it is `DSOR-SOD-01a`, in step 30.
 ```text
      × DSOR-AUT-01b: a permission is matched whole, never by prefix
 AssertionError: "invoice:i": expected true to be false // Object.is equality
-      Tests  1 failed | 155 passed (156)
+      Tests  1 failed | 156 passed (157)
 ```
 
 **A prefix is not a match.** Asking for `invoice:i` succeeds, because `invoice:issue` starts with
@@ -305,7 +315,7 @@ yourself.
 ```text
      × DSOR-AUT-01b: a role nobody granted anything holds nothing
 AssertionError: "toString": expected [Function toString] to deeply equal []
-      Tests  1 failed | 155 passed (156)
+      Tests  1 failed | 156 passed (157)
 ```
 
 This one was a real bug in this step, found by a hostile review rather than by me. `ROLES[role]`
@@ -382,7 +392,7 @@ And when it is green, ask for the part that finds real bugs:
 3. So that being refused tells you nothing about the data. If the address were read first,
    `cfo_100` could compare `RESOURCE_NOT_FOUND` against `AUTHORIZATION_DENIED` and count invoices
    she has no permission to see. Order is part of the guarantee, and it is testable — moving the
-   gate below the point where the arguments are read prints `Tests  1 failed | 155 passed (156)`,
+   gate below the point where the arguments are read prints `Tests  1 failed | 156 passed (157)`,
    and the one failure is "being refused for authority tells the caller nothing about the data".
 4. `INVOICE:READ` matches nothing, so the role silently grants less than its author meant. That
    fails *closed*, which is the safe direction, but silently — nobody notices until a person
@@ -420,9 +430,22 @@ program loads.
 holds nothing (including one named after a member of `Object.prototype`), and a permission is
 matched whole rather than by prefix.
 
+One limit on that claim, measured rather than guessed. AUT-01b is proved for commands; for a
+query every role in the cast may read, so the gate's query half is unexercised until step 07's
+pipeline makes a principal injectable. A gate changed to check commands only —
+`contract.kind === "command" && !holds(...)` — printed `Tests  157 passed (157)`. The seam is not
+invented here on purpose: closing it needs a caller without `invoice:read`, and a cast member who
+exists only to satisfy a test is the same mistake the `DSOR-ERR-01b` note below refuses.
+
 Step 05's two claims still hold: `DSOR-IDN-01`, and the "not from the arguments" half of
 `DSOR-SRC-02a` — which this step extends. Who you are never came from the arguments, and now
 neither does what you may do.
+
+One test was added for that half this round: with nobody logged in and `principal: "cfo_100"`
+planted in the arguments, the answer is still `AUTHENTICATION_REQUIRED`, attributed to nobody.
+Every planted-principal test before it logged in first, so a fallback that read the arguments
+only when the login was missing passed all 156 tests. With that fallback put back, the new test
+is the one failure: `Tests  1 failed | 156 passed (157)`.
 
 Rules nearby this step does **not** claim:
 
@@ -467,14 +490,16 @@ rather than what the code does.
   third line with a `TypeError`. Not a wrong number on a screen — a crash, in the first thing a
   learner does.
 
-  `test/main.test.ts` now runs the real program as a subprocess and reads what it printed. Twenty
-  mutations of `src/main.ts` were then tried one at a time: eighteen now fail a test. The two
-  survivors are equivalent — printing the literal `"never"` instead of the envelope's retry
-  class, and the literal `"issued"` instead of the invoice's status. This step's data makes both
-  indistinguishable, because every refusal here is `never` and the only committed invoice is
-  issued. A survivor whose output genuinely cannot differ is not a gap; a second command, or a
-  refusal that is retryable, is what would separate them.
-- **Eight test titles named the wrong rule.** Listed under "What changed since step 05" above.
+  `test/main.test.ts` now runs the real program as a subprocess and reads what it printed.
+  Mutations of `src/main.ts` were then tried one at a time. No list of them was kept, so no
+  count is claimed here. Two that survive are worth naming, and both were run again for this
+  README: printing the literal `"never"` instead of the envelope's retry class, and the literal
+  `"issued"` instead of the committed invoice's status, each print `Tests  157 passed (157)`.
+  They are equivalent mutations, because this step's data makes both indistinguishable: every
+  refusal here is `never` and the only committed invoice is issued. A survivor whose output
+  genuinely cannot differ is not a gap; a second command, or a refusal that is retryable, is
+  what would separate them.
+- **Test titles that named the wrong rule.** Listed under "What changed since step 05" above.
   Coverage in this project is counted from those titles, so a wrong id is a wrong number.
 
 The lesson of the first review was that a green suite is not enough. The lesson of this one is
@@ -485,7 +510,7 @@ narrower and sharper: **a test suite can be green, thorough, and still not run t
 The machinery the rule needs is built and tested: authority is settled before any data is
 touched, so a denial reveals nothing about what exists. That is the "being refused for authority
 tells the caller nothing about the data" test. Moving the gate below the point where the
-arguments are read prints `Tests  1 failed | 155 passed (156)`, and that test is the one failure.
+arguments are read prints `Tests  1 failed | 156 passed (157)`, and that test is the one failure.
 
 The rule itself is about a caller who may not **read** a resource. All three roles here hold
 `invoice:read`, so there is no such caller in this step to test it with. Claiming it would mean
