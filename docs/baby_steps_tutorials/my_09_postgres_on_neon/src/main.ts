@@ -1,0 +1,145 @@
+// Run with:  pnpm start
+// Node runs this TypeScript file directly. There is no build step in this tutorial.
+import { greet } from "./greet.ts";
+// STEP 06: the same invoice, asked for by two people, one line apart.
+import { callOperation } from "./operations.ts";
+import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
+import type { Login } from "./login.ts";
+import { openTheDatabase } from "./database.ts";
+
+const INV_1008 = "dsor://org_456/invoice/INV-1008";
+const INV_1009 = "dsor://org_456/invoice/INV-1009";
+
+const SUPERVISOR: Login = { loggedInAs: "user_123" };
+const AGENT: Login = { loggedInAs: "accounts-payable-fte" };
+const CFO: Login = { loggedInAs: "cfo_100" };
+
+function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
+  const who = answer.askedBy.padEnd(21);
+
+  if (answer.kind === "error") {
+    const e = answer.envelope;
+
+    return `${who} ${e.code.padEnd(24)} retry: ${e.retry.padEnd(20)} ${e.message}`;
+  }
+
+  if (answer.kind === "result") {
+    const r = answer.envelope;
+    const invoice = r.data as { uri: string; status: string };
+
+    return `${who} ${r.outcome.padEnd(24)} ${invoice.uri}  ${invoice.status}`;
+  }
+
+  const i = answer.invoice;
+
+  return `${who} ${"(no envelope)".padEnd(24)} ${i.uri}  ${i.amount.value} ${i.amount.currency}  ${i.status}`;
+}
+
+const database = await openTheDatabase();
+
+console.log(greet("accounts-payable-fte"));
+console.log(`The audit log is in ${database.where}.`);
+console.log();
+
+// The same read, by two different callers. Switching is just a different login.
+console.log(show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 })));
+console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
+console.log();
+
+// The step's whole point: a principal written into the arguments is ignored.
+console.log(
+  show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008, principal: "cfo_100" })),
+);
+console.log();
+
+// STEP 06, and this is the step in four lines. The CFO reads INV-1009 and is told what
+// it is. She asks to issue it and is refused. Then the agent issues the very same invoice and
+// it works. Nothing about the invoice changed between those lines -- only who asked.
+console.log(show(await callOperation(CFO, "invoice.get", { invoice: INV_1009 })));
+console.log(show(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 })));
+console.log(show(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 })));
+console.log();
+
+// And with nobody logged in, nothing is even looked at.
+for (const [what, run] of [
+  [
+    "not logged in",
+    async () => await callOperation(undefined, "invoice.get", { invoice: INV_1008 }),
+  ],
+  [
+    "nobody by that name",
+    async () => await callOperation({ loggedInAs: "nobody" }, "invoice.get", { invoice: INV_1008 }),
+  ],
+  [
+    "logged in, bad address",
+    async () => await callOperation(SUPERVISOR, "invoice.get", { invoice: "INV-1008" }),
+  ],
+  [
+    "logged in, no contract",
+    async () => await callOperation(SUPERVISOR, "execute_sql", { sql: "select 1" }),
+  ],
+  // Authority is settled before the address is read, so these two are the same refusal, word
+  // for word -- and the caller cannot tell whether INV-9999 exists.
+  [
+    "denied, real invoice",
+    async () => await callOperation(CFO, "invoice.issue", { invoice: INV_1008 }),
+  ],
+  [
+    "denied, no such invoice",
+    async () =>
+      await callOperation(CFO, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" }),
+  ],
+] as const) {
+  console.log(`${what.padEnd(23)} ${show(await run())}`);
+}
+
+// STEP 08, and this is the step. Everything above already happened; this is what was written
+// down while it did. Read the `authorization` column: the four DENY lines are the ones a program that
+// logged only its successes would have lost, and they are the most interesting lines here.
+//
+// `previous_hash` is the record before it, so the whole run is one chain. Change any line of it and
+// every hash after it stops agreeing.
+console.log();
+console.log("The audit log:");
+console.log();
+
+for (const record of await theLog()) {
+  console.log(
+    [
+      String(record.sequence).padStart(2),
+      (record.authorization ?? "-").padEnd(5),
+      (record.operation ?? "(no such operation)").padEnd(19),
+      record.identity.subject.padEnd(21),
+      record.result.padEnd(22),
+      `${record.record_hash.slice(0, 14)}...`,
+    ].join("  "),
+  );
+}
+
+console.log();
+// Hash chaining proves no record was *edited*. It cannot prove none was *deleted from the end* — drop
+// the last record and every link still holds, there is simply less of it. A checkpoint is what
+// notices, and §30 names checkpoints beside hash chaining for exactly that.
+//
+// Be careful what the second line below demonstrates, because I claimed more than it shows. The log is
+// read ONCE, into `whole`, and `tampered` is a copy of it with the last record removed. So this
+// catches a shortened log you are **holding**, and that is all. A row deleted from the **table** moves
+// `theHead()` with it, because `theHead()` is a query over that same table, and then the two agree
+// again. §30 says the answer and says it as a SHOULD: anchor a checkpoint outside the store. This step
+// has nowhere outside to put one, which is why `DSOR-AUD-04d` is not claimed.
+const whole = await theLog();
+const head = await theHead();
+const tampered = whole.slice(0, whole.length - 1);
+
+console.log(
+  `${whole.length} records, chain verifies against the head: ${verifyChain(whole, head)}`,
+);
+console.log(
+  `drop one from the copy we are holding: the chain alone still says ${verifyChain(tampered)}, ` +
+    `and against the head ${verifyChain(tampered, head)}`,
+);
+console.log(
+  `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,
+);
+
+await database.close();

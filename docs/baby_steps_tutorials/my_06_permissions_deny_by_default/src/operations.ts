@@ -1,0 +1,396 @@
+// A caller names an operation instead of calling a function.
+//
+// nothing here throws at a caller any more. Every refusal comes back as
+// an error envelope with a code from §28 and a retry class, so a caller can act on the
+// answer instead of reading a sentence. And invoice.issue — the command split out of
+// step 03 — is carried out here, because a command is what makes an envelope worth
+// having: "this invoice is already issued" needs a code, and a read's refusals are too
+// thin to show why.
+//
+// Rule DSOR-OPR-01: every operation MUST have a contract.
+// Rule DSOR-ERR-01a: every error MUST validate against error-envelope.schema.json.
+
+import {
+  payloadHash,
+  refusal,
+  success,
+  type ErrorEnvelope,
+  type ResultEnvelope,
+} from "./envelopes.ts";
+// Every call says who is asking, and NEW IN STEP 06 every call is checked against what that
+// caller may do.
+import { principalFrom, type Login } from "./login.ts";
+import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
+import { TENANT } from "./tenant.ts";
+import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
+import { holds } from "./permissions.ts";
+import { parseUri } from "./uri.ts";
+
+// Built once, when this module is first loaded. A contract that does not validate stops
+// the program here, before any caller gets a turn. That is DSOR-OPR-02a.
+const registry = loadRegistry(contractsFromDisk());
+
+/**
+ * What an operation answers with.
+ *
+ * The shape is deliberately lopsided. A refusal always comes back
+ * in an error envelope. A command's success comes back in a result envelope. A *query's*
+ * success does not — there is no outcome value in result-envelope.schema.json that means
+ * "here is the data you asked for", so a read keeps handing back the invoice. The README
+ * explains the gap rather than papering over it.
+ */
+export type OperationAnswer =
+  | { readonly kind: "data"; readonly askedBy: string; readonly invoice: Invoice }
+  | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
+  | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
+
+type Handler = (
+  args: Readonly<Record<string, unknown>>,
+  contract: OperationContract,
+  askedBy: string,
+  hash: string,
+) => OperationAnswer;
+
+/** Contracts that describe an operation this step does not carry out yet. */
+const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set<string>();
+
+/**
+ * Reads the `invoice` argument as a canonical address and returns the invoice id, or the
+ * refusal that stopped it.
+ *
+ * Every refusal here is `VALIDATION_FAILED` or `TENANT_MISMATCH`, and both are `never`
+ * retryable: asking again with the same bad address cannot start working.
+ */
+function invoiceIdFrom(
+  args: Readonly<Record<string, unknown>>,
+  contract: OperationContract,
+  askedBy: string,
+): { readonly id: string } | { readonly refused: ErrorEnvelope } {
+  // The caller's **own** `invoice`, not one inherited from a prototype. A name an object merely
+  // inherits is a name nobody in this program chose — the same reason the login reads its field
+  // this way, and the same reason step 06 looks a role up with Object.hasOwn.
+  const given = Object.hasOwn(args, "invoice") ? args["invoice"] : undefined;
+
+  if (typeof given !== "string") {
+    return {
+      refused: refusal(
+        "VALIDATION_FAILED",
+        `${contract.id} needs an invoice address, and got ${typeof given}`,
+        undefined,
+        askedBy,
+      ),
+    };
+  }
+
+  let parsed;
+
+  try {
+    parsed = parseUri(given);
+  } catch (error) {
+    return { refused: refusal("VALIDATION_FAILED", (error as Error).message, undefined, askedBy) };
+  }
+
+  const namedFor = contract.id.split(".")[0];
+
+  // The address names a company, and this program serves exactly one. Reading the tenant
+  // and then ignoring it would be worse than not parsing it: the caller asks for
+  // org_999's invoice and quietly gets org_456's. Real multi-tenancy is step 10.
+  if (parsed.tenant !== TENANT) {
+    return {
+      refused: refusal(
+        "TENANT_MISMATCH",
+        `${given} is for ${parsed.tenant}, and this program serves ${TENANT}`,
+        undefined,
+        askedBy,
+      ),
+    };
+  }
+
+  if (parsed.entity !== namedFor) {
+    return {
+      refused: refusal(
+        "VALIDATION_FAILED",
+        `${contract.id} is named for ${namedFor}, and ${given} names ${parsed.entity}`,
+        undefined,
+        askedBy,
+      ),
+    };
+  }
+
+  return { id: parsed.id };
+}
+
+const handlers: Readonly<Record<string, Handler>> = {
+  "invoice.get": (args, contract, askedBy) => {
+    const read = invoiceIdFrom(args, contract, askedBy);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const invoice = getInvoice(read.id);
+
+    // Step 03 answered `undefined` here and left the caller to work out why. An absent
+    // invoice is still an ordinary answer, and now it says so in a way a caller can act
+    // on: RESOURCE_NOT_FOUND, retry never.
+    if (invoice === undefined) {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "RESOURCE_NOT_FOUND",
+          `${read.id} is not an invoice we hold`,
+          undefined,
+          askedBy,
+        ),
+      };
+    }
+
+    return { kind: "data", askedBy, invoice };
+  },
+
+  "invoice.issue": (args, contract, askedBy, hash) => {
+    const read = invoiceIdFrom(args, contract, askedBy);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const outcome = issueInvoice(read.id);
+
+    if (outcome.kind === "not_found") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "RESOURCE_NOT_FOUND",
+          `${read.id} is not an invoice we hold`,
+          undefined,
+          askedBy,
+        ),
+      };
+    }
+
+    // CONFLICT, and never retryable. A business rule says no, and asking again with the
+    // same request cannot change that — only a human changing the invoice could.
+    if (outcome.kind === "not_draft") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "CONFLICT",
+          `${read.id} is ${outcome.status}, and only a draft invoice can be issued`,
+          undefined,
+          askedBy,
+        ),
+      };
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: outcome.invoice as unknown as Record<string, unknown>,
+        semantics: contract.execution?.semantics ?? "atomic",
+        payloadHash: hash,
+        principalId: askedBy,
+      }),
+    };
+  },
+};
+
+/**
+ * Checks the contracts and the handlers against each other.
+ *
+ * A contract with no handler is a promise nothing keeps. A handler with no contract is an
+ * unnamed operation, which is the thing §7 exists to prevent. It takes both lists as
+ * arguments rather than reading the module's own, so a test can hand it a mismatched pair
+ * — and so it can run at start-up, below, rather than on the first request.
+ */
+export function assertPaired(
+  contracts: ReadonlyMap<string, OperationContract>,
+  named: Readonly<Record<string, Handler>>,
+  waiting: ReadonlySet<string> = NOT_YET_IMPLEMENTED,
+): number {
+  let checked = 0;
+
+  for (const id of contracts.keys()) {
+    if (named[id] === undefined && !waiting.has(id)) {
+      throw new TypeError(`${id} has a contract and no handler`);
+    }
+
+    checked += 1;
+  }
+
+  for (const id of Object.keys(named)) {
+    if (!contracts.has(id)) {
+      throw new TypeError(`${id} has a handler and no contract`);
+    }
+  }
+
+  // The waiting list cannot rot. An id here with no contract would be a note about
+  // nothing; an id here that also has a handler means someone forgot to cross it off.
+  // That is what made step 04 take invoice.issue off the list: it could not be forgotten.
+  for (const id of waiting) {
+    if (!contracts.has(id)) {
+      throw new TypeError(`${id} is waiting for a handler and has no contract`);
+    }
+
+    if (named[id] !== undefined) {
+      throw new TypeError(`${id} has a handler, so take it off the waiting list`);
+    }
+
+    checked += 1;
+  }
+
+  return checked;
+}
+
+// Start-up, not first request. This and the loadRegistry above it are the whole of
+// "refused before anything runs".
+//
+// The constant holds **how many** pairs the check looked at, not `true`. A boolean was not
+// enough: no test can watch a line at module scope run, and deleting the call while leaving
+// `return true` behind kept every test green. A count has to come from walking the lists. It is
+// still not a proof — hardcoding today's number would pass — but it moves the mistake from
+// "delete a line" to "delete a line and keep a number right as the lists change".
+export const PAIRS_CHECKED: number = assertPaired(registry, handlers);
+
+/** The operations this program can answer to. */
+export function operationIds(): string[] {
+  return [...registry.keys()];
+}
+
+/**
+ * The operations that have code behind them.
+ *
+ * Exported so a test can compare the two lists. assertPaired runs at module load and no
+ * test can watch that line execute, but a test can check the state it guarantees: these
+ * two lists, matching.
+ */
+export function handlerIds(): string[] {
+  return Object.keys(handlers);
+}
+
+/**
+ * Calls one operation by name.
+ *
+ * There is deliberately no caller, no permission check and no ordered checklist here. Who
+ * is asking arrives in step 05, whether they may in step 06, and the fixed order of
+ * checks in step 07. This is a lookup, a call, and an envelope.
+ */
+export function callOperation(
+  login: Login | undefined,
+  id: string,
+  args: Readonly<Record<string, unknown>>,
+): OperationAnswer {
+  // The login is read first, on purpose. DSOR-IDN-01 says a caller is normalized
+  // into a principal "before any other processing", so an unknown operation and a broken
+  // address both come second: with nobody logged in, neither is even looked at.
+  //
+  // The login arrives here as its own argument. `args` is never consulted for it, which is
+  // the whole of DSOR-SRC-02a's "not from the arguments" half.
+  const who = principalFrom(login);
+
+  if ("refused" in who) {
+    return Object.freeze({ kind: "error", askedBy: "(nobody)", envelope: who.refused });
+  }
+
+  // The name comes from the principal the lookup returned, never from login.loggedInAs.
+  // Today those are the same string, because findPerson matches on `===` — a mutation
+  // test proved no test can tell the two apart. The day the lookup gets any leniency
+  // (case, trimming, an alias) they stop being the same, and only this one is right:
+  // the caller would be filed under whatever they typed instead of who they are.
+  const askedBy = who.principal.id;
+  const contract = registry.get(id);
+  const handler = handlers[id];
+
+  // UNSUPPORTED_CAPABILITY, retry never. The caller asked for something this system does
+  // not offer; asking again will not make it appear.
+  if (contract === undefined || handler === undefined) {
+    return Object.freeze({
+      kind: "error",
+      askedBy,
+      envelope: refusal(
+        "UNSUPPORTED_CAPABILITY",
+        `${id} is not an operation: this program has no contract for it`,
+        undefined,
+        askedBy,
+      ),
+    });
+  }
+
+  // NEW IN STEP 06: may you?
+  //
+  // The permission comes from the operation's own contract — `"permission": "invoice:issue"`,
+  // which has been sitting in invoice.issue.json since step 03 with nothing reading it. Not
+  // from the caller, not from the arguments. The caller supplies neither side of this question.
+  //
+  // AUTHORIZATION_DENIED, retry never. Asking again changes nothing: either somebody grants the
+  // role, or a person who has it does the work.
+  //
+  // **This is before the arguments are read, and that is the guarantee.** If the address were
+  // parsed first, cfo_100 could ask about two invoices and compare the answers —
+  // RESOURCE_NOT_FOUND for one, AUTHORIZATION_DENIED for the other — and count records she has
+  // no permission to touch. Refused first, every attempt is the same refusal.
+  //
+  // The message does not name the missing permission, for the same reason step 05's two login
+  // refusals are word for word identical. A refusal that says what you lacked draws the
+  // permission model for anyone willing to ask twenty times. That detail belongs in the audit
+  // record, step 08, where an operator can read it and a caller cannot.
+  if (!holds(who.principal, contract.authorization.permission)) {
+    return Object.freeze({
+      kind: "error",
+      askedBy,
+      envelope: refusal(
+        "AUTHORIZATION_DENIED",
+        `${askedBy} may not call ${id}`,
+        undefined,
+        askedBy,
+      ),
+    });
+  }
+
+  // From step 04, and it is what keeps step 04's promise that nothing throws at a caller.
+  // The arguments belong to the caller, so they are copied **once**, here, and nothing
+  // below ever looks at the original again. A property with a getter can answer a different
+  // value on a second read, and these arguments used to be read twice: once to decide which
+  // invoice to act on, and again to fingerprint the receipt. A caller could make those two
+  // reads disagree, so the receipt described a request that never happened. One copy makes
+  // them the same read — `{ ...args }` runs every getter exactly once.
+
+  // And if the copy cannot be written down, nothing runs at all. The receipt is a hash of
+  // the arguments, so an unhashable argument — a circular object, a BigInt — used to let the
+  // change happen and *then* throw on the way out: a side effect with no envelope, no code,
+  // and no record of who caused it. This is the first small shape of DSOR-EXE-03a, write it
+  // down before you do it. Step 08 builds the real intent record.
+  let given: Readonly<Record<string, unknown>>;
+  let written: string;
+
+  try {
+    // The copy is **inside** the try, not above it. `{ ...args }` runs every getter, and a
+    // getter can throw — a hostile review sent `{ get invoice() { throw } }` and the exception
+    // reached the caller instead of an envelope.
+    given = Object.freeze({ ...args });
+    // Written down **once**, and the text is kept. Nothing below reads the caller's object again:
+    // a second read can answer differently, and it used to — `success()` stringified it a second
+    // time after the invoice had been issued.
+    written = JSON.stringify(given);
+  } catch {
+    return Object.freeze({
+      kind: "error",
+      askedBy,
+      envelope: refusal(
+        "VALIDATION_FAILED",
+        `${id} was given arguments that cannot be written down`,
+        undefined,
+        askedBy,
+      ),
+    });
+  }
+
+  // Frozen on the way out. `readonly` on OperationAnswer is erased before Node runs, and
+  // `askedBy` is this step's entire record of who asked — step 01's lesson, applied to this
+  // step's own new type.
+  return Object.freeze(handler(given, contract, askedBy, payloadHash(written)));
+}

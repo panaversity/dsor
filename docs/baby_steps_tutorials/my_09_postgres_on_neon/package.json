@@ -1,0 +1,32 @@
+{
+  "name": "@dsor-steps/09-postgres-on-neon",
+  "version": "0.0.0",
+  "private": true,
+  "description": "DSoR baby step 09 - the audit log moves into a real database, and the application may not rewrite it",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
+    "test:db": "vitest run --config vitest.db.config.ts"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.15.5",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

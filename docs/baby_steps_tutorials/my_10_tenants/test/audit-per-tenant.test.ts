@@ -1,0 +1,281 @@
+// NEW IN STEP 10: one audit chain per company.
+//
+// Step 08's chain was named after a constant and every record joined it. With two companies in one
+// table that would mean org_456's hashes depend on org_789's records — and §14 says the audit
+// partitions are keyed by tenant. So there is a chain per company, each with its own sequence, its
+// own genesis, and its own head, and nothing in one ever links to the other.
+//
+// Rule DSOR-TEN-02a: caches, idempotency records, counters, holds, proposals, events, and audit
+// partitions MUST be keyed by tenant. (This step claims it for the audit partition only.)
+// Rule DSOR-EXE-02: the decision MUST be durably recorded before the response, denials included.
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import {
+  audit,
+  countedWithoutARecord,
+  forgetTheLog,
+  theHead,
+  theLog,
+  useDatabase,
+  verifyChain,
+} from "../src/audit.ts";
+import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
+import type { Context } from "../src/pipeline.ts";
+import { aDatabase } from "./support/database.ts";
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const AGENT_FOR_789 = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
+const AGENT_UNSAID = { loggedInAs: "accounts-payable-fte" };
+
+let db: PGlite;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+beforeEach(async () => {
+  await forgetTheLog("org_456");
+  await forgetTheLog("org_789");
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+describe("one chain per company", () => {
+  it("DSOR-TEN-02a: each company's decisions form their own chain, from their own genesis", async () => {
+    await callOperation(AGENT_FOR_456, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    await callOperation(AGENT_FOR_789, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+    await callOperation(AGENT_FOR_789, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+
+    const ours = await theLog("org_456");
+    const theirs = await theLog("org_789");
+
+    expect(ours).toHaveLength(1);
+    expect(theirs).toHaveLength(2);
+    expect(ours.map((r) => r.chain)).toEqual(["audit:org_456"]);
+    expect(theirs.map((r) => r.chain)).toEqual(["audit:org_789", "audit:org_789"]);
+    // Each starts at 0: the sequence is per chain, not per table.
+    expect(ours.map((r) => r.sequence)).toEqual([0]);
+    expect(theirs.map((r) => r.sequence)).toEqual([0, 1]);
+    // And each verifies against its own head.
+    expect(verifyChain(ours, await theHead("org_456"))).toBe(true);
+    expect(verifyChain(theirs, await theHead("org_789"))).toBe(true);
+  });
+
+  it("DSOR-TEN-02a: a record never links to the other company's chain", async () => {
+    await callOperation(AGENT_FOR_456, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    await callOperation(AGENT_FOR_789, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+
+    const [ours] = await theLog("org_456");
+    const [theirs] = await theLog("org_789");
+
+    // Two different records in two different chains — asserted first, because with ONE shared
+    // chain `theLog("org_789")` would return org_456's record and the link assertions below would
+    // pass on it. A review found that.
+    expect(ours?.tenant).toBe("org_456");
+    expect(theirs?.tenant).toBe("org_789");
+    expect(theirs?.chain).toBe("audit:org_789");
+    expect(theirs?.record_id).not.toBe(ours?.record_id);
+
+    // org_789's first record points at the genesis hash, not at org_456's record, though org_456's
+    // was written first and sits in the same table.
+    expect(theirs?.previous_hash).toBe(`sha256:${"0".repeat(64)}`);
+    expect(theirs?.previous_hash).not.toBe(ours?.record_hash);
+  });
+
+  it("DSOR-TEN-01a: the record says which company, in its tenant, its correlation and its chain", async () => {
+    await callOperation(AGENT_FOR_789, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+
+    const [record] = await theLog("org_789");
+
+    expect(record?.chain).toBe("audit:org_789");
+
+    expect(record?.tenant).toBe("org_789");
+    expect(record?.correlation.tenant_id).toBe("org_789");
+    expect(record?.identity.subject).toBe("accounts-payable-fte");
+  });
+
+  it("DSOR-TEN-02a: erasing one company's log leaves the other's", async () => {
+    await callOperation(AGENT_FOR_456, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+    await callOperation(AGENT_FOR_789, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+
+    await forgetTheLog("org_456");
+
+    expect(await theLog("org_456")).toHaveLength(0);
+    expect(await theLog("org_789")).toHaveLength(1);
+  });
+});
+
+describe("a refusal that belongs to no company", () => {
+  it("DSOR-EXE-02: the agent that did not say which company is recorded in both employers' logs", async () => {
+    const answer = await callOperation(AGENT_UNSAID, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    expect(answer.kind).toBe("error");
+
+    for (const company of ["org_456", "org_789"]) {
+      const log = await theLog(company);
+
+      expect(log, company).toHaveLength(1);
+      expect(log[0]?.authorization).toBe("DENY");
+      expect(log[0]?.result).toBe("TENANT_MISMATCH");
+      expect(log[0]?.identity.subject).toBe("accounts-payable-fte");
+      expect(log[0]?.tenant).toBe(company);
+    }
+  });
+
+  it("DSOR-EXE-02: user_123 naming org_789 is recorded in org_456's log, and nowhere else", async () => {
+    const answer = await callOperation(
+      { loggedInAs: "user_123", tenant: "org_789" },
+      "invoice.get",
+      {
+        invoice: "dsor://org_789/invoice/INV-1008",
+      },
+    );
+
+    expect(answer.kind).toBe("error");
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect((await theLog("org_456"))[0]?.result).toBe("TENANT_MISMATCH");
+    // Not in org_789's: a company's log never carries a stranger's attempt to reach it.
+    expect(await theLog("org_789")).toHaveLength(0);
+  });
+
+  it("DSOR-SRC-02b: a mismatching address, once the request HAS a company, is recorded there", async () => {
+    // Different from the two above: the request resolved to org_456, and only then was the address
+    // for org_789 refused. One company, one record.
+    await callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_789/invoice/INV-1008" });
+
+    expect((await theLog("org_456"))[0]?.result).toBe("TENANT_MISMATCH");
+    expect(await theLog("org_789")).toHaveLength(0);
+  });
+});
+
+describe("no company is written into the audit log's code", () => {
+  // No rule id: a source grep is a tripwire against one spelling, not proof of the rule — the three
+  // behaviour tests above carry DSOR-TEN-02a.
+  it("a tripwire: audit.ts spells no company by name", () => {
+    // Step 09's `audit:${TENANT}` is the kind of line that quietly puts every company in one chain.
+    // Comments stripped first: the explanation of WHY there is a chain per company is allowed to
+    // name two companies. The code is not.
+    const code = readFileSync(fileURLToPath(new URL("../src/audit.ts", import.meta.url)), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+    expect(code).not.toMatch(/org_\d+/);
+    expect(code).not.toContain("TENANT");
+  });
+
+  it("a chain is only ever named after a company this program serves", async () => {
+    await expect(
+      audit({
+        kind: "decision",
+        subject: "user_123",
+        tenant: "org_000",
+        requestId: "req_1",
+        operation: "invoice.get@1",
+        authorization: "ALLOW",
+        result: "ALLOWED",
+      }),
+    ).rejects.toThrow(/not a company this program serves/);
+  });
+});
+
+describe("a refusal written to two logs, when the second write fails", () => {
+  it("DSOR-EXE-02: the caller is told which logs took the write, not that nothing was written", async () => {
+    // The fan-out has no transaction across the two chains. When org_456's record commits and
+    // org_789's INSERT is refused by the server, the first version told the caller the decision
+    // "could not be written down" — false, and a review measured it against one log holding the
+    // DENY and the other empty.
+    const real = db;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[]) {
+        if (sql.includes("INSERT") && params?.[1] === "audit:org_789") {
+          throw Object.assign(new Error("disk full"), { code: "53100" });
+        }
+
+        return real.query<T>(sql, params);
+      },
+    });
+
+    try {
+      const answer = await callOperation(AGENT_UNSAID, "invoice.get", {
+        invoice: "dsor://org_456/invoice/INV-1008",
+      });
+
+      if (answer.kind !== "error") {
+        throw new Error(`expected a refusal, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+      expect(answer.envelope.message).toContain("1 of 2 company logs (org_456)");
+    } finally {
+      useDatabase(real);
+    }
+
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect(await theLog("org_789")).toHaveLength(0);
+  });
+});
+
+describe("a caller who belongs to no company at all", () => {
+  it("DSOR-EXE-02: is counted, not recorded, and nothing of it reaches any company's log", async () => {
+    // Unreachable through people.ts, whose three principals each belong to somewhere — so a door is
+    // built whose authenticate stage hands the pipeline a principal with no memberships. Both
+    // guards (the homes list in operations.ts and audit's own) are what this test reaches.
+    const nobodys = PIPELINE.map((stage) =>
+      stage.name === "authenticate"
+        ? {
+            ...stage,
+            run: (context: Context) => ({
+              kind: "carry_on" as const,
+              context: {
+                ...context,
+                principal: Object.freeze({
+                  id: "contractor",
+                  type: "human" as const,
+                  role: "ap_worker",
+                  memberships: Object.freeze([]),
+                }),
+              },
+            }),
+          }
+        : stage,
+    );
+    const before = countedWithoutARecord();
+    const answer = await makeDoor(nobodys)(SUPERVISOR, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("TENANT_MISMATCH");
+    expect(countedWithoutARecord()).toBe(before + 1);
+    expect(await theLog("org_456")).toHaveLength(0);
+    expect(await theLog("org_789")).toHaveLength(0);
+  });
+});

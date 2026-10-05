@@ -9,8 +9,10 @@
 // Checks, each reported with a stable slug (AGENTS.md → Decisions 2 and 3):
 //   unique-id         every requirement id is defined once
 //   one-must          every requirement holds exactly one MUST / MUST NOT, and no SHOULD / MAY
-//   known-id          every DSOR-XXX-NN mentioned in any markdown file, or in a baby step's
-//                     code or tests, is defined by the spec
+//   known-id          every DSOR-XXX-NN mentioned in any markdown file, inside inline code
+//                     spans as well as in plain prose, or in a baby step's code or tests, is
+//                     defined by the spec
+//   stale-example     every entry in ILLUSTRATIVE is still used by some file
 //   link-target       every relative markdown link, and its #anchor, resolves
 //   registry-current  packages/spec/requirements.json equals what the spec says today
 //   copied-pattern    a baby-step regex marked "// copied from <schema>#<pointer>" still
@@ -34,6 +36,32 @@ const SPEC_DIR = join(ROOT, "specs", "dsor");
 const REGISTRY = join(ROOT, "packages", "spec", "requirements.json");
 const REQUIREMENT = /^- \*\*\[(DSOR-[A-Z]+-\d+[a-z]?) · (L1|L2|L3|RP|STACK)\]\*\* (.*)$/;
 const ID = /DSOR-[A-Z]+-\d+[a-z]?/g;
+
+/**
+ * Identifiers that appear on purpose and are not meant to resolve.
+ *
+ * The known-id check reads inline code spans, because prose about requirements writes every id in
+ * backticks and this check used to see none of them: `DSOR-SOD-01`, which is not a rule, sat in
+ * four files while the guard stayed green. Reading code spans catches that — and it also catches
+ * the few ids that prose has to be able to *name* without them existing: documentation about a bad
+ * identifier, or about the number a split leaves behind.
+ *
+ * Every entry says where it is used and why. An entry that stops being used is itself an error,
+ * reported as stale-example, so this list cannot quietly rot into a permanent exemption.
+ */
+const ILLUSTRATIVE = new Map([
+  [
+    "DSOR-DEL-04",
+    "change-the-spec skill: the id a split leaves behind, which by decision 3 is never reused",
+  ],
+  ["DSOR-DEL-11", "change-the-spec skill: the example of taking the next free number in an area"],
+  [
+    "DSOR-FAKE-99",
+    "baby-steps notes: the probe that showed this check used to ignore backticked ids",
+  ],
+  ["DSOR-SOD-01", "baby-steps notes: quoted as the example of an id the spec does not define"],
+]);
+const illustrativeUsed = new Set();
 const SKIP = new Set(["node_modules", "dist", ".git"]);
 
 const walk = (dir, keep) =>
@@ -121,8 +149,15 @@ for (const file of markdown) {
   const where = relative(ROOT, file);
   for (const line of prose(readFileSync(file, "utf8"))) {
     const bare = stripCode(line);
-    for (const id of bare.match(ID) ?? []) {
-      if (!ids.has(id)) fail("known-id", `${where} mentions ${id}, which the spec does not define`);
+
+    // The whole line, code spans included: an id in backticks is still a claim about a rule.
+    for (const id of line.match(ID) ?? []) {
+      if (ids.has(id)) continue;
+      if (ILLUSTRATIVE.has(id)) {
+        illustrativeUsed.add(id);
+        continue;
+      }
+      fail("known-id", `${where} mentions ${id}, which the spec does not define`);
     }
     for (const m of bare.matchAll(/\]\(([^)\s]+)\)/g)) {
       const href = m[1];
@@ -285,6 +320,16 @@ if (process.argv.includes("--write")) {
   console.log(`wrote ${requirements.length} requirements to ${relative(ROOT, REGISTRY)}`);
 } else if (!existsSync(REGISTRY) || readFileSync(REGISTRY, "utf8") !== rendered) {
   fail("registry-current", "packages/spec/requirements.json is stale; run: pnpm guard --write");
+}
+
+// An exemption that is no longer used is an exemption nobody is watching.
+for (const [id, why] of ILLUSTRATIVE) {
+  if (!illustrativeUsed.has(id)) {
+    fail(
+      "stale-example",
+      `${id} is listed as illustrative and no file mentions it any more (${why})`,
+    );
+  }
 }
 
 if (process.argv.includes("--coverage")) {
