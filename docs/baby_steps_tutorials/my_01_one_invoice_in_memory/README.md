@@ -10,7 +10,7 @@ is, two invoices held in a plain array, and one function that finds an invoice b
 
 The two invoices are worth knowing by name, because every later step uses them. **INV-1008** is
 31,400.00 USD and already `issued` — it is the one from the running story, the payment that will
-need a CFO's approval in step 24. **INV-1009** is 2,500.00 USD and still a `draft`, and being a
+need a CFO's approval in step 27. **INV-1009** is 2,500.00 USD and still a `draft`, and being a
 draft is what makes it useful: from step 04 onward it is the invoice that gets *issued*, so it is
 where every command in the tutorial does its work. "In memory" means the array lives in the running program and disappears when
 the program stops. There is no database until step 09.
@@ -422,8 +422,12 @@ gaps are easy to read past:
 
 So this step meets `DSOR-MON-01` for every amount built through `money()`, which is
 every amount in it. Making the guard the only door needs more of the type system than
-belongs in step 01. Validating at a boundary, where it cannot be skipped, is what
-operation contracts do in step 03.
+belongs in step 01. The first check that nothing can skip arrives in step 03, where a
+registry checks every operation contract — the spec sheet for one named action — against
+the specification's own JSON Schema when the program starts, and refuses a bad one. That
+check is on the contract document, not on the arguments a caller sends. A contract names
+an input schema, but no step through 10 reads it, so an amount inside a request is still
+guarded only by whoever remembered to call `money()`.
 
 `DSOR-MON-02` says that monetary arithmetic and comparison MUST use decimal arithmetic.
 This step does no arithmetic on money, so there is nothing yet to meet it with. Adding
