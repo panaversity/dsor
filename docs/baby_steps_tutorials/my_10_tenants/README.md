@@ -63,10 +63,14 @@ git diff --no-index ../my_09_postgres_on_neon ../my_10_tenants
 | `src/invoice.ts` | SQL now, and every function takes the company first |
 | `src/store.ts` | new — the one database handle, shared by both stores |
 | `src/audit.ts` | one chain per company; `theLog`, `theHead` and `forgetTheLog` take the company; no company is named in its code |
+| `src/envelopes.ts` | a proposal address names the command's company |
+| `src/database.ts` | the start-up check also refuses an application that may move, renumber, add or delete invoices |
+| `src/main.ts` | the two-companies section, one log printed per company, and the planted-principal line is a refusal now |
+| `test/support/database.ts` | `resetInvoices`, as the owner, from 004 |
 | `test/tenant.test.ts`, `test/cross-tenant.test.ts`, `test/invoices-in-postgres.test.ts`, `test/audit-per-tenant.test.ts` | new |
 
-325 tests became 363. One test from step 09 changed its example, and the README says why under
-Break 5.
+325 tests became 373. One test from step 09 changed its example (Break 5 says why), and two of
+step 05's changed their answer (the rules section says why).
 
 ## Run it
 
@@ -93,24 +97,25 @@ The audit log of org_456:
  0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:8987d94...
  …
 10  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:6f3fdd5...
-11  DENY   (no such operation)  accounts-payable-fte   TENANT_MISMATCH         sha256:c385e34...
+11  DENY   (none resolved)      accounts-payable-fte   TENANT_MISMATCH         sha256:c385e34...
 12  DENY   invoice.get@1        user_123               TENANT_MISMATCH         sha256:f28be66...
 13  DENY   invoice.get@1        user_123               TENANT_MISMATCH         sha256:fc52f83...
-14  DENY   (no such operation)  user_123               TENANT_MISMATCH         sha256:55046d5...
+14  DENY   (none resolved)      user_123               TENANT_MISMATCH         sha256:55046d5...
 org_456: 15 records, chain verifies against the head: true
 
 The audit log of org_789:
 
  0  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:4a2dd56...
- 1  DENY   (no such operation)  accounts-payable-fte   TENANT_MISMATCH         sha256:8fe61e7...
+ 1  DENY   (none resolved)      accounts-payable-fte   TENANT_MISMATCH         sha256:8fe61e7...
 org_789: 2 records, chain verifies against the head: true
 ```
 
 Read the first two lines together: the same agent, the same invoice number, two different invoices,
 and the only thing that changed between the lines is which company the agent said it was working
 for. Read the four refusals: `org_789` is real and `org_000` is not, and the two answers are the
-same words. Read `(no such operation)` on records 11 and 14: a request refused at §21.2 was refused
-before the operation was even looked up, so the record truthfully has no operation in it. And read
+same words. Read `(none resolved)` on records 11 and 14: a request refused at §21.2 was refused before the
+operation was even looked up, so the record truthfully has no operation in it — the words are the
+printer's, not the record's; the record simply has no `operation` field. And read
 `org_789`'s log: the agent's request that never said which employer is there too, because both
 employers should know — and nothing of `user_123`'s or the CFO's is, because they are not members.
 
@@ -139,7 +144,8 @@ pnpm migrate && pnpm test:db
 
 ## Break it
 
-Eight, measured on the full suite. Two of them are not counts, and that is the lesson of each.
+Eight, measured on the full suite after the hostile review. Two of them are not counts, and that
+is the lesson of each.
 
 ### Break 1 · leave the stage out of the list
 
@@ -161,29 +167,32 @@ shrinking total is the tell that the guard fired at load, not that a test caught
 In `src/tenant.ts`, make `tenantFor` return `{ tenant: claim.tenant }` for any named claim.
 
 ```text
- Tests  6 failed | 357 passed (363)
+ Tests  6 failed | 367 passed (373)
 ```
 
 `user_123` naming `org_789` is now inside `org_789`, and reads its invoice.
 
 ### Break 3 · let the store ignore the company
 
-In `src/invoice.ts`, change `getInvoice`'s `WHERE tenant_id = $1 AND id = $2` to
-`WHERE id = $2 ORDER BY tenant_id LIMIT 1`.
+In `src/invoice.ts`, change `getInvoice`'s query to `WHERE id = $1 ORDER BY tenant_id LIMIT 1`
+and its parameters to `[id]`.
 
 ```text
- Tests  67 failed | 296 passed (363)
+ Tests  6 failed | 367 passed (373)
 ```
 
 This is step 09's store, the day a second company exists: `INV-1008` is whichever row sorts first.
-Sixty-seven, because the demo and every test that reads an invoice now gets the wrong one.
+Only six tests stand between that leak and green — the ones that ask for org_789's invoice and
+check which one came back. The first version of this exercise dropped the `tenant_id` clause but
+left `$1` in the parameters, which PostgreSQL refuses as a SQL error: sixty-seven failures that
+proved nothing about the leak. A reviewer measured it.
 
 ### Break 4 · one audit chain for everyone again
 
 In `src/audit.ts`, make `chainOf` return `` `audit:org_456` `` whatever the company.
 
 ```text
- Tests  10 failed | 353 passed (363)
+ Tests  14 failed | 359 passed (373)
 ```
 
 ### Break 5 · let validate forget the address
@@ -192,10 +201,10 @@ In `src/operations.ts`, in `validateTheInput`, change `if (address.tenant !== co
 `if (false)`.
 
 ```text
- Tests  11 failed | 352 passed (363)
+ Tests  14 failed | 359 passed (373)
 ```
 
-Eleven, not one, and the reason is worth the paragraph. The address check first lived in the
+Fourteen, not one, and the reason is worth the paragraph. The address check first lived in the
 handler, at §21.14 — and §21.14 runs *after* the decision is recorded at §21.11. So a request refused
 for another company's address sat in the log as `ALLOWED` while the caller held a refusal: the log
 and the answer disagreeing, which is the one thing a decision record exists to prevent. The audit
@@ -208,7 +217,7 @@ was" — lost that example, because it is no longer one.
 In `src/operations.ts`, in `invoiceIdFrom`, change `if (parsed.tenant !== tenant)` to `if (false)`.
 
 ```text
- Tests  1 failed | 362 passed (363)
+ Tests  1 failed | 372 passed (373)
 ```
 
 One test, and it is the only one that can reach this line: a door built with a validate stage that
@@ -227,8 +236,8 @@ constraint matching the ON CONFLICT specification
 ```
 
 The running example cannot be loaded: it holds an `INV-1008` for each company, and its `ON CONFLICT
-(tenant_id, id)` names a key that no longer exists. `pnpm check` reports `60 failed | 129 passed |
-174 skipped` — the skipped ones are every file whose setup applies the migrations. Skipped is the
+(tenant_id, id)` names a key that no longer exists. `pnpm check` reports `61 failed | 130 passed |
+182 skipped` — the skipped ones are every file whose setup applies the migrations. Skipped is the
 tell of a guard that fired before a test could, and it is written here as what it is.
 
 ### Break 8 · grant UPDATE on every column
@@ -236,12 +245,15 @@ tell of a guard that fired before a test could, and it is written here as what i
 In `migrations/003_invoices.sql`, change `GRANT UPDATE (status)` to `GRANT UPDATE`.
 
 ```text
- Tests  1 failed | 362 passed (363)
+ Tests  17 failed | 356 passed (373)
 ```
 
-The application may now move an invoice to another company. One test asks.
+The application may now move an invoice to another company. One test asks about the grant — and
+sixteen more fall because the program **refuses to start**: since the review, the start-up check asks
+whether the application could move, renumber, add or delete invoices, and every test that opens the
+program's own door is refused. That is the guard a critic's "next attack" asked for.
 
-Restore each break and confirm `pnpm check` prints `363 passed` again.
+Restore each break and confirm `pnpm check` prints `373 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -295,10 +307,19 @@ Copy `my_09_postgres_on_neon` to a new folder and ask:
   holds a membership.
 - **[DSOR-SRC-02b · L1]** A tenant, principal, or delegation identifier inside operation arguments
   that disagrees with the security context MUST cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`.
+  **This changed step 05's answer.** Step 05 *ignored* a principal planted in the arguments — the
+  context is never derived from them, which is `SRC-02a` — and a review pointed out that the rule
+  asks for more: a disagreeing identifier is a claim, and a claim that disagrees with who you are is
+  refused and recorded as the `DENY` it is. Four argument names count: `tenant`, `tenant_id`
+  (→ `TENANT_MISMATCH`), `principal`, `principal_id` (→ `AUTHORIZATION_DENIED`). One that *agrees*
+  still changes nothing. A delegation identifier joins the list in step 18, when delegations exist.
+  Any other name a caller plants stays ignored, as before.
 - **[DSOR-IDN-03b · L1]** An operation MUST NOT read or write across tenants — met for the two
   operations that exist, by the store taking the company first.
 - **[DSOR-TEN-02a · L1]** Audit partitions keyed by tenant — met for the audit partition only. The
-  caches, idempotency records, counters, holds and proposals the rule also names do not exist yet.
+  caches, idempotency records, holds and proposals the rule also names do not exist yet. One
+  counter does: the flood count of refusals with no subject or no company, which is process-wide on
+  purpose, because those refusals have no tenant to key by.
 
 **The map and the spec disagreed, and the spec won.** The map's done-when says an address for another
 company returns "the same not found as a URI that does not exist". `DSOR-SRC-02b` says it MUST be

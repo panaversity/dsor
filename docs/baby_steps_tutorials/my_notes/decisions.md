@@ -2088,14 +2088,20 @@ all four recommendations.
    words whether that company or that invoice exists. The map's done-when says "the same not found
    as a URI that does not exist", and `DSOR-SRC-02b` says a mismatching tenant MUST cause
    `TENANT_MISMATCH` or `AUTHORIZATION_DENIED` — `RESOURCE_NOT_FOUND` is neither. The spec is
-   authoritative over the map (AGENTS.md), so the map's wording is adjusted and the divergence
-   recorded, as step 09 did. What the done-when *means* — reveal nothing — is kept to the letter:
+   authoritative over the map (AGENTS.md). The map is left as written — a step session never edits
+   around its own folder — and the divergence is recorded here, in the README's "the map and the
+   spec disagreed" paragraph, and at the top of `cross-tenant.test.ts`. (This entry first said the
+   map's wording "is adjusted"; a review read the diff and it was not.) What the done-when *means* —
+   reveal nothing — is kept to the letter:
    the refusal for `org_789` (exists) and `org_000` (does not) must be identical but for the echoed
    address.
 3. **The invoices move into PostgreSQL in this step**, named as the cost of rows the way step 09
    named async as the cost of a database. The test applied: can the tenancy idea be explained
    without SQL? It can, so the SQL is cost, not a second idea. Leaving it for step 11 would make
-   row-level security's lesson compete with a store rewrite.
+   row-level security's lesson compete with a store rewrite. Be honest about the tension a critic
+   named: step 09 deferred this very move *because* it would have been a second idea there. Both
+   are true — in step 09 the move had no idea to serve; here it serves one — and the test is the
+   same each time: can the step's idea be explained without it?
 4. **The second company is `org_789`, with its own `INV-1008`** — the same number as `org_456`'s,
    a different amount — because that is the sharpest proof that an invoice number alone is not an
    identity. The agent `accounts-payable-fte` works for both companies, so its requests must say
@@ -2116,7 +2122,8 @@ are recorded as what they were:
   the second one is refused at seed time, so the test file's setup dies before any assertion runs.
   That is the guard working — the story itself cannot be loaded without a company in the key — but
   "skipped" is the invalid-run tell (lesson 11), so it is written here and not in a table of
-  failures.
+  failures. (That was the piece-3 suite; on the finished suite the same break is 61 failed, 130
+  passed, 182 skipped — the README's Break 7.)
 - **`tenant_id` made nullable**: nothing failed. A primary key forbids NULL in its columns, so the
   `NOT NULL` on `tenant_id` is a word no test can kill. It stays, with a comment that says exactly
   that: a reader looking at the column should not need to know the rule about keys to see that a
@@ -2156,6 +2163,13 @@ are evidence (`DSOR-EXE-02`). Three places it could go:
 `recordTheDecision` computes the homes: the resolved company, or every membership, or `[undefined]`
 (counted). `audit` itself still writes one record in one chain.
 
+Two things a review added. A fanned-out request is two records with two `trace_id`s — the slot is
+borrowed as a per-attempt nonce and must move when `DSOR-COR-01a`'s propagated trace id lands. And
+there is no transaction across the two chains, so when the second write fails after the first
+committed, the caller is told exactly that ("written to 1 of 2 company logs (org_456)") rather than
+"nothing was written"; one transaction across chains is step 16's, when the control-plane store
+brings a connection of its own.
+
 ## 91 · The address check moved from the handler to §21.6, because the log said ALLOW (2026-10-05)
 
 **Found by my own piece 4 in my own piece 2.** Piece 2 put the "is this address in your company?"
@@ -2188,3 +2202,56 @@ now. A missing invoice took its place, because that one really is answered after
 
 Measured: with the check in validate, Break 5 fails 11 tests; with it in the handler alone, the
 audit says ALLOW and one test fails for the right reason.
+
+## 92 · The hostile review of step 10, and what it cost (2026-10-05)
+
+Four reviewers in parallel, then a critic. The critic said **no**, for reasons that were specific and
+mostly right. Six were code.
+
+- **Every proposal address was in org_456.** `success()` built `dsor://org_456/proposal/…` whatever
+  the command's company; a reviewer ran `invoice.issue` as org_789 and got a receipt in org_456's
+  proposal space. A proposal is a tenant-owned resource (`DSOR-TEN-01a`). It names the command's
+  company now, and a test runs that command.
+- **`SRC-02b` was claimed in full while a bare `tenant`/`principal` argument was ignored.** Step 05's
+  rule, and two tests pinned it. The spec's letter is "MUST cause `TENANT_MISMATCH` or
+  `AUTHORIZATION_DENIED`", so `validate the input` refuses a disagreeing `tenant`/`tenant_id` or
+  `principal`/`principal_id`; an agreeing one still changes nothing. Step 05's two tests became four
+  under the right ids, and the demo's planted-principal line is a `DENY`. The README says the answer
+  changed and why.
+- **The fan-out told the caller "could not be written down" after one log had taken the write.**
+  There is no transaction across chains — the `Database` seam is one method, and a transaction
+  needs one connection held across statements, which a pool does not promise. The message now names
+  which logs took it; the real fix is step 16's. A test fails the second `INSERT` and reads both logs.
+- **`main.test.ts` deleted the demo database before each test and never after**, so `pnpm check`
+  left one run's records and an issued `INV-1009` behind, and a learner's first `pnpm start` printed
+  `CONFLICT` and thirty records. The clean-copy numbers recorded in the step note — "30 then 45" —
+  were that symptom, written down as if they were the story. An `afterAll` cleans up; the clean copy
+  now shows `COMMITTED`, 15 and 2, then `CONFLICT`, 30 and 4.
+- **The start-up guard never looked at the invoices table** — the critic's "next attack": grant the
+  application `INSERT, UPDATE, DELETE` on invoices and the program started happily. It refuses now,
+  and README Break 8 went from 1 failure to 17 because of it.
+- **"Active" rested on `people.ts` alone.** A hand-built principal with a membership of a company the
+  program does not serve resolved to it. `tenantFor` checks the list at the request; `audit` refuses
+  to name a chain after an unserved company.
+
+The rest: Break 3's described change produced SQL errors, not wrong rows (rewritten, 6 failures that
+are all the leak); the amount cast's comment claimed PGlite returns a number (false, measured — both
+drivers return text, the cast pins it, no test can kill it); `status.md` said the invoices were still
+an array; decision 88 said the map was adjusted when it was not; six tests were weak in the way a
+reviewer could name (the arguments test used the only caller who could not tell "ignored" from
+"honoured", "before anything else" asserted a code and not an order, "never links" passed under one
+shared chain, the command path was never tried against the other company's invoice, a second own
+address argument was never sent, the fallback label was pinned by substring); three test titles
+carried ids they did not prove; one stray `NEW IN STEP 09` marker sat in `vitest.config.ts`.
+
+**One false clean of my own.** Sabotaging the new `afterAll` by cutting at the first `});` cut inside
+`rmSync(…)`, left a file that could not load, and a file that cannot load writes nothing — so the
+check said "clean" and proved nothing. Redone by emptying the body: the database is left behind
+without the cleanup and not with it. Lesson 11 again, in a new shape.
+
+**Proved by breaking it.** Every guard the review added, sabotaged, each one test: the proposal
+address back to org_456, a bare tenant key ignored, a bare principal key ignored, the partial-failure
+message lying, the invoices grant unchecked, an unserved membership resolving, `audit` accepting any
+chain name. Eight break-it exercises re-measured at 373.
+
+`pnpm check`: 27 files, **373 tests**. Clean copy: 372 passed, 1 skipped.

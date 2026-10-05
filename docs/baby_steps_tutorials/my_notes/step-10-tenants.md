@@ -3,9 +3,9 @@
 Folder: [`my_10_tenants`](../my_10_tenants/README.md) · 363 tests, plus 9 in the database tier
 Spec: [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) · `DSOR-TEN-01a`, `DSOR-IDN-03a`,
 `DSOR-SRC-02b`
-`pnpm check` has run: 363. The database tier awaits this step's own `.env` (the database
+`pnpm check` has run: 373. The database tier awaits this step's own `.env` (the database
 `dsor_step10` exists; the file is the learner's to create).
-Decisions [88 to 91](decisions.md). Lesson [35](lessons.md).
+Decisions [88 to 92](decisions.md). Lesson [35](lessons.md).
 
 ## What the step is
 
@@ -67,10 +67,22 @@ stays, with a comment saying why.
 Copied outside the repository with no `node_modules`, no `.env`, no `.local-database`:
 
 ```text
-pnpm install --frozen-lockfile   ->  Done in 307ms
-pnpm check                       ->  Tests  362 passed | 1 skipped (363)
-pnpm start (twice)               ->  org_456: 30 then 45 records, org_789: 4 then 6, every chain verifying
+pnpm install --frozen-lockfile   ->  Done in 299ms
+pnpm check                       ->  Tests  372 passed | 1 skipped (373)
+pnpm start                       ->  COMMITTED; org_456: 15 records, org_789: 2, both verifying
+pnpm start (again)               ->  CONFLICT;  org_456: 30 records, org_789: 4, both verifying
 pnpm test:db (no server)         ->  Tests  9 skipped (9)
 ```
 
 The one skip is the schema-equality test that needs the specification beside it, as in step 09.
+
+The first version of this section recorded "30 then 45 records" — a symptom, not the story: the
+demo tests left a run behind in `.local-database`, so the clean copy's first `pnpm start` was really
+its second. A critic measured it; [decision 92](decisions.md).
+
+## The hostile review
+
+Four reviewers and a critic, after the README was written. Six code fixes and a dozen smaller ones,
+every one measured first and sabotaged after — [decision 92](decisions.md). The one that changes an
+earlier step's lesson: a principal or tenant planted in the arguments that disagrees with the
+security context is **refused** now, where step 05 ignored it, because `DSOR-SRC-02b` says so.
