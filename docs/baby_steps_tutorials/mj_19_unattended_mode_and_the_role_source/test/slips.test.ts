@@ -359,8 +359,9 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
   );
 
   // Only a person signs a slip (§13: "a permission slip from a human to an agent"). Since
-  // step 18's review, line ③ refuses it, with the check above (step 18's README, decisions
-  // 15 and 18).
+  // step 18's review, line ③ refuses it (step 18's README, decisions 15 and 18). Since step
+  // 19's review, from DSoR's own table, before the directory is asked (step 19's README,
+  // decision 13).
   it.each([
     ["an agent", "firm-ap-fte"],
     ["nobody DSoR knows", "user_999"],

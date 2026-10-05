@@ -171,29 +171,49 @@ export function createRoleSource(
       const cannotUse = `the directory of ${tenant} answered with something DSoR cannot use`;
       const key = keptKey(tenant, person);
 
-      // The question, at every call (step 19's README, decision 3).
+      // The question, at every call (step 19's README, decision 3). An answer is as of the
+      // time DSoR asked, never later: the directory may have changed a moment after it
+      // answered (decision 14).
+      const askedAt = Date.now();
       const asked = await askWithin(directory, person);
+      const last = kept.get(key);
       let answer: Record<string, unknown>;
       let at: number;
       if (asked.answered) {
-        // An answer DSoR cannot use is a fault. It is not kept, and the kept answer is not
-        // used either: the strange answer may be the very news DSoR needs (decision 11).
-        if (!usable(asked.answer, tenant, person)) throw new Refusal("INTERNAL_ERROR", cannotUse);
-        answer = asked.answer;
-        at = Date.now();
-        kept.set(key, { answer: structuredClone(answer), at });
+        // One copy, read once, and every check and every use reads that copy, as line ①
+        // copies the input (step 07's README, decision 9; step 19's README, decision 17).
+        const copy = copyOf(asked.answer);
+        if (!usable(copy, tenant, person)) {
+          // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
+          // needs, so the kept answer goes too, unless DSoR learned it after it asked this
+          // question (decisions 11 and 14). Found by step 19's review.
+          if (last !== undefined && last.at <= askedAt) kept.delete(key);
+          throw new Refusal("INTERNAL_ERROR", cannotUse);
+        }
+        answer = copy;
+        at = askedAt;
+        // Older news never replaces newer: an answer that arrives late, to an earlier
+        // question, is not kept over one DSoR asked for after it (decision 14). Found by step
+        // 19's review.
+        if (last === undefined || last.at <= askedAt) kept.set(key, { answer: copy, at: askedAt });
       } else {
-        // No answer: the kept one counts only while it is within the company's bound
-        // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5).
-        const last = kept.get(key);
-        if (last === undefined || !(Date.now() - last.at <= setting.ms)) {
-          const where = `came from the directory of ${tenant} within ${setting.max_staleness}`;
-          const why = `no answer about ${person}, who signed slip ${slip.id}, ${where}`;
+        // No answer: the kept one counts only while it is under the company's bound
+        // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
+        // clock that went back would make an old answer look young (decision 15).
+        const age = last === undefined ? Number.NaN : Date.now() - last.at;
+        if (last === undefined || !(age >= 0 && age < setting.ms)) {
+          // The message names no bound: how long a kept answer lasts is the company's to know
+          // (decision 16).
+          const where = `from the directory of ${tenant} that is recent enough`;
+          const why = `DSoR has no answer about ${person}, who signed slip ${slip.id}, ${where}`;
           throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
         }
         // Checked again at every use: a kept answer about someone else, or from another
-        // company, is a fault too (step 19's README, C10).
-        if (!usable(last.answer, tenant, person)) throw new Refusal("INTERNAL_ERROR", cannotUse);
+        // company, is a fault too, and goes (step 19's README, C10).
+        if (!usable(last.answer, tenant, person)) {
+          kept.delete(key);
+          throw new Refusal("INTERNAL_ERROR", cannotUse);
+        }
         answer = last.answer;
         at = last.at;
       }
@@ -205,9 +225,10 @@ export function createRoleSource(
         throw new Refusal("AUTHORIZATION_DENIED", `${name}: ${why}`);
       }
       // Suspended or deprovisioned: her agent gets nothing. The slip itself stays active until
-      // step 19b (DSOR-IDN-07; step 19's README, decision 6).
+      // step 19b (DSOR-IDN-07; step 19's README, decision 6). One message for both: which one
+      // she is, is a fact about a person that the agent may not read (DSOR-ERR-01b; decision 16).
       if (answer["status"] !== "active") {
-        const whom = `whom the directory of ${tenant} lists as ${String(answer["status"])}`;
+        const whom = `whom the directory of ${tenant} does not list as active`;
         throw new Refusal(
           "DELEGATION_REQUIRED",
           `${name}: slip ${slip.id} is signed by ${person}, ${whom}`,
@@ -243,6 +264,17 @@ async function askWithin(
   } finally {
     // The timer goes, so a call that was answered at once leaves nothing behind.
     clearTimeout(timer);
+  }
+}
+
+/** A copy of the answer, read once, or nothing if it cannot be copied (decision 17). */
+function copyOf(answer: unknown): unknown {
+  try {
+    // A copy keeps only the answer's own fields, each read once. A field on its prototype
+    // goes, and a function cannot be copied at all: both make an answer DSoR cannot use.
+    return structuredClone(answer);
+  } catch {
+    return undefined;
   }
 }
 

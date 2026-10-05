@@ -220,7 +220,14 @@ describe("the slips, on the database", () => {
       {
         result: "ok",
         delegation: "del_102",
-        identity: { mode: "unattended", subject: "user_700", actor_chain: ["firm-ap-fte"] },
+        identity: {
+          mode: "unattended",
+          subject: "user_700",
+          actor_chain: ["firm-ap-fte"],
+          // NEW IN STEP 19: where user_700's authority came from, and as of when (step 19's
+          // README, decision 7).
+          subject_authority: { source: "role_source", as_of: expect.any(String) },
+        },
       },
     ]);
   });

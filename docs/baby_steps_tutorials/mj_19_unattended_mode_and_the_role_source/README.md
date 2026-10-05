@@ -146,18 +146,20 @@ Checked on 2026-10-05:
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-IDN-05 | **C1.** Each company has its own role source: a setting and a directory. DSoR does not start without them | org_456 and org_789 each have both. Start-up refuses a company with no setting, a setting for a company where no login works, the kinds `scim` and `dsor_assignments`, a bound of `P2D` (over 24 hours), and a duration it cannot read. A bound of zero is the strictest setting, and is allowed: no kept answer ever counts |
+| DSOR-IDN-05 | **C1.** Each company has its own role source: a setting and a directory. DSoR does not start without the setting, and with no directory every call from an agent in that company is refused | org_456 and org_789 each have both. Start-up refuses a company with no setting, a setting for a company where no login works, the kinds `scim` and `dsor_assignments`, a bound of `P2D` (over 24 hours), and a duration it cannot read. A bound of zero is the strictest setting, and is allowed: no kept answer ever counts. A company with no directory: every call from its agents gets `INTERNAL_ERROR`, a fault in DSoR's set-up, not an outage |
 | DSOR-IDN-05, DSOR-DEL-02 | **C2.** At every call from an agent, DSoR asks the directory of the slip's company about the signer, and her roles there decide line ⑤ | user_123 moves to `ap_clerk` in the directory: the agent's draft is refused at line ⑤ with `AUTHORIZATION_DENIED`, and its read of INV-1008 is answered. She moves back: the draft is made. No restart |
-| DSOR-IDN-06 | **C3.** With no answer from the directory, DSoR uses the kept answer only while it is younger than the company's bound. Otherwise line ③ refuses, for commands and for reads | Directory off, kept answer 40 minutes old: the draft is made. 75 minutes old: `FRESHNESS_UNSATISFIABLE`. No kept answer: `FRESHNESS_UNSATISFIABLE`. Every refusal is recorded and leaves no draft |
+| DSOR-IDN-06 | **C3.** With no answer from the directory, DSoR uses the kept answer only while it is younger than the company's bound. Otherwise line ③ refuses, for commands and for reads | Directory off, kept answer 40 minutes old: the draft is made. 75 minutes old: `FRESHNESS_UNSATISFIABLE`. No kept answer: `FRESHNESS_UNSATISFIABLE`. A millisecond under 60 minutes counts, and exactly 60 minutes does not. An answer "from the future", after the clock went back, never counts. user_123 suspended, moved to `ap_clerk`, or no longer listed, and then the directory goes off: her agent is still refused (§47's test). Every refusal is recorded and leaves no draft |
 | DSOR-IDN-06 | **C4.** DSoR waits at most 2 seconds for an answer | A stuck directory: the call is answered after 2 seconds, from the kept answer or with `FRESHNESS_UNSATISFIABLE` |
 | DSOR-IDN-06, DSOR-BND-02 | **C5.** Each company's bound is its own | A kept answer 2 hours old is refused in org_456 (1 hour) and used in org_789 (4 hours) |
 | DSOR-TEN-02a | **C6.** A kept answer belongs to one company and one person | org_789's directory is off. org_456's kept answer about user_123 never answers for a slip in org_789 |
 | (our decision) | **C7.** A signer whom the directory reports as suspended or deprovisioned gives her agent nothing | `DELEGATION_REQUIRED` at line ③, for every operation, recorded |
-| DSOR-IDN-03a, DSOR-IDN-04b | **C8.** Only the directory speaks for the absent signer | user_700 signs a slip in org_456, and org_456's directory does not list user_700: `AUTHORIZATION_DENIED` at line ③. The login table still says `ap_supervisor` for user_123 while the directory says `ap_clerk`: the directory decides |
+| DSOR-IDN-03a, DSOR-IDN-04b | **C8.** Only the directory speaks for the absent signer's job: whether she works here, and her roles | user_700 signs a slip in org_456, and org_456's directory does not list user_700: `AUTHORIZATION_DENIED` at line ③. The login table still says `ap_supervisor` for user_123 while the directory says `ap_clerk`: the directory decides |
 | DSOR-DEL-10 | **C9.** An agent's record names the source and time of its signer's authority | The draft's record holds `subject_authority: { source: role_source, as_of }`, and `as_of` is the time of the answer used: 02:00 for a fresh one, 01:30 for a kept one. Read back from the database. A person's record is unchanged |
-| (our decision) | **C10.** An answer about another person, from another company, or that DSoR cannot read, is a fault and is never used, fresh or kept | `INTERNAL_ERROR`, recorded, with no draft, and the kept answer is not used either. Every answer names its company and person, and line ③ checks both at every use. A status `on_leave` and an answer with no roles are faults too |
+| (our decision) | **C10.** An answer about another person, from another company, or that DSoR cannot read, is a fault and is never used, fresh or kept | `INTERNAL_ERROR`, recorded, with no draft, and the kept answer is forgotten too, so it is not used at the next outage either. Every answer names its company and person, and line ③ checks both at every use. A status `on_leave`, an answer with no list of roles, an answer whose fields sit on its prototype, and one that cannot be copied are faults too. DSoR reads an answer once |
 | (our decision) | **C11.** A person who calls for herself does not need the directory | org_456's directory is off, and user_123's own draft is made |
 | (our decision) | **C12.** Line ③ asks the directory last, after every check that needs only DSoR's store and the request | With the directory off and no kept answer: arguments that name `del_102` get `AUTHORIZATION_DENIED`, and a torn-up slip gets `DELEGATION_REVOKED`, never `FRESHNESS_UNSATISFIABLE` |
+| §13 (step 18's decision 15) | **C13.** Only a person whom DSoR's own table knows signs a slip. *Added by the review* | A slip signed by `firm-ap-fte`, by the agent that holds it, or by somebody DSoR does not know is refused at line ③ with `AUTHORIZATION_DENIED`, before the directory is asked, even when the directory lists them |
+| DSOR-IDN-06 (our decision) | **C14.** Older news never replaces newer. *Added by the review* | Question A goes first and is answered late with `ap_supervisor`. Question B goes after it and is answered at once with `ap_clerk`. When the directory then goes off, the kept answer is B's |
 
 ### Decisions the specification leaves to us
 
@@ -235,11 +237,14 @@ decision 12.
     folder cannot run its database tests until somebody makes it a branch again, as with step
     14 since step 18's build.
 11. **An answer that DSoR cannot read is a fault.** A status DSoR does not know, such as
-    `on_leave`, or an answer with no roles: line ③ refuses with `INTERNAL_ERROR`. The answer is
-    not kept, and the kept answer is not used either, because the strange answer may be the
-    very news DSoR needs: `on_leave` may mean that she is gone. This is step 18's habit for a
-    broken slip (step 18's README, decision 13). *Downside:* one garbled answer stops the agent
-    with the retry class `never`, even when a good kept answer exists. A person must look.
+    `on_leave`, or an answer with no list of roles: line ③ refuses with `INTERNAL_ERROR`. The
+    answer is not kept, and the kept answer is forgotten too, because the strange answer may
+    be the very news DSoR needs: `on_leave` may mean that she is gone. This is step 18's habit
+    for a broken slip (step 18's README, decision 13). The first build refused the strange
+    answer but kept the old one, and used it again at the next outage. The review found it,
+    and the learner chose to forget it. *Downside:* one garbled answer stops the agent until
+    the directory answers clearly again, even if the old answer was still true. An empty list
+    of roles is not a fault: she holds no role, and line ⑤ refuses.
 12. **Line ③ asks the directory last.** First every check that needs only DSoR's own store and
     the request: the slip is found, valid, alive, and fits, and no other slip is named. Then
     the directory. An outside failure never hides a refusal that DSoR can make by itself, and
@@ -255,6 +260,33 @@ The four small fixes:
 - DSOR-DEL-10 is met only after line ③ (item 6 above).
 - Every company that a login in DSoR's table belongs to needs a setting: org_456 and org_789.
   A setting for a company that nobody belongs to stops start-up, as a likely typo.
+
+The review made decisions 13 to 17, and the learner chose each fix (see "Think it through"):
+
+13. **Only a person whom DSoR knows signs a slip.** Step 18 checked that the signer is a person
+    of the company, in DSoR's own table (step 18's README, decision 15). The first build of
+    this step moved the whole check to the directory, and a real directory lists service
+    accounts too. A real run made a draft under a slip signed by an agent. So line ③ checks
+    DSoR's own table again: the signer must be a person it knows, before the directory is
+    asked. A principal's type is not a role, so the directory still decides her job (decision
+    2), and the order of decision 12 holds. *Downside:* two places hold facts about the signer:
+    what she is, in DSoR's table, and her job, in the directory. A person DSoR has never seen
+    cannot sign, but signing needs a login anyway.
+14. **An answer is as of the time DSoR asked, and older news never replaces newer.** Two calls
+    can ask at nearly the same moment, and the earlier question can be answered later. Its
+    answer is not kept over the newer one. *Downside:* a call that waited for a slow answer
+    is decided by that answer, though a newer one came in meanwhile.
+15. **An answer from the future never counts.** If the computer's clock goes back, a kept
+    answer would look younger than it is. Such an answer counts as too old. *Downside:* after a
+    clock correction, every kept answer is useless until the directory answers again.
+16. **Messages name no bound and no status.** "Suspended" and "deprovisioned" get one message,
+    because which one she is, is a fact about a person that the agent may not read
+    (DSOR-ERR-01b). And the company's bound is not in any message. *Downside:* the record keeps
+    the message the caller heard, so the log no longer says which of the two statuses it was.
+17. **DSoR reads an answer once.** It copies the answer first, and every check and every use
+    reads that copy, as line ① copies the input (step 07's README, decision 9). A field on
+    the answer's prototype is lost in the copy, so such an answer is a fault. *Downside:* the
+    copy costs a little time at every call.
 
 ### The tests, by claim
 
@@ -277,6 +309,14 @@ Unit tests in `test/role-source.test.ts`, with a fake clock where a claim depend
 - **C11:** user_123's own draft with her company's directory off.
 - **C12:** with the directory off and no kept answer, arguments that name `del_102`, and a
   torn-up slip.
+- **C13:** a slip signed by `firm-ap-fte`, by `accounts-payable-fte`, and by `user_999`, each
+  listed by the directory, refused before the directory is asked.
+- **C14:** two questions whose answers arrive in the wrong order.
+- **Added by the review and the sweep:** the minute before the bound and the bound itself, a
+  clock that went back, §47's job change and suspension followed by an outage, a directory
+  that throws at once, answers at 1.999 and 2.001 seconds, no timer left behind, a company with
+  no directory, a duration with minutes and seconds, a settings file that says `null`, an
+  answer read once, and an answer whose fields sit on its prototype.
 
 Database tests in `test/role-source.db.test.ts`: **C9**, the record of a fresh answer and of a
 kept answer, read back from the log as `dsor_runtime` reads it. Step 12's cross-tenant suite
@@ -516,7 +556,69 @@ Walk each call through the checklist, and stop at the first line that says no.
 
 ## Think it through
 
-_To be written after the review._
+Two reviewers who had not seen the conversation attacked the finished build, each in its own
+way, before this section was written. One read the rules, the code, and the tests as an
+attacker would, and ran probes of its own. The other made 87 small breaks in a copy of the
+step, one at a time, and ran the tests after each. The learner chose what to do with every
+finding, on 2026-10-05.
+
+### What the hostile review found
+
+| # | Finding | What was done |
+| --- | --- | --- |
+| H1 | After an answer DSoR cannot use, the old kept answer stayed, and counted again at the next outage. That broke decision 11's own reason. The learner's prediction of this story matched the code, and so did a test, so both were wrong together | Fixed: the kept answer is forgotten too (decision 11). The test now expects `FRESHNESS_UNSATISFIABLE` |
+| H2 | Step 18's rule that only a person signs a slip was gone: a real run drafted under a slip signed by an agent that the directory listed | Fixed: line ③ checks DSoR's own table first (decision 13, C13) |
+| M1 | An older answer that arrived late replaced a newer kept one | Fixed (decision 14, C14) |
+| M2 | A clock that went back made an old kept answer look young | Fixed (decision 15) |
+| M3 | Messages told the agent whether its signer was suspended or deprovisioned, and showed the company's bound | Fixed (decision 16) |
+| M4 | No test of §47's own case: the signer demoted or suspended, and then the directory goes off | Tests added |
+| L1 | C1 said that DSoR does not start without a directory. It does, and refuses every call from an agent | README corrected, test added |
+| L2 | Decision 3 says "under" the bound, and the code counted an answer exactly at the bound | Fixed, and tested a millisecond either side |
+| L3 | DSoR read each answer three times, so an answer could change between the check and the use | Fixed (decision 17) |
+| L4 | No tests for a directory that throws at once, or for the two sides of the 2-second edge | Tests added. A question to a stuck directory is never cancelled: left open, below |
+
+### What the sweep found
+
+87 small breaks. The tests caught 64 and missed 23. 15 of the 23 change nothing that matters:
+another order of messages, an extra message beside a refusal, a case that start-up already
+makes impossible, or a copy that nothing changes. 8 were real gaps, and each now has a test
+that fails on its break and passes on the step: an answer that refuses, followed by an outage
+(two breaks), the bound itself, minutes in a duration, a directory that throws at once, the
+2-second timer left running, a company with no directory, and a settings file that says
+`null`.
+
+### Removed from step 18, and why
+
+- Line ③ no longer reads whether the signer works in the company from DSoR's login table. Her
+  company's directory answers that now (decision 2). DSoR's table still says whether she is a
+  person (decision 13).
+- Step 06's type `RoleSource` is now `RoleTableSource`, because "role source" now means the
+  directory, as in §12.1.
+
+### Left open on purpose
+
+- DSOR-IDN-07, suspending the slips of a person who left: step 19b, next (decision 6).
+- A question to a stuck directory is never cancelled, so each call leaves one question open.
+  The fake costs nothing to leave open. A real client over a network needs a way to cancel.
+- The specification's pattern for a duration accepts `PT` and `P1DT`, which the ISO 8601
+  standard does not. This step accepts what the specification's schema accepts, and reads
+  `PT` as zero.
+- A company with no directory starts, and refuses every call from its agents with
+  `INTERNAL_ERROR`. A check at start-up would make every test registry name its directories.
+- An admin operation that changes a setting, with a record of the change. A real directory
+  over a network. A person's own roles going stale in her login (step 43). `roles.json`
+  changes still need a restart. The source and time in a person's own record (step 45).
+
+### Questions for the specification
+
+Recorded for `research/open-questions.md` at the hand-over:
+
+- Which code does DSOR-IDN-06's denial give? And is a kept answer inside its bound the
+  "cache" that DSOR-FRS-02b forbids, for the code this step borrowed (decision 4)?
+- Does DSOR-IDN-06, which says "command", cover an agent's reads (decision 5)?
+- Should the duration pattern accept `PT` and `P1DT`?
+
+The next step starts from this list: step 19b builds DSOR-IDN-07.
 
 ## The rules this step meets
 

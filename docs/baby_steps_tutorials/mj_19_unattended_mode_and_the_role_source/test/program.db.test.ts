@@ -32,9 +32,11 @@ function start(
 describe("the program", () => {
   // Found live 2026-09-26: on a busy machine, starting node took longer than vitest's
   // 5-second default. The database adds a connection, so each test waits up to 60 seconds.
+  // Found live 2026-10-05: step 19's night adds 8 calls, and each call to Neon took 2 to 3
+  // seconds from here, so one run took 66 seconds alone. Each test now waits up to 180.
   it(
     "starts, reads INV-1008 through invoice.get, and prints every answer as an envelope",
-    { timeout: 60_000 },
+    { timeout: 180_000 },
     () => {
       const run = start();
       expect(run.stderr).toBe("");
@@ -101,6 +103,18 @@ describe("the program", () => {
       expect(output).toMatch(
         /^\s+classification: 'internal',\n\s+redactions: \[ \{ field: 'amount', reason: 'clearance', treatment: 'omitted' \} \],\n\s+semantics: 'compensatable',$/m,
       );
+      // NEW IN STEP 19: the night. The record says where user_123's authority came from, and
+      // each change in her company's directory reaches her agent at its next call (step 19's
+      // README, outcomes 1 to 5).
+      expect(output).toMatch(
+        /subject_authority: \{ as_of: '20\d\d-[^']+', source: 'role_source' \}/,
+      );
+      expect(output).toMatch("ap_clerk, the agent drafts: AUTHORIZATION_DENIED");
+      expect(output).toMatch("ap_clerk, the agent reads: answered, INV-1008");
+      expect(output).toMatch("suspended, the agent reads: DELEGATION_REQUIRED");
+      expect(output).toMatch("directory off, the agent reads: answered, INV-1008");
+      expect(output).toMatch("after a restart, the agent reads: FRESHNESS_UNSATISFIABLE");
+      expect(output).toMatch("after a restart, user_123 reads: answered, INV-1008");
     },
   );
 
@@ -109,7 +123,7 @@ describe("the program", () => {
   // the same holds for .env.
   it(
     "finds its own role table and .env, whatever folder it is started from",
-    { timeout: 60_000 },
+    { timeout: 180_000 },
     () => {
       const dir = mkdtempSync(join(tmpdir(), "dsor-elsewhere-"));
       try {
@@ -131,8 +145,8 @@ describe("the program's log", () => {
   // company. The program reads org_456's and org_789's, and says how many it cannot read
   // (step 11's README, decision 6).
   it(
-    "DSOR-EXE-02: prints the 15 records of its 18 calls that it can read, in order, and says it cannot read 3",
-    { timeout: 60_000 },
+    "DSOR-EXE-02: prints the 23 records of its 26 calls that it can read, in order, and says it cannot read 3",
+    { timeout: 180_000 },
     () => {
       const run = start();
       expect(run.status).toBe(0);
@@ -141,7 +155,7 @@ describe("the program's log", () => {
       // any more. They still go up, in the order of the calls.
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
-      expect(new Set(numbers).size).toBe(15);
+      expect(new Set(numbers).size).toBe(23);
       // Each record ends with its company. The three calls refused before line ② have
       // none, and are not here.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
@@ -165,12 +179,23 @@ describe("the program's log", () => {
         "payment.cancel@1 ALLOW ok org_456",
         "payment.cancel@1 ALLOW CONFLICT org_456",
         "payment.create@1 ALLOW ok org_456",
+        // NEW IN STEP 19: the night. The agent drafts, user_123 moves to ap_clerk, is
+        // suspended, comes back, the directory goes off, and DSoR restarts (step 19's README,
+        // outcomes 1 to 5).
+        "payment.create@1 ALLOW ok org_456",
+        "payment.create@1 DENY AUTHORIZATION_DENIED org_456",
+        "invoice.get@1 ALLOW ok org_456",
+        "invoice.get@1 DENY DELEGATION_REQUIRED org_456",
+        "invoice.get@1 ALLOW ok org_456",
+        "invoice.get@1 ALLOW ok org_456",
+        "invoice.get@1 DENY FRESHNESS_UNSATISFIABLE org_456",
+        "invoice.get@1 ALLOW ok org_456",
       ]);
       // A fact and one inference, and the line says which: every call answered, and an
       // answer leaves only after its record is committed. Found by the review: the line
       // used to state the 3 as if it had read them.
       expect(run.stdout).toMatch(
-        "18 calls answered, so 18 records were written. dsor_runtime reads 15 of them, in org_456 and org_789, and cannot read the other 3",
+        "26 calls answered, so 26 records were written. dsor_runtime reads 23 of them, in org_456 and org_789, and cannot read the other 3",
       );
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },

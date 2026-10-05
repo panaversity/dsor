@@ -2,7 +2,7 @@
 // DSoR finds in its own store (DSOR-DEL-01a, DSOR-DEL-07, and DSOR-DEL-08 in
 // specs/dsor/02-security.md, section 13).
 import { Refusal } from "./envelope.ts";
-import { actsAsAgent, type Principal } from "./principals.ts";
+import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
 import { slipProblems, type Slip, type SlipStore } from "./slips.ts";
 
@@ -77,9 +77,17 @@ export async function checkDelegation(
     const why = `slip ${slip.id} carries ${constraints.join(", ")}, which DSoR cannot check yet`;
     throw new Refusal("DELEGATION_REQUIRED", `${name}: ${why}`);
   }
-  // NEW IN STEP 19: whether the signer is a person who works in this company, and what she
-  // holds there, is asked last on line ③, of her company's directory: authority.ts (step 19's
-  // README, decisions 2 and 12). Step 18 asked DSoR's own login table here.
+  // Only a person signs a slip (§13: "a permission slip from a human to an agent"; step 18's
+  // README, decision 15). NEW IN STEP 19: DSoR's own table must know the signer, as a person,
+  // before her company's directory is asked about her job, because a directory lists service
+  // accounts too. Found by step 19's review (step 19's README, decision 13).
+  if (principalNamed(slip.delegator)?.type !== "human") {
+    const why = `slip ${slip.id} is signed by ${slip.delegator}, who is not a person in ${tenant}`;
+    throw new Refusal("AUTHORIZATION_DENIED", `${name}: ${why}`);
+  }
+  // NEW IN STEP 19: whether she works in this company, and what she holds there, is asked last
+  // on line ③, of her company's directory: authority.ts (step 19's README, decisions 2 and
+  // 12). Step 18 asked DSoR's own login table here.
   return slip;
 }
 

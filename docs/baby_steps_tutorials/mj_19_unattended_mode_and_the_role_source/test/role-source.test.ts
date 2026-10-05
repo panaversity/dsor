@@ -53,21 +53,20 @@ const OPERATIONS: [string, unknown][] = [
 ];
 
 // The refusals of line ③'s last question, typed out rather than imported.
-/** The message when no answer about the signer is fresh enough. */
+/** The message when no answer about the signer is fresh enough. It names no bound. */
 function noFreshAnswer(
   name: string,
   person = "user_123",
   slip = "del_100",
   tenant = "org_456",
-  bound = "PT1H",
 ): string {
-  const where = `came from the directory of ${tenant} within ${bound}`;
-  return `"${name}": no answer about ${person}, who signed slip ${slip}, ${where}`;
+  const where = `from the directory of ${tenant} that is recent enough`;
+  return `"${name}": DSoR has no answer about ${person}, who signed slip ${slip}, ${where}`;
 }
 
-/** The message when the directory lists the signer as suspended or deprovisioned. */
-function listedAs(name: string, status: string): string {
-  const whom = `whom the directory of org_456 lists as ${status}`;
+/** The message when the directory does not list the signer as active, whatever it says. */
+function notActive(name: string): string {
+  const whom = "whom the directory of org_456 does not list as active";
   return `"${name}": slip del_100 is signed by user_123, ${whom}`;
 }
 
@@ -182,6 +181,11 @@ describe("C1: each company has its own role source, or DSoR does not start", () 
       "org_456/max_staleness must match pattern",
     ],
     [
+      "a day and a minute",
+      { org_456: { ...GOOD_456, max_staleness: "P1DT1M" }, org_789: GOOD_789 },
+      'org_456\'s max_staleness "P1DT1M" is over 24 hours, the most §44 allows at L2 (DSOR-BND-02)',
+    ],
+    [
       "a setting that is not an object",
       { org_456: "PT1H", org_789: GOOD_789 },
       "org_456 must be object",
@@ -192,6 +196,11 @@ describe("C1: each company has its own role source, or DSoR does not start", () 
 
   it.each([
     ["text that is not JSON", "{ org_456: ", "role-sources.json: not valid JSON"],
+    [
+      "null",
+      "null",
+      "role-sources.json: must be an object that gives each company its role source",
+    ],
     [
       "a list",
       "[]",
@@ -204,6 +213,16 @@ describe("C1: each company has its own role source, or DSoR does not start", () 
     ],
   ])("DSOR-IDN-05: start-up refuses a settings file with %s", (_case, text, problem) => {
     expect(startWith(settingsFile(text))).toContain(problem);
+  });
+
+  it("DSOR-IDN-05: a bound in days, hours, minutes, and seconds is read whole", () => {
+    const text = JSON.stringify({
+      org_456: { ...GOOD_456, max_staleness: "P0DT1H30M15S" },
+      org_789: GOOD_789,
+    });
+    const { settings, problems } = checkRoleSettings(settingsFile(text), logins.values());
+    expect(problems).toStrictEqual([]);
+    expect(settings.get("org_456")?.ms).toBe(5415000);
   });
 
   it("DSOR-BND-02: 24 hours exactly, and zero, are allowed: §44 lets a company set a tighter value", () => {
@@ -361,6 +380,167 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
     expect(await pending).toMatchObject({ data: { status: "draft" } });
   });
 
+  it("DSOR-IDN-06: a kept answer a millisecond under 60 minutes old counts, and one exactly 60 minutes old does not", async () => {
+    const registry = await offSince0200();
+    vi.setSystemTime(new Date(`${NIGHT}T02:29:59.999Z`));
+    expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
+      data: MASKED_1008_OF_456,
+    });
+    at("02:30");
+    expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+    });
+  });
+
+  it("step 19's decision 15: a kept answer from the future never counts: the clock went back", async () => {
+    const registry = await offSince0200();
+    at("00:30");
+    expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+    });
+  });
+
+  it("DSOR-IDN-06: a directory that throws at once gives no answer, and no error of its own", async () => {
+    const directories = new Map<string, Directory>([
+      ...storyDirectories(),
+      [
+        "org_456",
+        {
+          ask: () => {
+            throw new Error("refused at once");
+          },
+        },
+      ],
+    ]);
+    const answer = await call(
+      slipRegistry(undefined, undefined, [], directories),
+      createLog(),
+      AGENT,
+      "invoice.get",
+      READ,
+    );
+    expect(answer).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE", retry: "after_delay" });
+  });
+
+  it.each([
+    [1999, "the new answer, ap_clerk", { code: "AUTHORIZATION_DENIED" }],
+    [2001, "the kept answer, ap_supervisor", { data: { status: "draft" } }],
+  ])(
+    "step 19's decision 9: an answer that comes after %i ms: DSoR uses %s",
+    async (ms, _used, expected) => {
+      let late = false;
+      const HER = { tenant: "org_456", person: "user_123", listed: true, status: "active" };
+      const directory: Directory = {
+        ask: async () =>
+          late
+            ? new Promise((resolve) =>
+                setTimeout(() => resolve({ ...HER, roles: ["ap_clerk"] }), ms),
+              )
+            : { ...HER, roles: ["ap_supervisor"] },
+      };
+      const registry = slipRegistry(
+        undefined,
+        undefined,
+        [],
+        new Map<string, Directory>([...storyDirectories(), ["org_456", directory]]),
+      );
+      await call(registry, createLog(), AGENT, "invoice.get", READ);
+      late = true;
+      at("01:40");
+      const pending = call(registry, createLog(), AGENT, "payment.create", CREATE);
+      await vi.advanceTimersByTimeAsync(2001);
+      expect(await pending).toMatchObject(expected);
+    },
+  );
+
+  it("step 19's decision 9: a call the directory answered at once leaves no timer behind", async () => {
+    await call(slipRegistry(), createLog(), AGENT, "invoice.get", READ);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("DSOR-IDN-05: a company with no directory is a fault in DSoR's set-up, not an outage", async () => {
+    const answer = await call(
+      slipRegistry(undefined, undefined, [], new Map()),
+      createLog(),
+      AGENT,
+      "invoice.get",
+      READ,
+    );
+    expect(answer).toMatchObject({
+      code: "INTERNAL_ERROR",
+      message: "DSoR has no role source for org_456",
+    });
+  });
+
+  it.each([
+    ["is suspended", { status: "suspended", roles: ["ap_supervisor"] }, "DELEGATION_REQUIRED"],
+    ["moves to ap_clerk", { status: "active", roles: ["ap_clerk"] }, "AUTHORIZATION_DENIED"],
+    ["is no longer listed", undefined, "AUTHORIZATION_DENIED"],
+  ])(
+    "DSOR-IDN-06: user_123 %s at 01:40, the directory goes off at 01:45, and at 01:50 her agent is still refused",
+    async (_change, entry, code) => {
+      const directories = storyDirectories();
+      const org456 = directories.get("org_456")!;
+      const rows: Payment[] = [];
+      const registry = slipRegistry(undefined, undefined, rows, directories);
+      await call(registry, createLog(), AGENT, "invoice.get", READ);
+      at("01:40");
+      org456.set("user_123", entry);
+      expect(await call(registry, createLog(), AGENT, "payment.create", CREATE)).toMatchObject({
+        code,
+      });
+      at("01:45");
+      org456.turn("off");
+      at("01:50");
+      expect(await call(registry, createLog(), AGENT, "payment.create", CREATE)).toMatchObject({
+        code,
+      });
+      expect(rows).toStrictEqual([]);
+    },
+  );
+
+  it("step 19's decision 14: an older answer that arrives late never replaces a newer kept one", async () => {
+    // Question A goes first, and its answer, ap_supervisor, takes 300 ms. Question B goes 10 ms
+    // later, and its answer, ap_clerk, the newer news, comes at once.
+    const queue = [
+      { roles: ["ap_supervisor"], after: 300 },
+      { roles: ["ap_clerk"], after: 0 },
+    ];
+    let off = false;
+    const directory: Directory = {
+      ask: async () => {
+        if (off) throw new Error("off");
+        const { roles, after } = queue.shift()!;
+        const answer = {
+          tenant: "org_456",
+          person: "user_123",
+          listed: true,
+          status: "active",
+          roles,
+        };
+        if (after === 0) return answer;
+        return new Promise((resolve) => setTimeout(() => resolve(answer), after));
+      },
+    };
+    const registry = slipRegistry(
+      undefined,
+      undefined,
+      [],
+      new Map<string, Directory>([...storyDirectories(), ["org_456", directory]]),
+    );
+    const first = call(registry, createLog(), AGENT, "invoice.get", READ);
+    await vi.advanceTimersByTimeAsync(10);
+    await call(registry, createLog(), AGENT, "invoice.get", READ);
+    await vi.advanceTimersByTimeAsync(300);
+    await first;
+    // 01:35: the directory is off. The kept answer must be B's, ap_clerk.
+    off = true;
+    at("01:35");
+    expect(await call(registry, createLog(), AGENT, "payment.create", CREATE)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+    });
+  });
+
   it("DSOR-IDN-06: a stuck directory and no kept answer: FRESHNESS_UNSATISFIABLE after 2 seconds, not never", async () => {
     const directories = storyDirectories();
     directories.get("org_456")!.turn("stuck");
@@ -424,7 +604,7 @@ describe("C5 and C6: each company's bound, and each company's answers", () => {
     const answer = await call(registry, createLog(), FIRM_IN_789, "invoice.get", READ_789);
     expect(answer).toMatchObject({
       code: "FRESHNESS_UNSATISFIABLE",
-      message: noFreshAnswer("invoice.get", "user_123", "del_103", "org_789", "PT4H"),
+      message: noFreshAnswer("invoice.get", "user_123", "del_103", "org_789"),
     });
   });
 });
@@ -453,7 +633,7 @@ describe("C7: a signer the directory reports as suspended or deprovisioned gives
       );
       expect(answer).toMatchObject({
         code: "DELEGATION_REQUIRED",
-        message: listedAs(name, status),
+        message: notActive(name),
         retry: "never",
       });
       expect(lines).toStrictEqual([1, 2, 3, 11]);
@@ -467,12 +647,8 @@ describe("C7: a signer the directory reports as suspended or deprovisioned gives
   );
 });
 
-describe("C8: only the directory speaks for the absent signer", () => {
-  it.each([
-    ["user_700, who works only in org_789", "user_700"],
-    ["an agent", "firm-ap-fte"],
-    ["somebody nobody knows", "user_999"],
-  ])(
+describe("C8: only the directory speaks for the absent signer's job", () => {
+  it.each([["user_700, who works only in org_789", "user_700"]])(
     "DSOR-IDN-03a: a slip in org_456 signed by %s, whom org_456's directory does not list, is refused at line ③",
     async (_who, signer) => {
       const lines: number[] = [];
@@ -527,6 +703,41 @@ describe("C8: only the directory speaks for the absent signer", () => {
     expect(answer).toMatchObject({ data: { status: "draft" } });
     expect(rows).toHaveLength(1);
   });
+});
+
+describe("C13: only a person whom DSoR knows signs a slip", () => {
+  it.each([
+    ["the agent firm-ap-fte, though the directory lists it", "firm-ap-fte"],
+    ["the agent that holds the slip", "accounts-payable-fte"],
+    ["somebody DSoR does not know, though the directory lists them", "user_999"],
+  ])(
+    "step 19's decision 13: a slip signed by %s is refused at line ③, before the directory is asked",
+    async (_who, signer) => {
+      const directories = storyDirectories();
+      const org456 = directories.get("org_456")!;
+      // A real directory lists service accounts too.
+      org456.set(signer, { status: "active", roles: ["ap_supervisor"] });
+      const rows: Payment[] = [];
+      const answer = await call(
+        slipRegistry(
+          memorySlips([{ ...DEL_100, delegator: signer }]),
+          undefined,
+          rows,
+          directories,
+        ),
+        createLog(),
+        AGENT,
+        "payment.create",
+        CREATE,
+      );
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: notAPerson("payment.create", signer),
+      });
+      expect(org456.asked()).toBe(0);
+      expect(rows).toStrictEqual([]);
+    },
+  );
 });
 
 describe("C9: an agent's record names the source and time of its signer's authority", () => {
@@ -647,7 +858,7 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
     },
   );
 
-  it("step 19's decision 11: after an answer DSoR cannot use, the older kept answer is not replaced", async () => {
+  it("step 19's decision 11: after an answer DSoR cannot use, the kept answer is forgotten too", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     try {
       let next: () => Promise<unknown> = async () => ({ ...ABOUT_HER, roles: ["ap_supervisor"] });
@@ -664,20 +875,75 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
       expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
         code: "INTERNAL_ERROR",
       });
-      // 01:50: no answer. The answer of 01:30 counts, so the strange one was not kept.
+      // 01:50: no answer. The strange answer may have been news, so the answer of 01:30 does
+      // not count any more: nothing kept is left.
       at("01:50");
       next = async () => {
         throw new Error("off");
       };
-      const log = createLog();
-      expect(await call(registry, log, AGENT, "invoice.get", READ)).toMatchObject({
+      expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
+        code: "FRESHNESS_UNSATISFIABLE",
+      });
+      // 01:55: a clear answer again, and the agent works again.
+      at("01:55");
+      next = async () => ({ ...ABOUT_HER, roles: ["ap_supervisor"] });
+      expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
         data: MASKED_1008_OF_456,
       });
-      const [record] = await log.records();
-      expect(record?.identity?.subject_authority?.as_of).toBe(`${NIGHT}T01:30:00.000Z`);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("step 19's decision 17: DSoR reads an answer once, so roles that change between reads are read as they first were", async () => {
+    let reads = 0;
+    const tricky = {
+      ...ABOUT_HER,
+      get roles(): string[] {
+        reads += 1;
+        return reads === 1 ? ["ap_clerk"] : ["ap_supervisor"];
+      },
+    };
+    const rows: Payment[] = [];
+    const answer = await call(
+      slipRegistry(
+        undefined,
+        undefined,
+        rows,
+        new Map<string, Directory>([
+          ...storyDirectories(),
+          ["org_456", { ask: async () => tricky }],
+        ]),
+      ),
+      createLog(),
+      AGENT,
+      "payment.create",
+      CREATE,
+    );
+    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(rows).toStrictEqual([]);
+  });
+
+  it("step 19's decision 17: an answer whose fields sit on its prototype is one DSoR cannot use", async () => {
+    const hidden = Object.create({ ...ABOUT_HER, roles: ["ap_supervisor"] }) as unknown;
+    const rows: Payment[] = [];
+    const answer = await call(
+      slipRegistry(
+        undefined,
+        undefined,
+        rows,
+        new Map<string, Directory>([
+          ...storyDirectories(),
+          ["org_456", { ask: async () => hidden }],
+        ]),
+      ),
+      createLog(),
+      AGENT,
+      "payment.create",
+      CREATE,
+    );
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: CANNOT_USE });
+    expect(rows).toStrictEqual([]);
   });
 
   it("DSOR-TEN-02a: a kept answer from another company is a fault, though it is kept under this company", async () => {
