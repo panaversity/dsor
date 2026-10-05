@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
-import { AGENT, DEL_100, FIRM_IN_789, UNDER_DEL_100, withPlanted } from "./helpers.ts";
+import { AGENT, DEL_100, FIRM_IN_789, SUPERVISOR, UNDER_DEL_100, withPlanted } from "./helpers.ts";
 import { NO_PRIVILEGE, dbRegistry, newPool, ownerSlips, requestId, tryThenRollBack } from "./db.ts";
 
 // The program's own pool, and the test's window into the database, both dsor_runtime.
@@ -138,6 +138,71 @@ describe("the slips, on the database", () => {
       });
     },
   );
+
+  // The unit tests prove these rules with slips in memory. A slip from the database reaches
+  // line ③ through slipOf, so each rule is proved on that path too. Found by step 18's sweep:
+  // slipOf could drop a constraint, a parent, or a mode, with every test green.
+  it.each([
+    [
+      "DSOR-DEL-02: a slip the database holds with a per_transaction_limit gets DELEGATION_REQUIRED",
+      { constraints: { per_transaction_limit: { value: "100.00", currency: "USD" } } },
+      "carries per_transaction_limit",
+    ],
+    [
+      "DSOR-DEL-02: a sub-slip the database holds gets DELEGATION_REQUIRED",
+      { parent: "del_100" },
+      "is a sub-slip of del_100",
+    ],
+    [
+      "DSOR-DEL-07: a slip the database holds for on_behalf_of only gets DELEGATION_REQUIRED",
+      { modes: ["on_behalf_of"] },
+      "does not allow unattended calls",
+    ],
+  ])("%s", async (_, changed, why) => {
+    const answer = await withOwnSlip(changed, (who) =>
+      call(registry, log, who, "invoice.get", INV_1008),
+    );
+    expect(answer).toMatchObject({ code: "DELEGATION_REQUIRED" });
+    expect((answer as { message: string }).message).toContain(why);
+  });
+
+  it("step 18's decision 13: a slip the database holds whose subdelegation breaks the schema gets INTERNAL_ERROR", async () => {
+    const answer = await withOwnSlip({ subdelegation: { allowed: true } }, (who) =>
+      call(registry, log, who, "invoice.get", INV_1008),
+    );
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
+  });
+
+  // DSoR's own log must read back what it wrote. Found by step 18's sweep: the raw SQL above
+  // proved the row, and DSoR's own reader could drop both fields with every test green.
+  it("DSOR-DEL-08: DSoR's own log reads back the agent's record with its slip and its person", async () => {
+    const request_id = requestId("s18-read-back");
+    await call(registry, log, { ...AGENT, request_id }, "invoice.get", INV_1008);
+    const mine = (await log.records("org_456")).filter(
+      (record) => record.correlation.request_id === request_id,
+    );
+    expect(mine).toMatchObject([{ result: "ok", ...UNDER_DEL_100 }]);
+  });
+
+  it("step 18's decision 8: DSoR's own log reads back user_123's record with neither field", async () => {
+    const request_id = requestId("s18-person");
+    await call(registry, log, { ...SUPERVISOR, request_id }, "invoice.get", INV_1008);
+    const [record] = (await log.records("org_456")).filter(
+      (r) => r.correlation.request_id === request_id,
+    );
+    expect(record).toBeDefined();
+    expect(record).not.toHaveProperty("delegation");
+    expect(record).not.toHaveProperty("identity");
+  });
+
+  it("step 18's decision 3: the database refuses a slip whose company is not a company id, such as ORG_456", () => {
+    const bad = { ...DEL_100, id: "del_bad", tenant: "ORG_456", delegate: "bad-fte" };
+    try {
+      expect(() => ownerSlips("add", JSON.stringify(bad))).toThrow(/violates check constraint/);
+    } finally {
+      ownerSlips("remove", "ORG_456", "del_bad");
+    }
+  });
 
   // The record's person comes from the slip found, on the database too (DSOR-DEL-08).
   it("DSOR-DEL-08: firm-ap-fte's read in org_789 is recorded under del_102, with user_700 and firm-ap-fte", async () => {

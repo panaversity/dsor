@@ -324,6 +324,46 @@ describe("step 17's C7: the kind business-written", () => {
   });
 });
 
+// NEW IN STEP 18: the kind control-read, for DSoR's own records that it reads and never
+// writes, such as the permission slips (step 18's README, decision 3). Found by step 18's
+// sweep: the kind, and the slips' line, could change with every test green.
+describe("step 18's decision 3: the kind control-read", () => {
+  it("step 18's decision 3: dsor.delegations is read inside its company, and never written", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.delegations")).toStrictEqual({
+      kind: "control-read",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: {} },
+    });
+  });
+
+  it.each(["INSERT", "UPDATE", "DELETE", "TRUNCATE"])(
+    "step 18's decision 3: %s on the whole of a control-read table is refused",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["dsor.delegations"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.delegations lists ${privilege}, which a control-read table does not allow`,
+      ]);
+    },
+  );
+
+  it("step 18's decision 3: a control-read table is not written column by column either", () => {
+    const source = mapWith(
+      (m) => (m.tables["dsor.delegations"].runtime.columns = { INSERT: ["status"] }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.delegations lists INSERT on columns, which a control-read table does not allow",
+    ]);
+  });
+
+  it("DSOR-RP-01b: a control-read table needs a company key", () => {
+    const source = mapWith((m) => (m.tables["dsor.delegations"].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.delegations is control-read, which needs a company key, and names none",
+    ]);
+  });
+});
+
 // Found by the review's sweep. DELETE is never a column privilege, so a kind
 // that let it in under columns would pass every other test.
 describe("the review: business-written lists only INSERT and UPDATE under columns", () => {

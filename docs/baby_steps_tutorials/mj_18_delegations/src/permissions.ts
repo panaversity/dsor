@@ -131,8 +131,9 @@ export function effectivePermissions(
   if (slip === undefined) return new Set();
   const signer = principalNamed(slip.delegator);
   if (signer === undefined) return new Set();
-  // Read now, at the moment of the call: if user_123 loses a permission, the agent loses it
-  // at its next call, though the slip still lists it.
+  // Read at every call, from the role table DSoR loaded at start-up: if user_123 loses a
+  // permission, the agent loses it at its first call after a restart, though the slip still
+  // lists it (step 18's README, decision 4).
   const held = permissionsOf(signer, roles, tenant);
   return new Set(slip.permissions.filter((permission) => held.has(permission)));
 }

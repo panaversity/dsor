@@ -2,10 +2,13 @@
 // person signed and DSoR holds, and never with more power than that person holds now
 // (DSOR-DEL-01a, DSOR-DEL-01b, DSOR-DEL-02, DSOR-DEL-07, and DSOR-DEL-08 in
 // specs/dsor/02-security.md, section 13; step 18's README, C1 to C10).
+import type pg from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { createLog } from "../src/log.ts";
 import type { Payment } from "../src/payment.ts";
+import { effectivePermissions } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
+import { createDbSlips } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
@@ -260,8 +263,10 @@ describe("C2: nothing the agent sends, and no role in its login, widens its slip
 });
 
 describe("C3: the agent may use only what its slip lists and its signer holds now", () => {
-  // The map's "Done when": the same request, before and after user_123 loses the right.
-  it("DSOR-DEL-02: user_123 loses payment:create, and the agent's next draft is refused, though del_100 still lists it", async () => {
+  // The map's "Done when": the same request, before and after user_123 loses the right. DSoR
+  // built again, from the changed role table, stands in for the restart (step 18's README,
+  // decision 4).
+  it("DSOR-DEL-02: user_123 loses payment:create, and after a restart the agent's draft is refused, though del_100 still lists it", async () => {
     const before: Payment[] = [];
     expect(
       await call(
@@ -593,6 +598,15 @@ describe("C10: a slip that breaks the specification's schema is a fault in DSoR'
     // through with a record that named no slip (step 18's README, decision 13).
     ["an empty id", { id: "" }],
     ["an empty signer", { delegator: "" }],
+    // Found by step 18's sweep: a checker that deleted unknown fields, or turned text into
+    // true and false, passed every test. A constraint the schema does not know would vanish,
+    // and the agent would draft with no limit.
+    [
+      "a constraint the schema does not know",
+      { constraints: { max_amount: { value: "100.00", currency: "USD" } } },
+    ],
+    ["a field the schema does not know", { scopes: ["payment:cancel"] }],
+    ["a subdelegation whose allowed is text", { subdelegation: { allowed: "false" } }],
   ])(
     "DSOR-DEL-01a: a slip with %s gets INTERNAL_ERROR, recorded, with no draft",
     async (_, changed) => {
@@ -649,6 +663,89 @@ describe("the memory store: one slip per agent and company, and a clock of its o
     };
     const answer = await call(slipRegistry(unsure), createLog(), AGENT, "invoice.get", READ);
     expect(answer).toMatchObject({ code: "DELEGATION_EXPIRED" });
+  });
+});
+
+describe("found by step 18's sweep, which broke the code one change at a time", () => {
+  // Both are true of this slip. The person's act, tearing it up, decides the code.
+  it("DSOR-DEL-01a: a slip both torn up and past its date is refused as torn up", async () => {
+    const answer = await call(
+      slipRegistry(with100({ status: "revoked", expires_at: "2001-01-01T00:00:00Z" })),
+      createLog(),
+      AGENT,
+      "invoice.get",
+      READ,
+    );
+    expect(answer).toMatchObject({ code: "DELEGATION_REVOKED" });
+  });
+
+  // Line ③ refuses first, so only a direct call reaches this. With no slip, nothing.
+  it("DSOR-DEL-02: an agent with no slip may do nothing, whatever roles it holds", () => {
+    const roleful: Principal = {
+      id: "roleful-fte",
+      type: "agent",
+      memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor"] }],
+    };
+    const roles = new Map([["ap_supervisor", new Set(["invoice:read", "payment:create"])]]);
+    expect([...effectivePermissions(roleful, roles, "org_456")]).toStrictEqual([]);
+  });
+
+  it("step 18's decision 11: an agent with a role in its second company stops start-up, named", async () => {
+    const two: Principal = {
+      id: "two-fte",
+      type: "agent",
+      clearance: "internal",
+      memberships: [
+        { tenant_id: "org_456", roles: [] },
+        { tenant_id: "org_789", roles: ["ap_supervisor"] },
+      ],
+    };
+    const message = await withPlanted("tok_two", two, () =>
+      refusal(() => buildRegistry(shipped, handlers, shippedRoles)),
+    );
+    expect(message).toContain('two-fte is an agent, and holds the role "ap_supervisor" in org_789');
+  });
+
+  // The database counts a slip as past from the very instant of its expires_at (<=), and the
+  // memory store must agree.
+  it("step 18's decision 12: at the very instant of expires_at, the memory store counts the slip as past", async () => {
+    const atExpiry = memorySlips(STORY_SLIPS, () => Date.parse(DEL_100.expires_at));
+    const answer = await call(slipRegistry(atExpiry), createLog(), AGENT, "invoice.get", READ);
+    expect(answer).toMatchObject({ code: "DELEGATION_EXPIRED" });
+  });
+
+  // The unique key keeps one slip per agent and company. The store checks again, so a key
+  // that someone narrows later still never lets the order of rows choose (decision 7). A pool
+  // that answers the slip query with two rows, and every other statement with none.
+  it("step 18's decision 7: the database's store refuses to choose between two slips", async () => {
+    const row = {
+      tenant_id: "org_456",
+      id: "del_100",
+      delegator: "user_123",
+      delegate: "accounts-payable-fte",
+      modes: ["unattended"],
+      permissions: ["invoice:read", "payment:create"],
+      constraints: {},
+      subdelegation: { allowed: false },
+      parent: null,
+      status: "active",
+      expires_at: new Date("2099-12-31T23:59:59Z"),
+      extensions: null,
+      past: false,
+    };
+    const rows = [{ ...row, id: "del_197", status: "revoked" }, row];
+    // inCompany checks that COMMIT committed, so the stub says it did.
+    const client = {
+      query: async (sql: string) =>
+        sql === "COMMIT"
+          ? { command: "COMMIT", rows: [] }
+          : { rows: sql.includes("dsor.delegations") ? rows : [] },
+      release: () => {},
+    };
+    const pool = { connect: async () => client } as unknown as pg.Pool;
+    await expect(createDbSlips(pool).find("org_456", "accounts-payable-fte")).rejects.toThrow(
+      "dsor.delegations holds 2 slips for one agent in one company",
+    );
   });
 });
 
