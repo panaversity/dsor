@@ -49,6 +49,9 @@ describe("the pipeline", () => {
   it("DSOR-EXE-01a: the stages run in this order", () => {
     expect(PIPELINE.map((s) => s.name)).toEqual([
       "authenticate",
+      // NEW IN STEP 10: §21 step 2. Before the operation is even looked up, because every later
+      // question is a question inside one company.
+      "resolve the tenant",
       "resolve the operation",
       "authorize",
       "validate the input",
@@ -60,7 +63,7 @@ describe("the pipeline", () => {
   // roadmap: 1 to 5 is missing the tenant, the delegation and the operational status; after 6 come
   // the idempotency claim, the proposal, the preconditions and the controls.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, null, 5, 6, 11]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 5, 6, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -111,6 +114,7 @@ describe("the pipeline", () => {
   it("DSOR-EXE-01b: a list missing any stage the program needs stops it, by name", () => {
     const whole = [
       fake(1, "authenticate"),
+      fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
@@ -118,7 +122,7 @@ describe("the pipeline", () => {
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(5);
+    expect(assertPipeline(whole)).toBe(6);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -470,7 +474,8 @@ describe("the pipeline", () => {
     // for exactly one reason.
     const tooEarly = [
       fake(1, "authenticate"),
-      fake(2, "claim the idempotency key", "command"),
+      fake(2, "resolve the tenant"),
+      fake(3, "claim the idempotency key", "command"),
       fake(null, "resolve the operation"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
@@ -482,6 +487,7 @@ describe("the pipeline", () => {
     // The same stage one line later is fine.
     const inOrder = [
       fake(1, "authenticate"),
+      fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
@@ -489,7 +495,7 @@ describe("the pipeline", () => {
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(6);
+    expect(assertPipeline(inOrder)).toBe(7);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -740,7 +746,8 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    expect(all).toHaveLength(120);
+    // NEW IN STEP 10: six stages now, so 720 orderings. Still exactly one is accepted.
+    expect(all).toHaveLength(720);
 
     const accepted = all.filter((list) => {
       try {

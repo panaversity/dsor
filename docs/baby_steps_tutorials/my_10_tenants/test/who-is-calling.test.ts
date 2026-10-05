@@ -18,7 +18,7 @@ const SUPERVISOR = { loggedInAs: "user_123" } as const;
 // the agent, which holds it. Nothing about what they test has changed. A new gate in front of
 // the program changing which caller a test needs is exactly what it looks like when permissions
 // start working.
-const ISSUER = { loggedInAs: "accounts-payable-fte" } as const;
+const ISSUER = { loggedInAs: "accounts-payable-fte", tenant: "org_456" } as const;
 
 // STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.
@@ -275,9 +275,13 @@ describe("who you are comes from the login, never from the arguments", () => {
   });
 
   it("DSOR-IDN-01: the agent asks as itself, and is a principal like any other", async () => {
-    const answer = await callOperation({ loggedInAs: "accounts-payable-fte" }, "invoice.get", {
-      invoice: INV_1008,
-    });
+    const answer = await callOperation(
+      { loggedInAs: "accounts-payable-fte", tenant: "org_456" },
+      "invoice.get",
+      {
+        invoice: INV_1008,
+      },
+    );
 
     expect(answer.kind).toBe("data");
     expect(answer.askedBy).toBe("accounts-payable-fte");

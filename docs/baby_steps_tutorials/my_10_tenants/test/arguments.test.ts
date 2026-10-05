@@ -16,7 +16,7 @@ import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { aDatabase } from "./support/database.ts";
 
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
-const ISSUER: Login = { loggedInAs: "accounts-payable-fte" };
+const ISSUER: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 
 // STEP 09: the log lives in a database, so these tests need one. A single PGlite for the
 // whole file — creating one costs about 350ms, and one per test would turn this suite into minutes.

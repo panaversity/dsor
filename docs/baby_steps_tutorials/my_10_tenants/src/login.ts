@@ -13,6 +13,7 @@
 
 import { refusal, type ErrorEnvelope } from "./envelopes.ts";
 import { findPerson, type Principal } from "./people.ts";
+import type { TenantClaim } from "./tenant.ts";
 
 /**
  * The object's **own** `key`, when it is a string. `undefined` for everything else.
@@ -74,6 +75,43 @@ function ownString(from: unknown, key: string): string | undefined {
  */
 export interface Login {
   readonly loggedInAs: string;
+  /**
+   * NEW IN STEP 10: which company this request is for, when the caller belongs to more than one.
+   *
+   * Part of the login, not of the arguments, for the same reason `loggedInAs` is: where you belong
+   * is who you are. A caller with one company leaves it out. A caller with two must say, and must
+   * say one of theirs — `tenantFor` in tenant.ts decides.
+   */
+  readonly tenant?: string;
+}
+
+/**
+ * NEW IN STEP 10: what the login says about which company it means.
+ *
+ * Read through `ownString`, like `loggedInAs`, so a getter that throws, an inherited name, and a
+ * value that is not text are all handled — and a value that is present and not text is reported as
+ * `malformed`, never as absent. An empty string is malformed too: it is not a company id.
+ */
+export function tenantClaimed(login: Login | undefined): TenantClaim {
+  if (login === null || typeof login !== "object") {
+    return { kind: "unnamed" };
+  }
+
+  let present: boolean;
+
+  try {
+    present = Object.hasOwn(login, "tenant");
+  } catch {
+    return { kind: "malformed" };
+  }
+
+  if (!present) {
+    return { kind: "unnamed" };
+  }
+
+  const tenant = ownString(login, "tenant");
+
+  return tenant === undefined || tenant === "" ? { kind: "malformed" } : { kind: "named", tenant };
 }
 
 /**

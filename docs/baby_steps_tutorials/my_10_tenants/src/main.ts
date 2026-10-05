@@ -11,7 +11,8 @@ const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
 const SUPERVISOR: Login = { loggedInAs: "user_123" };
-const AGENT: Login = { loggedInAs: "accounts-payable-fte" };
+// NEW IN STEP 10: the agent works for two companies, so it says which one it is working for.
+const AGENT: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
 function show(answer: Awaited<ReturnType<typeof callOperation>>): string {

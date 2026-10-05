@@ -1,13 +1,82 @@
-// The one company this program serves.
+// NEW IN STEP 10: more than one company, and which one a request is for.
 //
-// A file of its own, and a small one, because of who needs it. The tenant is a fact about
-// *identity* — which company a caller belongs to, which records they may touch — and it started
-// life in invoice.ts because that was the first file that needed it. By step 05 that meant the
-// identity module imported the company id from the invoice module, which is backwards: who you
-// belong to does not depend on what an invoice is.
+// Step 09 served exactly one company and said so with a constant. This file now holds the companies
+// this program knows, and the one decision §21 makes at step 2, "resolve tenant": which company THIS
+// request is for. The answer comes from who is logged in — their memberships, and the company their
+// login names when they have more than one. It never comes from the address or the arguments, which
+// are data, and data can describe things but can never say who you are or where you belong.
 //
-// Step 10 makes more than one company possible. When it does, it replaces this one file instead
-// of unpicking a constant from a module that has nothing to do with tenancy.
+// Rule DSOR-IDN-03a: each request MUST resolve to exactly one active tenant in which the subject
+// holds a membership.
 
-/** The company this deployment serves. Step 10 turns one into many. */
+import { refusal, type ErrorEnvelope } from "./envelopes.ts";
+import type { Principal } from "./people.ts";
+
+/**
+ * The companies this program serves. Two, from this step on.
+ *
+ * "Active" in DSOR-IDN-03a means a tenant that exists and is not suspended. Suspension is a later
+ * step; here a tenant is active when it is on this list.
+ */
+export const TENANTS: readonly string[] = Object.freeze(["org_456", "org_789"]);
+
+/** Is this one of the companies this program serves? */
+export function isKnownTenant(tenantId: string): boolean {
+  return TENANTS.includes(tenantId);
+}
+
+/**
+ * The company the audit chain is named after — step 09's constant, kept until piece 4 of this step
+ * makes the audit log per tenant. Nothing new should read it.
+ */
 export const TENANT = "org_456";
+
+/**
+ * What a login said about which company it means.
+ *
+ * Three shapes and not two, on purpose. "Unnamed" and "malformed" must stay apart: a caller with one
+ * membership who sends `{ tenant: 42 }` has made a wrong claim, not no claim, and must not quietly
+ * land in their one company as if they had said nothing.
+ */
+export type TenantClaim =
+  | { readonly kind: "unnamed" }
+  | { readonly kind: "named"; readonly tenant: string }
+  | { readonly kind: "malformed" };
+
+/**
+ * Which company this request is for, or a refusal.
+ *
+ * Every refusal is `TENANT_MISMATCH` with retry `never`: the same request cannot start working by
+ * being sent again. And every refusal says the same words whether the company named exists or not —
+ * being refused must never tell a caller which companies are real.
+ */
+export function tenantFor(
+  principal: Principal,
+  claim: TenantClaim,
+  requestId: string,
+): { readonly tenant: string } | { readonly refused: ErrorEnvelope } {
+  const mine = principal.memberships.map((m) => m.tenantId);
+  const no = (message: string): { readonly refused: ErrorEnvelope } => ({
+    refused: refusal("TENANT_MISMATCH", message, requestId, principal.id),
+  });
+
+  if (claim.kind === "malformed") {
+    return no("the company named in the login is not a company id");
+  }
+
+  if (claim.kind === "named") {
+    // Membership is the whole test. `isKnownTenant` is not consulted here on purpose: a company you
+    // are not a member of gets the same answer whether it exists or not.
+    return mine.includes(claim.tenant)
+      ? { tenant: claim.tenant }
+      : no(`${claim.tenant} is not a company you belong to`);
+  }
+
+  if (mine.length === 1) {
+    return { tenant: mine[0]! };
+  }
+
+  return mine.length === 0
+    ? no("you belong to no company")
+    : no("you belong to more than one company; say which one this request is for");
+}

@@ -20,9 +20,9 @@ import {
 } from "./envelopes.ts";
 // Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
-import { principalFrom, type Login } from "./login.ts";
+import { type Login, principalFrom, tenantClaimed } from "./login.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
-import { TENANT } from "./tenant.ts";
+import { TENANT, tenantFor } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { holds } from "./permissions.ts";
 import {
@@ -330,6 +330,43 @@ const authenticate: Stage["run"] = (context) => {
   return carryOn({ ...context, principal: who.principal });
 };
 
+/**
+ * NEW IN STEP 10 — §21.2, resolve tenant: which one company is this request for?
+ *
+ * From the principal's memberships and the login's claim, and from nothing else. It runs before the
+ * operation is even looked up, because every later question — may you, does it exist, is this
+ * address yours — is a question inside one company, and a request that is inside no company cannot
+ * be answered at all. The principal is already known: `authenticate` ran first, and `assertPipeline`
+ * holds that order by name.
+ */
+const resolveTheTenant: Stage["run"] = (context) => {
+  // Not `?.`: a missing principal here means the list is wrong, and a wrong list is refused at load
+  // by `assertPipeline`. If it ever is missing, this is a bug to surface, not a request to refuse.
+  if (context.principal === undefined) {
+    return refuse(
+      "(nobody)",
+      "INTERNAL_ERROR",
+      "resolve the tenant ran before authenticate",
+      context.requestId,
+    );
+  }
+
+  const where = tenantFor(context.principal, tenantClaimed(context.login), context.requestId);
+
+  if ("refused" in where) {
+    return Object.freeze({
+      kind: "refused" as const,
+      answer: Object.freeze({
+        kind: "error" as const,
+        askedBy: context.principal.id,
+        envelope: where.refused,
+      }),
+    });
+  }
+
+  return carryOn({ ...context, tenant: where.tenant });
+};
+
 /** Not in §21, which assumes it: is this an operation this program has a contract for? */
 const resolveTheOperation: Stage["run"] = (context) => {
   // `typeof` first, because everything below puts the id in a message and `${}` on a Symbol throws
@@ -367,13 +404,17 @@ const resolveTheOperation: Stage["run"] = (context) => {
 
 /** §21.5 — may you? Deny by default: the permission comes from the operation's own contract. */
 const authorize: Stage["run"] = (context) => {
-  const { principal, contract } = context;
+  const { principal, tenant, contract } = context;
 
-  if (principal === undefined || contract === undefined) {
+  // NEW IN STEP 10: a tenant too. "May you?" is a question asked inside one company, and a request
+  // that reached this line inside no company is a pipeline that skipped §21.2 — which is this
+  // program's bug, so INTERNAL_ERROR, not a refusal the caller could act on. The list check in
+  // `assertPipeline` holds the stage's *presence*; this holds that it did its job.
+  if (principal === undefined || tenant === undefined || contract === undefined) {
     return refuse(
       principal?.id ?? "(nobody)",
       "INTERNAL_ERROR",
-      "the pipeline reached authorize without a principal and a contract",
+      "the pipeline reached authorize without a principal, a tenant and a contract",
       context.requestId,
     );
   }
@@ -593,6 +634,7 @@ const alsoAfterARefusal = (
 /** The checklist, in order. Later steps add lines; they never reorder them. */
 export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(1, "authenticate", "both", authenticate),
+  stage(2, "resolve the tenant", "both", resolveTheTenant),
   stage(null, "resolve the operation", "both", resolveTheOperation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),

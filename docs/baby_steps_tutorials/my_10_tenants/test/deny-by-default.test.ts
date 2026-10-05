@@ -13,7 +13,7 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
 const CFO = { loggedInAs: "cfo_100" } as const;
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
-const AGENT = { loggedInAs: "accounts-payable-fte" } as const;
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" } as const;
 
 /** The error envelope an answer carries, or a failure if it was not a refusal. */
 function refusalFrom(answer: OperationAnswer) {
