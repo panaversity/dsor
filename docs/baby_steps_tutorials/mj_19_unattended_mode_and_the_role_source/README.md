@@ -125,12 +125,14 @@ Checked on 2026-10-05:
    directory's answer at this call, or one that DSoR kept from less than an hour ago. Which
    permissions a role holds still comes from `roles.json`, loaded at start-up.
 6. **DSOR-DEL-10 asks every record for the mode, and for the source and time of the subject's
-   authority.** The map gives it to step 45. Met early for an agent's record (decision 7), and
-   not for a person's own record.
+   authority.** The map gives it to step 45. Met early for the record of an agent's call that
+   passed line ③ (decision 7). Not met for a person's own record, nor for a call refused at
+   line ③, which names no slip and no subject, as in step 18.
 7. **DSOR-IDN-04a and DSOR-IDN-04b accept role facts only from a configured source.** The map
    gives them to step 43. Met early for the absent signer: her roles come only from her own
    company's directory, never from the login table, the request, or another company's
-   directory. A caller's own login stays step 43's.
+   directory. A role she holds there that `roles.json` does not have grants nothing
+   (DSOR-AUT-01b). A caller's own login stays step 43's.
 8. **DSOR-IDN-07 asks DSoR to suspend the slips of a person who was suspended or has left.**
    Not met. Step 19 refuses her agent's calls, and the slip stays `active` (decision 6). Step
    19b builds the rule.
@@ -153,14 +155,19 @@ Checked on 2026-10-05:
 | (our decision) | **C7.** A signer whom the directory reports as suspended or deprovisioned gives her agent nothing | `DELEGATION_REQUIRED` at line ③, for every operation, recorded |
 | DSOR-IDN-03a, DSOR-IDN-04b | **C8.** Only the directory speaks for the absent signer | user_700 signs a slip in org_456, and org_456's directory does not list user_700: `AUTHORIZATION_DENIED` at line ③. The login table still says `ap_supervisor` for user_123 while the directory says `ap_clerk`: the directory decides |
 | DSOR-DEL-10 | **C9.** An agent's record names the source and time of its signer's authority | The draft's record holds `subject_authority: { source: role_source, as_of }`, and `as_of` is the time of the answer used: 02:00 for a fresh one, 01:30 for a kept one. Read back from the database. A person's record is unchanged |
-| (our decision) | **C10.** An answer about another person, or from another company, is a fault and is never used, fresh or kept | `INTERNAL_ERROR`, recorded, with no draft. Every answer names its company and person, and line ③ checks both at every use |
+| (our decision) | **C10.** An answer about another person, from another company, or that DSoR cannot read, is a fault and is never used, fresh or kept | `INTERNAL_ERROR`, recorded, with no draft, and the kept answer is not used either. Every answer names its company and person, and line ③ checks both at every use. A status `on_leave` and an answer with no roles are faults too |
 | (our decision) | **C11.** A person who calls for herself does not need the directory | org_456's directory is off, and user_123's own draft is made |
+| (our decision) | **C12.** Line ③ asks the directory last, after every check that needs only DSoR's store and the request | With the directory off and no kept answer: arguments that name `del_102` get `AUTHORIZATION_DENIED`, and a torn-up slip gets `DELEGATION_REVOKED`, never `FRESHNESS_UNSATISFIABLE` |
 
 ### Decisions the specification leaves to us
 
 Each one is this tutorial's decision, not a rule of DSoR. Each has a downside. The learner made
 decisions 1 to 9 on 2026-10-05, one at a time. For each one, the learner asked for the option
-that is closest to production and teaches the most, and chose by those two tests.
+that is closest to production and teaches the most, and chose by those two tests. Decision 10
+set up Neon at the start of the build. The build then checked this design against the
+specification, the schemas, and step 18's code, before the first test. It found one gap
+(decision 11), one question of order (decision 12), and four small fixes, listed after
+decision 12.
 
 1. **The role source is a lookup in a fake directory.** Each company's directory is a small
    part of DSoR's program, with its own list of people, their status, their roles, and an off
@@ -221,6 +228,32 @@ that is closest to production and teaches the most, and chose by those two tests
 9. **DSoR waits at most 2 seconds.** A question with no answer after 2 seconds counts as no
    answer. *Downside:* a slow but working directory is treated as down. The 2 seconds is our
    value, in the code, the same for every company.
+10. **Neon: delete `step-13`, and make `step-19` from `step-18`.** All ten branches were in use,
+    and Neon deletes only a branch with no child branches: `step-13` or `step-18`. The learner
+    runs the delete, because deleting data is the learner's own action. *Downside:* step 13's
+    folder cannot run its database tests until somebody makes it a branch again, as with step
+    14 since step 18's build.
+11. **An answer that DSoR cannot read is a fault.** A status DSoR does not know, such as
+    `on_leave`, or an answer with no roles: line ③ refuses with `INTERNAL_ERROR`. The answer is
+    not kept, and the kept answer is not used either, because the strange answer may be the
+    very news DSoR needs: `on_leave` may mean that she is gone. This is step 18's habit for a
+    broken slip (step 18's README, decision 13). *Downside:* one garbled answer stops the agent
+    with the retry class `never`, even when a good kept answer exists. A person must look.
+12. **Line ③ asks the directory last.** First every check that needs only DSoR's own store and
+    the request: the slip is found, valid, alive, and fits, and no other slip is named. Then
+    the directory. An outside failure never hides a refusal that DSoR can make by itself, and
+    DSoR asks the directory only about calls that could go through. *Downside:* line ③'s code
+    splits into two parts, and the order inside one line needs tests of its own (C12).
+
+The four small fixes:
+
+- Step 06's code calls the `roles.json` file a `RoleSource`. From this step, "role source"
+  means the directory, as in the specification, so the old type becomes `RoleTableSource`.
+- A role that the directory names and `roles.json` does not have grants nothing, by
+  DSOR-AUT-01b. It is not a fault, because the answer can be read.
+- DSOR-DEL-10 is met only after line ③ (item 6 above).
+- Every company that a login in DSoR's table belongs to needs a setting: org_456 and org_789.
+  A setting for a company that nobody belongs to stops start-up, as a likely typo.
 
 ### The tests, by claim
 
@@ -238,8 +271,11 @@ Unit tests in `test/role-source.test.ts`, with a fake clock where a claim depend
 - **C7:** `suspended` and `deprovisioned`, for each operation.
 - **C8:** user_700's slip in org_456, and the login table that disagrees with the directory.
 - **C10:** a directory part that answers about cfo_100 when asked about user_123, one that
-  answers for org_789 when asked for org_456, and a kept answer from another company.
+  answers for org_789 when asked for org_456, a kept answer from another company, a status
+  `on_leave`, and an answer with no roles.
 - **C11:** user_123's own draft with her company's directory off.
+- **C12:** with the directory off and no kept answer, arguments that name `del_102`, and a
+  torn-up slip.
 
 Database tests in `test/role-source.db.test.ts`: **C9**, the record of a fresh answer and of a
 kept answer, read back from the log as `dsor_runtime` reads it. Step 12's cross-tenant suite
@@ -276,8 +312,8 @@ build runs each break as a pair: the learner's case beside the real one.
 The rule is: **a secret never passes through a chat.** Claude Code may do this setup itself,
 this way:
 
-1. Delete one old branch, at the learner's yes: all ten branches are in use (decision 10, made
-   at the start of the build).
+1. The learner deletes the branch `step-13` (decision 10):
+   `npx -y neonctl@8.0.2 branches delete step-13 --project-id <project>`.
 2. Create a branch `step-19` **from `step-18`**, with `neonctl branches create`.
 3. Write `.env` with `neonctl connection-string`, sending its output into the file and never
    printing it:
