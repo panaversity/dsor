@@ -1,4 +1,4 @@
-// NEW IN STEP 07: the order of the checks becomes a list.
+// STEP 07: the order of the checks becomes a list.
 //
 // Every check this program makes already happened in the right order. What it did not have was
 // anywhere that *said* the order. It was the order some lines sat in inside one function — and
@@ -47,7 +47,7 @@ export interface Context {
   readonly id: string;
   readonly args: Readonly<Record<string, unknown>>;
   /**
-   * NEW IN STEP 08: one id for this request, minted before the first stage runs.
+   * STEP 08: one id for this request, minted before the first stage runs.
    *
    * It is required and not optional, which is the point. It used to be minted inside whichever
    * envelope happened to be built first, so it named *an answer* rather than *a request*. Step 08
@@ -69,7 +69,7 @@ export interface Context {
    */
   readonly payloadHash?: string;
   /**
-   * NEW IN STEP 08: the id of the record §21.11 wrote, which is that stage's **proof of work**.
+   * STEP 08: the id of the record §21.11 wrote, which is that stage's **proof of work**.
    *
    * It exists because of a hole a deep pass found. `assertPipeline` checks that a stage called
    * `record the decision` is in the list, in the right place, with the right flag — and it cannot
@@ -83,7 +83,7 @@ export interface Context {
    */
   readonly recorded?: string;
   /**
-   * NEW IN STEP 08: the refusal that has already happened, if one has.
+   * STEP 08: the refusal that has already happened, if one has.
    *
    * It is here because §21.11 must record a `DENY`, and the stage that records cannot record a
    * refusal it has not been shown. Set by the walker, never by a stage.
@@ -123,7 +123,7 @@ export interface Stage {
   readonly name: string;
   readonly applies: Applies;
   /**
-   * NEW IN STEP 08: does this stage still run once something has refused?
+   * STEP 08: does this stage still run once something has refused?
    *
    * For almost every stage the answer is no: the first no is the answer, and asking "may you" after
    * "who are you" already failed is pointless at best. §21.11 is the exception, and §21's own
@@ -157,7 +157,7 @@ const REQUIRED: readonly string[] = Object.freeze([
   "resolve the operation",
   "authorize",
   "validate the input",
-  // NEW IN STEP 08. Last of the five, and that position is the requirement: DSOR-EXE-02 says the
+  // STEP 08. Last of the five, and that position is the requirement: DSOR-EXE-02 says the
   // decision is recorded *before the response is returned*, so nothing that produces a response may
   // sit between the checks and this line.
   "record the decision",
@@ -296,7 +296,7 @@ export function assertPipeline(stages: readonly Stage[]): number {
     throw new TypeError(`the pipeline is missing ${REQUIRED[expected]}, which every call needs`);
   }
 
-  // NEW IN STEP 08: the three rules that make `record the decision` mean what it says.
+  // STEP 08: the three rules that make `record the decision` mean what it says.
   const records = stages.find((stage) => stage.name === "record the decision");
 
   // Unreachable while REQUIRED holds the same name and is checked above — and written anyway, because
@@ -392,7 +392,7 @@ export async function runPipeline(
       continue;
     }
 
-    // NEW IN STEP 08: a refusal no longer returns from here. It is remembered, the rest of the
+    // STEP 08: a refusal no longer returns from here. It is remembered, the rest of the
     // checks are skipped, and the stages marked `evenAfterARefusal` still run — because §21.11 has
     // to record a DENY, and it cannot record one it never reached.
     //

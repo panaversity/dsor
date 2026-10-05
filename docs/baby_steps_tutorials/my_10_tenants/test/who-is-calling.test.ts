@@ -13,7 +13,7 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 
-// NEW IN STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
+// STEP 06. Two tests below used to issue an invoice as cfo_100. She may not any more —
 // `approver` grants invoice:read and payment:approve, and not invoice:issue — so they ask as
 // the agent, which holds it. Nothing about what they test has changed. A new gate in front of
 // the program changing which caller a test needs is exactly what it looks like when permissions

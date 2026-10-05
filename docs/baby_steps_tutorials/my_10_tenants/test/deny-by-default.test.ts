@@ -1,4 +1,4 @@
-// NEW IN STEP 06: the test the whole step exists for.
+// STEP 06: the test the whole step exists for.
 //
 // The map's "done when" for this step reads: a caller with `invoice:read` can read and cannot
 // issue. That caller is cfo_100 — she approves payments, and does not type invoices into the

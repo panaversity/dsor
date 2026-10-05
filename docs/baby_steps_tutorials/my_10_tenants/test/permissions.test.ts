@@ -1,4 +1,4 @@
-// NEW IN STEP 06: what a role grants, and what it does not.
+// STEP 06: what a role grants, and what it does not.
 //
 // This tests the permission table on its own. It knows nothing about operations — you hand it
 // a person and a permission string, and it answers yes or no. The smallest thing that can be

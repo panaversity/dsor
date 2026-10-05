@@ -1,4 +1,4 @@
-// NEW IN STEP 08: the demo program itself is tested.
+// STEP 08: the demo program itself is tested.
 //
 // Four hostile reviews and a mutation sweep agreed on one thing about every step of this tutorial so
 // far: `src/main.ts` is imported by no test. It is the program the README tells a learner to run and

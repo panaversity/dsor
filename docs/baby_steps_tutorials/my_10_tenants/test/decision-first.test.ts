@@ -1,4 +1,4 @@
-// NEW IN STEP 08: the decision is written down before the answer goes back.
+// STEP 08: the decision is written down before the answer goes back.
 //
 // audit.test.ts is about what a record IS. This file is about when one gets written, which is the
 // step's actual claim: every decision, before the response, and that includes every "no".

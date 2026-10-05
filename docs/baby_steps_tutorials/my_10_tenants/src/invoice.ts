@@ -80,7 +80,7 @@ const invoices: Invoice[] = startingInvoices();
 /**
  * Puts the store back to how it started.
  *
- * NEW IN STEP 08, and a test seam only — there is no unissuing an invoice in DSoR, the same way
+ * STEP 08, and a test seam only — there is no unissuing an invoice in DSoR, the same way
  * there is no erasing an audit record. It exists because this step has several tests that each need
  * a draft invoice, and there is exactly one draft in the story. Tests in one file share the module,
  * so without this they would depend on the order they happen to run in, which is a test proving

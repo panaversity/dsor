@@ -1,4 +1,4 @@
-// NEW IN STEP 08: the decision is written down, and the writing is hard to change quietly.
+// STEP 08: the decision is written down, and the writing is hard to change quietly.
 //
 // Until now the program decided and answered. Nothing was kept. A month later, asked "who let
 // user_123 read INV-1008, and under what authority", the honest answer was: nobody knows. An
