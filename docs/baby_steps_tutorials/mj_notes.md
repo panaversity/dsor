@@ -761,6 +761,42 @@ miss as one part. Real runs on `mj_17`'s code, and on a local PostgreSQL, settle
   "Walk the Checklist" (a private artifact): 15 real calls of step 17, walked one line at a
   time, each reason checked by a script against its run.
 
+### The foundations course, and step 19 before design (2026-10-05)
+
+After step 18's build, the learner asked to start again from zero: the spec in a logical
+order, with diagrams and everyday examples. Eight short lessons in the chat, one picture for
+the whole course (an office: the agent is a new clerk, DSoR the checking desk), and practice
+pages for the parts that did not land.
+
+- **The root gap was order, not facts.** Five answers in a row named line ⑤ for problems that
+  line ③ stops first. Asked how they chose, the learner said "the action's problem decides":
+  the reason closest to the request feels like the real one. DSoR does not weigh reasons; it
+  walks the lines and stops at the first no. A practice page that walks each line, yes or no,
+  fixed the order where four-option questions had not.
+- **Token and slip were one idea in the learner's picture.** "Who issues a slip, when we have a
+  token?" A token comes from the login system and says who is calling (line ①). A slip is
+  signed by a person, kept in DSoR's own store, and read at lines ③ and ⑤. The spec names no
+  operation that creates a slip, and no step builds one: migration 010 stands in. The bank
+  mandate was the picture that landed: the bank keeps the mandate in its own file.
+- **Questions must carry every fact.** The learner caught two practice questions that left out
+  a fact the walk needs: the company on the envelope, and the CFO role's list. Every practice
+  question now has a fact card, and the role table stays on the page.
+- **A label read literally.** "③ A usable slip?" invited "no" for a person, who has none. The
+  line is now "③ slip check (agents only)", and its full question is written out: is the slip
+  alive, does it fit the call, and does its signer work here.
+- **Still loose at the end:** the signer is checked twice. Where she works is line ③'s
+  question, and what she may do is line ⑤'s. And line ② asks about the caller, line ③ about the
+  signer. Step 19 is about exactly this, so it moved on with this gap named.
+- **Step 19's habits, from its understanding session:** "the desk waits" (DSoR never holds a
+  request; with no fresh answer it denies at once), and "turned off means revoked" (a suspended
+  slip is not torn up; the spec gives it no code of its own, open question 70).
+- **Design questions for step 19's Phase A:** the role source's form (a fake directory, or a
+  role table DSoR reads at every call); whose roles it answers (the absent signer only, or
+  people calling for themselves too); the freshness limit and whether DSoR keeps the last
+  answer with its time; which line and which code refuse when no fresh answer exists; reads or
+  commands only; DSOR-IDN-07 (suspend a leaver's slips) now or later; and the two breaks (the
+  directory switched off, a signer demoted while the agent runs).
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
