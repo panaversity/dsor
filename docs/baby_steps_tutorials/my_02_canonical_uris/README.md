@@ -375,9 +375,11 @@ knowing.
 or one system's internal row id as the identifier"*. `TENANT_ID` stops the first.
 Nothing here stops the second, so `dsor://org_456/vendor/acme` and
 `dsor://org_456/invoice/row-4182` both parse today. The entity and id segments are
-still trusted text. They stop being trusted text in step 03, where an operation
-contract says which entity names exist, and in step 34, where a connector owns the
-mapping from a canonical id to a system's own id.
+still trusted text. The entity segment stops being trusted text in step 03, where an
+operation checks it against the first part of its own name: `invoice.get` is named for
+`invoice`, so an address whose entity is `vendor` is refused. The id segment stops being
+trusted text in step 34, where a connector owns the mapping from a canonical id to a
+system's own id.
 
 **`TENANT_ID` is narrower than the rule.** It refuses `acme`, and it would also refuse
 a perfectly valid opaque id of another shape, such as a UUID. That is this deployment's

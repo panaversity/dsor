@@ -41,8 +41,9 @@ const ADDRESS = "dsor://org_456/invoice/INV-1008";
 /**
  * Runs `node src/main.ts` and returns what it printed, one string per line.
  *
- * `"node"` and not `process.execPath`: `pnpm start` runs `node src/main.ts`, so the node
- * on the PATH is the one whose behaviour the README promises.
+ * `process.execPath` and not the word `"node"`, as steps 01 and 03 do: it is the Node
+ * that is running this test, so the test cannot pass against one version while a
+ * different one on the PATH is what a learner's `pnpm start` finds.
  *
  * execFileSync throws if the program exits with a non-zero code, so a test that gets a
  * list of lines back has already proved the program ran to the end without crashing.
@@ -55,7 +56,7 @@ const ADDRESS = "dsor://org_456/invoice/INV-1008";
  * string after the last one. That empty string is the final newline, not a fifth line.
  */
 function runProgram(): string[] {
-  const lines = execFileSync("node", [MAIN], { encoding: "utf8" }).split("\n");
+  const lines = execFileSync(process.execPath, [MAIN], { encoding: "utf8" }).split("\n");
   if (lines.at(-1) === "") {
     lines.pop();
   }

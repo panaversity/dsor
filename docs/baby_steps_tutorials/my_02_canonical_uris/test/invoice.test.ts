@@ -67,7 +67,11 @@ describe("getInvoice", () => {
 
   // Step 01 froze both invoices and only tested one. INV-1009 is the draft every later step
   // issues, so it is the one whose freeze matters most.
-  it("DSOR-MON-01: every invoice in the list is frozen, not just the first", () => {
+  //
+  // No rule id, as in step 01: Object.isFrozen is true for a bare number, so this test would
+  // still pass with "2500.00" replaced by 2500, and a test that cannot fail when DSOR-MON-01
+  // is broken does not prove it.
+  it("every invoice in the list is frozen, not just the first", () => {
     for (const id of ["INV-1008", "INV-1009"]) {
       const invoice = getInvoice(id);
 
