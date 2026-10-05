@@ -2074,3 +2074,34 @@ times went "backwards" with it. The nine counts were re-measured rather than adj
 and re-measure Breaks 5 and 9.
 
 `pnpm check`: 23 files, **325 tests**. `pnpm test:db`: 9. Both routes verify.
+
+## 88 · Step 10's four decisions, taken by the learner before any code (2026-10-05)
+
+Put as four one-at-a-time questions in plain words, with a recommendation each. The learner took
+all four recommendations.
+
+1. **A request's company comes from who is logged in**, never from the address. One membership
+   means it is implied; two means the login must name one, and it must be theirs
+   (`DSOR-IDN-03a`, `DSOR-SRC-02a`). The alternative — believing the URI — is what the spec forbids,
+   because an address is an argument and arguments are data.
+2. **A URI for another company is answered with `TENANT_MISMATCH`, telling nothing**: the same
+   words whether that company or that invoice exists. The map's done-when says "the same not found
+   as a URI that does not exist", and `DSOR-SRC-02b` says a mismatching tenant MUST cause
+   `TENANT_MISMATCH` or `AUTHORIZATION_DENIED` — `RESOURCE_NOT_FOUND` is neither. The spec is
+   authoritative over the map (AGENTS.md), so the map's wording is adjusted and the divergence
+   recorded, as step 09 did. What the done-when *means* — reveal nothing — is kept to the letter:
+   the refusal for `org_789` (exists) and `org_000` (does not) must be identical but for the echoed
+   address.
+3. **The invoices move into PostgreSQL in this step**, named as the cost of rows the way step 09
+   named async as the cost of a database. The test applied: can the tenancy idea be explained
+   without SQL? It can, so the SQL is cost, not a second idea. Leaving it for step 11 would make
+   row-level security's lesson compete with a store rewrite.
+4. **The second company is `org_789`, with its own `INV-1008`** — the same number as `org_456`'s,
+   a different amount — because that is the sharpest proof that an invoice number alone is not an
+   identity. The agent `accounts-payable-fte` works for both companies, so its requests must say
+   which; `user_123` and `cfo_100` stay in `org_456` only.
+
+Two things taken without asking because the rules leave no choice: the audit chain becomes one per
+tenant (`DSOR-TEN-02a`), and `tenant.ts`'s constant goes. One thing deferred and said so: `people.ts`
+notes a role is really per company; nobody here has different roles in different companies, so
+moving `role` inside `memberships` would add code with no observable behaviour.
