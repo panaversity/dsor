@@ -10,7 +10,10 @@
 // are refused. Then the agent asks invoice.list for a million invoices, and gets ten, a
 // note that its limit was cut, and a cursor. Then user_123 drafts a payment
 // for INV-1008 and cancels it twice. Then the agent drafts one too, under
-// del_100, user_123's permission slip. Then it prints the log: the records it can read,
+// del_100, user_123's permission slip. NEW IN STEP 19: then the night. The agent drafts
+// again, and its record says that user_123's authority came from her company's directory,
+// and as of when. The directory moves her to ap_clerk, suspends her, and goes off, and DSoR
+// restarts while it is off. Then it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -41,6 +44,7 @@ import {
 import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { checkStore, readStore, type StoreMap } from "./store.ts";
+import { fakeDirectory } from "./directory.ts";
 import { parseUri } from "./uri.ts";
 
 // Start-up checks every contract first. If one is broken, the program stops here and
@@ -65,6 +69,20 @@ const STORE: string | undefined = process.argv[6];
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
 loadDotEnv(["DSOR_DB_URL"]);
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
+// NEW IN STEP 19: each company's staff directory, fake, with the story's people. DSoR asks it
+// about the person who signed an agent's slip, at every call (step 19's README, decisions 1
+// and 2). Each company's setting is in role-sources.json, checked at start-up (decision 8).
+const directory456 = fakeDirectory("org_456", {
+  user_123: { status: "active", roles: ["ap_supervisor"] },
+  cfo_100: { status: "active", roles: ["CFO"] },
+});
+const directory789 = fakeDirectory("org_789", {
+  user_700: { status: "active", roles: ["ap_supervisor"] },
+});
+const directories = new Map([
+  ["org_456", directory456],
+  ["org_789", directory789],
+]);
 let registry: Registry;
 let store: StoreMap;
 try {
@@ -82,6 +100,8 @@ try {
     // And the permission slips, in dsor.delegations (step 18's README,
     // decision 3).
     createDbSlips(pool),
+    // NEW IN STEP 19: and each company's directory.
+    directories,
   );
   // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).
@@ -264,6 +284,63 @@ if ("data" in drafted) {
 // user_123, who signed it, holds it now. Its answer leaves out the amount (step 18's README,
 // outcome 1).
 console.log(await ask(AGENT, "payment.create", { invoice: "dsor://org_456/invoice/INV-1008" }));
+
+// NEW IN STEP 19: the night. Nobody is logged in, and the agent works under del_100. At every
+// call DSoR asks org_456's directory about user_123, who signed it (step 19's README,
+// outcomes 1 to 5).
+/** What the caller heard, in one line. */
+function heard(answer: Answer): string {
+  if ("data" in answer) return `answered, ${String((answer.data as { id?: unknown }).id)}`;
+  return `${answer.code}: ${answer.message}`;
+}
+const INV_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
+// The agent drafts, and its record says where user_123's authority came from, and as of when.
+const night = await ask(AGENT, "payment.create", INV_1008);
+console.log("night, the agent drafts:", heard(night));
+const nightRecord = (await log.records("org_456")).find(
+  (r) => r.correlation.request_id === night.correlation.request_id,
+);
+console.log("its record's identity:", nightRecord?.identity);
+// The directory moves user_123 to ap_clerk. The agent's draft is refused at line ⑤, and its
+// read is still answered: ap_clerk may read invoices (step 19's README, outcome 2).
+directory456.set("user_123", { status: "active", roles: ["ap_clerk"] });
+console.log("ap_clerk, the agent drafts:", heard(await ask(AGENT, "payment.create", INV_1008)));
+console.log("ap_clerk, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
+// The directory says she is suspended. Line ③ refuses her agent (decision 6).
+directory456.set("user_123", { status: "suspended", roles: ["ap_supervisor"] });
+console.log("suspended, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
+// She is back, and then the directory goes off. DSoR uses the answer it kept a moment ago,
+// which is far under org_456's one hour (decision 3).
+directory456.set("user_123", { status: "active", roles: ["ap_supervisor"] });
+console.log("active, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
+directory456.turn("off");
+console.log("directory off, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
+// DSoR restarts while the directory is off. The kept answers lived in memory, so they are
+// gone, and the agent is refused. user_123 calls for herself, and needs no directory
+// (decisions 2 and 3).
+const restarted = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  createDbInvoices(pool),
+  createDbPayments(pool),
+  createDbSlips(pool),
+  directories,
+);
+const agentAfter = await call(restarted, log, AGENT, "invoice.get", INV_1008);
+const herOwn = await call(
+  restarted,
+  log,
+  { token: "tok_2c91", tenant: "org_456" },
+  "invoice.get",
+  INV_1008,
+);
+answers.push(agentAfter, herOwn);
+console.log("after a restart, the agent reads:", heard(agentAfter));
+console.log("after a restart, user_123 reads:", heard(herOwn));
+directory456.turn("on");
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
