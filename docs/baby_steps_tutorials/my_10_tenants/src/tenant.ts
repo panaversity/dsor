@@ -58,16 +58,25 @@ export function tenantFor(
     return no("the company named in the login is not a company id");
   }
 
+  // "Active" (DSOR-IDN-03a): a membership of a company this program does not serve resolves to
+  // nothing, with the same words as any other refusal. people.ts refuses such a membership at load,
+  // and a review pointed out that a hand-built principal never passes through people.ts — so the
+  // rule is held here, where the request is, and not only where the cast is written.
+  const active = (
+    tenant: string,
+  ): { readonly tenant: string } | { readonly refused: ErrorEnvelope } =>
+    isKnownTenant(tenant) ? { tenant } : no(`${tenant} is not a company you belong to`);
+
   if (claim.kind === "named") {
-    // Membership is the whole test. `isKnownTenant` is not consulted here on purpose: a company you
-    // are not a member of gets the same answer whether it exists or not.
+    // Membership first; the existence of the company is never what the answer turns on, so a
+    // company you are not a member of gets the same words whether it exists or not.
     return mine.includes(claim.tenant)
-      ? { tenant: claim.tenant }
+      ? active(claim.tenant)
       : no(`${claim.tenant} is not a company you belong to`);
   }
 
   if (mine.length === 1) {
-    return { tenant: mine[0]! };
+    return active(mine[0]!);
   }
 
   return mine.length === 0

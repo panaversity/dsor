@@ -19,7 +19,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { theLog, forgetTheLog } from "../src/audit.ts";
 import type { Context } from "../src/pipeline.ts";
-import { aDatabase } from "./support/database.ts";
+import { getInvoice } from "../src/invoice.ts";
+import { aDatabase, resetInvoices } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -40,8 +41,12 @@ afterAll(async () => {
   await db.close();
 });
 
-async function refusalFor(login: { loggedInAs: string; tenant?: string }, invoice: string) {
-  const answer = await callOperation(login, "invoice.get", { invoice });
+async function refusalFor(
+  login: { loggedInAs: string; tenant?: string },
+  invoice: string,
+  more: Record<string, unknown> = {},
+) {
+  const answer = await callOperation(login, "invoice.get", { invoice, ...more });
 
   if (answer.kind !== "error") {
     throw new Error(`${invoice}: expected a refusal, got ${answer.kind}`);
@@ -85,9 +90,60 @@ describe("an address for another company", () => {
     // piece holds is only that the address is not a mismatch when the request is in that company.
     const answer = await callOperation(AGENT_FOR_789, "invoice.get", { invoice: THEIRS });
 
-    if (answer.kind === "error") {
-      expect(answer.envelope.code).not.toBe("TENANT_MISMATCH");
+    if (answer.kind !== "data") {
+      throw new Error(`expected org_789's invoice, got ${answer.kind}`);
     }
+
+    expect(answer.invoice.uri).toBe(THEIRS);
+  });
+
+  it("DSOR-IDN-03b: the command path cannot reach the other company's invoice either", async () => {
+    // invoice.issue, from both callers who are not working for org_789: refused at §21.6, the row
+    // untouched, one DENY in org_456's log naming the operation, nothing in org_789's.
+    await forgetTheLog("org_456");
+    await forgetTheLog("org_789");
+
+    for (const login of [SUPERVISOR, AGENT_FOR_456]) {
+      const answer = await callOperation(login, "invoice.issue", { invoice: THEIRS });
+
+      if (answer.kind !== "error") {
+        throw new Error(`expected a refusal, got ${answer.kind}`);
+      }
+
+      expect(answer.envelope.code).toBe("TENANT_MISMATCH");
+    }
+
+    expect((await getInvoice("org_789", "INV-1008"))?.status).toBe("draft");
+
+    const ours = await theLog("org_456");
+
+    expect(ours.map((r) => [r.authorization, r.operation])).toEqual([
+      ["DENY", "invoice.issue@1"],
+      ["DENY", "invoice.issue@1"],
+    ]);
+    expect(await theLog("org_789")).toHaveLength(0);
+  });
+
+  it("DSOR-SRC-02b: a foreign address in any own argument, not only invoice, is refused", async () => {
+    // The §21.6 scan walks every own top-level string argument. Narrowing it to `invoice` alone
+    // would leave this passing through to a handler that one day reads `other`.
+    const refused = await refusalFor(SUPERVISOR, OURS, { other: THEIRS });
+
+    expect(refused.code).toBe("TENANT_MISMATCH");
+  });
+
+  it("DSOR-TEN-01a: a command run inside org_789 gets a proposal address inside org_789", async () => {
+    // `success()` used to build `dsor://org_456/proposal/...` for every tenant; a review ran this
+    // exact command and got a receipt in the wrong company's proposal space.
+    await resetInvoices();
+
+    const answer = await callOperation(AGENT_FOR_789, "invoice.issue", { invoice: THEIRS });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a result, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_789\/proposal\/prop_\d{4}$/);
   });
 
   it("DSOR-ERR-01b: a missing invoice in your own company is a different answer, on purpose", async () => {

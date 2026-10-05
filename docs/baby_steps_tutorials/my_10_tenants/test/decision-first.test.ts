@@ -359,8 +359,9 @@ describe("the decision is written down first", () => {
       invoice: INV_1008,
       // Every name the record uses, and a few the schema uses.
       subject: "cfo_100",
-      principal: "cfo_100",
-      principal_id: "cfo_100",
+      // STEP 10: `principal`, `principal_id`, `tenant` and `tenant_id` are no longer planted here —
+      // a disagreeing one is refused at §21.6 now (DSOR-SRC-02b, who-is-calling.test.ts), and this
+      // test is about what reaches the record of an ALLOWED call.
       identity: { mode: "unattended", subject: "cfo_100" },
       operation: "payment.execute@1",
       authorization: "ALLOW",
@@ -375,7 +376,6 @@ describe("the decision is written down first", () => {
       record_id: "forged",
       record_hash: `sha256:${"a".repeat(64)}`,
       previous_hash: `sha256:${"b".repeat(64)}`,
-      tenant: "org_999",
       kind: "reconciliation",
       payload_hash: `sha256:${"c".repeat(64)}`,
     });

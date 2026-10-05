@@ -6,7 +6,8 @@
 -- have had the day a second company existed.
 --
 -- Written here once, so the tests that put the invoices back to how they started re-run this file
--- rather than keep a second copy of the story. ON CONFLICT makes that re-run harmless.
+-- rather than keep a second copy of the story — after deleting every row, which is what restores a
+-- status. ON CONFLICT only keeps a stray second run from failing; no path exercises it.
 
 INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status) VALUES
   ('org_456', 'INV-1008', 'VENDOR-44', 31400.00, 'USD', 'issued'),

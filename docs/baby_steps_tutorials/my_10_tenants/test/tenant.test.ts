@@ -15,6 +15,7 @@ import { tenantClaimed, type Login } from "../src/login.ts";
 import { findPerson } from "../src/people.ts";
 import { tenantFor } from "../src/tenant.ts";
 import { callOperation } from "../src/operations.ts";
+import { theLog } from "../src/audit.ts";
 import { aDatabase } from "./support/database.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -128,23 +129,65 @@ describe("reading the claim out of a login", () => {
 });
 
 describe("through the whole pipeline", () => {
-  it("DSOR-SRC-02a: a tenant inside the arguments changes nothing", async () => {
+  it("DSOR-SRC-02a: the agent cannot pick its company through the arguments", async () => {
+    // user_123 belongs to one company, so a test with user_123 cannot tell "the arguments are
+    // ignored" from "the arguments are honoured when the caller is a member". The agent belongs to
+    // both; that is the caller that makes this bite. A review pointed it out.
     const db = await aDatabase();
+    const agentFor456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 
-    // Same request, with and without `tenant: "org_789"` smuggled into the arguments. The answer is
-    // the same, because the arguments are data and the company is not read from them.
-    const plain = await callOperation({ loggedInAs: "user_123" }, "invoice.get", {
-      invoice: INV_1008,
-    });
-    const smuggled = await callOperation({ loggedInAs: "user_123" }, "invoice.get", {
-      invoice: INV_1008,
-      tenant: "org_789",
+    // Working for org_456, naming org_789 in the arguments under names that are not identifiers:
+    // still org_456's request, so org_789's address is a mismatch. (A bare `tenant` key is itself
+    // refused under SRC-02b, in who-is-calling.test.ts.)
+    const smuggled = await callOperation(agentFor456, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+      active_tenant: "org_789",
+      activeTenantId: "org_789",
     });
 
-    expect(smuggled.kind).toBe(plain.kind);
-    expect(smuggled.kind).toBe("data");
+    if (smuggled.kind !== "error") {
+      throw new Error(`expected a refusal, got ${smuggled.kind}`);
+    }
+
+    expect(smuggled.envelope.code).toBe("TENANT_MISMATCH");
+
+    // And the same login, asking inside org_456, gets org_456's invoice whatever else is planted.
+    const honest = await callOperation(agentFor456, "invoice.get", {
+      invoice: INV_1008,
+      active_tenant: "org_789",
+    });
+
+    if (honest.kind !== "data") {
+      throw new Error(`expected data, got ${honest.kind}`);
+    }
+
+    expect(honest.invoice.tenantId).toBe("org_456");
 
     await db.close();
+  });
+
+  it("DSOR-IDN-03a: a membership of a company this program does not serve resolves to nothing", () => {
+    // "Active" means on the list this program serves. people.ts refuses such a membership at load,
+    // but a hand-built principal never passes through people.ts, so the rule is held at the request.
+    const stranger = {
+      id: "contractor",
+      type: "human" as const,
+      role: "ap_worker",
+      memberships: [{ tenantId: "org_000" }],
+    };
+
+    for (const claim of [
+      { kind: "unnamed" as const },
+      { kind: "named" as const, tenant: "org_000" },
+    ]) {
+      const resolved = tenantFor(stranger, claim, "req_1");
+
+      if (!("refused" in resolved)) {
+        throw new Error("a membership of an unserved company should resolve to nothing");
+      }
+
+      expect(resolved.refused.code).toBe("TENANT_MISMATCH");
+    }
   });
 
   it("DSOR-IDN-03a: the agent without a company is refused before anything else is looked at", async () => {
@@ -159,6 +202,35 @@ describe("through the whole pipeline", () => {
     }
 
     expect(answer.envelope.code).toBe("TENANT_MISMATCH");
+
+    // "Before anything else is looked at", measured and not only titled: an operation that does not
+    // exist, and a command this login may not call, are both answered TENANT_MISMATCH — not
+    // UNSUPPORTED_CAPABILITY, not AUTHORIZATION_DENIED — and the record has no operation in it,
+    // because none was resolved. A pipeline that resolved the tenant later would answer differently.
+    const noSuchOperation = await callOperation(
+      { loggedInAs: "accounts-payable-fte" },
+      "execute_sql",
+      {},
+    );
+    const notAllowed = await callOperation(
+      { loggedInAs: "accounts-payable-fte" },
+      "invoice.issue",
+      {
+        invoice: INV_1008,
+      },
+    );
+
+    for (const refused of [noSuchOperation, notAllowed]) {
+      if (refused.kind !== "error") {
+        throw new Error(`expected a refusal, got ${refused.kind}`);
+      }
+
+      expect(refused.envelope.code).toBe("TENANT_MISMATCH");
+    }
+
+    const [record] = await theLog("org_456");
+
+    expect(record?.operation).toBeUndefined();
 
     await db.close();
   });

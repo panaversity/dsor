@@ -215,6 +215,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         data: outcome.invoice as unknown as Record<string, unknown>,
         semantics: contract.execution?.semantics ?? "atomic",
         payloadHash: hash,
+        tenant,
         principalId: askedBy,
         requestId,
       }),
@@ -456,6 +457,36 @@ const validateTheInput: Stage["run"] = (context) => {
     // a second read can answer differently, and it used to.
     const written = JSON.stringify(given);
 
+    // NEW IN STEP 10: DSOR-SRC-02b in full. A tenant or principal identifier inside the arguments
+    // that DISAGREES with the security context is refused, not ignored. Step 05 ignored them — the
+    // context is never derived from the arguments (SRC-02a), so a planted `principal: "cfo_100"`
+    // bought nothing. The specification asks for more: a caller who writes a company or a person
+    // into the arguments that is not the request's is making a claim, and a claim that disagrees
+    // with who they are is refused and recorded as the DENY it is. One that agrees passes, because
+    // it does not disagree. Four names count as identifiers here; a delegation identifier joins
+    // them in step 18, when delegations exist. Everything else a caller plants stays ignored.
+    for (const key of ["tenant", "tenant_id"]) {
+      if (Object.hasOwn(given, key) && given[key] !== context.tenant) {
+        return refuse(
+          askedBy,
+          "TENANT_MISMATCH",
+          "the arguments name a company that is not this request's",
+          context.requestId,
+        );
+      }
+    }
+
+    for (const key of ["principal", "principal_id"]) {
+      if (Object.hasOwn(given, key) && given[key] !== context.principal?.id) {
+        return refuse(
+          askedBy,
+          "AUTHORIZATION_DENIED",
+          "the arguments name a principal that is not the caller",
+          context.requestId,
+        );
+      }
+    }
+
     // NEW IN STEP 10: every address in the arguments must be in this request's company, and it is
     // decided HERE, at §21.6, not in the handler. Piece 2 of this step put it in the handler, and
     // piece 4's test caught what that meant: the handler runs at §21.14, after the decision is
@@ -464,8 +495,9 @@ const validateTheInput: Stage["run"] = (context) => {
     // to prevent. DSOR-SRC-02b is a fact about the arguments, and validation is where facts about
     // the arguments are decided.
     //
-    // Generic on purpose: any own argument that is a `dsor://` address, not only `invoice`. An
-    // address that does not parse is left for the handler's VALIDATION_FAILED, as before.
+    // Any own top-level string argument that is a `dsor://` address, not only `invoice`; nested
+    // values are not walked, and the handler re-checks the one it reads. An address that does not
+    // parse is left for the handler's VALIDATION_FAILED, as before.
     if (context.tenant === undefined) {
       return refuse(
         askedBy,
@@ -607,6 +639,8 @@ const recordTheDecision: Stage["run"] = async (context) => {
         : principal.memberships.map((m) => m.tenantId);
 
   let written;
+  // NEW IN STEP 10: which logs took the write, so the caller is told the truth on a partial failure.
+  const writtenTo: string[] = [];
 
   try {
     for (const tenant of homes) {
@@ -623,6 +657,10 @@ const recordTheDecision: Stage["run"] = async (context) => {
         ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
         ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
       });
+
+      if (written !== undefined && tenant !== undefined) {
+        writtenTo.push(tenant);
+      }
     }
   } catch (failure) {
     // STEP 09: the answer a step-08 array could never give. The write may have happened and
@@ -654,10 +692,21 @@ const recordTheDecision: Stage["run"] = async (context) => {
     //
     // This is the decision-record half of DSOR-EXE-03b. The other half is about the *intent* record
     // and lands in step 36, along with DSOR-EXE-03a.
+    // NEW IN STEP 10: "could not be written down" is true for one log. The fan-out writes one
+    // record per employer, and there is no transaction across them — the Database seam is one
+    // method, and a transaction needs one connection held across statements, which the pool does
+    // not promise. So when the second write fails after the first committed, the caller is told
+    // exactly that, not "nothing was written". A review measured the old message against one log
+    // holding the DENY and the other empty. Writing every home in one transaction is step 16's,
+    // when the control-plane store arrives with a connection of its own.
     return refuse(
       principal?.id ?? "(nobody)",
       "EVIDENCE_STORE_UNAVAILABLE",
-      `the decision about ${nameOf(context.id)} could not be written down, so it was not carried out`,
+      writtenTo.length === 0
+        ? `the decision about ${nameOf(context.id)} could not be written down, so it was not carried out`
+        : `the decision about ${nameOf(context.id)} was written to ${writtenTo.length} of ` +
+            `${homes.length} company logs (${writtenTo.join(", ")}) before the store failed; it was ` +
+            `not carried out`,
       context.requestId,
     );
   }

@@ -74,7 +74,7 @@ describe("the table", () => {
     ).rejects.toThrow(/invoices_pkey/);
   });
 
-  it("DSOR-TEN-01a: the application cannot move an invoice to another company, or renumber it", async () => {
+  it("the application cannot move an invoice to another company, or renumber it", async () => {
     // The application may change an invoice's status and nothing else: UPDATE is granted column by
     // column, as step 09 did for the audit log's witness. tenant_id and id are not on the list.
     expect(
@@ -92,7 +92,7 @@ describe("the table", () => {
     ).toBe("allowed");
   });
 
-  it("DSOR-TEN-01a: the application cannot delete or add invoices", async () => {
+  it("the application cannot delete or add invoices", async () => {
     // Nothing in this step creates or removes an invoice, so the application holds neither right.
     expect(await asTheApplication("DELETE FROM public.invoices")).toMatch(/permission denied/);
     expect(

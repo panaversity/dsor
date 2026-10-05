@@ -50,10 +50,12 @@ interface Row {
   readonly status: InvoiceStatus;
 }
 
-// `amount_value::text`, and the cast is load-bearing. The column is NUMERIC, which `pg` returns as
-// text and PGlite parses into a JavaScript number — and a number is exactly what an amount must
-// never be (DSOR-MON-01). Cast on the way out, both drivers hand back "31400.00", and money() is the
-// only thing that ever builds an amount.
+// `amount_value::text`. The column is NUMERIC, and a number is exactly what an amount must never be
+// (DSOR-MON-01). Measured 2026-10-05: both drivers already return NUMERIC as text — `pg` by
+// default, PGlite 0.5.8 too — so no test can kill this cast, and a comment here used to claim
+// PGlite parsed it into a number, which was false. The cast stays because it pins the shape
+// against a driver's type parser changing under us, and because money() is the only thing that ever
+// builds an amount and it wants text.
 const COLUMNS =
   "tenant_id, id, vendor, amount_value::text AS amount_value, amount_currency, status";
 
@@ -94,7 +96,7 @@ export async function getInvoice(tenantId: string, id: string): Promise<Invoice 
 export type IssueOutcome =
   | { readonly kind: "issued"; readonly invoice: Invoice }
   | { readonly kind: "not_found" }
-  | { readonly kind: "not_draft"; readonly status: InvoiceStatus };
+  | { readonly kind: "not_draft"; readonly status: Exclude<InvoiceStatus, "draft"> };
 
 /**
  * Issues a draft invoice, in one company.
@@ -123,7 +125,25 @@ export async function issueInvoice(tenantId: string, id: string): Promise<IssueO
 
   const current = await getInvoice(tenantId, id);
 
-  return current === undefined
-    ? { kind: "not_found" }
-    : { kind: "not_draft", status: current.status };
+  if (current === undefined) {
+    return { kind: "not_found" };
+  }
+
+  // A draft that appeared between the two statements — only an owner can do that, since the
+  // application cannot insert — would make "not a draft" a lie. One more try settles it either way.
+  if (current.status === "draft") {
+    const { rows: again } = await theDatabase().query<Row>(
+      `UPDATE public.invoices SET status = 'issued'
+       WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
+       RETURNING ${COLUMNS}`,
+      [tenantId, id],
+    );
+    const issuedNow = again[0];
+
+    return issuedNow === undefined
+      ? { kind: "not_found" }
+      : { kind: "issued", invoice: fromRow(issuedNow) };
+  }
+
+  return { kind: "not_draft", status: current.status };
 }

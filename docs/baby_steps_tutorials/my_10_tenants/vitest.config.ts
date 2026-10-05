@@ -11,7 +11,7 @@ export default defineConfig({
     // It has its own config, vitest.db.config.ts, and its own command, `pnpm test:db`.
     exclude: ["**/node_modules/**", "test/**/*.db.test.ts"],
 
-    // NEW IN STEP 09, and the shape took three attempts to get right.
+    // STEP 09, and the shape took three attempts to get right.
     //
     // `src/audit.ts` holds one database connection in a module-level variable, because a program has
     // one database. Each test file makes its own PostgreSQL and points `audit.ts` at it — and two

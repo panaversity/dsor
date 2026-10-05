@@ -328,6 +328,26 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.close();
   });
 
+  it("DSOR-TEN-01a: an application that may move or delete invoices is refused at start-up", async () => {
+    // A critic's next attack: GRANT INSERT, UPDATE, DELETE ON public.invoices TO dsor_runtime and
+    // the program started happily, because the check looked at the audit table only.
+    for (const grant of [
+      "GRANT UPDATE (tenant_id) ON public.invoices TO dsor_runtime",
+      "GRANT UPDATE (id) ON public.invoices TO dsor_runtime",
+      "GRANT DELETE ON public.invoices TO dsor_runtime",
+      "GRANT INSERT ON public.invoices TO dsor_runtime",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(db), grant).rejects.toThrow(/invoices/);
+
+      await db.close();
+    }
+  });
+
   it("DSOR-AUD-04a: a right reached through inherited role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL

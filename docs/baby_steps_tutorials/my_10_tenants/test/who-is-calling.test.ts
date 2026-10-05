@@ -35,26 +35,57 @@ afterAll(async () => {
 describe("who you are comes from the login, never from the arguments", () => {
   // cfo_100 is the person who approves large payments. If a caller could claim to be her
   // by writing it down, every approval rule in DSoR would be worth nothing.
-  it("DSOR-SRC-02a: a principal named in the arguments is ignored", async () => {
-    const honest = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+  // STEP 10 changed this test's answer. Step 05 ignored a planted principal; DSOR-SRC-02b says a
+  // principal identifier in the arguments that disagrees with the security context MUST be refused.
+  // The lie is refused and recorded; the truth about who asked is unchanged either way.
+  it("DSOR-SRC-02b: a principal named in the arguments that is not you is refused", async () => {
     const lying = await callOperation(SUPERVISOR, "invoice.get", {
       invoice: INV_1008,
       principal: "cfo_100",
+    });
+
+    if (lying.kind !== "error") {
+      throw new Error(`expected a refusal, got ${lying.kind}`);
+    }
+
+    expect(lying.envelope.code).toBe("AUTHORIZATION_DENIED");
+    // And the answer still says user_123 asked, not cfo_100.
+    expect(lying.askedBy).toBe("user_123");
+  });
+
+  it("DSOR-SRC-02a: a principal that IS you, or any other name a caller plants, changes nothing", async () => {
+    const honest = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+    const decorated = await callOperation(SUPERVISOR, "invoice.get", {
+      invoice: INV_1008,
+      principal: "user_123",
       subject: "cfo_100",
       loggedInAs: "cfo_100",
     });
 
-    // Same answer, and the answer says user_123 asked, not cfo_100.
-    expect(lying.kind).toBe(honest.kind);
-    expect(lying.askedBy).toBe("user_123");
-    expect(honest.askedBy).toBe("user_123");
+    expect(decorated.kind).toBe(honest.kind);
+    expect(decorated.kind).toBe("data");
+    expect(decorated.askedBy).toBe("user_123");
   });
 
-  it("DSOR-SRC-02a: a tenant named in the arguments is ignored too", async () => {
+  it("DSOR-SRC-02b: a tenant named in the arguments that is not this request's is refused", async () => {
     const answer = await callOperation(SUPERVISOR, "invoice.get", {
       invoice: INV_1008,
       tenant: "org_999",
-      active_tenant: "org_999",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("TENANT_MISMATCH");
+    expect(answer.envelope.message).not.toContain("org_456");
+  });
+
+  it("DSOR-SRC-02a: a tenant that IS this request's, written into the arguments, changes nothing", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.get", {
+      invoice: INV_1008,
+      tenant: "org_456",
+      active_tenant: "org_999", // not one of the four identifier names; ignored, as step 05 did
     });
 
     expect(answer.kind).toBe("data");

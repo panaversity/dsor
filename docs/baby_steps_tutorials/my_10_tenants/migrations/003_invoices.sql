@@ -28,9 +28,10 @@ CREATE TABLE public.invoices (
 -- audit log, with the same reasoning: the narrow GRANT is the guarantee.
 --
 -- UPDATE is granted column by column, and `status` is the only column on the list. The application
--- may issue an invoice; it may not move one to another company or renumber it. Nothing in this step
--- creates or removes an invoice, so it holds neither INSERT nor DELETE — the running example is
--- inserted by the owner, in 004.
+-- may set the status of any row — nothing in a grant scopes rows to a company; that is step 11 — and
+-- it may not move a row to another company or renumber it. Nothing in this step creates or removes
+-- an invoice, so it holds neither INSERT nor DELETE: the running example is inserted by the owner,
+-- in 004.
 REVOKE ALL ON public.invoices FROM PUBLIC;
 GRANT SELECT ON public.invoices TO dsor_runtime;
 GRANT UPDATE (status) ON public.invoices TO dsor_runtime;

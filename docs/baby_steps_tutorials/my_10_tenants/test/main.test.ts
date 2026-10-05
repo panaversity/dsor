@@ -16,7 +16,7 @@
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 /**
  * The program's own database, which it keeps on disk between runs.
@@ -29,6 +29,14 @@ const ITS_DATABASE = fileURLToPath(new URL("../.local-database", import.meta.url
 
 /** Start from nothing, so a run's output is about that run. */
 beforeEach(() => {
+  rmSync(ITS_DATABASE, { recursive: true, force: true });
+});
+
+// NEW IN STEP 10: and leave nothing behind. These tests used to delete the database before each
+// run and never after, so `pnpm check` left one demo run's records and an issued INV-1009 in the
+// folder `pnpm start` uses — and a learner's first `pnpm start` printed CONFLICT and thirty records.
+// A critic measured it. The README's "run it twice" story only means something from an empty folder.
+afterAll(() => {
   rmSync(ITS_DATABASE, { recursive: true, force: true });
 });
 
@@ -110,11 +118,13 @@ describe("the program a learner runs", () => {
     // org_789's two.
     expect(rows).toHaveLength(17);
 
-    // Nine denials recorded, which is step 08's point: a program that logged only its successes
+    // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
     // outside one company, and the agent's unsaid request counted once in each employer's log.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(9);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(8);
+    // Ten since the review: a principal planted in the arguments that is not the caller is refused
+    // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now.
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(10);
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(7);
 
     // Sequences 0..14 for org_456 and then 0..1 for org_789: each chain counts from zero.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
@@ -135,7 +145,18 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-AUD-01: an unknown operation is recorded with no operation field", () => {
-    expect(demo().report).toContain("DENY   (no such operation)");
+    // The whole line for record 7, because the fallback label is now also printed for §21.2
+    // refusals. Built with the printer's own widths rather than typed, so the test pins the
+    // content — DENY, no operation, UNSUPPORTED_CAPABILITY — and not a guess at the spacing.
+    const line = [
+      " 7",
+      "DENY ",
+      "(none resolved)".padEnd(19),
+      "user_123".padEnd(21),
+      "UNSUPPORTED_CAPABILITY".padEnd(22),
+    ].join("  ");
+
+    expect(demo().report).toContain(line);
   });
 
   /**

@@ -144,6 +144,26 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `check deliberately.`,
     );
   }
+
+  // NEW IN STEP 10: the invoices table too. The application may change an invoice's status and
+  // nothing else — a row's company and number are its identity (DSOR-TEN-01a) — and it may neither
+  // add nor remove rows. An administrator who grants more has made the same kind of mistake as
+  // pointing DSOR_DB_URL at the owner, and a critic's next attack was exactly that grant.
+  const { rows: invoices } = await db.query<{ may: boolean }>(
+    `SELECT has_column_privilege(current_user, 'public.invoices', 'tenant_id', 'UPDATE')
+         OR has_column_privilege(current_user, 'public.invoices', 'id', 'UPDATE')
+         OR has_table_privilege(current_user, 'public.invoices', 'INSERT')
+         OR has_table_privilege(current_user, 'public.invoices', 'DELETE')
+         OR has_table_privilege(current_user, 'public.invoices', 'TRUNCATE') AS may`,
+  );
+
+  if (invoices[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may move, renumber, add or delete invoices. ` +
+        `The application may change an invoice's status and nothing else. See ` +
+        `migrations/003_invoices.sql.`,
+    );
+  }
 }
 
 /**

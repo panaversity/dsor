@@ -175,7 +175,8 @@ let proposalCount = 0;
  *
  * `principal_id` is filled in once a caller exists. `request_id` stays
  * required — that is the schema's own floor. The other five ids wait for their steps:
- * `tenant_id` for 10, `agent_id` for 18, and the rest for 40.
+ * `tenant_id` for the step that gives envelopes a tenant (the audit record carries it from step
+ * 10; the envelope does not yet), `agent_id` for 18, and the rest for 40.
  */
 function correlationFor(
   requestId: string | undefined,
@@ -270,15 +271,22 @@ export function success(answer: {
   data: Readonly<Record<string, unknown>>;
   semantics: string;
   payloadHash: string;
+  /** NEW IN STEP 10: the company the command ran in. The proposal address is inside it. */
+  tenant: string;
   requestId?: string;
   principalId?: string;
 }): ResultEnvelope {
   proposalCount += 1;
 
+  // NEW IN STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names
+  // its company. This was `dsor://org_456/proposal/...` for every tenant — a hostile review ran a
+  // command as org_789 and got a receipt in org_456's proposal space. The counter is still
+  // process-wide, which is fine for a number that only has to be unique; the proposal store that
+  // makes it real arrives in step 16.
   const id = String(proposalCount).padStart(4, "0");
   const envelope: ResultEnvelope = Object.freeze({
     outcome: "COMMITTED" as const,
-    proposal: `dsor://org_456/proposal/prop_${id}`,
+    proposal: `dsor://${answer.tenant}/proposal/prop_${id}`,
     payload_hash: answer.payloadHash,
     semantics: answer.semantics,
     data: answer.data,

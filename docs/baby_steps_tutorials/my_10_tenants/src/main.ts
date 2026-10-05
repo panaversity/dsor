@@ -51,7 +51,9 @@ console.log(show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1
 console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
 console.log();
 
-// The step's whole point: a principal written into the arguments is ignored.
+// Step 05's point was that a principal written into the arguments is ignored. NEW IN STEP 10: one
+// that is NOT you is refused — DSOR-SRC-02b — and recorded as the DENY it is; one that is you still
+// changes nothing.
 console.log(
   show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008, principal: "cfo_100" })),
 );
@@ -159,7 +161,7 @@ for (const company of ["org_456", "org_789"]) {
       [
         String(record.sequence).padStart(2),
         (record.authorization ?? "-").padEnd(5),
-        (record.operation ?? "(no such operation)").padEnd(19),
+        (record.operation ?? "(none resolved)").padEnd(19),
         record.identity.subject.padEnd(21),
         record.result.padEnd(22),
         `${record.record_hash.slice(0, 14)}...`,
@@ -194,7 +196,7 @@ console.log(
     `and against the head ${verifyChain(tampered, head)}`,
 );
 console.log(
-  `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in`,
+  `${countedWithoutARecord()} refusals counted without a record, because nobody was logged in or nobody belonged to a company`,
 );
 
 await database.close();

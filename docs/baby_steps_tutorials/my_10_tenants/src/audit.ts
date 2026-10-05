@@ -31,6 +31,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { theDatabase, type Database } from "./store.ts";
+import { isKnownTenant } from "./tenant.ts";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
@@ -440,6 +441,13 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     return undefined;
   }
 
+  // A chain is named after a company this program serves, and nothing else. The only caller is
+  // `recordTheDecision`, whose tenant comes from memberships validated at load — so this is a bug
+  // check, not a refusal, and it throws like a record the schema rejects.
+  if (!isKnownTenant(tenant)) {
+    throw new TypeError(`${tenant} is not a company this program serves; no record was written`);
+  }
+
   const chain = chainOf(tenant);
 
   // STEP 09: the position comes from the table.
@@ -554,7 +562,9 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
       request_id: requestId,
       tenant_id: tenant,
       principal_id: subject,
-      // A fresh id for THIS attempt, and it is inside the hash. Two writers for the same request,
+      // A fresh id for THIS attempt, and it is inside the hash. A refusal fanned out to two
+      // employers' logs is two records with two trace ids for one request — this slot is borrowed
+      // as a per-attempt nonce, and it must move the day DSOR-COR-01a's propagated trace id lands. Two writers for the same request,
       // subject, operation, result and millisecond used to produce byte-identical records, and the
       // lost-reply recovery below then could not tell "my INSERT committed" from "someone else wrote
       // the same bytes" — a hostile review measured two receipts for one row. With this, equal hashes
@@ -834,7 +844,7 @@ export function countedWithoutARecord(): number {
 }
 
 /**
- * Empties the log, the flood counter and the head, and starts a new run.
+ * Empties one company's log and its head, zeroes the flood counter for everyone, and starts a new run.
  *
  * A test seam, and the doc comment used to say "tests only; there is no erasing an audit log in
  * DSoR" — a sentence the function contradicts. Nothing stops a production path importing this and
@@ -854,8 +864,9 @@ export async function forgetTheLog(tenant: string): Promise<void> {
   // This chain only. `theHead` and `theLog` filter by `chain`, and so must the eraser, or step 10's
   // second tenant finds its history gone the first time a test for the first tenant cleans up.
   await theDatabase().query("DELETE FROM public.audit WHERE chain = $1", [chainOf(tenant)]);
-  // Process-wide, while the DELETE above is per chain. One chain today; step 10 decides whether the
-  // flood counter is per tenant too.
+  // Process-wide on purpose, while the DELETE above is per chain: §29's flood counter counts
+  // refusals that have no subject or no company, so there is no tenant to key it by, and any
+  // company's eraser zeroes it for all.
   unauthenticated = 0;
 }
 
