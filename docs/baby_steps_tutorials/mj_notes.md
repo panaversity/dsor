@@ -98,6 +98,15 @@ Step 17 recorded three:
 - 65: what a caller hears when the record fails after a command ran.
 - 66: whether a payment's link to its invoice is `invoice` or `invoice_id`.
 
+Step 18 recorded six, the first two from this page:
+
+- 67: which constraints DSOR-DEL-02 covers, and what DSoR does with one it cannot check.
+- 68: what a token with no scopes allows.
+- 69: which slip decides the refusal when none is usable.
+- 70: which code a suspended slip gives.
+- 71: whether anyone but a person may sign a slip.
+- 72: whether the running example's slip should run out on 2026-12-31.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -227,6 +236,25 @@ reviewer for a mutation sweep too.
   count is a fact about this repository's tests, not about DSoR. The questions that
   taught, in the understanding sessions, asked what DSoR does: who is refused, at which
   line, and whether the draft is there.
+- **Time a slow hook directly** (step 18, 2026-10-05). vitest's JSON report gives a file's
+  start time after its `beforeAll` hook, so the hook's own time never shows there. Step
+  18's cross-company database suite looked fast alone, and seemed to stall for 200 seconds
+  after the slips tests. Logging the time inside the hook showed 194 seconds alone and 237
+  after: a slow suite, not a stall.
+- **Count skipped tests, not only failures** (step 18). When a `beforeAll` hook runs out of
+  time, vitest reports the file's tests as skipped. A run that listed only failures missed
+  five skipped tests for one commit.
+- **Run each break as a pair** (step 18). Every prediction for B1 to B4 described DSoR with
+  its check still in place. Running each story on the step as built, then on the broken
+  copy, showed the learner's answer beside the break's.
+- **A rule proved in memory is not proved on the database** (step 18). The sweep found that
+  the code that turns a database row into a slip could drop its limit, its parent, or its
+  modes with every test green: each rule was tested only on slips in memory. Each rule that
+  a row must carry now has a database test too.
+- **Name the folder even for a reviewer who only reads** (step 18). The README's reviewer, told
+  to edit nothing, made a copy of the step to run checks in, in the scratchpad folder that
+  held the build's break scripts, and deleted it after. The build rebuilt its scripts from the
+  session. Every agent now gets the name of the one folder it may write in.
 
 ## Bugs found in earlier builds
 
@@ -472,6 +500,17 @@ the official tutorial's. A learner build does not change either. A maintainer de
   migration (step 18's decision 3), and step 25 tears slips up. No step adds an operation
   for a person to sign one. A command for people only, never for agents, that grants no more
   than the signer holds, could come beside revocation in step 25.
+- **Step 18's entry in the map: two more rules.** Step 05's entry gives the slip part of
+  DSOR-SRC-02b to step 18, but step 18's entry lists only DSOR-DEL-01a, 01b, and 02. And
+  once the slip's signer is the subject, DSOR-IDN-03a asks the company to be one where the
+  signer works. The learner build met both after its review (step 18's decisions 17 and 18).
+  The entry could list them. DSOR-DEL-07 and DSOR-DEL-08 arrived early too, from step 19
+  (decision 1).
+- **Analogies, from step 18.** A slip **torn up**, for a revoked one: it fits "it no longer
+  works", and misleads where the slip must stay in the table, so step 18's README says that it
+  stays there as `revoked`. The map's step 25 says "Tear up the permission slip". **Lock**, for a check that
+  keeps a company apart: step 11's two locks are DSoR's own `WHERE` and row-level security.
+  Step 18 adds a third check on the slip it gets, and calls it a check, not a lock.
 
 ## The Stage 2 review (2026-10-01)
 

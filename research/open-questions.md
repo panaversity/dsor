@@ -446,3 +446,42 @@ for a human. An agent may gather evidence; it does not settle these alone.
     17's learner build follows §6, with `invoice_id` and `vendor_id`. Should §7's example
     read `state.payment.invoice_id`, or should §7 say how a bind follows a link to another
     record?
+67. **Which constraints does DSOR-DEL-02 cover, and what if DSoR cannot check one?**
+    DSOR-DEL-02 computes authority from "the delegation's grants and constraints". The
+    slip's schema holds a time window, counterparties, resources, and limits. Only the
+    limits have rules of their own (DSOR-DEL-06a to 06e). No rule names `time_window` or
+    `counterparties`, and no rule says what DSoR does with a constraint it cannot check yet,
+    such as a vendor rule before vendor records exist. DSOR-MON-04 and DSOR-CTL-07 resolve
+    the unchecked restrictively, for money and for controls. Step 18's learner build refuses
+    any slip that carries a constraint, with `DELEGATION_REQUIRED`. Should DSOR-DEL-02 say
+    that a constraint DSoR cannot evaluate makes the slip unusable?
+68. **What does a token with no scopes allow?** DSOR-DEL-02 puts the token's scopes into the
+    intersection, and DSOR-DEL-01b says a token never widens a slip. A token can carry no
+    scopes at all, and the learner builds' tokens carry none. If "no scopes" means
+    everything, the token never narrows. If it means nothing, every call from an agent is
+    refused. Step 18's learner build reads it as "narrows nothing". Should §13 say which?
+    (Open question 23 asks the same of a membership's scopes.)
+69. **Which slip decides the refusal when none is usable?** DSOR-DEL-09 refuses when two
+    *active* slips could cover a call. An agent can also hold several slips that are not
+    usable: one torn up, one past its date, one suspended. Each has its own code. The slip
+    has no time of signing or tearing up, so DSoR cannot pick "the latest". Step 18's
+    learner build keeps one slip per agent and company, whatever its status, by a unique
+    key. Should §13 say which code applies when several unusable slips exist, or that there
+    is at most one?
+70. **Which code does a suspended slip give?** The slip's `status` may be `active`,
+    `suspended`, `revoked`, or `expired`. §28 has `DELEGATION_EXPIRED` and
+    `DELEGATION_REVOKED`, both retry class `never`, and no code for a suspended slip. A
+    suspension may be lifted, so `never` may be wrong for it. Step 18's learner build answers
+    `DELEGATION_REQUIRED`. Should §28 name a code, and a retry class, for a suspended slip?
+71. **May anyone but a person sign a slip?** §13 calls a delegation "a permission slip from
+    a human to an agent". The schema's `delegator` is any string. DSOR-DEL-02 intersects the
+    slip with "the delegator's current authority", which an application or a system account
+    also has. Step 18's learner build lets only a principal of type `human`, with a
+    membership in the company, sign. A slip from anyone else grants nothing. Should the rule
+    say so, or should the schema?
+72. **Should the running example's slip run out on 2026-12-31?** §13's `del_100`, and
+    `examples/delegation.example.json`, expire on 2026-12-31T23:59:59Z. An implementation
+    that tests with the running example finds every call from the agent refused with
+    `DELEGATION_EXPIRED` from 2027-01-01. Step 18's learner build dates its slips 2099-12-31
+    for this reason. Should the example's date move far ahead, or should §0.4 say that its
+    dates are only examples?
