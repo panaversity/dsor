@@ -61,3 +61,16 @@ stays, with a comment saying why.
   stayed beside `memberships` rather than inside them.
 - The map's done-when says "the same not found"; the spec says `TENANT_MISMATCH`. The spec won and
   the README says so.
+
+## Does it run by itself? (2026-10-05)
+
+Copied outside the repository with no `node_modules`, no `.env`, no `.local-database`:
+
+```text
+pnpm install --frozen-lockfile   ->  Done in 307ms
+pnpm check                       ->  Tests  362 passed | 1 skipped (363)
+pnpm start (twice)               ->  org_456: 30 then 45 records, org_789: 4 then 6, every chain verifying
+pnpm test:db (no server)         ->  Tests  9 skipped (9)
+```
+
+The one skip is the schema-equality test that needs the specification beside it, as in step 09.
