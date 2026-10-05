@@ -22,7 +22,7 @@ import {
 // caller may do.
 import { type Login, principalFrom, tenantClaimed } from "./login.ts";
 import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
-import { TENANT, tenantFor } from "./tenant.ts";
+import { tenantFor } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { holds } from "./permissions.ts";
 import {
@@ -59,6 +59,8 @@ type Handler = (
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
+  /** NEW IN STEP 10: the one company this request is for, from §21.2. */
+  tenant: string,
   hash: string,
   requestId: string,
 ) => OperationAnswer;
@@ -77,6 +79,7 @@ function invoiceIdFrom(
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
+  tenant: string,
   requestId: string,
 ): { readonly id: string } | { readonly refused: ErrorEnvelope } {
   // The caller's **own** `invoice`, not one inherited from a prototype. A name an object merely
@@ -105,14 +108,21 @@ function invoiceIdFrom(
 
   const namedFor = contract.id.split(".")[0];
 
-  // The address names a company, and this program serves exactly one. Reading the tenant
-  // and then ignoring it would be worse than not parsing it: the caller asks for
-  // org_999's invoice and quietly gets org_456's. Real multi-tenancy is step 10.
-  if (parsed.tenant !== TENANT) {
+  // NEW IN STEP 10: the address names a company, and it has to be the company this REQUEST is for —
+  // decided in §21.2 from who is logged in, never from this address. Reading the tenant and then
+  // ignoring it would be worse than not parsing it: the caller asks for org_789's invoice and
+  // quietly gets org_456's.
+  //
+  // The refusal echoes the address and nothing else. It used to say "and this program serves
+  // org_456", which told a stranger which company this is; and it must be the same words whether
+  // org_789 (real) or org_000 (not) was asked for, so that being refused never says which companies
+  // exist. It is computed from the address alone, before any lookup, so it cannot reveal whether the
+  // invoice exists either. That is DSOR-SRC-02b's code with DSOR-ERR-01b's silence.
+  if (parsed.tenant !== tenant) {
     return {
       refused: refusal(
         "TENANT_MISMATCH",
-        `${given} is for ${parsed.tenant}, and this program serves ${TENANT}`,
+        `${given} is not an address in your company`,
         requestId,
         askedBy,
       ),
@@ -134,8 +144,8 @@ function invoiceIdFrom(
 }
 
 const handlers: Readonly<Record<string, Handler>> = {
-  "invoice.get": (args, contract, askedBy, _hash, requestId) => {
-    const read = invoiceIdFrom(args, contract, askedBy, requestId);
+  "invoice.get": (args, contract, askedBy, tenant, _hash, requestId) => {
+    const read = invoiceIdFrom(args, contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
@@ -162,8 +172,8 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", askedBy, invoice };
   },
 
-  "invoice.issue": (args, contract, askedBy, hash, requestId) => {
-    const read = invoiceIdFrom(args, contract, askedBy, requestId);
+  "invoice.issue": (args, contract, askedBy, tenant, hash, requestId) => {
+    const read = invoiceIdFrom(args, contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
@@ -720,6 +730,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
     // (DSOR-COR-01b implies a caller may one day supply one) they would drift apart silently.
     const {
       principal,
+      tenant,
       contract,
       given,
       payloadHash: hash,
@@ -748,6 +759,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
     // branch, and it now holds even when the stage that writes the evidence has been replaced.
     if (
       principal === undefined ||
+      tenant === undefined ||
       contract === undefined ||
       given === undefined ||
       hash === undefined ||
@@ -761,15 +773,17 @@ export function makeDoor(stages: readonly Stage[]): Door {
       const absent =
         principal === undefined
           ? "a principal"
-          : contract === undefined
-            ? "a contract"
-            : given === undefined
-              ? "its arguments"
-              : hash === undefined
-                ? "a payload hash"
-                : handler === undefined
-                  ? "any code to carry it out"
-                  : "a record of the decision";
+          : tenant === undefined
+            ? "a tenant"
+            : contract === undefined
+              ? "a contract"
+              : given === undefined
+                ? "its arguments"
+                : hash === undefined
+                  ? "a payload hash"
+                  : handler === undefined
+                    ? "any code to carry it out"
+                    : "a record of the decision";
       const askedBy = principal?.id ?? "(nobody)";
 
       return Object.freeze({
@@ -785,7 +799,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    return Object.freeze(handler(given, contract, principal.id, hash, id_));
+    return Object.freeze(handler(given, contract, principal.id, tenant, hash, id_));
   };
 }
 
