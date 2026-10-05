@@ -63,7 +63,7 @@ type Handler = (
   tenant: string,
   hash: string,
   requestId: string,
-) => OperationAnswer;
+) => OperationAnswer | Promise<OperationAnswer>;
 
 /** Contracts that describe an operation this step does not carry out yet. */
 const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set<string>();
@@ -144,14 +144,16 @@ function invoiceIdFrom(
 }
 
 const handlers: Readonly<Record<string, Handler>> = {
-  "invoice.get": (args, contract, askedBy, tenant, _hash, requestId) => {
+  "invoice.get": async (args, contract, askedBy, tenant, _hash, requestId) => {
     const read = invoiceIdFrom(args, contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
     }
 
-    const invoice = getInvoice(read.id);
+    // NEW IN STEP 10: inside this request's company. There is no "INV-1008" any more, only
+    // "org_456's INV-1008", and the store is asked that way.
+    const invoice = await getInvoice(tenant, read.id);
 
     // Step 03 answered `undefined` here and left the caller to work out why. An absent
     // invoice is still an ordinary answer, and now it says so in a way a caller can act
@@ -172,14 +174,14 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", askedBy, invoice };
   },
 
-  "invoice.issue": (args, contract, askedBy, tenant, hash, requestId) => {
+  "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {
     const read = invoiceIdFrom(args, contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
     }
 
-    const outcome = issueInvoice(read.id);
+    const outcome = await issueInvoice(tenant, read.id);
 
     if (outcome.kind === "not_found") {
       return {
@@ -799,7 +801,7 @@ export function makeDoor(stages: readonly Stage[]): Door {
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    return Object.freeze(handler(given, contract, principal.id, tenant, hash, id_));
+    return Object.freeze(await handler(given, contract, principal.id, tenant, hash, id_));
   };
 }
 

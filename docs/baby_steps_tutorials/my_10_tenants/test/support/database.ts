@@ -11,7 +11,7 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { migrationsIn } from "../../src/migrations.ts";
-import { useDatabase } from "../../src/audit.ts";
+import { theDatabase, useDatabase } from "../../src/store.ts";
 
 /** A fresh database with the migrations applied, pointed at by `audit.ts`. */
 export async function aDatabase(): Promise<PGlite> {
@@ -30,4 +30,25 @@ export async function aDatabase(): Promise<PGlite> {
   useDatabase(db);
 
   return db;
+}
+
+/**
+ * NEW IN STEP 10: put the invoices back to how the story starts.
+ *
+ * A test seam, as the owner: the application holds neither DELETE nor INSERT on invoices, which is
+ * the point. The rows come from `004_running_example.sql` — the one place the story is written —
+ * rather than from a second copy of it here, so the two can never disagree.
+ */
+export async function resetInvoices(): Promise<void> {
+  const db = theDatabase();
+
+  await db.query("DELETE FROM public.invoices");
+
+  for (const migration of migrationsIn(
+    fileURLToPath(new URL("../../migrations", import.meta.url)),
+  )) {
+    if (migration.name === "004_running_example.sql") {
+      await db.query(migration.sql);
+    }
+  }
 }

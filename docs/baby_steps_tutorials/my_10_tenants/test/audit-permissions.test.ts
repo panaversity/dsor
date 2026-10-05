@@ -724,13 +724,15 @@ describe("a table the application makes to stand in front of the real one", () =
         for (const match of code.matchAll(each)) {
           const named = match[1]!.replace(/"/g, "").toLowerCase();
 
-          if (named === "audit" || named === "applied_migrations") {
+          if (named === "audit" || named === "applied_migrations" || named === "invoices") {
             unqualified.push(`${file}: ${keyword} ${named}`);
           }
         }
       }
 
-      for (const match of code.matchAll(/'(audit|applied_migrations)'\s*::\s*regclass/gi)) {
+      for (const match of code.matchAll(
+        /'(audit|applied_migrations|invoices)'\s*::\s*regclass/gi,
+      )) {
         unqualified.push(`${file}: ${match[0]}`);
       }
     }

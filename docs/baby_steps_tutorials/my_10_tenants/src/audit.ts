@@ -30,6 +30,7 @@
 // wherever it crosses an interface or is stored as evidence.
 
 import { createHash, randomUUID } from "node:crypto";
+import { theDatabase, type Database } from "./store.ts";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
@@ -191,44 +192,10 @@ export function resetClock(): void {
   clock = realClock;
 }
 
-/**
- * STEP 09: anything that can run SQL and give back rows.
- *
- * One method, because that is all this file needs. `pg`'s Pool satisfies it, and so does PGlite, so
- * the same SQL runs against Neon in production and against PostgreSQL-in-process in the tests.
- *
- * This is deliberately **not** a second implementation of the store. There is one store — the SQL
- * below — and two things that can execute it. A second in-memory implementation would be faster and
- * would be a thing that can drift from the real one while the tests stay green, which is what
- * AGENTS.md means by never testing audit immutability against a mock.
- */
-export interface Database {
-  query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
-}
-
-let database: Database | undefined;
-
-/**
- * Point the log at a database. `main.ts` calls this with a connection; a test calls it with PGlite.
- *
- * It is required rather than lazily defaulted, and the error below says why: a program that quietly
- * kept writing to memory when its database was missing would lose exactly the evidence this step
- * exists to keep.
- */
-export function useDatabase(db: Database): void {
-  database = db;
-}
-
-function theDatabase(): Database {
-  if (database === undefined) {
-    throw new TypeError(
-      "the audit log has no database: call useDatabase() before recording anything. " +
-        "Step 09 moved the log out of memory, so there is nowhere else for a record to go.",
-    );
-  }
-
-  return database;
-}
+// NEW IN STEP 10: the database handle lives in store.ts now, because the invoices have rows too and
+// they must be the same rows this log is in. Re-exported, so everything that learned to call
+// `useDatabase` from here in step 09 still can.
+export { useDatabase, type Database } from "./store.ts";
 
 let unauthenticated = 0;
 

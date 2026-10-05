@@ -373,8 +373,9 @@ describe("the one door to the audit log's database", () => {
     // `void useDatabase(db)` and a file in a subdirectory past it. An identifier count cannot be
     // dodged by any of those; only `audit["use" + "Database"]` would, and that is not a shape anyone
     // writes by accident. The exact numbers are pinned so a new mention anywhere is a visible act:
-    // audit.ts holds the definition and one error-message string; database.ts holds the import, its
-    // two calls, and one comment that names the function. A comment counts, on purpose — the number
+    // NEW IN STEP 10: store.ts holds the definition now, its error string, and one comment, because
+    // the invoices needed the same handle; audit.ts holds the re-export and one comment; database.ts
+    // holds the import, its two calls, and one comment that names the function. A comment counts, on purpose — the number
     // is a tripwire, not a measure of doors, and a tripwire that ignores comments is one a comment
     // can be used to hide behind.
     const src = fileURLToPath(new URL("../src", import.meta.url));
@@ -393,6 +394,6 @@ describe("the one door to the audit log's database", () => {
       }
     }
 
-    expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4 });
+    expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4, "store.ts": 4 });
   });
 });

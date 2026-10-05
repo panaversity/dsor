@@ -9,8 +9,8 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 import { forgetTheLog, theLog } from "../src/audit.ts";
-import { getInvoice, resetInvoices } from "../src/invoice.ts";
-import { aDatabase } from "./support/database.ts";
+import { getInvoice } from "../src/invoice.ts";
+import { aDatabase, resetInvoices } from "./support/database.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(
@@ -243,7 +243,7 @@ describe("the pipeline", () => {
    */
   it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", async () => {
     await forgetTheLog();
-    resetInvoices();
+    await resetInvoices();
 
     const blind = PIPELINE.map((stage) =>
       stage.name === "record the decision"
@@ -277,7 +277,7 @@ describe("the pipeline", () => {
     expect(answer.askedBy).toBe("user_123");
 
     // The point of the whole step: no evidence, so nothing happened.
-    expect(getInvoice("INV-1009")?.status).toBe("draft");
+    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
     expect(await theLog()).toHaveLength(0);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
@@ -287,7 +287,7 @@ describe("the pipeline", () => {
 
     expect(real.kind).toBe("result");
     expect(await theLog()).toHaveLength(1);
-    expect(getInvoice("INV-1009")?.status).toBe("issued");
+    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("issued");
   });
 
   /**
@@ -577,7 +577,7 @@ describe("the pipeline", () => {
   it("DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here", async () => {
     // INV-1009 is the story's only draft, and the test above issues it. Decision 59's seam is what
     // stops this test depending on the order it happens to run in.
-    resetInvoices();
+    await resetInvoices();
 
     const hollow = PIPELINE.map((stage) =>
       stage.name === "authorize"
