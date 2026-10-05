@@ -297,6 +297,7 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
       ({
         kind: "decision",
         subject: "user_123",
+        tenant: "org_456",
         requestId: id,
         operation: "invoice.get@1",
         authorization: "ALLOW",
@@ -320,9 +321,9 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
       expect(loser.reason).toMatchObject({ code: "23505" });
     }
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(won.length);
-    expect(verifyChain(log, await theHead())).toBe(true);
+    expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
 });

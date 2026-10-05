@@ -26,12 +26,6 @@ export function isKnownTenant(tenantId: string): boolean {
 }
 
 /**
- * The company the audit chain is named after — step 09's constant, kept until piece 4 of this step
- * makes the audit log per tenant. Nothing new should read it.
- */
-export const TENANT = "org_456";
-
-/**
  * What a login said about which company it means.
  *
  * Three shapes and not two, on purpose. "Unnamed" and "malformed" must stay apart: a caller with one

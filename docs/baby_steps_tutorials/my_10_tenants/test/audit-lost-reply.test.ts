@@ -53,6 +53,7 @@ function aDecision(id: string): DecisionToRecord {
   return {
     kind: "decision",
     subject: "user_123",
+    tenant: "org_456",
     requestId: id,
     operation: "invoice.get@1",
     authorization: "ALLOW",
@@ -108,13 +109,13 @@ describe("an INSERT whose reply is lost", () => {
     useDatabase(withOneBrokenInsert("lose the reply"));
 
     const record = await audit(aDecision("req_1"));
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(1);
     // The record handed back is the one in the table, not a second attempt at it.
     expect(record?.record_id).toBe(log[0]?.record_id);
     expect(record?.record_hash).toBe(log[0]?.record_hash);
-    expect(verifyChain(log, await theHead())).toBe(true);
+    expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
 
   it("DSOR-EXE-02: the log and the answer agree, instead of contradicting each other", async () => {
@@ -128,7 +129,7 @@ describe("an INSERT whose reply is lost", () => {
     useDatabase(withOneBrokenInsert("lose the reply"));
 
     const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(answer.kind).not.toBe("error");
     expect(log).toHaveLength(1);
@@ -152,7 +153,7 @@ describe("an INSERT whose reply is lost", () => {
 
     useDatabase(real);
 
-    expect(await theLog()).toHaveLength(0);
+    expect(await theLog("org_456")).toHaveLength(0);
   });
 
   it("DSOR-UNK-01b: a connection that fails before the server answers is unknown, not failed", async () => {
@@ -220,11 +221,11 @@ describe("an INSERT whose reply is lost", () => {
     await expect(audit(aDecision("req_ours"))).rejects.toThrow(/duplicate key|unique/i);
 
     // Their record is untouched and still the only one.
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(1);
     expect(log[0]?.correlation.request_id).toBe("req_theirs");
-    expect(verifyChain(log, await theHead())).toBe(true);
+    expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
 });
 
@@ -284,7 +285,7 @@ describe("an INSERT whose reply is lost on a connection that then stays dead", (
     // And the row really is there, which is why "retry safely" would have been a lie.
     useDatabase(real);
 
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
   });
 });
 
@@ -325,7 +326,7 @@ describe("an INSERT refused because the row is already there", () => {
 
     await expect(audit(aDecision("req_1"))).rejects.toMatchObject({ code: "23505" });
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(1);
     expect(log[0]?.record_hash).toBe(first?.record_hash);
@@ -337,7 +338,7 @@ describe("an INSERT refused because the row is already there", () => {
 
     const one = await audit(aDecision("req_1"));
 
-    await forgetTheLog();
+    await forgetTheLog("org_456");
 
     const two = await audit(aDecision("req_1"));
 
@@ -383,7 +384,7 @@ describe("an INSERT refused because the row is already there", () => {
 
     useDatabase(real);
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(1);
     expect(log[0]?.correlation.request_id).toBe("req_1");
@@ -441,7 +442,7 @@ describe("an INSERT refused because the row is already there", () => {
 
     useDatabase(real);
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(1);
     expect(log[0]?.correlation.request_id).toBe("req_theirs");
@@ -456,6 +457,6 @@ describe("the head, when the store does not answer", () => {
     // branch no test can reach must at least fail closed.
     useDatabase({ query: async <T>() => ({ rows: [] as T[] }) });
 
-    await expect(theHead()).rejects.toThrow(/did not answer the head query/);
+    await expect(theHead("org_456")).rejects.toThrow(/did not answer the head query/);
   });
 });

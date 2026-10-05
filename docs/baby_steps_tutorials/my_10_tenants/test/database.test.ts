@@ -115,13 +115,14 @@ describe("the identity the program itself connects as", () => {
     await audit({
       kind: "decision",
       subject: "user_123",
+      tenant: "org_456",
       requestId: "req_1",
       operation: "invoice.get@1",
       authorization: "ALLOW",
       result: "OK",
     });
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(1);
     expect(log[0]?.identity.subject).toBe("user_123");
@@ -136,6 +137,7 @@ describe("the identity the program itself connects as", () => {
     await audit({
       kind: "decision",
       subject: "user_123",
+      tenant: "org_456",
       requestId: "req_1",
       operation: "invoice.get@1",
       authorization: "ALLOW",
@@ -147,7 +149,7 @@ describe("the identity the program itself connects as", () => {
     const me = await identity(second.connection);
 
     expect(me.who).toBe(APPLICATION_ROLE);
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
 
     await second.close();
   });

@@ -34,7 +34,6 @@ import { theDatabase, type Database } from "./store.ts";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
-import { TENANT } from "./tenant.ts";
 
 // ajv-formats is CommonJS; under nodenext the callable sits on `.default`. Same cast, same reason,
 // as in envelopes.ts — `at` is a `date-time`, and without the formats plugin ajv prints
@@ -138,6 +137,13 @@ export interface DecisionToRecord {
   readonly kind: AuditKind;
   /** Who DSoR authenticated, or `undefined` when nobody logged in. */
   readonly subject: string | undefined;
+  /**
+   * NEW IN STEP 10: the company this decision belongs to — the one the request resolved to.
+   * `undefined` when it resolved to none, in which case the decision is counted, not recorded,
+   * exactly as when nobody was logged in. `recordTheDecision` in operations.ts decides which
+   * companies a no-company refusal is written to; this function writes one record in one chain.
+   */
+  readonly tenant: string | undefined;
   readonly requestId: string;
   readonly result: string;
   readonly operation?: string;
@@ -146,8 +152,18 @@ export interface DecisionToRecord {
   readonly reason?: string;
 }
 
-/** The chain this deployment appends to. One per tenant, which is one, until step 10. */
-const CHAIN = `audit:${TENANT}`;
+/**
+ * NEW IN STEP 10: the chain a company's decisions join. One per company, named after it.
+ *
+ * Step 08's chain was named after a constant and every record joined it. With two companies in one
+ * table that would make org_456's hashes depend on org_789's records, and §14 says audit partitions
+ * are keyed by tenant. So each company has its own chain, its own sequence from 0, its own genesis
+ * and its own head — and nothing in one ever links to the other, because the chain name is inside
+ * every record's hash.
+ */
+function chainOf(tenant: string): string {
+  return `audit:${tenant}`;
+}
 
 /** What the first record points at, since it has nothing before it. */
 const GENESIS = `sha256:${"0".repeat(64)}`;
@@ -238,13 +254,13 @@ export interface Head {
  * §30 says the real answer, and says it as a SHOULD: *"Implementations SHOULD anchor checkpoints
  * outside the control-plane store."* A checkpoint computed from the thing it checks is not a
  * checkpoint. `DSOR-AUD-04d` is not claimed, and this is why.
- */ export async function theHead(): Promise<Head> {
+ */ export async function theHead(tenant: string): Promise<Head> {
   const { rows } = await theDatabase().query<{ count: string; last_hash: string | null }>(
     `SELECT count(*)::text AS count,
             (SELECT record_hash FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
               AS last_hash
      FROM public.audit WHERE chain = $1`,
-    [CHAIN],
+    [chainOf(tenant)],
   );
   const row = rows[0];
 
@@ -406,6 +422,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // This is lesson 16 in the learner's notes for the third time: "read the caller's data once" is a
   // rule about **every** function the data reaches, and `audit` was the one that had not applied it.
   const subject = decision.subject;
+  const tenant = decision.tenant;
   const kind = decision.kind;
   const requestId = clip(decision.requestId);
   const result = clip(decision.result);
@@ -414,11 +431,16 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const payloadHashGiven = decision.payloadHash;
   const reason = decision.reason === undefined ? undefined : clip(decision.reason);
 
-  if (subject === undefined) {
+  // No subject, or no company: counted, not recorded. The second is new in step 10, and it is rare
+  // by construction — `recordTheDecision` writes a no-company refusal to every company the caller
+  // belongs to, so this line is reached only by a principal who belongs to none.
+  if (subject === undefined || tenant === undefined) {
     unauthenticated += 1;
 
     return undefined;
   }
+
+  const chain = chainOf(tenant);
 
   // STEP 09: the position comes from the table.
   //
@@ -454,7 +476,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const { rows: tail } = await db.query<{ at_position: string; record_hash: string }>(
     `SELECT sequence::text AS at_position, record_hash
      FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1`,
-    [CHAIN],
+    [chain],
   );
   const last = tail[0];
   const sequence = last === undefined ? 0 : Number(last.at_position) + 1;
@@ -510,12 +532,12 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const at = new Date(instant).toISOString();
 
   const body: Record<string, unknown> = {
-    record_id: `${CHAIN}:${sequence}`,
-    chain: CHAIN,
+    record_id: `${chain}:${sequence}`,
+    chain,
     sequence,
     previous_hash: previous,
     at,
-    tenant: TENANT,
+    tenant,
     kind,
     identity: {
       // `direct`, with an empty actor chain, because that is what is true today: a person calls
@@ -530,7 +552,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     result,
     correlation: {
       request_id: requestId,
-      tenant_id: TENANT,
+      tenant_id: tenant,
       principal_id: subject,
       // A fresh id for THIS attempt, and it is inside the hash. Two writers for the same request,
       // subject, operation, result and millisecond used to produce byte-identical records, and the
@@ -759,7 +781,7 @@ async function insert(db: Database, written: AuditRecord): Promise<void> {
  * only place that reads rows and why it rebuilds the record field by field rather than spreading the
  * row — a column added later must not silently become part of what `verifyChain` hashes.
  */
-export async function theLog(): Promise<readonly AuditRecord[]> {
+export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
   const { rows } = await theDatabase().query<Record<string, unknown>>(
     // Same alias, same reason. Without it this returned the chain in text order — 0, 1, 10, 11, 2 —
     // and `verifyChain` would have reported a perfectly good log as broken.
@@ -768,7 +790,7 @@ export async function theLog(): Promise<readonly AuditRecord[]> {
             tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
             reason
      FROM public.audit WHERE chain = $1 ORDER BY sequence`,
-    [CHAIN],
+    [chainOf(tenant)],
   );
 
   return Object.freeze(
@@ -824,14 +846,14 @@ export function countedWithoutARecord(): number {
  * It also erases the aggregated count, which is the only evidence an unauthenticated flood ever
  * happened. And it bumps `run`, so the record ids it frees are never handed out twice.
  */
-export async function forgetTheLog(): Promise<void> {
+export async function forgetTheLog(tenant: string): Promise<void> {
   // DELETE, which the application's own account is not allowed to run — so this only works for a
   // caller connected as the owner. That is the shape of the guarantee: a test holds the owner's
   // connection, and the program never does.
   //
   // This chain only. `theHead` and `theLog` filter by `chain`, and so must the eraser, or step 10's
   // second tenant finds its history gone the first time a test for the first tenant cleans up.
-  await theDatabase().query("DELETE FROM public.audit WHERE chain = $1", [CHAIN]);
+  await theDatabase().query("DELETE FROM public.audit WHERE chain = $1", [chainOf(tenant)]);
   // Process-wide, while the DELETE above is per chain. One chain today; step 10 decides whether the
   // flood counter is per tenant too.
   unauthenticated = 0;

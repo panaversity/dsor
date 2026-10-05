@@ -33,7 +33,7 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
 /** A clean slate: an empty log, a counter at zero, and request ids starting again at one. */
 async function fresh(): Promise<void> {
-  await forgetTheLog();
+  await forgetTheLog("org_456");
   resetRequestIds();
   resetProposalIds();
   resetClock();
@@ -59,9 +59,9 @@ describe("the decision is written down first", () => {
     const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(answer.kind).toBe("data");
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
 
-    const record = (await theLog())[0]!;
+    const record = (await theLog("org_456"))[0]!;
 
     expect(record.authorization).toBe("ALLOW");
     expect(record.result).toBe("ALLOWED");
@@ -84,9 +84,9 @@ describe("the decision is written down first", () => {
     }
 
     expect(answer.envelope.code).toBe("AUTHORIZATION_DENIED");
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
 
-    const record = (await theLog())[0]!;
+    const record = (await theLog("org_456"))[0]!;
 
     expect(record.authorization).toBe("DENY");
     expect(record.result).toBe("AUTHORIZATION_DENIED");
@@ -110,17 +110,17 @@ describe("the decision is written down first", () => {
       throw new Error(`expected a refusal then a result, got ${refused.kind} then ${issued.kind}`);
     }
 
-    expect(await theLog()).toHaveLength(2);
-    expect((await theLog())[0]!.correlation.request_id).toBe(
+    expect(await theLog("org_456")).toHaveLength(2);
+    expect((await theLog("org_456"))[0]!.correlation.request_id).toBe(
       refused.envelope.correlation.request_id,
     );
-    expect((await theLog())[1]!.correlation.request_id).toBe(
+    expect((await theLog("org_456"))[1]!.correlation.request_id).toBe(
       issued.envelope.correlation.request_id,
     );
 
     // Two requests, two ids, two records. Nothing shared by accident.
-    expect((await theLog())[0]!.correlation.request_id).not.toBe(
-      (await theLog())[1]!.correlation.request_id,
+    expect((await theLog("org_456"))[0]!.correlation.request_id).not.toBe(
+      (await theLog("org_456"))[1]!.correlation.request_id,
     );
   });
 
@@ -146,9 +146,9 @@ describe("the decision is written down first", () => {
       }
 
       expect(answer.envelope.code, where).toBe(code);
-      expect(await theLog(), where).toHaveLength(1);
-      expect((await theLog())[0]!.authorization, where).toBe("DENY");
-      expect((await theLog())[0]!.result, where).toBe(code);
+      expect(await theLog("org_456"), where).toHaveLength(1);
+      expect((await theLog("org_456"))[0]!.authorization, where).toBe("DENY");
+      expect((await theLog("org_456"))[0]!.result, where).toBe(code);
     }
   });
 
@@ -168,14 +168,19 @@ describe("the decision is written down first", () => {
    * `validate the input` stage only checks that the arguments can be written down. It does not check
    * them against the contract's input schema, so a missing `invoice` is not caught at §21.6 where it
    * belongs — it is caught inside the handler.
+   *
+   * STEP 10 took one example out of this list. An address for another company used to be refused in
+   * the handler too, and so sat in the log as ALLOW; it is decided at §21.6 now and recorded as the
+   * DENY it is (cross-tenant.test.ts). A missing invoice takes its place here: that one really is
+   * an execution-time answer — the decision was to allow, and the invoice was not there.
    */
   it("DSOR-EXE-02: a call that fails while executing is recorded as the ALLOW it was", async () => {
     const refusedWhileExecuting = [
       { id: "invoice.get", args: {}, code: "VALIDATION_FAILED" },
       {
         id: "invoice.get",
-        args: { invoice: "dsor://org_999/invoice/INV-1008" },
-        code: "TENANT_MISMATCH",
+        args: { invoice: "dsor://org_456/invoice/INV-9999" },
+        code: "RESOURCE_NOT_FOUND",
       },
       {
         id: "invoice.issue",
@@ -197,13 +202,13 @@ describe("the decision is written down first", () => {
       expect(answer.envelope.code, where).toBe(code);
 
       // Recorded, and recorded as an ALLOW — because the decision was to allow it.
-      expect(await theLog(), where).toHaveLength(1);
-      expect((await theLog())[0]!.authorization, where).toBe("ALLOW");
-      expect((await theLog())[0]!.result, where).toBe("ALLOWED");
+      expect(await theLog("org_456"), where).toHaveLength(1);
+      expect((await theLog("org_456"))[0]!.authorization, where).toBe("ALLOW");
+      expect((await theLog("org_456"))[0]!.result, where).toBe("ALLOWED");
 
       // Which means the record and the answer disagree about how this went. That is the limit: the
       // outcome needs §21.15, and the step that brings it is where this stops being true.
-      expect((await theLog())[0]!.result, where).not.toBe(answer.envelope.code);
+      expect((await theLog("org_456"))[0]!.result, where).not.toBe(answer.envelope.code);
     }
   });
 
@@ -216,12 +221,12 @@ describe("the decision is written down first", () => {
 
     await callOperation(SUPERVISOR, "not an operation at all", {});
 
-    const record = (await theLog())[0]!;
+    const record = (await theLog("org_456"))[0]!;
 
     expect(record.operation).toBeUndefined();
     expect(record.result).toBe("UNSUPPORTED_CAPABILITY");
     expect(record.reason).toContain("not an operation at all");
-    expect(verifyChain(await theLog())).toBe(true);
+    expect(verifyChain(await theLog("org_456"))).toBe(true);
   });
 
   it("DSOR-EXE-02: a caller who never logged in is counted, and writes no record", async () => {
@@ -233,7 +238,7 @@ describe("the decision is written down first", () => {
       );
     }
 
-    expect(await theLog()).toHaveLength(0);
+    expect(await theLog("org_456")).toHaveLength(0);
     expect(countedWithoutARecord()).toBe(5);
   });
 
@@ -264,9 +269,9 @@ describe("the decision is written down first", () => {
     );
 
     // No answer reached the caller, and the decision is on the record anyway.
-    expect(await theLog()).toHaveLength(1);
-    expect((await theLog())[0]!.operation).toBe("invoice.get@1");
-    expect((await theLog())[0]!.authorization).toBe("ALLOW");
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect((await theLog("org_456"))[0]!.operation).toBe("invoice.get@1");
+    expect((await theLog("org_456"))[0]!.authorization).toBe("ALLOW");
   });
 
   // Fault injection through the seam that already exists. A clock that returns nonsense makes the
@@ -287,7 +292,7 @@ describe("the decision is written down first", () => {
 
     // Retry `safe_same_key`, because the request provably never ran — which is the next assertion.
     expect(answer.envelope.retry).toBe("safe_same_key");
-    expect(await theLog()).toHaveLength(0);
+    expect(await theLog("org_456")).toHaveLength(0);
     expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
 
     resetClock();
@@ -297,7 +302,7 @@ describe("the decision is written down first", () => {
     expect((await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 })).kind).toBe(
       "result",
     );
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
   });
 
   /**
@@ -324,7 +329,7 @@ describe("the decision is written down first", () => {
 
     // Not AUTHORIZATION_DENIED, though that is what the authorize stage said.
     expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
-    expect(await theLog()).toHaveLength(0);
+    expect(await theLog("org_456")).toHaveLength(0);
 
     resetClock();
 
@@ -332,8 +337,8 @@ describe("the decision is written down first", () => {
     const again = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
 
     expect(again.kind === "error" && again.envelope.code).toBe("AUTHORIZATION_DENIED");
-    expect(await theLog()).toHaveLength(1);
-    expect((await theLog())[0]!.result).toBe("AUTHORIZATION_DENIED");
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect((await theLog("org_456"))[0]!.result).toBe("AUTHORIZATION_DENIED");
   });
 
   /**
@@ -376,9 +381,9 @@ describe("the decision is written down first", () => {
     });
 
     expect(answer.kind).toBe("data");
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
 
-    const record = (await theLog())[0]!;
+    const record = (await theLog("org_456"))[0]!;
 
     // Who: from the login, through findPerson's table. Never from the arguments.
     expect(record.identity.subject).toBe("user_123");
@@ -408,7 +413,7 @@ describe("the decision is written down first", () => {
     expect(record.payload_hash).not.toBe(`sha256:${"c".repeat(64)}`);
     expect(record.record_hash).not.toBe(`sha256:${"a".repeat(64)}`);
 
-    expect(verifyChain(await theLog(), await theHead())).toBe(true);
+    expect(verifyChain(await theLog("org_456"), await theHead("org_456"))).toBe(true);
   });
 
   // The payload hash is real: it is of these arguments and no others. A review pointed out that a
@@ -422,13 +427,15 @@ describe("the decision is written down first", () => {
       throw new Error(`expected a result, got ${issued.kind}`);
     }
 
-    expect((await theLog())[0]!.payload_hash).toBe(issued.envelope.payload_hash);
+    expect((await theLog("org_456"))[0]!.payload_hash).toBe(issued.envelope.payload_hash);
 
     // Different arguments, different fingerprint.
     const other = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(other.kind).toBe("data");
-    expect((await theLog())[1]!.payload_hash).not.toBe((await theLog())[0]!.payload_hash);
+    expect((await theLog("org_456"))[1]!.payload_hash).not.toBe(
+      (await theLog("org_456"))[0]!.payload_hash,
+    );
   });
 
   // The §21.6 refusal, which is the only decision-stage refusal that arrives with no payload hash.
@@ -442,11 +449,11 @@ describe("the decision is written down first", () => {
     const answer = await callOperation(SUPERVISOR, "invoice.get", cycle);
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
-    expect(await theLog()).toHaveLength(1);
-    expect((await theLog())[0]!.authorization).toBe("DENY");
-    expect((await theLog())[0]!.result).toBe("VALIDATION_FAILED");
-    expect((await theLog())[0]!.payload_hash).toBeUndefined();
-    expect((await theLog())[0]!.operation).toBe("invoice.get@1");
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect((await theLog("org_456"))[0]!.authorization).toBe("DENY");
+    expect((await theLog("org_456"))[0]!.result).toBe("VALIDATION_FAILED");
+    expect((await theLog("org_456"))[0]!.payload_hash).toBeUndefined();
+    expect((await theLog("org_456"))[0]!.operation).toBe("invoice.get@1");
   });
 
   /**
@@ -480,10 +487,10 @@ describe("the decision is written down first", () => {
       const answer = await makeDoor(list)(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
       expect(answer.kind === "error" && answer.envelope.code, lazied).toBe("INTERNAL_ERROR");
-      expect(await theLog(), lazied).toHaveLength(1);
-      expect((await theLog())[0]!.authorization, lazied).toBe("DENY");
-      expect((await theLog())[0]!.result, lazied).toBe("INTERNAL_ERROR");
-      expect((await theLog())[0]!.reason, lazied).toMatch(why);
+      expect(await theLog("org_456"), lazied).toHaveLength(1);
+      expect((await theLog("org_456"))[0]!.authorization, lazied).toBe("DENY");
+      expect((await theLog("org_456"))[0]!.result, lazied).toBe("INTERNAL_ERROR");
+      expect((await theLog("org_456"))[0]!.reason, lazied).toMatch(why);
 
       // And nothing was carried out.
       expect((await getInvoice("org_456", "INV-1009"))?.status, lazied).toBe("draft");
@@ -505,8 +512,8 @@ describe("the decision is written down first", () => {
     const again = await callOperation(SUPERVISOR, Symbol("invoice.get") as unknown as string, {});
 
     expect(again.kind === "error" && again.envelope.code).toBe("UNSUPPORTED_CAPABILITY");
-    expect(await theLog()).toHaveLength(1);
-    expect((await theLog())[0]!.reason).toMatch(/not text/);
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect((await theLog("org_456"))[0]!.reason).toMatch(/not text/);
   });
 
   /**
@@ -551,7 +558,7 @@ describe("the decision is written down first", () => {
       expect(answer.envelope.message, answer.envelope.code).toMatch(/characters, \d+ dropped/);
 
       // And nothing enormous reached the log either.
-      for (const record of await theLog()) {
+      for (const record of await theLog("org_456")) {
         expect((record.reason ?? "").length, answer.envelope.code).toBeLessThan(700);
       }
     }
@@ -589,13 +596,13 @@ describe("the decision is written down first", () => {
       expect(answer.kind === "error" && answer.envelope.code, what).toBe("UNSUPPORTED_CAPABILITY");
 
       // Recorded, and the chain still agrees with itself after it.
-      expect(await verifyChain(await theLog(), await theHead()), what).toBe(true);
+      expect(await verifyChain(await theLog("org_456"), await theHead("org_456")), what).toBe(true);
     }
 
-    expect(await theLog()).toHaveLength(4);
+    expect(await theLog("org_456")).toHaveLength(4);
 
     // And every stored row reads back as exactly what was hashed, which is the thing that was wrong.
-    for (const record of await theLog()) {
+    for (const record of await theLog("org_456")) {
       expect(record.reason!.isWellFormed(), record.record_id).toBe(true);
       expect(record.reason).not.toContain("\u0000");
     }
@@ -617,9 +624,9 @@ describe("the decision is written down first", () => {
     // caps what is built, which protects the caller — a two-megabyte error message is its own problem.
     expect(answer.envelope.message.length).toBeLessThan(400);
 
-    expect(await theLog()).toHaveLength(1);
-    expect((await theLog())[0]!.reason!.length).toBeLessThan(600);
-    expect(verifyChain(await theLog(), await theHead())).toBe(true);
+    expect(await theLog("org_456")).toHaveLength(1);
+    expect((await theLog("org_456"))[0]!.reason!.length).toBeLessThan(600);
+    expect(verifyChain(await theLog("org_456"), await theHead("org_456"))).toBe(true);
   });
 
   // The guard that stops a later step reintroducing the hole by accident. A `record the decision`
@@ -658,9 +665,9 @@ describe("the decision is written down first", () => {
     // Every `validateAuditRecord` call in audit.test.ts is on a record that file built itself.
     // DSOR-AUD-01's sentence is about the records the pipeline actually writes, and a review pointed
     // out that nothing checked those.
-    expect(await theLog()).toHaveLength(4);
+    expect(await theLog("org_456")).toHaveLength(4);
 
-    for (const record of await theLog()) {
+    for (const record of await theLog("org_456")) {
       expect(validateAuditRecord(record), record.record_id).toBe(true);
     }
   });
@@ -675,10 +682,10 @@ describe("the decision is written down first", () => {
     await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
     // Four records, not five: the caller with no login was counted instead.
-    expect(await theLog()).toHaveLength(4);
+    expect(await theLog("org_456")).toHaveLength(4);
     expect(countedWithoutARecord()).toBe(1);
-    expect(verifyChain(await theLog(), await theHead())).toBe(true);
-    expect((await theLog()).map((record) => record.authorization)).toEqual([
+    expect(verifyChain(await theLog("org_456"), await theHead("org_456"))).toBe(true);
+    expect((await theLog("org_456")).map((record) => record.authorization)).toEqual([
       "ALLOW",
       "DENY",
       "DENY",

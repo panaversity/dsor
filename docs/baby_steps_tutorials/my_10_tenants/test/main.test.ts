@@ -123,8 +123,8 @@ describe("the program a learner runs", () => {
 
     // The line that shows what a checkpoint is for — and only as far as it goes. Hash chaining alone
     // says a shortened log is fine, because every link in it still holds; the head notices, for a log
-    // held in memory. It does NOT notice a row deleted from the table, because `theHead()` is a query
-    // over that table and moves with it. The demo's wording says so, and so does `theHead()`.
+    // held in memory. It does NOT notice a row deleted from the table, because `theHead("org_456")` is a query
+    // over that table and moves with it. The demo's wording says so, and so does `theHead("org_456")`.
     expect(out).toContain(
       "drop one from the copy we are holding: the chain alone still says true, and against the head false",
     );

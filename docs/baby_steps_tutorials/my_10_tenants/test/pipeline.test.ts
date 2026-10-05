@@ -242,7 +242,7 @@ describe("the pipeline", () => {
    * the guarantee no longer rests on the stage being the right stage — it rests on a record existing.
    */
   it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", async () => {
-    await forgetTheLog();
+    await forgetTheLog("org_456");
     await resetInvoices();
 
     const blind = PIPELINE.map((stage) =>
@@ -278,7 +278,7 @@ describe("the pipeline", () => {
 
     // The point of the whole step: no evidence, so nothing happened.
     expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
-    expect(await theLog()).toHaveLength(0);
+    expect(await theLog("org_456")).toHaveLength(0);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
     const real = await callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
@@ -286,7 +286,7 @@ describe("the pipeline", () => {
     });
 
     expect(real.kind).toBe("result");
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
     expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("issued");
   });
 
@@ -299,7 +299,7 @@ describe("the pipeline", () => {
    * private to the walk.
    */
   it("DSOR-EXE-02: the receipt names the record that was written", async () => {
-    await forgetTheLog();
+    await forgetTheLog("org_456");
 
     let receipt: string | undefined;
     const peek: Stage = Object.freeze({
@@ -319,16 +319,16 @@ describe("the pipeline", () => {
     });
 
     expect(answer.kind).toBe("data");
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
 
     // Not merely present — the id of the record that exists.
-    expect(receipt).toBe((await theLog())[0]!.record_id);
+    expect(receipt).toBe((await theLog("org_456"))[0]!.record_id);
     expect(receipt).toBe("audit:org_456:0");
   });
 
   // A query too, because a read is the case where nothing would have looked wrong at all.
   it("DSOR-EXE-02: a read without a record is refused as well", async () => {
-    await forgetTheLog();
+    await forgetTheLog("org_456");
 
     const blind = PIPELINE.map((stage) =>
       stage.name === "record the decision"
@@ -345,7 +345,7 @@ describe("the pipeline", () => {
 
     // It used to come back as `data` with the invoice in it, and nothing written down.
     expect(answer.kind).toBe("error");
-    expect(await theLog()).toHaveLength(0);
+    expect(await theLog("org_456")).toHaveLength(0);
   });
 
   // STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.

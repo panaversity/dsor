@@ -16,7 +16,9 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { callOperation } from "../src/operations.ts";
+import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
+import { theLog, forgetTheLog } from "../src/audit.ts";
+import type { Context } from "../src/pipeline.ts";
 import { aDatabase } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -103,5 +105,50 @@ describe("an address for another company", () => {
     const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: OURS });
 
     expect(answer.kind).toBe("data");
+  });
+});
+
+describe("where the refusal happens, and what the log says", () => {
+  it("DSOR-EXE-02: a mismatching address is refused before the decision is recorded, as a DENY", async () => {
+    // Piece 2 of this step checked the address in the handler, at §21.14 — after the decision was
+    // recorded at §21.11 — and this request sat in the log as ALLOWED while the caller held a
+    // refusal. The check moved to §21.6. This is the test that noticed.
+    await forgetTheLog("org_456");
+    await refusalFor(SUPERVISOR, THEIRS);
+
+    const [record] = await theLog("org_456");
+
+    expect(record?.authorization).toBe("DENY");
+    expect(record?.result).toBe("TENANT_MISMATCH");
+  });
+
+  it("DSOR-IDN-03b: a validate stage that forgot the address check cannot leak the other company's invoice", async () => {
+    // A door whose validate stage copies and hashes the arguments — enough to satisfy the door's
+    // receipt checks — and skips the address check. The handler's own re-check is what stands
+    // between that door and org_789's invoice, and it answers INTERNAL_ERROR, because a pipeline
+    // that let the address through is this program's bug and not something the caller can act on.
+    const forgetful = PIPELINE.map((stage) =>
+      stage.name === "validate the input"
+        ? {
+            ...stage,
+            run: (context: Context) => ({
+              kind: "carry_on" as const,
+              context: {
+                ...context,
+                given: Object.freeze({ ...context.args }),
+                payloadHash: `sha256:${"0".repeat(64)}`,
+              },
+            }),
+          }
+        : stage,
+    );
+    const answer = await makeDoor(forgetful)(SUPERVISOR, "invoice.get", { invoice: THEIRS });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.envelope.message).toContain("another company");
   });
 });

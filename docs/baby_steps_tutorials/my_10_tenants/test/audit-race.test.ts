@@ -68,6 +68,7 @@ function aDecision(id: string): DecisionToRecord {
   return {
     kind: "decision",
     subject: "user_123",
+    tenant: "org_456",
     requestId: id,
     operation: "invoice.get@1",
     authorization: "ALLOW",
@@ -116,7 +117,7 @@ describe("a writer that loses the race", () => {
     release();
     await slow;
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(2);
     expect(log[0]?.correlation.request_id).toBe("req_fast");
@@ -207,7 +208,7 @@ describe("a writer that loses the race", () => {
       await writers[i];
     }
 
-    const log = await theLog();
+    const log = await theLog("org_456");
 
     expect(log).toHaveLength(10);
     // Written in the reverse of the order they started: the last writer created holds position 0.
@@ -228,6 +229,6 @@ describe("a writer that loses the race", () => {
       expect(log[i]!.at >= log[i - 1]!.at, `record ${i} is older than ${i - 1}`).toBe(true);
     }
 
-    expect(verifyChain(log, await theHead())).toBe(true);
+    expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
 });

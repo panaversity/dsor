@@ -605,7 +605,7 @@ describe("erasing the log, which only a test may do", () => {
     expect(before.rows[0]?.n).toBe("2");
 
     useDatabase(db);
-    await forgetTheLog();
+    await forgetTheLog("org_456");
 
     const left = await db.query<{ chain: string }>("SELECT chain FROM public.audit");
 
@@ -627,7 +627,7 @@ describe("a table the application makes to stand in front of the real one", () =
    *
    *     the application CAN create a temp table called audit
    *     after one audit() call:  public.audit has 0 row(s),  pg_temp.audit has 1
-   *     theLog() reports 1 record(s)
+   *     theLog("org_456") reports 1 record(s)
    *
    * Nothing refuses, nothing is logged, and the program reports a healthy audit trail while the
    * real one stays empty. That is a complete bypass of `DSOR-AUD-01` reachable from the
@@ -655,6 +655,7 @@ describe("a table the application makes to stand in front of the real one", () =
     await audit({
       kind: "decision",
       subject: "user_123",
+      tenant: "org_456",
       requestId: "req_1",
       operation: "invoice.get@1",
       authorization: "ALLOW",
@@ -666,7 +667,7 @@ describe("a table the application makes to stand in front of the real one", () =
 
     expect(real.rows[0]?.n).toBe("1");
     expect(shadow.rows[0]?.n).toBe("0");
-    expect(await theLog()).toHaveLength(1);
+    expect(await theLog("org_456")).toHaveLength(1);
 
     await db.exec("RESET ROLE;");
   });

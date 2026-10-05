@@ -108,21 +108,18 @@ function invoiceIdFrom(
 
   const namedFor = contract.id.split(".")[0];
 
-  // NEW IN STEP 10: the address names a company, and it has to be the company this REQUEST is for —
-  // decided in §21.2 from who is logged in, never from this address. Reading the tenant and then
-  // ignoring it would be worse than not parsing it: the caller asks for org_789's invoice and
-  // quietly gets org_456's.
-  //
-  // The refusal echoes the address and nothing else. It used to say "and this program serves
-  // org_456", which told a stranger which company this is; and it must be the same words whether
-  // org_789 (real) or org_000 (not) was asked for, so that being refused never says which companies
-  // exist. It is computed from the address alone, before any lookup, so it cannot reveal whether the
-  // invoice exists either. That is DSOR-SRC-02b's code with DSOR-ERR-01b's silence.
+  // NEW IN STEP 10: the address names a company, and it has to be the company this REQUEST is for.
+  // `validate the input` decided that at §21.6, before the decision was recorded, and refused with
+  // TENANT_MISMATCH if not — so by this line the two always agree, and this check is unreachable
+  // through the real pipeline. It is here anyway, as INTERNAL_ERROR and not as a refusal the caller
+  // could act on, for the same reason the door refuses without a receipt: a door built with a
+  // validate stage that forgot the address check would otherwise hand out another company's
+  // invoice. A list check cannot see what a stage does; this can. A test builds exactly that door.
   if (parsed.tenant !== tenant) {
     return {
       refused: refusal(
-        "TENANT_MISMATCH",
-        `${given} is not an address in your company`,
+        "INTERNAL_ERROR",
+        `validate the input let through an address for another company`,
         requestId,
         askedBy,
       ),
@@ -459,6 +456,52 @@ const validateTheInput: Stage["run"] = (context) => {
     // a second read can answer differently, and it used to.
     const written = JSON.stringify(given);
 
+    // NEW IN STEP 10: every address in the arguments must be in this request's company, and it is
+    // decided HERE, at §21.6, not in the handler. Piece 2 of this step put it in the handler, and
+    // piece 4's test caught what that meant: the handler runs at §21.14, after the decision is
+    // recorded at §21.11, so a request refused for another company's address sat in the log as
+    // ALLOWED — the log and the answer disagreeing, which is the one thing a decision record exists
+    // to prevent. DSOR-SRC-02b is a fact about the arguments, and validation is where facts about
+    // the arguments are decided.
+    //
+    // Generic on purpose: any own argument that is a `dsor://` address, not only `invoice`. An
+    // address that does not parse is left for the handler's VALIDATION_FAILED, as before.
+    if (context.tenant === undefined) {
+      return refuse(
+        askedBy,
+        "INTERNAL_ERROR",
+        "the pipeline reached validate the input without a tenant",
+        context.requestId,
+      );
+    }
+
+    for (const value of Object.values(given)) {
+      if (typeof value !== "string" || !value.startsWith("dsor://")) {
+        continue;
+      }
+
+      let address;
+
+      try {
+        address = parseUri(value);
+      } catch {
+        continue;
+      }
+
+      // The refusal echoes the address and nothing else: the same words whether that company exists
+      // or not, nothing about the company the caller is in, and computed before any lookup, so it
+      // cannot reveal whether the resource exists either. DSOR-SRC-02b's code with DSOR-ERR-01b's
+      // silence.
+      if (address.tenant !== context.tenant) {
+        return refuse(
+          askedBy,
+          "TENANT_MISMATCH",
+          `${value} is not an address in your company`,
+          context.requestId,
+        );
+      }
+    }
+
     return carryOn({ ...context, given, payloadHash: payloadHash(written) });
   } catch {
     return refuse(
@@ -546,21 +589,41 @@ const recordTheDecision: Stage["run"] = async (context) => {
 
   const outcome = denial ?? shortfall;
 
+  // NEW IN STEP 10: which company's log this decision goes to.
+  //
+  // A request that resolved to a company goes to that company's chain — one record. A refusal at
+  // §21.2, which resolved to none, still has to be written down (denials are evidence), and it is
+  // written to the log of EVERY company the caller belongs to: user_123's attempt to name org_789
+  // lands in org_456's log, where their supervisor looks; the shared agent's request that never
+  // said which employer lands in both employers' logs, because both should know. No company's log
+  // ever carries a stranger's attempt to reach it. A caller who belongs to no company at all is
+  // counted, like one who is not logged in — `audit` does that when the tenant is undefined.
+  // Decision 90.
+  const homes: readonly (string | undefined)[] =
+    context.tenant !== undefined
+      ? [context.tenant]
+      : principal === undefined || principal.memberships.length === 0
+        ? [undefined]
+        : principal.memberships.map((m) => m.tenantId);
+
   let written;
 
   try {
-    written = await audit({
-      kind: "decision",
-      subject: principal?.id,
-      requestId: context.requestId,
-      // The decision, not the outcome. Whether the invoice was actually issued is §21.15's business,
-      // and it has not happened yet — it cannot have, because this line runs first.
-      authorization: outcome === undefined ? "ALLOW" : "DENY",
-      result: outcome === undefined ? "ALLOWED" : outcome.code,
-      reason: outcome === undefined ? undefined : outcome.message,
-      ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
-      ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
-    });
+    for (const tenant of homes) {
+      written = await audit({
+        kind: "decision",
+        subject: principal?.id,
+        tenant,
+        requestId: context.requestId,
+        // The decision, not the outcome. Whether the invoice was actually issued is §21.15's business,
+        // and it has not happened yet — it cannot have, because this line runs first.
+        authorization: outcome === undefined ? "ALLOW" : "DENY",
+        result: outcome === undefined ? "ALLOWED" : outcome.code,
+        reason: outcome === undefined ? undefined : outcome.message,
+        ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
+        ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
+      });
+    }
   } catch (failure) {
     // STEP 09: the answer a step-08 array could never give. The write may have happened and
     // the store could not be asked whether it did. That is not a failure and it is not a success,

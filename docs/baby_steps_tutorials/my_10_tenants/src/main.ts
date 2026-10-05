@@ -104,7 +104,7 @@ console.log();
 console.log("The audit log:");
 console.log();
 
-for (const record of await theLog()) {
+for (const record of await theLog("org_456")) {
   console.log(
     [
       String(record.sequence).padStart(2),
@@ -125,11 +125,11 @@ console.log();
 // Be careful what the second line below demonstrates, because I claimed more than it shows. The log is
 // read ONCE, into `whole`, and `tampered` is a copy of it with the last record removed. So this
 // catches a shortened log you are **holding**, and that is all. A row deleted from the **table** moves
-// `theHead()` with it, because `theHead()` is a query over that same table, and then the two agree
+// `theHead("org_456")` with it, because `theHead("org_456")` is a query over that same table, and then the two agree
 // again. §30 says the answer and says it as a SHOULD: anchor a checkpoint outside the store. This step
 // has nowhere outside to put one, which is why `DSOR-AUD-04d` is not claimed.
-const whole = await theLog();
-const head = await theHead();
+const whole = await theLog("org_456");
+const head = await theHead("org_456");
 const tampered = whole.slice(0, whole.length - 1);
 
 console.log(
