@@ -1,10 +1,10 @@
 // The demo program itself, tested by running it.
 //
-// NEW: until now no test touched `src/main.ts`. It is the program the README tells you to
-// run, and the README pastes its output as proof that the step works — so flipping one
-// `===` inside it left every test green while `pnpm start` printed the opposite of what
-// the README promised. A document that cannot go wrong is worth more than a document that
-// is right today.
+// NEW IN STEP 04: rewritten. Step 03 already ran `src/main.ts` under a test, because the
+// README pastes its output as proof that the step works, and a program no test runs can
+// print the opposite of what the page promises without anything going red. What changed
+// here is the output: every answer now has a shape, so the tests below read codes and
+// retry classes back out of the transcript instead of checking fixed "refused" lines.
 //
 // Why a subprocess instead of an import: `main.ts` does its work at the top level. There
 // is no function to call. Importing it would run it, print into the test output, and leave

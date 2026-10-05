@@ -134,7 +134,7 @@ my_04_result_and_error_envelopes/
   src/invoice.ts        CHANGED  a new issueInvoice, which reports an outcome instead of throwing
   src/operations.ts     CHANGED  every refusal is an envelope; invoice.issue has a handler
   src/main.ts           CHANGED  reads every answer in one place, printing its code and retry class
-  test/main.test.ts         NEW  6 tests: runs the program itself and reads what it printed
+  test/main.test.ts     CHANGED  rewritten: six tests read the new transcript, its codes and its retry classes; step 03's six are gone with the lines they checked
   test/operations.test.ts CHANGED every refusal test asserts a code and a retry class; four new
   src/registry.ts       CHANGED  step 03's NEW IN STEP markers removed
   test/registry.test.ts CHANGED  step 03's NEW IN STEP markers removed
@@ -197,15 +197,39 @@ UNSUPPORTED_CAPABILITY   retry: never                execute_sql is not an opera
 
 That transcript is not a snapshot somebody pasted once and never checked again.
 `test/main.test.ts` starts `src/main.ts` as a real program, in a real child process, and
-compares what it printed to the sixteen lines above, line for line. It then reads the
-refusal lines back and checks each code and retry class against the §28 table itself.
+compares what it printed, byte for byte, to a copy of those sixteen lines kept inside the
+test as the constant `TRANSCRIPT`. Be clear about what that does and does not prove: the
+test holds the program to its constant, and nothing holds the constant to this page. The
+two copies are kept the same by hand, so when one changes the other must change too. The
+test then reads the refusal lines back and checks each code and retry class against the
+§28 table itself.
 
-Until this step had that test, `src/main.ts` was the one file no test imported. Flipping a
-single `===` inside it left every test green while `pnpm start` printed the opposite of
-what this page promises. A mutation sweep over the program now kills seventeen of twenty
-deliberate breakages; the three survivors print the identical bytes, so no test reading the
-output could tell — for instance, replacing `operationIds().join(", ")` with the same two
-names typed out by hand.
+Step 03 was the first step to run `src/main.ts` under a test, after a flipped `===` inside
+it had left every test green while `pnpm start` printed the opposite of what the page
+promised (the comment at the top of step 03's `test/main.test.ts` tells that story). This
+step rewrote the test for the new output. How much does it catch? Ten one-line changes to
+`src/main.ts`, each run through `pnpm test` and then undone:
+
+```text
+killed    1. flip the `===` in show()                     Tests  6 failed | 98 passed (104)
+survived  2. type the operation names by hand            Tests  104 passed (104)
+survived  3. print the word never instead of e.retry     Tests  104 passed (104)
+killed    4. delete the second invoice.issue call        Tests  4 failed | 100 passed (104)
+killed    5. point INV_1009 at INV-1008                  Tests  5 failed | 99 passed (104)
+killed    6. drop the execute_sql row                    Tests  3 failed | 101 passed (104)
+killed    7. pad the code column to 23 instead of 24     Tests  1 failed | 103 passed (104)
+survived  8. type the proposal address by hand           Tests  104 passed (104)
+survived  9. type the greeting by hand                   Tests  104 passed (104)
+killed   10. drop the first character of every message  Tests  2 failed | 102 passed (104)
+```
+
+Six of ten. All four survivors print the identical bytes, so no test that reads the output
+could tell. The one worth sitting with is 3: every refusal in this program says `never`, so
+a `main.ts` that prints `never` without looking at the envelope passes the test titled
+`DSOR-ERR-01a` as well as the byte comparison. The test compares what was printed to the
+table; it cannot see whether the program looked. That is a limit of testing through the
+output, and it is why the table and `refusal()` have tests of their own in
+`test/envelopes.test.ts`.
 
 ```bash
 pnpm check                 # typecheck, then test. 104 tests pass
