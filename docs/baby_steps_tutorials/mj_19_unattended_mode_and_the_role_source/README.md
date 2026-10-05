@@ -153,7 +153,7 @@ Checked on 2026-10-05:
 | (our decision) | **C7.** A signer whom the directory reports as suspended or deprovisioned gives her agent nothing | `DELEGATION_REQUIRED` at line ③, for every operation, recorded |
 | DSOR-IDN-03a, DSOR-IDN-04b | **C8.** Only the directory speaks for the absent signer | user_700 signs a slip in org_456, and org_456's directory does not list user_700: `AUTHORIZATION_DENIED` at line ③. The login table still says `ap_supervisor` for user_123 while the directory says `ap_clerk`: the directory decides |
 | DSOR-DEL-10 | **C9.** An agent's record names the source and time of its signer's authority | The draft's record holds `subject_authority: { source: role_source, as_of }`, and `as_of` is the time of the answer used: 02:00 for a fresh one, 01:30 for a kept one. Read back from the database. A person's record is unchanged |
-| (our decision) | **C10.** An answer about another person, or from another company, is a fault and is never used | `INTERNAL_ERROR`, recorded, with no draft |
+| (our decision) | **C10.** An answer about another person, or from another company, is a fault and is never used, fresh or kept | `INTERNAL_ERROR`, recorded, with no draft. Every answer names its company and person, and line ③ checks both at every use |
 | (our decision) | **C11.** A person who calls for herself does not need the directory | org_456's directory is off, and user_123's own draft is made |
 
 ### Decisions the specification leaves to us
@@ -237,8 +237,8 @@ Unit tests in `test/role-source.test.ts`, with a fake clock where a claim depend
 - **C6:** the cross-company case, with org_789's directory off.
 - **C7:** `suspended` and `deprovisioned`, for each operation.
 - **C8:** user_700's slip in org_456, and the login table that disagrees with the directory.
-- **C10:** a directory part that answers about cfo_100 when asked about user_123, and one that
-  answers for org_789 when asked for org_456.
+- **C10:** a directory part that answers about cfo_100 when asked about user_123, one that
+  answers for org_789 when asked for org_456, and a kept answer from another company.
 - **C11:** user_123's own draft with her company's directory off.
 
 Database tests in `test/role-source.db.test.ts`: **C9**, the record of a fresh answer and of a
@@ -247,19 +247,18 @@ and step 18's tests keep running, with each company's directory on.
 
 ### Breaks we will try, and what we expect
 
-_The learner's predictions are asked next, one at a time, as a story._
+Run against the finished step. The learner's predictions were recorded on 2026-10-05, before
+any code, as stories with a fact card: what the agent hears, and what the database holds after.
+B1 and B2 match the expected answer. B3 follows the broken lookup to its end, but leaves out
+the check that stays (C10). B4 describes DSoR with its 2-second limit still in place. So the
+build runs each break as a pair: the learner's case beside the real one.
 
-- **B1, the map's: switch the directory off.** org_456's directory is off before the night
-  run, so DSoR has no kept answer. Expected: every call from the agent in org_456 is refused
-  at line ③ with `FRESHNESS_UNSATISFIABLE`, recorded, with no draft. user_123's own draft is
-  made, and the agent's work in org_789 goes on.
-- **B2: delete the age check.** Any kept answer counts, however old. Expected: at 02:45 the
-  agent drafts a payment on the answer from 01:30, and the record says "as of 01:30".
-- **B3: keep answers by person only, not by company.** Expected: with org_789's directory off,
-  a slip in org_789 signed by user_123 is answered from org_456's kept answer, and the agent
-  drafts in org_789 under a person who does not work there.
-- **B4: delete the 2-second limit.** Expected: a stuck directory holds the agent's call open,
-  and the agent hears nothing at all.
+| # | The break | Expected to be caught by | Learner's prediction |
+| --- | --- | --- | --- |
+| B1 | The map's own: org_456's directory is off from the start of the night, so DSoR has no kept answer. At 02:00 the agent asks for a draft for INV-1008. No code changes | C3. Line ③ refuses with `FRESHNESS_UNSATISFIABLE`, recorded, with no draft. user_123's own draft is made (C11), and the agent's work in org_789 goes on | Line ③, `FRESHNESS_UNSATISFIABLE`, and no draft |
+| B2 | Line ③ no longer checks the age of a kept answer. The directory answered at 01:30 and went off at 02:00. At 02:45 the agent asks for a draft | C3. With B2 any kept answer counts, so the draft is made, and its record says "as of 01:30" | The draft is made, and its record says "as of 01:30" |
+| B3 | DSoR keeps answers by person only, not by company. C10's check stays. At 01:30 org_456's directory answered about user_123. org_789's directory is off. At 02:10 `firm-ap-fte` asks for a draft in org_789 under `del_103`, a test slip that user_123 signed there | C6. The lookup finds org_456's answer, C10's check sees the wrong company, and line ③ refuses with `INTERNAL_ERROR`, with no draft. Without C10's check, a draft would be made in org_789 | A draft is made in org_789 |
+| B4 | DSoR waits for the directory with no time limit. The directory answered at 01:30. From 02:00 it is stuck: it takes every question and never answers. At 02:10 the agent asks for a draft | C4. With B4 the call stays open: the agent hears nothing, and nothing is drafted or recorded | The draft is made, and its record says "as of 01:30" |
 
 ### Left open, and not this step's idea
 

@@ -60,6 +60,13 @@ DSOR-IDN-06 says DSoR denies a command when the delegator's authority is older t
 company directory can come back a minute later. Until the spec says, step 19's design
 must choose.
 
+Step 19's design chose `FRESHNESS_UNSATISFIABLE`, retry `after_delay` (step 19's decision 4),
+and found a second question beside it. DSOR-FRS-02b, the rule that defines that code, also
+says "not fall back to a cache". Step 19 keeps the directory's last answer for an outage, and
+uses it while it is younger than the bound. Is an answer inside the bound of DSOR-IDN-06 fresh,
+or is it the cache that DSOR-FRS-02b forbids? And does DSOR-IDN-06, which says "command", cover
+an agent's reads? Step 19 refuses them too (decision 5).
+
 ### Which constraints does DSOR-DEL-02 cover, and what if DSoR cannot check one?
 
 DSOR-DEL-02 computes authority from "the delegation's grants and constraints". The slip's
@@ -506,6 +513,14 @@ the official tutorial's. A learner build does not change either. A maintainer de
   signer works. The learner build met both after its review (step 18's decisions 17 and 18).
   The entry could list them. DSOR-DEL-07 and DSOR-DEL-08 arrived early too, from step 19
   (decision 1).
+- **Step 19b, the leaver's slips (DSOR-IDN-07).** An earlier bullet here put DSOR-IDN-07 in
+  step 19, beside the role source that reports a firing. Step 19's design split it out (step
+  19's decision 6): building it inside step 19 brings a second idea, DSoR's first write to its
+  own slips, with the problem of two writes in two orders. Step 19 refuses a suspended or
+  deprovisioned signer's agent at line ③ and leaves the slip `active`. Step 19b, built right
+  after it, suspends every slip the person signed and records the change, with the audit
+  record's kind `delegation_change`. Step 25's revocation could then reuse that write. The
+  map could add the step, or give DSOR-IDN-07 to step 25.
 - **Analogies, from step 18.** A slip **torn up**, for a revoked one: it fits "it no longer
   works", and misleads where the slip must stay in the table, so step 18's README says that it
   stays there as `revoked`. The map's step 25 says "Tear up the permission slip". **Lock**, for a check that
@@ -796,6 +811,24 @@ pages for the parts that did not land.
   answer with its time; which line and which code refuse when no fresh answer exists; reads or
   commands only; DSOR-IDN-07 (suspend a leaver's slips) now or later; and the two breaks (the
   directory switched off, a signer demoted while the agent runs).
+
+### Step 19, the design (2026-10-05)
+
+- **Nine decisions, chosen by two tests the learner named.** At decision 2 the learner answered
+  with a question: "which goes near to production and deep understanding". From then on every
+  recommendation said how it met both tests. The learner chose the recommended option in all
+  seven decisions they chose directly. For decisions 2 and 8, the recommended option was taken
+  by those two tests after the learner's answer.
+- **Two answers came back as questions, and both helped.** For DSOR-IDN-07 the learner asked
+  when a split step would be built, and then what building it inside would cost. A story of
+  the five things line ③ would then do, with step 17's two writes named, settled it: step 19b.
+  For the setting's place the learner answered "a or b". Checking option b showed that its
+  "step 10's company table" does not exist. Every fact inside an option needs checking before
+  the question goes out, not after.
+- **Break predictions: 2 of 4 as expected.** B1 and B2 matched. B3 followed the broken lookup
+  to its end and left out the check that stays (C10): the opposite of step 18's habit. B4
+  described DSoR with its time limit still in place: Habit 1 again. Step 18's predictions were
+  0 of 4. The fact card in every question may be what changed.
 
 ## Still unknown
 
