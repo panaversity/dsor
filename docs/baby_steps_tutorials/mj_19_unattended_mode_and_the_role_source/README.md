@@ -146,7 +146,7 @@ Checked on 2026-10-05:
 
 | Rule | Claim | How we know |
 | --- | --- | --- |
-| DSOR-IDN-05 | **C1.** Each company has its own role source: a setting and a directory. DSoR does not start without them | org_456 and org_789 each have both. Start-up refuses a company with no setting, the kinds `scim` and `dsor_assignments`, a bound of `P2D` (over 24 hours) or of zero, and a duration it cannot read |
+| DSOR-IDN-05 | **C1.** Each company has its own role source: a setting and a directory. DSoR does not start without them | org_456 and org_789 each have both. Start-up refuses a company with no setting, a setting for a company where no login works, the kinds `scim` and `dsor_assignments`, a bound of `P2D` (over 24 hours), and a duration it cannot read. A bound of zero is the strictest setting, and is allowed: no kept answer ever counts |
 | DSOR-IDN-05, DSOR-DEL-02 | **C2.** At every call from an agent, DSoR asks the directory of the slip's company about the signer, and her roles there decide line ⑤ | user_123 moves to `ap_clerk` in the directory: the agent's draft is refused at line ⑤ with `AUTHORIZATION_DENIED`, and its read of INV-1008 is answered. She moves back: the draft is made. No restart |
 | DSOR-IDN-06 | **C3.** With no answer from the directory, DSoR uses the kept answer only while it is younger than the company's bound. Otherwise line ③ refuses, for commands and for reads | Directory off, kept answer 40 minutes old: the draft is made. 75 minutes old: `FRESHNESS_UNSATISFIABLE`. No kept answer: `FRESHNESS_UNSATISFIABLE`. Every refusal is recorded and leaves no draft |
 | DSOR-IDN-06 | **C4.** DSoR waits at most 2 seconds for an answer | A stuck directory: the call is answered after 2 seconds, from the kept answer or with `FRESHNESS_UNSATISFIABLE` |
@@ -221,7 +221,8 @@ decision 12.
    each company's `role_source`, in the schema's own shape: org_456 `idp_lookup` with `PT1H`,
    the specification's own value, and org_789 `idp_lookup` with `PT4H`. DSoR refuses to start
    when a company has no setting, when the kind is not `idp_lookup`, when the bound is over 24
-   hours or zero, or when it cannot read the duration. Step 10 made no table of companies, so
+   hours, or when it cannot read the duration. A bound of zero is allowed: §44 lets a company
+   set a tighter value, and zero means that no kept answer ever counts. Step 10 made no table of companies, so
    a database row would have needed a new table. *Downside:* production keeps this in DSoR's
    own store, where an admin changes it and the change is recorded. Here a change needs a
    restart.

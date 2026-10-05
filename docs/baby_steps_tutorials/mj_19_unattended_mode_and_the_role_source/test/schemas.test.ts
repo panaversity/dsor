@@ -29,6 +29,16 @@ describe("the schema copies", () => {
     },
   );
 
+  // NEW IN STEP 19: the tenant policy's schema is a copy too. Start-up checks each company's
+  // role source setting against it (step 19's README, decision 8).
+  it.skipIf(!existsSync(ORIGINALS))(
+    "DSOR-IDN-05: schemas/tenant-policy.schema.json equals the specification's own",
+    () => {
+      const file = "tenant-policy.schema.json";
+      expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
+    },
+  );
+
   // The result envelope's schema is a copy too. The tests check an answer's
   // classification and redactions against it (step 14's README, decision 4).
   it.skipIf(!existsSync(ORIGINALS))(

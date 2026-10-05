@@ -5,6 +5,8 @@ import type { ErrorEnvelope } from "../src/envelope.ts";
 import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
 import { NO_PAYMENTS } from "../src/payment.ts";
 import { NO_SLIPS } from "../src/slips.ts";
+import { createRoleSource } from "../src/authority.ts";
+import { NO_DIRECTORIES } from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
@@ -23,6 +25,7 @@ import {
   source,
   without,
   testSlips,
+  storyDirectories,
 } from "./helpers.ts";
 
 // Every call carries the agent's login token (step 05's README, decision 1).
@@ -41,6 +44,8 @@ describe("C1: nothing can be called without a contract", () => {
     undefined,
     // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
 
   // The invoice comes back as the envelope's data.
@@ -117,6 +122,9 @@ describe("C1: nothing can be called without a contract", () => {
       payments: NO_PAYMENTS,
       // And the slips. This one holds none (step 18's README, decision 3).
       delegations: NO_SLIPS,
+      // NEW IN STEP 19: and a role source. This one has no setting and no directory (step 19's
+      // README, decision 1).
+      roleSource: createRoleSource(new Map(), NO_DIRECTORIES),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

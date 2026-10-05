@@ -46,6 +46,7 @@ import {
   without,
   testSlips,
   withPlanted,
+  storyDirectories,
 } from "./helpers.ts";
 
 /** The shipped operations plus one more, whose contract and code the test writes. */
@@ -71,6 +72,8 @@ function withOperation(
     undefined,
     undefined,
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
 }
 
@@ -437,6 +440,8 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       undefined,
       // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     expect(
       await call(changed, log, AGENT, "invoice.get", {
@@ -534,6 +539,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         payments: NO_PAYMENTS,
         // And the story's slips (step 18's README, decision 2).
         delegations: registry.delegations,
+        // NEW IN STEP 19: and the shared registry's role source (step 19's README, decision 1).
+        roleSource: registry.roleSource,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

@@ -135,22 +135,51 @@ export async function call(
     //   that a person signed and DSoR holds, and that allows `unattended`. The person comes
     //   from the slip, never from the request (DSOR-DEL-01a, DSOR-DEL-07, DSOR-DEL-08; step
     //   18's README, decisions 1, 2, and 5). Before line ⑤, which allows only what the slip
-    //   and its signer both allow. Whether the signer still holds the job: step 19.
-    const slip = await line(3, async () => {
-      const found = await checkDelegation(caller, contract, registry.delegations, tenant);
+    //   and its signer both allow.
+    const found = await line(3, async () => {
+      const slip = await checkDelegation(caller, contract, registry.delegations, tenant);
       // And any slip the arguments name must be this one. A person calls under none
       // (DSOR-SRC-02b; step 18's README, decision 17). Found by step 18's review.
-      checkNamedSlips(copy, found);
-      return found;
+      checkNamedSlips(copy, slip);
+      if (slip === undefined) return undefined;
+      // NEW IN STEP 19: last, the signer's current authority, from her company's directory:
+      //   is she a person who works here, and what does she hold now (DSOR-IDN-05,
+      //   DSOR-IDN-06). Last, so an outside failure never hides a refusal that DSoR can make
+      //   by itself (step 19's README, decision 12).
+      const authority = await registry.roleSource.authorityOf(
+        tenant,
+        slip,
+        JSON.stringify(contract.id),
+      );
+      return { slip, authority };
     });
-    if (slip !== undefined) {
-      under = { delegation: slip.id, subject: slip.delegator, actor: caller.id };
+    if (found !== undefined) {
+      const { slip, authority } = found;
+      under = {
+        delegation: slip.id,
+        subject: slip.delegator,
+        actor: caller.id,
+        // NEW IN STEP 19: where DSoR learned what the signer holds, and as of when (step 19's
+        // README, decision 7).
+        source: authority.source,
+        as_of: authority.as_of,
+      };
     }
     // ④ Check operational status (suspension, freeze, breaker). Not checked yet: step 25.
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).
     // Only the caller's roles in the active company count.
-    line(5, () => checkPermission(caller, contract, registry.roles, tenant, slip));
+    // NEW IN STEP 19: for an agent, with the roles its signer holds now, which line ③ found.
+    line(5, () =>
+      checkPermission(
+        caller,
+        contract,
+        registry.roles,
+        tenant,
+        found?.slip,
+        found?.authority.roles,
+      ),
+    );
 
     // ⑥ Validate the input against the operation's input schema. Canonicalizing it and
     //   computing its payload hash: not built yet, step 29.

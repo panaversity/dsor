@@ -40,6 +40,7 @@ import {
   shippedRoles,
   source,
   testSlips,
+  storyDirectories,
 } from "./helpers.ts";
 
 // The examples this step ships, one for each operation.
@@ -96,6 +97,8 @@ function plant(p: Plant): { registry: Registry; examples: ContractSource[] } {
       undefined,
       // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     ),
     examples:
       p.example === undefined ? examples : [...examples, { file: `${p.id}.json`, text: p.example }],

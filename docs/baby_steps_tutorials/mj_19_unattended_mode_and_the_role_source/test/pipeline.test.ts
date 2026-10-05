@@ -41,6 +41,7 @@ import {
   THE_CFO,
   THE_SUPERVISOR,
   testSlips,
+  storyDirectories,
 } from "./helpers.ts";
 
 // JSON text for a list nested 100,000 levels deep. JSON.parse reads it, but JSON.stringify
@@ -293,6 +294,8 @@ describe("C3: line ⑥ checks the input against the operation's input schema", (
       undefined,
       // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     await call(registry, log, AGENT, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
     expect(spy).toHaveBeenCalledWith(
@@ -646,6 +649,8 @@ function registryWithGet(handler: Handler): Registry {
     memoryInvoices(),
     undefined,
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
 }
 
@@ -673,6 +678,8 @@ function registryListing(field: string, handler: Handler): Registry {
     memoryInvoices(),
     undefined,
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
 }
 

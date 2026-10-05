@@ -94,8 +94,15 @@ export async function attackersOf(
     const lineThree = await passesLineThree(principal, contract, registry, home);
     if (!lineThree.passes) continue;
     // And line ⑤'s own question: a person's roles, or an agent's slip cut down to its signer
-    // (DSOR-DEL-02).
-    if (effectivePermissions(principal, registry.roles, home, lineThree.slip).has(permission)) {
+    // (DSOR-DEL-02). NEW IN STEP 19: her roles now, as line ③ found them.
+    const may = effectivePermissions(
+      principal,
+      registry.roles,
+      home,
+      lineThree.slip,
+      lineThree.signerRoles,
+    );
+    if (may.has(permission)) {
       attackers.push({ id: principal.id, token });
     }
   }
@@ -108,12 +115,17 @@ async function passesLineThree(
   contract: Contract,
   registry: Registry,
   home: string,
-): Promise<{ passes: boolean; slip: Slip | undefined }> {
+): Promise<{ passes: boolean; slip: Slip | undefined; signerRoles: string[] | undefined }> {
   try {
     const slip = await checkDelegation(principal, contract, registry.delegations, home);
-    return { passes: true, slip };
+    if (slip === undefined) return { passes: true, slip, signerRoles: undefined };
+    // NEW IN STEP 19: and line ③'s last question, the signer's current authority from her
+    // company's directory (step 19's README, decisions 2 and 12).
+    const name = JSON.stringify(contract.id);
+    const { roles } = await registry.roleSource.authorityOf(home, slip, name);
+    return { passes: true, slip, signerRoles: roles };
   } catch {
-    return { passes: false, slip: undefined };
+    return { passes: false, slip: undefined, signerRoles: undefined };
   }
 }
 

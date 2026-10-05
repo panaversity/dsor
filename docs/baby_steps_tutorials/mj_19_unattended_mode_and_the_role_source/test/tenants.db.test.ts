@@ -31,6 +31,7 @@ import {
   shippedLabels,
   shippedRoles,
   forComparing,
+  storyDirectories,
 } from "./helpers.ts";
 
 const pool = openPool(RUNTIME_URL);
@@ -291,6 +292,8 @@ describe("C8: in the database, the code reaches only the active company, and its
       undefined,
       // Step 18: and the slips, so the agent reaches the code (step 18's README, decision 2).
       createDbSlips(pool),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     const id = requestId("c8-foreign-row");
     const answer = await call(planted, log, { ...AGENT, request_id: id }, "invoice.get", {

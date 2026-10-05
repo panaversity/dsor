@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { Refusal } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
-import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
+import { actsAsAgent, type Principal } from "./principals.ts";
 import type { Contract } from "./registry.ts";
 import type { Slip } from "./slips.ts";
 
@@ -117,26 +117,29 @@ export function permissionsOf(
 
 // A person may do what its roles in this company grant, as since step 06.
 // An agent holds no role. It may use only what its slip lists and the person who signed it
-// holds now, in this company (DSOR-DEL-02; step 18's README, decisions 4 and 5). Line ③ has
-// checked that a person of this company signed the slip (decision 18). This tutorial's
-// tokens carry no scopes, so the token's part narrows nothing (decision 9).
+// holds now, in this company (DSOR-DEL-02; step 18's README, decisions 4 and 5). This
+// tutorial's tokens carry no scopes, so the token's part narrows nothing (decision 9).
 /** What this caller may do in this company: a person's roles, or an agent's slip cut down to its signer. */
 export function effectivePermissions(
   caller: Principal,
   roles: Roles,
   tenant: string,
   slip?: Slip,
+  // NEW IN STEP 19: the signer's roles now, which line ③ got from her company's directory
+  // (step 19's README, decision 2).
+  signerRoles?: readonly string[],
 ): ReadonlySet<string> {
   if (!actsAsAgent(caller)) return permissionsOf(caller, roles, tenant);
-  // Line ③ refuses an agent with no usable slip, so this is never reached without one. If it
-  // were, the agent may do nothing.
-  if (slip === undefined) return new Set();
-  const signer = principalNamed(slip.delegator);
-  if (signer === undefined) return new Set();
-  // Read at every call, from the role table DSoR loaded at start-up: if user_123 loses a
-  // permission, the agent loses it at its first call after a restart, though the slip still
-  // lists it (step 18's README, decision 4).
-  const held = permissionsOf(signer, roles, tenant);
+  // Line ③ refuses an agent with no usable slip, or whose signer it could not look up, so
+  // this is never reached without both. If it were, the agent may do nothing.
+  if (slip === undefined || signerRoles === undefined) return new Set();
+  // NEW IN STEP 19: what her roles grant, by the role table. A role the table does not have
+  // grants nothing (DSOR-AUT-01b; step 19's README, the small fixes). If user_123 moves to
+  // ap_clerk in the directory, the agent loses payment:create at its next call, though the
+  // slip still lists it, with no restart.
+  const held = new Set<string>();
+  for (const name of signerRoles)
+    for (const permission of roles.get(name) ?? []) held.add(permission);
   return new Set(slip.permissions.filter((permission) => held.has(permission)));
 }
 
@@ -149,6 +152,8 @@ export function checkPermission(
   tenant: string,
   // The slip line ③ found, for an agent.
   slip?: Slip,
+  // NEW IN STEP 19: and the roles its signer holds now, which line ③ found.
+  signerRoles?: readonly string[],
 ): void {
   const name = JSON.stringify(contract.id);
   const needed = (contract["authorization"] as { permission?: unknown } | undefined)?.permission;
@@ -159,7 +164,7 @@ export function checkPermission(
   }
   // Only the same text grants it. No wildcard, no "issue grants read", and the ".propose"
   // form does not stand in for the full one (step 06's README, decisions 2 and 3).
-  if (!effectivePermissions(caller, roles, tenant, slip).has(needed)) {
+  if (!effectivePermissions(caller, roles, tenant, slip, signerRoles).has(needed)) {
     throw new Refusal(
       "AUTHORIZATION_DENIED",
       `${name} needs ${needed}, ${whyNot(needed, caller, slip)}`,

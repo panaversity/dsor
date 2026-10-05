@@ -21,6 +21,7 @@ import {
   shippedRoles,
   source,
   testSlips,
+  storyDirectories,
 } from "./helpers.ts";
 
 // The callers of each company who may read, in the order of DSoR's table of logins.
@@ -47,6 +48,8 @@ function suiteWithListCode(handler: Handler, send: Send = call): Promise<Report>
     undefined,
     // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
   return crossTenantSuite(registry, createLog(), readExamples(), send);
 }
@@ -88,6 +91,8 @@ function suiteWithList(
     undefined,
     // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
   const examples = [
     ...readExamples(),

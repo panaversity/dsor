@@ -17,6 +17,7 @@ import {
   requireEnv,
 } from "../src/postgres.ts";
 import { buildRegistry, readContracts } from "../src/registry.ts";
+import { storyDirectories } from "./helpers.ts";
 
 const CONTRACTS = fileURLToPath(new URL("../contracts", import.meta.url));
 const ROLES = fileURLToPath(new URL("../roles.json", import.meta.url));
@@ -32,6 +33,8 @@ const registry = buildRegistry(
   undefined,
   // Step 18: and the slips, so the agent reads under del_100 (step 18's README, decision 2).
   createDbSlips(pool),
+  // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+  storyDirectories(),
 );
 // The agent's login token, as in main.ts, and the request id the test chose.
 const request = { token: "tok_7f3a", tenant: "org_456", request_id: process.argv[2] };

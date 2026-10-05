@@ -8,7 +8,14 @@ import pg from "pg";
 import { createDbInvoices, createDbPayments, createDbSlips, requireEnv } from "../src/postgres.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Registry } from "../src/registry.ts";
-import { shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
+import type { Directories } from "../src/directory.ts";
+import {
+  shipped,
+  shippedInputs,
+  shippedLabels,
+  shippedRoles,
+  storyDirectories,
+} from "./helpers.ts";
 
 // dsor_runtime's connection string. test/db-setup.ts has already stopped the run if it
 // is missing (step 09's README, decision 8).
@@ -20,7 +27,11 @@ export function newPool(url: string = RUNTIME_URL): pg.Pool {
 }
 
 /** The shipped operations, reading invoices through this pool. */
-export function dbRegistry(pool: pg.Pool): Registry {
+export function dbRegistry(
+  pool: pg.Pool,
+  // NEW IN STEP 19: the story's directories, unless the test gives others.
+  directories: Directories = storyDirectories(),
+): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
     shipped,
@@ -33,6 +44,8 @@ export function dbRegistry(pool: pg.Pool): Registry {
     createDbPayments(pool),
     // And the slips, in dsor.delegations (step 18's README, decision 3).
     createDbSlips(pool),
+    // NEW IN STEP 19: and the directories (step 19's README, decision 2).
+    directories,
   );
 }
 

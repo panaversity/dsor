@@ -35,6 +35,7 @@ import {
   shippedRoles,
   slipRegistry,
   withPlanted,
+  storyDirectories,
 } from "./helpers.ts";
 
 const CREATE = { invoice: "dsor://org_456/invoice/INV-1008" };
@@ -208,6 +209,8 @@ describe("C1: an agent's command runs only under an active slip in DSoR's store"
       undefined,
       undefined,
       NONE_FOR_THE_AGENT,
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     const lines: number[] = [];
     await call(on, createLog(), AGENT, "payment.create", CREATE, (n) => lines.push(n));

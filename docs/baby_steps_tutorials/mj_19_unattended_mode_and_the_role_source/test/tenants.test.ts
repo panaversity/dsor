@@ -61,6 +61,7 @@ import {
   testSlips,
   DEL_101,
   DEL_102,
+  storyDirectories,
 } from "./helpers.ts";
 
 /** The error envelope a test expects, with a request id DSoR made. */
@@ -132,6 +133,8 @@ function registryWithFreeInput(): Registry {
     undefined,
     // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
     testSlips(),
+    // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+    storyDirectories(),
   );
 }
 
@@ -304,18 +307,31 @@ describe("C2: a read looks only inside the active company", () => {
 describe("C3: only the caller's roles in the active company count", () => {
   // Since step 18 the firm's agent holds no role. In each company it may do what its slip
   // there lists and the signer holds now: del_101 from user_123, del_102 from user_700, and
-  // nothing in org_999 (step 18's README, decisions 2 and 4). The comment stands here, not
-  // inside the call, so the spec guard can read the title.
+  // nothing in org_999 (step 18's README, decisions 2 and 4). Since step 19 the signer's roles
+  // are the ones line ③ found in her company's directory: ap_supervisor for both (step 19's
+  // README, decision 2). The comment stands here, not inside the call, so the spec guard can
+  // read the title.
   it.each([
     // ap_agent in org_456 and ap_supervisor in org_789, with step 17's payment permissions.
-    ["org_456", DEL_101, ["invoice:read", "payment:create"]],
-    ["org_789", DEL_102, ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"]],
-    ["org_999", undefined, []],
+    ["org_456", DEL_101, ["ap_supervisor"], ["invoice:read", "payment:create"]],
+    [
+      "org_789",
+      DEL_102,
+      ["ap_supervisor"],
+      ["invoice:issue", "invoice:read", "payment:cancel", "payment:create"],
+    ],
+    ["org_999", undefined, undefined, []],
   ])(
     "DSOR-DEL-02: in %s, the firm's agent may do only what its slip there and its signer allow",
-    (tenant, slip, held) => {
+    (tenant, slip, signerRoles, held) => {
       const firm = whoIsCalling({ token: "tok_9b52" });
-      const may = effectivePermissions(firm, registry.roles, tenant, slip as Slip | undefined);
+      const may = effectivePermissions(
+        firm,
+        registry.roles,
+        tenant,
+        slip as Slip | undefined,
+        signerRoles,
+      );
       expect([...may].sort()).toStrictEqual(held);
     },
   );
@@ -842,6 +858,8 @@ describe("C8: the code can reach only the active company, and its answer must be
       undefined,
       // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     const answer = await call(leaky, fresh, AGENT, "invoice.list", {});
     expect(answer).toStrictEqual(refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT));
@@ -968,6 +986,8 @@ describe("C8: the code can reach only the active company, and its answer must be
       undefined,
       undefined,
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     expect(
       await call(noStore, log, AGENT, "invoice.get", {
@@ -988,6 +1008,8 @@ describe("C8: the code can reach only the active company, and its answer must be
       undefined,
       undefined,
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     expect(await call(noStore, log, AGENT, "invoice.list", {})).toStrictEqual(
       refused("INTERNAL_ERROR", UNEXPECTED, THE_AGENT),

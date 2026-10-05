@@ -41,11 +41,24 @@ export type Decision = {
   // An agent's call names the slip it ran under, and the person who signed
   // it, in the audit record's own fields (step 18's README, decision 8).
   delegation?: string;
-  identity?: { mode: "unattended"; subject: string; actor_chain: string[] };
+  identity?: {
+    mode: "unattended";
+    subject: string;
+    actor_chain: string[];
+    subject_authority?: { source: "role_source"; as_of: string };
+  };
 };
 
-/** Whose authority an agent's call ran under: its slip, the person who signed it, and the agent. */
-export type Authority = { delegation: string; subject: string; actor: string };
+// NEW IN STEP 19: and where DSoR learned what the signer holds, and as of when: her
+// company's directory, at the time of the answer DSoR used (step 19's README, decision 7).
+/** Whose authority an agent's call ran under: its slip, the person who signed it, the agent, and the source and time of her authority. */
+export type Authority = {
+  delegation: string;
+  subject: string;
+  actor: string;
+  source: "role_source";
+  as_of: string;
+};
 
 // What a query's answer returned, for its record (step 14's README,
 // decision 7).

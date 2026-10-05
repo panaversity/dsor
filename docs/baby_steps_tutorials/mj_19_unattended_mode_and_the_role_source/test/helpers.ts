@@ -12,6 +12,12 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import { readClassifications, type ClassificationSource } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleTableSource } from "../src/permissions.ts";
+import {
+  fakeDirectory,
+  type Directories,
+  type FakeDirectory,
+  type Person,
+} from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
@@ -312,6 +318,9 @@ export function registryRunning(
     undefined,
     // The slips, so the agents call as before (step 18's README, decision 2).
     testSlips(),
+    // NEW IN STEP 19: and the directories, so each signer is found (step 19's README,
+    // decision 2).
+    storyDirectories(),
   );
 }
 
@@ -375,6 +384,26 @@ export const UNDER_DEL_100: {
   identity: { mode: "unattended", subject: "user_123", actor_chain: ["accounts-payable-fte"] },
 };
 
+// NEW IN STEP 19: the story's people in each company's directory, typed out again from step
+// 19's README rather than read from src. Everyone holds the job that DSoR's login table gives
+// them, so a test that does not change a directory behaves as in step 18 (step 19's README,
+// decision 2).
+/** What each company's directory holds about the story's people. */
+export const STORY_PEOPLE: Record<string, Record<string, Person>> = {
+  org_456: {
+    user_123: { status: "active", roles: ["ap_supervisor"] },
+    cfo_100: { status: "active", roles: ["CFO"] },
+  },
+  org_789: { user_700: { status: "active", roles: ["ap_supervisor"] } },
+};
+
+/** The story's two directories, new and on, so a test may switch or change its own. */
+export function storyDirectories(): Map<string, FakeDirectory> {
+  return new Map(
+    Object.entries(STORY_PEOPLE).map(([tenant, people]) => [tenant, fakeDirectory(tenant, people)]),
+  );
+}
+
 /** The slips the shared test registries hold: the story's three, and intake-fte's. */
 export function testSlips(): SlipStore {
   return memorySlips([...STORY_SLIPS, INTAKE_SLIP]);
@@ -403,6 +432,8 @@ export const registry: Registry = buildRegistry(
   memoryPayments(),
   // And the slips (step 18's README, decision 2).
   testSlips(),
+  // NEW IN STEP 19: and the directories (step 19's README, decision 2).
+  storyDirectories(),
 );
 
 /**
@@ -416,6 +447,8 @@ export function paymentRegistry(
   code: Record<string, Handler> = handlers,
   // The slips, unless the test gives others.
   slips: SlipStore = testSlips(),
+  // NEW IN STEP 19: and the directories, unless the test gives others.
+  directories: Directories = storyDirectories(),
 ): Registry {
   return buildRegistry(
     sources,
@@ -426,14 +459,17 @@ export function paymentRegistry(
     memoryInvoices(),
     memoryPayments(rows),
     slips,
+    directories,
   );
 }
 
-/** The shipped operations, with these slips, this role table, and these payments. */
+/** The shipped operations, with these slips, this role table, these payments, and these directories. */
 export function slipRegistry(
   slips: SlipStore = storySlips(),
   roles: RoleTableSource = shippedRoles,
   rows: Payment[] = [],
+  // NEW IN STEP 19: the story's directories, unless the test gives others.
+  directories: Directories = storyDirectories(),
 ): Registry {
   return buildRegistry(
     shipped,
@@ -444,6 +480,7 @@ export function slipRegistry(
     memoryInvoices(),
     memoryPayments(rows),
     slips,
+    directories,
   );
 }
 

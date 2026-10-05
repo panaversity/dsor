@@ -32,6 +32,7 @@ import {
   forComparing,
   CFO,
   testSlips,
+  storyDirectories,
 } from "./helpers.ts";
 
 // org_456's twelve invoices, in order of id, typed out from step 13's README, decision 7.
@@ -215,6 +216,8 @@ describe("C1: the store is asked for one row more than the page, and reads no mo
       undefined,
       // Step 18: and the slips, so the agents call under them (step 18's README, decision 2).
       testSlips(),
+      // NEW IN STEP 19: and the story's directories (step 19's README, decision 2).
+      storyDirectories(),
     );
     for (const input of [{}, { limit: 1000000 }, { limit: 3 }]) {
       await call(counted, log, AGENT, "invoice.list", input);

@@ -4,12 +4,20 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import {
+  checkRoleSettings,
+  createRoleSource,
+  readRoleSettings,
+  type RoleSettingsSource,
+  type RoleSource,
+} from "./authority.ts";
+import {
   checkClassifications,
   readClassifications,
   type ClassificationSource,
   type Kinds,
 } from "./labels.ts";
 import type { Company } from "./company.ts";
+import { NO_DIRECTORIES, type Directories } from "./directory.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
@@ -53,6 +61,9 @@ export type Registry = {
   // The permission slips, held in DSoR's own store. Only line ③ reads them
   // (DSOR-DEL-01a; step 18's README, decision 3).
   delegations: SlipStore;
+  // NEW IN STEP 19: each company's role source: its setting, its directory, and the answers
+  // DSoR keeps. Only line ③ asks it (DSOR-IDN-05; step 19's README, decisions 1, 3, and 8).
+  roleSource: RoleSource;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -110,6 +121,12 @@ export function buildRegistry(
   // The store of slips. Without one, no agent holds a slip, so every call
   // from an agent is refused at line ③.
   delegations: SlipStore = NO_SLIPS,
+  // NEW IN STEP 19: each company's directory. Without one, nobody's job is known, so every
+  // call from an agent is refused at line ③ (step 19's README, decision 1).
+  directories: Directories = NO_DIRECTORIES,
+  // NEW IN STEP 19: each company's role source setting. This step's own, unless the caller
+  // gives others (step 19's README, decision 8).
+  roleSettings: RoleSettingsSource = readRoleSettings(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -173,6 +190,11 @@ export function buildRegistry(
   // And one name, one principal, because line ③ finds a slip's signer by
   // name (step 18's README, decision 19).
   problems.push(...loginProblems(logins.values()));
+  // NEW IN STEP 19: and every company where a login works has a role source setting that
+  // this step can use, within the bound of §44 (DSOR-IDN-05, DSOR-BND-02; step 19's README,
+  // decision 8). Its problems are named with the others.
+  const { settings, problems: settingProblems } = checkRoleSettings(roleSettings, logins.values());
+  problems.push(...settingProblems);
 
   // Every contract's input schema must have a file, and compile. A contract
   // with no check for its input would let anything through line ⑥.
@@ -205,6 +227,7 @@ export function buildRegistry(
     invoices,
     payments,
     delegations,
+    roleSource: createRoleSource(settings, directories),
   };
 }
 
