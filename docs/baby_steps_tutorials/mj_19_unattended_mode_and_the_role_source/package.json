@@ -1,0 +1,30 @@
+{
+  "name": "@dsor-steps/mj-19-unattended-mode-and-the-role-source",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 19: unattended mode and the role source. At night the agent calls as itself, DSoR takes the person it works for from the slip, and a company directory says whether that person still holds the job. With no fresh answer, the command is refused. Built from a copy of step 18.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

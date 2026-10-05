@@ -1,0 +1,26 @@
+{
+  "name": "@dsor-steps/mj-07-the-pipeline-skeleton",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 07: every call runs one fixed checklist, in the order of the specification. Built from a copy of step 06.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

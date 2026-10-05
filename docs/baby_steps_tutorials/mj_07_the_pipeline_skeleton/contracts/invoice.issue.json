@@ -1,0 +1,22 @@
+{
+  "id": "invoice.issue",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": { "schema": "InvoiceIssueRequest" },
+  "output": { "schema": "InvoiceIssueResult" },
+  "authorization": { "permission": "invoice:issue" },
+  "tenancy": { "required": true },
+  "delegation": { "required": true },
+  "idempotency": { "required": true },
+  "concurrency": { "strategy": "optimistic" },
+  "execution": { "semantics": "atomic" },
+  "risk": { "level": "medium" },
+  "bind": { "invoice": "input.invoice" },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": ["state.invoice.status == \"draft\""]
+  },
+  "controls": [],
+  "audit": { "level": "full" }
+}

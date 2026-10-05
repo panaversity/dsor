@@ -9,11 +9,24 @@
 // Checks, each reported with a stable slug (AGENTS.md → Decisions 2 and 3):
 //   unique-id         every requirement id is defined once
 //   one-must          every requirement holds exactly one MUST / MUST NOT, and no SHOULD / MAY
-//   known-id          every DSOR-XXX-NN mentioned in any markdown file is defined by the spec,
-//                     inside inline code spans as well as in plain prose
+//   known-id          every DSOR-XXX-NN mentioned in any markdown file, inside inline code
+//                     spans as well as in plain prose, or in a baby step's code or tests, is
+//                     defined by the spec
 //   stale-example     every entry in ILLUSTRATIVE is still used by some file
 //   link-target       every relative markdown link, and its #anchor, resolves
 //   registry-current  packages/spec/requirements.json equals what the spec says today
+//   copied-pattern    a baby-step regex marked "// copied from <schema>#<pointer>" still
+//                     equals that schema's pattern, with no flags but u or v. A misspelled
+//                     marker fails
+//   pattern-origin    every regex a baby step's src/ gives a name says where it comes from:
+//                     "// copied from …" above it, or "// not copied: <why>" for the
+//                     tutorial's own. So deleting a marker fails, instead of quietly
+//                     turning copied-pattern off for that regex. A regex built with
+//                     new RegExp() is not seen
+//   copied-schema     every *.schema.json in a baby step's schemas/ folder equals the file
+//                     of the same name in packages/spec/schemas, byte for byte
+//   rules-met         every row of rules-met.md links a test file with a test titled by
+//                     that row's rule id
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,6 +168,136 @@ for (const file of markdown) {
         fail("link-target", `${where} links to a missing file: ${href}`);
       } else if (anchor && target.endsWith(".md") && !anchors.get(target)?.has(anchor)) {
         fail("link-target", `${where} links to a missing anchor: ${href}`);
+      }
+    }
+  }
+}
+
+// The baby steps are separate projects that must run outside this repository, so their
+// tests cannot read the spec. The guard reads them instead, and fails when they drift.
+const STEPS = join(ROOT, "docs", "baby_steps_tutorials");
+const COPIED = /\/\/ copied from (packages\/spec\/schemas\/[\w.-]+\.json)#(\S+)/;
+const stepCode = existsSync(STEPS) ? walk(STEPS, (p) => p.endsWith(".ts")) : [];
+
+/** The value at a JSON pointer in a schema file, or undefined when there is none. */
+const resolvePointer = (file, pointer) => {
+  const path = join(ROOT, file);
+  if (!existsSync(path)) return undefined;
+  let node = JSON.parse(readFileSync(path, "utf8"));
+  for (const raw of pointer.split("/").slice(1)) {
+    const key = raw.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (node === null || typeof node !== "object" || !Object.hasOwn(node, key)) return undefined;
+    node = node[key];
+  }
+  return node;
+};
+
+for (const file of stepCode) {
+  const where = relative(ROOT, file);
+  const lines = readFileSync(file, "utf8").split("\n");
+  for (const id of lines.join("\n").match(ID) ?? []) {
+    if (!ids.has(id)) fail("known-id", `${where} mentions ${id}, which the spec does not define`);
+  }
+  lines.forEach((line, i) => {
+    // Any "copied from" comment counts, so a misspelled marker fails instead of
+    // quietly switching the check off.
+    if (!/copied from/i.test(line)) return;
+    const at = `${where}:${i + 1}`;
+    const marker = line.match(COPIED);
+    if (!marker) {
+      fail(
+        "copied-pattern",
+        `${at}: write the marker as // copied from packages/spec/schemas/<file>.json#<pointer>`,
+      );
+      return;
+    }
+    const expected = resolvePointer(marker[1], marker[2]);
+    if (typeof expected !== "string") {
+      fail("copied-pattern", `${at}: ${marker[1]}#${marker[2]} is not a pattern in that schema`);
+      return;
+    }
+    const code = lines.slice(i + 1).find((l) => !l.trim().startsWith("//")) ?? "";
+    const literal = code.match(/=\s*\/(.+)\/([a-z]*);/);
+    if (!literal) {
+      fail("copied-pattern", `${at}: the next code line must be  const NAME = /pattern/;`);
+      return;
+    }
+    // A flag changes what the pattern accepts: m lets "31400.00\n1" through, i lets "usd".
+    if (/[^uv]/.test(literal[2])) {
+      fail(
+        "copied-pattern",
+        `${at}: a copied pattern takes no flags but u or v, found "${literal[2]}"`,
+      );
+      return;
+    }
+    // Compare as regexes, not as text: a literal must write "/" as "\/", the schema not.
+    let same = false;
+    try {
+      same = new RegExp(literal[1]).source === new RegExp(expected).source;
+    } catch {}
+    if (!same) fail("copied-pattern", `${at} no longer matches ${marker[1]}#${marker[2]}`);
+  });
+
+  // A regex that a step's src/ gives a name is either a copy of the spec's pattern,
+  // checked above, or the tutorial's own. It says which in the comment right above it.
+  // Found by step 06's review: deleting a marker and loosening its pattern passed.
+  if (!/[\\/]src[\\/]/.test(where)) continue;
+  lines.forEach((line, i) => {
+    const oneLine = /^\s*(export\s+)?const\s+\w+(\s*:\s*RegExp)?\s*=\s*\/.+\/[a-z]*;/.test(line);
+    const twoLines =
+      /^\s*(export\s+)?const\s+\w+(\s*:\s*RegExp)?\s*=\s*$/.test(line) &&
+      /^\s*\/.+\/[a-z]*;/.test(lines[i + 1] ?? "");
+    if (!oneLine && !twoLines) return;
+    const above = [];
+    for (let j = i - 1; j >= 0 && lines[j].trim().startsWith("//"); j--) above.push(lines[j]);
+    if (!above.some((l) => COPIED.test(l) || /\/\/ not copied: \S/.test(l))) {
+      fail(
+        "pattern-origin",
+        `${where}:${i + 1}: say where this pattern comes from, in the comment above it: ` +
+          "// copied from packages/spec/schemas/<file>.json#<pointer>, or // not copied: <why>",
+      );
+    }
+  });
+}
+
+// A step that validates against the spec's schemas carries copies of them in its own
+// schemas/ folder, so it runs outside this repository. Each copy must equal the original.
+const SCHEMAS = join(ROOT, "packages", "spec", "schemas");
+const stepSchemas = existsSync(STEPS)
+  ? walk(STEPS, (p) => p.endsWith(".schema.json") && dirname(p).endsWith("schemas"))
+  : [];
+for (const copy of stepSchemas) {
+  const where = relative(ROOT, copy);
+  const original = join(SCHEMAS, copy.split(/[\\/]/).at(-1));
+  if (!existsSync(original)) {
+    fail("copied-schema", `${where} has no original in packages/spec/schemas`);
+  } else if (readFileSync(copy, "utf8") !== readFileSync(original, "utf8")) {
+    fail("copied-schema", `${where} differs from ${relative(ROOT, original)}`);
+  }
+}
+
+// rules-met.md may only claim what a step's tests name. CI runs each step's own tests.
+const RULES_MET = join(STEPS, "rules-met.md");
+if (existsSync(RULES_MET)) {
+  for (const row of prose(readFileSync(RULES_MET, "utf8"))) {
+    if (!row.startsWith("|") || !/DSOR-[A-Z]+-\d/.test(row)) continue;
+    const id = row.match(/^\|\s*(DSOR-[A-Z]+-\d+[a-z]?)\s*\|/)?.[1];
+    if (!id) {
+      fail("rules-met", `a row does not start with a rule id: ${row.trim()}`);
+      continue;
+    }
+    const tests = [...row.matchAll(/\]\(([^)\s#]+\.test\.ts)(?:#[^)\s]*)?\)/g)].map((m) => m[1]);
+    if (tests.length === 0) fail("rules-met", `the ${id} row links to no test file`);
+    // A title, not a mention: it("ID: …"), test("ID: …"), or it.each(…)("ID: …").
+    // it.skip does not count, and DSOR-MON-01 does not match inside DSOR-MON-01a.
+    const title = new RegExp(`\\b(?:it|test)(?:\\.each\\([\\s\\S]*?\\))?\\(\\s*["'\`]${id}:`);
+    for (const href of tests) {
+      const test = join(STEPS, href);
+      if (existsSync(test) && !title.test(readFileSync(test, "utf8"))) {
+        fail(
+          "rules-met",
+          `rules-met.md says ${href} proves ${id}, but no test there is titled "${id}: …"`,
+        );
       }
     }
   }

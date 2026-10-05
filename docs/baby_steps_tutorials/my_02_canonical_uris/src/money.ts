@@ -20,10 +20,12 @@ export interface Money {
   readonly currency: string;
 }
 
-// These two patterns are copied from the specification's own JSON Schema, at
+// These two patterns come from the specification's own JSON Schema, at
 // packages/spec/schemas/common.schema.json. Copying them means this step refuses
 // exactly what the normative schema refuses, and nothing more.
+// copied from packages/spec/schemas/common.schema.json#/$defs/money/properties/value/pattern
 const DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
+// copied from packages/spec/schemas/common.schema.json#/$defs/money/properties/currency/pattern
 const ISO_4217 = /^[A-Z]{3}$/;
 
 /**

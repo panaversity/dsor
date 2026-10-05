@@ -31,7 +31,7 @@ export type Retry =
   | "never";
 
 /**
- * Every error code, with its retry class, copied from the table in §28.
+ * Every error code, with its retry class, taken from the table in §28.
  *
  * This table is the point of the step. The schema checks that `retry` holds one of the
  * six allowed words; it does not check that it holds the RIGHT one. A `CONFLICT` with
@@ -264,7 +264,7 @@ export function refusal(
  *   same. It is sha256 over `JSON.stringify`, which depends on key order; *canonical*
  *   JSON, where key order is settled, arrives in step 29.
  *
- * `semantics` is not a placeholder: it is copied from the operation's own contract.
+ * `semantics` is not a placeholder: it is taken from the operation's own contract.
  */
 export function success(answer: {
   data: Readonly<Record<string, unknown>>;

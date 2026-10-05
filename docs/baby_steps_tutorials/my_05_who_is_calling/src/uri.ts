@@ -20,10 +20,12 @@ export interface ResourceUri {
   readonly id: string;
 }
 
-// The shape of an address. Copied from the specification's own JSON Schema, at
+// The shape of an address. Adapted from the specification's own JSON Schema, at
 // packages/spec/schemas/common.schema.json. The three bracketed groups are the
 // three parts. `^` and `$` mean the whole text must be the address and nothing
 // else, so a space or a stray word on either end is refused.
+// not copied: the schema's resourceUri pattern, with three capture groups added so the
+// three parts can be read out. The groups only capture, so it accepts the same addresses.
 const CANONICAL_URI = /^dsor:\/\/([A-Za-z0-9_-]+)\/([a-z][a-z0-9_]*)\/([A-Za-z0-9_.-]+)$/;
 
 // What a tenant id looks like HERE.
@@ -36,6 +38,7 @@ const CANONICAL_URI = /^dsor:\/\/([A-Za-z0-9_-]+)\/([a-z][a-z0-9_]*)\/([A-Za-z0-
 // That is why DSOR-RID-01b cannot be enforced by the shape check alone, and why
 // this second pattern exists. A deployment that numbers its tenants differently
 // changes this line and nothing else.
+// not copied: this tutorial's own convention for a tenant id, as the paragraph above says.
 const TENANT_ID = /^org_[0-9]+$/;
 
 /**

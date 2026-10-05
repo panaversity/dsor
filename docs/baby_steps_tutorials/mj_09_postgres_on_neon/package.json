@@ -1,0 +1,30 @@
+{
+  "name": "@dsor-steps/mj-09-postgres-on-neon",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 09: the invoices and the decision log move into PostgreSQL, and the runtime database user can add log rows but never change or delete them. Built from a copy of step 08.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}
