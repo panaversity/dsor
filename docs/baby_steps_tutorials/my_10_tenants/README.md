@@ -158,8 +158,8 @@ input then record the decision
 ```
 
 Not a failing test — the program refuses to **load**. `assertPipeline` requires the stage by name, so
-`pnpm start` stops before it has opened a database, and `pnpm check` reports `9 failed | 198 passed
-(207)`: the total shrinks, because every file that imports `operations.ts` dies at import. A
+`pnpm start` stops before it has opened a database, and `pnpm check` reports `9 failed | 199 passed
+(208)`: the total shrinks, because every file that imports `operations.ts` dies at import. A
 shrinking total is the tell that the guard fired at load, not that a test caught something.
 
 ### Break 2 · accept any company the login names
