@@ -6,6 +6,10 @@
 -- Rule DSOR-TEN-01a: every tenant-owned resource MUST carry its tenant_id.
 
 CREATE TABLE public.invoices (
+  -- NOT NULL here is a word no test can kill: the primary key below already forbids NULL in its
+  -- columns, and a mutation sweep that removed this word changed nothing. It stays because a reader
+  -- looking at the column should not have to know that rule about keys to see that a company is
+  -- required. Lesson 18 — a guard no test can reach — applies, and this is the honest exception.
   tenant_id       TEXT    NOT NULL,
   id              TEXT    NOT NULL,
   vendor          TEXT    NOT NULL,

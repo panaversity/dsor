@@ -2105,3 +2105,34 @@ Two things taken without asking because the rules leave no choice: the audit cha
 tenant (`DSOR-TEN-02a`), and `tenant.ts`'s constant goes. One thing deferred and said so: `people.ts`
 notes a role is really per company; nobody here has different roles in different companies, so
 moving `role` inside `memberships` would add code with no observable behaviour.
+
+## 89 · The invoices' key is the company and the number, and what the sweep said about it (2026-10-05)
+
+Pieces 1 to 3 of step 10, each red first, each sabotaged. Two sabotage results were not counts and
+are recorded as what they were:
+
+- **The key made the number alone** (`PRIMARY KEY (id)`): nine tests *skipped*, not failed. The
+  running example in `004_running_example.sql` holds an INV-1008 for each company, and under that key
+  the second one is refused at seed time, so the test file's setup dies before any assertion runs.
+  That is the guard working — the story itself cannot be loaded without a company in the key — but
+  "skipped" is the invalid-run tell (lesson 11), so it is written here and not in a table of
+  failures.
+- **`tenant_id` made nullable**: nothing failed. A primary key forbids NULL in its columns, so the
+  `NOT NULL` on `tenant_id` is a word no test can kill. It stays, with a comment that says exactly
+  that: a reader looking at the column should not need to know the rule about keys to see that a
+  company is required. Lesson 18's honest exception.
+
+The pieces themselves:
+
+1. **Resolve the tenant** is §21 step 2, a stage of its own, required by name, from memberships and
+   the login's claim — and `authorize` refuses `INTERNAL_ERROR` if it ever runs without one, because
+   the previous step's "lazied stage" test demanded that a no-op stage be noticed.
+2. **The address is checked against the request's company**, and the refusal echoes the address and
+   nothing else. Three sabotages: back to the constant, naming your company, saying whether theirs
+   exists — one failure each.
+3. **The invoices are rows**, keyed `(tenant_id, id)`, the amount cast to text so PGlite cannot hand
+   back a number, UPDATE granted on `status` alone. The database handle moved to `store.ts` so both
+   stores share one connection; the one-door pin now counts three files. The agent working for
+   org_789 gets org_789's INV-1008 (18,000.00), not org_456's (31,400.00).
+
+`pnpm check`: 350.
