@@ -91,6 +91,17 @@ function aDecision(sequence: number, id = `audit:org_456:${sequence}`): [string,
   ];
 }
 
+/**
+ * NEW IN STEP 11: a raw statement as the application, for org_456, on a real pooled connection.
+ *
+ * Through the same adapter the program uses, so each statement takes a connection from the pool,
+ * says the company for one transaction, and gives the connection back clean. Three racers through
+ * this are three real connections, which is what this file exists to test.
+ */
+function forOrg456<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+  return overPool(application).query<T>(sql, params, "org_456");
+}
+
 describe.skipIf(!haveAServer)("against a real server, as a real second user", () => {
   it("the application connects as itself and may add a record", async () => {
     const who = await application.query<{ user: string }>("SELECT current_user AS user");
@@ -100,7 +111,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
 
     const [sql, params] = aDecision(0);
 
-    await expect(application.query(sql, params)).resolves.toBeDefined();
+    await expect(forOrg456(sql, params)).resolves.toBeDefined();
   });
 
   it("DSOR-AUD-04a: the application, logged in as itself, may not change or delete a record", async () => {
@@ -109,7 +120,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
       "DELETE FROM audit",
       "TRUNCATE audit",
     ]) {
-      await expect(application.query(forbidden), forbidden).rejects.toThrow(/permission denied/);
+      await expect(forOrg456(forbidden), forbidden).rejects.toThrow(/permission denied/);
     }
 
     // Still there, which is the assertion that matters.
@@ -143,7 +154,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
     // on the primary key, so only the unique constraint can refuse them.
     const racers = [0, 1, 2].map((which) => aDecision(0, `audit:org_456:racer_${which}`));
     const bothAtOnce = await Promise.allSettled(
-      racers.map(([sql, params]) => application.query(sql, params)),
+      racers.map(([sql, params]) => forOrg456(sql, params)),
     );
     const won = bothAtOnce.filter((one) => one.status === "fulfilled");
     const lost = bothAtOnce.filter((one) => one.status === "rejected");
@@ -171,8 +182,8 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
     const [first, firstParams] = aDecision(0, "audit:org_456:same");
     const [second, secondParams] = aDecision(1, "audit:org_456:same");
 
-    await application.query(first, firstParams);
-    await expect(application.query(second, secondParams)).rejects.toThrow(/audit_pkey/);
+    await forOrg456(first, firstParams);
+    await expect(forOrg456(second, secondParams)).rejects.toThrow(/audit_pkey/);
   });
 
   it("DSOR-AUD-04a: the application cannot grant itself the rights back", async () => {
@@ -278,9 +289,9 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
 
     const [sql, params] = aDecision(0); // record_id audit:org_456:0 AND (chain, sequence) = (…, 0)
 
-    await application.query(sql, params);
+    await forOrg456(sql, params);
 
-    const refusal = await application.query(sql, [...params]).then(
+    const refusal = await forOrg456(sql, [...params]).then(
       () => "accepted",
       (e: unknown) => e as { constraint?: string; code?: string },
     );

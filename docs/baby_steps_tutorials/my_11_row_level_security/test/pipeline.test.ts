@@ -8,9 +8,9 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
-import { forgetTheLog, theLog } from "../src/audit.ts";
+import { theLog } from "../src/audit.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { aDatabase, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(

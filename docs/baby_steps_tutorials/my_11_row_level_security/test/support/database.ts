@@ -11,7 +11,8 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { migrationsIn } from "../../src/migrations.ts";
-import { overPGlite } from "../../src/database.ts";
+import { APPLICATION_ROLE, overPGlite } from "../../src/database.ts";
+import { forgetTheLog as forgetTheLogAsWhoeverIsConnected } from "../../src/audit.ts";
 import { useDatabase } from "../../src/store.ts";
 
 /** The owner's own connection, for the seams below. Set by `aDatabase`. */
@@ -31,9 +32,15 @@ export async function aDatabase(): Promise<PGlite> {
     await db.exec(migration.sql);
   }
 
-  // NEW IN STEP 11: through the adapter, so that a statement can say its company.
+  // NEW IN STEP 11: through the adapter, so that a statement can say its company — and AS THE
+  // APPLICATION. PGlite's one connection belongs to `postgres`, a superuser, and a superuser skips
+  // every row-level policy. Tests that ran the stores as it would stay green whether or not a
+  // store said its company, and would prove nothing about this step. So the connection drops to
+  // `dsor_runtime` here, the way the program's own door does, and the two seams below step back up
+  // to the owner for exactly as long as they need.
   useDatabase(overPGlite(db));
   owner = db;
+  await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
   return db;
 }
@@ -46,21 +53,56 @@ export async function aDatabase(): Promise<PGlite> {
  * rather than from a second copy of it here, so the two can never disagree.
  */
 export async function resetInvoices(): Promise<void> {
-  // The owner's own connection, with no company said: these rows belong to two companies, and
-  // the owner is a superuser here, which no policy filters.
-  const db = owner;
+  // As the owner, with no company said: these rows belong to two companies, and the owner is a
+  // superuser here, which no policy filters.
+  await asTheOwner(async () => {
+    const db = theOwner();
 
-  if (db === undefined) {
+    await db.query("DELETE FROM public.invoices");
+
+    for (const migration of migrationsIn(
+      fileURLToPath(new URL("../../migrations", import.meta.url)),
+    )) {
+      if (migration.name === "004_running_example.sql") {
+        await db.query(migration.sql);
+      }
+    }
+  });
+}
+
+function theOwner(): PGlite {
+  if (owner === undefined) {
     throw new TypeError("call aDatabase() first");
   }
 
-  await db.query("DELETE FROM public.invoices");
+  return owner;
+}
 
-  for (const migration of migrationsIn(
-    fileURLToPath(new URL("../../migrations", import.meta.url)),
-  )) {
-    if (migration.name === "004_running_example.sql") {
-      await db.query(migration.sql);
-    }
+/**
+ * NEW IN STEP 11: run something as the owner, then drop back to the application.
+ *
+ * `SET ROLE` is per session and PGlite has one, so this is the only way a test gets owner rights:
+ * for the body of `run`, and not a statement longer. The `finally` is the guarantee — a seam that
+ * threw halfway would otherwise leave every later test running as a superuser, green and blind.
+ */
+export async function asTheOwner<T>(run: () => Promise<T>): Promise<T> {
+  const db = theOwner();
+
+  await db.exec("RESET ROLE");
+
+  try {
+    return await run();
+  } finally {
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
   }
+}
+
+/**
+ * NEW IN STEP 11: erase one company's log, as the owner.
+ *
+ * `audit.ts` still exports the eraser, and it still runs as whoever is connected — which is now
+ * the application, who may not DELETE. Tests import this one instead.
+ */
+export async function forgetTheLog(tenant: string): Promise<void> {
+  await asTheOwner(() => forgetTheLogAsWhoeverIsConnected(tenant));
 }

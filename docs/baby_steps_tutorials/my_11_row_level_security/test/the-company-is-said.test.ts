@@ -10,11 +10,11 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { audit, forgetTheLog, theHead, theLog, type DecisionToRecord } from "../src/audit.ts";
+import { audit, theHead, theLog, type DecisionToRecord } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
 
 let db: PGlite;
 

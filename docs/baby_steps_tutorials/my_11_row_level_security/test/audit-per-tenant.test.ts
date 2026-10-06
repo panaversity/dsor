@@ -13,19 +13,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import {
-  audit,
-  countedWithoutARecord,
-  forgetTheLog,
-  theHead,
-  theLog,
-  useDatabase,
-  verifyChain,
-} from "../src/audit.ts";
+import { audit, countedWithoutARecord, theHead, theLog, useDatabase, verifyChain } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
-import { aDatabase } from "./support/database.ts";
+import { aDatabase, forgetTheLog } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };

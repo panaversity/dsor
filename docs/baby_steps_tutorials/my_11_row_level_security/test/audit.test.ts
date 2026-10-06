@@ -5,22 +5,8 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  audit,
-  AUDIT_SCHEMA_FIELDS,
-  countedWithoutARecord,
-  forgetTheLog,
-  now,
-  resetClock,
-  setClock,
-  theHead,
-  theLog,
-  validateAuditRecord,
-  verifyChain,
-  type AuditRecord,
-  type DecisionToRecord,
-} from "../src/audit.ts";
-import { aDatabase } from "./support/database.ts";
+import { audit, AUDIT_SCHEMA_FIELDS, countedWithoutARecord, now, resetClock, setClock, theHead, theLog, validateAuditRecord, verifyChain, type AuditRecord, type DecisionToRecord } from "../src/audit.ts";
+import { aDatabase, asTheOwner, forgetTheLog } from "./support/database.ts";
 
 /** The parts of a record a caller supplies. The time, the sequence and the hashes are not theirs. */
 function decision(over: Partial<DecisionToRecord> = {}): DecisionToRecord {
@@ -307,7 +293,9 @@ describe("the audit log", () => {
     expect(await verifyChain(await theLog("org_456"), head)).toBe(true);
 
     // Delete the newest row, as only the owner can.
-    await db.exec("DELETE FROM audit WHERE sequence = (SELECT max(sequence) FROM audit)");
+    await asTheOwner(() =>
+      db.exec("DELETE FROM audit WHERE sequence = (SELECT max(sequence) FROM audit)"),
+    );
 
     const shortened = await theLog("org_456");
 

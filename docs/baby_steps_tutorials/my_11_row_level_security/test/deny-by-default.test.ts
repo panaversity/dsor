@@ -7,8 +7,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callOperation, makeDoor, PIPELINE, type OperationAnswer } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
-import { forgetTheLog, theLog } from "../src/audit.ts";
-import { aDatabase } from "./support/database.ts";
+import { theLog } from "../src/audit.ts";
+import { aDatabase, forgetTheLog } from "./support/database.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";

@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { callOperation } from "../src/operations.ts";
-import { aDatabase, resetInvoices } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetInvoices } from "./support/database.ts";
 
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const AGENT_FOR_789 = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
@@ -51,15 +51,20 @@ async function asTheApplication(sql: string): Promise<string> {
 describe("the table", () => {
   it("DSOR-TEN-01a: a row without a company cannot exist", async () => {
     await expect(
-      db.exec(`INSERT INTO public.invoices (id, vendor, amount_value, amount_currency, status)
+      asTheOwner(() =>
+        db.exec(`INSERT INTO public.invoices (id, vendor, amount_value, amount_currency, status)
                VALUES ('INV-5000', 'VENDOR-44', 1.00, 'USD', 'draft')`),
+      ),
     ).rejects.toThrow(/null value in column "tenant_id"|not-null/i);
   });
 
   it("DSOR-TEN-01a: the key is the company AND the number, so two companies can both have INV-1008", async () => {
-    const both = await db.query<{ tenant_id: string; amount: string }>(
-      `SELECT tenant_id, amount_value::text AS amount FROM public.invoices
-       WHERE id = 'INV-1008' ORDER BY tenant_id`,
+    // As the owner: the application can no longer see both at once, and that is step 11's point.
+    const both = await asTheOwner(() =>
+      db.query<{ tenant_id: string; amount: string }>(
+        `SELECT tenant_id, amount_value::text AS amount FROM public.invoices
+         WHERE id = 'INV-1008' ORDER BY tenant_id`,
+      ),
     );
 
     expect(both.rows).toEqual([
@@ -69,8 +74,10 @@ describe("the table", () => {
 
     // And the same number twice in ONE company is refused, by name.
     await expect(
-      db.exec(`INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status)
+      asTheOwner(() =>
+        db.exec(`INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status)
                VALUES ('org_456', 'INV-1008', 'VENDOR-44', 1.00, 'USD', 'draft')`),
+      ),
     ).rejects.toThrow(/invoices_pkey/);
   });
 
