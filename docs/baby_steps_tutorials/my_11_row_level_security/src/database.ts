@@ -233,6 +233,79 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `migrations/003_invoices.sql.`,
     );
   }
+
+  // NEW IN STEP 11: the questions no privilege check answers.
+  //
+  // Everything above asks what the connection MAY DO. Row-level security can be skipped by an
+  // account that may do nothing extra at all: BYPASSRLS is a property of the role, not a right on
+  // a table, so every check above says "may not" while every policy does nothing. Measured before
+  // this check existed — `ALTER ROLE dsor_runtime BYPASSRLS`, same grants, and the forgotten
+  // query came back with both companies. A superuser skips the policies too, and is already
+  // refused above, because a superuser may UPDATE.
+  //
+  // `bypassing_roles` is the third trap on the map. A role made in Neon's Console is a member of
+  // `neon_superuser`, which holds BYPASSRLS. Measured 2026-10-06: the member is still filtered,
+  // because PostgreSQL passes privileges through membership and never attributes — and it is one
+  // `SET ROLE neon_superuser` away from not being, exactly step 09's `editor` hole again.
+  //
+  // `owns_tenant_table` is the rule's own words. Direct ownership is caught above, since an owner
+  // may do everything to its table; ownership one SET ROLE away (`WITH INHERIT FALSE`) is not, and
+  // the owner may drop the policy. `locked` is the lock itself: a program that relies on the
+  // database to hide rows, run against a database where it does not, would leak quietly.
+  const { rows: lock } = await db.query<{
+    bypasses: boolean;
+    bypassing_roles: string | null;
+    owns_tenant_table: boolean;
+    locked: boolean;
+  }>(
+    `SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
+            (SELECT string_agg(r.rolname, ', ' ORDER BY r.rolname) FROM pg_roles r
+              WHERE r.rolname <> current_user
+                AND pg_has_role(current_user, r.oid, 'MEMBER')
+                AND r.rolbypassrls) AS bypassing_roles,
+            EXISTS (
+              SELECT 1 FROM pg_class c
+              WHERE c.oid IN ('public.invoices'::regclass, 'public.audit'::regclass)
+                AND pg_has_role(current_user, c.relowner, 'MEMBER')
+            ) AS owns_tenant_table,
+            (SELECT bool_and(c.relrowsecurity AND c.relforcerowsecurity
+                             AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid))
+               FROM pg_class c
+              WHERE c.oid IN ('public.invoices'::regclass, 'public.audit'::regclass)) AS locked`,
+  );
+  const second = lock[0];
+
+  if (second?.bypasses !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, which holds BYPASSRLS: PostgreSQL skips every ` +
+        `row-level policy for it, and the second lock does nothing. ALTER ROLE ${answer.who} ` +
+        `NOBYPASSRLS, or point DSOR_DB_URL at an account without it.`,
+    );
+  }
+
+  if (second.bypassing_roles !== null) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, a member of \`${second.bypassing_roles}\`, which ` +
+        `holds BYPASSRLS — one SET ROLE away from skipping every row-level policy. On Neon, a role ` +
+        `made in the Console is a member of neon_superuser; create \`${APPLICATION_ROLE}\` with ` +
+        `SQL instead, and revoke the membership.`,
+    );
+  }
+
+  if (second.owns_tenant_table !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, which owns, or may become the owner of, a tenant ` +
+        `table. An owner may drop the lock on its own table. Tenant tables belong to the account ` +
+        `that runs the migrations, never to \`${APPLICATION_ROLE}\`.`,
+    );
+  }
+
+  if (second.locked !== true) {
+    throw new Error(
+      `the second lock is not on: public.invoices and public.audit must each have row-level ` +
+        `security enabled, forced, and a policy. Apply migrations/005_row_level_security.sql.`,
+    );
+  }
 }
 
 /**
