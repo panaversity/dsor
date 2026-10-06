@@ -2284,3 +2284,31 @@ silently, which left `tenant.ts` sabotaged until the diff showed it — the diff
 intention.
 
 Counts after: 19 · 36 · 72 · 104 · 133 · 157 · 181 · 234 · 327 · 376.
+
+## 94 · Step 11's three decisions, taken by the learner before any code (2026-10-06)
+
+The problem was shown first, measured on step 10's own database as `dsor_runtime`: a query that
+forgets the company — `SELECT … FROM invoices WHERE id = 'INV-1008'` — returned both companies'
+rows, org_456's 31,400.00 and org_789's 18,000.00, and no test noticed, because the tests only
+check the queries that exist today. One lock, held by the program alone. Three questions, one at a
+time, in plain words, with a recommendation each; the learner took all three.
+
+1. **Both tables get the lock**, the invoices and the audit log, because both carry a company and
+   a lock on one of two doors is not a lock. The log's policy also checks writes, so the program
+   cannot put a record into another company's chain by mistake — a guarantee step 10 did not have.
+   The alternative, invoices only, is the spec's own example and the smaller change, and it leaves
+   a forgotten `WHERE` on the log free to leak another company's decisions.
+2. **The company is said before each statement**: every SQL statement runs in its own small
+   transaction that first calls `set_config('dsor.tenant_id', $1, true)`. The stores keep their
+   shape and the audit writer's recovery after a collision keeps working — a failed INSERT inside a
+   bigger transaction would abort the re-query that recovers from it. Once per request, the shape
+   §36 draws, changes the pipeline, the context and the writer at the same time; it is step 36's,
+   where a business change and its record must land in one transaction.
+3. **The demo runs the forgotten query, with the company set**, and prints one row where step 10's
+   database gave two. The step's whole claim, shown by running it rather than told.
+
+Two things taken without asking because the rules leave no choice: `dsor_runtime` must be neither a
+superuser nor `BYPASSRLS` nor an owner of the tables (`DSOR-RP-01a`), so the start-up refusal from
+step 09 grows those checks; and the lock is `FORCE`d (`DSOR-RP-01b`) even though every owner on our
+routes is a superuser, which bypasses it regardless — the tests prove `FORCE` with an owner that is
+not.
