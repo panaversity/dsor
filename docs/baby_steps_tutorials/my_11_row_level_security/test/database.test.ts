@@ -19,8 +19,7 @@ import {
   APPLICATION_ROLE,
   openTheDatabase,
   refuseIfItCanRewriteHistory,
-  withoutCredentials,
-} from "../src/database.ts";
+  withoutCredentials, overPGlite } from "../src/database.ts";
 import { audit, theLog, type Database } from "../src/audit.ts";
 import { aDatabase } from "./support/database.ts";
 
@@ -168,11 +167,11 @@ describe("refuseIfItCanRewriteHistory", () => {
     // The owner's connection, which is what the program used to hold.
     const db = await aDatabase();
 
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /may UPDATE, DELETE, TRUNCATE the audit table/,
     );
     // And it says what to do about it, not only that something is wrong.
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/DSOR_DB_URL/);
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/DSOR_DB_URL/);
 
     await db.close();
   });
@@ -199,7 +198,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     );
 
     expect(rows[0]?.n).toBe(0); // no GRANT anywhere names this role...
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/may UPDATE/); // ...and it may.
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/may UPDATE/); // ...and it may.
 
     await db.close();
   });
@@ -209,7 +208,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
-    await expect(refuseIfItCanRewriteHistory(db)).resolves.toBeUndefined();
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
 
     await db.close();
   });
@@ -266,7 +265,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     expect(rows[0]?.may).toBe(false);
 
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/SET ROLE away/);
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SET ROLE away/);
 
     await db.close();
   });
@@ -290,7 +289,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     expect(rows[0]?.may).toBe(false);
 
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/SECURITY DEFINER/);
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
 
     await db.close();
   });
@@ -307,7 +306,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("ALTER FUNCTION harmless() OWNER TO helper_owner;");
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
-    await expect(refuseIfItCanRewriteHistory(db)).resolves.toBeUndefined();
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
 
     await db.close();
   });
@@ -323,7 +322,7 @@ describe("refuseIfItCanRewriteHistory", () => {
                    CREATE TRIGGER t BEFORE INSERT ON public.audit FOR EACH ROW EXECUTE FUNCTION tamper();`);
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/trigger/);
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/trigger/);
 
     await db.close();
   });
@@ -342,7 +341,7 @@ describe("refuseIfItCanRewriteHistory", () => {
       await db.exec(grant);
       await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
-      await expect(refuseIfItCanRewriteHistory(db), grant).rejects.toThrow(/invoices/);
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(/invoices/);
 
       await db.close();
     }
@@ -361,7 +360,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("GRANT editor TO dsor_runtime;");
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
-    await expect(refuseIfItCanRewriteHistory(db)).rejects.toThrow(/may UPDATE/);
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/may UPDATE/);
 
     await db.close();
   });
@@ -416,6 +415,8 @@ describe("the one door to the audit log's database", () => {
       }
     }
 
-    expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4, "store.ts": 4 });
+    // NEW IN STEP 11: store.ts was rewritten around `theDatabase(tenant)`, and one comment that
+    // named the function went with the old text — 4 to 3. The tripwire fired, which is its job.
+    expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4, "store.ts": 3 });
   });
 });

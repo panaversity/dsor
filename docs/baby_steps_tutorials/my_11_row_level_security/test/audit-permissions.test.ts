@@ -30,6 +30,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrationsIn } from "../src/migrations.ts";
 import { audit, forgetTheLog, theLog, useDatabase } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 
 let db: PGlite;
 
@@ -604,7 +605,7 @@ describe("erasing the log, which only a test may do", () => {
 
     expect(before.rows[0]?.n).toBe("2");
 
-    useDatabase(db);
+    useDatabase(overPGlite(db));
     await forgetTheLog("org_456");
 
     const left = await db.query<{ chain: string }>("SELECT chain FROM public.audit");
@@ -650,7 +651,7 @@ describe("a table the application makes to stand in front of the real one", () =
 
     expect(resolved.rows[0]?.schema).toMatch(/^pg_temp/);
 
-    useDatabase(db);
+    useDatabase(overPGlite(db));
 
     await audit({
       kind: "decision",

@@ -77,7 +77,7 @@ function fromRow(row: Row): Invoice {
  * one by that number. A missing invoice is an ordinary answer, not a crash.
  */
 export async function getInvoice(tenantId: string, id: string): Promise<Invoice | undefined> {
-  const { rows } = await theDatabase().query<Row>(
+  const { rows } = await theDatabase(tenantId).query<Row>(
     `SELECT ${COLUMNS} FROM public.invoices WHERE tenant_id = $1 AND id = $2`,
     [tenantId, id],
   );
@@ -111,7 +111,7 @@ export type IssueOutcome =
  * snapshot; the fact it reports is the fact as of that moment.
  */
 export async function issueInvoice(tenantId: string, id: string): Promise<IssueOutcome> {
-  const { rows } = await theDatabase().query<Row>(
+  const { rows } = await theDatabase(tenantId).query<Row>(
     `UPDATE public.invoices SET status = 'issued'
      WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
      RETURNING ${COLUMNS}`,
@@ -132,7 +132,7 @@ export async function issueInvoice(tenantId: string, id: string): Promise<IssueO
   // A draft that appeared between the two statements — only an owner can do that, since the
   // application cannot insert — would make "not a draft" a lie. One more try settles it either way.
   if (current.status === "draft") {
-    const { rows: again } = await theDatabase().query<Row>(
+    const { rows: again } = await theDatabase(tenantId).query<Row>(
       `UPDATE public.invoices SET status = 'issued'
        WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
        RETURNING ${COLUMNS}`,

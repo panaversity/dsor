@@ -28,12 +28,15 @@ import {
   type Database,
   type DecisionToRecord,
 } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { callOperation } from "../src/operations.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" };
 
 let real: PGlite;
+/** NEW IN STEP 11: `real`, as a connection whose statements can say their company. */
+let connection: Database;
 
 beforeEach(async () => {
   real = await PGlite.create();
@@ -42,6 +45,8 @@ beforeEach(async () => {
   for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
     await real.exec(migration.sql);
   }
+
+  connection = overPGlite(real);
 });
 
 afterEach(async () => {
@@ -73,7 +78,7 @@ function withOneBrokenInsert(mode: "lose the reply" | "fail the insert"): Databa
   let used = false;
 
   return {
-    async query<T>(sql: string, params?: unknown[]) {
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
       const breaking = !used && sql.includes("INSERT");
 
       if (breaking && mode === "fail the insert") {
@@ -88,10 +93,10 @@ function withOneBrokenInsert(mode: "lose the reply" | "fail the insert"): Databa
 
         refused[12] = "MAYBE";
 
-        return real.query<T>(sql, refused);
+        return connection.query<T>(sql, refused, tenant);
       }
 
-      const rows = await real.query<T>(sql, params);
+      const rows = await connection.query<T>(sql, params, tenant);
 
       if (breaking && mode === "lose the reply") {
         used = true;
@@ -151,7 +156,7 @@ describe("an INSERT whose reply is lost", () => {
     expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
     expect(answer.envelope.retry).toBe("safe_same_key");
 
-    useDatabase(real);
+    useDatabase(connection);
 
     expect(await theLog("org_456")).toHaveLength(0);
   });
@@ -165,7 +170,7 @@ describe("an INSERT whose reply is lost", () => {
     let used = false;
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (!used && sql.includes("INSERT")) {
           used = true;
 
@@ -175,7 +180,7 @@ describe("an INSERT whose reply is lost", () => {
           });
         }
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     });
 
@@ -194,7 +199,7 @@ describe("an INSERT whose reply is lost", () => {
     // beat us to this position makes the INSERT fail on the primary key, and a row *does* exist at
     // `audit:org_456:0` — someone else's. Treating that as success would throw away a decision and
     // tell the caller it was recorded.
-    useDatabase(real);
+    useDatabase(connection);
 
     const theirs = await audit(aDecision("req_theirs"));
 
@@ -207,14 +212,14 @@ describe("an INSERT whose reply is lost", () => {
     let firstTail = true;
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (firstTail && sql.includes("AS at_position") && sql.includes("ORDER BY sequence DESC")) {
           firstTail = false;
 
           return { rows: [] as T[] };
         }
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     });
 
@@ -246,12 +251,12 @@ describe("an INSERT whose reply is lost on a connection that then stays dead", (
     let dead = false;
 
     return {
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (dead) {
           throw new Error("connection terminated unexpectedly");
         }
 
-        const rows = await real.query<T>(sql, params);
+        const rows = await connection.query<T>(sql, params, tenant);
 
         if (sql.includes("INSERT")) {
           dead = true;
@@ -283,7 +288,7 @@ describe("an INSERT whose reply is lost on a connection that then stays dead", (
     expect(answer.envelope.retry).toBe("after_reconciliation");
 
     // And the row really is there, which is why "retry safely" would have been a lie.
-    useDatabase(real);
+    useDatabase(connection);
 
     expect(await theLog("org_456")).toHaveLength(1);
   });
@@ -306,7 +311,7 @@ describe("an INSERT refused because the row is already there", () => {
     let staleTailReads = 0;
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         // Both writers see an empty tail, so both compute position 0.
         if (
           sql.includes("AS at_position") &&
@@ -316,7 +321,7 @@ describe("an INSERT refused because the row is already there", () => {
           return { rows: [] as T[] };
         }
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     });
 
@@ -334,7 +339,7 @@ describe("an INSERT refused because the row is already there", () => {
 
   it("DSOR-EXE-02: two attempts at one decision never hash to the same bytes", async () => {
     setClock(() => "2026-10-04T00:00:00.000Z");
-    useDatabase(real);
+    useDatabase(connection);
 
     const one = await audit(aDecision("req_1"));
 
@@ -360,11 +365,11 @@ describe("an INSERT refused because the row is already there", () => {
     let theOtherWriter: Promise<unknown> | undefined;
 
     const wrapped: Database = {
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (!interrupted && sql.includes("INSERT")) {
           interrupted = true;
           // The other writer goes straight through to the real database while mine is "in flight".
-          useDatabase(real);
+          useDatabase(connection);
           theOtherWriter = audit(aDecision("req_1"));
           await theOtherWriter;
           useDatabase(wrapped);
@@ -374,7 +379,7 @@ describe("an INSERT refused because the row is already there", () => {
           });
         }
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     };
 
@@ -382,7 +387,7 @@ describe("an INSERT refused because the row is already there", () => {
 
     await expect(audit(aDecision("req_1"))).rejects.toThrow(/Connection terminated/);
 
-    useDatabase(real);
+    useDatabase(connection);
 
     const log = await theLog("org_456");
 
@@ -400,7 +405,7 @@ describe("an INSERT refused because the row is already there", () => {
     // comparison. This one does: a connection error (no SQLSTATE) while a different writer's row
     // sits at my record_id. Not mine, but definitely not landing either — so EVIDENCE_STORE_UNAVAILABLE
     // is true, and OUTCOME_UNKNOWN would be an over-statement.
-    useDatabase(real);
+    useDatabase(connection);
 
     const theirs = await audit(aDecision("req_theirs"));
 
@@ -410,7 +415,7 @@ describe("an INSERT refused because the row is already there", () => {
     let firstInsert = true;
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (firstTail && sql.includes("AS at_position") && sql.includes("ORDER BY sequence DESC")) {
           firstTail = false;
 
@@ -425,7 +430,7 @@ describe("an INSERT refused because the row is already there", () => {
           });
         }
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     });
 
@@ -440,7 +445,7 @@ describe("an INSERT refused because the row is already there", () => {
     expect(outcome).not.toBeInstanceOf(OutcomeUnknown);
     expect((outcome as Error).message).toMatch(/Connection terminated/);
 
-    useDatabase(real);
+    useDatabase(connection);
 
     const log = await theLog("org_456");
 
