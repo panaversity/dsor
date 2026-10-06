@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsor:schema:1.3:result-envelope",
+  "title": "result-envelope",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "enum": [
+        "COMMITTED",
+        "READY",
+        "PENDING_APPROVAL",
+        "VALIDATED"
+      ]
+    },
+    "proposal": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri"
+    },
+    "payload_hash": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/hash"
+    },
+    "decision": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/outcome"
+    },
+    "requires": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "semantics": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/semantics"
+    },
+    "data": {
+      "type": "object"
+    },
+    "classification": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/classification"
+    },
+    "redactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "clearance",
+              "egress_policy"
+            ]
+          },
+          "treatment": {
+            "enum": [
+              "omitted",
+              "masked",
+              "tokenized"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "reason",
+          "treatment"
+        ]
+      }
+    },
+    "expires_at": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+    },
+    "correlation": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/correlation"
+    },
+    "extensions": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "outcome",
+    "correlation"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "COMMITTED",
+              "READY",
+              "PENDING_APPROVAL"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "proposal",
+          "payload_hash",
+          "semantics"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "PENDING_APPROVAL"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "requires",
+          "expires_at"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "VALIDATED"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "decision"
+        ]
+      }
+    }
+  ]
+}
