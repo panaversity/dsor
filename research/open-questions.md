@@ -502,3 +502,39 @@ for a human. An agent may gather evidence; it does not settle these alone.
     accepts `PT`, with nothing after the `T`, and `P1DT`. ISO 8601 allows neither. Step 19's
     learner build follows the schema, and reads `PT` as zero. Should the pattern require a
     number after `T`?
+76. **Who may lift a slip's suspension?** DSOR-IDN-07 says DSoR must suspend every delegation
+    of a signer whom the role source reports as suspended or deprovisioned. DSOR-DEL-04a names
+    who may revoke a slip. DSOR-OPS-01d says "a suspension or freeze MUST be lifted only by a
+    human holding `control:suspend`", but it sits in §18, among the operational controls of
+    line ④, and does not say whether it covers a slip suspended under DSOR-IDN-07. Nor does any
+    rule say what tells DSoR that the signer is back. Step 19b's learner build lets only the
+    database owner lift one, by hand. Should DSOR-OPS-01d name delegations, or should §13 have
+    a rule of its own?
+77. **Does one company's report reach the signer's slips in another company?** DSOR-IDN-07
+    says "every delegation that principal granted". DSOR-IDN-04a accepts role assertions only
+    from the role source of the active tenant, and DSOR-IDN-03b forbids a write across tenants.
+    Step 19b's learner build suspends only the reporting company's slips: her slip in another
+    company waits for that company's own directory. Is that what the rule means?
+78. **How fast must the slips change?** DSOR-IDN-07 gives no time bound. Step 19b's learner
+    build learns of a suspension only when one of the signer's agents calls, so a suspension
+    that starts and ends between two calls is never applied. Should the rule bound the delay,
+    or ask for a push from the role source, or a regular sweep?
+79. **Does "not listed" count as deprovisioned?** A login system often deletes a person who
+    leaves, and its directory then answers "not found", not "deprovisioned". Step 19b's learner
+    build treats both alike, so a re-created account cannot quietly revive her agent. But a
+    directory that answers "not found" by mistake, from a wrong key or a slow copy, then
+    suspends slips until a person lifts them. Should DSOR-IDN-07 name the case?
+80. **Should start-up read the row-level security policies, not only check that they are on?**
+    DSOR-RP-01b asks for `FORCE ROW LEVEL SECURITY`, and step 16's learner build refuses to start
+    without it. It does not read the policies. Since step 17 the runtime writes some columns,
+    and since step 19b it may update a slip's status, under a restrictive policy. A stray
+    permissive policy for `UPDATE` would be joined to the company's rule with OR, and reach every
+    company's rows, and start-up would not notice. The learner builds' database tests list every
+    policy exactly, but tests run before a deployment, not at each start. Should the reference
+    profile ask for a check of the policies themselves?
+81. **Should every record carry a correlation id that DSoR makes?** DSOR-COR-01b makes DSoR
+    generate a `request_id` only when the caller supplies none, so most records carry the
+    caller's own text. An agent can reuse another call's `request_id` and tie its records to
+    calls that are not its own. Step 19b's learner build copies the call's whole correlation,
+    the agent's id included (DSOR-COR-01a), into the record of each suspension, but the request
+    id is still the agent's. Should the audit record carry an id that only DSoR makes?

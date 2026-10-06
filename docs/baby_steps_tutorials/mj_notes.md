@@ -114,6 +114,17 @@ Step 18 recorded six, the first two from this page:
 - 71: whether anyone but a person may sign a slip.
 - 72: whether the running example's slip should run out on 2026-12-31.
 
+### Who may lift a slip's hold?
+
+Recorded as open question 76. Step 19b's decision 16 renamed a hold a suspension.
+
+DSOR-IDN-07 says DSoR suspends every slip of a signer whom the role source reports as
+suspended or deprovisioned. No rule says who may turn a suspended slip on again. DSOR-DEL-04a
+names who may revoke a slip (its signer and a tenant administrator), and DSOR-OPS-01d says an
+agent's suspension is lifted only by a person who holds `control:suspend`. Nor does IDN-07 say
+how fast the slips change, or whether a report from one company's role source reaches the
+person's slips in another company. Step 19b's design must choose, until the spec says.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -857,6 +868,81 @@ pages for the parts that did not land.
   a job change to line ③: a change of status stops at line ③, and a change of job at line ⑤,
   the ③-and-⑤ split again in a new form. Q5 gave the right code and predicted step 19b's write
   to the slip. One card settled all three: what the directory says, and where DSoR stops.
+
+### Step 19b, before design (2026-10-06)
+
+Step 19b is this learner build's own step: DSOR-IDN-07, split out of step 19 (step 19's
+decision 6). Five parts: the gap and the rule, every slip she signed, the change and its
+record, coming back, and two calls at once. Real runs on step 19's code, and on a throwaway
+PostgreSQL in the scratchpad for the transaction and the race.
+
+- **"Turned off means revoked", the third and fourth time.** Part 1 answered
+  `DELEGATION_REVOKED` for a suspended slip, and its re-check answered `revoked` for a person
+  who left for good. The everyday phrase "revoke her access" pulls hard. What the rule says:
+  IDN-07 suspends, for "deprovisioned" too, and a hold is lifted by a person, while a torn-up
+  slip never comes back. A three-row card (on hold, torn up, past its date) closed the part.
+- **Step 17's rule, carried inside a transaction.** Part 3 kept the first write when the
+  second failed, which is right without a transaction. A plain SQL side-by-side (each write on
+  its own: `del_100` on hold and one record; one transaction: nothing changed) gave the rule
+  its missing clause: unless both writes are inside one transaction.
+- **Design questions for step 19b's Phase A:** which of her slips (only the reporting
+  company's, or every company's); when (only at a call, or also a sweep of every signer); a
+  new store question, every slip a person signed; the new database right, `status` only; the
+  holds and their `delegation_change` records in one transaction, and whether the call's own
+  record joins it; the record's `identity` for a change DSoR makes on the directory's word;
+  who lifts a hold, and through what; a call that heard "suspended" just before an admin's
+  lift; and the breaks (the record fails, two calls at once, she comes back, one slip lifted).
+
+### Step 19b, the design (2026-10-06)
+
+- **Eight decisions, each chosen by the two tests the learner named,** closest to production
+  and deepest understanding: the folder `mj_19b_suspended_slips`; only the reporting company's
+  slips; only at a call; `UPDATE (status)` only, with a new kind in `store.json`; the holds and
+  their records in one transaction at line ③; the record names DSoR itself; no lift through
+  DSoR before step 25; a hold that cannot be written gives `INTERNAL_ERROR`; and "not listed"
+  counts as gone. The learner took the recommended option every time.
+- **Break predictions: 3 of 4 as expected.** B1 (no hold), B2 (no company filter: the second
+  lock holds), and B4 (two transactions: holds without records) matched. B4 shows that Part 3's
+  transaction lesson landed. B3 kept "only if still active" in place after the break deleted
+  it, so a torn-up slip stayed `revoked` in the prediction: Habit 1, credit for a check that no
+  line asks any more.
+- **Nothing is committed,** by the learner's rule from 2026-10-06. The project's `CLAUDE.md`
+  asks for each built piece to be committed; the learner's rule wins on this branch.
+
+### Step 19b, the build (2026-10-06)
+
+- **"The database cancels both".** The learner predicted that two calls at once leave no record
+  of a suspension. A scratch PostgreSQL ran the same two transactions three ways: as built (the
+  second waits, reads again, changes nothing: 1 record), under SERIALIZABLE (the database does
+  cancel, but only the second: still 1), and without "only if still active" (2). The instinct
+  is half right: a database cancels on a collision, and one side always wins. The last hotel
+  room carried it: the second clerk finds the hook empty.
+- **B3 at run time, as at design.** The broken copy turned the torn-up `del_101` into a
+  suspended slip, with a record. The prediction described the step as built: Habit 1 again,
+  credit for a check that the break had deleted.
+- **A right on a column limits the column, not the words in it.** The review's highest
+  finding: `GRANT UPDATE (status)` let `dsor_runtime` write `active` over `revoked`. A
+  restrictive row-level security policy (migration 012b) now allows one change only, active to
+  suspended. It was tried on a scratch database before the learner chose it.
+- **A word already taken.** "Hold" is the specification's word for a resource held while an
+  outcome is unknown (`RESOURCE_HELD`, `hold_on_unknown`), and `AGENTS.md` lists "holds"
+  in the control-plane store. The step now says "suspend", the rule's own word. These notes
+  keep "on hold" where they quote the learner.
+- **Decisions 12 to 16:** DSoR's own log reader reads decisions only; the database allows only
+  active to suspended; the record carries the call's whole correlation (DSOR-COR-01a); an
+  answer that says she is not active needs no roles; and the word "suspend". The learner took
+  the recommended option each time.
+- **Facts the build got wrong, and fixed:** migration 012 ran four minutes into the first
+  database run, while the notes said it had not run; the database test files run one at a
+  time, so per-test signers exist because a suspension is permanent; and the first message,
+  "could not put", claimed more than DSoR knew: "could not confirm".
+- **A scratch PostgreSQL as the sweep's database.** The whole database suite in 44 seconds,
+  against 20 minutes on Neon, and breaks that would have suspended the story's real slips on
+  the shared branch ran there safely. Two changes made it behave like Neon: the owner joins
+  `pg_write_all_data`, and the cluster checks passwords.
+- **Sweeps:** 33 breaks first, 9 survived (two only changed an order). After the fixes, 18
+  breaks, all caught, among them the policy made permissive.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
 
 ## Still unknown
 
