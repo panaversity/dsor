@@ -22,6 +22,7 @@ import {
   useDatabase,
   verifyChain,
 } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
 import { aDatabase } from "./support/database.ts";
@@ -208,15 +209,15 @@ describe("a refusal written to two logs, when the second write fails", () => {
     // org_789's INSERT is refused by the server, the first version told the caller the decision
     // "could not be written down" — false, and a review measured it against one log holding the
     // DENY and the other empty.
-    const real = db;
+    const real = overPGlite(db);
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (sql.includes("INSERT") && params?.[1] === "audit:org_789") {
           throw Object.assign(new Error("disk full"), { code: "53100" });
         }
 
-        return real.query<T>(sql, params);
+        return real.query<T>(sql, params, tenant);
       },
     });
 

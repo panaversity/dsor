@@ -27,6 +27,75 @@ import { Pool } from "pg";
 import { applyMigrations, type Runner } from "./migrations.ts";
 import { useDatabase, type Database } from "./audit.ts";
 
+/**
+ * NEW IN STEP 11: PGlite, as a connection that can say the company.
+ *
+ * A statement with a company runs inside `db.transaction`, which is a real BEGIN … COMMIT on
+ * PGlite's one connection, with `set_config(…, true)` as its first statement — `true` meaning
+ * "until this transaction ends". A statement with none runs plainly. Nothing else changes: the
+ * SQL, the parameters and the rows are passed through untouched.
+ */
+export function overPGlite(db: PGlite): Database {
+  return {
+    query: <T>(sql: string, params?: unknown[], tenant?: string): Promise<{ rows: T[] }> =>
+      tenant === undefined
+        ? db.query<T>(sql, params)
+        : db.transaction(async (tx) => {
+            await tx.query("SELECT set_config('dsor.tenant_id', $1, true)", [tenant]);
+
+            return tx.query<T>(sql, params);
+          }),
+  };
+}
+
+/**
+ * NEW IN STEP 11: a `pg` pool, as a connection that can say the company.
+ *
+ * This is where the second trap on the map lives. `pool.query` hands each statement to whichever
+ * connection is free, so a company set on one connection would be met again by a stranger's
+ * statement later. A statement with a company therefore takes one connection out of the pool,
+ * opens a transaction on it, says the company for that transaction only, runs, commits, and hands
+ * the connection back — clean, because the setting died with the transaction.
+ */
+export function overPool(pool: Pool): Database {
+  return {
+    async query<T>(sql: string, params?: unknown[], tenant?: string): Promise<{ rows: T[] }> {
+      if (tenant === undefined) {
+        const plain = await pool.query(sql, params);
+
+        return { rows: plain.rows as T[] };
+      }
+
+      const client = await pool.connect();
+      let dead = false;
+
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [tenant]);
+
+        const result = await client.query(sql, params);
+
+        await client.query("COMMIT");
+
+        return { rows: result.rows as T[] };
+      } catch (failure) {
+        // A statement the server refused leaves a usable connection in an aborted transaction;
+        // ROLLBACK clears it. A connection that is gone cannot even do that, and is discarded
+        // rather than returned to the pool for the next statement to find.
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          dead = true;
+        }
+
+        throw failure;
+      } finally {
+        client.release(dead);
+      }
+    },
+  };
+}
+
 /** Where the on-disk demo database lives. In .gitignore: it is this machine's, not the project's. */
 const LOCAL = fileURLToPath(new URL("../.local-database", import.meta.url));
 
@@ -224,6 +293,7 @@ export async function openTheDatabase(folder: string = LOCAL): Promise<{
     // The real thing. One connection, because this program answers one request at a time; a pool of
     // one keeps the shape the same as a pool of many for the day it needs one.
     const pool = new Pool({ connectionString: url, max: 1 });
+    const connection = overPool(pool);
 
     // Said rather than assumed. A connection string that is wrong fails here, on the first query,
     // with the driver's own message — not later, inside a decision, as EVIDENCE_STORE_UNAVAILABLE.
@@ -231,18 +301,18 @@ export async function openTheDatabase(folder: string = LOCAL): Promise<{
 
     // Before `useDatabase`, so a refused connection never records anything at all.
     try {
-      await refuseIfItCanRewriteHistory(pool as unknown as Database);
+      await refuseIfItCanRewriteHistory(connection);
     } catch (wrong) {
       await pool.end();
       throw wrong;
     }
 
-    useDatabase(pool as unknown as Database);
+    useDatabase(connection);
 
     return {
       where: `the PostgreSQL at ${withoutCredentials(url)}`,
       close: () => pool.end(),
-      connection: pool as unknown as Database,
+      connection,
     };
   }
 
@@ -272,18 +342,20 @@ export async function openTheDatabase(folder: string = LOCAL): Promise<{
 
   await becomeTheApplication(db);
 
+  const connection = overPGlite(db);
+
   try {
-    await refuseIfItCanRewriteHistory(db as unknown as Database);
+    await refuseIfItCanRewriteHistory(connection);
   } catch (wrong) {
     await db.close();
     throw wrong;
   }
 
-  useDatabase(db as unknown as Database);
+  useDatabase(connection);
 
   return {
     where: `a PostgreSQL on disk at ${folder.replace(process.cwd(), ".")}, as \`${APPLICATION_ROLE}\``,
     close: () => db.close(),
-    connection: db as unknown as Database,
+    connection,
   };
 }

@@ -30,7 +30,7 @@
 // wherever it crosses an interface or is stored as evidence.
 
 import { createHash, randomUUID } from "node:crypto";
-import { theDatabase, type Database } from "./store.ts";
+import { theDatabase, type Statements } from "./store.ts";
 import { isKnownTenant } from "./tenant.ts";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -256,7 +256,7 @@ export interface Head {
  * outside the control-plane store."* A checkpoint computed from the thing it checks is not a
  * checkpoint. `DSOR-AUD-04d` is not claimed, and this is why.
  */ export async function theHead(tenant: string): Promise<Head> {
-  const { rows } = await theDatabase().query<{ count: string; last_hash: string | null }>(
+  const { rows } = await theDatabase(tenant).query<{ count: string; last_hash: string | null }>(
     `SELECT count(*)::text AS count,
             (SELECT record_hash FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
               AS last_hash
@@ -473,7 +473,8 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // itself. The interleaving does not need real concurrency, only control over the order, and
   // `audit-race.test.ts` holds one writer at this read while another commits. What does need a real
   // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
-  const db = theDatabase();
+  // NEW IN STEP 11: for this chain's company, and every statement below says so to PostgreSQL.
+  const db = theDatabase(tenant);
   // `AS at_position`, and the alias is load-bearing. `SELECT sequence::text` names its output column
   // `sequence`, and PostgreSQL resolves a bare name in ORDER BY to an **output** column first — so
   // `ORDER BY sequence DESC` ordered by the text, where "9" sorts after "10". The tail froze at 9 and
@@ -757,7 +758,7 @@ function isUniqueViolation(error: unknown): boolean {
  * caller's own words, and a caller's words in a SQL string is how an audit log ends up executing
  * them.
  */
-async function insert(db: Database, written: AuditRecord): Promise<void> {
+async function insert(db: Statements, written: AuditRecord): Promise<void> {
   await db.query(
     `INSERT INTO public.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
@@ -792,7 +793,7 @@ async function insert(db: Database, written: AuditRecord): Promise<void> {
  * row — a column added later must not silently become part of what `verifyChain` hashes.
  */
 export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
-  const { rows } = await theDatabase().query<Record<string, unknown>>(
+  const { rows } = await theDatabase(tenant).query<Record<string, unknown>>(
     // Same alias, same reason. Without it this returned the chain in text order — 0, 1, 10, 11, 2 —
     // and `verifyChain` would have reported a perfectly good log as broken.
     `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash,
@@ -863,7 +864,7 @@ export async function forgetTheLog(tenant: string): Promise<void> {
   //
   // This chain only. `theHead` and `theLog` filter by `chain`, and so must the eraser, or step 10's
   // second tenant finds its history gone the first time a test for the first tenant cleans up.
-  await theDatabase().query("DELETE FROM public.audit WHERE chain = $1", [chainOf(tenant)]);
+  await theDatabase(tenant).query("DELETE FROM public.audit WHERE chain = $1", [chainOf(tenant)]);
   // Process-wide on purpose, while the DELETE above is per chain: §29's flood counter counts
   // refusals that have no subject or no company, so there is no tenant to key it by, and any
   // company's eraser zeroes it for all.

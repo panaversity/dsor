@@ -29,8 +29,11 @@ import {
   type Database,
   type DecisionToRecord,
 } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 
 let real: PGlite;
+/** NEW IN STEP 11: `real`, as a connection whose statements can say their company. */
+let connection: Database;
 
 beforeEach(async () => {
   real = await PGlite.create();
@@ -39,6 +42,8 @@ beforeEach(async () => {
   for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
     await real.exec(migration.sql);
   }
+
+  connection = overPGlite(real);
 
   // A clock that never repeats. With the real one two writes can land in the same millisecond, and
   // an inversion would hide inside it — the test would pass and prove nothing.
@@ -90,13 +95,13 @@ function withTheFirstTailReadHeld(): { db: Database; release: () => void } {
   let firstTail = true;
 
   const db: Database = {
-    async query<T>(sql: string, params?: unknown[]) {
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
       if (firstTail && isTheTailRead(sql)) {
         firstTail = false;
         await gate;
       }
 
-      return real.query<T>(sql, params);
+      return connection.query<T>(sql, params, tenant);
     },
   };
 
@@ -149,10 +154,10 @@ describe("a writer that loses the race", () => {
     });
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         order.push(sql.includes("INSERT") ? "insert" : isTheTailRead(sql) ? "tail" : "other");
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     });
 
@@ -189,13 +194,13 @@ describe("a writer that loses the race", () => {
     let arrived = 0;
 
     useDatabase({
-      async query<T>(sql: string, params?: unknown[]) {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
         if (isTheTailRead(sql)) {
           // `audit` runs synchronously as far as this query, so `arrived` is creation order.
           await gates[arrived++]!.wait;
         }
 
-        return real.query<T>(sql, params);
+        return connection.query<T>(sql, params, tenant);
       },
     });
 

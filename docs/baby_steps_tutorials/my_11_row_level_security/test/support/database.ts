@@ -11,7 +11,11 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { migrationsIn } from "../../src/migrations.ts";
-import { theDatabase, useDatabase } from "../../src/store.ts";
+import { overPGlite } from "../../src/database.ts";
+import { useDatabase } from "../../src/store.ts";
+
+/** The owner's own connection, for the seams below. Set by `aDatabase`. */
+let owner: PGlite | undefined;
 
 /** A fresh database with the migrations applied, pointed at by `audit.ts`. */
 export async function aDatabase(): Promise<PGlite> {
@@ -27,7 +31,9 @@ export async function aDatabase(): Promise<PGlite> {
     await db.exec(migration.sql);
   }
 
-  useDatabase(db);
+  // NEW IN STEP 11: through the adapter, so that a statement can say its company.
+  useDatabase(overPGlite(db));
+  owner = db;
 
   return db;
 }
@@ -40,7 +46,13 @@ export async function aDatabase(): Promise<PGlite> {
  * rather than from a second copy of it here, so the two can never disagree.
  */
 export async function resetInvoices(): Promise<void> {
-  const db = theDatabase();
+  // The owner's own connection, with no company said: these rows belong to two companies, and
+  // the owner is a superuser here, which no policy filters.
+  const db = owner;
+
+  if (db === undefined) {
+    throw new TypeError("call aDatabase() first");
+  }
 
   await db.query("DELETE FROM public.invoices");
 

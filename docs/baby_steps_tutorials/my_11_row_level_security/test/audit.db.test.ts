@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
-import { openTheDatabase } from "../src/database.ts";
+import { openTheDatabase, overPool } from "../src/database.ts";
 import {
   audit,
   resetClock,
@@ -291,7 +291,7 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
   it("DSOR-AUD-01: three writers at once, on three real connections, leave one verifiable chain", async () => {
     await owner.query("DELETE FROM audit");
     setClock(() => "2026-10-04T00:00:00.000Z");
-    useDatabase(application); // a pool of three: the three calls really do run side by side
+    useDatabase(overPool(application)); // a pool of three: the three calls really do run side by side
 
     const decision = (id: string) =>
       ({
