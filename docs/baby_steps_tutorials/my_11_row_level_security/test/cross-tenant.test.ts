@@ -18,10 +18,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
-import { theLog, forgetTheLog } from "../src/audit.ts";
+import { theLog } from "../src/audit.ts";
 import type { Context } from "../src/pipeline.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { aDatabase, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };

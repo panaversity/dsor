@@ -164,8 +164,11 @@ describe("the identity the program itself connects as", () => {
 
 describe("refuseIfItCanRewriteHistory", () => {
   it("DSOR-AUD-04a: refuses a connection that may rewrite the audit table", async () => {
-    // The owner's connection, which is what the program used to hold.
+    // The owner's connection, which is what the program used to hold. NEW IN STEP 11: `aDatabase`
+    // hands out the application's connection, so the owner's has to be asked for.
     const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /may UPDATE, DELETE, TRUNCATE the audit table/,
@@ -189,6 +192,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     // So the check asks `has_table_privilege` and not the catalogue. Measured 2026-10-04.
     const db = await aDatabase();
 
+    await db.exec("RESET ROLE");
     await db.exec("CREATE ROLE auditor_gone_rogue WITH SUPERUSER;");
     await db.exec("SET ROLE auditor_gone_rogue");
 
@@ -278,6 +282,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     //     privilege says: may=false       after SECURITY DEFINER call, result = REWRITTEN
     const db = await aDatabase();
 
+    await db.exec("RESET ROLE");
     await db.exec(`CREATE FUNCTION rewrite(t text) RETURNS void LANGUAGE sql SECURITY DEFINER
                    AS $$ UPDATE public.audit SET result = t $$;`);
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
@@ -299,6 +304,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     // no UPDATE is harmless, and refusing it would be a check that fails closed on everything.
     const db = await aDatabase();
 
+    await db.exec("RESET ROLE");
     await db.exec("CREATE ROLE helper_owner;");
     await db.exec(
       `CREATE FUNCTION harmless() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$;`,
@@ -317,6 +323,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     // do anything at all. This step expects none, and says so rather than hoping.
     const db = await aDatabase();
 
+    await db.exec("RESET ROLE");
     await db.exec(`CREATE FUNCTION tamper() RETURNS trigger LANGUAGE plpgsql
                    AS $$ BEGIN NEW.result := 'TAMPERED'; RETURN NEW; END $$;
                    CREATE TRIGGER t BEFORE INSERT ON public.audit FOR EACH ROW EXECUTE FUNCTION tamper();`);
@@ -338,6 +345,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     ]) {
       const db = await aDatabase();
 
+      await db.exec("RESET ROLE");
       await db.exec(grant);
       await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 

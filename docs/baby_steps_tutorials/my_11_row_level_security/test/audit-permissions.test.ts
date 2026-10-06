@@ -105,12 +105,21 @@ function splitValues(values: string): string[] {
   return out;
 }
 
-/** Run SQL as the application's own account, and say what happened. */
+/**
+ * Run SQL as the application's own account, and say what happened.
+ *
+ * NEW IN STEP 11: for org_456, said the way the program says it — inside the statement's own
+ * transaction. Without it the lock of migration 005 hides every row and refuses every write, and
+ * these tests would be measuring the lock rather than the grants.
+ */
 async function asTheApplication(sql: string): Promise<string> {
   await db.exec("SET ROLE dsor_runtime;");
 
   try {
-    await db.exec(sql);
+    await db.transaction(async (tx) => {
+      await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      await tx.exec(sql);
+    });
 
     return "allowed";
   } catch (error) {
@@ -662,6 +671,10 @@ describe("a table the application makes to stand in front of the real one", () =
       authorization: "ALLOW",
       result: "ALLOWED",
     });
+
+    // Counted as the owner: under the lock the application sees only rows of a company it has
+    // said, and this count is about which table the row went to, not whose it is.
+    await db.exec("RESET ROLE;");
 
     const real = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");
     const shadow = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM pg_temp.audit");
