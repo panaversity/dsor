@@ -125,6 +125,14 @@ agent's suspension is lifted only by a person who holds `control:suspend`. Nor d
 how fast the slips change, or whether a report from one company's role source reaches the
 person's slips in another company. Step 19b's design must choose, until the spec says.
 
+### Is `none` a concurrency strategy?
+
+§23 lists three strategies: `optimistic`, `pessimistic`, and `connector_managed`. The contract
+schema, `operation-contract.schema.json`, allows a fourth: `none`. DSOR-CON-01a says that every
+command must declare a strategy. If `none` counts, a command can declare that nothing is
+checked, and the rule asks only for a word. Step 21's learner build accepts `none` at start-up,
+and no shipped command declares it. Should §23 name `none`, and say which commands may use it?
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -273,6 +281,11 @@ reviewer for a mutation sweep too.
   to edit nothing, made a copy of the step to run checks in, in the scratchpad folder that
   held the build's break scripts, and deleted it after. The build rebuilt its scripts from the
   session. Every agent now gets the name of the one folder it may write in.
+- **Ask which idea led to the answer** (steps 20 and 21, 2026-10-07). The same wrong answer came
+  four times in step 21's part 1. Explanations and runs side by side did not move it. A question
+  whose options were the possible reasons did: the learner picked two, and each one got its own
+  answer. Then one line of code, traced with the run's values, and the learner ran the script
+  with two values in their own terminal.
 
 ## Bugs found in earlier builds
 
@@ -943,6 +956,116 @@ PostgreSQL in the scratchpad for the transaction and the race.
 - **Sweeps:** 33 breaks first, 9 survived (two only changed an order). After the fixes, 18
   breaks, all caught, among them the policy made permissive.
 - **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Step 20, understanding (2026-10-07)
+
+Five parts were planned: the lost answer, one insert, the fingerprint, the four parts of a
+claim's scope, and the claim inside the transaction. Part 1, the lost answer, ran on step 19b's
+own code: a retry of `payment.create` for INV-1008 drafted PAY-902 beside PAY-901, and the log
+held two records with one request id. The learner predicted it. The learner stopped at part 2
+and was away for the rest of the step.
+
+- **Design questions left for Phase A:** where the key travels; its form; whether a query may
+  carry one; which parts make up a claim's scope, and whether the contract's version is one;
+  what a fingerprint covers; whether the claim and the work share a transaction; what a replay
+  returns, and how it is masked; and what a refusal from the code leaves behind. Claude Code
+  took all of them while the learner was away: step 20's README, decisions 1 to 13.
+
+### Step 20, the build (2026-10-07)
+
+The learner was away and asked for steps 20 and 21 to be built, with every decision taken by
+the learner's two tests: closest to production, and deepest understanding.
+
+- **§22's last paragraph reversed a decision.** Decision 9 first let a refusal from the code
+  keep no claim. "A recorded `DENY` is replayed like any other result": a late copy of a refused
+  request must not draft after the caller has moved on. The claim now keeps the code's refusal,
+  and only an accident, an `INTERNAL_ERROR`, or a `safe_same_key` refusal releases it.
+- **Break B1, measured.** Look first, then insert: one draft, because the primary key still
+  held, and 9 of 50 callers heard `INTERNAL_ERROR`. Without the primary key: 10 drafts of
+  31,400.00 USD. The `SELECT` protected nothing.
+- **A green suite that tests less.** The cross-tenant suite passed while every command it sent
+  stopped at line ⑦ for want of a key. It sends keys now.
+- **A test that two callers pass cannot see a missing company.** B2 needed one caller,
+  firm-ap-fte, in both companies. The review found the same gap on the database for the caller
+  and the operation: user_123 heard the agent's PAY-902.
+- **A test that passes when nothing happens.** Nothing deletes a claim, so the 24-hour test
+  passed with an age command that aged nothing. It now reads the age from the database's clock.
+- **Local PostgreSQL again,** because every Neon branch is in use: the full database suite in 50
+  seconds. The learner can delete `step-11` and make `step-20` from `step-19b` later.
+- **Review and sweep:** the reviewer's 35 breaks left 15 survivors; after the fixes, 32 breaks,
+  all caught. Final: 1388 unit tests, 217 database tests, the clean copy, the root check.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Step 21, the build (2026-10-07)
+
+Built while the learner was away, after step 20, with every decision taken by the learner's two
+tests. No understanding session yet: it is owed, with step 20's parts 2 to 5.
+
+- **The lock that was not allowed.** The first plan locked the invoice with `FOR SHARE`. A real
+  run refused it to `dsor_runtime` (`42501`): a row lock needs a right to change the table. The
+  check moved into the write itself, `INSERT … WHERE EXISTS` and `UPDATE … WHERE version`, which
+  is optimistic concurrency's own form.
+- **The story must match what the caller sees.** The first story was a credit note, but the
+  agent's clearance hides amounts. A changed payee, VENDOR-44 to VENDOR-99, is a failure the
+  agent can see. A run of step 20's code drafted PAY-901, 31,400.00 USD to VENDOR-99.
+- **A test that two outcomes pass cannot tell them apart.** A payment changes only when it is
+  cancelled, so the status alone refused every stale cancel. Only a draft changed outside DSoR,
+  still a draft, shows the version doing its work: break B4.
+- **The review's two highest findings:** a trigger switched off passed start-up, because
+  PostgreSQL prints it as if it were on; and the check held only at `READ COMMITTED`, which DSoR
+  now sets itself. That also closes the level that step 20's claims relied on.
+- **Review and sweep:** the reviewer's 29 breaks left 10 survivors; after the fixes, 29 breaks,
+  all caught. Final: 1434 unit tests, 234 database tests on a local PostgreSQL, the clean copy,
+  and the root check.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Steps 20 and 21, understanding after the build (2026-10-07)
+
+Both steps were built while the learner was away, so this session came after the build. Step 20
+resumed at part 2. Step 21 had five parts: the changed payee, who raises the version, the check
+is the write, facts first, and what a version cannot see. A real run settled every answer: the
+step's own code in memory, scratch copies that followed the learner's rule, and a local
+PostgreSQL 17.
+
+- **A new habit: "DSoR's own read replaces the caller's claim."** Step 17's rule, "DSoR reads the
+  facts itself", was stretched over `expected_version`. The learner expected a draft on the
+  version that DSoR reads now: with no version, with a screen's version, and with a wrong
+  version. But a version is a claim about the caller's own decision. DSoR reads the invoice to
+  check that claim, never to replace it. Four predictions in step 21's part 1 came from this one
+  idea.
+- **Habit 1 again.** Step 20's part 5 named it. In step 21, line ⑥'s pass got credit for "may
+  this run?", but line ⑥ asks only whether the input is well formed. The trigger got credit for
+  "did a value change?", but it runs at every `UPDATE`.
+- **Habit 2's family again.** In step 20's part 4, a claim's scope was taken as the slip
+  signer's, not the calling principal's. In step 21, "a draft on the current version" said yes
+  to a decision that nobody can show was made on that version.
+- **What moved the new habit.** Two explanations and two runs side by side did not. A question
+  that listed the possible reasons found it: the learner picked "DSoR reads facts itself" and "a
+  valid input runs". Then line 70, traced with the run's values, and the learner's own run of
+  `node future21.ts 1` and `2`. From then on, the predictions reasoned with versions. Part 4's
+  prediction joined the two steps: the same key with a new version hears
+  `IDEMPOTENCY_CONFLICT`, because the version is part of the fingerprint.
+- **The learner's own design.** A trigger with `WHEN (OLD.* IS DISTINCT FROM NEW.*)` raises the
+  version only when a value changes. It removes decision 2's downside: a caller sent back for a
+  save that changed nothing. A scratch run showed its cost: a row with a `json` column cannot be
+  compared (`42883 operator does not exist: json = json`).
+- **Wording to fix in step 21.** The migration's first comment and the README's definition of a
+  trigger say "at each change of a row". Both mean every `UPDATE`, also one that changes no
+  value. The learner read "change" as "a value changes".
+- **Design questions for a later revision of step 21:**
+  1. Should a save that changes no value raise the version? Every `UPDATE` (now: any table, but
+     callers read again for nothing), or a real change only (the learner's trigger: fewer
+     refusals, and no `json` columns).
+  2. A row removed and added again restarts at version 1 (open question 87). A scratch run
+     drafted PAY-905 to VENDOR-99 on a decision made on the old row. Options: one sequence for
+     every row's version, a content hash, or no removal of invoices.
+  3. A counter is easy to guess. A draft with a guessed `expected_version` of 1, and no read,
+     passed. Accept it, because the check is about change and not about reading, or use a
+     version that is hard to guess.
+  4. There is no `payment.get`. After a stale cancel, the refusal's message is the only place
+     where a caller finds the payment's version (decision 7).
+  5. Only start-up reads the triggers, so a trigger switched off while DSoR runs is not seen
+     until the next start. Check at each command, check on a timer, or accept it and record it.
 
 ## Still unknown
 

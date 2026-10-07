@@ -538,3 +538,39 @@ for a human. An agent may gather evidence; it does not settle these alone.
     calls that are not its own. Step 19b's learner build copies the call's whole correlation,
     the agent's id included (DSOR-COR-01a), into the record of each suspension, but the request
     id is still the agent's. Should the audit record carry an id that only DSoR makes?
+82. **Which refusals does a claim keep?** §22 says "A recorded `DENY` is replayed like any other
+    result", and a new attempt uses a new key. §28 gives `LIMIT_EXCEEDED`, `COOLING_OFF_ACTIVE`,
+    and `FRESHNESS_UNSATISFIABLE` the class `after_delay`, and `STALE_STATE` the class
+    `after_state_refresh`. Neither class says which key the later retry uses. Step 20's learner
+    build keeps every refusal of a command's code with its claim, except `INTERNAL_ERROR`, which
+    DSoR throws for its own faults, and a refusal whose class is `safe_same_key`, the only class
+    that promises a retry with the same key. A hostile review asked for the narrower reading:
+    keep only refusals whose class is `never`. Should §28 say, for each class, whether the retry
+    uses the same key?
+83. **Is a contract's version part of a claim's scope?** DSOR-IDM-01b names the operation. Step
+    20's learner build leaves the version out, so a retry that meets version 2 of a contract
+    hears version 1's answer. If version 2 changed what the work does, that answer describes
+    work that version 2 would not do. Should the rule say which?
+84. **What does a claim keep when the outcome is unknown?** A command whose side effect may have
+    happened, `OUTCOME_UNKNOWN`, is neither a decision nor a failure that changed nothing. A claim
+    that keeps it stops a second execution, but the local writes of the same transaction would
+    be undone. A claim that drops it lets a retry execute twice. DSOR-UNK-01b says the outcome
+    is reported as unknown. Should §22 say how the claim and the intent record of §33 meet?
+85. **Should a replay's record name an id that DSoR makes?** Step 20's learner build writes
+    `replay_of` with the first call's `request_id`. That id is the caller's own text when the
+    caller sends one (DSOR-COR-01b), and a retry often sends the same one, so the replay's record
+    can name its own request id. Question 81 asks the same of every record.
+86. **Which record's version does a command name?** DSOR-CON-01b speaks of "the resource
+    version". `payment.create` writes a payment, and its caller decided on an invoice. Step 21's
+    learner build makes `expected_version` the invoice's for `payment.create`, and the payment's
+    for `payment.cancel`. Should a contract name the resource whose version it checks?
+87. **Must a version survive a record's removal?** Step 21's learner build keeps a version per
+    row, from 1. A row removed and added again starts at 1, so a decision made on the old row's
+    version 1 passes, for a different record under the same id. DSOR-CNR-03b asks for the native
+    version. Should §23 require versions that never repeat for an id, such as one sequence for
+    all rows?
+88. **Should start-up read a trigger's function, not only its definition?** Step 21's learner
+    build lets a business table have a trigger, which raises a row's version, and refuses any
+    trigger the store map does not name word for word, or one switched off. The function's body
+    is not read, so an owner could change it to raise nothing. Question 80 asks the same of
+    row-level security policies.
