@@ -137,6 +137,26 @@ describe("the second lock, on writes", () => {
   });
 });
 
+describe("the chain and the company agree", () => {
+  it("DSOR-TEN-01b: a record whose chain names another company than its tenant cannot be written", async () => {
+    // The policy binds `tenant`, not `chain`. A hostile review measured the gap: from org_456's
+    // transaction, a row with tenant org_456 and chain audit:org_789 went in — and org_789's own
+    // head, filtered by its tenant, would never see it and would collide on every write after.
+    // A constraint closes it; the policy alone could not.
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+        await tx.query(
+          `INSERT INTO public.audit (record_id, chain, sequence, previous_hash, record_hash, at,
+                                     tenant, kind, identity, correlation, result)
+           VALUES ('audit:org_789:0', 'audit:org_789', 0, 'sha256:AAAA', 'sha256:EEEE', now(),
+                   'org_456', 'decision', '{}', '{}', 'ALLOWED')`,
+        );
+      }),
+    ).rejects.toThrow(/chain_matches_tenant/);
+  });
+});
+
 describe("the first trap: the table owner", () => {
   it("DSOR-RP-01b: the lock is forced, so an owner that is not a superuser is filtered too", async () => {
     // By default a table's owner skips every policy on it. FORCE makes the owner subject to them.

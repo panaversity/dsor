@@ -147,7 +147,18 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               WHERE p.prosecdef
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND has_function_privilege(current_user, p.oid, 'EXECUTE')
-                AND (${held("p.proowner")})
+                AND (
+                  (${held("p.proowner")})
+                  -- NEW IN STEP 11: or an owner the second lock does not apply to. A helper owned
+                  -- by a BYPASSRLS role reads every company's rows while holding no right the
+                  -- checks above would see; a review measured it. The owner of a tenant table, or
+                  -- a member of it, may drop the policy from inside the helper.
+                  OR EXISTS (SELECT 1 FROM pg_roles o WHERE o.oid = p.proowner
+                              AND (o.rolsuper OR o.rolbypassrls))
+                  OR EXISTS (SELECT 1 FROM pg_class c
+                              WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('public.audit'))
+                                AND pg_has_role(p.proowner, c.relowner, 'MEMBER'))
+                )
             ) AS may_by_function,
             EXISTS (
               SELECT 1 FROM pg_trigger t
@@ -201,8 +212,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (answer.may_by_function !== false) {
     throw new Error(
       `this connection is \`${answer.who}\`, and it may EXECUTE a SECURITY DEFINER function whose ` +
-        `owner may ${FORBIDDEN.join(", ")} the audit table — a rewrite by proxy. Drop the function ` +
-        `or revoke EXECUTE on it from \`${APPLICATION_ROLE}\` and PUBLIC.`,
+        `owner may ${FORBIDDEN.join(", ")} the audit table, or skips the row-level lock — a rewrite ` +
+        `or a read by proxy. Drop the function or revoke EXECUTE on it from \`${APPLICATION_ROLE}\` ` +
+        `and PUBLIC.`,
     );
   }
 
@@ -214,7 +226,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 10: the invoices table too. The application may change an invoice's status and
+  // STEP 10: the invoices table too. The application may change an invoice's status and
   // nothing else — a row's company and number are its identity (DSOR-TEN-01a) — and it may neither
   // add nor remove rows. An administrator who grants more has made the same kind of mistake as
   // pointing DSOR_DB_URL at the owner, and a critic's next attack was exactly that grant.
@@ -252,26 +264,56 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // may do everything to its table; ownership one SET ROLE away (`WITH INHERIT FALSE`) is not, and
   // the owner may drop the policy. `locked` is the lock itself: a program that relies on the
   // database to hide rows, run against a database where it does not, would leak quietly.
+  //
+  // `locked` asks for the one policy the migration wrote, word for word, and nothing beside it.
+  // "Is there a policy" was the first version, and a review measured why it is not enough:
+  // policies are permissive and OR'd together, so one more that says `true` — for everyone, or
+  // `TO dsor_runtime` — opens the table while "is there a policy" still says yes. The expressions
+  // are compared as PostgreSQL prints them back, so a server that printed them differently would
+  // refuse to start rather than let an unchecked policy through. And `reads_beyond` is the view
+  // trap the same review measured: a view runs with its owner's rights, and its owner skips the
+  // lock, so a view over the invoices shows every company to whoever may SELECT from it. The
+  // application may read the two tenant tables and nothing else.
   const { rows: lock } = await db.query<{
     bypasses: boolean;
     bypassing_roles: string | null;
     owns_tenant_table: boolean;
     locked: boolean;
+    reads_beyond: string | null;
   }>(
-    `SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
+    `WITH tenant_table (rel, col) AS (
+       VALUES (to_regclass('public.invoices'), 'tenant_id'), (to_regclass('public.audit'), 'tenant')
+     ),
+     policy_text (rel, qual) AS (
+       SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))' FROM tenant_table
+     )
+     SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
             (SELECT string_agg(r.rolname, ', ' ORDER BY r.rolname) FROM pg_roles r
               WHERE r.rolname <> current_user
                 AND pg_has_role(current_user, r.oid, 'MEMBER')
                 AND r.rolbypassrls) AS bypassing_roles,
             EXISTS (
-              SELECT 1 FROM pg_class c
-              WHERE c.oid IN ('public.invoices'::regclass, 'public.audit'::regclass)
-                AND pg_has_role(current_user, c.relowner, 'MEMBER')
+              SELECT 1 FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
+              WHERE pg_has_role(current_user, c.relowner, 'MEMBER')
             ) AS owns_tenant_table,
-            (SELECT bool_and(c.relrowsecurity AND c.relforcerowsecurity
-                             AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid))
-               FROM pg_class c
-              WHERE c.oid IN ('public.invoices'::regclass, 'public.audit'::regclass)) AS locked`,
+            (SELECT bool_and(
+                c.relrowsecurity AND c.relforcerowsecurity
+                AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 1
+                AND EXISTS (
+                  SELECT 1 FROM pg_policy p
+                  WHERE p.polrelid = c.oid
+                    AND p.polcmd = '*' AND p.polpermissive AND p.polroles = '{0}'::oid[]
+                    AND pg_get_expr(p.polqual, p.polrelid) = pt.qual
+                    AND pg_get_expr(p.polwithcheck, p.polrelid) = pt.qual
+                ))
+               FROM pg_class c JOIN policy_text pt ON pt.rel = c.oid) AS locked,
+            (SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1)
+               FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+              WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
+                AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
+                AND ns.nspname NOT LIKE 'pg_toast%'
+                AND c.oid NOT IN (SELECT rel FROM tenant_table)
+                AND has_table_privilege(current_user, c.oid, 'SELECT')) AS reads_beyond`,
   );
   const second = lock[0];
 
@@ -303,7 +345,17 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (second.locked !== true) {
     throw new Error(
       `the second lock is not on: public.invoices and public.audit must each have row-level ` +
-        `security enabled, forced, and a policy. Apply migrations/005_row_level_security.sql.`,
+        `security enabled, forced, and exactly the one policy migrations/005_row_level_security.sql ` +
+        `writes — no other policy beside it, and none that reads differently.`,
+    );
+  }
+
+  if (second.reads_beyond !== null) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may read \`${second.reads_beyond}\`, which is ` +
+        `not one of the two tenant tables. A view or a table beside them is a window past the ` +
+        `lock: a view runs with its owner's rights, and a table without a policy hides nothing. ` +
+        `The application may read public.invoices and public.audit, and nothing else.`,
     );
   }
 }

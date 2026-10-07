@@ -139,7 +139,7 @@ export interface DecisionToRecord {
   /** Who DSoR authenticated, or `undefined` when nobody logged in. */
   readonly subject: string | undefined;
   /**
-   * NEW IN STEP 10: the company this decision belongs to — the one the request resolved to.
+   * STEP 10: the company this decision belongs to — the one the request resolved to.
    * `undefined` when it resolved to none, in which case the decision is counted, not recorded,
    * exactly as when nobody was logged in. `recordTheDecision` in operations.ts decides which
    * companies a no-company refusal is written to; this function writes one record in one chain.
@@ -154,7 +154,7 @@ export interface DecisionToRecord {
 }
 
 /**
- * NEW IN STEP 10: the chain a company's decisions join. One per company, named after it.
+ * STEP 10: the chain a company's decisions join. One per company, named after it.
  *
  * Step 08's chain was named after a constant and every record joined it. With two companies in one
  * table that would make org_456's hashes depend on org_789's records, and §14 says audit partitions
@@ -209,7 +209,7 @@ export function resetClock(): void {
   clock = realClock;
 }
 
-// NEW IN STEP 10: the database handle lives in store.ts now, because the invoices have rows too and
+// STEP 10: the database handle lives in store.ts now, because the invoices have rows too and
 // they must be the same rows this log is in. Re-exported, so everything that learned to call
 // `useDatabase` from here in step 09 still can.
 export { useDatabase, type Database } from "./store.ts";
@@ -851,8 +851,9 @@ export function countedWithoutARecord(): number {
  * DSoR" — a sentence the function contradicts. Nothing stops a production path importing this and
  * calling it, and a review said so plainly: `DSOR-AUD-04a` says the runtime identity MUST NOT be able
  * to delete audit records, the runtime identity here is this process, and one call erases everything.
- * What replaces the claim is the truth: **nothing enforces this, and step 09 is where the log moves
- * into a database whose application user has no DELETE.**
+ * What replaced the claim was the truth, and then step 09 made it enforced: the log lives in a
+ * database whose application account has no DELETE, so this runs only for the owner — which, since
+ * step 11, is a connection the test support steps up to for exactly this call.
  *
  * It also erases the aggregated count, which is the only evidence an unauthenticated flood ever
  * happened. And it bumps `run`, so the record ids it frees are never handed out twice.

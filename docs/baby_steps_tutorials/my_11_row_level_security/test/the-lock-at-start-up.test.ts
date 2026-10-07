@@ -91,6 +91,74 @@ describe("an account the lock does not apply to", () => {
   });
 });
 
+describe("a window past the lock", () => {
+  // Three attacks a hostile review measured against the first version of the check, which asked
+  // only whether the account held BYPASSRLS and whether a policy existed. Each is an owner's
+  // mistake, not a caller's — and each left the forgotten query returning both companies while the
+  // check said the lock was on.
+
+  it("DSOR-RP-01a: a SECURITY DEFINER function owned by a role that bypasses the lock is refused", async () => {
+    // Step 09 refuses a helper whose owner may rewrite the log. This owner may not: it holds SELECT
+    // and BYPASSRLS, so the helper reads every company's rows and the privilege checks say nothing.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE reader BYPASSRLS");
+      await db.exec("GRANT SELECT ON public.invoices TO reader");
+      await db.exec(`CREATE FUNCTION all_invoices() RETURNS SETOF text LANGUAGE sql SECURITY DEFINER
+                     AS $$ SELECT tenant_id FROM public.invoices WHERE id = 'INV-1008' ORDER BY 1 $$`);
+      await db.exec("ALTER FUNCTION all_invoices() OWNER TO reader");
+    });
+
+    // Not testing nothing: as the application, with no company said, the helper leaks.
+    const { rows } = await db.query<{ all_invoices: string }>("SELECT * FROM all_invoices()");
+
+    expect(rows.map((r) => r.all_invoices)).toStrictEqual(["org_456", "org_789"]);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+  });
+
+  it("DSOR-RP-01a: a view the owner made is a window past the lock, and is refused", async () => {
+    // A view runs with its owner's rights, and its owner is a superuser here — so a view over the
+    // invoices shows every company, to anybody who may SELECT from the view.
+    await asTheOwner(async () => {
+      await db.exec("CREATE VIEW all_invoices AS SELECT tenant_id, id FROM public.invoices");
+      await db.exec(`GRANT SELECT ON all_invoices TO ${APPLICATION_ROLE}`);
+    });
+
+    const { rows } = await db.query<{ tenant_id: string }>(
+      "SELECT tenant_id FROM all_invoices WHERE id = 'INV-1008' ORDER BY 1",
+    );
+
+    expect(rows.map((r) => r.tenant_id)).toStrictEqual(["org_456", "org_789"]);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/all_invoices/);
+  });
+
+  it("DSOR-RP-01b: a second policy that lets everything through is refused", async () => {
+    // Policies are permissive and OR'd together: one more that says `true` and the lock is gone,
+    // while "is there a policy" still says yes. The check asks for the one policy the migration
+    // wrote, word for word.
+    await asTheOwner(() => db.exec("CREATE POLICY wide_open ON public.invoices USING (true)"));
+
+    expect(await companiesSeenForOrg456()).toStrictEqual(["org_456", "org_789"]);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/policy/);
+  });
+
+  it("DSOR-RP-01a: a superuser is refused, by step 09's question, before this step's are asked", async () => {
+    await db.exec("RESET ROLE");
+
+    const { rows } = await db.query<{ rolsuper: boolean }>(
+      "SELECT rolsuper FROM pg_roles WHERE rolname = current_user",
+    );
+
+    expect(rows[0]?.rolsuper).toBe(true);
+
+    // A superuser may UPDATE the log, and that is what the refusal says. `rolsuper` itself is not
+    // asked, because a line this one makes unreachable is a line no test can kill.
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/may UPDATE/);
+  });
+});
+
 describe("a lock that is not there", () => {
   // A program that relies on the database to hide rows, run against a database that does not,
   // would leak quietly. So the check also asks whether the lock is on, the way it asks whether a
@@ -99,6 +167,7 @@ describe("a lock that is not there", () => {
     ["ALTER TABLE public.invoices NO FORCE ROW LEVEL SECURITY", /forced/],
     ["ALTER TABLE public.audit DISABLE ROW LEVEL SECURITY", /row-level security/],
     ["DROP POLICY tenant_isolation ON public.audit", /policy/],
+    ["CREATE POLICY for_app ON public.audit TO dsor_runtime USING (true)", /policy/],
   ] as const) {
     it(`DSOR-RP-01b: refuses to start when the lock is off — ${undo}`, async () => {
       await asTheOwner(() => db.exec(undo));

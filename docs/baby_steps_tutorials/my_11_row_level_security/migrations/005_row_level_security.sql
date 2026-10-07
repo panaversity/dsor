@@ -54,6 +54,16 @@ CREATE POLICY tenant_isolation ON public.audit
   USING      (tenant = current_setting('dsor.tenant_id', true))
   WITH CHECK (tenant = current_setting('dsor.tenant_id', true));
 
+-- What the policy checks is `tenant`, and only `tenant`. A first version of this file said the
+-- WITH CHECK above "stops a bug which computed the wrong chain from writing a record into another
+-- company's log", and a review measured that it does not: from org_456's transaction, a row with
+-- tenant org_456 and chain audit:org_789 went in. The two values come from one variable in
+-- audit.ts today, so no path writes such a row — and the day one does, org_789's head, filtered by
+-- its own tenant, never sees the stray row, computes the same position again, and collides on
+-- every write after. A constraint says what the comment could only claim.
+ALTER TABLE public.audit
+  ADD CONSTRAINT chain_matches_tenant CHECK (chain = 'audit:' || tenant);
+
 -- No GRANT changes. Row-level security sits *under* the grants of 002 and 003: a policy decides
 -- which rows a statement may see, and only among the statements the grants already allow. The
 -- application still cannot UPDATE the log or INSERT an invoice; now it also cannot see a row that

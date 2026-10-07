@@ -46,7 +46,7 @@ export async function aDatabase(): Promise<PGlite> {
 }
 
 /**
- * NEW IN STEP 10: put the invoices back to how the story starts.
+ * STEP 10: put the invoices back to how the story starts.
  *
  * A test seam, as the owner: the application holds neither DELETE nor INSERT on invoices, which is
  * the point. The rows come from `004_running_example.sql` — the one place the story is written —
@@ -87,13 +87,18 @@ function theOwner(): PGlite {
  */
 export async function asTheOwner<T>(run: () => Promise<T>): Promise<T> {
   const db = theOwner();
+  // Whoever is connected now is who is connected afterwards. A review read the first version,
+  // which always dropped to the application, and asked what an `asTheOwner` inside another one
+  // would do to its caller: leave it as the application, silently. Nobody nests them yet.
+  const { rows } = await db.query<{ who: string }>("SELECT current_user AS who");
+  const before = rows[0]?.who ?? APPLICATION_ROLE;
 
   await db.exec("RESET ROLE");
 
   try {
     return await run();
   } finally {
-    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+    await db.exec(`SET ROLE ${before}`);
   }
 }
 

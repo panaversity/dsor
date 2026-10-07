@@ -304,7 +304,12 @@ describe("what the table itself refuses", () => {
   it("DSOR-AUD-01: one record id cannot be written twice, even in another chain", async () => {
     await db.exec(A_DECISION);
 
-    const elsewhere = A_DECISION.replace("'audit:org_456', 0,", "'audit:org_999', 7,");
+    // NEW IN STEP 11: the row's company moves with its chain, or `chain_matches_tenant` refuses it
+    // first and the primary key is never asked.
+    const elsewhere = A_DECISION.replace("'audit:org_456', 0,", "'audit:org_999', 7,").replace(
+      "'org_456', 'decision'",
+      "'org_999', 'decision'",
+    );
 
     await expect(db.exec(elsewhere)).rejects.toThrow(/duplicate key|unique constraint/i);
   });
@@ -607,7 +612,7 @@ describe("erasing the log, which only a test may do", () => {
       A_DECISION.replace(
         "'audit:org_456:0:0', 'audit:org_456'",
         "'audit:org_999:0:0', 'audit:org_999'",
-      ),
+      ).replace("'org_456', 'decision'", "'org_999', 'decision'"), // NEW IN STEP 11: chain and company agree
     );
 
     const before = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");
