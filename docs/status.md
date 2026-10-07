@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-05.
+2026-10-07.
 
 ## Specification
 
@@ -49,7 +49,7 @@ before it plus **one** new idea. Steps named `my_NN_*` are a learner's own copie
 built in the open with their reasoning recorded in
 [`my_notes/`](baby_steps_tutorials/my_notes/README.md).
 
-Eleven of the 52 are built. Test counts are cumulative, because each step inherits the
+Twelve of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -65,6 +65,7 @@ one before it:
 | `my_08_write_the_decision_first` | 234 | every decision is recorded before the answer, refusals included, in a hash chain |
 | `my_09_postgres_on_neon` | 327 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
 | `my_10_tenants` | 376 | a second company shares the program and the database: every row carries its company, every request is inside exactly one, another company's address is refused without revealing anything |
+| `my_11_row_level_security` | 400 | the second lock: PostgreSQL itself hides every other company's rows, told the company per statement inside its own transaction, and the program refuses to start as an account the lock does not apply to |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -97,7 +98,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 93 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 96 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 35 lessons, several of them about tests that passed while proving nothing.
 

@@ -2312,3 +2312,76 @@ superuser nor `BYPASSRLS` nor an owner of the tables (`DSOR-RP-01a`), so the sta
 step 09 grows those checks; and the lock is `FORCE`d (`DSOR-RP-01b`) even though every owner on our
 routes is a superuser, which bypasses it regardless — the tests prove `FORCE` with an owner that is
 not.
+
+## 95 · What step 11's build found, and one divergence from the map (2026-10-07)
+
+1. **The test support runs the stores as the application.** Measured with a store that forgets the
+   company: as `dsor_runtime`, 142 of 394 tests fail; as PGlite's superuser, 27 — and none of the 27
+   is a store's own test, because a superuser skips every policy. So `aDatabase()` ends with
+   `SET ROLE dsor_runtime`, and the two seams that need the owner (`resetInvoices`, the eraser)
+   step up through `asTheOwner` and always step back down, in a `finally`. The cost: sixteen tests
+   that ran raw SQL as the application without a company went red and had to say it. That cost is
+   the step's first lesson and is written up as such.
+2. **The map's third trap, as measured.** The map says a Console-made Neon user belongs to
+   `neon_superuser`, "which ignores row-level security altogether". The role does; its member does
+   not, until it runs `SET ROLE neon_superuser` — `BYPASSRLS` is a role attribute, and PostgreSQL
+   passes privileges through membership and never attributes. The first version of the Neon test
+   expected the member to leak, and the probe said otherwise. The test now asserts both halves:
+   filtered as itself, both companies after `SET ROLE`. The start-up check refuses the membership
+   by name either way. The map is left as written — a step session never edits around its folder —
+   and the README says where it and the measurement disagree.
+3. **The start-up check asks whether the lock is on.** Enabled, forced, with a policy, on both
+   tables; else it refuses with "the second lock is not on". The alternative — trusting that
+   migration 005 was applied — is a program that leaks quietly against a database at 004. Removing
+   `FORCE` from the migration therefore fails 18 tests, not 1: the owner's test, and seventeen that
+   open the program's door.
+4. **`rolsuper` is not checked**, because a superuser may `UPDATE` the log and step 09's privilege
+   check refuses it first; a line no test can kill is not added for the rule's wording (lesson 18).
+   `dsor.principal_id` from §36's example is not set, for the same reason: nothing reads it.
+5. **Why not one transaction per request.** It is the shape §36 draws and step 36 needs. Here it
+   would have changed the pipeline, the context and the audit writer at once, and the writer's
+   recovery after a collision runs a SELECT after a failed INSERT — inside one transaction that is
+   "current transaction is aborted". Per statement keeps every store's shape and every recovery
+   path, and is honest about being the smaller claim.
+
+## 96 · Step 11's hostile review: three windows past the lock, and a comment that over-claimed (2026-10-07)
+
+One reviewer, read-only, with PGlite probes. Seven findings; six changed something, one was
+considered and left. Every fix was red first, and each guard was removed again afterwards to see
+its test fail.
+
+1. **"Is there a policy" asks nothing.** Policies are permissive and OR'd together, so one more
+   that says `true` — for everyone, or `TO dsor_runtime` — opens the table while the first version
+   of the lock question still said "on". Measured: both companies, check passing. The question now
+   asks for exactly one policy per table, for all commands and all roles, whose `USING` and
+   `WITH CHECK` are the migration's expression as PostgreSQL prints it back. A server that printed
+   it differently would refuse to start, which is the right direction.
+2. **A `SECURITY DEFINER` function owned by a `BYPASSRLS` role** reads every company's rows while
+   holding nothing step 09's function question looks for. The question now also refuses a helper
+   whose owner is a superuser, holds `BYPASSRLS`, or owns (or may become the owner of) a tenant
+   table. Step 09's "harmless helper" test still passes: its owner is none of those.
+3. **A view the owner made is a window.** A view runs with its owner's rights, and every owner on
+   our routes skips the lock. Rather than enumerate the shapes, the check asks what the application
+   may `SELECT` at all: the two tenant tables, and nothing else, named in the refusal. The cost,
+   and it is deliberate: every later step that adds a table the application reads must add it here,
+   or the program refuses to start. Fail closed, like the column list of 002.
+4. **The audit policy binds `tenant`, not `chain`.** Migration 005's comment said the policy stops
+   a wrong chain from reaching another company's log; measured, a row with tenant org_456 and chain
+   audit:org_789 went in. No path writes one today — both values come from one variable — and the
+   day one does, org_789's head never sees the stray row and collides on every write after. A
+   `CHECK (chain = 'audit:' || tenant)` in 005 says what the comment claimed; the comment now says
+   what the policy checks. Two of step 09's permission tests wrote org_999's chain with org_456's
+   tenant and were corrected to agree with themselves. The step's own database was dropped and
+   recreated, because 005 had been applied and the checksum would have refused the edit.
+5. **`asTheOwner` restores whoever called it**, not always the application, so a nested call
+   cannot drop its caller silently. Nobody nests them yet.
+6. **A stale comment** in the eraser said step 09 "is where" the log moves; it moved.
+7. **Considered and left: `overPool` on a failed `COMMIT`.** A socket that dies during `COMMIT`
+   leaves the outcome unknown, and the adapter rethrows the driver's error as it is. That error
+   carries no SQLSTATE, which is exactly the shape `audit.ts` already treats as "the store could
+   not be asked" and answers `OUTCOME_UNKNOWN`; a `COMMIT` the server refused carries one and is a
+   definite no. Tagging the phase, as the reviewer suggested, would add a field nothing reads.
+
+The reviewer also measured what the first build claimed and could not have proved: a two-deep
+`INHERIT FALSE` chain to a `BYPASSRLS` role is refused, because `pg_has_role(…, 'MEMBER')` is
+transitive; `SET row_security = off` as the application is an error, not a bypass. 394 became 400.

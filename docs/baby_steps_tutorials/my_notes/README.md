@@ -28,6 +28,7 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-08-write-the-decision-first.md](step-08-write-the-decision-first.md) | Every decision is written down before the answer, refusals included |
 | [step-09-postgres-on-neon.md](step-09-postgres-on-neon.md) | The log lives in a database the application may not rewrite |
 | [step-10-tenants.md](step-10-tenants.md) | Two companies in one program, resolved from the login and kept apart |
+| [step-11-row-level-security.md](step-11-row-level-security.md) | The second lock: PostgreSQL hides every other company's rows |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
