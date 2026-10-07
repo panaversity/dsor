@@ -32,7 +32,7 @@ beforeEach(() => {
   rmSync(ITS_DATABASE, { recursive: true, force: true });
 });
 
-// NEW IN STEP 10: and leave nothing behind. These tests used to delete the database before each
+// STEP 10: and leave nothing behind. These tests used to delete the database before each
 // run and never after, so `pnpm check` left one demo run's records and an issued INV-1009 in the
 // folder `pnpm start` uses — and a learner's first `pnpm start` printed CONFLICT and thirty records.
 // A critic measured it. The README's "run it twice" story only means something from an empty folder.
@@ -114,7 +114,7 @@ describe("the program a learner runs", () => {
     const out = demo().report;
     const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
 
-    // NEW IN STEP 10: two logs, printed one after the other — org_456's fifteen records and
+    // STEP 10: two logs, printed one after the other — org_456's fifteen records and
     // org_789's two.
     expect(rows).toHaveLength(17);
 
@@ -195,7 +195,7 @@ describe("the program a learner runs", () => {
       34,
     );
 
-    // NEW IN STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
+    // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
     // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
     // died with the process — every run issued it afresh.
     expect(first).toContain("accounts-payable-fte  COMMITTED");
@@ -222,7 +222,7 @@ describe("the program a learner runs", () => {
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
-  // NEW IN STEP 10: what the demo shows about two companies.
+  // STEP 10: what the demo shows about two companies.
   it("DSOR-IDN-03b: the same invoice number is two different invoices, one per company", () => {
     const out = demo().report;
 

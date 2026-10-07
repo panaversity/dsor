@@ -59,7 +59,7 @@ type Handler = (
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
-  /** NEW IN STEP 10: the one company this request is for, from §21.2. */
+  /** STEP 10: the one company this request is for, from §21.2. */
   tenant: string,
   hash: string,
   requestId: string,
@@ -108,7 +108,7 @@ function invoiceIdFrom(
 
   const namedFor = contract.id.split(".")[0];
 
-  // NEW IN STEP 10: the address names a company, and it has to be the company this REQUEST is for.
+  // STEP 10: the address names a company, and it has to be the company this REQUEST is for.
   // `validate the input` decided that at §21.6, before the decision was recorded, and refused with
   // TENANT_MISMATCH if not — so by this line the two always agree, and this check is unreachable
   // through the real pipeline. It is here anyway, as INTERNAL_ERROR and not as a refusal the caller
@@ -148,7 +148,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       return { kind: "error", askedBy, envelope: read.refused };
     }
 
-    // NEW IN STEP 10: inside this request's company. There is no "INV-1008" any more, only
+    // STEP 10: inside this request's company. There is no "INV-1008" any more, only
     // "org_456's INV-1008", and the store is asked that way.
     const invoice = await getInvoice(tenant, read.id);
 
@@ -341,7 +341,7 @@ const authenticate: Stage["run"] = (context) => {
 };
 
 /**
- * NEW IN STEP 10 — §21.2, resolve tenant: which one company is this request for?
+ * STEP 10 — §21.2, resolve tenant: which one company is this request for?
  *
  * From the principal's memberships and the login's claim, and from nothing else. It runs before the
  * operation is even looked up, because every later question — may you, does it exist, is this
@@ -416,7 +416,7 @@ const resolveTheOperation: Stage["run"] = (context) => {
 const authorize: Stage["run"] = (context) => {
   const { principal, tenant, contract } = context;
 
-  // NEW IN STEP 10: a tenant too. "May you?" is a question asked inside one company, and a request
+  // STEP 10: a tenant too. "May you?" is a question asked inside one company, and a request
   // that reached this line inside no company is a pipeline that skipped §21.2 — which is this
   // program's bug, so INTERNAL_ERROR, not a refusal the caller could act on. The list check in
   // `assertPipeline` holds the stage's *presence*; this holds that it did its job.
@@ -457,7 +457,7 @@ const validateTheInput: Stage["run"] = (context) => {
     // a second read can answer differently, and it used to.
     const written = JSON.stringify(given);
 
-    // NEW IN STEP 10: DSOR-SRC-02b in full. A tenant or principal identifier inside the arguments
+    // STEP 10: DSOR-SRC-02b in full. A tenant or principal identifier inside the arguments
     // that DISAGREES with the security context is refused, not ignored. Step 05 ignored them — the
     // context is never derived from the arguments (SRC-02a), so a planted `principal: "cfo_100"`
     // bought nothing. The specification asks for more: a caller who writes a company or a person
@@ -487,7 +487,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    // NEW IN STEP 10: every address in the arguments must be in this request's company, and it is
+    // STEP 10: every address in the arguments must be in this request's company, and it is
     // decided HERE, at §21.6, not in the handler. Piece 2 of this step put it in the handler, and
     // piece 4's test caught what that meant: the handler runs at §21.14, after the decision is
     // recorded at §21.11, so a request refused for another company's address sat in the log as
@@ -621,7 +621,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
 
   const outcome = denial ?? shortfall;
 
-  // NEW IN STEP 10: which company's log this decision goes to.
+  // STEP 10: which company's log this decision goes to.
   //
   // A request that resolved to a company goes to that company's chain — one record. A refusal at
   // §21.2, which resolved to none, still has to be written down (denials are evidence), and it is
@@ -639,7 +639,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
         : principal.memberships.map((m) => m.tenantId);
 
   let written;
-  // NEW IN STEP 10: which logs took the write, so the caller is told the truth on a partial failure.
+  // STEP 10: which logs took the write, so the caller is told the truth on a partial failure.
   const writtenTo: string[] = [];
 
   try {
@@ -692,7 +692,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
     //
     // This is the decision-record half of DSOR-EXE-03b. The other half is about the *intent* record
     // and lands in step 36, along with DSOR-EXE-03a.
-    // NEW IN STEP 10: "could not be written down" is true for one log. The fan-out writes one
+    // STEP 10: "could not be written down" is true for one log. The fan-out writes one
     // record per employer, and there is no transaction across them — the Database seam is one
     // method, and a transaction needs one connection held across statements, which the pool does
     // not promise. So when the second write fails after the first committed, the caller is told

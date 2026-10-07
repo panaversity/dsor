@@ -56,7 +56,7 @@ export interface Context {
    */
   readonly requestId: string;
   readonly principal?: Principal;
-  /** NEW IN STEP 10: the one company this request is for, from §21 step 2. */
+  /** STEP 10: the one company this request is for, from §21 step 2. */
   readonly tenant?: string;
   readonly contract?: OperationContract;
   readonly given?: Readonly<Record<string, unknown>>;
@@ -156,7 +156,7 @@ export interface Stage {
  */
 const REQUIRED: readonly string[] = Object.freeze([
   "authenticate",
-  // NEW IN STEP 10: §21 step 2, and it has to be here, by name — a pipeline without it would answer
+  // STEP 10: §21 step 2, and it has to be here, by name — a pipeline without it would answer
   // every request inside no company at all, and the URI check in piece 2 would have nothing to
   // compare against.
   "resolve the tenant",

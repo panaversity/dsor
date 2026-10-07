@@ -271,14 +271,14 @@ export function success(answer: {
   data: Readonly<Record<string, unknown>>;
   semantics: string;
   payloadHash: string;
-  /** NEW IN STEP 10: the company the command ran in. The proposal address is inside it. */
+  /** STEP 10: the company the command ran in. The proposal address is inside it. */
   tenant: string;
   requestId?: string;
   principalId?: string;
 }): ResultEnvelope {
   proposalCount += 1;
 
-  // NEW IN STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names
+  // STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names
   // its company. This was `dsor://org_456/proposal/...` for every tenant — a hostile review ran a
   // command as org_789 and got a receipt in org_456's proposal space. The counter is still
   // process-wide, which is fine for a number that only has to be unique; the proposal store that

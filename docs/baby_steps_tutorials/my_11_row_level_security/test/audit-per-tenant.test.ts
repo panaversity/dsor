@@ -1,4 +1,4 @@
-// NEW IN STEP 10: one audit chain per company.
+// STEP 10: one audit chain per company.
 //
 // Step 08's chain was named after a constant and every record joined it. With two companies in one
 // table that would mean org_456's hashes depend on org_789's records — and §14 says the audit

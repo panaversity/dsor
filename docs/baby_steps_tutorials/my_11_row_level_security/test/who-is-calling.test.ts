@@ -305,7 +305,7 @@ describe("who you are comes from the login, never from the arguments", () => {
     }
   });
 
-  // NEW IN STEP 10: the planted principal with nobody logged in. The test at the top of this file plants cfo_100
+  // STEP 10: the planted principal with nobody logged in. The test at the top of this file plants cfo_100
   // beside a real login; this one plants her beside none. A program that fell back to the
   // arguments when the login is missing would answer as cfo_100 here, so the refusal has to be the
   // one for no login, attributed to nobody — never recorded as a request she made.

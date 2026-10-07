@@ -1,4 +1,4 @@
-// NEW IN STEP 10: an address for another company.
+// STEP 10: an address for another company.
 //
 // Every invoice address names a company: dsor://org_789/invoice/INV-1008. From this step on it is
 // compared against the company the REQUEST is for — decided in §21.2 from who is logged in — and

@@ -1,4 +1,4 @@
-// NEW IN STEP 10: the invoices are rows, and every row carries its company.
+// STEP 10: the invoices are rows, and every row carries its company.
 //
 // Step 09 moved the audit log into PostgreSQL and left the invoices in a list, on purpose, so that
 // step had one idea. This step's idea is the company, and "a tenant_id on every row" needs rows —
