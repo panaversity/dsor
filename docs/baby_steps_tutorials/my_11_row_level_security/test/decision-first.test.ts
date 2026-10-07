@@ -10,7 +10,15 @@
 // are evidence, and they are often the most useful evidence.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { countedWithoutARecord, resetClock, setClock, theHead, theLog, validateAuditRecord, verifyChain } from "../src/audit.ts";
+import {
+  countedWithoutARecord,
+  resetClock,
+  setClock,
+  theHead,
+  theLog,
+  validateAuditRecord,
+  verifyChain,
+} from "../src/audit.ts";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";

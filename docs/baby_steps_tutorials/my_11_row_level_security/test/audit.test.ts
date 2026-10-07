@@ -5,7 +5,20 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { audit, AUDIT_SCHEMA_FIELDS, countedWithoutARecord, now, resetClock, setClock, theHead, theLog, validateAuditRecord, verifyChain, type AuditRecord, type DecisionToRecord } from "../src/audit.ts";
+import {
+  audit,
+  AUDIT_SCHEMA_FIELDS,
+  countedWithoutARecord,
+  now,
+  resetClock,
+  setClock,
+  theHead,
+  theLog,
+  validateAuditRecord,
+  verifyChain,
+  type AuditRecord,
+  type DecisionToRecord,
+} from "../src/audit.ts";
 import { aDatabase, asTheOwner, forgetTheLog } from "./support/database.ts";
 
 /** The parts of a record a caller supplies. The time, the sequence and the hashes are not theirs. */

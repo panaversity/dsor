@@ -19,7 +19,9 @@ import {
   APPLICATION_ROLE,
   openTheDatabase,
   refuseIfItCanRewriteHistory,
-  withoutCredentials, overPGlite } from "../src/database.ts";
+  withoutCredentials,
+  overPGlite,
+} from "../src/database.ts";
 import { audit, theLog, type Database } from "../src/audit.ts";
 import { aDatabase } from "./support/database.ts";
 

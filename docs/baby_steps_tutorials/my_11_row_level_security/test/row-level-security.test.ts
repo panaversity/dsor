@@ -64,7 +64,9 @@ async function asTheApplication<T>(sql: string, tenant?: string): Promise<T[]> {
 describe("the second lock, on reads", () => {
   it("the owner sees that both companies have an INV-1008", async () => {
     // The fact the lock has to hide. Step 10 put the same number in two companies on purpose.
-    const rows = await asTheOwner(async () => (await db.query<{ tenant_id: string }>(FORGOT_THE_COMPANY)).rows);
+    const rows = await asTheOwner(
+      async () => (await db.query<{ tenant_id: string }>(FORGOT_THE_COMPANY)).rows,
+    );
 
     expect(rows.map((r) => r.tenant_id)).toStrictEqual(["org_456", "org_789"]);
   });
@@ -111,10 +113,13 @@ describe("the second lock, on writes", () => {
 
     // Untouched, as the owner sees it: the statement found no row to change, rather than being
     // refused — a lock on reads is a lock on what an UPDATE can find.
-    const status = await asTheOwner(async () =>
-      (await db.query<{ status: string }>(
-        "SELECT status FROM public.invoices WHERE tenant_id = 'org_789' AND id = 'INV-1008'",
-      )).rows[0]?.status,
+    const status = await asTheOwner(
+      async () =>
+        (
+          await db.query<{ status: string }>(
+            "SELECT status FROM public.invoices WHERE tenant_id = 'org_789' AND id = 'INV-1008'",
+          )
+        ).rows[0]?.status,
     );
 
     expect(status).toBe("draft");
