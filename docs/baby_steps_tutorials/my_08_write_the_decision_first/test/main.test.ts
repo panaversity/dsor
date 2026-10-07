@@ -112,9 +112,13 @@ describe("the program a learner runs", () => {
     const raw = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
       encoding: "utf8",
     });
-    const again = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
-      encoding: "utf8",
-    });
+    const again = execFileSync(
+      "node",
+      [fileURLToPath(new URL("../src/main.ts", import.meta.url))],
+      {
+        encoding: "utf8",
+      },
+    );
 
     expect(hashes(raw)).toHaveLength(10);
     expect(hashes(raw)).not.toEqual(hashes(again));
