@@ -3,7 +3,7 @@
 // A test that proves a rule starts its title with that rule's id. A test that only shows why a rule
 // exists does not. The difference matters, and both kinds are here.
 //
-// NEW IN STEP 10: the invoices are rows, and every one belongs to a company — so every lookup names
+// STEP 10: the invoices are rows, and every one belongs to a company — so every lookup names
 // the company first. Most of these tests are step 01's, with "org_456" added where there used to be
 // nothing to say.
 

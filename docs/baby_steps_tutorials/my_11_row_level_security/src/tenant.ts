@@ -1,4 +1,4 @@
-// NEW IN STEP 10: more than one company, and which one a request is for.
+// STEP 10: more than one company, and which one a request is for.
 //
 // Step 09 served exactly one company and said so with a constant. This file now holds the companies
 // this program knows, and the one decision §21 makes at step 2, "resolve tenant": which company THIS

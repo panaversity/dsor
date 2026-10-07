@@ -1,6 +1,6 @@
 // The first business entity, and a place to keep it.
 //
-// NEW IN STEP 10: the place is PostgreSQL. Step 01's list in this file lasted nine steps; step 09
+// STEP 10: the place is PostgreSQL. Step 01's list in this file lasted nine steps; step 09
 // moved the audit log out and left the invoices on purpose, so that step had one idea. This step's
 // idea is the company, and "a tenant_id on every row" needs rows. Everything else about an invoice
 // stays the same when the storage changes, which is the point of separating the shape from where it
@@ -32,7 +32,7 @@ export interface Invoice {
   // The permanent address, `dsor://org_456/invoice/INV-1008`. Built from the row by `formatUri`,
   // never typed out, and the company in it is the row's own.
   readonly uri: string;
-  /** NEW IN STEP 10: the company this invoice belongs to. Part of its identity, not a detail. */
+  /** STEP 10: the company this invoice belongs to. Part of its identity, not a detail. */
   readonly tenantId: string;
   readonly id: string;
   readonly vendor: string;

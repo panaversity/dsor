@@ -76,7 +76,7 @@ function ownString(from: unknown, key: string): string | undefined {
 export interface Login {
   readonly loggedInAs: string;
   /**
-   * NEW IN STEP 10: which company this request is for, when the caller belongs to more than one.
+   * STEP 10: which company this request is for, when the caller belongs to more than one.
    *
    * Part of the login, not of the arguments, for the same reason `loggedInAs` is: where you belong
    * is who you are. A caller with one company leaves it out. A caller with two must say, and must
@@ -86,7 +86,7 @@ export interface Login {
 }
 
 /**
- * NEW IN STEP 10: what the login says about which company it means.
+ * STEP 10: what the login says about which company it means.
  *
  * Read through `ownString`, like `loggedInAs`, so a getter that throws, an inherited name, and a
  * value that is not text are all handled — and a value that is present and not text is reported as

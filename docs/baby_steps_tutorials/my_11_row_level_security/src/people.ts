@@ -32,7 +32,7 @@ export interface Principal {
    *
    * DSOR-IDN-01 asks for memberships by name, so they were here from the start. Step 06 put `role`
    * beside them rather than inside them, because there was one company to belong to. A role is
-   * really per company, and NEW IN STEP 10 — the step that made more than one company possible —
+   * really per company, and STEP 10 — the step that made more than one company possible —
    * it stayed where it was, on purpose: nobody in the cast holds different roles in different
    * companies. The agent is an `ap_worker` for both of its employers. The day someone is a
    * supervisor in one company and an approver in the other, the role moves inside the membership,
@@ -51,7 +51,7 @@ export interface Principal {
   readonly role: string;
 }
 
-// NEW IN STEP 10: the companies come last, one or more. A membership of a company this program
+// STEP 10: the companies come last, one or more. A membership of a company this program
 // does not serve is a mistake in this file, and it fails here, when the file loads, not later
 // inside a request.
 const person = (id: string, type: PrincipalType, role: string, ...tenants: string[]): Principal => {
@@ -80,7 +80,7 @@ const person = (id: string, type: PrincipalType, role: string, ...tenants: strin
 // about authenticating with them. Nothing here authenticates anything. Step 44.
 // STEP 06: the third column. cfo_100 is an `approver`, and that one word is the whole
 // reason she cannot issue an invoice.
-// NEW IN STEP 10: a second company, org_789, and one principal who works for both. The agent is an
+// STEP 10: a second company, org_789, and one principal who works for both. The agent is an
 // outsourced accounts-payable service, so every request it makes has to say which company it is
 // working for — which is what gives DSOR-IDN-03a's "exactly one" something to bite on. The two
 // people belong to org_456 only.

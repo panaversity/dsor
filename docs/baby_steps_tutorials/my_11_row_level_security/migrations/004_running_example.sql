@@ -1,4 +1,4 @@
--- NEW IN STEP 10: the running example, as rows.
+-- STEP 10: the running example, as rows.
 --
 -- The specification's own story — org_456, VENDOR-44, INV-1008 for 31,400.00 USD — and this step's
 -- addition: a second company, org_789, with an INV-1008 of its own. The same number on purpose. It

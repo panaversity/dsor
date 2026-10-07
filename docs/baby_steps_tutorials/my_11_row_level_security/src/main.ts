@@ -13,7 +13,7 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 const THEIR_INV_1008 = "dsor://org_789/invoice/INV-1008";
 
 const SUPERVISOR: Login = { loggedInAs: "user_123" };
-// NEW IN STEP 10: the agent works for two companies, so it says which one it is working for.
+// STEP 10: the agent works for two companies, so it says which one it is working for.
 const AGENT: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
 const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
@@ -51,7 +51,7 @@ console.log(show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1
 console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
 console.log();
 
-// Step 05's point was that a principal written into the arguments is ignored. NEW IN STEP 10: one
+// Step 05's point was that a principal written into the arguments is ignored. STEP 10: one
 // that is NOT you is refused — DSOR-SRC-02b — and recorded as the DENY it is; one that is you still
 // changes nothing.
 console.log(
@@ -100,7 +100,7 @@ for (const [what, run] of [
   console.log(`${what.padEnd(23)} ${show(await run())}`);
 }
 
-// NEW IN STEP 10, and this is the step. A second company, org_789, shares this program and this
+// STEP 10, and this is the step. A second company, org_789, shares this program and this
 // database. It has an INV-1008 of its own — the same number as org_456's, a different invoice — and
 // the agent works for both companies, so every request it makes says which one it is working for.
 console.log();
@@ -143,11 +143,41 @@ for (const [what, run] of [
   console.log(`${what.padEnd(26)} ${show(await run())}`);
 }
 
+// NEW IN STEP 11, and this is the step. The query step 10 could not survive: an invoice number and
+// no company. Step 10's lock is the WHERE the stores write, and this query has not got one. Run
+// through the program's own connection, which is `dsor_runtime` under the policies of migration
+// 005, it gets the company the statement said — and with none said, it gets nothing. Both answers
+// are PostgreSQL's, not this program's, which is the point: the lock holds for the query somebody
+// writes next year.
+const FORGOT_THE_COMPANY =
+  "SELECT tenant_id, id, amount_value::text AS amount, status FROM public.invoices WHERE id = $1";
+interface Seen {
+  tenant_id: string;
+  id: string;
+  amount: string;
+  status: string;
+}
+const asLines = (rows: Seen[]): string =>
+  rows.length === 0
+    ? "(no rows)"
+    : rows.map((r) => `${r.tenant_id}  ${r.id}  ${r.amount}  ${r.status}`).join("\n" + " ".repeat(20));
+
+console.log();
+console.log("A forgotten WHERE, caught by the second lock:");
+console.log();
+console.log(`  ${FORGOT_THE_COMPANY}`);
+console.log(
+  `  for org_456:      ${asLines((await database.connection.query<Seen>(FORGOT_THE_COMPANY, ["INV-1008"], "org_456")).rows)}`,
+);
+console.log(
+  `  no company said:  ${asLines((await database.connection.query<Seen>(FORGOT_THE_COMPANY, ["INV-1008"])).rows)}`,
+);
+
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
 // have lost, and they are the most interesting lines here.
 //
-// NEW IN STEP 10: one chain per company. org_789's log holds org_789's decisions and nothing of
+// STEP 10: one chain per company. org_789's log holds org_789's decisions and nothing of
 // org_456's — and the agent's request that never said which employer is in BOTH, because both
 // employers should know. `previous_hash` is the record before it in the same chain; change any line
 // and every hash after it in that chain stops agreeing.

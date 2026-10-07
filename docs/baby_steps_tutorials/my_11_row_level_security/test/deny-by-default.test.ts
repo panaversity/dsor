@@ -201,7 +201,7 @@ describe("anything not granted is refused", () => {
     expect(seen.size).toBe(1);
   });
 
-  // NEW IN STEP 10: "a role nobody granted anything holds nothing", through the whole door and not only
+  // STEP 10: "a role nobody granted anything holds nothing", through the whole door and not only
   // through `holds`. Unreachable from people.ts, whose three principals each carry a role the table
   // defines — so a door is built whose authenticate stage hands the pipeline user_123 with a role
   // nobody defined, and then with no role at all: `role` is a TypeScript type, and types are erased

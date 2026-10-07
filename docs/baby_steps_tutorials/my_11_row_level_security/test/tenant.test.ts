@@ -1,4 +1,4 @@
-// NEW IN STEP 10: which company a request is for.
+// STEP 10: which company a request is for.
 //
 // Decided from who is logged in, never from the address or the arguments. One membership means it
 // is implied. Two means the login must say which, and it must be one of theirs. This is §21 step 2,

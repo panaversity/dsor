@@ -49,7 +49,7 @@ describe("the pipeline", () => {
   it("DSOR-EXE-01a: the stages run in this order", () => {
     expect(PIPELINE.map((s) => s.name)).toEqual([
       "authenticate",
-      // NEW IN STEP 10: §21 step 2. Before the operation is even looked up, because every later
+      // STEP 10: §21 step 2. Before the operation is even looked up, because every later
       // question is a question inside one company.
       "resolve the tenant",
       "resolve the operation",
@@ -746,7 +746,7 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    // NEW IN STEP 10: six stages now, so 720 orderings. Still exactly one is accepted.
+    // STEP 10: six stages now, so 720 orderings. Still exactly one is accepted.
     expect(all).toHaveLength(720);
 
     const accepted = all.filter((list) => {
