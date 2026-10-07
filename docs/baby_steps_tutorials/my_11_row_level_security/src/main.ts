@@ -160,7 +160,9 @@ interface Seen {
 const asLines = (rows: Seen[]): string =>
   rows.length === 0
     ? "(no rows)"
-    : rows.map((r) => `${r.tenant_id}  ${r.id}  ${r.amount}  ${r.status}`).join("\n" + " ".repeat(20));
+    : rows
+        .map((r) => `${r.tenant_id}  ${r.id}  ${r.amount}  ${r.status}`)
+        .join("\n" + " ".repeat(20));
 
 console.log();
 console.log("A forgotten WHERE, caught by the second lock:");

@@ -13,7 +13,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { audit, countedWithoutARecord, theHead, theLog, useDatabase, verifyChain } from "../src/audit.ts";
+import {
+  audit,
+  countedWithoutARecord,
+  theHead,
+  theLog,
+  useDatabase,
+  verifyChain,
+} from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
