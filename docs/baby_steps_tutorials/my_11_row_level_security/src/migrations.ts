@@ -32,6 +32,7 @@ export interface Migration {
  * means the filenames sort the same way as the numbers, which removes a whole class of surprise —
  * `10_x` sorts before `9_x` as text, and never as a number.
  */
+// not copied: this tutorial's own rule for migration file names, as the comment above says.
 const NAME = /^(\d{3})_[a-z][a-z0-9_]*\.sql$/;
 
 /**
