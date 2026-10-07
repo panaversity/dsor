@@ -1,78 +1,75 @@
-# Step 10 · Tenants
+# Step 11 · Row-level security
 
-**New in this step:** a second company shares the program and the database, and every request
-works inside exactly one company — decided from who is logged in, never from the address.
+**New in this step:** a second lock. PostgreSQL itself hides every other company's rows, so a query
+that forgets the company still cannot leak.
 
 ## In plain words
 
-Until now this program served one company, `org_456`, and said so with a constant. Every person
-belonged to it, every invoice was assumed to be its, every audit record joined one chain named after
-it.
+Step 10 kept the two companies apart with one thing: the program. Every query says
+`WHERE tenant_id = $1`. That is one lock, and the program holds it alone. If one query forgets the
+`WHERE`, nothing else stops the leak, and no test notices, because the tests only check the queries
+that exist today.
 
-A **tenant** is one company's share of a system that many companies use. This step adds a second
-one, `org_789`, and makes four things true at once:
+**Row-level security** is a lock inside the database. A *policy* on a table says which rows a
+statement may see and which it may write. This step puts one policy on the invoices and one on the
+audit log: a row is visible, and may be written, only when its company is the one the current
+transaction said. A statement that said no company gets no rows at all.
 
-- **Every row says whose it is.** The invoices moved into PostgreSQL, and every row carries a
-  `tenant_id`. The key is the company *and* the invoice number, because `org_456` and `org_789` both
-  have an `INV-1008` and they are different invoices.
-- **Every request is inside one company**, decided at §21 step 2 from the caller's memberships. One
-  membership, and it is implied. Two — the agent `accounts-payable-fte` now works for both companies
-  — and the login has to say which, and it has to be one of theirs.
-- **An address for another company is refused, and the refusal says nothing.** The same words
-  whether that company exists or not, nothing about which company you are in, decided before any
-  lookup so it cannot say whether the invoice exists either.
-- **Each company has its own audit chain.** Nothing in `org_789`'s log ever links to `org_456`'s.
+For that to work, the program has to tell PostgreSQL which company each statement is for, and it
+has to say it in a way that cannot outlive the statement. Three traps come with that, and the map
+named all three:
 
-What this step does **not** do is make PostgreSQL enforce any of it. The database still answers
-any query the program sends; the program is what filters. That is one lock. Step 11 adds the second,
-row-level security, so a buggy query still cannot leak.
+- **The table owner skips the policy** unless the table says `FORCE ROW LEVEL SECURITY`. Here it
+  says it.
+- **A setting made per connection leaks.** A pool hands the same connection to the next statement
+  that asks, whoever it is for. So the company is said *per transaction*: every statement runs in a
+  small transaction of its own that first says the company, and the setting dies with it.
+- **On Neon, a user made in the Console belongs to `neon_superuser`**, which holds `BYPASSRLS`, a
+  role property that makes PostgreSQL skip every policy. The program refuses to start as such an
+  account, and names the role in the refusal.
+
+What this step does **not** do: it does not replace step 10. §36 says it in one line — row-level
+security is defense in depth, and it does not replace DSoR authorization. The program still decides
+who may do what; the database now refuses to show a row the program should never have asked for.
 
 ## Why it matters
 
-Measured on step 09, the day before this step, by asking it for another company's invoice:
+Measured on step 10's own database, as `dsor_runtime`, the day before this step:
 
 ```text
-user_123 asks for another company's invoice:
-   TENANT_MISMATCH   "dsor://org_789/invoice/INV-1008 is for org_789, and this program serves org_456"
-the store, asked for INV-1008 with no company at all:
-   getInvoice('INV-1008') -> org_456's invoice        (no tenant parameter exists)
+running as: dsor_runtime
+-- a query that forgot the company: SELECT … FROM invoices WHERE id = 'INV-1008'
+   org_456  INV-1008  31400.00  issued
+   org_789  INV-1008  18000.00  draft
 ```
 
-Two failures hide in those lines, and a third behind them. The store had no idea of company: the
-day `org_789` had an `INV-1008` too, `getInvoice("INV-1008")` would return whichever row came first
-— a leak between customers, which §14 calls the kind of bug that ends a product. The refusal told a
-stranger which company this is. And the only "tenant check" there was compared the address against a
-constant, which means the company came from the address — an argument, which is data, which the
-specification says can never decide who you are or where you belong.
+One missing `WHERE`, and `org_456`'s program is holding `org_789`'s invoice. Step 10's 376 tests
+were green, because every query they test has its `WHERE`. The query that leaks is the one somebody
+writes next year, and §14 calls that leak the kind of bug that ends a product. Here it is run again,
+through this step's program, in **Run it** below: one row.
 
-## What changed since step 09
+## What changed since step 10
 
 ```bash
-git diff --no-index ../my_09_postgres_on_neon ../my_10_tenants
+git diff --no-index ../my_10_tenants ../my_11_row_level_security
 ```
 
 | File | What |
 | --- | --- |
-| `src/tenant.ts` | the constant is gone. The companies this program serves, and `tenantFor`: which one THIS request is for |
-| `src/people.ts` | `org_789` exists, and the agent belongs to both companies |
-| `src/login.ts` | a login may name a company. `tenantClaimed` reads it as data, like `loggedInAs` |
-| `src/pipeline.ts` | `Context.tenant`, and "resolve the tenant" is required by name, right after "authenticate" |
-| `src/operations.ts` | the new stage at §21.2; the address check moved into §21.6; a refusal with no company is recorded in every company the caller belongs to; handlers are async |
-| `migrations/003_invoices.sql` | new — the table, keyed `(tenant_id, id)`, with `UPDATE` granted on `status` alone |
-| `migrations/004_running_example.sql` | new — the story as rows, including `org_789`'s `INV-1008` |
-| `src/invoice.ts` | SQL now, and every function takes the company first |
-| `src/store.ts` | new — the one database handle, shared by both stores |
-| `src/audit.ts` | one chain per company; `theLog`, `theHead` and `forgetTheLog` take the company; no company is named in its code |
-| `src/envelopes.ts` | a proposal address names the command's company |
-| `src/database.ts` | the start-up check also refuses an application that may move, renumber, add or delete invoices |
-| `src/main.ts` | the two-companies section, one log printed per company, and the planted-principal line is a refusal now |
-| `test/support/database.ts` | `resetInvoices`, as the owner, from 004 |
-| `test/tenant.test.ts`, `test/cross-tenant.test.ts`, `test/invoices-in-postgres.test.ts`, `test/audit-per-tenant.test.ts` | new |
-| `test/invoice.test.ts`, `test/audit.test.ts`, `test/decision-first.test.ts`, `test/main.test.ts`, `test/pipeline.test.ts`, `test/who-is-calling.test.ts` | every test that read an invoice or the log now says which company |
-| `test/deny-by-default.test.ts` | a role nobody defined is refused even a read through the whole door, not only through `holds` |
+| `migrations/005_row_level_security.sql` | new — the lock: `ENABLE` and `FORCE` row-level security and one policy on `public.invoices` and on `public.audit`; and a `CHECK` that a record's chain names its own company |
+| `src/store.ts` | `theDatabase(tenant)` requires the company, and every statement runs through `Database.query(sql, params, tenant)` |
+| `src/database.ts` | two adapters, `overPGlite` and `overPool`, that run a statement with a company inside its own transaction after `set_config('dsor.tenant_id', $1, true)`; the start-up check asks seven new questions, three of them after the hostile review |
+| `src/invoice.ts`, `src/audit.ts` | every statement names the company it is for. The SQL itself is unchanged |
+| `src/main.ts` | the forgotten query, run through the program's own connection |
+| `test/support/database.ts` | the tests run the stores as `dsor_runtime`, and two seams step up to the owner and back to whoever called: `asTheOwner`, and the eraser `forgetTheLog` |
+| `test/the-company-is-said.test.ts`, `test/row-level-security.test.ts`, `test/the-lock-at-start-up.test.ts`, `test/pool.db.test.ts` | new |
+| `test/database.test.ts`, `test/audit-permissions.test.ts`, `test/audit.test.ts`, `test/invoices-in-postgres.test.ts`, `test/audit.db.test.ts` | sixteen tests that ran raw SQL as the application without saying a company went red when the lock arrived. They say it now, or run as the owner |
+| `test/audit-lost-reply.test.ts`, `test/audit-race.test.ts`, `test/audit-per-tenant.test.ts` | every fake database forwards the company to the real one |
 
-325 tests became 376. One test from step 09 changed its example (Break 5 says why), and two of
-step 05's changed their answer (the rules section says why).
+376 tests became 400, and the database tier's 9 became 13. The sixteen tests that went red are the
+step's first lesson: every one of them was a statement that never said whose rows it wanted, which
+is exactly what the lock exists to stop. Six of the 400 came from the hostile review, which found
+three windows past the lock that the first start-up check could not see; Breaks 11 to 13 are those.
 
 ## Run it
 
@@ -84,284 +81,359 @@ pnpm start
 The part that is this step:
 
 ```text
-Two companies, one program:
+A forgotten WHERE, caught by the second lock:
 
-accounts-payable-fte  (no envelope)            dsor://org_456/invoice/INV-1008  31400.00 USD  issued
-accounts-payable-fte  (no envelope)            dsor://org_789/invoice/INV-1008  18000.00 USD  draft
-
-agent, company unsaid      accounts-payable-fte  TENANT_MISMATCH   retry: never   you belong to more than one company; say which one this request is for
-their address, real        user_123              TENANT_MISMATCH   retry: never   dsor://org_789/invoice/INV-1008 is not an address in your company
-their address, no such co  user_123              TENANT_MISMATCH   retry: never   dsor://org_000/invoice/INV-1008 is not an address in your company
-login names their company  user_123              TENANT_MISMATCH   retry: never   org_789 is not a company you belong to
-
-The audit log of org_456:
-
- 0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:8987d94...
- …
-10  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:6f3fdd5...
-11  DENY   (none resolved)      accounts-payable-fte   TENANT_MISMATCH         sha256:c385e34...
-12  DENY   invoice.get@1        user_123               TENANT_MISMATCH         sha256:f28be66...
-13  DENY   invoice.get@1        user_123               TENANT_MISMATCH         sha256:fc52f83...
-14  DENY   (none resolved)      user_123               TENANT_MISMATCH         sha256:55046d5...
-org_456: 15 records, chain verifies against the head: true
-
-The audit log of org_789:
-
- 0  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:4a2dd56...
- 1  DENY   (none resolved)      accounts-payable-fte   TENANT_MISMATCH         sha256:8fe61e7...
-org_789: 2 records, chain verifies against the head: true
+  SELECT tenant_id, id, amount_value::text AS amount, status FROM public.invoices WHERE id = $1
+  for org_456:      org_456  INV-1008  31400.00  issued
+  no company said:  (no rows)
 ```
 
-Read the first two lines together: the same agent, the same invoice number, two different invoices,
-and the only thing that changed between the lines is which company the agent said it was working
-for. Read the four refusals: `org_789` is real and `org_000` is not, and the two answers are the
-same words. Read `(none resolved)` on records 11 and 14: a request refused at §21.2 was refused before the
-operation was even looked up, so the record truthfully has no operation in it — the words are the
-printer's, not the record's; the record simply has no `operation` field. And read
-`org_789`'s log: the agent's request that never said which employer is there too, because both
-employers should know — and nothing of `user_123`'s or the CFO's is, because they are not members.
+That is the query from **Why it matters**, run through the program's own connection — which is
+`dsor_runtime`, under the policies. It has no `WHERE tenant_id`. For `org_456` it gets `org_456`'s
+row and not `org_789`'s. With no company said it gets nothing, which is the safe answer to a
+forgotten company. Both answers are PostgreSQL's, not this program's.
 
-Run it again:
-
-```text
-accounts-payable-fte  CONFLICT   retry: never   INV-1009 is issued, and only a draft invoice can be issued
-org_456: 30 records, chain verifies against the head: true
-org_789: 4 records, chain verifies against the head: true
-```
-
-The invoices are durable now too. Step 09's list died with the process, so every run issued
-`INV-1009` afresh; this run finds it issued.
+Everything step 10 printed still prints, unchanged: the two companies, the four refusals, one audit
+log per company, `org_456: 15 records` and `org_789: 2 records`, both chains verifying. Run it
+again and the invoice is `CONFLICT`, the logs 30 and 4.
 
 ### The database tier
 
 `pnpm check` needs no server; the tests that need a database use PGlite, PostgreSQL compiled to
-WebAssembly, in-process. The nine tests in `pnpm test:db` need two real logins, and this step needs
-a database of its own — the migrations are checksummed, and step 09's database has applied two of
-them while this step has four.
-Copy step 09's `.env` and change the database name in both URLs:
+WebAssembly, in-process. The thirteen tests in `pnpm test:db` need two real logins and a database of
+this step's own — the migrations are checksummed, and this step has five. Copy step 10's `.env`
+and change the database name in both URLs:
 
 ```bash
-cp ../my_09_postgres_on_neon/.env .env     # then dsor_step09 -> dsor_step10 in both lines
+cp ../my_10_tenants/.env .env     # then dsor_step10 -> dsor_step11 in both lines
 pnpm migrate && pnpm test:db
+```
+
+**On Neon**, keep creating `dsor_runtime` the way step 09's README does, in the SQL editor with
+`CREATE ROLE`. A role made in the Console instead is a member of `neon_superuser`, which holds
+`BYPASSRLS`, and this step's program refuses to start as it:
+
+```text
+this connection is `dsor_runtime`, a member of `neon_superuser`, which holds BYPASSRLS — one SET
+ROLE away from skipping every row-level policy. On Neon, a role made in the Console is a member of
+neon_superuser; create `dsor_runtime` with SQL instead, and revoke the membership.
 ```
 
 ## Break it
 
-Eight, measured on the full suite after the hostile review. Two of them are not counts, and that
-is the lesson of each. The counts are what `pnpm test` prints. Five of the eight leave a variable
-unused, so `pnpm check` stops earlier, at `tsc` with `TS6133`, before a test runs — a type checker
-noticing a sabotage is a lock of its own, and the count below is what the tests say about it.
+Thirteen, measured. The first is the map's own exercise, through the program's door; the last three
+are the hostile review's. The counts are what `pnpm test` prints on the full suite of 400, each one
+measured twice with the two runs agreeing; Break 9 and the second half of Break 5 are what
+`pnpm test:db` prints on 13; Break 10 is not a count.
 
-### Break 1 · leave the stage out of the list
+### Break 1 · give the application BYPASSRLS
 
-In `src/operations.ts`, delete the line `stage(2, "resolve the tenant", "both", resolveTheTenant),`.
-
-```text
-TypeError: the pipeline runs resolve the operation where resolve the tenant belongs: the order must
-be authenticate then resolve the tenant then resolve the operation then authorize then validate the
-input then record the decision
-```
-
-Not a failing test — the program refuses to **load**. `assertPipeline` requires the stage by name, so
-`pnpm start` stops before it has opened a database, and `pnpm test` reports `9 failed | 199 passed
-(208)`: the total shrinks, because every file that imports `operations.ts` dies at import. A
-shrinking total is the tell that the guard fired at load, not that a test caught something.
-
-### Break 2 · accept any company the login names
-
-In `src/tenant.ts`, make `tenantFor` return `{ tenant: claim.tenant }` for any named claim.
+The map says: connect as the owner and watch every policy do nothing. On every route this tutorial
+runs on, the owner is a superuser, and step 09's program already refuses to start as one — a
+superuser may `UPDATE` the log. So this step's version is the sharper one: an account that may do
+*nothing extra* and skips the lock anyway. As the owner, `ALTER ROLE dsor_runtime BYPASSRLS`. Then
+open the program's own door:
 
 ```text
- Tests  6 failed | 370 passed (376)
+opened a PostgreSQL on disk, as dsor_runtime
+for org_456:      org_456
+no company said:  (no rows)
+
+-- as the owner: ALTER ROLE dsor_runtime BYPASSRLS
+
+refused to start: this connection is `dsor_runtime`, which holds BYPASSRLS: PostgreSQL skips every
+row-level policy for it, and the second lock does nothing. ALTER ROLE dsor_runtime NOBYPASSRLS, or
+point DSOR_DB_URL at an account without it.
 ```
 
-`user_123` naming `org_789` is now inside `org_789`, and reads its invoice.
-
-### Break 3 · let the store ignore the company
-
-In `src/invoice.ts`, change `getInvoice`'s query to `WHERE id = $1 ORDER BY tenant_id LIMIT 1`
-and its parameters to `[id]`.
+Now remove the guard — in `src/database.ts`, change `if (second?.bypasses !== false)` to
+`if (false)` — and open the door again:
 
 ```text
- Tests  6 failed | 370 passed (376)
+-- as the owner: ALTER ROLE dsor_runtime BYPASSRLS
+
+STARTED
+for org_456:      org_456, org_789
+no company said:  org_456, org_789
 ```
 
-This is step 09's store, the day a second company exists: `INV-1008` is whichever row sorts first.
-Only six tests stand between that leak and green — the ones that ask for org_789's invoice and
-check which one came back. The first version of this exercise dropped the `tenant_id` clause but
-left `$1` in the parameters, which PostgreSQL refuses as a SQL error: sixty-seven failures that
-proved nothing about the leak. A reviewer measured it.
+Every privilege check of step 09 still says "may not", and both companies come back. On the full
+suite, the guard removed is `Tests  1 failed | 399 passed (400)`: one test, the one that measured
+the leak first and then asked for the refusal.
 
-### Break 4 · one audit chain for everyone again
+### Break 2 · do not force the lock
 
-In `src/audit.ts`, make `chainOf` return `` `audit:org_456` `` whatever the company.
+In `migrations/005_row_level_security.sql`, delete `ALTER TABLE public.invoices FORCE ROW LEVEL
+SECURITY;`.
 
 ```text
- Tests  15 failed | 361 passed (376)
+ Tests  19 failed | 381 passed (400)
 ```
 
-### Break 5 · let validate forget the address
+One test is the owner's: it hands the table to an owner that is not a superuser and asks as it,
+and without `FORCE` that owner sees every row. The other eighteen are the program refusing to
+start — the start-up check asks whether the lock is on, enabled *and forced* with a policy, on both
+tables, and every test that opens the program's own door is refused with "the second lock is not
+on". A lock the program relies on is checked, not assumed.
 
-In `src/operations.ts`, in `validateTheInput`, change `if (address.tenant !== context.tenant)` to
-`if (false)`.
+### Break 3 · a policy that lets everything through
+
+In the same file, change the invoices policy's `USING (tenant_id = current_setting(…))` to
+`USING (true)`.
 
 ```text
- Tests  14 failed | 362 passed (376)
+ Tests  25 failed | 375 passed (400)
 ```
 
-Fourteen, not one, and the reason is worth the paragraph. The address check first lived in the
-handler, at §21.14 — and §21.14 runs *after* the decision is recorded at §21.11. So a request refused
-for another company's address sat in the log as `ALLOWED` while the caller held a refusal: the log
-and the answer disagreeing, which is the one thing a decision record exists to prevent. The audit
-tests for this step caught it. The check moved to §21.6, where facts about the arguments are
-decided, and a test from step 09 — "a call that fails while executing is recorded as the ALLOW it
-was" — lost that example, because it is no longer one.
+Seven are the lock's own tests. The rest are the door again: since the review, the start-up check
+asks for exactly the policy the migration wrote, and this is not it.
 
-### Break 6 · remove the handler's re-check
+### Break 4 · no policy on the audit log
 
-In `src/operations.ts`, in `invoiceIdFrom`, change `if (parsed.tenant !== tenant)` to `if (false)`.
+Delete the `CREATE POLICY tenant_isolation ON public.audit …` statement, leaving the table with
+row-level security enabled and no policy.
 
 ```text
- Tests  1 failed | 375 passed (376)
+ Tests  132 failed | 268 passed (400)
 ```
 
-One test, and it is the only one that can reach this line: a door built with a validate stage that
-copies and hashes the arguments and forgot the address. Through the real pipeline the line is
-unreachable, because validate refused first — so it answers `INTERNAL_ERROR`, this program's bug,
-not a refusal the caller could act on. It is here for the same reason the door refuses without a
-receipt: a list check cannot see what a stage does.
+Not eight, and the reason is worth knowing: a table with row-level security on and no policy
+shows nothing and accepts nothing. Every decision the program tries to record is refused, so every
+request through the pipeline fails with `EVIDENCE_STORE_UNAVAILABLE`. The lock fails closed.
 
-### Break 7 · make the key the number alone
+### Break 5 · say the company per connection
 
-In `migrations/003_invoices.sql`, change `PRIMARY KEY (tenant_id, id)` to `PRIMARY KEY (id)`.
+In `src/database.ts`, in `overPGlite`, change `set_config('dsor.tenant_id', $1, true)` to
+`… false)`. `false` means "for this session", and a session outlives a request.
 
 ```text
-TypeError: 004_running_example.sql failed and was rolled back: there is no unique or exclusion
-constraint matching the ON CONFLICT specification
+ Tests  1 failed | 399 passed (400)
 ```
 
-The running example cannot be loaded: it holds an `INV-1008` for each company, and its `ON CONFLICT
-(tenant_id, id)` names a key that no longer exists. `pnpm check` reports `61 failed | 130 passed |
-185 skipped` — the skipped ones are every file whose setup applies the migrations. Skipped is the
-tell of a guard that fired before a test could, and it is written here as what it is.
+The one is "the company is gone when the statement is done". The same change in `overPool`,
+against a real pool in the database tier, is `Tests  1 failed | 12 passed (13)` — and the test
+before it in `pool.db.test.ts` demonstrates the leak on purpose, on a real connection, so that this
+one is not testing nothing.
 
-### Break 8 · grant UPDATE on every column
+### Break 6 · an adapter that forgets the company
 
-In `migrations/003_invoices.sql`, change `GRANT UPDATE (status)` to `GRANT UPDATE`.
+In `overPGlite`, make every statement run plainly: change `tenant === undefined ? …` to
+`true ? …`.
 
 ```text
- Tests  17 failed | 359 passed (376)
+ Tests  131 failed | 269 passed (400)
 ```
 
-The application may now move an invoice to another company. One test asks about the grant — and
-sixteen more fall because the program **refuses to start**: since the review, the start-up check asks
-whether the application could move, renumber, add or delete invoices, and every test that opens the
-program's own door is refused. That is the guard a critic's "next attack" asked for.
+### Break 7 · the same, with the tests as the superuser
 
-Restore each break and confirm `pnpm check` prints `376 passed` again.
+Keep Break 6, and in `test/support/database.ts` replace both `SET ROLE ${APPLICATION_ROLE}` with
+`RESET ROLE`, so the tests run the stores as PGlite's `postgres`.
+
+```text
+ Tests  28 failed | 372 passed (400)
+```
+
+Read the two numbers together. The store is broken the same way in both runs. As the application,
+131 tests say so. As the superuser, 28 do — the lock's own tests and the program's door — and **not
+one of them is a store's own test**: `invoices-in-postgres.test.ts`, `cross-tenant.test.ts`,
+`audit.test.ts` all stay green, because a superuser skips every policy and the tests cannot see
+what the lock would have hidden. That is why the test support drops to `dsor_runtime`, the way the
+program's door does, and why the two seams that need the owner step up for exactly as long as they
+need.
+
+### Break 8 · remove the lock-is-on question
+
+In `src/database.ts`, change `if (second.locked !== true)` to `if (false)`.
+
+```text
+ Tests  5 failed | 395 passed (400)
+```
+
+The three tests that turn the lock off and expect a refusal, and the two that add a policy beside
+it. A first run of this break, before the review, said 6 where two clean runs said 3; every count
+on this page is now the number two runs agreed on. One measurement is not a fact.
+
+### Break 9 · run the statement outside its transaction
+
+In `overPool`, delete the `BEGIN` and `COMMIT` lines, so the company is said on the connection and
+the statement follows it as a separate transaction. Database tier:
+
+```text
+ Tests  6 failed | 7 passed (13)
+```
+
+The `true` in `set_config` means "until this transaction ends", and with no transaction open, that
+is immediately: the statement that follows has no company, gets no rows, and may write nothing.
+
+### Break 10 · make the member a bypasser
+
+In `test/the-lock-at-start-up.test.ts`, the Neon test expects a member of `neon_superuser` to still
+be filtered, and to see both companies only after `SET ROLE neon_superuser`. Change the first
+expectation to `["org_456", "org_789"]`, which is what the map's wording would predict.
+
+```text
+AssertionError: expected [ 'org_456' ] to strictly equal [ 'org_456', 'org_789' ]
+```
+
+That is the output of the first version of this test, before it was corrected by measuring.
+`BYPASSRLS` is a role *attribute*, and PostgreSQL passes privileges through membership and never
+attributes. The member is filtered until it becomes the role — which it can, in one statement, and
+which is exactly step 09's `editor` hole again. The start-up check refuses the membership, by name.
+
+### Break 11 · a second policy, wide open
+
+As the owner, `CREATE POLICY wide_open ON public.invoices USING (true)`. Policies are permissive
+and OR'd together, so the lock is gone — while "is there a policy", which the first version of the
+start-up check asked, still says yes. Measured as the application, then through the door:
+
+```text
+-- a second policy, wide open
+   as dsor_runtime, no company said: org_456, org_789
+   refused to start: the second lock is not on: public.invoices and public.audit must each have
+   row-level security enabled, forced, and exactly the one policy
+   migrations/005_row_level_security.sql writes — no other policy beside it, and none that reads
+   differently.
+```
+
+In `src/database.ts`, delete the line `AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid =
+c.oid) = 1` and the check is back to "is there one": `Tests  2 failed | 18 passed (20)` in the two
+lock files, the wide-open policy and the `TO dsor_runtime` one.
+
+### Break 12 · a helper whose owner skips the lock
+
+Step 09 refuses a `SECURITY DEFINER` function whose owner may rewrite the log. This one's owner may
+not; it holds `SELECT` and `BYPASSRLS`, and the helper reads every company's rows for whoever may
+call it.
+
+```text
+-- a SECURITY DEFINER helper owned by a BYPASSRLS role
+   as dsor_runtime, no company said: org_456, org_789
+   refused to start: this connection is `dsor_runtime`, and it may EXECUTE a SECURITY DEFINER
+   function whose owner may UPDATE, DELETE, TRUNCATE the audit table, or skips the row-level lock —
+   a rewrite or a read by proxy. Drop the function or revoke EXECUTE on it from `dsor_runtime` and
+   PUBLIC.
+```
+
+Narrow the owner question back to step 09's — replace the `OR EXISTS (SELECT 1 FROM pg_roles o …
+rolbypassrls)` clause with `OR false` — and it is `Tests  1 failed | 19 passed (20)`.
+
+### Break 13 · a view the owner made
+
+```text
+-- a view the owner made
+   as dsor_runtime, no company said: org_456, org_789
+   refused to start: this connection is `dsor_runtime`, and it may read `public.all_invoices`,
+   which is not one of the two tenant tables. A view or a table beside them is a window past the
+   lock: a view runs with its owner's rights, and a table without a policy hides nothing. The
+   application may read public.invoices and public.audit, and nothing else.
+```
+
+A view runs with its owner's rights, and every owner here skips the lock. Rather than list the
+shapes a window can take, the check asks what the application may `SELECT` at all, and the answer
+has to be the two tenant tables. Change `if (second.reads_beyond !== null)` to `if (false)`:
+`Tests  1 failed | 19 passed (20)`. The cost is deliberate — a later step that adds a table the
+application reads must add it here, or the program refuses to start.
+
+Restore each break and confirm `pnpm check` prints `400 passed` again.
 
 ## Build it yourself with Claude Code
 
-Copy `my_09_postgres_on_neon` to a new folder and ask:
+Copy `my_10_tenants` to a new folder and ask:
 
-> Start step 10, tenants. Before any code: explain what goes wrong the day a second company shares
-> this program, measured on this step. Then ask me, one at a time, where a request's company comes
-> from, what an address for another company is answered with, whether the invoices move into
-> PostgreSQL now, and who the second company is. Then build it a piece at a time, red first, and
-> break each piece on purpose.
+> Start step 11, row-level security. Before any code: run a query that forgets the company against
+> step 10's database, as the application, and show me what comes back. Then ask me, one at a time,
+> which tables get the lock, when the program tells PostgreSQL the company, and what the demo should
+> show. Then build it a piece at a time, red first, and break each piece on purpose — including the
+> blind spot: what the tests see when they run as the superuser.
 
 ## Check yourself
 
-1. Two companies both have an `INV-1008`. What makes them two invoices and not one?
-2. Where does a request's company come from, and why not from the address in it?
-3. `user_123` asks for `dsor://org_789/invoice/INV-1008` and for `dsor://org_000/invoice/INV-1008`.
-   What is the difference between the two answers?
-4. The agent's request that never said which employer is in both companies' logs. Why not in
-   neither, and why not in a log of its own?
-5. The address check used to live in the handler. What was wrong with that, and which test noticed?
+1. Step 10 already kept the companies apart. What does this step add that step 10 could not have?
+2. The company is said with `set_config('dsor.tenant_id', $1, true)`. What does the `true` mean, and
+   what goes wrong with `false`?
+3. The table owner is a superuser on every route here, and a superuser skips every policy whatever
+   the table says. Why is `FORCE ROW LEVEL SECURITY` in the migration anyway?
+4. `dsor_runtime` holds no `UPDATE`, no `DELETE`, no `INSERT` it should not, and every privilege
+   check says so. How can it still see every company's rows, and what does the program do about it?
+5. Sixteen tests went red the moment the lock arrived. What did they have in common?
 
 <details>
 <summary>Answers</summary>
 
-1. The key of the table: `(tenant_id, id)`. An invoice number is an identity only inside one
-   company, and the database says so — a second `INV-1008` in the *same* company is refused by
-   `invoices_pkey`, and one in *another* company is a different row.
-2. From who is logged in: their memberships, and the company the login names if they have more than
-   one. The address is an argument, and arguments are data — `DSOR-SRC-02a` says the security context
-   comes only from the authenticated envelope and the control-plane store. A program that believed the
-   address would let anyone be in any company by typing it.
-3. None but the address echoed back. Both are `TENANT_MISMATCH`, the same words, computed from the
-   address alone before any lookup. `org_789` is real and `org_000` is not, and the caller cannot tell
-   — which is `DSOR-ERR-01b`'s point.
-4. Denials are evidence (`DSOR-EXE-02`), so not neither. A log of its own would be an audit partition
-   keyed by no company, which `DSOR-TEN-02a` does not allow, and nobody would own it. Every company
-   the caller belongs to is the answer: both employers of a shared agent should know it made a request
-   without saying who it was working for, and neither log carries a stranger.
-5. The handler runs at §21.14, after the decision is recorded at §21.11, so the record said `ALLOW`
-   for a request that was then refused — the log contradicting the answer. `audit-per-tenant.test.ts`'s
-   "a mismatching address, once the request has a company, is recorded there" noticed, and the check
-   moved to §21.6.
+1. A lock that holds for the query nobody has written yet. Step 10's `WHERE` is in the queries that
+   exist; the policy is on the table, so a statement that forgets the company gets one company or
+   nothing, whoever wrote it. `DSOR-TEN-01b` asks for two independent layers for exactly that
+   reason.
+2. "Until this transaction ends" — the setting is transaction-local (`DSOR-RP-01c`). With `false`
+   it lasts for the session, and a pooled session is handed to the next statement that asks,
+   whoever it is for: `pool.db.test.ts` shows a later statement with no company reading `org_456`'s
+   rows.
+3. Because the rule says so (`DSOR-RP-01b`), because an owner that is not a superuser is filtered
+   only with it — the test hands the table to one — and because the start-up check asks for it:
+   without `FORCE`, the program refuses to start.
+4. `BYPASSRLS` is a property of the role, not a right on a table, so no privilege check sees it.
+   The start-up check asks PostgreSQL directly whether the account holds it, and whether it is a
+   member of a role that does — `neon_superuser`, on Neon — and refuses to start either way.
+5. Every one ran raw SQL as the application without saying whose rows it wanted. The lock answered
+   them the way it answers a forgotten `WHERE`: no rows, or a refused write. They say the company
+   now, or run as the owner through `asTheOwner`.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-TEN-01a · L1]** Every tenant-owned resource MUST carry its `tenant_id`.
-  ([§14](../../../specs/dsor/02-security.md#14-multi-tenancy))
-- **[DSOR-IDN-03a · L1]** Each request MUST resolve to exactly one active tenant in which the subject
-  holds a membership.
-- **[DSOR-SRC-02b · L1]** A tenant, principal, or delegation identifier inside operation arguments
-  that disagrees with the security context MUST cause `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`.
-  **This changed step 05's answer.** Step 05 *ignored* a principal planted in the arguments — the
-  context is never derived from them, which is `SRC-02a` — and a review pointed out that the rule
-  asks for more: a disagreeing identifier is a claim, and a claim that disagrees with who you are is
-  refused and recorded as the `DENY` it is. Four argument names count: `tenant`, `tenant_id`
-  (→ `TENANT_MISMATCH`), `principal`, `principal_id` (→ `AUTHORIZATION_DENIED`). One that *agrees*
-  still changes nothing. A delegation identifier joins the list in step 18, when delegations exist.
-  Any other name a caller plants stays ignored, as before. **The scan reads the caller's own
-  top-level string arguments only.** A company id or an address nested inside an object —
-  `{ filter: { tenant: "org_789" } }`, or `{ filter: { invoice: "dsor://org_789/…" } }` — is not
-  walked: validate carries on, the record says `ALLOW`, and the handler reads only its own `invoice`,
-  so the answer is the caller's own company's invoice. Today no handler reads a nested value, which
-  is why that is a limit and not a leak. A test in `cross-tenant.test.ts` pins it, without a rule id,
-  so the step that adds a nested argument meets it on purpose.
-- **[DSOR-IDN-03b · L1]** An operation MUST NOT read or write across tenants — met for the two
-  operations that exist, by the store taking the company first.
-- **[DSOR-TEN-02a · L1]** Audit partitions keyed by tenant — met for the audit partition only. The
-  caches, idempotency records, holds and proposals the rule also names do not exist yet. One
-  counter does: the flood count of refusals with no subject or no company, which is process-wide on
-  purpose, because those refusals have no tenant to key by.
-- **[DSOR-ERR-01b · L1]** An error MUST NOT reveal the existence or attributes of a resource the
-  caller is not authorized to read — **claimed for the mismatch refusal only.** It is the first error
-  in this tutorial given to a caller who may not read what they asked about: `user_123` may not read
-  `org_789`'s invoice, and the refusal is computed from the address alone, before any lookup, with the
-  same words whether that company exists or not. Every other error this program gives goes to a
-  caller who *may* read what they asked about — `RESOURCE_NOT_FOUND` for your own company's missing
-  invoice tells you something you are allowed to know — so the rule's other cases are not exercised
-  here. Only the tests about the mismatch refusal carry the id: two in `cross-tenant.test.ts` and one
-  in `main.test.ts`. The test that tells `RESOURCE_NOT_FOUND` and `TENANT_MISMATCH` apart does not,
-  because it would still pass if the mismatch refusal looked the invoice up first.
+- **[DSOR-TEN-01b · L1]** Tenant isolation MUST be enforced in at least two independent layers:
+  DSoR core, and the connector or store. The first layer is step 10's, the `WHERE` in every store
+  statement. The second is the policy on each table, and it is independent: the tests for it go
+  underneath the stores with raw SQL and no `WHERE`. One honest limit the review found: the audit
+  policy binds a record's `tenant`, not its `chain`. A `CHECK` that the chain names the row's
+  company closes the gap the policy cannot see, and the migration's comment now says what the
+  policy checks and no more.
+  ([§36](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector))
+- **[DSOR-RP-01a · RP]** `dsor_runtime` MUST NOT be a superuser, hold `BYPASSRLS`, or own tenant
+  tables. The start-up check asks for `BYPASSRLS`, for membership of a role that holds it, and for
+  ownership of a tenant table or membership of its owner. **The superuser half is step 09's**: a
+  superuser may `UPDATE` the log, and the privilege check refuses it before this step's questions
+  are reached — so the new check does not look at `rolsuper`, and a test says so. After the
+  review, the same question is asked of what the account can *reach*: a `SECURITY DEFINER` helper
+  whose owner skips the lock, and any relation beside the two tenant tables that the account may
+  `SELECT` — a view runs with its owner's rights, and every owner here skips the lock.
+- **[DSOR-RP-01b · RP]** Tenant tables MUST use `FORCE ROW LEVEL SECURITY`. Both do, the test proves
+  it with an owner that is not a superuser, and the start-up check refuses a database where it is
+  not on — or where the policy is not exactly the one the migration wrote, alone. Policies are
+  permissive and OR'd together, so a second one that says `true` opens the table while "is there a
+  policy" still says yes; the review measured it, and the check compares the expressions as
+  PostgreSQL prints them back.
+- **[DSOR-RP-01c · RP]** The tenant setting MUST be transaction-local. Said per statement, inside
+  that statement's own transaction, on PGlite and on a real pool.
+- **[DSOR-RP-01d · RP]** A query executed with no tenant setting MUST yield no rows. On both
+  tables, as `SET ROLE dsor_runtime` in-process and as the real login on a server. One honest
+  addition: the stores cannot even *send* such a query, because `theDatabase(tenant)` refuses an
+  empty company — the database's "no rows" would come back as a tidy "not found" and hide a wrong
+  program.
 
-**The map and the spec disagreed, and the spec won.** The map's done-when says an address for another
-company returns "the same not found as a URI that does not exist". `DSOR-SRC-02b` says it MUST be
-`TENANT_MISMATCH` or `AUTHORIZATION_DENIED`, and `RESOURCE_NOT_FOUND` is neither. So it is
-`TENANT_MISMATCH`, and what the done-when *means* — reveal nothing — is held to the letter: the same
-words for a company that exists and one that does not, nothing about yours, before any lookup.
-Decision 88 in `my_notes` records it.
+**The map and a measurement disagreed.** The map says a Console-made Neon user belongs to
+`neon_superuser`, "which ignores row-level security altogether". The role does. The member does not,
+until it runs `SET ROLE neon_superuser`: PostgreSQL passes privileges through membership and never
+role attributes, and `BYPASSRLS` is an attribute. Measured on PGlite, which runs PostgreSQL's own
+rules. The map's instruction stands — create `dsor_runtime` with SQL — and the program refuses the
+membership whether or not the member has used it. Decision 95 in `my_notes` records it.
 
-**"Active"** in `DSOR-IDN-03a` means a tenant that exists and is not suspended. Suspension is a later
-step; here a tenant is active when it is on the list in `tenant.ts`.
+**What §36 shows and this step leaves.** The example in §36 also sets `dsor.principal_id` per
+transaction. No rule names it, nothing here reads it, and a setting nobody reads is a line no test
+can kill; it joins the program when a policy or a trigger needs the principal.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-TEN-01b` | Two independent layers. This is the first: the program filters. PostgreSQL still answers any query it is sent. Step 11. |
-| `DSOR-TEN-01c` | Isolation must not depend on agent behaviour or prompts. Nothing here does, and nothing ever did — but a rule about what is *absent* is not met by a step that adds nothing; it is held by every step. |
-| `DSOR-TEN-02b` | A cross-tenant test suite over every operation. `cross-tenant.test.ts` covers `invoice.get` by hand; the generated suite that grows with each operation is step 12. |
+| `DSOR-TEN-02b` | A cross-tenant test suite over every operation. `cross-tenant.test.ts` still covers `invoice.get` by hand; the generated suite is step 12. |
+| `DSOR-TEN-01c` | Isolation must not depend on agent behaviour or prompts. Held by every step, claimed by none. |
 
-Everything earlier steps claimed still holds. `DSOR-EXE-02` now holds for a refusal with no company
-too, which step 09 could not have asked.
+Everything earlier steps claimed still holds. Two things about the tests are worth knowing: they
+run the stores as `dsor_runtime` now, which Break 7 says why; and the eraser `forgetTheLog` that
+tests import comes from `test/support/database.ts`, because the one in `audit.ts` runs as whoever
+is connected, and that is no longer someone who may `DELETE`.
 
-**Next:** step 11, `row_level_security` — the second lock. PostgreSQL itself filters rows by company,
-so a buggy query still cannot leak, and three traps come with it.
+**Next:** step 12, `cross_tenant_test_suite` — one generated test that calls every operation with
+another company's address, and grows by itself each time an operation is added.
