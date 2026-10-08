@@ -921,6 +921,8 @@ async function recordTheRead(
   fetched: HandlerAnswer,
   leaving: OperationAnswer,
 ): Promise<OperationAnswer | undefined> {
+  // The first clause is belt-and-braces: every command answers `result`, which the third clause
+  // already rejects, so no test can tell the two apart today. It says what the rule says.
   if (contract.kind !== "query" || leaving.kind === "error" || leaving.kind === "result") {
     return undefined;
   }

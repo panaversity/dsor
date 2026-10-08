@@ -16,6 +16,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Invoice } from "../src/invoice.ts";
 import { leaveTheDoor } from "../src/boundary.ts";
+import { success } from "../src/envelopes.ts";
 import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
 import { findPerson } from "../src/people.ts";
 import { aDatabase, resetInvoices } from "./support/database.ts";
@@ -212,6 +213,56 @@ describe("a restricted field", () => {
     } else {
       throw new Error("expected data");
     }
+  });
+});
+
+describe("the ceiling measures what leaves", () => {
+  it("DSOR-QRY-01: a page too big only because of its amounts leaves for the agent, and is refused for the supervisor", async () => {
+    // Step 13's ceiling is measured after this step's filter, which a comment claimed and no test
+    // knew: a mutation moved the measurement back to the handler's answer and stayed green. Three
+    // rows whose amounts are thirty thousand characters each are ninety kilobytes unfiltered and
+    // a few hundred bytes with the amounts taken out.
+    const fat = Array.from({ length: 3 }, (_u, i) =>
+      aRow({
+        uri: `dsor://org_456/invoice/INV-200${i}`,
+        id: `INV-200${i}`,
+        amount: { value: `${"3".repeat(30_000)}.00`, currency: "USD" },
+      }),
+    );
+    const careless: Handler = async (_args, _contract, askedBy) => ({
+      kind: "page",
+      askedBy,
+      page: { invoices: fat as Invoice[], next: undefined },
+    });
+    const door = makeDoor(PIPELINE, { "invoice.list": careless });
+    const theirs = await door(AGENT, "invoice.list", {});
+    const ours = await door(SUPERVISOR, "invoice.list", {});
+
+    expect(theirs.kind).toBe("page"); // the amounts never left, so what left is small
+    expect(ours.kind).toBe("error"); // what leaves for a human is over the ceiling
+
+    if (ours.kind === "error") {
+      expect(ours.envelope.code).toBe("INTERNAL_ERROR");
+      expect(ours.envelope.message).toMatch(/bytes/);
+    }
+  });
+
+  it("DSOR-ERR-01a: a filtered receipt is validated again, so one that does not validate never leaves", () => {
+    // `success` validated the envelope it built; the door builds a second one with the label and
+    // the list in it, and validates that. A mutation turned the second check off and stayed green.
+    const envelope = success({
+      data: aRow({}) as Readonly<Record<string, unknown>>,
+      semantics: "atomic",
+      payloadHash: "sha256:0",
+      tenant: "org_456",
+      requestId: "req_0",
+      principalId: "user_123",
+    });
+    const smuggled = { ...envelope, surprise: "a field the schema does not have" } as typeof envelope;
+
+    expect(() =>
+      leaveTheDoor(findPerson("user_123")!, { kind: "result", askedBy: "user_123", envelope: smuggled }),
+    ).toThrow(/does not validate/);
   });
 });
 
