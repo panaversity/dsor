@@ -1,8 +1,8 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, type ViteUserConfig } from "vitest/config";
 
 // This step is its own small project, so it says where its own tests live.
 // Without this file, vitest would walk up the folders and use the repository's config.
-export default defineConfig({
+const config: ViteUserConfig = defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
 
@@ -27,11 +27,24 @@ export default defineConfig({
     // differently each run, with tests reported as *skipped*, which is the tell that a worker was
     // killed rather than that anything was wrong.
     //
-    // `singleFork` is the answer: one process, files one after another. It is slower than parallel
-    // and it always gives the same answer, and for a step a learner runs once that is the better
-    // trade. A flaky suite teaches nothing except not to trust the suite.
+    // `singleFork` was believed to be the answer: one process, files one after another. It is
+    // slower than parallel and it always gives the same answer, and for a step a learner runs once
+    // that is the better trade. A flaky suite teaches nothing except not to trust the suite.
+    //
+    // NEW IN STEP 11, found live 2026-10-08: Vitest 4 does not implement `singleFork`. The word
+    // appears nowhere in its code, the option was ignored, and the files had been running in
+    // parallel since step 09 — which is what every "different failure each run" and every
+    // shrinking total under a sabotage was. Measured on this suite: as it was, 2 failed | 399
+    // passed in 29 seconds, two demo tests timing out on PGlite's mutex; with the line below, 401
+    // passed in 95 seconds, three times. The line that does what the comment above promised is
+    // `fileParallelism: false`.
+    //
+    // And why nobody noticed for three steps: this file was not typechecked. `tsconfig.json`
+    // included `src` and `test` only, so an option Vitest had dropped was a plain object key to
+    // everyone. It is included now, `tsc` refused `singleFork` the moment it looked, and the line
+    // is gone rather than kept as a souvenir.
     pool: "forks",
-    singleFork: true,
+    fileParallelism: false,
     isolate: true,
 
     // Five seconds is the default and is for tests that do arithmetic. These start real databases,
@@ -41,3 +54,5 @@ export default defineConfig({
     hookTimeout: 30_000,
   },
 });
+
+export default config;
