@@ -219,6 +219,94 @@ describe("a restricted field", () => {
   });
 });
 
+describe("a value the label cannot see inside", () => {
+  it("DSOR-CLS-01: a confidential value nested inside an internal field does not leave, and the field is listed", async () => {
+    // A reviewer got the amount out this way: `vendor` is internal, so a vendor whose value is an
+    // object walked out whole, amount and all. A label describes a value it can see the whole of.
+    // A value that is not a plain one — an object, an array, something with its own `toJSON` — is
+    // confidential, whatever its field is called, which is `DSOR-CLS-01` one level down.
+    const nested = aRow({
+      vendor: { name: "VENDOR-44", amount: { value: "31400.00", currency: "USD" } },
+    });
+    const door = makeDoor(PIPELINE, { "invoice.get": handing(nested) });
+    const theirs = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+    const ours = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    if (theirs.kind === "data" && ours.kind === "data") {
+      expect(JSON.stringify(theirs)).not.toContain("31400.00");
+      expect(theirs.redactions.map((r) => r.field)).toStrictEqual(["vendor", "amount"]);
+      expect(theirs.classification).toBe("internal");
+      // And the human's answer is labelled by what the label could not see: confidential.
+      expect(ours.classification).toBe("confidential");
+    } else {
+      throw new Error(`expected data, got ${theirs.kind} and ${ours.kind}`);
+    }
+  });
+
+  it("DSOR-CLS-01: a value that answers JSON.stringify for itself is not a plain value either", async () => {
+    const lying = aRow({
+      vendor: { name: "VENDOR-44", toJSON: () => "VENDOR-44 owes 31400.00 USD" },
+    });
+    const door = makeDoor(PIPELINE, { "invoice.get": handing(lying) });
+    const theirs = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+
+    if (theirs.kind === "data") {
+      expect(JSON.stringify(theirs)).not.toContain("31400.00");
+      expect(theirs.redactions.map((r) => r.field)).toContain("vendor");
+    } else {
+      throw new Error("expected data");
+    }
+  });
+});
+
+describe("an answer the door cannot filter", () => {
+  it("a handler that returns no row at all is the program's own error, never a crash", async () => {
+    // A review handed the door a `data` answer whose invoice was null and got a raw TypeError out
+    // of it, after the decision was recorded: no envelope, no code, nothing a caller can read.
+    for (const row of [null, undefined, "INV-1008"]) {
+      const door = makeDoor(PIPELINE, { "invoice.get": handing(row as unknown as object) });
+      const answer = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+      expect(answer.kind, String(row)).toBe("error");
+
+      if (answer.kind === "error") {
+        expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+        expect(answer.envelope.retry).toBe("never");
+      }
+    }
+  });
+
+  it("a receipt that carries no data leaves as it came, with no label and no list", () => {
+    // `data` is optional in result-envelope.schema.json, and step 17's first PENDING_APPROVAL
+    // receipt has none. A review made the door throw on it, after the command had run. There is
+    // nothing to filter and nothing to label: no data, no label.
+    const envelope = {
+      outcome: "COMMITTED" as const,
+      proposal: "dsor://org_456/proposal/prop_0001",
+      payload_hash: "sha256:0",
+      semantics: "atomic",
+      correlation: { request_id: "req_0", principal_id: "user_123" },
+    };
+    const leaving = leaveTheDoor(findPerson("accounts-payable-fte")!, {
+      kind: "result",
+      askedBy: "accounts-payable-fte",
+      envelope: envelope as unknown as Parameters<typeof leaveTheDoor>[1] extends {
+        envelope: infer E;
+      }
+        ? E
+        : never,
+    });
+
+    expect(leaving.kind).toBe("result");
+
+    if (leaving.kind === "result") {
+      expect(leaving.envelope.classification).toBeUndefined();
+      expect(leaving.envelope.redactions).toBeUndefined();
+      expect("data" in leaving.envelope).toBe(false);
+    }
+  });
+});
+
 describe("the ceiling measures what leaves", () => {
   it("DSOR-QRY-01: a page too big only because of its amounts leaves for the agent, and is refused for the supervisor", async () => {
     // Step 13's ceiling is measured after this step's filter, which a comment claimed and no test

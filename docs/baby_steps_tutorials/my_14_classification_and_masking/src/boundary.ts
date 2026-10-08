@@ -64,6 +64,11 @@ function entityOf(row: object): string {
   }
 }
 
+/** Whether a label can describe this value whole, or there are parts inside it nobody labelled. */
+function isPlain(value: unknown): boolean {
+  return value === null || (typeof value !== "object" && typeof value !== "function");
+}
+
 /** One row, as `principal` may see it. A human sees every field; an agent sees up to its clearance. */
 // `object`, not a record: an Invoice is an interface, which TypeScript does not treat as a record,
 // and the filter reads whatever fields a row has — including the one nobody labelled.
@@ -76,7 +81,14 @@ function filterRow(principal: Principal, row: object): Filtered {
   const withheld: string[] = [];
 
   for (const [field, value] of Object.entries(row)) {
-    const label = labelOf(entity, field);
+    // A label describes a value it can see the whole of. A value with parts inside — an object, an
+    // array, a thing with its own `toJSON` — is confidential whatever its field is called: a
+    // reviewer got the amount out of the agent's answer inside a `vendor` that was an object, and
+    // this is `DSOR-CLS-01` one level down. The amount is confidential already, so nothing in the
+    // story moves; the day a field holds something with parts, the agent does not see it.
+    const label = isPlain(value)
+      ? labelOf(entity, field)
+      : highestOf([labelOf(entity, field), "confidential"]);
 
     if (filtered && isAbove(label, clearance)) {
       withheld.push(field);
@@ -96,6 +108,39 @@ const redactionsFor = (fields: Iterable<string>): readonly Redaction[] =>
       Object.freeze({ field, reason: "clearance", treatment: "omitted" } as const),
     ),
   );
+
+/** What a value is, for a message: `null`, or its type. */
+const whatItIs = (value: unknown): string => (value === null ? "null" : typeof value);
+
+/**
+ * NEW IN STEP 14: why the door cannot filter this answer, or nothing.
+ *
+ * A handler that answers with no row, or with a row that is not a row, is a bug in this program,
+ * and the door says so in an envelope with a code and a retry class. A review handed the door a
+ * `data` answer whose invoice was `null` and got a raw `TypeError` out of it instead — after the
+ * decision was recorded, and for a command after the side effect, with nothing a caller can read.
+ */
+export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
+  if (answer.kind === "data") {
+    return isPlain(answer.invoice)
+      ? `returned ${whatItIs(answer.invoice)} where one row was expected`
+      : undefined;
+  }
+
+  if (answer.kind === "page") {
+    if (isPlain(answer.page) || !Array.isArray(answer.page.invoices)) {
+      return "returned a page with no rows in it";
+    }
+
+    const row = answer.page.invoices.findIndex((held) => isPlain(held));
+
+    return row === -1
+      ? undefined
+      : `returned ${whatItIs(answer.page.invoices[row])} as row ${row + 1} of a page`;
+  }
+
+  return undefined;
+}
 
 /**
  * What the handler's answer becomes on its way out. An error is untouched: it carries no data.
@@ -163,6 +208,14 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // A command's receipt carries the row it changed, in `data`, and the result envelope has a place
   // for the label and the list (result-envelope.schema.json). Rebuilt, and validated again, because
   // `success` validated the envelope it built and this is a different one.
+  //
+  // `data` is optional in that schema, and step 17's first PENDING_APPROVAL receipt will have
+  // none. A receipt with no data has nothing to filter and nothing to label, so it leaves as it
+  // came: a review made the door throw on it, after the command had run.
+  if (answer.envelope.data === undefined) {
+    return answer;
+  }
+
   const { shown, labels, withheld } = filterRow(principal, answer.envelope.data);
   const envelope = Object.freeze({
     ...answer.envelope,

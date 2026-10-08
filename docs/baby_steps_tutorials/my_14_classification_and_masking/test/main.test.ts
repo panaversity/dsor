@@ -283,10 +283,11 @@ describe("the program a learner runs", () => {
     // The map's "done when": the agent sees a masked amount and a redaction list; a human sees
     // the value. Whole lines, built with the printer's own widths.
     expect(out).toContain(
-      `${"user_123".padEnd(21)} ${"(confidential)".padEnd(24)} dsor://org_456/invoice/INV-1008  31400.00 USD  issued`,
+      `${"user_123".padEnd(21)} ${"(confidential)".padEnd(24)} dsor://org_456/invoice/INV-1008  ${"31400.00 USD".padEnd(17)}  issued`,
     );
+    // Two lines for the agent: the row, and under it what the door took out of it.
     expect(out).toContain(
-      `${"accounts-payable-fte".padEnd(21)} ${"(internal)".padEnd(24)} dsor://org_456/invoice/INV-1008  (amount withheld)  issued  withheld: amount (clearance)`,
+      `${"accounts-payable-fte".padEnd(21)} ${"(internal)".padEnd(24)} dsor://org_456/invoice/INV-1008  ${"(amount withheld)".padEnd(17)}  issued\n${" ".repeat(24)}withheld: amount (clearance)`,
     );
   });
 

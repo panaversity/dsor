@@ -40,7 +40,13 @@ import {
 } from "./pipeline.ts";
 import { bytesOf, MAX_PAGE_SIZE, MAX_RESULT_BYTES, pageSizeFrom } from "./queries.ts";
 // NEW IN STEP 14: the filter at the door, and the shapes of what leaves.
-import { leaveTheDoor, type Redaction, type Shown, type ShownPage } from "./boundary.ts";
+import {
+  cannotBeFiltered,
+  leaveTheDoor,
+  type Redaction,
+  type Shown,
+  type ShownPage,
+} from "./boundary.ts";
 import type { Classification } from "./classification.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
@@ -1091,6 +1097,23 @@ export function makeDoor(
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
     const answer = Object.freeze(await handler(given, contract, principal.id, tenant, hash, id_));
+
+    // NEW IN STEP 14: and an answer this program cannot filter is this program's bug, said in an
+    // envelope rather than thrown. Before the filter, because the filter is what would crash.
+    const unfilterable = cannotBeFiltered(answer);
+
+    if (unfilterable !== undefined) {
+      return Object.freeze({
+        kind: "error",
+        askedBy: principal.id,
+        envelope: refusal(
+          "INTERNAL_ERROR",
+          `${nameOf(contract.id)} ${unfilterable}`,
+          id_,
+          principal.id,
+        ),
+      });
+    }
 
     // NEW IN STEP 14: §19.2, before the response leaves. The handler handed back the whole row;
     // what leaves for an agent has every field above its clearance taken out, says which, and

@@ -27,9 +27,13 @@ export const LABELS: readonly Classification[] = Object.freeze([
 ]);
 
 /**
- * Every labelled field of every entity. The invoice's labels are the specification's own example
- * (§4, DSOR-ENT-01b): the amount is confidential, and the fields that name or describe the row
- * are internal.
+ * Every labelled field of every entity.
+ *
+ * The invoice's labels are modelled on the specification's own entity schema (§6 of 01-model.md,
+ * `DSOR-ENT-01b`): the amount is confidential and the fields that describe the row are internal.
+ * Not copied from it — §6's invoice has `vendor_id` and `open_amount`, and `uri` and `tenantId`
+ * are this tutorial's. A review found this comment citing §4, which is about authority boundaries.
+ * `bank_account` is labelled before any column holds one, because the label comes with the design.
  */
 const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>> = Object.freeze({
   invoice: Object.freeze({

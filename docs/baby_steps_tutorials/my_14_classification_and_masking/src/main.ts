@@ -21,12 +21,13 @@ const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_
 const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
-// NEW IN STEP 14: what the door took out, if anything, at the end of the line. The agent's line
-// says `withheld: amount (clearance)`; a human's line says nothing, because nothing was.
+// NEW IN STEP 14: what the door took out, if anything, on a line of its own under the answer.
+// Under it and not beside it, because a review measured the one-line version at 135 columns: on a
+// default Windows console the note wrapped away from the row it belongs to.
 function withheld(redactions: readonly { field: string; reason: string }[] | undefined): string {
   return redactions === undefined || redactions.length === 0
     ? ""
-    : `  withheld: ${redactions.map((r) => `${r.field} (${r.reason})`).join(", ")}`;
+    : `\n${" ".repeat(24)}withheld: ${redactions.map((r) => `${r.field} (${r.reason})`).join(", ")}`;
 }
 
 function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
@@ -53,8 +54,10 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   const i = answer.invoice;
 
-  const amount =
-    i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`;
+  // Padded, so that `issued` lines up whether the amount is there or withheld.
+  const amount = (
+    i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`
+  ).padEnd(17);
 
   // NEW IN STEP 14: the answer's own label where "(no envelope)" used to be — a query's success
   // still has no envelope, and now it says how sensitive what it holds is.
