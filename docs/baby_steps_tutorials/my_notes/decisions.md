@@ -2699,3 +2699,106 @@ The labels are the specification's own example (§4, `DSOR-ENT-01b`): `id` inter
 internal, `amount` confidential, `status` internal; `uri` and `tenantId` internal, since they name
 the row. The step's databases: `dsor_step14` on Neon and on the local server.
 
+## 106 · What step 14's build found: the record of a read is a second record, and a grant that does not grow (2026-10-09)
+
+Two things the build taught, neither of them a choice the learner had.
+
+**The record of a read is a second record.** `DSOR-CLS-05` wants a read of confidential data
+written down with its row count and the rows it returned. The decision record cannot carry that:
+it is written before the handler runs (`DSOR-EXE-02`), so it cannot know what came back, and the
+log is never amended (`DSOR-AUD-04a`), so it cannot be told afterwards. Step 13's critic measured
+exactly this — the log of a page of a hundred reads the same as the log of one `invoice.get` — and
+said step 14 would need a second record. It does: kind `classified_read`, after the decision, with
+the addresses in `resources` and the row count under the tutorial's namespace in `extensions`,
+both fields the audit schema already had. It is written after the filter and before the answer
+leaves, and triggered by what leaves — the agent's read that leaves as `internal` is not written
+down twice — and if it cannot be written, the rows do not leave, as the decision record's failure
+already stops a command.
+
+**A column-level grant does not grow with the table.** Migration 006's first version added the
+two columns and stopped, and every INSERT into the log was refused — the program could not carry
+out a single request. Step 09's `GRANT INSERT` names its columns one by one so that the
+application can never write `recorded_at`; a new column is granted on purpose or not at all. The
+migration says so in its own comment, and the real-server tests pin INSERT yes and UPDATE no for
+the two columns.
+
+Also recorded: a handler's answer and the door's answer are two types now, `HandlerAnswer` and
+`OperationAnswer`, because a handler returns the whole row and only the door decides what leaves;
+and three tenancy tests that told the two companies' INV-1008 apart by the amount, as the agent,
+now tell them apart by the status, which the agent may see.
+
+## 107 · A label describes a value it can see the whole of, and the one decision step 14 leaves open (2026-10-09)
+
+The hostile review's critic — the sixth agent, which the month's spend limit had stopped and which
+ran afterwards — found what the five reviewers had not, and three verifiers confirmed its top three
+findings on a clean copy. Two of them changed the design, so they are decisions and not fixes.
+
+**A value with parts inside is confidential, whatever its field is called.** `vendor` is
+`internal`, and a reviewer handed the door a `vendor` whose value was an object with the amount
+inside it: it left for the agent, labelled `internal`, with only `amount` in the list. A value with
+its own `toJSON` did the same. The alternative was to write the limit down and make it a rule for
+handlers, which is what the first fix did — a comment saying a handler must not nest. That is a
+rule nothing enforces, and `DSOR-CLS-01` already says what to do with a value nobody labelled: a
+value the label cannot see the whole of is confidential. Three lines in `filterRow`, and the amount
+does not move, because it is confidential already.
+
+**An answer this program cannot filter is an envelope, not an exception.** A handler that returns
+no row, or a row that is not a row, made the door throw a raw `TypeError` — after the decision was
+recorded, and for a command after the side effect, with nothing a caller can read. The door refuses
+it as `INTERNAL_ERROR` with retry `never` now, beside the ceiling's refusal, because the shape of
+the answer is this program's business and not the caller's. The same pass found that a receipt whose
+`data` is absent — legal in the schema, and what step 17's first `PENDING_APPROVAL` receipt will be
+— was being filtered as if it had data: it leaves as it came, with no label and no list, because
+there is nothing to label.
+
+**And the one decision this step leaves open, on purpose.** Five different endings leave exactly
+one `ALLOW` / `ALLOWED` record in the log and nothing else: an agent's answered read, a bad
+`limit`, an answer over step 13's ceiling, a row with no address, and the evidence store failing.
+A verifier reproduced all five. Only a read that handed out confidential data writes a second
+record, so "ALLOWED and nothing after it" means either "the caller got internal data" or "the
+caller got nothing and an error", and the log does not say which. The fix is another record, which
+this step has just proved writable — the decision record cannot be amended, and that is why the
+record of a read exists at all. It is not taken here because recording what happened after the
+decision is a step's whole idea, not a corner of this one, and because it is the learner's
+decision: a `classified_read` with a `REFUSED` result, a `refusal` kind of its own, or an outcome
+record for every request. The README says plainly that the log cannot tell the five apart today.
+
+Also from the critic, smaller: the citation for the labels was wrong — the entity schema with a
+classification on every field is §6 of `01-model.md`, not §4, and the labels are modelled on it
+rather than taken from it, since §6's invoice has `vendor_id` and `open_amount` while `uri` and
+`tenantId` are the tutorial's. And the demo's withheld note measured 135 columns on one line, which
+wraps away from its row on a default Windows console; it is a line of its own under the row now,
+with the amount padded so the status lines up.
+
+## 108 · The log's five endings: decided, and deliberately not built here (2026-10-09)
+
+Decision 107 left one question open for the learner, and the learner asked for it to be taken.
+Taken: step 14 does **not** add a record for a read that was refused after its decision. The
+reasoning, because the answer matters less than why.
+
+`DSOR-AUD-01` says what must leave a durable record: every command decision, every proposal
+transition, and every read covered by `DSOR-CLS-05`. Step 14 writes all three of those that exist
+today — the decision before the handler, and the record of a read that handed out confidential
+data. Measured against the rule, nothing is missing. What is missing is *usefulness*: five endings
+look alike in the log, because four of them are refusals that happen after the decision was
+already written as an ALLOW.
+
+Three reasons not to invent a fourth kind of record here.
+
+1. **The specification already has the slot, and it is not an audit record.** What finally happened
+   to a request is a proposal's final outcome (`DSOR-EXE-04a`, `DSOR-EXE-04b`, L2), and a proposal
+   with states and transitions arrives with the control-plane store in step 16 and the outcome in
+   step 36. A `classified_read` with `result: REFUSED` invented now would be a third shape that no
+   rule names, and step 36 would supersede it.
+2. **No record can cover all five.** One of the endings is the evidence store failing, and a store
+   that cannot take the record of a read cannot take a record of the refusal either. A scheme that
+   closes four of five and calls the log complete is worse than one that says plainly which
+   question the log does not answer.
+3. **One idea per step.** Recording what happened after the decision is a step's whole subject.
+   Folding it into the step about classification would make two ideas and teach neither well.
+
+What step 14 does instead: says it. The README has a paragraph of its own — "the one thing the log
+still cannot tell you" — naming all five endings and where the answer arrives. A learner who reads
+the log of a refused read and wonders why it says ALLOWED finds the answer in the step, not in a
+surprise.
+

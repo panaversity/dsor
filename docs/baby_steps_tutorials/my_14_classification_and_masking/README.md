@@ -1,86 +1,94 @@
-# Step 13 · Bounded queries
+# Step 14 · Classification and masking
 
-**New in this step:** `invoice.list`, the first operation that returns many rows, with the size of
-the answer decided by the server. Ask for a million, get one page.
+**New in this step:** every field has a label that says how sensitive it is, the agent has a
+clearance, and a field above it is taken out of the answer before the answer leaves — and listed,
+so the agent knows it exists.
 
 ## In plain words
 
-Until now every answer was one invoice. A list is different: how many rows come back is a number,
-and somebody chooses it. If the caller chooses, an agent in a loop asks for a million and gets the
-whole table. §7.1 says it in one sentence: an agent in a loop should not be able to download the
-whole customer table. The rule, `DSOR-QRY-01`, says the server enforces a maximum page size and a
-maximum result size on every query, whether or not the caller asked for a limit.
+Writes get the attention, but most real incidents are reads: data ends up somewhere it should
+not. Whatever this program hands the agent is, in practice, sent to a model provider's servers,
+outside the company. So the question "may this field leave?" has to be asked before the answer
+leaves, for every field, every time — and nothing in step 13 asked it.
 
-Three things make that true here:
+Four things make it asked here:
 
-- **Two maxima and a default, in one file**, `src/queries.ts`: a page holds at most 100 rows, 25
-  when the caller says nothing, and an answer may be at most 64 KiB as JSON. The caller's number is capped, not
-  refused — asking for a million is an ordinary request that gets one page. A number that is not a
-  whole number above zero is not a request for rows at all, and is refused as invalid input. The
-  numbers are this step's own and provisional, like §44's ceilings: the specification names the
-  rule and not the figures.
-- **The next page comes after the last invoice on this one.** The page says which invoice it ended
-  on, as an address — `dsor://org_456/invoice/INV-02099` — and the caller sends that back as
-  `after`. The server reads the rows after it, in id order. A page shifts for nobody when a row is
-  added behind it, and there is no "row one million" to name. Because the cursor is an address,
-  the §21.6 scan refuses one from another company, and step 12's suite tests the list like every
-  other operation, with nothing new. The database reads the page from the primary key in
-  page-sized steps, and the company filter runs before the `LIMIT`, so a page is never short
-  because of step 11's lock. A cursor names a row the caller already holds, and one for a row
-  that does not exist answers the same as one that does, so it cannot be used to ask whether an
-  id exists.
-- **Two layers.** The handler's SQL carries `LIMIT`, and asks for one row more than the page so it
-  knows whether there is a next one. And after *any* handler runs, the door measures the answer —
-  every answer, commands and errors included — against both maxima and refuses one that exceeds
-  them as the program's own error. A query written next year that forgets its `LIMIT` is caught at
-  the door, not on the wire.
+- **Every field has a label**, one of `public`, `internal`, `confidential`, `restricted`, in one
+  file: `src/classification.ts`. The amount is `confidential` and the id, the vendor and the
+  status are `internal`, as in the specification's own example (§4); the two fields that name the
+  row are `internal` too, which is this tutorial's label; and a bank account is `restricted`
+  before any column holds one, because the label comes with the design. A field that is not in
+  the table is `confidential` (`DSOR-CLS-01`). That is the rule and not a convenience: the day
+  someone adds a `notes` field to an invoice and forgets to label it, the agent does not see it.
+- **The agent has a clearance**, `internal`, written beside it in `src/people.ts`. An agent nobody
+  cleared reads `public` fields only — the lock stays locked when the paperwork is missing. The
+  two people have no clearance and are not filtered: a human reads on a screen, and the role
+  already decides what a human may do (`DSOR-CLS-02a` is written for agent principals). The
+  specification's example clears this agent for `confidential` and withholds the amount through
+  the tenant's egress policy instead; this step has no egress policy, so it sets the clearance
+  one step lower and the same field stays in.
+- **The door takes out what is above the clearance, and says so.** After any handler runs, and
+  before the answer leaves, `src/boundary.ts` walks every field of every row. A field above the
+  agent's clearance is left out — not masked with a placeholder, left out; the map says "masked"
+  for the family, and omission is one of the rule's three treatments — and listed in the
+  answer's `redactions`: `amount`, because of `clearance`, `omitted` (`DSOR-CLS-02b`). Every answer
+  then carries a `classification`: the highest label among the fields it still holds
+  (`DSOR-CLS-03`). The supervisor's invoice is `confidential`; the agent's, without its amount, is
+  `internal`. A page lists each withheld field once. A command's receipt is filtered the same way.
+- **A read that handed out confidential data is written down.** A second audit record,
+  `classified_read`, right after the decision that allowed it: who, the operation, every address
+  returned, and how many (`DSOR-CLS-05`). A second record, because the decision was recorded
+  before the handler ran (step 08) and the log can never be amended (step 09). It is written
+  before the answer leaves, and if it cannot be written the rows do not leave: a read nobody wrote
+  down did not happen.
 
-What this step does **not** do: it does not stop a caller from walking every page. One page per
-request is the rule; a thousand requests are a thousand decisions in the log, which is step 08's
-answer to a loop, and a budget on rows over a time window is `DSOR-CLS-04b`, an L2 rule for a
-later step. The ceiling is measured on the answer the door hands back, as JSON, before any
-transport. And it refuses rather than trims: an answer over 64 KiB is the program's own error, the
-caller's remedy is a smaller `limit`, and one row wider than the ceiling — `vendor` is unbounded
-text — has no remedy until the column is bounded. `bounded-queries.test.ts` seeds such a row and
-pins that `invoice.list` and `invoice.get` both refuse it.
+The entity a row belongs to is read from the row's own address: `dsor://org_456/invoice/INV-1008`
+is an invoice, so its fields are looked up under `invoice`. A row with no address belongs to no
+entity in the table, and every field of it is confidential: the agent gets an empty invoice and a
+list of everything. The label of an answer with nothing left in it is `public` — the label says
+what is there, and the list is the only sign of what is not. A page's `next` cursor is a row's
+address too, and goes with the rows' addresses.
 
 ## Why it matters
 
-Measured on a copy of step 12 with a list written the obvious way — the caller's `limit`, straight
-into the SQL — and fifty thousand invoices seeded for `org_456`:
+Step 13's demo, its first two lines. The supervisor reads INV-1008; then the agent reads it:
 
 ```text
-org_456 holds 50002 invoices
-invoice.list { limit: 25 }         ->  25 rows,      1 KiB,  23 ms
-invoice.list { limit: 1,000,000 }  ->  50,002 rows, 3065 KiB, 105 ms
+user_123              (no envelope)   dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+accounts-payable-fte  (no envelope)   dsor://org_456/invoice/INV-1008  31400.00 USD  issued
 ```
 
-Three megabytes in a tenth of a second, and nothing in the program said no. Every lock from steps
-10 and 11 held — every one of those rows was `org_456`'s — and the whole table still left in one
-answer, because the only number that mattered was the caller's.
+The same line. The agent's copy of that line goes to a model provider, and so does the amount —
+and with step 13's `invoice.list`, a hundred amounts a page. No attack was needed. Nothing in the
+program knew which field was sensitive, because no field carried a label; and by `DSOR-CLS-01`
+every unlabelled field is confidential, so all of it left.
 
-## What changed since step 12
+## What changed since step 13
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_12_cross_tenant_test_suite ../my_13_bounded_queries
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_13_bounded_queries ../my_14_classification_and_masking
 ```
 
 | File | What |
 | --- | --- |
-| `src/queries.ts` | new — the two maxima and the default, `pageSizeFrom`, `bytesOf` |
-| `src/invoice.ts` | `listInvoices`: one page in id order after a cursor, `LIMIT` in the SQL, the next page's address |
-| `src/contracts/invoice.list.json` | new — a query, `invoice:read`, with an example request whose cursor is an address |
-| `src/registry.ts` | the third contract on the list |
-| `src/operations.ts` | the `page` answer; the `invoice.list` handler; `makeDoor` takes a handler table; `overTheCeiling`, and the door's refusal of an oversize answer |
-| `src/main.ts` | a page, its cursor sent back, and a request for a million |
-| `test/bounded-queries.test.ts` | new — seventeen tests: a counting connection that sees the `LIMIT` in the SQL and every other read of the table, three careless handlers fed to the door, one real row wider than an answer may be, a page of multibyte vendors, and the list asked as the owner with no row-level security |
-| `test/main.test.ts` | the three list lines pinned; every record count moves by four — one refusal in the generated section, three pages read |
-| `test/operations.test.ts`, `test/registry.test.ts`, `test/request-id.test.ts`, `test/who-is-calling.test.ts` | three operations, and a page is a query's success |
-| everything else | a `NEW IN STEP 12` marker becoming `STEP 12` |
+| `src/classification.ts` | new — the four labels in order, the table of every entity's labels, `labelOf` (no label means confidential), `isAbove`, `highestOf`, `clearanceOf` |
+| `src/boundary.ts` | new — the model boundary: `leaveTheDoor` filters a row by the caller's clearance, labels the answer, and lists what it took out, for one invoice, a page, and a command's receipt |
+| `src/people.ts` | a principal may carry a `clearance`; the agent's is `internal` |
+| `src/operations.ts` | `HandlerAnswer` (what a handler hands the door, the whole row) and `OperationAnswer` (what leaves, labelled); the door calls `leaveTheDoor` before the ceiling; `recordTheRead` writes the record of a confidential read, before the answer leaves |
+| `src/audit.ts` | a record may carry `resources` and `extensions`, hashed, inserted, read back |
+| `src/envelopes.ts` | a result envelope may carry `classification` and `redactions` — the schema always had the two fields |
+| `migrations/006_classified_reads.sql` | new — the two columns, and a `GRANT INSERT` on exactly those two columns |
+| `src/main.ts` | the two lines that are no longer the same; a page says its label; the printed log shows a read as `read` with its row count |
+| `test/classification.test.ts` | new — seven tests: the table, the default, the order, the clearance, the restricted label |
+| `test/model-boundary.test.ts` | new — nineteen tests: one invoice, a page, a receipt, a field nobody labelled, a row with no address, a restricted field, a page of rows that do not look alike, an empty page, the cursor, the ceiling measured on what leaves, a receipt that does not validate, a value with parts inside, an amount that is one value, and an answer the door cannot filter |
+| `test/classified-reads.test.ts` | new — eight tests: the record after the decision, a page's record, a restricted read's record, the agent's read and an empty page leaving none, a row with no address refused, and two connections that drop the record's INSERT |
+| `test/classified-reads.db.test.ts` | new — three tests on a real server: the record in the real table, and the two columns writable and not changeable |
+| `test/main.test.ts` | the two lines pinned whole; a `read` line pinned; every record count moves — five reads in a run |
+| ten older tests | `decision-first`, `audit-lost-reply`, `pipeline`, `invoices-in-postgres`, `cross-tenant-suite-itself`, `bounded-queries`: one record per request became two for a supervisor's read; three tenancy tests that read the agent's amount now read what the agent may see |
+| everything else | a `NEW IN STEP 13` marker becoming `STEP 13` |
 
-444 tests became 468, and the database tier's 30 became 36: step 12's suite grew by six questions
-for `invoice.list` without an edit, which is what step 12 promised.
+468 tests became 504, and the database tier's 36 became 39.
 
 ## Run it
 
@@ -89,257 +97,344 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step:
+The part that is this step is the first two lines:
 
 ```text
-A list, one page at a time, and the ceiling:
-
-limit 1                 user_123              (a page)                 1 invoices, next after dsor://org_456/invoice/INV-1008
-after the first         user_123              (a page)                 1 invoices, the last page
-limit 1,000,000         user_123              (a page)                 2 invoices, the last page
+user_123              (confidential)           dsor://org_456/invoice/INV-1008  31400.00 USD  issued
+accounts-payable-fte  (internal)               dsor://org_456/invoice/INV-1008  (amount withheld)  issued  withheld: amount (clearance)
 ```
 
-One invoice a page, so the page and its cursor can be seen on the story's two invoices; the cursor
-sent back; then a million asked for and two invoices given, because two is all there are. The
-ceiling of a hundred is not visible on two invoices — `bounded-queries.test.ts` seeds three hundred
-and watches it bite. What is visible is that the caller's number did not decide. And the generated
-section above it now prints three lines, one of them `invoice.list`, with no edit to `main.ts`.
+The supervisor sees the value and the label `confidential`. The agent sees the invoice without its
+amount, the label `internal` — the highest label among what is left — and what was withheld and
+why. Further down, the agent's receipt for issuing INV-1009 says `withheld: amount (clearance)`
+too, and each page says its label.
 
-Each page read is a decision, so the logs grow: `org_456: 21 records` on a fresh run, `42` on the
-second; `org_789` stays at `2` and `4`.
+And the log at the end has a new kind of line. Where step 13 printed `ALLOW` for the supervisor's
+read and nothing more, there is now a record of the read itself, with its row count:
+
+```text
+ 0  ALLOW  invoice.get@1        user_123               ALLOWED                 sha256:...
+ 1  read   invoice.get@1        user_123               READ, 1 row             sha256:...
+ 2  ALLOW  invoice.get@1        accounts-payable-fte   ALLOWED                 sha256:...
+```
+
+The agent's read on line 2 has no `read` after it: what left was `internal`, and the rule is about
+reads that return confidential data. Five reads in a run are written down — the supervisor's and
+the CFO's reads of one invoice, and the three pages — so `org_456: 21 records` became `26` on a
+fresh run and `52` on the second. `org_789` stays at `2` and `4`.
 
 ### The database tier
 
-`pnpm check` needs no server. The thirty-six tests in `pnpm test:db` — step 12's thirty, and six
-generated for `invoice.list` — need two real logins and a database of this step's own. Copy step
-12's `.env` and change the database name in both URLs:
+`pnpm check` needs no server. The thirty-nine tests in `pnpm test:db` — step 13's thirty-six and
+three for the record of a read — need two real logins and a database of this step's own. Copy
+step 13's `.env` and change the database name in both URLs:
 
 ```bash
-cp ../my_12_cross_tenant_test_suite/.env .env     # then dsor_step12 -> dsor_step13 in both lines
+cp ../my_13_bounded_queries/.env .env     # then dsor_step13 -> dsor_step14 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-This folder's own run was on Neon: `neonctl databases create --name dsor_step13`, a `GRANT CONNECT`
-through the owner's connection, five migrations, `36 passed`. The one edit to a migration is a
-comment — step 12's `NEW IN STEP` marker retiring in `004` — and the checksum covers comments, so
-the database built from the copy before that edit refused to migrate and was rebuilt. An applied
-migration is never edited, and a comment is an edit.
+`pnpm migrate` applies `006_classified_reads.sql`. The migration is two `ADD COLUMN`s and one
+`GRANT`, and the grant is the lesson: step 09's `GRANT INSERT` on the log names its columns one by
+one, so that the application can never write `recorded_at`, and a column-level grant does not grow
+with the table. The first version of the migration stopped at the `ALTER`, and every INSERT —
+decisions included — was refused with `permission denied for table audit`. The three real-server
+tests pin it: `has_column_privilege` says INSERT yes and UPDATE no for the two new columns, and
+`recorded_at` is still unreachable. This folder's own run was on Neon, `36 passed` before the step
+and `39 passed` after it.
 
 ## Break it
 
-Eleven, measured twice on the full suite with the files one at a time, both runs agreeing. The
+Fifteen, measured twice on the full suite with the files one at a time, both runs agreeing. The
 counts are from a copy outside the repository, where one test skips because the specification is
-not beside it, so the total reads `468` with `1 skipped`; in the repository it is `468 passed`.
+not beside it, so the total reads `504` with `1 skipped`; in the repository it is `504 passed`.
 
-### Break 1 · the SQL loses its LIMIT
+### Break 1 · the agent is not filtered
 
-In `src/invoice.ts`, delete the `LIMIT $3` and its parameter.
-
-```text
- Tests  1 failed | 466 passed | 1 skipped (468)
-```
-
-One test, and it is the one that could see it: a connection that counts what every statement
-returned, in front of the real one. Every other test still passes, because the handler slices the
-page — a list that fetched everything and cut the page afterwards would be correct and would still
-pull fifty thousand rows across the wire. The counting connection is the test that tells the two
-apart.
-
-### Break 2 · the caller's number is not capped
-
-In `src/queries.ts`, in `pageSizeFrom`, return `given` instead of `Math.min(given, MAX_PAGE_SIZE)`.
+In `src/boundary.ts`, in `filterRow`, make `filtered` always `false`.
 
 ```text
- Tests  3 failed | 464 passed | 1 skipped (468)
+ Tests  26 failed | 477 passed | 1 skipped (504)
 ```
 
-The map's done-when, failed: a million is asked for, and the SQL is handed a million.
+Every test that reads as the agent, and the demo's two lines: the amount is back.
 
-### Break 3 · no next page, ever
+### Break 2 · nothing is listed
 
-In `listInvoices`, make `next` always `undefined`.
+In `redactionsFor`, map over an empty slice.
 
 ```text
- Tests  7 failed | 460 passed | 1 skipped (468)
+ Tests  13 failed | 490 passed | 1 skipped (504)
 ```
 
-Seven: every test that walks the pages or expects a `next`, in this file and in step 12's suite.
+The field is still gone — the agent would conclude the invoice has no amount, which is exactly
+what the list exists to prevent.
 
-### Break 4 · the page includes the cursor's own row
+### Break 3 · the label counts the fields that were taken out
 
-Change `id > $2` to `id >= $2`.
+In `filterRow`, push the label of a withheld field too.
 
 ```text
- Tests  2 failed | 465 passed | 1 skipped (468)
+ Tests  16 failed | 487 passed | 1 skipped (504)
 ```
 
-The walk through every page sees one invoice twice, and the test that asks for every row once, in
-order, says so.
+The agent's answer says `confidential` while holding nothing confidential: a label that lies high.
 
-### Break 5 · the page is cut after the fact
+### Break 4 · no label means public
 
-Hand the SQL `1000000` as its `LIMIT` and let the handler's slice do the work.
+In `src/classification.ts`, make `labelOf` fall back to `"public"`.
 
 ```text
- Tests  1 failed | 466 passed | 1 skipped (468)
+ Tests  5 failed | 498 passed | 1 skipped (504)
 ```
 
-The same one test as Break 1, for the same reason.
+The one rule the table cannot enforce by itself. The careless handler's `notes` walks out, and so
+does every field of a row with no address.
 
-### Break 6 · the door stops measuring
+### Break 5 · the agent loses its clearance
 
-In `src/operations.ts`, in `makeDoor`, change `if (tooBig !== undefined)` to `if (false)`.
+In `src/people.ts`, set the agent's `clearance` to `undefined`.
 
 ```text
- Tests  5 failed | 462 passed | 1 skipped (468)
+ Tests  20 failed | 483 passed | 1 skipped (504)
 ```
 
-Five. The three careless handlers — a hundred and one rows, four rows carrying twenty-kilobyte
-vendors, a refusal carrying sixty-four kilobytes in its message — walk out of the door, and so do
-the page of multibyte vendors and the real row wider than the ceiling.
+The lock stays locked: an agent nobody cleared reads public fields only, and the invoice has none,
+so the agent gets an empty invoice and a long list. Caught, because the tests say what the agent
+may see, not only what it may not.
 
-### Break 7 · the result size, a hundred times larger
+### Break 6 · the amount is labelled internal
 
-In `src/queries.ts`, make `MAX_RESULT_BYTES` `6400 * 1024`.
+In the table, make `amount` `"internal"`.
 
 ```text
- Tests  2 failed | 465 passed | 1 skipped (468)
+ Tests  33 failed | 470 passed | 1 skipped (504)
 ```
 
-Two: the tests built on literal sizes — four twenty-kilobyte vendors, three vendors of twenty
-thousand `€`. The two built on the constant follow it wherever it goes, which is Break 9's lesson
-again.
+Thirty-three, the third most of any break here: the amount leaves for the agent, and nothing is
+confidential any more, so no read is written down either — the labels are what both halves of the
+step hang on. It failed two until money became the one compound value a label describes, which is
+what measuring twice is for.
 
-### Break 8 · the door measures rows and not bytes
+### Break 7 · a human is filtered too
 
-Change `if (bytes > MAX_RESULT_BYTES)` to `if (false)`.
+Make `filtered` always `true`.
 
 ```text
- Tests  4 failed | 463 passed | 1 skipped (468)
+ Tests  43 failed | 460 passed | 1 skipped (504)
 ```
 
-Four: every answer that is too big by bytes and not by rows.
+Forty-three: a human with no clearance reads public fields only, so every test that reads as a
+person loses the row.
 
-### Break 9 · the default page is fifty
+### Break 8 · the read is never written down
 
-In `src/queries.ts`, make `DEFAULT_PAGE_SIZE` `50`.
+In `src/operations.ts`, in `recordTheRead`, return early for every answer.
 
 ```text
- Tests  1 failed | 466 passed | 1 skipped (468)
+ Tests  17 failed | 486 passed | 1 skipped (504)
 ```
 
-One, and only since the literal `25` was pinned beside the constant: a mutation pass changed the
-default with every test green, because every test compared the page with the number the code
-reads. Changing a ceiling is allowed. It is a visible act now.
+The eight tests of the record, and the older ones that now say a supervisor's read is two
+records.
 
-### Break 10 · the list's example loses its address
+### Break 9 · the record names no rows
 
-In `invoice.list.json`, make the example request `{ "limit": 2 }`.
+Replace `rows.map((row) => row.uri)` with `[]`.
 
 ```text
- Tests  4 failed | 458 passed | 1 skipped (463)
+ Tests  2 failed | 501 passed | 1 skipped (504)
 ```
 
-Step 12's suite says what it says for an example with nothing to move, and its example test asks
-for an address in `org_456`. A list is tested only because its cursor is an address. The total
-drops by five, because the suite generates its questions from the example, and an example with no
-address has fewer to ask.
+The record exists, verifies, and names nothing: the two tests that read `resources` see it.
 
-### Break 11 · the demo asks for one instead of a million
+### Break 10 · every read is written down, confidential or not
 
-In `src/main.ts`, make `million` `{ limit: 1 }`.
+Delete the check on `leaving.classification`.
 
 ```text
- Tests  1 failed | 466 passed | 1 skipped (468)
+ Tests  9 failed | 494 passed | 1 skipped (504)
 ```
 
-The pin in `main.test.ts`, which reads the demo's label from the request it sends: a review
-changed the number beside a fixed label and nothing noticed.
+The agent's reads are written down too, and every count in the demo's log moves.
 
-Restore each break and confirm `pnpm check` prints `468 passed` again.
+### Break 11 · the store's failure is swallowed and the data leaves
+
+In the `catch` of `recordTheRead`, return `undefined`.
+
+```text
+ Tests  2 failed | 501 passed | 1 skipped (504)
+```
+
+One test, the one with a connection that drops the record's INSERT: the rows left without a
+record. Everything else is green, because everything else has a store that works.
+
+### Break 12 · migration 006 forgets the GRANT
+
+Delete the `GRANT INSERT (resources, extensions)` line.
+
+```text
+ Tests  185 failed | 318 passed | 1 skipped (504)
+```
+
+A hundred and eighty-five, more than a third of the suite: a column-level grant does not grow
+with the table, so every INSERT into the log is refused, and a decision that cannot be written
+down is a request that is not carried out.
+
+### Break 13 · the label can see inside a nested value
+
+In `src/boundary.ts`, make `isPlain` return `true` for everything.
+
+```text
+ Tests  65 failed | 438 passed | 1 skipped (504)
+```
+
+Sixty-five, and mostly not because of the nested row: with every value treated as plain, an amount
+— which is an object — is read as its declared label and nothing re-raises it, so this break is
+Break 6 in reverse as well. The two nested tests are two of the sixty-five.
+
+### Break 14 · the door filters whatever it is handed
+
+Make `unfilterable` always `undefined`.
+
+```text
+ Tests  1 failed | 502 passed | 1 skipped (504)
+```
+
+The crash comes back: a handler that answers with no row throws out of the door instead of being
+refused, after the decision was recorded.
+
+### Break 15 · a receipt with no data is filtered anyway
+
+Delete the early return for a receipt whose `data` is absent.
+
+```text
+ Tests  1 failed | 502 passed | 1 skipped (504)
+```
+
+One test, and it is the shape step 17 will bring: filtering a receipt that has no data throws
+instead of answering.
+
+Restore each break and confirm `pnpm check` prints `504 passed` again.
 
 ## Build it yourself with Claude Code
 
-Copy `my_12_cross_tenant_test_suite` to a new folder and ask:
+Copy `my_13_bounded_queries` to a new folder and ask:
 
-> Start step 13, bounded queries. Before any code: add a list to a copy of step 12 the obvious way,
-> seed fifty thousand invoices, ask it for a million, and show me what comes back. Then ask me, one
-> at a time, how the caller gets the next page, how a list says which company it lists, and where
-> the two maxima live. Then build it a piece at a time, red first, and break each piece on purpose
-> — including a connection that counts what the database handed back.
+> Start step 14, classification and masking. Before any code: run step 13's demo and show me the
+> supervisor's and the agent's reads of INV-1008 side by side, and say where the agent's line
+> goes. Then ask me, one at a time, where the labels live, what the agent gets in place of a
+> field above its clearance, and who is filtered. Then build it a piece at a time, red first —
+> the labels, the filter at the door, the record of a read, the demo — and break each piece on
+> purpose, including a connection that drops the record's INSERT.
 
 ## Check yourself
 
-1. The caller asks for a million rows. What comes back, and why is it not a refusal?
-2. Why is the cursor an address, and not a page number or a row offset?
-3. The handler's SQL already carries `LIMIT`. What is the door's measuring for?
-4. Which test would fail if the list fetched every row and cut the page afterwards, and why does
-   no other test notice?
-5. Does this step stop an agent from reading the whole table? What does, and what will?
+1. The agent asks for INV-1008. What does it get, and what does the answer say about what it did
+   not get?
+2. Why is a field with no label confidential, and which test would go green if it were public?
+3. Why is the record of a read a second record, and not a row count added to the decision?
+4. The supervisor's read of INV-1008 is written down. The agent's read of the same invoice is
+   not. Why?
+5. Migration 006 adds two columns. Why does it also need a `GRANT`, when step 09 already granted
+   `INSERT` on the log?
+6. A handler returns an invoice whose `vendor` is an object with an amount inside it. What does the
+   agent get, and why is an amount — also an object — treated differently?
 
 <details>
 <summary>Answers</summary>
 
-1. One page of a hundred, with the address of the last invoice on it as `next`. The rule says the
-   server *enforces* a maximum — the request is ordinary, the size is not the caller's to set. A
-   limit that is not a whole number above zero is a different thing, not a request for rows, and
-   that one is refused.
-2. A page number lets a caller name page 40,000, makes the database skip everything before it, and
-   shifts when a row is added in front. "After this invoice" is stable, cheap, and — because it is
-   an address — already checked by the §21.6 scan and already moved by step 12's suite. The company
-   still comes from the login, never from the cursor.
-3. The query written next year. The handler's `LIMIT` is the first layer; the door's measuring is
-   the second, and it holds for any handler, including one that forgot. Two layers, like steps 10
-   and 11.
-4. `the cap is in the SQL, not after the fact`: a connection that counts the rows every statement
-   returned. Every other test sees the page the handler hands back, which is correct either way;
-   only the counting connection sees what crossed the wire.
-5. No. One page per request is this step; a caller may walk every page. Each page is a decision in
-   the log, which is step 08's answer to a loop today, and a budget over a time window is
-   `DSOR-CLS-04b`, a later step.
+1. The invoice without its amount, labelled `internal`, and `redactions: [{ field: "amount",
+   reason: "clearance", treatment: "omitted" }]`. The field is gone, not masked; the list is what
+   tells the agent the amount exists and was withheld.
+2. Because the rule says so (`DSOR-CLS-01`), and because the alternative fails the wrong way: a
+   field someone forgot to label would leave. `DSOR-CLS-01: the agent does not see it, and it is
+   listed` — a careless handler returns an invoice with a `bank_account` nobody labelled.
+3. The decision record is written before the handler runs (`DSOR-EXE-02`), so it cannot know what
+   the handler returned; and the log can never be amended (`DSOR-AUD-04a`), so it cannot be told
+   afterwards. What the read returned has to be a record of its own.
+4. The rule is about reads that *return* confidential or restricted data. The agent's answer left
+   as `internal` — the confidential field was taken out before it left — so there is a decision
+   and nothing more.
+5. Step 09's grant names its columns one by one, so the application can never write
+   `recorded_at`. A column-level grant does not grow with the table: without the new `GRANT`,
+   every INSERT into the log was refused, decisions included.
+6. Nothing of the vendor: a value with parts inside is confidential whatever its field is called,
+   because a label cannot describe what it cannot see the whole of, and `vendor` is listed as
+   withheld. An amount is the exception, and the only one: money is `{ value, currency }`, one
+   value in this program's vocabulary and a declared type in the specification's entity schema, so
+   its own label governs it. Without that exception the table's `amount: confidential` would stop
+   mattering, which is how the rule was measured — lowering it to `internal` changed nothing
+   anywhere.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-QRY-01 · L1]** DSoR MUST enforce a server-side maximum page size and maximum result size
-  on every query, whether or not the client asks for a limit. Page size: `LIMIT` in the SQL, capped
-  from the caller's number or the default, and the door refusing more rows than a page. Result
-  size: the door measuring every answer as JSON against 64 KiB, errors and commands included.
-  "Every query" is the door, which every operation goes through; the single-invoice answers of
-  `invoice.get` are measured too, and are a few hundred bytes.
-  ([§7.1](../../../specs/dsor/01-model.md#71-queries))
+- **[DSOR-CLS-01 · L1]** A field with no declared classification MUST be treated as
+  `CONFIDENTIAL`. `labelOf` falls back to `confidential` for a field, or an entity, that is not in
+  the table, and the door applies it to whatever a handler returns.
+  ([§19.1](../../../specs/dsor/02-security.md#191-risk-and-data-classification))
+- **[DSOR-CLS-02a · L1]** For agent principals, DSoR MUST omit, mask, or tokenize any field above
+  the agent's clearance or barred by the tenant's model-egress policy before the response leaves
+  DSoR. The clearance half: omitted, at the door, for one invoice, a page, and a receipt. The
+  egress-policy half is not built — see below.
+  ([§19.2](../../../specs/dsor/02-security.md#192-the-model-boundary))
+- **[DSOR-CLS-02b · L1]** A response from which fields were withheld MUST list the redactions.
+  `redactions` on every data answer, page, and receipt; empty for a human.
+- **[DSOR-CLS-03 · L1]** Every query response MUST carry a classification label equal to the
+  highest classification among the fields it contains. `classification` on every data answer and
+  page, the highest among the fields that remain; a receipt carries one too.
+- **[DSOR-CLS-05 · L1]** Reads that return `CONFIDENTIAL` or `RESTRICTED` data MUST be audited
+  with principal, actor chain, operation, resource scope, and row count. A `classified_read`
+  record after the decision: the principal, an actor chain that is empty because nobody acts on
+  anyone's behalf until step 18, the operation, every address returned, and the row count.
 
-**What this step leaves, said plainly.** The numbers are provisional. The result size is measured
-on the answer object, as JSON, before any transport — a wire format that pads could exceed it. A
-page is read as any read is: one record in the log, with no row count on it; `DSOR-CLS-05`'s row
-count for confidential reads is step 14's, where data has a classification — and because the
-record is written before the handler runs and the runtime cannot update the log, step 14 will
-write a second record after the fetch rather than add a field to this one. Today the log of a
-page of a hundred reads the same as the log of one `invoice.get`. Nothing here limits how many
-pages a caller walks. `limit` and `after` are checked in the handler, after the decision
-was recorded as ALLOW, because the validate stage does not read a contract's input schema yet —
-the schema names in `invoice.list.json` are placeholders, as in every contract since step 03 — so
-a bad `limit` is a refusal with an ALLOW record behind it, and an unknown argument such as `limti`
-passes in silence. An oversize answer leaves the same ALLOW record while the caller receives
-`INTERNAL_ERROR`; recording what happened after the decision is a later step. The ceiling is
-proven on PGlite: the database tier asks step 12's six questions of `invoice.list`, about
-tenancy, and no test names `DSOR-QRY-01` against a real server. And the door measures its own
-handlers' answers once, as plain data; it does not defend against a handler of the program's own
-that lies to `JSON.stringify`. And the door's row layer reads a page whose rows are invoices: the
-next operation that returns many rows — a list of payments, say — must answer as a page, carry
-`LIMIT` plus one in its SQL, and give its contract an example request with an address so that
-step 12's suite picks it up; until the page type holds rows of any kind, only the byte layer is
-universal.
+**What this step leaves, said plainly.** The labels are the tutorial's own, taken from the
+specification's example, and provisional; the specification puts them in the entity schema
+(`DSOR-ENT-01b`), and this step puts them in a TypeScript table. The tenant's model-egress policy
+is not built: a `restricted` field leaves for an agent cleared for `restricted`, with no policy
+asking whether it may cross to an external provider. Tokens in place of masked values
+(`DSOR-CLS-02c`) and row budgets (`DSOR-CLS-04b`) are later steps; the actor chain in the record
+of a read is empty until step 18, and "resource scope" is read here as the list of addresses
+returned. A human is not filtered at all, and a principal of type `application` or `system` is
+treated like a human until a rule says otherwise. The labels live in a table in code, where the
+specification puts them in the entity schema (`DSOR-ENT-01b`), so nothing ties a label to the type
+it labels; and an entity that is not in the table gives an agent nothing at all — an empty row,
+labelled `public`, with every field listed — so the first payment row of a later step will arrive
+blank rather than loudly. The record of a read lists every address returned, so a page of a hundred
+is a record of a hundred addresses; it is written after the filter and before the answer leaves —
+"before" being the order of two statements in `makeDoor`, held by the fault test and not by a
+stage. An error answer is not filtered and carries no label: its message is free text, so a handler
+must never put a field's value in one, which is a rule for handlers and not a filter. And a bad
+`limit` still leaves an ALLOW record, as it did in step 13, because the validate stage does not
+read a contract's input schema yet.
+
+**The one thing the log still cannot tell you.** Five different endings leave exactly one `ALLOW` /
+`ALLOWED` record and nothing else: an agent's answered read, a bad `limit`, an answer over step 13's
+ceiling, a row with no address, and the evidence store failing. Only a read that actually handed
+out confidential data writes a second record. So "ALLOWED, and nothing after it" means either "the
+caller got internal data" or "the caller got nothing and an error", and the log does not say which.
+Measured against the rules, nothing is missing: `DSOR-AUD-01` asks for a record of every command
+decision, every proposal transition, and every read covered by `DSOR-CLS-05`, and this step writes
+all of those that exist today. What is missing is an answer to "and then what happened", and the
+specification keeps that somewhere else — in a proposal's final outcome
+(`DSOR-EXE-04a`), which arrives with the control-plane store and the outcome of a command, not in
+another append to the log. One of the five endings is the evidence store failing, and a store that
+cannot take the record of a read cannot take a record of the refusal either, so no fourth kind of
+record would close all five. Decision 108 in the notes says this at length.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-CLS-05` | A row count on the audit record of a confidential read. No data is classified yet. Step 14. |
+| `DSOR-CLS-02c` | A token in place of a masked value, usable only by the principal it was issued to. Nothing is tokenized; fields are omitted. L2. |
+| `DSOR-CLS-04b` | Row budgets per agent over a time window. A later step. |
+| `DSOR-ENT-01b` | Each entity schema declares the classification of every field. The labels are in a table in code, not in an entity schema; the entity schema arrives with the entity registry. |
+| `DSOR-AUD-05a` | Classification-aware renderings in audit records, not raw copies of `RESTRICTED` values. The record of a read holds addresses and a count, never a value — true, and not claimed until a `RESTRICTED` field exists to test it with. |
 
-Everything earlier steps claimed still holds. Step 12's suite now asks its six questions of three
-operations, and `main.test.ts`'s record counts moved by four.
+Everything earlier steps claimed still holds. Step 12's suite asks its six questions of three
+operations whose answers are now labelled, and `main.test.ts`'s record counts moved by five.
 
-**Next:** step 14, `classification_and_masking` — every field labelled by sensitivity, the agent given a
-clearance, and what is above it hidden before the answer leaves, with a list of what was hidden.
+**Next:** step 15, `freshness_labels` — every answer says how old its data is, and a cached value
+is never labelled `CURRENT`.
