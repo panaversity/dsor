@@ -35,6 +35,43 @@ export interface OperationContract {
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
   readonly execution?: { readonly semantics: string };
+  /**
+   * NEW IN STEP 12: whatever a contract carries beside the specification's own fields, keyed
+   * by a reverse-DNS name (DSOR-SCH-02). This step keeps one thing there: an example request.
+   */
+  readonly extensions?: Readonly<Record<string, unknown>>;
+}
+
+/** The one key this tutorial owns inside a contract's `extensions`. */
+export const TUTORIAL_EXTENSION = "com.panaversity.tutorial";
+
+/**
+ * NEW IN STEP 12: the example request a contract carries, or `undefined` when it carries none.
+ *
+ * The cross-tenant suite calls every operation with another company's address, and for an
+ * operation nobody has written yet it has to know what request that operation takes. The answer
+ * lives with the operation, in its spec sheet: `extensions["com.panaversity.tutorial"]
+ * .example_request`, a request that works for org_456 as it stands. The suite rewrites its
+ * addresses to another company and calls. A contract without one does not fail here — it fails
+ * the suite, loudly, which is what "the suite grows by itself" has to mean.
+ *
+ * Read narrowly, on purpose: only that key, only an object. A string there is a mistake in the
+ * contract, not a request, and `undefined` makes the suite say so.
+ */
+export function exampleRequestOf(
+  contract: OperationContract,
+): Readonly<Record<string, unknown>> | undefined {
+  const ours = contract.extensions?.[TUTORIAL_EXTENSION];
+
+  if (ours === null || typeof ours !== "object" || !Object.hasOwn(ours, "example_request")) {
+    return undefined;
+  }
+
+  const example = (ours as { example_request: unknown }).example_request;
+
+  return example !== null && typeof example === "object" && !Array.isArray(example)
+    ? (example as Readonly<Record<string, unknown>>)
+    : undefined;
 }
 
 /** One contract document, with where it came from, so a refusal can say which file. */
