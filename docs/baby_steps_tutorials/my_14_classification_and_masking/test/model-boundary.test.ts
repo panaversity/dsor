@@ -156,7 +156,10 @@ describe("the field nobody labelled", () => {
   // any handler, which is why this one is careless on purpose. The row carries no amount, so the
   // supervisor's label comes from the unlabelled field alone.
   const withANote = handing(
-    aRow({ amount: undefined, notes: "paid in cash; the bank account is PK36 SCBL 0000 0011 2345 6702" }),
+    aRow({
+      amount: undefined,
+      notes: "paid in cash; the bank account is PK36 SCBL 0000 0011 2345 6702",
+    }),
   );
 
   it("DSOR-CLS-01: the agent does not see it, and it is listed; the supervisor sees it, labelled confidential", async () => {
@@ -258,10 +261,17 @@ describe("the ceiling measures what leaves", () => {
       requestId: "req_0",
       principalId: "user_123",
     });
-    const smuggled = { ...envelope, surprise: "a field the schema does not have" } as typeof envelope;
+    const smuggled = {
+      ...envelope,
+      surprise: "a field the schema does not have",
+    } as typeof envelope;
 
     expect(() =>
-      leaveTheDoor(findPerson("user_123")!, { kind: "result", askedBy: "user_123", envelope: smuggled }),
+      leaveTheDoor(findPerson("user_123")!, {
+        kind: "result",
+        askedBy: "user_123",
+        envelope: smuggled,
+      }),
     ).toThrow(/does not validate/);
   });
 });
@@ -290,7 +300,11 @@ describe("a page of rows that do not look alike", () => {
         ["id", "status", "tenantId", "uri", "vendor"],
         ["id", "status", "tenantId", "uri", "vendor"],
       ]);
-      expect(theirs.redactions.map((r) => r.field)).toStrictEqual(["amount", "notes", "bank_account"]);
+      expect(theirs.redactions.map((r) => r.field)).toStrictEqual([
+        "amount",
+        "notes",
+        "bank_account",
+      ]);
       expect(theirs.classification).toBe("internal");
       expect(ours.page.invoices.map((i) => Object.keys(i).length)).toStrictEqual([6, 6, 7]);
       expect(ours.classification).toBe("restricted");

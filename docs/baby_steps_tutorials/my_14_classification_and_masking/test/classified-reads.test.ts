@@ -81,7 +81,11 @@ describe("a confidential read is written down", () => {
 
 describe("restricted, and nothing", () => {
   const handing = (row: object): Handler => {
-    return async (_args, _contract, askedBy) => ({ kind: "data", askedBy, invoice: row as Invoice });
+    return async (_args, _contract, askedBy) => ({
+      kind: "data",
+      askedBy,
+      invoice: row as Invoice,
+    });
   };
   const aRow = (fields: Record<string, unknown>): object =>
     Object.freeze(
@@ -105,7 +109,10 @@ describe("restricted, and nothing", () => {
     const answer = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(answer.kind).toBe("data");
-    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual([
+      "decision",
+      "classified_read",
+    ]);
   });
 
   it("an empty page is a decision and nothing more", async () => {
