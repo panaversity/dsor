@@ -175,6 +175,33 @@ describe("the second layer: the door", () => {
     }
   });
 
+  it("DSOR-QRY-01: an oversize error answer is refused too — every kind of answer is measured", async () => {
+    // A review found the measuring skipped errors, so a handler whose refusal carried the whole
+    // table in its message walked out of the door at ten megabytes.
+    const small = await callOperation(SUPERVISOR, "invoice.list", { limit: 0 });
+
+    if (small.kind !== "error") {
+      throw new Error("expected a refusal to copy");
+    }
+
+    const door = makeDoor(PIPELINE, {
+      "invoice.list": async (_args, _contract, askedBy) => ({
+        kind: "error",
+        askedBy,
+        envelope: { ...small.envelope, message: "E".repeat(MAX_RESULT_BYTES) },
+      }),
+    });
+    const answer = await door(SUPERVISOR, "invoice.list", {});
+
+    expect(answer.kind).toBe("error");
+
+    if (answer.kind === "error") {
+      expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.message).toMatch(/bytes/);
+      expect(bytesOf(answer)).toBeLessThan(1024);
+    }
+  });
+
   it("a full page of real invoices is well inside both maxima, so the door is not refusing the honest list", async () => {
     const page = await pageFor(SUPERVISOR, { limit: MAX_PAGE_SIZE });
 

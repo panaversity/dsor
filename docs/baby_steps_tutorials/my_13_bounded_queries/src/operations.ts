@@ -850,18 +850,17 @@ export type Door = (
  * here rather than on the wire. Returns the reason, or nothing.
  */
 function overTheCeiling(id: string, answer: OperationAnswer): string | undefined {
-  if (answer.kind === "error") {
-    return undefined;
-  }
-
+  // The row count is read from a page, so a query that returns many rows must answer as one;
+  // the byte count is read from every answer there is. Errors included: the first build skipped
+  // them, and a review's handler walked a ten-megabyte refusal out of the door.
   if (answer.kind === "page" && answer.page.invoices.length > MAX_PAGE_SIZE) {
-    return `${id} returned ${answer.page.invoices.length} rows where a query may return at most ${MAX_PAGE_SIZE}`;
+    return `${id} returned ${answer.page.invoices.length} rows where a page may hold at most ${MAX_PAGE_SIZE}`;
   }
 
   const bytes = bytesOf(answer);
 
   if (bytes > MAX_RESULT_BYTES) {
-    return `${id} returned an answer of ${bytes} bytes where a query may return at most ${MAX_RESULT_BYTES} bytes`;
+    return `${id} returned an answer of ${bytes} bytes where an answer may be at most ${MAX_RESULT_BYTES} bytes`;
   }
 
   return undefined;
