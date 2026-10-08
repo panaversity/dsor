@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the cross-tenant suite, generated from the registry.
+// STEP 12: the cross-tenant suite, generated from the registry.
 //
 // Step 11's `cross-tenant.test.ts` proves two operations by hand, and nothing ties it to the list
 // of operations: a third operation, added without a tenant check, leaked org_789's invoice while

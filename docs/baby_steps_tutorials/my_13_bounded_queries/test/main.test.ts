@@ -116,9 +116,9 @@ describe("the program a learner runs", () => {
     const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
 
     // STEP 10: two logs, printed one after the other — org_456's seventeen records and
-    // org_789's two. NEW IN STEP 12: seventeen, not fifteen, because the generated section refuses
+    // org_789's two. STEP 12: seventeen, not fifteen, because the generated section refuses
     // one request per operation, and a refusal is a decision.
-    expect(rows).toHaveLength(20); // STEP 13: one more refusal, for invoice.list
+    expect(rows).toHaveLength(23); // STEP 13: one more refusal for invoice.list, and three pages read
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -127,15 +127,15 @@ describe("the program a learner runs", () => {
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
     expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(13);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(7);
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(10); // STEP 13: three pages read
 
     // Sequences 0..16 for org_456 and then 0..1 for org_789: each chain counts from zero.
-    // NEW IN STEP 12: 15 and 16 are the two refusals the generated section adds.
+    // STEP 12: 15 and 16 are the two refusals the generated section adds.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 0, 1,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 18 records, chain verifies against the head: true");
+    expect(out).toContain("org_456: 21 records, chain verifies against the head: true");
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -181,22 +181,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(18);
+    expect(records(first, "org_456")).toBe(21);
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 18 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 21 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(36);
+    expect(records(second, "org_456")).toBe(42);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 36 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 42 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      40,
+      46,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -221,8 +221,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(20);
-    expect(hashesOf(second.raw)).toHaveLength(20);
+    expect(hashesOf(first.raw)).toHaveLength(23);
+    expect(hashesOf(second.raw)).toHaveLength(23);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -241,8 +241,21 @@ describe("the program a learner runs", () => {
     expect(section.split("no company said")[0]).not.toContain("org_789");
   });
 
-  // NEW IN STEP 12: the lines that are this step, pinned, as step 11's were after an evaluation
+  // STEP 12: the lines that are this step, pinned, as step 11's were after an evaluation
   // found them unpinned. One line per operation in the registry, every one a TENANT_MISMATCH.
+  // NEW IN STEP 13: the lines that are this step, pinned from the start.
+  it("DSOR-QRY-01: the demo's list shows a page, its cursor, and a request for a million getting one page", () => {
+    const { raw } = demo();
+    const section = raw.split("A list, one page at a time, and the ceiling:")[1]?.split("The audit log")[0] ?? "";
+    const lines = section.split("\n").filter((line) => /^(limit 1 |after the first|limit 1,000,000)/.test(line));
+
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toMatch(/1 invoices, next after dsor:\/\/org_456\/invoice\/INV-1008$/);
+    expect(lines[1]).toMatch(/1 invoices, the last page$/);
+    // Two invoices in the story, so the million gets both — and "the last page", not a million.
+    expect(lines[2]).toMatch(/2 invoices, the last page$/);
+  });
+
   it("DSOR-TEN-02b: the demo refuses every operation in the registry another company's address", () => {
     const { raw } = demo();
     const section = raw.split("Every operation, with another company's address:")[1] ?? "";
@@ -267,7 +280,7 @@ describe("the program a learner runs", () => {
   it("DSOR-ERR-01b: the four refusals, and the same words for a real company and one that does not exist", () => {
     const out = demo().report;
     // The envelope lines (they carry a retry class), not the audit rows that also say TENANT_MISMATCH.
-    // NEW IN STEP 12: the section before "Every operation" — the two lines that section adds are
+    // STEP 12: the section before "Every operation" — the two lines that section adds are
     // the generated suite's and are pinned by their own test above.
     const labelled = (out.split("Every operation, with another company's address:")[0] ?? "")
       .split("\n")

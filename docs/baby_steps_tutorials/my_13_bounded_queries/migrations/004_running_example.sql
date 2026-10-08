@@ -13,7 +13,7 @@ INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currenc
   ('org_456', 'INV-1008', 'VENDOR-44', 31400.00, 'USD', 'issued'),
   ('org_456', 'INV-1009', 'VENDOR-44', 2500.00,  'USD', 'draft'),
   ('org_789', 'INV-1008', 'VENDOR-44', 18000.00, 'USD', 'draft'),
-  -- NEW IN STEP 12: org_789 holds every invoice number the examples name, as a draft. The
+  -- STEP 12: org_789 holds every invoice number the examples name, as a draft. The
   -- cross-tenant suite asks, for each operation, that the other company's rows are untouched
   -- after a call with its address — and a careless command can only touch a row that is there.
   -- Without this row the question passed for invoice.issue because org_789 had no INV-1009,

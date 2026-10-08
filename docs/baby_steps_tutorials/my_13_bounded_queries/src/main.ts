@@ -183,7 +183,7 @@ console.log(
   `  no company said:  ${asLines((await database.connection.query<Seen>(FORGOT_THE_COMPANY, ["INV-1008"])).rows)}`,
 );
 
-// NEW IN STEP 12, and this is the step. Every operation the registry holds, called with another
+// STEP 12, and this is the step. Every operation the registry holds, called with another
 // company's address — not the two named here by hand, but whatever the registry says, from the
 // example request each contract carries with every address in it moved to org_789. Add an
 // operation and this loop grows by one line, and test/support/cross-tenant-suite.ts grows by six
@@ -203,6 +203,29 @@ for (const [id, contract] of loadRegistry(contractsFromDisk())) {
     `${id.padEnd(14)} ${theirs === undefined ? "(no example request in its contract)" : show(await callOperation(SUPERVISOR, id, theirs))}`,
   );
 }
+
+// NEW IN STEP 13, and this is the step. The first query that returns many rows, and the size of
+// the answer is the server's. One invoice a page, so the page and its cursor can be seen on two
+// invoices; then the cursor sent back; then a request for a million, which gets one page. With two
+// invoices the page holds both, so the ceiling of a hundred is not visible here — the tests seed
+// three hundred and watch it bite. What is visible is that the caller's number did not decide.
+console.log();
+console.log("A list, one page at a time, and the ceiling:");
+console.log();
+
+const firstPage = await callOperation(SUPERVISOR, "invoice.list", { limit: 1 });
+
+console.log(`${"limit 1".padEnd(23)} ${show(firstPage)}`);
+
+if (firstPage.kind === "page" && firstPage.page.next !== undefined) {
+  console.log(
+    `${"after the first".padEnd(23)} ${show(await callOperation(SUPERVISOR, "invoice.list", { after: firstPage.page.next, limit: 1 }))}`,
+  );
+}
+
+console.log(
+  `${"limit 1,000,000".padEnd(23)} ${show(await callOperation(SUPERVISOR, "invoice.list", { limit: 1_000_000 }))}`,
+);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

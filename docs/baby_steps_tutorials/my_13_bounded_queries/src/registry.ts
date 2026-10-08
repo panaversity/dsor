@@ -36,7 +36,7 @@ export interface OperationContract {
   readonly idempotency?: { readonly required: boolean };
   readonly execution?: { readonly semantics: string };
   /**
-   * NEW IN STEP 12: whatever a contract carries beside the specification's own fields, keyed
+   * STEP 12: whatever a contract carries beside the specification's own fields, keyed
    * by a reverse-DNS name (DSOR-SCH-02). This step keeps one thing there: an example request.
    */
   readonly extensions?: Readonly<Record<string, unknown>>;
@@ -46,7 +46,7 @@ export interface OperationContract {
 export const TUTORIAL_EXTENSION = "com.panaversity.tutorial";
 
 /**
- * NEW IN STEP 12: the example request a contract carries, or `undefined` when it carries none.
+ * STEP 12: the example request a contract carries, or `undefined` when it carries none.
  *
  * The cross-tenant suite calls every operation with another company's address, and for an
  * operation nobody has written yet it has to know what request that operation takes. The answer

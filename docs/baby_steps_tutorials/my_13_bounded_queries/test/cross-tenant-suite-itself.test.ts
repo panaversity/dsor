@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the suite's questions, each fed an answer that lies, must throw.
+// STEP 12: the suite's questions, each fed an answer that lies, must throw.
 //
 // A mutation pass on the first version deleted the suite's assertions one at a time — the retry
 // class, the untouched rows, the other company's log — and every deletion passed the whole suite,

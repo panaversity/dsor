@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the generated cross-tenant suite, against a real server.
+// STEP 12: the generated cross-tenant suite, against a real server.
 //
 // The same suite as cross-tenant-suite.test.ts, with the rows in the database `.env` names and
 // the application logged in as itself. Runs only under `pnpm test:db`.

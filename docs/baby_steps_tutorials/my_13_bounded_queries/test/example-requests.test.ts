@@ -1,4 +1,4 @@
-// NEW IN STEP 12: every contract carries an example request.
+// STEP 12: every contract carries an example request.
 //
 // The cross-tenant suite in this step calls every operation with another company's address. To do
 // that for an operation nobody has written yet, it needs to know what request that operation takes,

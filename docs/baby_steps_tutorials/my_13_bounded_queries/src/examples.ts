@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the two things a test does with an example request.
+// STEP 12: the two things a test does with an example request.
 //
 // An example request is a request that works for org_456 as it stands. To test an operation with
 // another company's address, a test moves every address in the example to that company; to check

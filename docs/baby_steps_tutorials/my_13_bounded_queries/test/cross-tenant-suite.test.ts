@@ -1,4 +1,4 @@
-// NEW IN STEP 12: the generated cross-tenant suite, on PGlite.
+// STEP 12: the generated cross-tenant suite, on PGlite.
 //
 // One test per operation, from the registry — see test/support/cross-tenant-suite.ts for what it
 // asks and why. This file only says where the rows live for this run.
