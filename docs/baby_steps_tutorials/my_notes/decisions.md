@@ -2448,3 +2448,48 @@ inside another company's open transaction. The cost: PGlite 0.103 → 0.275 ms p
 PostgreSQL 17 over a socket 0.083 → 0.126 ms. And two things found on the way: a migration's
 checksum covers its comments, so the step's database was recreated twice; and macOS purges `/tmp`,
 where step 09's README keeps the cluster, so it was rebuilt from `initdb`.
+
+## 98 · Neon, measured at last, and what it corrected (2026-10-08)
+
+The learner logged the Neon CLI in; a project `dsor-tutorial` (Singapore, PostgreSQL 18), a
+database `dsor_step11`, and `dsor_runtime` created with `CREATE ROLE` through the owner's
+connection string — the connection strings written into `.env` by redirect, never printed. The five
+migrations applied, the sixteen database-tier tests passed twice, and `pnpm start` through the real
+`dsor_runtime` login printed the step's two lines with both chains verifying.
+
+What Neon's own roles look like, measured:
+
+```text
+console_made     superuser=false  BYPASSRLS=true   CREATEROLE=true   member of neon_superuser=true
+dsor_runtime     superuser=false  BYPASSRLS=false  CREATEROLE=false  member of neon_superuser=false
+neon_superuser   superuser=false  BYPASSRLS=true   CREATEROLE=true   member of neon_superuser=true
+neondb_owner     superuser=false  BYPASSRLS=true   CREATEROLE=true   member of neon_superuser=true
+```
+
+So three corrections to the folder's own story:
+
+1. **The map was right about Neon.** A role made in the Console or through the API — `console_made`
+   above — holds `BYPASSRLS` *itself*, and so does the owner. It skips every policy outright, with
+   or without the membership. Decision 95's finding stands as PostgreSQL's rule — membership passes
+   no attribute, measured on PGlite — but Neon does not rely on the membership; it grants the
+   attribute. And Neon refuses `SET ROLE neon_superuser` to everyone: "It is not allowed to change
+   role to neon_superuser". The "one SET ROLE away" story is true of a plain PostgreSQL and false of
+   Neon, where the owner is not one step away but already there.
+2. **The owner is not filtered by `FORCE` on Neon** either, since it holds `BYPASSRLS`. Decision 97's
+   sixth point and the sentences it changed were wrong about that, and are corrected in the README,
+   the migration's comment, and the step note. All three owners this tutorial met skip the lock;
+   `FORCE` is proven with an owner the test makes.
+3. **The program refuses a Console-made role at step 09's question**, before this step's: the
+   membership of `neon_superuser` carries `UPDATE` on the log. Measured through the door with
+   `console_made`'s connection string: "may UPDATE, DELETE, TRUNCATE the audit table". The
+   `BYPASSRLS` and membership questions stand behind it.
+
+Two more things measured on the way. Neon's owner holds `CREATEROLE` directly, so `CREATE ROLE
+dsor_runtime` works as the owner and the role comes out with nothing. And the cost over a network:
+117 ms for a plain statement, 484 ms through the adapter — four round trips where there was one.
+That is the price of decision 94's "before each statement", and the number step 36's one
+transaction per request is measured against.
+
+Also recorded: the `.env` now names Neon; the local server's lines are kept beside it in
+`.env.local-server`. The Neon database was recreated once, because a comment in migration 005
+changed after it was applied (lesson 40).

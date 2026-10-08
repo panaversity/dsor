@@ -19,15 +19,15 @@
 -- ENABLE turns the lock on. FORCE is the first trap on the map: by default the table's *owner*
 -- skips every policy on its own table, and FORCE makes the owner subject to them too. One honest
 -- limit, measured: a superuser skips every policy whatever the table says, and so does a role with
--- BYPASSRLS. Two of this tutorial's three owners are superusers — PGlite's `postgres`, and the
--- local server's `dsor_owner`, which initdb created — so FORCE changes nothing for them. Neon's
--- `neondb_owner` is not: it is a member of `neon_superuser`, and PostgreSQL passes no attribute
--- through membership, so on Neon FORCE is exactly what filters the owner until it runs
--- `SET ROLE neon_superuser`. (This comment first put Neon's owner with the superusers; an
--- evaluation read it against decision 95 and the two could not both be true.) FORCE is here for
--- that owner, for the owner that is not a superuser which `row-level-security.test.ts` creates,
--- and because the rule says so. What keeps the lock honest is that the program never runs as any
--- owner: `database.ts` refuses to start if it does.
+-- BYPASSRLS. All three of this tutorial's owners are one or the other — PGlite's `postgres` and the
+-- local server's `dsor_owner` are superusers, and Neon's `neondb_owner` holds BYPASSRLS directly
+-- (measured on Neon 2026-10-08: superuser=false, BYPASSRLS=true, and Neon refuses `SET ROLE
+-- neon_superuser` to everyone) — so FORCE changes nothing for them. This comment was rewritten
+-- twice: it first said the same, an evaluation then read it against decision 95's PostgreSQL rule
+-- that membership passes no attribute and the two seemed to disagree, and Neon settled it by
+-- granting the attribute itself. FORCE is here for the owner that is neither, which
+-- `row-level-security.test.ts` creates, and because the rule says so. What keeps the lock honest is
+-- that the program never runs as any owner: `database.ts` refuses to start if it does.
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoices FORCE ROW LEVEL SECURITY;
 

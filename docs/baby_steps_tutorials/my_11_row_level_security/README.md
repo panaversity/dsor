@@ -25,10 +25,11 @@ named all three:
   that asks, whoever it is for. So the company is said *per transaction*: every statement runs in a
   small transaction of its own that first says the company, and the setting dies with it.
 - **On Neon, a user made in the Console belongs to `neon_superuser`**, which holds `BYPASSRLS`, a
-  role property that makes PostgreSQL skip every policy. Measured: the member is still filtered,
-  because PostgreSQL passes no role property through membership — and it is one
-  `SET ROLE neon_superuser` away from not being. The program refuses to start as such an account,
-  and names the role in the refusal.
+  role property that makes PostgreSQL skip every policy. Measured on Neon: such a user holds
+  `BYPASSRLS` *itself* too, as does the project's owner, so it skips every policy outright — and
+  Neon refuses `SET ROLE neon_superuser` to everyone. `dsor_runtime` made with SQL holds neither
+  the property nor the membership. The program refuses to start as any of the others, and names
+  the reason.
 
 What this step does **not** do: it does not replace step 10. §36 says it in one line — row-level
 security is defense in depth, and it does not replace DSoR authorization. The lock is for the
@@ -126,9 +127,14 @@ recreate the step's database. And a cluster in `/tmp` does not survive: macOS pu
 that nobody has touched for a few days, and the data directory step 09's README puts there came
 back as "not a database cluster directory". Rebuild it with the same four commands.
 
-**On Neon**, keep creating `dsor_runtime` the way step 09's README does, in the SQL editor with
-`CREATE ROLE`. A role made in the Console instead is a member of `neon_superuser`, which holds
-`BYPASSRLS`, and this step's program refuses to start as it:
+**On Neon**, keep creating `dsor_runtime` the way step 09's README does, with `CREATE ROLE` in
+SQL — in the SQL editor, or through the owner's connection string. A role made in the Console or
+through Neon's API holds `BYPASSRLS` itself and is a member of `neon_superuser`; this step's
+program refuses to start as it, at step 09's question first (the membership carries `UPDATE` on
+the log), and at this step's questions if that one were ever quiet. This folder's own Neon run used
+the CLI: `neonctl projects create`, `neonctl databases create --name dsor_step11`, the owner's
+`neonctl connection-string` written into `.env` by redirect, and `CREATE ROLE dsor_runtime` run
+through that connection. The refusal a Console-made role gets from this step's own question:
 
 ```text
 this connection is `dsor_runtime`, a member of `neon_superuser`, which holds BYPASSRLS — one SET
@@ -150,8 +156,8 @@ test in `the-lock-at-start-up.test.ts` measures before it asks the check.
 
 The map says: connect as the owner and watch every policy do nothing. On the two routes this
 tutorial runs on, the owner is a superuser, and step 09's program already refuses to start as one —
-a superuser may `UPDATE` the log. (On Neon the owner is not a superuser; it is filtered by `FORCE`
-until it runs `SET ROLE neon_superuser`, and the program refuses it either way.) So this step's
+a superuser may `UPDATE` the log. (On Neon the owner is not a superuser; it holds `BYPASSRLS`
+directly and skips the lock the same way, and the program refuses it the same way.) So this step's
 version is the sharper one: an account that may do *nothing extra* and skips the lock anyway. As the owner, `ALTER ROLE dsor_runtime BYPASSRLS`. Then
 open the program's own door:
 
@@ -433,10 +439,11 @@ Copy `my_10_tenants` to a new folder and ask:
    it lasts for the session, and a pooled session is handed to the next statement that asks,
    whoever it is for: `pool.db.test.ts` shows a later statement with no company reading `org_456`'s
    rows.
-3. Because the rule says so (`DSOR-RP-01b`); because an owner that is not a superuser is filtered
-   only with it — the test hands the table to one, and Neon's `neondb_owner` is one, a member of
-   `neon_superuser` rather than a superuser itself; and because the start-up check asks for it:
-   without `FORCE`, the program refuses to start.
+3. Because the rule says so (`DSOR-RP-01b`); because an owner that is neither a superuser nor
+   `BYPASSRLS` is filtered only with it — the test hands the table to one; and because the
+   start-up check asks for it: without `FORCE`, the program refuses to start. None of the three
+   owners this tutorial met is such an owner — PGlite's and the local server's are superusers, and
+   Neon's holds `BYPASSRLS` — which is why the test makes one.
 4. `BYPASSRLS` is a property of the role, not a right on a table, so no privilege check sees it.
    The start-up check asks PostgreSQL directly whether the account holds it, and whether it is a
    member of a role that does — `neon_superuser`, on Neon — and refuses to start either way.
@@ -485,12 +492,19 @@ Copy `my_10_tenants` to a new folder and ask:
   empty company — the database's "no rows" would come back as a tidy "not found" and hide a wrong
   program.
 
-**The map and a measurement disagreed.** The map says a Console-made Neon user belongs to
-`neon_superuser`, "which ignores row-level security altogether". The role does. The member does not,
-until it runs `SET ROLE neon_superuser`: PostgreSQL passes privileges through membership and never
-role attributes, and `BYPASSRLS` is an attribute. Measured on PGlite, which runs PostgreSQL's own
-rules. The map's instruction stands — create `dsor_runtime` with SQL — and the program refuses the
-membership whether or not the member has used it. Decision 95 in `my_notes` records it.
+**The map, a measurement, and then Neon itself.** The map says a Console-made Neon user belongs to
+`neon_superuser`, "which ignores row-level security altogether". On PGlite, which runs PostgreSQL's
+own rules, a member of a `BYPASSRLS` role is still filtered until it runs `SET ROLE`: PostgreSQL
+passes privileges through membership and never attributes. So this README first said the map
+over-stated it. Then it was measured on Neon, 2026-10-08: a role made through Neon's API, the way
+the Console makes one, holds `BYPASSRLS` directly — `superuser=false BYPASSRLS=true CREATEROLE=true
+member of neon_superuser=true` — and so does the project's owner, `neondb_owner`; Neon refuses
+`SET ROLE neon_superuser` to everyone ("It is not allowed to change role to neon_superuser"). The
+map was right about Neon and the first correction was right about PostgreSQL; Neon grants the
+attribute instead of relying on the membership. `dsor_runtime` made with `CREATE ROLE` through the
+owner's connection came out `BYPASSRLS=false`, no membership, and the program's door opened for it;
+a role made through the API was refused at the first question, since the membership carries
+`UPDATE` on the log. Decisions 95 and 98 in `my_notes` record both halves.
 
 **What §36 shows and this step leaves.** The example in §36 also sets `dsor.principal_id` per
 transaction. No rule names it, nothing here reads it, and a setting nobody reads is a line no test
@@ -507,12 +521,20 @@ statement issued while another company's transaction is open cannot slip inside 
 | --- | --- | --- |
 | PGlite, in-process | 0.103 ms | 0.275 ms |
 | PostgreSQL 17, local socket | 0.083 ms | 0.126 ms |
+| Neon, Singapore, from Pakistan | 117 ms | 484 ms |
+
+The last row is the honest one: over a network, a statement with a company is four round trips —
+`BEGIN`, the company, the statement, `COMMIT` — and costs four times a plain one. That is the
+price of "before each statement" (decision 94), and step 36's one transaction per request is where
+three of the four go away.
 
 And the test runner itself: `singleFork` is not an option Vitest 4 has, so the files had been
 running in parallel since step 09, which is what every "different failure each run" was. Measured
 on this suite before the fix: 2 failed of 401 in 29 seconds, two demo tests timing out on PGlite's
-lock; after it, every test passes in about 95 seconds, three times. Neon itself was not measured;
-everything ran on a local PostgreSQL 17 and on PGlite.
+lock; after it, every test passes in about 95 seconds, three times. And Neon itself, on
+2026-10-08: the five migrations applied, the sixteen database-tier tests passed, and `pnpm start`
+through the real `dsor_runtime` login printed the same two lines as on disk, with both chains
+verifying.
 
 Rules nearby this step does **not** claim:
 

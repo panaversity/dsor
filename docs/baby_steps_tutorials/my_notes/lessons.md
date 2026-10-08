@@ -697,3 +697,11 @@ Edit one word of a comment in an applied migration and the runner refuses: "has 
 was applied". That is the guard working. The cost is that a comment correction is a new migration
 to the database, so a step whose migration is still unreleased recreates its throwaway database
 rather than carrying a second file for a comment. Step 11, twice.
+
+## 41 · Measure the platform, not the standard it runs
+
+PostgreSQL's rule is that a role attribute never passes through membership, and PGlite proved it.
+Neon runs PostgreSQL and grants `BYPASSRLS` to every Console-made role directly, so the rule was
+true and the conclusion drawn from it — "the Console user is one SET ROLE away" — was false there,
+and Neon forbids that `SET ROLE` besides. A sentence about what a platform does is measured on the
+platform. Step 11, after a Neon project finally existed.

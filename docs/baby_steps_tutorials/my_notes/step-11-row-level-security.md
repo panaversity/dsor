@@ -4,9 +4,9 @@ Folder: [`my_11_row_level_security`](../my_11_row_level_security/README.md) · 4
 the database tier
 Spec: [§36](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) · `DSOR-TEN-01b`,
 `DSOR-RP-01a`, `DSOR-RP-01b`, `DSOR-RP-01c`, `DSOR-RP-01d`
-Both tiers have run: 412 under `pnpm check`, and 16 under `pnpm test:db` against a real server —
-the step's own database, `dsor_step11`, five migrations applied. Decisions [94 to 97](decisions.md).
-Lessons [36 to 40](lessons.md).
+Both tiers have run: 412 under `pnpm check`, and 16 under `pnpm test:db` against a local
+PostgreSQL 17 and against Neon, each a database of the step's own, five migrations applied.
+Decisions [94 to 98](decisions.md). Lessons [36 to 41](lessons.md).
 
 ## What the step is
 
@@ -70,16 +70,17 @@ the runs agreeing ([decision 97](decisions.md)).
 
 ## Limits, stated
 
-- Two of the three owners are superusers — PGlite's `postgres`, the local server's `dsor_owner` —
-  and skip the policies whatever the table says. Neon's `neondb_owner` is not one: a member of
-  `neon_superuser`, filtered by `FORCE` until it runs `SET ROLE`. `FORCE` is proven with an owner
-  that is not a superuser.
+- All three owners skip the policies whatever the table says: PGlite's `postgres` and the local
+  server's `dsor_owner` are superusers, and Neon's `neondb_owner` holds `BYPASSRLS` directly
+  (measured on Neon; [decision 98](decisions.md)). `FORCE` is proven with an owner the test makes.
 - The lock is for the statement that said no company, not one that said the wrong company; who
   may say which company is step 10's job in the pipeline. Said in the README after an evaluation
   noticed it was not.
 - The start-up check is an enumeration of the shapes three reviews measured, not a proof. Step 16's
   map of DSoR's own store is what a check can be held against.
-- Neon itself was not measured. Every run was a local PostgreSQL 17 or PGlite.
+- Over a network a statement with a company is four round trips: 117 ms plain, 484 ms through
+  the adapter, measured against Neon in Singapore. Step 36's one transaction per request is where
+  three of them go.
 - The superuser half of `DSOR-RP-01a` is step 09's privilege check; the new check does not look at
   `rolsuper`, and says so.
 - §36 also sets `dsor.principal_id`; nothing reads it, so it is not set.
@@ -102,3 +103,9 @@ the folder C and found three more ways round the helper question, the demo pinne
 pool adapter invisible to the unit suite, and `singleFork` ignored by Vitest 4 since step 09; two
 faults injected for real, a `COMMIT` that dies and PGlite's one connection; and the cost measured.
 [Decision 97](decisions.md) has all of it. 400 became 412, and the database tier 13 became 16.
+
+Then Neon itself, once the learner had logged the CLI in: a project, a database, `dsor_runtime`
+made with SQL, the sixteen database-tier tests twice, the demo through the real login — and three
+corrections to what the folder said about Neon's owner, which holds `BYPASSRLS` directly and is
+not one `SET ROLE` away from anything, since Neon forbids that `SET ROLE`
+([decision 98](decisions.md), [lesson 41](lessons.md)).

@@ -53,9 +53,11 @@ describe("an account the lock does not apply to", () => {
 
   it("DSOR-RP-01a: membership of a role that bypasses the lock is refused — Neon's neon_superuser, by name", async () => {
     // The third trap on the map. On Neon, a user made in the Console is a member of
-    // `neon_superuser`, which holds BYPASSRLS, so the user skips every policy while holding no
-    // right of its own that a privilege check would see. The role is created here by that name so
-    // that the refusal names it back.
+    // `neon_superuser`, which holds BYPASSRLS. Measured on Neon 2026-10-08: such a user holds
+    // BYPASSRLS itself as well, which the question above refuses first, and the membership also
+    // carries UPDATE on the log, which step 09's question refuses before either. This test is the
+    // membership alone, on PostgreSQL's own rules, so that the question has a case that only it
+    // answers. The role is created here by that name so that the refusal names it back.
     await asTheOwner(async () => {
       await db.exec("CREATE ROLE neon_superuser BYPASSRLS");
       await db.exec("GRANT SELECT ON public.invoices TO neon_superuser");
