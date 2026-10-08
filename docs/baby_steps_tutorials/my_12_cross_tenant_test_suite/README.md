@@ -273,9 +273,10 @@ Change `invoice.get`'s example to `{ "status": "issued" }`.
  Tests  4 failed | 434 passed | 1 skipped (439)
 ```
 
-Two tests by name: the example test that wants an address in `org_456`, and the suite's own, which
-says there is nothing to move. The first version of the suite asked such an example to be both
-refused and allowed.
+Two tests by name — the example test that wants an address in `org_456`, and the suite's own, which
+says there is nothing to move — and two of the demo's pins, since the demo then prints an `ALLOWED`
+line for that operation. The first version of the suite asked such an example to be both refused
+and allowed.
 
 ### Break 12 · the seed row already issued
 
