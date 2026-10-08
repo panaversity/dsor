@@ -8,6 +8,7 @@
 // Rule DSOR-IDN-01: DSoR MUST normalize every caller into a principal with a type and
 // tenant memberships before any other processing.
 
+import type { Classification } from "./classification.ts";
 import { isKnownTenant } from "./tenant.ts";
 
 /**
@@ -49,6 +50,13 @@ export interface Principal {
    * One role each, which is enough for this story. A real system gives people several.
    */
   readonly role: string;
+  /**
+   * NEW IN STEP 14: how far up this principal may read. An agent's answers cross the model
+   * boundary, so every field above its clearance is left out before the answer leaves. The two
+   * people carry none: a human is not filtered (decision 105), the role decides what a human may
+   * do. An agent with none reads public fields only — see `clearanceOf`.
+   */
+  readonly clearance?: Classification;
 }
 
 // STEP 10: the companies come last, one or more. A membership of a company this program
@@ -87,7 +95,12 @@ const person = (id: string, type: PrincipalType, role: string, ...tenants: strin
 const people: readonly Principal[] = Object.freeze([
   person("user_123", "human", "ap_supervisor", "org_456"),
   person("cfo_100", "human", "approver", "org_456"),
-  person("accounts-payable-fte", "agent", "ap_worker", "org_456", "org_789"),
+  // NEW IN STEP 14: cleared for `internal`. The amount of an invoice is confidential, so the agent
+  // sees the invoice and not the amount, which is the map's "done when".
+  Object.freeze({
+    ...person("accounts-payable-fte", "agent", "ap_worker", "org_456", "org_789"),
+    clearance: "internal" as const,
+  }),
 ]);
 
 /** Finds one principal by id, or `undefined` when nobody has that name. */
