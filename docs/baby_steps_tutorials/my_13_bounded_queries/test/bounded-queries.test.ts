@@ -206,10 +206,48 @@ describe("the second layer: the door", () => {
   });
 
   it("a full page of real invoices is well inside both maxima, so the door is not refusing the honest list", async () => {
-    const page = await pageFor(SUPERVISOR, { limit: MAX_PAGE_SIZE });
+    const answer = await callOperation(SUPERVISOR, "invoice.list", { limit: MAX_PAGE_SIZE });
 
-    expect(page.invoices).toHaveLength(MAX_PAGE_SIZE);
-    expect(bytesOf(page)).toBeLessThan(MAX_RESULT_BYTES / 2);
+    expect(answer.kind).toBe("page");
+
+    if (answer.kind === "page") {
+      expect(answer.page.invoices).toHaveLength(MAX_PAGE_SIZE);
+      // The whole answer, which is what the door measures — not the page inside it.
+      expect(bytesOf(answer)).toBeLessThan(MAX_RESULT_BYTES / 2);
+    }
+  });
+
+  it("DSOR-QRY-01: one real row wider than the result size makes invoice.list and invoice.get refuse, not shrink", async () => {
+    // The byte ceiling refuses; it does not trim. `vendor` is unbounded text (migration 003), so a
+    // row can be wider than an answer may be, and then its page and its own invoice.get are
+    // unreadable until the column is bounded. Pinned here so the README's sentence stays true.
+    const wide = "dsor://org_456/invoice/INV-00001";
+
+    await asTheOwner(() =>
+      db.query(
+        `INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status)
+         VALUES ('org_456', 'INV-00001', repeat('V', $1), 1, 'USD', 'issued')`,
+        [MAX_RESULT_BYTES + 1],
+      ),
+    );
+
+    try {
+      for (const [operation, args] of [
+        ["invoice.list", { limit: 1 }],
+        ["invoice.get", { invoice: wide }],
+      ] as const) {
+        const answer = await callOperation(SUPERVISOR, operation, args);
+
+        expect(answer.kind, operation).toBe("error");
+
+        if (answer.kind === "error") {
+          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.message).toMatch(/bytes/);
+        }
+      }
+    } finally {
+      await asTheOwner(() => db.query("DELETE FROM public.invoices WHERE id = 'INV-00001'"));
+    }
   });
 });
 
@@ -229,10 +267,15 @@ describe("the next page", () => {
       }
     }
 
-    // 300 seeded here, and the story's INV-1008 and INV-1009: every one of them, once, in order.
+    // 300 seeded here, and the story's INV-1008 and INV-1009: every one of them, once, in the
+    // database's own order. Its order and not JavaScript's `sort()`, because the two agree on
+    // this PGlite and need not on a server whose collation ignores punctuation (a review's point).
+    const { rows } = await asTheOwner(() =>
+      db.query<{ id: string }>("SELECT id FROM public.invoices WHERE tenant_id = 'org_456' ORDER BY id"),
+    );
+
     expect(seen).toHaveLength(302);
-    expect(seen).toStrictEqual([...seen].sort());
-    expect(new Set(seen).size).toBe(302);
+    expect(seen).toStrictEqual(rows.map((r) => r.id));
   });
 
   it("after an invoice that does not exist still pages from that point, in order", async () => {
