@@ -92,7 +92,9 @@ function filterRow(principal: Principal, row: object): Filtered {
 
 const redactionsFor = (fields: Iterable<string>): readonly Redaction[] =>
   Object.freeze(
-    [...fields].map((field) => Object.freeze({ field, reason: "clearance", treatment: "omitted" } as const)),
+    [...fields].map((field) =>
+      Object.freeze({ field, reason: "clearance", treatment: "omitted" } as const),
+    ),
   );
 
 /**

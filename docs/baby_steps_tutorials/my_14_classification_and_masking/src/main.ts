@@ -53,7 +53,8 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   const i = answer.invoice;
 
-  const amount = i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`;
+  const amount =
+    i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`;
 
   // NEW IN STEP 14: the answer's own label where "(no envelope)" used to be — a query's success
   // still has no envelope, and now it says how sensitive what it holds is.
@@ -264,8 +265,9 @@ for (const company of ["org_456", "org_789"]) {
   for (const record of await theLog(company)) {
     // NEW IN STEP 14: a read that handed out confidential data is a record of its own, after the
     // decision that allowed it: `read` where a decision says ALLOW or DENY, and how many rows left.
-    const rows = (record.extensions?.["com.panaversity.tutorial"] as { row_count?: number } | undefined)
-      ?.row_count;
+    const rows = (
+      record.extensions?.["com.panaversity.tutorial"] as { row_count?: number } | undefined
+    )?.row_count;
     const isARead = record.kind === "classified_read";
 
     console.log(
@@ -274,7 +276,10 @@ for (const company of ["org_456", "org_789"]) {
         (record.authorization ?? (isARead ? "read" : "-")).padEnd(5),
         (record.operation ?? "(none resolved)").padEnd(19),
         record.identity.subject.padEnd(21),
-        (isARead ? `${record.result}, ${rows} ${rows === 1 ? "row" : "rows"}` : record.result).padEnd(22),
+        (isARead
+          ? `${record.result}, ${rows} ${rows === 1 ? "row" : "rows"}`
+          : record.result
+        ).padEnd(22),
         `${record.record_hash.slice(0, 14)}...`,
       ].join("  "),
     );

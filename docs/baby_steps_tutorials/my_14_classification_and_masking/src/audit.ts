@@ -852,7 +852,14 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
 
       // The optional columns, left out rather than set to null — the schema says a field is either
       // right or absent, and `operation: null` is neither.
-      for (const field of ["operation", "payload_hash", "authorization", "reason", "resources", "extensions"]) {
+      for (const field of [
+        "operation",
+        "payload_hash",
+        "authorization",
+        "reason",
+        "resources",
+        "extensions",
+      ]) {
         if (row[field] !== null && row[field] !== undefined) {
           record[field] = row[field];
         }

@@ -108,7 +108,13 @@ function honest(overrides: Partial<Deps> = {}): Deps {
       logs[OURS]!.push(record(requestId, "ALLOW", "ALLOWED", `${id}@1`));
 
       // STEP 14: what leaves the door carries its label and its list, so a fake does too.
-      return { kind: "data", askedBy: "user_123", invoice: OUR_INVOICE, classification: "confidential", redactions: [] };
+      return {
+        kind: "data",
+        askedBy: "user_123",
+        invoice: OUR_INVOICE,
+        classification: "confidential",
+        redactions: [],
+      };
     },
     ...overrides,
   };

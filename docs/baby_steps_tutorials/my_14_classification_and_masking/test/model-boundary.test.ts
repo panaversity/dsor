@@ -44,7 +44,13 @@ describe("one invoice", () => {
 
     if (theirs.kind === "data" && ours.kind === "data") {
       expect("amount" in theirs.invoice).toBe(false);
-      expect(Object.keys(theirs.invoice).sort()).toStrictEqual(["id", "status", "tenantId", "uri", "vendor"]);
+      expect(Object.keys(theirs.invoice).sort()).toStrictEqual([
+        "id",
+        "status",
+        "tenantId",
+        "uri",
+        "vendor",
+      ]);
       expect(ours.invoice.amount).toStrictEqual({ value: "31400.00", currency: "USD" });
     }
   });
@@ -141,7 +147,9 @@ describe("the field nobody labelled", () => {
         { field: "bank_account", reason: "clearance", treatment: "omitted" },
       ]);
       expect(theirs.classification).toBe("internal");
-      expect((ours.invoice as Record<string, unknown>)["bank_account"]).toBe("PK36 SCBL 0000 0011 2345 6702");
+      expect((ours.invoice as Record<string, unknown>)["bank_account"]).toBe(
+        "PK36 SCBL 0000 0011 2345 6702",
+      );
       expect(ours.classification).toBe("confidential");
     } else {
       throw new Error(`expected data, got ${theirs.kind} and ${ours.kind}`);

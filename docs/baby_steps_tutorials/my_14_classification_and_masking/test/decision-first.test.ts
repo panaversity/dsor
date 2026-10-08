@@ -61,7 +61,10 @@ describe("the decision is written down first", () => {
     // STEP 14: two records now — the decision, then the read it allowed, because the supervisor's
     // answer left as confidential (DSOR-CLS-05). The decision is still first, and it is the one
     // this test is about.
-    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual([
+      "decision",
+      "classified_read",
+    ]);
 
     const record = (await theLog("org_456"))[0]!;
 
@@ -386,7 +389,10 @@ describe("the decision is written down first", () => {
     // STEP 14: two records now — the decision, then the read it allowed, because the supervisor's
     // answer left as confidential (DSOR-CLS-05). The decision is still first, and it is the one
     // this test is about.
-    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual([
+      "decision",
+      "classified_read",
+    ]);
 
     const record = (await theLog("org_456"))[0]!;
 

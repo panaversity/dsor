@@ -82,7 +82,10 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
     expect(verifyChain(log, await theHead("org_456"))).toBe(true);
 
     // As the owner, straight from the table: the columns hold what the record says.
-    const { rows } = await owner.query<{ resources: string[]; extensions: Record<string, unknown> }>(
+    const { rows } = await owner.query<{
+      resources: string[];
+      extensions: Record<string, unknown>;
+    }>(
       "SELECT resources, extensions FROM public.audit WHERE tenant = 'org_456' AND kind = 'classified_read'",
     );
 

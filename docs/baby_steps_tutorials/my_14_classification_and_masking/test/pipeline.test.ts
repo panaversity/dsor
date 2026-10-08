@@ -320,7 +320,10 @@ describe("the pipeline", () => {
 
     expect(answer.kind).toBe("data");
     // STEP 14: the decision and then the read; the receipt names the decision, which is first.
-    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual([
+      "decision",
+      "classified_read",
+    ]);
 
     // Not merely present — the id of the record that exists.
     expect(receipt).toBe((await theLog("org_456"))[0]!.record_id);

@@ -294,12 +294,24 @@ describe("the program a learner runs", () => {
     const out = demo().report;
 
     expect(out).toContain(
-      [" 1", "read ", "invoice.get@1".padEnd(19), "user_123".padEnd(21), "READ, 1 row".padEnd(22)].join("  "),
+      [
+        " 1",
+        "read ",
+        "invoice.get@1".padEnd(19),
+        "user_123".padEnd(21),
+        "READ, 1 row".padEnd(22),
+      ].join("  "),
     );
     // And the agent's read, right after it, left nothing of the kind: record 2 is its decision
     // and record 3 is the next refusal.
     expect(out).toContain(
-      [" 2", "ALLOW", "invoice.get@1".padEnd(19), "accounts-payable-fte".padEnd(21), "ALLOWED".padEnd(22)].join("  "),
+      [
+        " 2",
+        "ALLOW",
+        "invoice.get@1".padEnd(19),
+        "accounts-payable-fte".padEnd(21),
+        "ALLOWED".padEnd(22),
+      ].join("  "),
     );
   });
 

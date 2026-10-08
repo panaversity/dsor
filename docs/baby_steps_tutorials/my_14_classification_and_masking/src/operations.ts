@@ -930,7 +930,11 @@ async function recordTheRead(
   }
 
   const rows =
-    fetched.kind === "data" ? [fetched.invoice] : fetched.kind === "page" ? fetched.page.invoices : [];
+    fetched.kind === "data"
+      ? [fetched.invoice]
+      : fetched.kind === "page"
+        ? fetched.page.invoices
+        : [];
 
   try {
     await audit({
