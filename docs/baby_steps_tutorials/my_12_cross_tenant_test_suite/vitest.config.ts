@@ -31,7 +31,7 @@ const config: ViteUserConfig = defineConfig({
     // slower than parallel and it always gives the same answer, and for a step a learner runs once
     // that is the better trade. A flaky suite teaches nothing except not to trust the suite.
     //
-    // NEW IN STEP 11, found live 2026-10-08: Vitest 4 does not implement `singleFork`. The word
+    // STEP 11, found live 2026-10-08: Vitest 4 does not implement `singleFork`. The word
     // appears nowhere in its code, the option was ignored, and the files had been running in
     // parallel since step 09 — which is what every "different failure each run" and every
     // shrinking total under a sabotage was. Measured on this suite: as it was, 2 failed | 399

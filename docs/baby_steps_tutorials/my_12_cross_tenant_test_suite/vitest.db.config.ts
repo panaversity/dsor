@@ -15,7 +15,7 @@ const config: ViteUserConfig = defineConfig({
     // correctly, which is worse than failing: it looks like the tests ran.
     setupFiles: ["test/support/env.ts"],
     pool: "forks",
-    // NEW IN STEP 11, found live 2026-10-08: `singleFork` is not an option Vitest 4 has, so it was
+    // STEP 11, found live 2026-10-08: `singleFork` is not an option Vitest 4 has, so it was
     // never the files one after another, whatever this comment and decision 73 believed. It held in
     // step 09 and step 10 by luck — one file wrote the audit table, so nothing could collide. The
     // day a second file wrote it (commit-dies.db.test.ts), a different test failed on every run:

@@ -6,6 +6,7 @@ import { callOperation } from "./operations.ts";
 import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
 import type { Login } from "./login.ts";
 import { openTheDatabase } from "./database.ts";
+import { movedTo } from "./examples.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -190,9 +191,7 @@ for (const [id, contract] of loadRegistry(contractsFromDisk())) {
   const theirs =
     example === undefined
       ? undefined
-      : (JSON.parse(
-          JSON.stringify(example).replaceAll("dsor://org_456/", "dsor://org_789/"),
-        ) as Record<string, unknown>);
+      : (movedTo(example, "org_456", "org_789") as Record<string, unknown>);
 
   console.log(
     `${id.padEnd(14)} ${theirs === undefined ? "(no example request in its contract)" : show(await callOperation(SUPERVISOR, id, theirs))}`,

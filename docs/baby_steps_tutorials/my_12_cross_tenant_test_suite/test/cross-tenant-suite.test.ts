@@ -26,7 +26,7 @@ crossTenantSuite({
   },
   rowsOf: (tenant) =>
     asTheOwner(async () => {
-      const { rows } = await db.query<{ id: string }>(
+      const { rows } = await db.query<{ id: string; status: string }>(
         `SELECT tenant_id, id, vendor, amount_value::text AS amount, amount_currency, status
          FROM public.invoices WHERE tenant_id = $1 ORDER BY id`,
         [tenant],

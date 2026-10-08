@@ -115,15 +115,17 @@ describe("the program a learner runs", () => {
     const out = demo().report;
     const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
 
-    // STEP 10: two logs, printed one after the other — org_456's fifteen records and
-    // org_789's two.
-    expect(rows).toHaveLength(19); // NEW IN STEP 12: two more refusals, one per operation
+    // STEP 10: two logs, printed one after the other — org_456's seventeen records and
+    // org_789's two. NEW IN STEP 12: seventeen, not fifteen, because the generated section refuses
+    // one request per operation, and a refusal is a decision.
+    expect(rows).toHaveLength(19);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
     // outside one company, and the agent's unsaid request counted once in each employer's log.
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
-    // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now.
+    // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
+    // since step 12: one refusal per operation from the generated section.
     expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(12);
     expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(7);
 

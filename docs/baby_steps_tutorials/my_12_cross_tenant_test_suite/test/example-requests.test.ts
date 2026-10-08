@@ -10,26 +10,15 @@
 // operation with a foreign-tenant URI. This file is the half that makes "every operation" possible.
 
 import { describe, expect, it } from "vitest";
-import { contractsFromDisk, exampleRequestOf, loadRegistry } from "../src/registry.ts";
+import { addressesIn } from "../src/examples.ts";
+import {
+  contractsFromDisk,
+  exampleRequestOf,
+  loadRegistry,
+  TUTORIAL_EXTENSION,
+} from "../src/registry.ts";
 
 const registry = loadRegistry(contractsFromDisk());
-
-/** Every `dsor://` address anywhere inside a value, at any depth. */
-function addressesIn(value: unknown): string[] {
-  if (typeof value === "string") {
-    return value.startsWith("dsor://") ? [value] : [];
-  }
-
-  if (Array.isArray(value)) {
-    return value.flatMap(addressesIn);
-  }
-
-  if (value !== null && typeof value === "object") {
-    return Object.values(value).flatMap(addressesIn);
-  }
-
-  return [];
-}
 
 describe("the example request every contract carries", () => {
   it("DSOR-TEN-02b: every operation in the registry has one, so the suite can call it", () => {
@@ -57,6 +46,25 @@ describe("the example request every contract carries", () => {
 
   it("an example is read from the one key the step owns, and from nowhere else", () => {
     const base = registry.get("invoice.get")!;
+
+    // The positive case first, so the three refusals below are not testing nothing.
+    expect(
+      exampleRequestOf({
+        ...base,
+        extensions: { [TUTORIAL_EXTENSION]: { example_request: { invoice: "x" } } },
+      }),
+    ).toStrictEqual({ invoice: "x" });
+    // The right field under no key at all is not the step's key.
+    expect(
+      exampleRequestOf({ ...base, extensions: { example_request: { invoice: "x" } } }),
+    ).toBeUndefined();
+    // Neither an array nor a null where the step's object should be; both found by a mutation pass.
+    expect(
+      exampleRequestOf({ ...base, extensions: { [TUTORIAL_EXTENSION]: { example_request: [] } } }),
+    ).toBeUndefined();
+    expect(
+      exampleRequestOf({ ...base, extensions: { [TUTORIAL_EXTENSION]: null } }),
+    ).toBeUndefined();
 
     expect(exampleRequestOf({ ...base, extensions: undefined })).toBeUndefined();
     expect(

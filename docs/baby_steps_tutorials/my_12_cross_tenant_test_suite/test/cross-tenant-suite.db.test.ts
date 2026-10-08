@@ -29,8 +29,25 @@ beforeAll(async () => {
   useDatabase(overPool(application));
 });
 
+/** The rows as the story starts, as the owner: the application may neither add nor remove rows. */
+async function putTheStoryBack(): Promise<void> {
+  await owner.query("DELETE FROM public.invoices");
+
+  for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
+    if (migration.name === "004_running_example.sql") {
+      await owner.query(migration.sql);
+    }
+  }
+
+  await owner.query("DELETE FROM public.audit");
+}
+
 afterAll(async () => {
-  await owner?.query("DELETE FROM audit");
+  // The last generated test issues org_456's draft; leave the database as the story starts.
+  if (haveAServer) {
+    await putTheStoryBack();
+  }
+
   await application?.end();
   await owner?.end();
 });
@@ -40,22 +57,9 @@ afterAll(async () => {
 // "skipped". The hooks below touch `owner` only inside tests, which never run when skipped.
 describe.skipIf(!haveAServer)("against a real server", () => {
   crossTenantSuite({
-    reset: async () => {
-      // As the owner: the application may neither add nor remove rows, and may not DELETE the log.
-      await owner.query("DELETE FROM public.invoices");
-
-      for (const migration of migrationsIn(
-        fileURLToPath(new URL("../migrations", import.meta.url)),
-      )) {
-        if (migration.name === "004_running_example.sql") {
-          await owner.query(migration.sql);
-        }
-      }
-
-      await owner.query("DELETE FROM public.audit");
-    },
+    reset: putTheStoryBack,
     rowsOf: async (tenant) => {
-      const { rows } = await owner.query<{ id: string }>(
+      const { rows } = await owner.query<{ id: string; status: string }>(
         `SELECT tenant_id, id, vendor, amount_value::text AS amount, amount_currency, status
          FROM public.invoices WHERE tenant_id = $1 ORDER BY id`,
         [tenant],
