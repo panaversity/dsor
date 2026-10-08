@@ -13,7 +13,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Invoice } from "../src/invoice.ts";
+import { listInvoices, type Invoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
 import { bytesOf, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESULT_BYTES } from "../src/queries.ts";
 import { overPGlite } from "../src/database.ts";
@@ -181,6 +181,26 @@ describe("the second layer: the door", () => {
     }
   });
 
+  it("DSOR-QRY-01: the result size counts bytes, not characters — a page of multibyte vendors is refused", async () => {
+    // "€" is one character and three bytes. Three vendors of twenty thousand of them are sixty
+    // thousand characters, under the ceiling, and a hundred and eighty thousand bytes, over it. A
+    // mutation that counted characters handed the page out, and real vendor names are not ASCII.
+    const invoices = Array.from({ length: 3 }, (_u, i) => anInvoice(i, "€".repeat(20_000)));
+
+    expect(JSON.stringify(invoices).length).toBeLessThan(MAX_RESULT_BYTES);
+    expect(bytesOf(invoices)).toBeGreaterThan(MAX_RESULT_BYTES);
+
+    const door = makeDoor(PIPELINE, { "invoice.list": careless(invoices) });
+    const answer = await door(SUPERVISOR, "invoice.list", {});
+
+    expect(answer.kind).toBe("error");
+
+    if (answer.kind === "error") {
+      expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.message).toMatch(/bytes/);
+    }
+  });
+
   it("DSOR-QRY-01: an oversize error answer is refused too — every kind of answer is measured", async () => {
     // A review found the measuring skipped errors, so a handler whose refusal carried the whole
     // table in its message walked out of the door at ten megabytes.
@@ -319,5 +339,16 @@ describe("whose rows", () => {
     expect(new Set(theirs.invoices.map((i) => i.tenantId))).toStrictEqual(new Set(["org_789"]));
     expect(theirs.invoices).toHaveLength(33); // 30 seeded, INV-1008, INV-1009, INV-2001: one page
     expect(theirs.next).toBeUndefined();
+  });
+
+  it("DSOR-IDN-03b: the list's own WHERE names the company — asked as the owner, with no row-level security, it is still one company", async () => {
+    // Step 11's two layers: the SQL names its company, and the database refuses the other's rows.
+    // Through the door the second layer hides the first — a review removed the WHERE and every
+    // test stayed green, because RLS still filtered. The owner bypasses RLS on PGlite (migration
+    // 005 says so), so asked as the owner, the SQL alone is what answers.
+    const page = await asTheOwner(() => listInvoices("org_456", undefined, MAX_PAGE_SIZE));
+
+    expect(page.invoices).toHaveLength(MAX_PAGE_SIZE);
+    expect(new Set(page.invoices.map((i) => i.tenantId))).toStrictEqual(new Set(["org_456"]));
   });
 });
