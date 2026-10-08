@@ -2518,3 +2518,26 @@ questions, one at a time, in plain words; the learner took both recommendations.
 
 The step's databases: `dsor_step12` on Neon, which `.env` names, and on the local server, which
 `.env.local-server` names. The database tier ran on Neon on the untouched copy: 16 passed.
+
+## 100 · What step 12's build found: a question that passed for the wrong reason (2026-10-08)
+
+The first careless-command sabotage — an operation that issues whatever draft a nested address names,
+in the address's company — failed three of the suite's questions and passed "the other company's
+rows are untouched". Not because the command was careful: org_789 had no `INV-1009`, the number the
+example names, so there was nothing to issue. A passing test with nothing behind it is the thing
+this tutorial keeps finding (lessons 18 and 34), and this one was in the suite that exists to find
+it.
+
+Two changes, in that order. The suite asks, before the untouched-rows question, that the other
+company holds every invoice number the example names, with the fix in the failure message ("add it
+to 004_running_example.sql"). And the seed gives org_789 an `INV-1009`, as a draft, with a different
+amount. The same sabotage then failed four questions, the untouched-rows one among them: org_789's
+draft had been issued. The cost: step 10's "not found in yours" test had no exclusive number left,
+so org_789 also gained `INV-2001`, which org_456 lacks, and that test asks for it. The databases
+were recreated twice for the changed migration.
+
+Two smaller things. The demo's two lines were pinned from the start, by a test that reads the
+operation ids off them and compares with the registry, because step 11's were not and an evaluation
+found it. And the suite's generator lives in `test/support/` as a function rather than a test file,
+so the same six questions run on PGlite and on the real server without a second copy that could
+drift.
