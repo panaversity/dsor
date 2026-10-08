@@ -682,3 +682,18 @@ says yes. A check that asks whether a policy exists is satisfied by the one that
 the second one that opens. Ask for the policy you wrote — one, for every command and every role,
 with the expression PostgreSQL prints back — and nothing beside it. Step 11, after the review; the
 same shape as lesson 33's pin that matched a shape.
+
+## 39 · A config file the typechecker never sees can carry a dead option for three steps
+
+`singleFork: true` sat in every Vitest config from step 09 on, with a comment explaining the
+determinism it bought. Vitest 4 has no such option, and nothing said so, because `tsconfig.json`
+included `src` and `test` and the config was a plain object to everyone. Include the config files;
+the first `tsc` run refused the option. The symptom had been visible for days as "a different
+failure each run" and was taken for load.
+
+## 40 · A migration's checksum is the file, comments included
+
+Edit one word of a comment in an applied migration and the runner refuses: "has changed since it
+was applied". That is the guard working. The cost is that a comment correction is a new migration
+to the database, so a step whose migration is still unreleased recreates its throwaway database
+rather than carrying a second file for a comment. Step 11, twice.

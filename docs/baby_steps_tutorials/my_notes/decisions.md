@@ -2385,3 +2385,66 @@ its test fail.
 The reviewer also measured what the first build claimed and could not have proved: a two-deep
 `INHERIT FALSE` chain to a `BYPASSRLS` role is refused, because `pg_has_role(…, 'MEMBER')` is
 transitive; `SET row_security = off` as the application is an error, not a bypass. 394 became 400.
+
+## 97 · Step 11, tested again: what an independent evaluation and four measurements changed (2026-10-08)
+
+The learner asked whether step 11 had been tested thoroughly, and the honest answer listed five
+things that had not: Neon itself, a second reviewer, two faults reasoned about rather than injected,
+the cost of a transaction per statement, and an evaluation of the kind steps 01 to 10 had. Four of
+the five were done; Neon needs a project the learner has to provide.
+
+**The evaluation** — four reviewers, a mutation pass on a copy, a critic, two verifiers; two agents
+were blocked by the model's cyber safeguards for the word "attacker", and their ground was covered
+by the others — graded the folder C, and every grade was earned:
+
+1. **Three more ways past the helper question.** The first fix refused a `SECURITY DEFINER` helper
+   the application may `EXECUTE`. An aggregate whose transition function is the helper, `EXECUTE`
+   held through an `INHERIT FALSE` membership, and a trigger on the invoices that fires the helper
+   under the application's own `UPDATE` all reached it without `EXECUTE` — the trigger one both
+   leaked every company into a column and could rewrite the log, while the check said the lock was
+   on. The helper is refused for existing now, whoever may call it, and the trigger question asks
+   about both tenant tables. The cost: a harmless `SECURITY DEFINER` helper owned by a role that
+   holds nothing still passes (step 09's test), but one owned by a superuser is refused even if
+   nobody may call it.
+2. **The demo's two lines were pinned by nothing.** Inverting them passed `main.test.ts` 9 of 9.
+   One test pins them now. The header of that file says this is the failure it exists to stop, and
+   step 10 pinned its demo lines; step 11 had not.
+3. **The pool adapter was invisible to `pnpm test`.** Two mutations in `overPool` — skip the
+   `ROLLBACK`, say the company per session — survived the whole unit suite, because the unit tier
+   runs on PGlite and CI never runs the database tier. A stub pool now records every statement and
+   how the connection comes back.
+4. **`singleFork` is not an option Vitest 4 has.** Zero occurrences in its code; the files had been
+   running in parallel since step 09, which is what every differing failure and shrinking total
+   under a sabotage was, and what pull request #4 saw as "13 timeouts" in `my_10`. Measured: as
+   configured, 2 failed of 401 in 29 seconds; with `fileParallelism: false`, all pass in 95
+   seconds, three times; the database tier, with two files writing one table, 3 failed with a
+   different set each run, 16 passed with the line. Nobody noticed because `tsconfig.json` did not
+   include the config files; it does now, and `tsc` refused the dead option the moment it looked.
+   Steps 09 and 10 carry the same two lines; reported to the learner, not edited from a step 11
+   session.
+5. **Two step 09 test files ran the stores as the superuser**, so the company their fakes forwarded
+   was enforced nowhere. They build their database through the support now, as the application.
+6. **The folder contradicted itself about Neon's owner.** Five places said every owner is a
+   superuser; decision 95 said membership passes no `BYPASSRLS`. Neon's `neondb_owner` is a member
+   of `neon_superuser`, not a superuser, so on Neon `FORCE` is exactly what filters it. Reworded.
+7. **The lock's real limit was never said**: it stops a statement that said no company, not one
+   that said the wrong one. Said now, in plain words. And the start-up check is named for what it
+   is, an enumeration of the shapes three reviews found, with step 16 as where a map replaces it.
+8. Smaller: a whitespace-only company was accepted by the store guard; a session that already
+   carries a company would hand it to every plain statement, so the check refuses one; the
+   application's own temp table refused start-up with a confusing message, so `pg_temp` is left out;
+   a missing tenant table is refused in the step's words rather than PostgreSQL's; the pool gets a
+   connection timeout, since a store that awaited one statement inside another would hang forever
+   on a pool of one; a `security_invoker` view is filtered and the README says so; the "What
+   changed" command diffed `node_modules`; one test title claimed `RP-01d` with a company set;
+   `scripts/door.ts` gives the learner the probe behind the Break-it blocks.
+
+**The four measurements.** A connection that dies during `COMMIT` on a real server: the recovery
+finds the row by looking, a connection that then stays dead gets `OUTCOME_UNKNOWN` with the row
+still there, and the connection handed back carries nothing — the first version of that fault hit
+the tail read's `COMMIT` instead of the INSERT's, and the writer threw before its recovery, which
+was correct and measured the wrong moment. PGlite's one connection: a plain statement cannot slip
+inside another company's open transaction. The cost: PGlite 0.103 → 0.275 ms per statement, a local
+PostgreSQL 17 over a socket 0.083 → 0.126 ms. And two things found on the way: a migration's
+checksum covers its comments, so the step's database was recreated twice; and macOS purges `/tmp`,
+where step 09's README keeps the cluster, so it was rebuilt from `initdb`.

@@ -1,12 +1,12 @@
 # Step 11 · Row-level security
 
-Folder: [`my_11_row_level_security`](../my_11_row_level_security/README.md) · 400 tests, plus 13 in
+Folder: [`my_11_row_level_security`](../my_11_row_level_security/README.md) · 412 tests, plus 16 in
 the database tier
 Spec: [§36](../../../specs/dsor/05-bindings.md#36-postgresql-reference-connector) · `DSOR-TEN-01b`,
 `DSOR-RP-01a`, `DSOR-RP-01b`, `DSOR-RP-01c`, `DSOR-RP-01d`
-Both tiers have run: 400 under `pnpm check`, and 13 under `pnpm test:db` against a real server —
-the step's own database, `dsor_step11`, five migrations applied. Decisions [94 to 96](decisions.md).
-Lessons [36 to 38](lessons.md).
+Both tiers have run: 412 under `pnpm check`, and 16 under `pnpm test:db` against a real server —
+the step's own database, `dsor_step11`, five migrations applied. Decisions [94 to 97](decisions.md).
+Lessons [36 to 40](lessons.md).
 
 ## What the step is
 
@@ -62,22 +62,31 @@ as a divergence, the map left as written.
 table with row-level security on and no policy shows nothing and accepts nothing, so every decision
 record was refused and every request with it.
 
-**One count moved between runs.** Break 8 measured 6 failures once and 3 twice; the README carries
-3, the number two clean runs agree on, and the first run is noted here as the kind of thing a
-single measurement cannot tell from a fact.
+**Counts moved between runs, and the reason was found later.** Break 8 measured 6 failures once
+and 3 twice, then 5 after the review; a baseline once failed 2 of 401. The cause was not load but
+`singleFork`, an option Vitest 4 does not have: the files ran in parallel, and PGlite's lock timed
+out under them. With `fileParallelism: false` every count on the README was measured twice with
+the runs agreeing ([decision 97](decisions.md)).
 
 ## Limits, stated
 
-- The owner is a superuser on every route here — PGlite's `postgres`, the local server's
-  `dsor_owner`, Neon's `neondb_owner` through `neon_superuser` — and skips the policies whatever
-  the table says. `FORCE` is proven with an owner that is not.
+- Two of the three owners are superusers — PGlite's `postgres`, the local server's `dsor_owner` —
+  and skip the policies whatever the table says. Neon's `neondb_owner` is not one: a member of
+  `neon_superuser`, filtered by `FORCE` until it runs `SET ROLE`. `FORCE` is proven with an owner
+  that is not a superuser.
+- The lock is for the statement that said no company, not one that said the wrong company; who
+  may say which company is step 10's job in the pipeline. Said in the README after an evaluation
+  noticed it was not.
+- The start-up check is an enumeration of the shapes three reviews measured, not a proof. Step 16's
+  map of DSoR's own store is what a check can be held against.
+- Neon itself was not measured. Every run was a local PostgreSQL 17 or PGlite.
 - The superuser half of `DSOR-RP-01a` is step 09's privilege check; the new check does not look at
   `rolsuper`, and says so.
 - §36 also sets `dsor.principal_id`; nothing reads it, so it is not set.
 - One policy per table, for every role. A policy restricted `TO dsor_runtime` would be tighter for
   a future second application account, and is a step of its own.
 
-## The hostile review
+## The hostile review, and the evaluation after it
 
 One reviewer with PGlite probes, after the README was written. Three windows past the lock that
 the first start-up check could not see — a second wide-open policy, a `SECURITY DEFINER` helper
@@ -86,3 +95,10 @@ while the check said the lock was on; and the migration's comment claiming the a
 the chain, which it did not. All four are closed with a test each, and the check's questions are
 now seven. [Decision 96](decisions.md) has the list, including the one finding left as it was and
 why. 394 became 400.
+
+Then, asked whether the step had been tested thoroughly, the honest list of what had not been was
+worked through: an independent evaluation (four reviewers, a mutation pass, a critic) that graded
+the folder C and found three more ways round the helper question, the demo pinned by nothing, the
+pool adapter invisible to the unit suite, and `singleFork` ignored by Vitest 4 since step 09; two
+faults injected for real, a `COMMIT` that dies and PGlite's one connection; and the cost measured.
+[Decision 97](decisions.md) has all of it. 400 became 412, and the database tier 13 became 16.
