@@ -2493,3 +2493,28 @@ transaction per request is measured against.
 Also recorded: the `.env` now names Neon; the local server's lines are kept beside it in
 `.env.local-server`. The Neon database was recreated once, because a comment in migration 005
 changed after it was applied (lesson 40).
+
+## 99 · Step 12's two decisions, taken by the learner before any code (2026-10-08)
+
+The problem was shown first, measured on a copy of step 11: a third operation added the careless
+way — the address nested inside an argument, the store asked for the company the address names —
+and step 11's hand-written cross-tenant suite stayed at `12 passed` while `user_123` of org_456 was
+handed org_789's `INV-1008`, vendor and amount. The second lock did not help, because the careless
+handler *said* org_789 to the store, and the lock trusts whatever company a statement says. Two
+questions, one at a time, in plain words; the learner took both recommendations.
+
+1. **Each contract carries an example request**, under `extensions` with a reverse-DNS key, which
+   the specification's own schema allows and which step 03 already uses for anything beside the
+   spec's fields. The suite reads the registry, takes each example, rewrites every address in it to
+   another company, and calls. A contract without an example fails the suite rather than being
+   skipped — that is what "grows by itself" has to mean. The alternatives: a table in the test
+   (the knowledge away from the operation, and an edit to the test for every new operation), or
+   building requests from input schemas (no step has request schemas yet; a second idea).
+2. **The suite runs on PGlite under `pnpm check` and again in the database tier** against the
+   database `.env` names, like every other test here. The map says "a fresh Neon branch, so it can
+   create two companies and destroy them without touching your data": a branch per run needs the
+   Neon CLI, credentials and the network inside the tests, which no earlier test has, and PGlite is
+   a fresh database every run already. Recorded as a divergence; the map is left as written.
+
+The step's databases: `dsor_step12` on Neon, which `.env` names, and on the local server, which
+`.env.local-server` names. The database tier ran on Neon on the untouched copy: 16 passed.
