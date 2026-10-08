@@ -35,7 +35,11 @@ export function pageSizeFrom(given: unknown): number | { readonly refused: strin
   }
 
   if (typeof given !== "number" || !Number.isInteger(given) || given < 1) {
-    return { refused: `limit must be a whole number above zero, and got ${JSON.stringify(given)}` };
+    // A number is shown as itself: NaN and Infinity have no JSON, and a message built with
+    // JSON.stringify said "got null" for both.
+    const shown = typeof given === "number" ? String(given) : JSON.stringify(given);
+
+    return { refused: `limit must be a whole number above zero, and got ${shown}` };
   }
 
   return Math.min(given, MAX_PAGE_SIZE);

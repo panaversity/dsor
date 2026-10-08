@@ -80,13 +80,16 @@ describe("the ceiling", () => {
   });
 
   it("a limit that is not a whole number above zero is refused, not quietly fixed", async () => {
-    for (const limit of [0, -1, 2.5, "ten", null]) {
+    for (const limit of [0, -1, 2.5, "ten", null, NaN, Infinity]) {
       const answer = await callOperation(SUPERVISOR, "invoice.list", { limit });
 
-      expect(answer.kind, JSON.stringify(limit)).toBe("error");
+      expect(answer.kind, String(limit)).toBe("error");
 
       if (answer.kind === "error") {
         expect(answer.envelope.code).toBe("VALIDATION_FAILED");
+        // And the refusal names what was sent. NaN and Infinity have no JSON, so a message built
+        // with JSON.stringify said "got null" for both; a review caught it.
+        expect(answer.envelope.message).toContain(String(limit));
       }
     }
   });
