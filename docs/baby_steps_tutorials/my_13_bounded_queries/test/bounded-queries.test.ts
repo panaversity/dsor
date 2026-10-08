@@ -169,7 +169,9 @@ describe("the second layer: the door", () => {
 
   it("DSOR-QRY-01: an answer bigger than the result size is refused too, however few rows", async () => {
     const door = makeDoor(PIPELINE, {
-      "invoice.list": careless(Array.from({ length: 4 }, (_u, i) => anInvoice(i, "V".repeat(20_000)))),
+      "invoice.list": careless(
+        Array.from({ length: 4 }, (_u, i) => anInvoice(i, "V".repeat(20_000))),
+      ),
     });
     const answer = await door(SUPERVISOR, "invoice.list", {});
 
@@ -295,7 +297,9 @@ describe("the next page", () => {
     // database's own order. Its order and not JavaScript's `sort()`, because the two agree on
     // this PGlite and need not on a server whose collation ignores punctuation (a review's point).
     const { rows } = await asTheOwner(() =>
-      db.query<{ id: string }>("SELECT id FROM public.invoices WHERE tenant_id = 'org_456' ORDER BY id"),
+      db.query<{ id: string }>(
+        "SELECT id FROM public.invoices WHERE tenant_id = 'org_456' ORDER BY id",
+      ),
     );
 
     expect(seen).toHaveLength(302);
@@ -303,7 +307,10 @@ describe("the next page", () => {
   });
 
   it("after an invoice that does not exist still pages from that point, in order", async () => {
-    const page = await pageFor(SUPERVISOR, { after: "dsor://org_456/invoice/INV-02100x", limit: 2 });
+    const page = await pageFor(SUPERVISOR, {
+      after: "dsor://org_456/invoice/INV-02100x",
+      limit: 2,
+    });
 
     expect(page.invoices.map((i) => i.id)).toStrictEqual(["INV-02101", "INV-02102"]);
   });

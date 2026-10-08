@@ -21,7 +21,13 @@ import {
 // Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
 import { type Login, principalFrom, tenantClaimed } from "./login.ts";
-import { getInvoice, issueInvoice, listInvoices, type Invoice, type InvoicePage } from "./invoice.ts";
+import {
+  getInvoice,
+  issueInvoice,
+  listInvoices,
+  type Invoice,
+  type InvoicePage,
+} from "./invoice.ts";
 import { tenantFor } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { holds } from "./permissions.ts";
@@ -179,7 +185,11 @@ const handlers: Readonly<Record<string, Handler>> = {
     const limit = pageSizeFrom(Object.hasOwn(args, "limit") ? args["limit"] : undefined);
 
     if (typeof limit !== "number") {
-      return { kind: "error", askedBy, envelope: refusal("VALIDATION_FAILED", limit.refused, requestId, askedBy) };
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal("VALIDATION_FAILED", limit.refused, requestId, askedBy),
+      };
     }
 
     // The cursor is an address, so the §21.6 scan has already refused one from another company.

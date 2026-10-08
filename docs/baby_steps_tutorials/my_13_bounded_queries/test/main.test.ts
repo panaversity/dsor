@@ -249,8 +249,11 @@ describe("the program a learner runs", () => {
   // It pins the demo's lines; bounded-queries.test.ts, which seeds three hundred, proves the rule.
   it("the demo's list shows a page, its cursor, and a request for a million getting what there is", () => {
     const { raw } = demo();
-    const section = raw.split("A list, one page at a time, and the ceiling:")[1]?.split("The audit log")[0] ?? "";
-    const lines = section.split("\n").filter((line) => /^(limit 1 |after the first|limit 1,000,000)/.test(line));
+    const section =
+      raw.split("A list, one page at a time, and the ceiling:")[1]?.split("The audit log")[0] ?? "";
+    const lines = section
+      .split("\n")
+      .filter((line) => /^(limit 1 |after the first|limit 1,000,000)/.test(line));
 
     expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/1 invoices, next after dsor:\/\/org_456\/invoice\/INV-1008$/);
