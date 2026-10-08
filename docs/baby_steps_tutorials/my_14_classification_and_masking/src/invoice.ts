@@ -156,7 +156,7 @@ export interface InvoicePage {
 }
 
 /**
- * NEW IN STEP 13: a company's invoices, in id order, one page at a time.
+ * STEP 13: a company's invoices, in id order, one page at a time.
  *
  * `after` is an invoice id; the page holds the rows whose id sorts after it, so the caller walks
  * the list by sending back the last id of each page. An id that does not exist is fine — the rows

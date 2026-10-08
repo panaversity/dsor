@@ -221,7 +221,7 @@ for (const [id, contract] of loadRegistry(contractsFromDisk())) {
   );
 }
 
-// NEW IN STEP 13, and this is the step. The first query that returns many rows, and the size of
+// STEP 13, and this is the step. The first query that returns many rows, and the size of
 // the answer is the server's. One invoice a page, so the page and its cursor can be seen on two
 // invoices; then the cursor sent back; then a request for a million, which gets one page. With two
 // invoices the page holds both, so the ceiling of a hundred is not visible here — the tests seed

@@ -208,7 +208,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "data", askedBy, invoice };
   },
 
-  // NEW IN STEP 13: the first query that returns many rows, and the ceiling is the server's.
+  // STEP 13: the first query that returns many rows, and the ceiling is the server's.
   "invoice.list": async (args, contract, askedBy, tenant, _hash, requestId) => {
     const limit = pageSizeFrom(Object.hasOwn(args, "limit") ? args["limit"] : undefined);
 
@@ -881,7 +881,7 @@ export type Door = (
  * invoice, and `deny-by-default.test.ts` is where that is caught.
  */
 /**
- * NEW IN STEP 13: what, if anything, makes an answer too big to leave the door.
+ * STEP 13: what, if anything, makes an answer too big to leave the door.
  *
  * The second layer of DSOR-QRY-01. The handler's SQL is the first; this measures what came back
  * against the same two maxima, so a query written next year that forgets its LIMIT is caught

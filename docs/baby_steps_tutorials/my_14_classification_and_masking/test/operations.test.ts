@@ -64,7 +64,7 @@ describe("callOperation", () => {
     // The strongest support this step can give DSOR-OPR-01. It does not prove nobody
     // imports getInvoice behind the registry's back: there is no door to close until
     // step 42. It does prove the two lists cannot drift apart.
-    expect(operationIds().sort()).toEqual(["invoice.get", "invoice.issue", "invoice.list"]); // NEW IN STEP 13
+    expect(operationIds().sort()).toEqual(["invoice.get", "invoice.issue", "invoice.list"]); // STEP 13
   });
 
   // assertPaired runs at start-up, so these hand it the two lists directly. Asserting

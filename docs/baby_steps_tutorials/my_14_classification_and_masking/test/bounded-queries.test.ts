@@ -1,4 +1,4 @@
-// NEW IN STEP 13: a query has a ceiling the server holds, whatever the caller asks for.
+// STEP 13: a query has a ceiling the server holds, whatever the caller asks for.
 //
 // invoice.list is the first operation here that returns many rows. Measured on a copy of step 12
 // with a list written the obvious way: `{ limit: 1,000,000 }` returned all 50,002 of org_456's

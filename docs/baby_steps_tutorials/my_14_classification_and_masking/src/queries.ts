@@ -1,4 +1,4 @@
-// NEW IN STEP 13: the ceiling every query has, whatever the caller asks for.
+// STEP 13: the ceiling every query has, whatever the caller asks for.
 //
 // Measured on a copy of step 12 with a list written the obvious way: `{ limit: 1,000,000 }`
 // returned all 50,002 of org_456's invoices, three megabytes, in a tenth of a second, because the
