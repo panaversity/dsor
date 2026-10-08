@@ -5,7 +5,7 @@
 
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { afterAll, beforeAll } from "vitest";
+import { afterAll, beforeAll, describe } from "vitest";
 import { useDatabase } from "../src/audit.ts";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner, migrationsIn } from "../src/migrations.ts";
@@ -35,7 +35,10 @@ afterAll(async () => {
   await owner?.end();
 });
 
-if (haveAServer) {
+// Skipped, not absent, without a server: a file that registers no test is an error to vitest, and
+// a learner with no database would see a failure where every other database-tier file says
+// "skipped". The hooks below touch `owner` only inside tests, which never run when skipped.
+describe.skipIf(!haveAServer)("against a real server", () => {
   crossTenantSuite({
     reset: async () => {
       // As the owner: the application may neither add nor remove rows, and may not DELETE the log.
@@ -61,4 +64,4 @@ if (haveAServer) {
       return rows;
     },
   });
-}
+});
