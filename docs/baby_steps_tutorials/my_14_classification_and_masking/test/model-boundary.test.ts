@@ -18,6 +18,7 @@ import type { Invoice } from "../src/invoice.ts";
 import { leaveTheDoor } from "../src/boundary.ts";
 import { success } from "../src/envelopes.ts";
 import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
+import { labelOf } from "../src/classification.ts";
 import { findPerson } from "../src/people.ts";
 import { aDatabase, resetInvoices } from "./support/database.ts";
 
@@ -255,6 +256,47 @@ describe("a value the label cannot see inside", () => {
       expect(theirs.redactions.map((r) => r.field)).toContain("vendor");
     } else {
       throw new Error("expected data");
+    }
+  });
+});
+
+describe("the one compound value a label can describe", () => {
+  it("DSOR-CLS-01: an amount is one value, so its own label governs it — the break that lowers it is visible", async () => {
+    // Money is `{ value, currency }`: an object with parts, and one value in this program's
+    // vocabulary. Measured: with every object treated as unlabelled, lowering `amount` to
+    // `internal` in the table changed nothing anywhere, because the rule above re-raised it to
+    // confidential — the table's own entry had stopped mattering, and a break that used to fail
+    // twenty-six tests failed two. A money value is described whole by its label.
+    const theirs = await callOperation(AGENT, "invoice.get", { invoice: INV_1008 });
+    const ours = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    if (theirs.kind === "data" && ours.kind === "data") {
+      expect(labelOf("invoice", "amount")).toBe("confidential");
+      expect(theirs.redactions).toStrictEqual([AMOUNT_WITHHELD]);
+      // The human's amount is there, whole, as the money it is.
+      expect(ours.invoice.amount).toStrictEqual({ value: "31400.00", currency: "USD" });
+      expect(ours.classification).toBe("confidential");
+    } else {
+      throw new Error("expected data");
+    }
+  });
+
+  it("DSOR-CLS-01: a thing that is nearly money is not money, and is confidential", async () => {
+    // Two parts and the right names is not enough: a third part, or a part that is not text, is
+    // something the label cannot see the whole of.
+    for (const nearly of [
+      { value: "31400.00", currency: "USD", note: "and the bank account is PK36" },
+      { value: { hidden: "31400.00" }, currency: "USD" },
+    ]) {
+      const door = makeDoor(PIPELINE, { "invoice.get": handing(aRow({ vendor: nearly })) });
+      const theirs = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+
+      expect(theirs.kind).toBe("data");
+
+      if (theirs.kind === "data") {
+        expect(JSON.stringify(theirs)).not.toContain("31400.00");
+        expect(theirs.redactions.map((r) => r.field)).toContain("vendor");
+      }
     }
   });
 });

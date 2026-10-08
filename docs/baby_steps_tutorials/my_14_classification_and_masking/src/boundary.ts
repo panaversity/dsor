@@ -64,9 +64,33 @@ function entityOf(row: object): string {
   }
 }
 
-/** Whether a label can describe this value whole, or there are parts inside it nobody labelled. */
+/**
+ * Whether a label can describe this value whole, or there are parts inside it nobody labelled.
+ *
+ * A plain value — text, a number, a boolean, nothing — and one compound value: money, which is
+ * `{ value, currency }` and is one amount in this program's vocabulary, as it is in the
+ * specification's entity schema (`amount: { type: money, classification: confidential }`).
+ *
+ * Measured, and the reason money is named here: with every object treated as something the label
+ * cannot see, the table's own `amount: "confidential"` stopped mattering, because the rule
+ * re-raised an `internal` amount to confidential anyway. Lowering the amount's label in the table
+ * then changed nothing anywhere — a break that had failed twenty-six tests failed two. A label
+ * that cannot be lowered is a label nobody is reading.
+ */
 function isPlain(value: unknown): boolean {
-  return value === null || (typeof value !== "object" && typeof value !== "function");
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+    return true;
+  }
+
+  const keys = Object.keys(value);
+
+  return (
+    keys.length === 2 &&
+    keys.includes("value") &&
+    keys.includes("currency") &&
+    typeof (value as { value: unknown }).value === "string" &&
+    typeof (value as { currency: unknown }).currency === "string"
+  );
 }
 
 /** One row, as `principal` may see it. A human sees every field; an agent sees up to its clearance. */
