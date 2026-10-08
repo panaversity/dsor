@@ -2504,8 +2504,8 @@ handler *said* org_789 to the store, and the lock trusts whatever company a stat
 questions, one at a time, in plain words; the learner took both recommendations.
 
 1. **Each contract carries an example request**, under `extensions` with a reverse-DNS key, which
-   the specification's own schema allows and which step 03 already uses for anything beside the
-   spec's fields. The suite reads the registry, takes each example, rewrites every address in it to
+   the specification's own schema allows and which step 03 taught and tested on a made-up
+   contract; these are the first shipped contracts that carry one. The suite reads the registry, takes each example, rewrites every address in it to
    another company, and calls. A contract without an example fails the suite rather than being
    skipped — that is what "grows by itself" has to mean. The alternatives: a table in the test
    (the knowledge away from the operation, and an edit to the test for every new operation), or
@@ -2541,3 +2541,49 @@ operation ids off them and compares with the registry, because step 11's were no
 found it. And the suite's generator lives in `test/support/` as a function rather than a test file,
 so the same six questions run on PGlite and on the real server without a second copy that could
 drift.
+
+## 101 · Step 12's hostile review and mutation pass: a suite that could be lied to (2026-10-08)
+
+Four reviewers, a mutation pass on a copy, and a critic, run while the step was still being
+written. The done-when held for a careless author — a third operation with a nested address failed
+four questions by name, measured by three of them independently — and then two of them wrote the
+author who is not careless but hostile.
+
+1. **A refusal-shaped envelope with the row inside it.** An operation that reads a nested address,
+   fetches the other company's row, returns `TENANT_MISMATCH`, retry `never`, the same message —
+   and the row tucked into the envelope — and appends a `DENY` of its own after the pipeline's
+   `ALLOW`. The first suite compared the refusal's words and read the log's last record, and passed
+   it. Now question 2 compares the whole envelope with the one for a company that does not exist,
+   which cannot carry that company's row, and question 5 asks for exactly one record for the
+   request and that it is the `DENY`. Measured after: 11 failures for that operation.
+2. **The seed row already issued.** The mutation pass seeded org_789's `INV-1009` as `issued`;
+   a careless `invoice.issue` found nothing it could do, the rows stayed untouched, and question 3
+   — which asked only that the number exists — was content. For a command, it now asks that the
+   other company's row is in the same state as yours, the state the example works in.
+3. **Nothing tested the suite.** Six assertions deleted one at a time, six whole-suite passes. The
+   six questions are plain functions now, `questions` in the support file, and
+   `cross-tenant-suite-itself.test.ts` feeds each one an honest answer and then the lie it exists
+   to catch. Delete an assertion and its lie passes there.
+4. **An example with no address** was asked to be both refused and allowed; it gets one failing
+   test by name instead. Question 3 reads invoice rows only and says so for any other kind of
+   address. The address helpers moved into `src/examples.ts`, one implementation for the suite,
+   the example test and the demo, where a private copy in the test had let the suite's own copy be
+   emptied unnoticed. The example reader refuses an array and a null, both found by mutation. The
+   database-tier runner skips without a server instead of registering nothing, which vitest calls
+   an error. Its `afterAll` puts the invoices back as well as the log.
+5. **Said in the README**, because the reviewers found the sentences missing: exactly what grows by
+   itself and the five things a human still writes; that the pipeline walks top-level strings and
+   the suite rewrites at any depth, which is the gap the suite covers; that the database tier
+   empties the named database's invoices and log; that a second process using the folder can fail
+   the demo test; that these are the first shipped contracts to carry an `extensions` key, which
+   step 03 taught on a made-up one; and that question 5 proves the `DENY` is the one record, while
+   "before the response" is step 08's one proof over the shared pipeline.
+
+Then the critic, after the five: question 6 asked only that the own-company example was not
+refused, so a handler that returned org_456's invoice with org_789's beside it, in a successful
+answer, passed the suite, the self-test and step 10's file — the one leak shape a same-company
+call can have. It reads the answer now and refuses the other company's name and the four things
+org_789 alone holds. And `org_000` could be made a real company with nothing saying so; a guard
+pins what the three companies are. The database-tier runner deletes the story's two companies'
+rows only. 429 became 444; the database tier 29 became 30. Every count on the README was
+re-measured twice after the changes, on a copy outside the repository.

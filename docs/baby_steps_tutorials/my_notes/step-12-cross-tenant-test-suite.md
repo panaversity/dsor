@@ -1,18 +1,20 @@
 # Step 12 · Cross-tenant test suite
 
-Folder: [`my_12_cross_tenant_test_suite`](../my_12_cross_tenant_test_suite/README.md) · 428 tests,
-plus 28 in the database tier
+Folder: [`my_12_cross_tenant_test_suite`](../my_12_cross_tenant_test_suite/README.md) · 444 tests,
+plus 30 in the database tier
 Spec: [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) · `DSOR-TEN-02b`, `DSOR-ERR-01b`
-Both tiers have run: 428 under `pnpm check`, and 28 under `pnpm test:db` against Neon, the step's
-own database `dsor_step12`, five migrations applied. Decisions [99 and 100](decisions.md).
+Both tiers have run: 444 under `pnpm check`, and 30 under `pnpm test:db` against Neon, the step's
+own database `dsor_step12`, five migrations applied. Decisions [99 to 101](decisions.md).
 
 ## What the step is
 
 One generated test that calls every operation in the registry with another company's address and
-asks six questions of each: refused with `TENANT_MISMATCH`; the same words for a company that exists
-and one that does not, and nothing about yours; the other company holds every invoice number the
-example names; its rows untouched afterwards; a `DENY` in the caller's log and nothing in the other
-company's; and the example itself works for its own company. Each contract carries one example
+asks six questions of each: refused with `TENANT_MISMATCH`; the same refusal, whole, for a company
+that exists and one that does not, and nothing about yours; the other company holds every invoice
+number the example names, in the same state for a command; its rows untouched afterwards; exactly
+one record for the request in the caller's log, the `DENY`, and nothing in the other company's; and
+the example itself works for its own company. The questions are plain functions, and a test lies
+to each one. Each contract carries one example
 request under `extensions["com.panaversity.tutorial"]`, which is how the suite can call an
 operation nobody has written yet. An operation without an example fails the suite by name.
 
@@ -57,4 +59,11 @@ org_456's log: 17 records on a fresh run, 34 on the second. Every pin in `main.t
 
 ## The hostile review
 
-Pending at the time of writing; this section is filled in when it lands.
+Four reviewers, a mutation pass and a critic, while the step was still being written. The
+done-when held for a careless author and fell to a hostile one: a refusal-shaped envelope carrying
+the other company's row with a cosmetic `DENY` appended passed every question. And a mutation pass
+deleted the suite's assertions one at a time without a single failure, because nothing tested the
+suite. Both are closed — whole-envelope comparison, exactly one record per request, the questions
+as functions with a test that lies to each — and [decision 101](decisions.md) has the rest.
+428 became 444, and the critic's two findings — a success answer carrying the other company's
+row, and `org_000` free to become real — are closed the same way.

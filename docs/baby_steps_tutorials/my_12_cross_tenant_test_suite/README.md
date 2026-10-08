@@ -13,24 +13,35 @@ This step adds a test that nobody has to remember. It reads the **registry**, th
 operation and its contract, and for each one it asks the same six questions:
 
 1. Called with another company's address, is it refused with `TENANT_MISMATCH`, retry `never`?
-2. Does the refusal say the same words for a company that exists and one that does not, and
-   nothing about your own company?
-3. Does the other company hold every invoice number the example names — so that a careless write
-   would have something to touch?
+2. Is the refusal the same, *whole*, for a company that exists and one that does not — not the
+   words only, but everything the envelope carries — and does it say nothing about your company?
+3. Does the other company hold every invoice number the example names, and for a command, in the
+   same state as yours — so that a careless write would have something to do?
 4. After the call, are the other company's rows exactly as they were?
-5. Is the refusal a `DENY` in the caller's log, and the other company's log unchanged?
-6. Does the same request work for its own company — so the refusals above are about the address?
+5. Did the request leave exactly one decision in the caller's log, the `DENY`, and none in the
+   other company's?
+6. Does the same request work for its own company — so the refusals above are about the address —
+   and does the answer carry nothing of the other company?
+
+And two questions of the suite itself, asked once: does the registry hold at least one operation,
+and are the three companies what the questions assume — `org_789` real, `org_000` not? A registry
+with none would register nothing above and look like a passing file; a third real company would
+turn question 2 into a comparison of two real refusals.
 
 To ask those questions of an operation nobody has written yet, the suite needs to know what request
 that operation takes. The answer lives with the operation: each contract carries one **example
 request** under its `extensions` field, with the key `com.panaversity.tutorial` — the one place the
-specification's schema lets a contract carry something of its own. The suite takes the example,
+specification's schema lets a contract carry something of its own. Step 03 taught and tested that
+key on a made-up contract; these are the first shipped contracts that carry one. The suite takes the example,
 moves every address in it from `org_456` to `org_789`, and calls. An operation whose contract has
 no example does not get skipped. It gets a failing test with its name on it.
 
-So what grows by itself is the *asking*. Two things still need a human when an operation is added:
-the example request in its contract, and a row in the other company for every invoice number the
-example names. The suite fails by name until both are there.
+So what grows by itself is the *asking*: six questions and one demo line per operation, with no
+edit to any test. Be exact about what still needs a human when an operation is added, because
+"grows by itself" is easy to over-read: the contract file, its line in `contractsFromDisk`, its
+handler, the example request, and a row in the other company for every invoice number the example
+names. The suite fails by name until the last two are there, and `main.test.ts`'s record counts
+move with every operation, since each refusal is a decision.
 
 What the suite is for, said plainly: it is the net under the two locks. Step 10's §21.6 scan reads
 only the top-level string arguments of a request, and step 11's lock trusts whatever company a
@@ -66,17 +77,19 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_11
 | --- | --- |
 | `src/contracts/invoice.get.json`, `src/contracts/invoice.issue.json` | each carries an example request under `extensions["com.panaversity.tutorial"]` |
 | `src/registry.ts` | `exampleRequestOf`: reads that one key, and only an object |
-| `test/support/cross-tenant-suite.ts` | new — the suite, as a function: one `describe` per operation in the registry, six questions each, written once |
+| `src/examples.ts` | new — `addressesIn` and `movedTo`, the two things a test does with an example, in one place for the suite and the demo |
+| `test/support/cross-tenant-suite.ts` | new — the suite, as a function: one `describe` per operation in the registry, six questions each, written once; the questions are plain functions a test can lie to |
+| `test/cross-tenant-suite-itself.test.ts` | new — each question fed an honest answer and then the lie it exists to catch; delete an assertion from a question and its lie passes here |
 | `test/cross-tenant-suite.test.ts` | new — the suite on PGlite, under `pnpm check` |
 | `test/cross-tenant-suite.db.test.ts` | new — the suite against the database `.env` names, under `pnpm test:db` |
-| `test/example-requests.test.ts` | new — every contract has an example, every example's addresses are in `org_456`, the reader ignores other keys |
+| `test/example-requests.test.ts` | new — every contract has an example, every example's addresses are in `org_456`, the reader takes the one key and ignores others |
 | `migrations/004_running_example.sql` | `org_789` gains `INV-1009`, so a careless command has a row to touch, and `INV-2001`, a number `org_456` lacks |
 | `test/invoices-in-postgres.test.ts` | the "not in yours" test asks for `INV-2001` now, since `INV-1009` is in both companies |
 | `src/main.ts` | a section that walks the registry the same way, one line per operation |
 | `test/main.test.ts` | those lines pinned; the record counts move by two |
 | everything else | a `NEW IN STEP 11` marker becoming `STEP 11` |
 
-412 tests became 428, and the database tier's 16 became 28. The hand-written `cross-tenant.test.ts`
+412 tests became 444, and the database tier's 16 became 30. The hand-written `cross-tenant.test.ts`
 from step 10 stays: it carries what the generated suite does not ask — the agent who works for
 both companies, the nested-argument limit, a door built with a forgetful validate stage.
 
@@ -99,7 +112,10 @@ invoice.issue  user_123              TENANT_MISMATCH          retry: never      
 Two lines because the registry holds two operations. Neither is named in `main.ts`; the loop reads
 the registry, takes each contract's example, moves its addresses to `org_789`, and calls. Add an
 operation and this prints three lines. Those two refusals are decisions, so the logs grow by them:
-`org_456: 17 records` on a fresh run, `34` on the second; `org_789` stays at `2` and `4`.
+`org_456: 17 records` on a fresh run, `34` on the second; `org_789` stays at `2` and `4`. One
+thing found by two reviewers running the suite at once: the demo builds its PostgreSQL on disk in
+this folder, and a second process using the folder at the same time — another `pnpm test`, another
+`pnpm start` — can fail `main.test.ts`. Run it alone.
 
 ### The database tier
 
@@ -113,14 +129,17 @@ pnpm migrate && pnpm test:db
 ```
 
 This folder's own run was on Neon: `neonctl databases create --name dsor_step12`, a `GRANT CONNECT`
-through the owner's connection, five migrations, `28 passed`. One thing to know: this step changes
+through the owner's connection, five migrations, `30 passed`. Two things to know. This step changes
 `004_running_example.sql`, and a migration's checksum covers every byte of it, so a database that
-applied step 11's version refuses step 12's. A database of the step's own is the answer, as it was
-for step 11.
+applied step 11's version refuses step 12's; a database of the step's own is the answer, as it was
+for step 11. And the generated suite, in this tier, deletes every invoice and every audit record
+that belongs to `org_456` or `org_789` in the database `.env` names before each question, and puts
+the story back afterwards — point it at a step-12 database only, never at one whose rows you want to
+keep.
 
 ## Break it
 
-Nine, measured twice on the full suite with the files one at a time, both runs agreeing. The counts
+Sixteen, measured twice on the full suite with the files one at a time, both runs agreeing. The counts
 are from a copy outside the repository, where one test skips because the specification is not
 beside it, so the total reads `428` with `1 skipped`; in the repository it is `428 passed`. The
 first three are the map's own exercise — *adding a new operation without tenant checks makes this
@@ -134,7 +153,7 @@ whose handler asks the store for the company the address names. Its contract car
 `{ ref: { invoice: "dsor://org_456/invoice/INV-1008" } }`.
 
 ```text
- Tests  13 failed | 420 passed | 1 skipped (434)
+ Tests  13 failed | 436 passed | 1 skipped (450)
 ```
 
 Four of the thirteen are the suite's questions for `invoice.vendor`, by name: not refused, no refusal
@@ -145,7 +164,7 @@ demo's pins, which any third operation moves. The map's done-when, met.
 ### Break 2 · the same operation, with no example
 
 ```text
- Tests  9 failed | 419 passed | 1 skipped (429)
+ Tests  9 failed | 435 passed | 1 skipped (445)
 ```
 
 One test, named for the operation: *carries no example request, so this suite cannot call it — add
@@ -158,7 +177,7 @@ cannot test.
 `invoice.issue_ref`: issues whatever draft the nested address names, in the address's company.
 
 ```text
- Tests  13 failed | 420 passed | 1 skipped (434)
+ Tests  13 failed | 436 passed | 1 skipped (450)
 ```
 
 Four of the suite's questions again, and this time *the other company's rows exactly as they were* is one of them:
@@ -172,7 +191,7 @@ In `src/operations.ts`, in `validateTheInput`, change `if (address.tenant !== co
 `if (false)`.
 
 ```text
- Tests  19 failed | 408 passed | 1 skipped (428)
+ Tests  19 failed | 424 passed | 1 skipped (444)
 ```
 
 The suite is the net under the scan: every operation's refusal and log question fails, beside the
@@ -183,7 +202,7 @@ tests of steps 10 and 11 that ask the scan directly.
 Make the mismatch message end with `, which exists` when the company named is real.
 
 ```text
- Tests  4 failed | 423 passed | 1 skipped (428)
+ Tests  4 failed | 439 passed | 1 skipped (444)
 ```
 
 Two are the suite's, one per operation; the other two are step 10's hand-written question and the
@@ -194,7 +213,7 @@ demo's.
 Delete that row from `004_running_example.sql`.
 
 ```text
- Tests  1 failed | 426 passed | 1 skipped (428)
+ Tests  1 failed | 442 passed | 1 skipped (444)
 ```
 
 Question 3, for `invoice.issue`, with the fix in its message: *add it to 004_running_example.sql*.
@@ -205,7 +224,7 @@ In `exampleRequestOf`, read the first value in `extensions` instead of the one k
 owns.
 
 ```text
- Tests  1 failed | 426 passed | 1 skipped (428)
+ Tests  1 failed | 442 passed | 1 skipped (444)
 ```
 
 The test that hands the reader a contract whose only extension is somebody else's key.
@@ -215,7 +234,7 @@ The test that hands the reader a contract whose only extension is somebody else'
 In `src/main.ts`, drop the `replaceAll` that moves `org_456` to `org_789`.
 
 ```text
- Tests  2 failed | 425 passed | 1 skipped (428)
+ Tests  2 failed | 441 passed | 1 skipped (444)
 ```
 
 The demo then prints `ALLOWED` lines, and the test that pins the section — one line per operation
@@ -225,13 +244,101 @@ evaluation that found them unpinned; this step pinned its own from the start.
 ### Break 9 · `invoice.issue` loses its example
 
 ```text
- Tests  7 failed | 415 passed | 1 skipped (423)
+ Tests  7 failed | 431 passed | 1 skipped (439)
 ```
 
 The total shrinks by five: an operation without an example gets one failing question instead of
 six. The seven are that question, the two example tests, step 03's counts, and the demo's pins.
 
-Restore each break and confirm `pnpm check` prints `428 passed` again.
+### Break 10 · a smuggling operation
+
+The hostile review's own exercise, and the reason two questions are worded the way they are. An
+operation that reads a nested address, fetches the other company's row, returns a refusal-shaped
+envelope — `TENANT_MISMATCH`, retry `never`, the same message — with the row tucked inside it, and
+writes a `DENY` of its own into the log after the pipeline's `ALLOW`. The first version of this
+suite compared the refusal's words and read the log's last record, and passed it.
+
+```text
+ Tests  11 failed | 438 passed | 1 skipped (450)
+```
+
+Question 2 now compares the whole envelope with the one for a company that does not exist, which
+cannot carry that company's row; question 5 asks for exactly one record for the request.
+
+### Break 11 · an example with no address
+
+Change `invoice.get`'s example to `{ "status": "issued" }`.
+
+```text
+ Tests  4 failed | 434 passed | 1 skipped (439)
+```
+
+Two tests by name: the example test that wants an address in `org_456`, and the suite's own, which
+says there is nothing to move. The first version of the suite asked such an example to be both
+refused and allowed.
+
+### Break 12 · the seed row already issued
+
+In `004_running_example.sql`, seed `org_789`'s `INV-1009` as `issued` instead of `draft`. A
+mutation pass found this one: a careless `invoice.issue` then finds nothing it can issue, the other
+company's rows stay untouched, and the first version of question 3 — which only asked that the
+number exists — was content.
+
+```text
+ Tests  1 failed | 442 passed | 1 skipped (444)
+```
+
+Question 3 asks, for a command, that the other company's row is in the same state as yours — the
+state the example works in — and says what it found.
+
+### Break 13 · an assertion deleted from the suite
+
+Delete `expect(refusal.retry).toBe("never")` from question 1 in `test/support/cross-tenant-suite.ts`.
+The same mutation pass did this to six assertions one at a time, and every deletion passed the
+whole suite, because nothing tested the suite.
+
+```text
+ Tests  1 failed | 442 passed | 1 skipped (444)
+```
+
+Now one test fails, in `cross-tenant-suite-itself.test.ts`: the lie that question exists to catch —
+a refusal whose retry class invites a retry — passes the weakened question, and the test that
+expected it to throw says so.
+
+### Break 14 · another assertion deleted: the other company's log
+
+Delete `expect((await deps.logOf(THEIRS)).length).toBe(theirLogBefore)` from question 5.
+
+```text
+ Tests  1 failed | 442 passed | 1 skipped (444)
+```
+
+### Break 15 · a success answer that carries the other company's row
+
+The critic's exercise, after the reviewers'. Change `invoice.get`'s handler to return org_456's
+invoice with org_789's beside it, in a *successful* answer:
+`return { kind: "data", askedBy, invoice, leaked: await getInvoice("org_789", read.id) }`. The
+first version of question 6 asked only "not an error", and passed it — as did every other
+question, the self-test, and step 10's hand-written file.
+
+```text
+ Tests  1 failed | 442 passed | 1 skipped (444)
+```
+
+Question 6 now reads the answer and refuses the other company's name and anything org_789 alone
+holds in the story: `18000.00`, `9100.00`, `4200.00`, `INV-2001`.
+
+### Break 16 · the company that does not exist starts existing
+
+In `src/tenant.ts`, add `org_000` to the list. Question 2's whole argument is that a company
+that does not exist cannot carry rows; with three real companies it compares two real refusals and
+proves less than its title says, and the first version of the suite had no guard.
+
+```text
+ Tests  3 failed | 440 passed | 1 skipped (444)
+```
+
+Restore each break and confirm `pnpm check` prints `444 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -291,14 +398,23 @@ Copy `my_11_row_level_security` to a new folder and ask:
   nothing in the other company's.
 
 **What the suite does not prove, said plainly.** It moves addresses of the form
-`dsor://org_456/…` found as strings anywhere inside the example, and nothing else. An operation
-whose request names a company some other way — a bare invoice number with a company field, an
-encoded address, a company in the login alone — is called with a request the move did not change,
-and question 6 is the only one that would notice, by the example still working. The caller is
-`user_123` of `org_456` throughout; the agent who belongs to both companies, the nested-argument
-limit, and a door with a forgetful validate stage stay in step 10's hand-written file. And the
-suite tests the operations that exist against the tenants that exist: a third company in
-`tenant.ts` is a seed change and nothing else here.
+`dsor://org_456/…` found anywhere inside the example, and nothing else. An example that names no
+such address gets one failing test by name rather than six that contradict each other; an example
+that names its company some other way — a bare invoice number beside a company field, an encoded
+address — is moved into itself, and questions 1, 2, 4 and 5 then fail with "got data", which reads
+like a leak and is really an example the move could not reach. Question 3 reads invoice rows only,
+and says so by name for any other kind of address. Question 5 proves the `DENY` is the one record
+for the request; that it was written *before* the answer is step 08's one proof over the shared
+pipeline, not repeated per operation. The caller is `user_123` of `org_456` throughout; the agent
+who belongs to both companies, the nested-argument limit, and a door with a forgetful validate
+stage stay in step 10's hand-written file. And the suite tests the operations that exist against
+the tenants that exist: a third company in `tenant.ts` is a seed change and nothing else here —
+unless it is `org_000`, which a guard refuses. And the convention has a limit of its own: the
+example is never checked against the operation's input schema, because no step has request schemas
+yet, and every address in it moves at once, so an operation that checks one of two addresses and
+not the other is not told apart. The official step 12 keeps its examples outside the contract and
+searches answers for canaries; this one keeps them with the contract and searches answers for the
+four things `org_789` alone holds.
 
 **The map and this step disagree, and it is recorded.** The map says the suite "runs on a fresh
 Neon branch, so it can create two companies and destroy them without touching your data". This
