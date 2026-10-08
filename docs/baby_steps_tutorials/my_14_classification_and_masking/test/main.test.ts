@@ -129,13 +129,15 @@ describe("the program a learner runs", () => {
     expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(13);
     expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(10); // STEP 13: three pages read
 
-    // Sequences 0..16 for org_456 and then 0..1 for org_789: each chain counts from zero.
-    // STEP 12: 15 and 16 are the two refusals the generated section adds.
+    // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
+    // STEP 14: the gaps — 1, 5, 21, 23, 25 — are the records of reads, which this filter does not
+    // count: the supervisor's and the CFO's reads of one invoice, and the three pages, each
+    // written down after the decision that allowed it. The agent's reads leave no such record.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 0, 1,
+      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 21 records, chain verifies against the head: true");
+    expect(out).toContain("org_456: 26 records, chain verifies against the head: true"); // STEP 14: 21 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -149,11 +151,11 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-AUD-01: an unknown operation is recorded with no operation field", () => {
-    // The whole line for record 7, because the fallback label is now also printed for §21.2
+    // The whole line for record 9 (STEP 14: two reads sit before it now), because the fallback label is now also printed for §21.2
     // refusals. Built with the printer's own widths rather than typed, so the test pins the
     // content — DENY, no operation, UNSUPPORTED_CAPABILITY — and not a guess at the spacing.
     const line = [
-      " 7",
+      " 9",
       "DENY ",
       "(none resolved)".padEnd(19),
       "user_123".padEnd(21),
@@ -181,16 +183,16 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(21);
+    expect(records(first, "org_456")).toBe(26); // STEP 14: 21 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 21 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 26 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(42);
+    expect(records(second, "org_456")).toBe(52);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 42 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 52 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
@@ -221,8 +223,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(23);
-    expect(hashesOf(second.raw)).toHaveLength(23);
+    expect(hashesOf(first.raw)).toHaveLength(28); // STEP 14: 26 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(28);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 

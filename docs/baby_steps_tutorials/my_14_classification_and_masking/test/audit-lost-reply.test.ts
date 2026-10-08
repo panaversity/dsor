@@ -137,7 +137,8 @@ describe("an INSERT whose reply is lost", () => {
     const log = await theLog("org_456");
 
     expect(answer.kind).not.toBe("error");
-    expect(log).toHaveLength(1);
+    // STEP 14: the decision, then the record of the read it allowed; the decision is log[0].
+    expect(log.map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
     expect(log[0]?.authorization).toBe("ALLOW");
     expect(log[0]?.result).toBe("ALLOWED");
   });

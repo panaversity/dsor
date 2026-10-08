@@ -118,6 +118,10 @@ export interface AuditRecord {
   readonly authorization?: "ALLOW" | "DENY";
   readonly result: string;
   readonly reason?: string;
+  /** NEW IN STEP 14: the rows a read returned, by address — the resource scope of DSOR-CLS-05. */
+  readonly resources?: readonly string[];
+  /** NEW IN STEP 14: what the schema has no field for, under a namespace: the row count. */
+  readonly extensions?: Readonly<Record<string, unknown>>;
   readonly correlation: {
     readonly request_id: string;
     readonly tenant_id?: string;
@@ -151,6 +155,10 @@ export interface DecisionToRecord {
   readonly authorization?: "ALLOW" | "DENY";
   readonly payloadHash?: string;
   readonly reason?: string;
+  /** NEW IN STEP 14: for a `classified_read`, the addresses of the rows that left. */
+  readonly resources?: readonly string[];
+  /** NEW IN STEP 14: for a `classified_read`, `{ "com.panaversity.tutorial": { row_count } }`. */
+  readonly extensions?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -431,6 +439,8 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const authorization = decision.authorization;
   const payloadHashGiven = decision.payloadHash;
   const reason = decision.reason === undefined ? undefined : clip(decision.reason);
+  const resources = decision.resources === undefined ? undefined : [...decision.resources];
+  const extensions = decision.extensions;
 
   // No subject, or no company: counted, not recorded. The second is new in step 10, and it is rare
   // by construction — `recordTheDecision` writes a no-company refusal to every company the caller
@@ -590,6 +600,16 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
 
   if (reason !== undefined) {
     body.reason = reason;
+  }
+
+  // NEW IN STEP 14: inside the hash like everything else, so a record of a read that names fewer
+  // rows than it returned is a record that does not verify.
+  if (resources !== undefined) {
+    body.resources = resources;
+  }
+
+  if (extensions !== undefined) {
+    body.extensions = extensions;
   }
 
   body.record_hash = hashOf(body);
@@ -762,8 +782,9 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
   await db.query(
     `INSERT INTO public.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
-       identity, correlation, operation, payload_hash, "authorization", result, reason
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+       identity, correlation, operation, payload_hash, "authorization", result, reason,
+       resources, extensions
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       written.record_id,
       written.chain,
@@ -780,6 +801,9 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
       written.authorization ?? null,
       written.result,
       written.reason ?? null,
+      // NEW IN STEP 14. As JSON text, like identity and correlation.
+      written.resources === undefined ? null : JSON.stringify(written.resources),
+      written.extensions === undefined ? null : JSON.stringify(written.extensions),
     ],
   );
 }
@@ -799,7 +823,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
     `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash,
             to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
             tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
-            reason
+            reason, resources, extensions
      FROM public.audit WHERE chain = $1 ORDER BY sequence`,
     [chainOf(tenant)],
   );
@@ -828,7 +852,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
 
       // The optional columns, left out rather than set to null — the schema says a field is either
       // right or absent, and `operation: null` is neither.
-      for (const field of ["operation", "payload_hash", "authorization", "reason"]) {
+      for (const field of ["operation", "payload_hash", "authorization", "reason", "resources", "extensions"]) {
         if (row[field] !== null && row[field] !== undefined) {
           record[field] = row[field];
         }

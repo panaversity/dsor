@@ -905,6 +905,63 @@ function overTheCeiling(id: string, answer: OperationAnswer): string | undefined
 }
 
 /**
+ * NEW IN STEP 14: the record of a read, when what is leaving is confidential or restricted.
+ *
+ * The rows come from the handler's answer — the rows the read touched, whatever the caller may see
+ * of them — and the label from what is leaving, because the rule is about data that is *returned*.
+ * The agent's read of INV-1008 leaves as `internal` and is not written down twice; the
+ * supervisor's leaves as `confidential` and is. Returns the refusal to answer with when the record
+ * could not be written, or nothing.
+ */
+async function recordTheRead(
+  askedBy: string,
+  tenant: string,
+  contract: OperationContract,
+  requestId: string,
+  fetched: HandlerAnswer,
+  leaving: OperationAnswer,
+): Promise<OperationAnswer | undefined> {
+  if (contract.kind !== "query" || leaving.kind === "error" || leaving.kind === "result") {
+    return undefined;
+  }
+
+  if (leaving.classification !== "confidential" && leaving.classification !== "restricted") {
+    return undefined;
+  }
+
+  const rows =
+    fetched.kind === "data" ? [fetched.invoice] : fetched.kind === "page" ? fetched.page.invoices : [];
+
+  try {
+    await audit({
+      kind: "classified_read",
+      subject: askedBy,
+      tenant,
+      requestId,
+      result: "READ",
+      operation: `${contract.id}@${contract.version}`,
+      resources: rows.map((row) => row.uri),
+      extensions: { "com.panaversity.tutorial": { row_count: rows.length } },
+    });
+  } catch {
+    // Whether the store lost the reply or refused the write, the record is not there (`audit`
+    // looks before it throws), so the data does not leave. A read is safe to send again.
+    return Object.freeze({
+      kind: "error",
+      askedBy,
+      envelope: refusal(
+        "EVIDENCE_STORE_UNAVAILABLE",
+        `the read of ${nameOf(contract.id)} could not be written down, so its rows were not returned`,
+        requestId,
+        askedBy,
+      ),
+    });
+  }
+
+  return undefined;
+}
+
+/**
  * `handlerTable` is the program's own handlers unless a test says otherwise. Exported for the
  * same reason `makeDoor` is: a test that wants to watch the door refuse an oversize answer needs
  * a handler that gives one, and the program has none.
@@ -1030,6 +1087,16 @@ export function makeDoor(
         askedBy: principal.id,
         envelope: refusal("INTERNAL_ERROR", tooBig, id_, principal.id),
       });
+    }
+
+    // NEW IN STEP 14: a read that is handing out confidential data is written down first — who,
+    // the operation, which rows, how many (DSOR-CLS-05). A second record, because the decision was
+    // recorded before the handler ran and the log is never amended. Before the answer leaves, and
+    // if it cannot be written, the answer does not leave: a read nobody wrote down did not happen.
+    const unwritten = await recordTheRead(principal.id, tenant, contract, id_, answer, leaving);
+
+    if (unwritten !== undefined) {
+      return unwritten;
     }
 
     return leaving;

@@ -58,7 +58,10 @@ describe("the decision is written down first", () => {
     const answer = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(answer.kind).toBe("data");
-    expect(await theLog("org_456")).toHaveLength(1);
+    // STEP 14: two records now — the decision, then the read it allowed, because the supervisor's
+    // answer left as confidential (DSOR-CLS-05). The decision is still first, and it is the one
+    // this test is about.
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
 
     const record = (await theLog("org_456"))[0]!;
 
@@ -380,7 +383,10 @@ describe("the decision is written down first", () => {
     });
 
     expect(answer.kind).toBe("data");
-    expect(await theLog("org_456")).toHaveLength(1);
+    // STEP 14: two records now — the decision, then the read it allowed, because the supervisor's
+    // answer left as confidential (DSOR-CLS-05). The decision is still first, and it is the one
+    // this test is about.
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
 
     const record = (await theLog("org_456"))[0]!;
 
@@ -664,7 +670,9 @@ describe("the decision is written down first", () => {
     // Every `validateAuditRecord` call in audit.test.ts is on a record that file built itself.
     // DSOR-AUD-01's sentence is about the records the pipeline actually writes, and a review pointed
     // out that nothing checked those.
-    expect(await theLog("org_456")).toHaveLength(4);
+    // STEP 14: five, not four — the supervisor's read left as confidential and was written down
+    // too, and that record validates against the schema like the rest (it is `classified_read`).
+    expect(await theLog("org_456")).toHaveLength(5);
 
     for (const record of await theLog("org_456")) {
       expect(validateAuditRecord(record), record.record_id).toBe(true);
@@ -680,12 +688,14 @@ describe("the decision is written down first", () => {
     await callOperation(SUPERVISOR, "invoice.destroy", {});
     await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
 
-    // Four records, not five: the caller with no login was counted instead.
-    expect(await theLog("org_456")).toHaveLength(4);
+    // Five records: the caller with no login was counted instead, and STEP 14 the supervisor's read
+    // is written down after its decision, with no authorization of its own.
+    expect(await theLog("org_456")).toHaveLength(5);
     expect(countedWithoutARecord()).toBe(1);
     expect(verifyChain(await theLog("org_456"), await theHead("org_456"))).toBe(true);
     expect((await theLog("org_456")).map((record) => record.authorization)).toEqual([
       "ALLOW",
+      undefined, // STEP 14: the record of the read
       "DENY",
       "DENY",
       "ALLOW",
