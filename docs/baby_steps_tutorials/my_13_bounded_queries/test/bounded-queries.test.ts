@@ -104,7 +104,10 @@ describe("where the ceiling is", () => {
       query: async <T>(sql: string, params?: unknown[], tenant?: string) => {
         const result = await real.query<T>(sql, params, tenant);
 
-        if (sql.includes("FROM public.invoices") && sql.includes("ORDER BY id")) {
+        // Every statement that reads the table, not only the one shaped like the list: a review
+        // added a second, unordered SELECT of the whole table before the slice, and a count keyed
+        // to `ORDER BY id` never saw it.
+        if (sql.includes("public.invoices")) {
           returned.push(result.rows.length);
         }
 
