@@ -136,7 +136,10 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
         for (const address of addressesIn(example)) {
           const number = address.split("/").at(-1) ?? "";
 
-          expect(theirIds.has(number), `${THEIRS} has no ${number}; add it to 004_running_example.sql`).toBe(true);
+          expect(
+            theirIds.has(number),
+            `${THEIRS} has no ${number}; add it to 004_running_example.sql`,
+          ).toBe(true);
         }
       });
 

@@ -29,9 +29,7 @@
   },
   "preconditions": {
     "freshness": "current",
-    "predicates": [
-      "state.invoice.status == \"draft\""
-    ]
+    "predicates": ["state.invoice.status == \"draft\""]
   },
   "controls": [],
   "risk": {
