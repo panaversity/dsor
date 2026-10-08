@@ -265,6 +265,7 @@ describe("the second layer: the door", () => {
 
         if (answer.kind === "error") {
           expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.retry).toBe("never"); // the caller cannot retry past it; a smaller limit is the remedy
           expect(answer.envelope.message).toMatch(/bytes/);
         }
       }
