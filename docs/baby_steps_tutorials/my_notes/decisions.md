@@ -2587,3 +2587,36 @@ org_789 alone holds. And `org_000` could be made a real company with nothing say
 pins what the three companies are. The database-tier runner deletes the story's two companies'
 rows only. 429 became 444; the database tier 29 became 30. Every count on the README was
 re-measured twice after the changes, on a copy outside the repository.
+
+## 102 · Step 13's three decisions, taken by the learner before any code (2026-10-08)
+
+The problem was shown first, measured on a copy of step 12 with a list written the obvious way and
+fifty thousand invoices seeded for org_456: `{ limit: 25 }` gave 25 rows in 23 ms; `{ limit:
+1,000,000 }` gave all 50,002 rows, three megabytes, in 105 ms, and nothing in the program said no.
+§7.1's sentence — an agent in a loop should not be able to download the whole customer table — and
+`DSOR-QRY-01`'s: a server-side maximum page size and maximum result size on every query, whether
+or not the client asks for a limit. Three questions, one at a time, in plain words; the learner
+took all three recommendations.
+
+1. **The next page comes after the last invoice on this one.** The page says which invoice it
+   ended on; the caller sends it back as `after`; the server reads the rows after it, in id order.
+   A page number was the alternative: familiar, but a caller can name page 40,000, the database
+   skips everything before it, and a page shifts when a row is added in front. "No next page this
+   step" would have made one page the whole answer and shown nothing of what a page is.
+2. **The list names its scope through its cursor, which is an address.** `after` is
+   `dsor://org_456/invoice/INV-1008`, so the §21.6 scan refuses a cursor from another company and
+   step 12's suite can move it, with nothing new. The company itself still comes from the login.
+   The alternatives were a collection address with no id, which changes the grammar every step
+   since 02 relies on, or an operation with no address, which the suite would have to be taught —
+   the critic's addressless case from step 12, answered by not building one.
+3. **Two numbers in one file, and the pipeline refuses an oversize answer.** The handler's SQL
+   carries `LIMIT`; after the handler runs, the door checks the answer against both maxima and
+   refuses one that exceeds them as the program's own error, never returned. Two layers, like
+   steps 10 and 11: the query written next year that forgets its `LIMIT` is caught. Per-contract
+   maxima were the alternative; the specification's contract schema has no such field, and a
+   contract that left them out would need a default somewhere anyway. The numbers themselves are
+   this step's, provisional like §44's: 100 rows per page, 64 KiB per answer, 25 rows when the
+   caller says nothing.
+
+The step's databases: `dsor_step13` on Neon and on the local server; the untouched copy ran 444
+and 30.
