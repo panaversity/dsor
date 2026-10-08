@@ -259,6 +259,8 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE TABLE audit (result TEXT);");
+    // NEW IN STEP 11: both tenant tables must exist, or the check refuses before this test's question.
+    await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime WITH INHERIT FALSE;");
@@ -365,6 +367,8 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE TABLE audit (result TEXT);");
+    // NEW IN STEP 11: both tenant tables must exist, or the check refuses before this test's question.
+    await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");

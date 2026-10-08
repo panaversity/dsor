@@ -19,11 +19,15 @@
 -- ENABLE turns the lock on. FORCE is the first trap on the map: by default the table's *owner*
 -- skips every policy on its own table, and FORCE makes the owner subject to them too. One honest
 -- limit, measured: a superuser skips every policy whatever the table says, and so does a role with
--- BYPASSRLS. Every owner on this tutorial's routes is one of those — PGlite's `postgres`, the local
--- server's `dsor_owner`, Neon's `neondb_owner` through `neon_superuser` — so FORCE changes nothing
--- for them. It is here for the owner that is not, which `row-level-security.test.ts` creates, and
--- because the rule says so. What keeps the lock honest is that the program never runs as any of
--- them: `database.ts` refuses to start if it does.
+-- BYPASSRLS. Two of this tutorial's three owners are superusers — PGlite's `postgres`, and the
+-- local server's `dsor_owner`, which initdb created — so FORCE changes nothing for them. Neon's
+-- `neondb_owner` is not: it is a member of `neon_superuser`, and PostgreSQL passes no attribute
+-- through membership, so on Neon FORCE is exactly what filters the owner until it runs
+-- `SET ROLE neon_superuser`. (This comment first put Neon's owner with the superusers; an
+-- evaluation read it against decision 95 and the two could not both be true.) FORCE is here for
+-- that owner, for the owner that is not a superuser which `row-level-security.test.ts` creates,
+-- and because the rule says so. What keeps the lock honest is that the program never runs as any
+-- owner: `database.ts` refuses to start if it does.
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoices FORCE ROW LEVEL SECURITY;
 

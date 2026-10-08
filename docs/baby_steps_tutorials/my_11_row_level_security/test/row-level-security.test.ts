@@ -91,7 +91,7 @@ describe("the second lock, on reads", () => {
     expect(await asTheApplication("SELECT tenant FROM public.audit")).toStrictEqual([]);
   });
 
-  it("DSOR-RP-01d: a company that has no rows is the same as no company", async () => {
+  it("a company that has no rows is answered like no company", async () => {
     expect(await asTheApplication(FORGOT_THE_COMPANY, "org_000")).toStrictEqual([]);
   });
 });

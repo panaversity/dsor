@@ -14,10 +14,8 @@
 // tamper-evident through hash chaining, and a chain that reports an untampered log as broken is a
 // failed tamper-evidence mechanism just as surely as one that misses real tampering.
 
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
-import { migrationsIn } from "../src/migrations.ts";
+import type { PGlite } from "@electric-sql/pglite";
 import {
   audit,
   resetClock,
@@ -30,18 +28,21 @@ import {
   type DecisionToRecord,
 } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
+import { aDatabase } from "./support/database.ts";
 
 let real: PGlite;
 /** NEW IN STEP 11: `real`, as a connection whose statements can say their company. */
 let connection: Database;
 
 beforeEach(async () => {
-  real = await PGlite.create();
-  await real.exec("CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-throwaway-not-a-secret';");
+  // NEW IN STEP 11: through the support, so the stores run as the application here too. This
+  // file used to build its own PGlite and never SET ROLE, so every fake forwarded the company to a
+  // superuser that ignores it — an evaluation measured the fakes' tenant being enforced nowhere.
+  real = await aDatabase();
 
-  for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
-    await real.exec(migration.sql);
-  }
+  const { rows } = await real.query<{ who: string }>("SELECT current_user AS who");
+
+  expect(rows[0]?.who).toBe("dsor_runtime");
 
   connection = overPGlite(real);
 

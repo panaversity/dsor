@@ -159,6 +159,103 @@ describe("a window past the lock", () => {
   });
 });
 
+describe("what an evaluation found past the first fixes", () => {
+  // Three more ways round the function question, measured by an independent evaluation after
+  // the hostile review, and two edges of the check itself.
+
+  it("DSOR-RP-01a: a trigger on the invoices rewrites the application's own UPDATE, and is refused", async () => {
+    // Step 09 asked about triggers on the audit table only. A trigger on the invoices fires inside
+    // the application's own statement. The evaluation's version used a SECURITY DEFINER function
+    // owned by a superuser and smuggled every company's rows into a column — which the helper
+    // question above now refuses on its own. This one is the trigger question's own case: a plain
+    // function, no SECURITY DEFINER, no owner that holds anything, that simply changes what the
+    // application wrote. Only a question about triggers can see it.
+    await asTheOwner(async () => {
+      await db.exec(`CREATE FUNCTION tamper() RETURNS trigger LANGUAGE plpgsql
+                     AS $$ BEGIN NEW.status := 'paid'; RETURN NEW; END $$`);
+      await db.exec("CREATE ROLE a_quiet_owner");
+      await db.exec("ALTER FUNCTION tamper() OWNER TO a_quiet_owner");
+      await db.exec(`CREATE TRIGGER tamper BEFORE UPDATE ON public.invoices
+                     FOR EACH ROW EXECUTE FUNCTION tamper()`);
+    });
+
+    // Not testing nothing: the application issues org_456's draft, and the row comes back paid.
+    const landed = await db.transaction(async (tx) => {
+      await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+
+      const { rows } = await tx.query<{ status: string }>(
+        `UPDATE public.invoices SET status = 'issued'
+         WHERE tenant_id = 'org_456' AND id = 'INV-1009' AND status = 'draft' RETURNING status`,
+      );
+
+      return rows[0]?.status;
+    });
+
+    expect(landed).toBe("paid");
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/trigger on it/);
+  });
+
+  it("DSOR-RP-01a: a helper reached through an aggregate, with EXECUTE on the helper revoked, is refused", async () => {
+    // The first fix asked whether the application may EXECUTE the helper. It may not — and it may
+    // call an aggregate whose transition function is the helper, which runs it all the same.
+    await asTheOwner(async () => {
+      await db.exec(`CREATE FUNCTION leak_step(acc text, x text) RETURNS text LANGUAGE sql SECURITY DEFINER
+                     AS $$ SELECT string_agg(tenant_id || '/' || id, ';' ORDER BY 1) FROM public.invoices $$`);
+      await db.exec("REVOKE EXECUTE ON FUNCTION leak_step(text, text) FROM PUBLIC");
+      await db.exec("CREATE AGGREGATE leak_agg(text) (SFUNC = leak_step, STYPE = text)");
+    });
+
+    const { rows } = await db.query<{ leak_agg: string }>(
+      "SELECT leak_agg(x) FROM (VALUES ('a')) AS v(x)",
+    );
+
+    expect(rows[0]?.leak_agg).toContain("org_789/INV-1008");
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+  });
+
+  it("DSOR-RP-01a: a helper whose EXECUTE arrives through an INHERIT FALSE membership is refused", async () => {
+    await asTheOwner(async () => {
+      await db.exec(`CREATE FUNCTION leak() RETURNS text LANGUAGE sql SECURITY DEFINER
+                     AS $$ SELECT string_agg(tenant_id, ';' ORDER BY 1) FROM public.invoices $$`);
+      await db.exec("REVOKE EXECUTE ON FUNCTION leak() FROM PUBLIC");
+      await db.exec("CREATE ROLE helper");
+      await db.exec("GRANT EXECUTE ON FUNCTION leak() TO helper");
+      await db.exec(`GRANT helper TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+  });
+
+  it("a connection that already carries a company before any statement said one is refused", async () => {
+    // A statement with no company runs with whatever the session holds. A pooler, or an
+    // administrator's ALTER ROLE … SET, could leave a company on the session; every plain
+    // statement would then be that company's.
+    await db.exec("SELECT set_config('dsor.tenant_id', 'org_789', false)");
+
+    try {
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/already carries/);
+    } finally {
+      await db.exec("SELECT set_config('dsor.tenant_id', '', false)");
+    }
+  });
+
+  it("the application's own temporary table is not a window, and does not refuse start-up", async () => {
+    await db.exec("CREATE TEMP TABLE scratch (x int)");
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
+  });
+
+  it("a missing tenant table is refused in the step's own words, not PostgreSQL's", async () => {
+    await asTheOwner(() => db.exec("DROP TABLE public.invoices CASCADE"));
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /tenant table is missing/,
+    );
+  });
+});
+
 describe("a lock that is not there", () => {
   // A program that relies on the database to hide rows, run against a database that does not,
   // would leak quietly. So the check also asks whether the lock is on, the way it asks whether a

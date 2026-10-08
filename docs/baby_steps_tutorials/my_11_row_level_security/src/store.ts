@@ -67,15 +67,18 @@ export function theDatabase(tenant: string): Statements {
     );
   }
 
-  if (typeof tenant !== "string" || tenant === "") {
+  // Blank includes whitespace: " " is not a company either, and the policy would answer it with
+  // no rows — the quiet route this guard exists to close.
+  if (typeof tenant !== "string" || tenant.trim() === "") {
     throw new TypeError(
       "a store asked for rows with no company said. Every statement about rows is for exactly " +
         "one company, and PostgreSQL would answer a statement with none with no rows at all.",
     );
   }
 
-  // Captured now, not looked up per statement: a store that read the tail and is about to insert
-  // must do both against the connection it started with, even if a test swaps the handle under it.
+  // Captured now, not looked up per statement: one write runs on one connection from its tail
+  // read to its INSERT. No test today swaps the handle in that gap; the capture is a property
+  // worth having rather than one anything relies on.
   const connection = database;
 
   return {

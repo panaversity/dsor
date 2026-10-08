@@ -133,6 +133,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     may_by_set_role: boolean;
     may_by_function: boolean;
     has_trigger: boolean;
+    tables_present: boolean;
   }>(
     `SELECT current_user AS who,
             ${held("current_user")} AS may,
@@ -146,7 +147,11 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
               WHERE p.prosecdef
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-                AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+                -- Whoever may call it. This asked \`has_function_privilege(current_user, …,
+                -- 'EXECUTE')\` until an evaluation measured three ways round that: EXECUTE held
+                -- through an INHERIT FALSE membership, an aggregate whose transition function is
+                -- the helper, and a trigger that fires it under the application's own UPDATE. A
+                -- helper whose owner skips the lock is refused for existing, not for being callable.
                 AND (
                   (${held("p.proowner")})
                   -- NEW IN STEP 11: or an owner the second lock does not apply to. A helper owned
@@ -162,8 +167,14 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
             ) AS may_by_function,
             EXISTS (
               SELECT 1 FROM pg_trigger t
-              WHERE t.tgrelid = 'public.audit'::regclass AND NOT t.tgisinternal
-            ) AS has_trigger`,
+              WHERE t.tgrelid IN (to_regclass('public.invoices'), to_regclass('public.audit'))
+                AND NOT t.tgisinternal
+            ) AS has_trigger,
+            -- NEW IN STEP 11: both tenant tables exist. Asked first, because every question below
+            -- is about them, and a missing table would turn those answers into NULLs that an
+            -- evaluation showed the guards could misread.
+            (to_regclass('public.invoices') IS NOT NULL AND to_regclass('public.audit') IS NOT NULL)
+              AS tables_present`,
   );
 
   const answer = rows[0];
@@ -175,6 +186,13 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     throw new Error(
       "the database did not say who this connection is, so the audit log cannot be trusted to be " +
         "append-only; refusing to start",
+    );
+  }
+
+  if (answer.tables_present !== true) {
+    throw new Error(
+      `a tenant table is missing: public.invoices and public.audit must both exist before the ` +
+        `program runs. Apply the migrations.`,
     );
   }
 
@@ -211,18 +229,19 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // either has to come here and say so.
   if (answer.may_by_function !== false) {
     throw new Error(
-      `this connection is \`${answer.who}\`, and it may EXECUTE a SECURITY DEFINER function whose ` +
-        `owner may ${FORBIDDEN.join(", ")} the audit table, or skips the row-level lock — a rewrite ` +
-        `or a read by proxy. Drop the function or revoke EXECUTE on it from \`${APPLICATION_ROLE}\` ` +
-        `and PUBLIC.`,
+      `there is a SECURITY DEFINER function whose owner may ${FORBIDDEN.join(", ")} the audit ` +
+        `table, or skips the row-level lock — a rewrite or a read by proxy for whoever reaches it, ` +
+        `through a grant, a membership, an aggregate or a trigger. This program expects no such ` +
+        `helper. Drop the function, or give it an owner that holds nothing.`,
     );
   }
 
   if (answer.has_trigger !== false) {
     throw new Error(
-      `the audit table has a trigger on it, and this program expects none: code attached to the ` +
-        `log runs inside every INSERT with its owner's rights. Drop the trigger, or change this ` +
-        `check deliberately.`,
+      `a tenant table has a trigger on it, and this program expects none: code attached to the ` +
+        `log or the invoices runs inside this program's own statements with its owner's rights — ` +
+        `an evaluation measured a trigger on the invoices smuggling every company's rows out ` +
+        `through the application's own UPDATE. Drop the trigger, or change this check deliberately.`,
     );
   }
 
@@ -280,6 +299,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     owns_tenant_table: boolean;
     locked: boolean;
     reads_beyond: string | null;
+    already_said: string | null;
   }>(
     `WITH tenant_table (rel, col) AS (
        VALUES (to_regclass('public.invoices'), 'tenant_id'), (to_regclass('public.audit'), 'tenant')
@@ -312,8 +332,16 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
                 AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND ns.nspname NOT LIKE 'pg_toast%'
-                AND c.oid NOT IN (SELECT rel FROM tenant_table)
-                AND has_table_privilege(current_user, c.oid, 'SELECT')) AS reads_beyond`,
+                -- A session's own temporary relations are its own: a temp view runs with the
+                -- rights of whoever made it, which is the application, and is filtered like it.
+                AND ns.nspname NOT LIKE 'pg_temp%'
+                -- NOT EXISTS, not NOT IN: a NULL in a NOT IN list makes every row false.
+                AND NOT EXISTS (SELECT 1 FROM tenant_table t WHERE t.rel = c.oid)
+                AND has_table_privilege(current_user, c.oid, 'SELECT')) AS reads_beyond,
+            -- Nothing said yet. A statement with no company runs with whatever the session holds,
+            -- and a session that already holds a company — a pooler that set it, an administrator's
+            -- ALTER ROLE … SET — would hand every plain statement that company's rows.
+            NULLIF(current_setting('dsor.tenant_id', true), '') AS already_said`,
   );
   const second = lock[0];
 
@@ -347,6 +375,15 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `the second lock is not on: public.invoices and public.audit must each have row-level ` +
         `security enabled, forced, and exactly the one policy migrations/005_row_level_security.sql ` +
         `writes — no other policy beside it, and none that reads differently.`,
+    );
+  }
+
+  if (second.already_said !== null) {
+    throw new Error(
+      `this connection already carries a company, \`${second.already_said}\`, before any statement ` +
+        `said one. A company is said per statement and dies with it; a session that holds one ` +
+        `would hand it to every statement that said none. Clear the setting on the role and on the ` +
+        `pooler.`,
     );
   }
 
@@ -417,7 +454,10 @@ export async function openTheDatabase(folder: string = LOCAL): Promise<{
   if (url !== undefined && url.trim() !== "") {
     // The real thing. One connection, because this program answers one request at a time; a pool of
     // one keeps the shape the same as a pool of many for the day it needs one.
-    const pool = new Pool({ connectionString: url, max: 1 });
+    // One connection, and a statement with a company holds it from BEGIN to COMMIT. So a store
+    // must never await one statement inside another, or the second waits for the first forever;
+    // the timeout turns that mistake into an error the pipeline can map, instead of a silent hang.
+    const pool = new Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 5_000 });
     const connection = overPool(pool);
 
     // Said rather than assumed. A connection string that is wrong fails here, on the first query,

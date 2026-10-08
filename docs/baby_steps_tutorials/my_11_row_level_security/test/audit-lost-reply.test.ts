@@ -11,13 +11,10 @@
 // `DSOR-UNK-01b` is the rule: an unknown outcome is reported as unknown, never as a retryable
 // error. So `audit` does not guess which of the two happened. It looks.
 
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PGlite } from "@electric-sql/pglite";
-import { migrationsIn } from "../src/migrations.ts";
+import type { PGlite } from "@electric-sql/pglite";
 import {
   audit,
-  forgetTheLog,
   OutcomeUnknown,
   resetClock,
   setClock,
@@ -29,6 +26,7 @@ import {
   type DecisionToRecord,
 } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
+import { aDatabase, forgetTheLog } from "./support/database.ts";
 import { callOperation } from "../src/operations.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -39,12 +37,14 @@ let real: PGlite;
 let connection: Database;
 
 beforeEach(async () => {
-  real = await PGlite.create();
-  await real.exec("CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-throwaway-not-a-secret';");
+  // NEW IN STEP 11: through the support, so the stores run as the application here too. This
+  // file used to build its own PGlite and never SET ROLE, so every fake forwarded the company to a
+  // superuser that ignores it — an evaluation measured the fakes' tenant being enforced nowhere.
+  real = await aDatabase();
 
-  for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
-    await real.exec(migration.sql);
-  }
+  const { rows } = await real.query<{ who: string }>("SELECT current_user AS who");
+
+  expect(rows[0]?.who).toBe("dsor_runtime");
 
   connection = overPGlite(real);
 });

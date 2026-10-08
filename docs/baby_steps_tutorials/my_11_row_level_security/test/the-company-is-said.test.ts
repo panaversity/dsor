@@ -72,6 +72,7 @@ describe("a statement that says its company", () => {
     // (DSOR-RP-01d), which a store would report as "not found" — a correct refusal that hides a
     // wrong program.
     expect(() => theDatabase("")).toThrow(/no company/);
+    expect(() => theDatabase(" ")).toThrow(/no company/); // an evaluation found this one let through
     expect(() => theDatabase(undefined as unknown as string)).toThrow(/no company/);
   });
 });

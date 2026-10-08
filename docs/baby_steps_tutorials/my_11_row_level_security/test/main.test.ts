@@ -223,6 +223,20 @@ describe("the program a learner runs", () => {
   });
 
   // STEP 10: what the demo shows about two companies.
+  // NEW IN STEP 11: the two lines that are this step. An evaluation inverted them — no company
+  // for the first, org_789 for the second — and this file passed 9 of 9. The README's "Run it"
+  // block was pasted output with nothing behind it, which is the failure this file's header says
+  // it exists to stop.
+  it("DSOR-RP-01d: the forgotten WHERE gets org_456's row with the company said, and no rows with none", () => {
+    const { raw } = demo();
+    const section = raw.split("A forgotten WHERE, caught by the second lock:")[1] ?? "";
+
+    expect(section).toContain("  for org_456:      org_456  INV-1008  31400.00  issued");
+    expect(section).toContain("  no company said:  (no rows)");
+    // And only org_456's row, with the company said: the point is the row that is NOT there.
+    expect(section.split("no company said")[0]).not.toContain("org_789");
+  });
+
   it("DSOR-IDN-03b: the same invoice number is two different invoices, one per company", () => {
     const out = demo().report;
 
