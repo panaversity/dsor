@@ -10,8 +10,9 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation } from "../src/operations.ts";
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../src/queries.ts";
+import type { Invoice } from "../src/invoice.ts";
+import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
+import { bytesOf, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESULT_BYTES } from "../src/queries.ts";
 import { overPGlite } from "../src/database.ts";
 import { useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetInvoices } from "./support/database.ts";
@@ -114,6 +115,63 @@ describe("where the ceiling is", () => {
     } finally {
       useDatabase(real);
     }
+  });
+});
+
+describe("the second layer: the door", () => {
+  // The query written next year forgets its LIMIT. The handler's SQL is the first layer; this is
+  // the second: after any handler runs, the door measures the answer against both maxima and
+  // refuses one that exceeds them as the program's own error. Nothing oversize leaves the door.
+  const careless = (invoices: Invoice[]): Handler => {
+    return async (_args, _contract, askedBy) => ({
+      kind: "page",
+      askedBy,
+      page: { invoices, next: undefined },
+    });
+  };
+  const anInvoice = (i: number, vendor = "VENDOR-44"): Invoice =>
+    Object.freeze({
+      uri: `dsor://org_456/invoice/INV-${i}`,
+      tenantId: "org_456",
+      id: `INV-${i}`,
+      vendor,
+      amount: Object.freeze({ value: "1.00", currency: "USD" }),
+      status: "issued" as const,
+    });
+
+  it("DSOR-QRY-01: a handler that returns more rows than a page is refused by the door, as the program's own error", async () => {
+    const door = makeDoor(PIPELINE, {
+      "invoice.list": careless(Array.from({ length: MAX_PAGE_SIZE + 1 }, (_u, i) => anInvoice(i))),
+    });
+    const answer = await door(SUPERVISOR, "invoice.list", {});
+
+    expect(answer.kind).toBe("error");
+
+    if (answer.kind === "error") {
+      expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.message).toMatch(/101 rows/);
+    }
+  });
+
+  it("DSOR-QRY-01: an answer bigger than the result size is refused too, however few rows", async () => {
+    const door = makeDoor(PIPELINE, {
+      "invoice.list": careless(Array.from({ length: 4 }, (_u, i) => anInvoice(i, "V".repeat(20_000)))),
+    });
+    const answer = await door(SUPERVISOR, "invoice.list", {});
+
+    expect(answer.kind).toBe("error");
+
+    if (answer.kind === "error") {
+      expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.message).toMatch(/bytes/);
+    }
+  });
+
+  it("a full page of real invoices is well inside both maxima, so the door is not refusing the honest list", async () => {
+    const page = await pageFor(SUPERVISOR, { limit: MAX_PAGE_SIZE });
+
+    expect(page.invoices).toHaveLength(MAX_PAGE_SIZE);
+    expect(bytesOf(page)).toBeLessThan(MAX_RESULT_BYTES / 2);
   });
 });
 

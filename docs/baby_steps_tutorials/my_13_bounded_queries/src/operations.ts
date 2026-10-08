@@ -32,7 +32,7 @@ import {
   type Stage,
   type StageResult,
 } from "./pipeline.ts";
-import { pageSizeFrom } from "./queries.ts";
+import { bytesOf, MAX_PAGE_SIZE, MAX_RESULT_BYTES, pageSizeFrom } from "./queries.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
@@ -58,7 +58,7 @@ export type OperationAnswer =
   | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
 
-type Handler = (
+export type Handler = (
   args: Readonly<Record<string, unknown>>,
   contract: OperationContract,
   askedBy: string,
@@ -842,7 +842,40 @@ export type Door = (
  * instead is the behaviour tests: a door whose `authorize` does nothing lets cfo_100 issue an
  * invoice, and `deny-by-default.test.ts` is where that is caught.
  */
-export function makeDoor(stages: readonly Stage[]): Door {
+/**
+ * NEW IN STEP 13: what, if anything, makes an answer too big to leave the door.
+ *
+ * The second layer of DSOR-QRY-01. The handler's SQL is the first; this measures what came back
+ * against the same two maxima, so a query written next year that forgets its LIMIT is caught
+ * here rather than on the wire. Returns the reason, or nothing.
+ */
+function overTheCeiling(id: string, answer: OperationAnswer): string | undefined {
+  if (answer.kind === "error") {
+    return undefined;
+  }
+
+  if (answer.kind === "page" && answer.page.invoices.length > MAX_PAGE_SIZE) {
+    return `${id} returned ${answer.page.invoices.length} rows where a query may return at most ${MAX_PAGE_SIZE}`;
+  }
+
+  const bytes = bytesOf(answer);
+
+  if (bytes > MAX_RESULT_BYTES) {
+    return `${id} returned an answer of ${bytes} bytes where a query may return at most ${MAX_RESULT_BYTES} bytes`;
+  }
+
+  return undefined;
+}
+
+/**
+ * `handlerTable` is the program's own handlers unless a test says otherwise. Exported for the
+ * same reason `makeDoor` is: a test that wants to watch the door refuse an oversize answer needs
+ * a handler that gives one, and the program has none.
+ */
+export function makeDoor(
+  stages: readonly Stage[],
+  handlerTable: Readonly<Record<string, Handler>> = handlers,
+): Door {
   // A frozen **copy**, checked, and it is the copy the door walks. A review checked the array it was
   // handed and then kept walking the caller's live reference: `const door = makeDoor(list)` followed
   // by `list.length = 2` gave a door with no authorize, no validate and no recording, and
@@ -880,8 +913,8 @@ export function makeDoor(stages: readonly Stage[]): Door {
       recorded,
     } = walked.context;
     const handler =
-      contract !== undefined && Object.hasOwn(handlers, contract.id)
-        ? handlers[contract.id]
+      contract !== undefined && Object.hasOwn(handlerTable, contract.id)
+        ? handlerTable[contract.id]
         : undefined;
 
     // STEP 08: nothing executes without the receipt from §21.11.
@@ -941,7 +974,21 @@ export function makeDoor(stages: readonly Stage[]): Door {
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    return Object.freeze(await handler(given, contract, principal.id, tenant, hash, id_));
+    const answer = Object.freeze(await handler(given, contract, principal.id, tenant, hash, id_));
+
+    // NEW IN STEP 13: and nothing oversize leaves. The decision was recorded as the ALLOW it was;
+    // this is the program failing to carry it out within the rule, reported as its own error.
+    const tooBig = overTheCeiling(contract.id, answer);
+
+    if (tooBig !== undefined) {
+      return Object.freeze({
+        kind: "error",
+        askedBy: principal.id,
+        envelope: refusal("INTERNAL_ERROR", tooBig, id_, principal.id),
+      });
+    }
+
+    return answer;
   };
 }
 
