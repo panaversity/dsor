@@ -278,6 +278,31 @@ describe("the program a learner runs", () => {
     }
   });
 
+  it("DSOR-CLS-02a: the demo's first two lines — the supervisor sees the amount, the agent sees it withheld and listed", () => {
+    const out = demo().report;
+    // The map's "done when": the agent sees a masked amount and a redaction list; a human sees
+    // the value. Whole lines, built with the printer's own widths.
+    expect(out).toContain(
+      `${"user_123".padEnd(21)} ${"(confidential)".padEnd(24)} dsor://org_456/invoice/INV-1008  31400.00 USD  issued`,
+    );
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"(internal)".padEnd(24)} dsor://org_456/invoice/INV-1008  (amount withheld)  issued  withheld: amount (clearance)`,
+    );
+  });
+
+  it("DSOR-CLS-05: the log it prints shows the supervisor's read as a record of its own, with its row count", () => {
+    const out = demo().report;
+
+    expect(out).toContain(
+      [" 1", "read ", "invoice.get@1".padEnd(19), "user_123".padEnd(21), "READ, 1 row".padEnd(22)].join("  "),
+    );
+    // And the agent's read, right after it, left nothing of the kind: record 2 is its decision
+    // and record 3 is the next refusal.
+    expect(out).toContain(
+      [" 2", "ALLOW", "invoice.get@1".padEnd(19), "accounts-payable-fte".padEnd(21), "ALLOWED".padEnd(22)].join("  "),
+    );
+  });
+
   it("DSOR-IDN-03b: the same invoice number is two different invoices, one per company", () => {
     const out = demo().report;
 

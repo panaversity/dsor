@@ -21,6 +21,14 @@ const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_
 const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
+// NEW IN STEP 14: what the door took out, if anything, at the end of the line. The agent's line
+// says `withheld: amount (clearance)`; a human's line says nothing, because nothing was.
+function withheld(redactions: readonly { field: string; reason: string }[] | undefined): string {
+  return redactions === undefined || redactions.length === 0
+    ? ""
+    : `  withheld: ${redactions.map((r) => `${r.field} (${r.reason})`).join(", ")}`;
+}
+
 function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
   const who = answer.askedBy.padEnd(21);
 
@@ -34,20 +42,22 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     const r = answer.envelope;
     const invoice = r.data as { uri: string; status: string };
 
-    return `${who} ${r.outcome.padEnd(24)} ${invoice.uri}  ${invoice.status}`;
+    return `${who} ${r.outcome.padEnd(24)} ${invoice.uri}  ${invoice.status}${withheld(r.redactions)}`;
   }
 
   if (answer.kind === "page") {
     const p = answer.page;
 
-    return `${who} ${"(a page)".padEnd(24)} ${p.invoices.length} invoices${p.next === undefined ? ", the last page" : `, next after ${p.next}`}`;
+    return `${who} ${`(a page, ${answer.classification})`.padEnd(24)} ${p.invoices.length} invoices${p.next === undefined ? ", the last page" : `, next after ${p.next}`}${withheld(answer.redactions)}`;
   }
 
   const i = answer.invoice;
 
   const amount = i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`;
 
-  return `${who} ${"(no envelope)".padEnd(24)} ${i.uri}  ${amount}  ${i.status}`;
+  // NEW IN STEP 14: the answer's own label where "(no envelope)" used to be — a query's success
+  // still has no envelope, and now it says how sensitive what it holds is.
+  return `${who} ${`(${answer.classification})`.padEnd(24)} ${i.uri}  ${amount}  ${i.status}${withheld(answer.redactions)}`;
 }
 
 const database = await openTheDatabase();
@@ -57,6 +67,11 @@ console.log(`The audit log is in ${database.where}.`);
 console.log();
 
 // The same read, by two different callers. Switching is just a different login.
+// NEW IN STEP 14, and this is the step: the two lines are no longer the same. The supervisor's
+// carries the amount and the label `confidential`; the agent's has the amount taken out, is
+// labelled `internal` — the highest label among what is left — and says what was withheld and
+// why. The agent is cleared for `internal`, and the amount of an invoice is confidential
+// (src/classification.ts). The agent's answers go to a model provider; the amount does not.
 console.log(show(await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 })));
 console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
 console.log();
