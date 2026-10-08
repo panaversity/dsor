@@ -2668,3 +2668,34 @@ A third, from the review's critic: widen the page type now, to rows of any kind,
 row layer applies to the next list as well as to this one. Not in this step. There is one list, a
 type for lists that do not exist is a guess, and the README says what the next list must do; the
 widening belongs to the step that builds it.
+
+## 105 · Step 14's three decisions, taken by the learner before any code (2026-10-08)
+
+The problem was shown first, on step 13's running demo. `accounts-payable-fte` reads INV-1008 and
+gets `31400.00 USD`, the same line as `user_123` — and the agent's answers travel to a model
+provider outside the company, so the amount left org_456, and with `invoice.list` a hundred
+amounts leave per page. No field carries a label, nothing between the database and the agent
+asks, and by `DSOR-CLS-01` every unlabelled field is confidential, so all of it left. The rules are
+§19's: CLS-01, CLS-02a, CLS-02b, CLS-03 and CLS-05. Three questions, one at a time, in plain
+words; the learner took all three recommendations.
+
+1. **One file for all labels, in code.** `src/classification.ts` holds a table — entity, field,
+   label — and a field missing from it is confidential, which is the rule itself and is tested by
+   taking a label away. Beside each entity's shape was the alternative: the label next to the type
+   it labels, but every entity file grows its own table and the no-label rule is repeated per
+   file. In the contract's output was the third: the same invoice labelled twice, in `invoice.get`
+   and in `invoice.list`, free to disagree.
+2. **A field above the clearance is left out, and listed.** Nothing of the value leaves; the
+   redaction list says `amount`, `clearance`, `omitted`. A placeholder in the field keeps the
+   shape, but it is a fake value in a typed field — money's value is a decimal string and a mask
+   is not one — and a careless program adds masks up.
+3. **Agents only, as the rule says.** `DSOR-CLS-02a` is written for agent principals, because an
+   agent's answer crosses the model boundary; a human reads on a screen, and the role decides what
+   a human may do. The agent gets the clearance `internal`; the two people are not filtered.
+   Everyone by clearance was the alternative: uniform, asked for by no rule, and needing invented
+   clearances for the humans.
+
+The labels are the specification's own example (§4, `DSOR-ENT-01b`): `id` internal, vendor
+internal, `amount` confidential, `status` internal; `uri` and `tenantId` internal, since they name
+the row. The step's databases: `dsor_step14` on Neon and on the local server.
+
