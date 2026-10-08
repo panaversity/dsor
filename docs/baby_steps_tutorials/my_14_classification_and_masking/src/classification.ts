@@ -39,6 +39,9 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     vendor: "internal",
     amount: "confidential",
     status: "internal",
+    // Labelled before any column exists: the label comes with the design, so that the day a bank
+    // account is stored it is already restricted. The fourth label reaches the door through it.
+    bank_account: "restricted",
   }),
 });
 

@@ -102,6 +102,11 @@ const redactionsFor = (fields: Iterable<string>): readonly Redaction[] =>
  * Everything else is filtered by who is asking, labelled, and told what it lost.
  */
 export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): OperationAnswer {
+  // Two things this boundary does not do, said here because a review measured both. An error is
+  // untouched: its message is free text, so a handler must never put a field's value in one — a
+  // rule for handlers, not a filter. And a label covers a field's value whole: a field whose
+  // value is an object is shown whole or withheld whole, so a handler must not nest a sensitive
+  // value under a lower-labelled field. Both belong to the entity schema (DSOR-ENT-01b).
   if (answer.kind === "error") {
     return answer;
   }
@@ -137,10 +142,19 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
       }
     }
 
+    // The cursor is a row's address. A caller who may not see the rows' addresses may not see
+    // the next one either — a review found `uri` listed as withheld with `next` carrying the
+    // same address beside it.
+    const next = withheld.has("uri") ? undefined : answer.page.next;
+
+    if (withheld.has("uri") && answer.page.next !== undefined) {
+      withheld.add("next");
+    }
+
     return Object.freeze({
       kind: "page",
       askedBy: answer.askedBy,
-      page: Object.freeze({ invoices: Object.freeze(invoices), next: answer.page.next }),
+      page: Object.freeze({ invoices: Object.freeze(invoices), next }),
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
     });

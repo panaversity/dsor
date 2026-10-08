@@ -7,6 +7,10 @@
 // later. An operation it cannot test, because its contract carries no example request, fails here
 // rather than being skipped. That is what "the suite grows by itself" means.
 //
+// STEP 14: the questions are asked as user_123, a human, on purpose. The model boundary withholds
+// the amount from an agent before the canary check looks, so an agent's answer could carry the
+// other company's amount and pass. A human's answer is whole, and the canaries can see it.
+//
 // It is a function and not a test file, so that it runs twice: on PGlite under `pnpm check`, and
 // against a real server in the database tier. The hooks are the two things that differ.
 //

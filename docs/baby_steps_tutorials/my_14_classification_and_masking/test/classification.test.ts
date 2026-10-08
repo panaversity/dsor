@@ -15,9 +15,13 @@ import { findPerson } from "../src/people.ts";
 
 describe("the labels", () => {
   it("DSOR-CLS-01: a field with no label is confidential", () => {
-    // Nobody labelled a bank account, or an entity called "payroll" at all.
-    expect(labelOf("invoice", "bank_account")).toBe("confidential");
+    // Nobody labelled a notes field, or an entity called "payroll" at all.
+    expect(labelOf("invoice", "notes")).toBe("confidential");
     expect(labelOf("payroll", "salary")).toBe("confidential");
+  });
+
+  it("restricted is in the table before any column is: a bank account", () => {
+    expect(labelOf("invoice", "bank_account")).toBe("restricted");
   });
 
   it("the running example's invoice is labelled as the specification's own example is", () => {

@@ -936,6 +936,22 @@ async function recordTheRead(
         ? fetched.page.invoices
         : [];
 
+  // The record names rows by address. A row without one is a handler's bug, not the store's: the
+  // program's own error, never to retry — a review measured it leaving as EVIDENCE_STORE_UNAVAILABLE
+  // with retry safe, because `resources: [undefined]` is what failed to be written.
+  if (rows.some((row) => typeof row.uri !== "string")) {
+    return Object.freeze({
+      kind: "error",
+      askedBy,
+      envelope: refusal(
+        "INTERNAL_ERROR",
+        `${nameOf(contract.id)} returned a row with no address, so its rows were not returned`,
+        requestId,
+        askedBy,
+      ),
+    });
+  }
+
   try {
     await audit({
       kind: "classified_read",
