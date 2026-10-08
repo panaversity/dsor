@@ -33,6 +33,16 @@ const ISSUE: Case = caseFor("invoice.issue", registry.get("invoice.issue")!, {
   invoice: "dsor://org_456/invoice/INV-1009",
 });
 
+/** The caller's own invoice, for an honest own-company answer. */
+const OUR_INVOICE = {
+  uri: "dsor://org_456/invoice/INV-1008",
+  tenantId: "org_456",
+  id: "INV-1008",
+  vendor: "VENDOR-44",
+  amount: { value: "31400.00", currency: "USD" },
+  status: "issued",
+} as const;
+
 /** An invoice that looks like the other company's, for a lying answer to carry. */
 const THEIR_INVOICE = {
   uri: "dsor://org_789/invoice/INV-1008",
@@ -97,7 +107,7 @@ function honest(overrides: Partial<Deps> = {}): Deps {
 
       logs[OURS]!.push(record(requestId, "ALLOW", "ALLOWED", `${id}@1`));
 
-      return { kind: "data", askedBy: "user_123", invoice: { ...THEIR_INVOICE, uri: address } };
+      return { kind: "data", askedBy: "user_123", invoice: OUR_INVOICE };
     },
     ...overrides,
   };
@@ -287,6 +297,20 @@ describe("each question, honest and lied to", () => {
     });
 
     await expect(questions.ownExampleWorks(deps, GET)).rejects.toThrow();
+  });
+
+  it("ownExampleWorks: a success answer that carries the other company's row", async () => {
+    // The critic's handler: org_456's invoice, and org_789's beside it, in a successful answer.
+    const base = honest();
+    const deps = honest({
+      call: async (id, request) => {
+        const answer = await base.call(id, request);
+
+        return answer.kind === "data" ? ({ ...answer, leaked: THEIR_INVOICE } as never) : answer;
+      },
+    });
+
+    await expect(questions.ownExampleWorks(deps, GET)).rejects.toThrow(/carries/);
   });
 
   it("the two by-name failures say what to add", () => {

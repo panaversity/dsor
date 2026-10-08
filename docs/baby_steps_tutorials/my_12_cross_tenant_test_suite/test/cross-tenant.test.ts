@@ -15,6 +15,15 @@
 // exist". Decision 88 chose TENANT_MISMATCH instead, because the spec names it and the spec is
 // authoritative over the map — what the done-when MEANS, reveal nothing, is held to the letter.
 
+// STEP 12: the generated suite in test/support/cross-tenant-suite.ts asks five of the questions
+// below of every operation — refused with TENANT_MISMATCH, the same refusal for a real and a fake
+// company, the command path untouched, the DENY in the log, the own address working — and asks the
+// second one more strictly, whole envelope rather than message. The tests kept here are the ones
+// the suite does not ask: the agent who belongs to both companies, the nested-argument limit, a
+// door built with a forgetful validate stage, the decision-88 "missing in your own company"
+// answer. The duplicated five stay as step 10's by-hand version, which is what a learner reads
+// first.
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";

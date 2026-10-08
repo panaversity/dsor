@@ -31,7 +31,8 @@ beforeAll(async () => {
 
 /** The rows as the story starts, as the owner: the application may neither add nor remove rows. */
 async function putTheStoryBack(): Promise<void> {
-  await owner.query("DELETE FROM public.invoices");
+  // The story's companies only, so a database that also holds somebody else's rows keeps them.
+  await owner.query("DELETE FROM public.invoices WHERE tenant_id IN ('org_456', 'org_789')");
 
   for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
     if (migration.name === "004_running_example.sql") {
@@ -39,7 +40,7 @@ async function putTheStoryBack(): Promise<void> {
     }
   }
 
-  await owner.query("DELETE FROM public.audit");
+  await owner.query("DELETE FROM public.audit WHERE tenant IN ('org_456', 'org_789')");
 }
 
 afterAll(async () => {

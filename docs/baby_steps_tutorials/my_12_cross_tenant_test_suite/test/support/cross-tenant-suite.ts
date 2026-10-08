@@ -31,6 +31,7 @@ import {
   loadRegistry,
   type OperationContract,
 } from "../../src/registry.ts";
+import { isKnownTenant } from "../../src/tenant.ts";
 import { parseUri } from "../../src/uri.ts";
 
 /** The caller in org_456 for every test here. The agent belongs to both companies; user_123 to one. */
@@ -40,6 +41,9 @@ export const SUPERVISOR = { loggedInAs: "user_123" };
 export const OURS = "org_456";
 export const THEIRS = "org_789";
 export const NOBODYS = "org_000";
+
+/** What org_789 alone holds, from 004_running_example.sql: a success answer must carry none of it. */
+export const CANARIES: readonly string[] = ["18000.00", "9100.00", "4200.00", "INV-2001"];
 
 /** One invoice row as the owner reads it: enough to see whether it moved, and what state it is in. */
 export interface Row {
@@ -202,6 +206,16 @@ export const questions = {
     const answer = await deps.call(c.id, c.example);
 
     expect(answer.kind, `${c.id}: ${JSON.stringify(answer)}`).not.toBe("error");
+
+    // And nothing of the other company inside the answer. A critic's handler returned org_456's
+    // invoice with org_789's row beside it, in a successful answer, and the first version of this
+    // question — "not an error" — passed it. The canaries are what org_789 alone holds in the
+    // story: its name, and the amounts and the number org_456 never has.
+    const text = JSON.stringify(answer);
+
+    for (const canary of [THEIRS, ...CANARIES]) {
+      expect(text, `${c.id}: the own-company answer carries ${canary}`).not.toContain(canary);
+    }
   },
 
   /** The failing test an operation gets when the suite cannot call it. */
@@ -225,10 +239,18 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
     logOf: theLog,
   };
 
-  // The suite's own guard, in both tiers: a registry with no operations would register nothing
-  // below, and vitest's complaint about an empty file is not this suite's assertion.
+  // The suite's own guards, in both tiers. A registry with no operations would register nothing
+  // below, and vitest's complaint about an empty file is not this suite's assertion. And the three
+  // companies must be what the questions assume: a critic added org_000 to tenant.ts and every
+  // question stayed green while comparing two real companies — the "does not exist" half of
+  // question 2 was gone and nothing said so.
   it("DSOR-TEN-02b: the registry holds at least one operation to exercise", () => {
     expect(registry.size).toBeGreaterThan(0);
+  });
+
+  it("the other company is real and the third one is not, which question 2 depends on", () => {
+    expect(isKnownTenant(THEIRS)).toBe(true);
+    expect(isKnownTenant(NOBODYS)).toBe(false);
   });
 
   for (const [id, contract] of registry) {
