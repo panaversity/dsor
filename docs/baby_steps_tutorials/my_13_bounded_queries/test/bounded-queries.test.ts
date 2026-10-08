@@ -5,6 +5,9 @@
 // invoices, three megabytes, in a tenth of a second. §7.1 says it in one sentence: an agent in a
 // loop should not be able to download the whole customer table.
 //
+// What this file proves is the size of one answer. The walk test below gets every row, a page at a
+// time, and that is allowed here: a budget across requests is DSOR-CLS-04b, a later step.
+//
 // Rule DSOR-QRY-01: DSoR MUST enforce a server-side maximum page size and maximum result size on
 // every query, whether or not the client asks for a limit.
 

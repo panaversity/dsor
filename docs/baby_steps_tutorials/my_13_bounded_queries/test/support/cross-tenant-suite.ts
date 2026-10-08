@@ -3,7 +3,7 @@
 // Step 11's `cross-tenant.test.ts` proves two operations by hand, and nothing ties it to the list
 // of operations: a third operation, added without a tenant check, leaked org_789's invoice while
 // that file stayed green (decision 99). This file is one test *per operation*, written once and
-// run for every operation the registry holds — the two that exist, and every one that is added
+// run for every operation the registry holds — the ones that exist, and every one that is added
 // later. An operation it cannot test, because its contract carries no example request, fails here
 // rather than being skipped. That is what "the suite grows by itself" means.
 //

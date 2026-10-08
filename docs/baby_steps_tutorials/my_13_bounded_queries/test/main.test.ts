@@ -244,7 +244,10 @@ describe("the program a learner runs", () => {
   // STEP 12: the lines that are this step, pinned, as step 11's were after an evaluation
   // found them unpinned. One line per operation in the registry, every one a TENANT_MISMATCH.
   // NEW IN STEP 13: the lines that are this step, pinned from the start.
-  it("DSOR-QRY-01: the demo's list shows a page, its cursor, and a request for a million getting one page", () => {
+  // Not titled with DSOR-QRY-01: with two invoices in the story, "a million" prints two whether or
+  // not a ceiling exists, and a review ran it green with the cap and the door's check both deleted.
+  // It pins the demo's lines; bounded-queries.test.ts, which seeds three hundred, proves the rule.
+  it("the demo's list shows a page, its cursor, and a request for a million getting what there is", () => {
     const { raw } = demo();
     const section = raw.split("A list, one page at a time, and the ceiling:")[1]?.split("The audit log")[0] ?? "";
     const lines = section.split("\n").filter((line) => /^(limit 1 |after the first|limit 1,000,000)/.test(line));

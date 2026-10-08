@@ -3,9 +3,14 @@
 // Measured on a copy of step 12 with a list written the obvious way: `{ limit: 1,000,000 }`
 // returned all 50,002 of org_456's invoices, three megabytes, in a tenth of a second, because the
 // caller set the size. §7.1: an agent in a loop should not be able to download the whole customer
-// table. So the size is the server's. Two numbers, in one file, used in two places: the handler's
-// SQL carries `LIMIT`, and the door refuses an answer that exceeds them anyway, so a query written
-// next year that forgets its LIMIT is caught (database.ts's two-layer idea, one more time).
+// table. So the size is the server's. Two maxima and a default, in one file, used in two places:
+// the handler's SQL carries `LIMIT`, and the door refuses an answer that exceeds them anyway, so a
+// query written next year that forgets its LIMIT is caught (database.ts's two-layer idea, one
+// more time).
+//
+// What the ceiling bounds is one answer, not a session. A caller who sends `next` back gets the
+// table, a page at a time, and every page is a decision in the log; a budget over a time window is
+// DSOR-CLS-04b, an L2 rule, and a later step.
 //
 // The numbers are this step's own and provisional, like §44's ceilings: the specification names
 // the rule and not the figures.
