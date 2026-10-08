@@ -1067,6 +1067,139 @@ PostgreSQL 17.
   5. Only start-up reads the triggers, so a trigger switched off while DSoR runs is not seen
      until the next start. Check at each command, check on a timer, or accept it and record it.
 
+### Step 22, before design: two parts, then decide and build (2026-10-07)
+
+- **Built in another order.** After part 2 the learner asked whether to build first and understand
+  after. Claude Code recommended a middle way: take the decisions now, build, and finish parts 3
+  to 5 on the real code. Before the build every run was a sketch, and part 1 had felt ambiguous.
+  The learner chose that.
+- **Part 1, told again.** The first telling put three places, a dump of JSON, a list of schema
+  errors, and the spec's example in one turn, and its question offered a "stale" call decided on a
+  version higher than the record's. The learner called half of it ambiguous. Told again as one
+  story in time order, with one picture of the four states and one question, it landed: a replay
+  with the same key names the same proposal, and makes none.
+- **The decisions, all the recommended ones:** COMMITTED and FAILED are final; a refusal from the
+  code ends FAILED; two guards, DSoR's code and a trigger; the answer names the proposal; the move
+  to EXECUTING is one conditional statement. Two followed from the spec and were stated, for the
+  learner to object to: no proposal before line ⑧, and the whole picture built.
+- **A fact found after a decision.** DSOR-AUD-01 makes every proposal transition an audit record.
+  It was found while reading the code for the build, after the learner had chosen "a table of its
+  own" for the history. The decision went back to the learner, and changed to the log.
+- **Questions for the specification:** open questions 89 to 91.
+
+### Step 22, the build (2026-10-07)
+
+Built after the learner's decisions, while the learner was away.
+
+- **The schema cannot hold the picture.** `proposal.schema.json` lists the 17 states and no move:
+  a record with PENDING_APPROVAL to EXECUTING in its history passes it. So the moves live in
+  DSoR's code and in a trigger, and a database test compares the two, move by move, from every
+  state, the three that nothing reaches yet too.
+- **Where line ⑧ sits in the claim's transaction is the design.** Opened inside the savepoint of
+  the code's work, a refusal rolled the proposal back with the work, and the call ended
+  INTERNAL_ERROR with no proposal (break B3). Opened before it, the proposal ends FAILED and
+  keeps its records.
+- **Two guards, each shown holding alone.** With the trigger gone, `dsor_runtime`'s own UPDATE
+  moved a COMMITTED proposal back to READY (B1). With DSoR's check gone, the database refused the
+  same move with the same words (B2).
+- **The review's highest finding: an upgrade that breaks replays.** A claim answered before
+  migration 015 keeps no proposal, and its replay would answer INTERNAL_ERROR forever. Migration
+  015 now refuses a database whose claims hold answers. And any code could name a proposal,
+  another company's too, in a refusal of its own: only the checklist names it now, from the claim.
+- **Three sweeps.** 33 breaks of the step's pieces, 29 caught. The reviewer's 26, rewritten for
+  the fixed code, with one of the migration's guard: 27, 20 caught. The 11 that survived each
+  reached a part no call of the story reaches, and each part got a test of its own. A third run
+  caught all 8 it ran.
+- **A JavaScript trap, found live.** `String.replace` reads `$$` in its replacement as one
+  `$`. A script that inserted the migration's guard wrote `DO $`, and the migration failed on a
+  fresh database. Edits by script now use split and join, which read nothing.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Step 23, the decisions and the build (2026-10-08)
+
+The learner chose to build step 23 first and understand steps 22 and 23 together after, as with
+steps 20 and 21. Seven decisions in two rounds, each with a recommendation; the learner took every
+one. Claude Code built the step while the learner was away.
+
+- **The decisions.** No `proposal.execute` until step 31. A dry run runs lines ① to ⑥ only. Its
+  "no" is the real call's error envelope. The mode travels in the envelope, and a key keeps its
+  mode. The `.propose` permission is built, and ap_clerk gets `payment:create.propose`. A dry run
+  carries no key. A query carries no mode, not even `execute`.
+- **A missing stop that fails closed.** With the dry run's stop deleted, the dry run went on to
+  line ⑦, which asked for a key. A dry run carries none, so it was refused, and wrote nothing
+  (break B1). One decision guarded another.
+- **One word between "prepare" and "pay".** With the `.propose` form wanted in every mode, the
+  clerk's agent drafted PAY-903 in `execute` mode (break B3).
+- **A key that forgets its mode answers the wrong question truthfully.** A call that asked to
+  prepare heard that a payment was made, and a call that asked to execute heard READY while nothing
+  ran (break B2).
+- **No re-indent.** Lines ① to ⑩ became one function, `decide`, which returns where each mode
+  stops. Its body kept its place, so the diff shows the change and not the move.
+- **A false kill in the sweep.** `store.json` changed, and only the database tests ran after it.
+  One unit test then failed with no break at all, and it "killed" 13 database-side breaks. The
+  test was fixed, and the 13 ran again. Before a sweep, run both tiers on the step itself, and read
+  which test killed each break.
+- **The review: no guarantee broke, and four gaps had one cause.** In `propose_only` mode no code
+  runs, so the checks before line ⑦ are the whole guard, and only `payment.create` was tried in
+  the new modes. A copy where only `payment.create` heard the mode cancelled PAY-901 when asked
+  to prepare its cancel, and every test passed. Now every command is tried in each mode, and step
+  12's cross-tenant suite runs in both new modes too.
+- **A spec tension, found by the review.** A dry run that learns its signer is gone suspends the
+  signer's slips (DSOR-IDN-07), though DSOR-OPR-06 forbids a dry run's side effects. Kept, and
+  recorded as open question 95.
+- **The README review caught a false promise.** Decision 2 said step 32 would bring the version
+  check before the work. It does not: §21 checks the version at line 14, after a dry run returns.
+- **`.env.example` is the learner's to copy.** The deny rule on `.env.*` stops Claude Code from
+  reading or writing it, so the copy of step 22 left it out, and one test fails until it is there.
+- **Next: one understanding session for both steps:** step 22's parts 3 to 5, then step 23, on the
+  real code. Three points from step 22 to tell the learner: the reviewer's challenge to decision 1
+  (M1, open question 89), the order of the records (M2), and decision 15, which Claude Code took.
+- **Nothing is committed.**
+
+### Step 24, built overnight (2026-10-08)
+
+The learner asked for step 24 too, and went to sleep: "also do 24 then we will understand these 3".
+No one could answer questions, so Claude Code made every decision, each marked "(Claude Code)" in
+the README with its downside, for the learner to review before the session on steps 22 to 24.
+
+- **The one big choice: how DSoR knows what a command spends.** The specification does not say
+  (open question 99). The contract says it: `payment.create` binds its invoice, and spends the
+  invoice's open amount. DSoR reads it itself at line ⑨, before the limits at line ⑩, so a dry run
+  can check the limits too.
+- **Line ⑩ before the work.** READY and EXECUTING moved after it, as step 22 promised, and a
+  refusal there ends a proposal DENIED. The code's work runs after line ⑩ with no number.
+- **Step 23's decision 2 is extended,** not reversed: a dry run now runs lines ⑨ and ⑩, which are
+  DSoR's own and write nothing. The learner should confirm this.
+- **The story's del_100 keeps no limits in the shared database.** A day's spending carries from run
+  to run. The program tells the limits in memory, and the database tests use del_190 for intake-fte.
+- **Breaks, measured.** Read, check, then write: fifty drafts at once made 25, and the day held
+  785,000 USD against 200,000. FAILED that releases nothing kept 31,400 USD for a draft never made.
+  A dry run that reserves: six questions filled the day.
+- **Tests after the code, this once.** The code came first, against red first. The tests then
+  failed against step 23's code, at import. The sweep is the real proof: 40 breaks, and every one
+  now fails a test, after three new tests (two daily limits on one slip, the day's first amount
+  alone over the limit, and a replay of a refused draft on the database). One "kill" was a syntax
+  error, not a test, and was run again as a real break.
+- **The review's high finding: the limits checked one amount, and the code drafted another.** Line
+  ⑨ read the invoice at one version, and the code read it again. An agent that named the next
+  version drafted 120,000.00 USD under a reservation of 31,400.00, on the real database. Now the
+  work drafts only on the version line ⑨ read (decision 16). The first build's decision 2 said
+  step 21's version check covered this gap. It did not, because the caller chooses that version.
+- **A decision reversed by the specification.** Decision 9 said a prepared call reserves nothing,
+  because DSOR-DEL-06c does not name READY. §21 and §26.4 say otherwise: only a dry run takes no
+  reservation. A prepared call reserves now. The learner should look at this one first.
+- **Three smaller fixes.** A replay of a denial was recorded ALLOW (decision 17). A refused
+  prepared call could not be replayed on the database. A paid invoice's 0.00 hit a database check
+  as an accident (decision 18). And a slip with a limit of `-5` refused every payment (decision 19).
+- **Seventeen breaks left every test green,** though the code was right in most of them. Each got
+  a test. A third sweep then ran them again with each fix undone: 21 of 23 failed a test. The two
+  left, the day's first amount equal to the limit and the day taken from the session's time zone,
+  got database tests. The time-zone test runs in two sessions, twelve hours behind UTC and fourteen
+  ahead, because the test database's own Karachi zone shares UTC's date for 19 hours a day.
+- **The unit tests' group names did not match the README's claims.** The groups said C1 to C6, and
+  the README's claims are C1 to C15. Each group now names the README's claims.
+- **Nothing is committed.**
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

@@ -574,3 +574,62 @@ for a human. An agent may gather evidence; it does not settle these alone.
     trigger the store map does not name word for word, or one switched off. The function's body
     is not read, so an owner could change it to raise nothing. Question 80 asks the same of
     row-level security policies.
+89. **Is COMMITTED final for a command that can be undone?** §26.2 says that the states on the
+    picture's right-hand edge are final, and names COMMITTED and FAILED among them. Its last line
+    moves COMMITTED or FAILED to COMPENSATING for `COMPENSATABLE` and `SAGA` commands, and
+    `payment.create` is compensatable. DSOR-APR-01c forbids leaving a terminal state. Step 22's
+    learner build keeps COMMITTED and FAILED final, and makes an undo a proposal of its own, for
+    `payment.cancel`. Is a compensation a move of the same proposal, or a proposal of its own?
+90. **Can a READY proposal be cancelled, or expire?** The picture draws one move out of READY:
+    EXECUTING. In `propose_only` mode a READY proposal waits for `proposal.execute` (§26.2's
+    table). DSOR-DEL-04c cancels a revoked slip's proposals that are `PENDING_APPROVAL` or
+    `APPROVED`, and not one that is READY, so a READY proposal under a torn-up slip waits
+    forever. Should the picture draw READY to CANCELLED, EXPIRED, and INVALIDATED?
+91. **Does a command refused before line 8 leave a proposal?** §26.1 says that every command
+    invocation in `execute` or `propose_only` mode creates a proposal. §21 puts line 8 after the
+    permission check, the input check, and the claim of the key, so a refusal at one of them
+    returns before line 8. The picture's PROPOSED to DENIED suggests a denial can be a proposal's
+    end. Step 22's learner build makes no proposal before line 8. Which calls must leave one?
+92. **May a `.propose` holder ask for a dry run?** §7.3 says that a principal that holds a
+    `.propose` form, and not the full permission, "can invoke the command in `propose_only` mode
+    only". So its `validate_only` call is refused, though a dry run changes nothing and would tell
+    a clerk whether its prepared call passes DSoR's checks. Step 23's learner build refuses it, as
+    the sentence reads. Is `validate_only` meant to be open to a `.propose` holder?
+93. **Is an idempotency key bound to its invocation mode?** §22 binds a key to its scope and its
+    payload hash, and says nothing of the mode. Without a binding, a `propose_only` call that
+    reuses an `execute` call's key replays COMMITTED, and an `execute` call that reuses a
+    `propose_only` call's key hears READY while nothing runs. Step 23's learner build keeps the mode
+    beside the payload hash, and refuses another mode with IDEMPOTENCY_CONFLICT. Should the mode be
+    part of the claim, or of the payload hash?
+94. **What does a dry run answer when a check says no?** `result-envelope.schema.json` allows
+    `outcome: VALIDATED` with any `decision`, DENY too, and has no field for the reason. §7.3 says
+    only that the mode returns "the outcome". Step 23's learner build gives a refused dry run the
+    real call's error envelope, so VALIDATED always says ALLOW. Which shape does the specification
+    mean?
+95. **May a dry run suspend a slip?** DSOR-OPR-06 says a `validate_only` invocation must not cause
+    a side effect. DSOR-IDN-07 says that when the role source reports a delegator as deprovisioned
+    or suspended, DSoR must suspend every delegation that principal granted, and line 3 runs in a
+    dry run too. Step 23's learner build keeps the suspension: it is DSoR's own control state, which
+    the directory's news changes, not the command's effect. Is a suspension that a dry run learns
+    of a side effect of the dry run?
+96. **Should DSOR-DEL-06c name READY?** §21 reserves at line 10 in every mode but
+    `validate_only`, and §26.4 says "The reservation taken when the proposal was created is found
+    again by proposal id". So a proposal that waits in READY holds its reservation. But
+    DSOR-DEL-06c lists the states that hold one, and READY is not in the list. Step 24's learner
+    build first read the list as "READY holds nothing", and its review changed that: a prepared
+    call reserves, and the reservation is held while the proposal waits. Nothing releases it yet,
+    because READY has no move to CANCELLED or EXPIRED (question 90). Should DSOR-DEL-06c name
+    READY, and DSOR-DEL-06d name the move that ends a READY proposal's wait?
+97. **Does undoing a command give its spending back?** A COMMITTED proposal's reservation stays
+    counted. When `payment.cancel` cancels the draft, no money has moved, but the day's total
+    still holds the draft's amount. Step 24's learner build gives nothing back: the cancel is a
+    proposal of its own. Should a compensation release the reservation of the command it undoes?
+98. **How does `after_delay` meet a kept refusal?** §28 gives `LIMIT_EXCEEDED` the retry class
+    `after_delay`. §22 replays a recorded DENY, so a retry with the same key hears
+    `LIMIT_EXCEEDED` again, even on a new day. Step 24's learner build keeps the refusal with its
+    claim, so the caller retries later with a new key. Should a refusal whose retry class is
+    `after_delay` keep its claim?
+99. **How does DSoR know what a command spends?** §13.4 limits what an agent spends, and says
+    nothing of how DSoR learns the amount of a command. Step 24's learner build lets the contract
+    name it, beside its `bind`, as `spends: state.invoice.open_amount`. Should the operation
+    contract have a field for the amount a command counts against a limit?
