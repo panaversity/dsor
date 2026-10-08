@@ -46,7 +46,7 @@ describe("anything not granted is refused", () => {
       throw new Error(`expected data, got ${answer.kind}`);
     }
 
-    expect(answer.invoice.amount.value).toBe("31400.00");
+    expect(answer.invoice.amount?.value).toBe("31400.00");
   });
 
   // The other half of the map's "done when", and the point of the step.
@@ -63,7 +63,7 @@ describe("anything not granted is refused", () => {
       throw new Error("INV-1009 should still be readable");
     }
 
-    expect(after.invoice.status).toBe("draft");
+    expect(after.invoice?.status).toBe("draft");
   });
 
   // Decision 35. It says she may not do it, not what she was missing. A refusal that names the
@@ -114,7 +114,7 @@ describe("anything not granted is refused", () => {
       throw new Error("INV-1009 should still be readable");
     }
 
-    expect(after.invoice.status).toBe("draft");
+    expect(after.invoice?.status).toBe("draft");
   });
 
   // The denial is a new return site, and every answer in this program is frozen because

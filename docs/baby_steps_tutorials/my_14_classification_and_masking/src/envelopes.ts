@@ -13,6 +13,8 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import type { Redaction } from "./boundary.ts";
+import type { Classification } from "./classification.ts";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
 
@@ -102,6 +104,10 @@ export interface ResultEnvelope {
   readonly semantics: string;
   readonly data: Readonly<Record<string, unknown>>;
   readonly correlation: Correlation;
+  /** NEW IN STEP 14: the label of what `data` still holds, set by the door on its way out. */
+  readonly classification?: Classification;
+  /** NEW IN STEP 14: what the door took out of `data` for this caller, and why. */
+  readonly redactions?: readonly Redaction[];
 }
 
 const read = (path: string): object =>

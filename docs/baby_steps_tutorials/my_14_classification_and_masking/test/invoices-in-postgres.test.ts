@@ -152,7 +152,11 @@ describe("through the whole pipeline", () => {
     }
 
     expect(answer.invoice.uri).toBe("dsor://org_789/invoice/INV-1008");
-    expect(answer.invoice.amount.value).toBe("18000.00");
+    // STEP 14: the amount is withheld from the agent now, so the two companies are told apart
+    // by what the agent may see — org_789's INV-1008 is a draft, org_456's is issued.
+    expect(answer.invoice.tenantId).toBe("org_789");
+    expect(answer.invoice.status).toBe("draft");
+    expect("amount" in answer.invoice).toBe(false);
   });
 
   it("DSOR-IDN-03b: the same agent, working for org_456, gets org_456's", async () => {
@@ -164,6 +168,8 @@ describe("through the whole pipeline", () => {
       throw new Error(`expected data, got ${answer.kind}`);
     }
 
-    expect(answer.invoice.amount.value).toBe("31400.00");
+    expect(answer.invoice.tenantId).toBe("org_456");
+    expect(answer.invoice.status).toBe("issued");
+    expect("amount" in answer.invoice).toBe(false); // STEP 14
   });
 });

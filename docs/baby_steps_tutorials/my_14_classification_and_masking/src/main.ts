@@ -45,7 +45,9 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   const i = answer.invoice;
 
-  return `${who} ${"(no envelope)".padEnd(24)} ${i.uri}  ${i.amount.value} ${i.amount.currency}  ${i.status}`;
+  const amount = i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`;
+
+  return `${who} ${"(no envelope)".padEnd(24)} ${i.uri}  ${amount}  ${i.status}`;
 }
 
 const database = await openTheDatabase();

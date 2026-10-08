@@ -78,7 +78,7 @@ describe("the caller's arguments", () => {
       throw new Error("INV-1009 should still be readable");
     }
 
-    expect(after.invoice.status).toBe("draft");
+    expect(after.invoice?.status).toBe("draft");
   });
 
   // The arguments are read **once**. A property can be a getter, so reading it twice can give two

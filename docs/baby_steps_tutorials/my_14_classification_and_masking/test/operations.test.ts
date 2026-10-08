@@ -168,7 +168,7 @@ describe("callOperation", () => {
         throw new Error(`expected data, got ${answer.kind}`);
       }
 
-      expect(answer.invoice.amount.value).toBe("31400.00");
+      expect(answer.invoice.amount?.value).toBe("31400.00");
     });
 
     it("DSOR-ERR-01a: an invoice we do not hold is RESOURCE_NOT_FOUND, never retryable", async () => {

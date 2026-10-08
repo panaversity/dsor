@@ -279,8 +279,10 @@ describe("the program a learner runs", () => {
   it("DSOR-IDN-03b: the same invoice number is two different invoices, one per company", () => {
     const out = demo().report;
 
-    expect(out).toContain("dsor://org_456/invoice/INV-1008  31400.00 USD  issued");
-    expect(out).toContain("dsor://org_789/invoice/INV-1008  18000.00 USD  draft");
+    // STEP 14: both lines are the agent's, and the agent sees no amount: what it sees is which
+    // company's INV-1008 it got, told apart by the status.
+    expect(out).toContain("dsor://org_456/invoice/INV-1008  (amount withheld)  issued");
+    expect(out).toContain("dsor://org_789/invoice/INV-1008  (amount withheld)  draft");
   });
 
   it("DSOR-ERR-01b: the four refusals, and the same words for a real company and one that does not exist", () => {

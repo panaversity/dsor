@@ -430,7 +430,7 @@ describe("who you are comes from the login, never from the arguments", () => {
       throw new Error("INV-1009 should still be readable");
     }
 
-    expect(after.invoice.status).toBe("draft");
+    expect(after.invoice?.status).toBe("draft");
   });
 
   // The success path separately, because issuing a draft can only be done once and no

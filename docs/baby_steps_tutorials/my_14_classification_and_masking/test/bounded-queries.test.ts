@@ -285,7 +285,8 @@ describe("the next page", () => {
     for (let pages = 0; pages < 20; pages++) {
       const page = await pageFor(SUPERVISOR, { limit: MAX_PAGE_SIZE, ...(after ? { after } : {}) });
 
-      seen.push(...page.invoices.map((i) => i.id));
+      // STEP 14: a field may be withheld now; for the supervisor none is, and the id is pinned below.
+      seen.push(...page.invoices.map((i) => i.id ?? "(no id)"));
       after = page.next;
 
       if (after === undefined) {

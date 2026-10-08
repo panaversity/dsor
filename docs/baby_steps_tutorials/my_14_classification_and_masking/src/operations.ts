@@ -39,6 +39,9 @@ import {
   type StageResult,
 } from "./pipeline.ts";
 import { bytesOf, MAX_PAGE_SIZE, MAX_RESULT_BYTES, pageSizeFrom } from "./queries.ts";
+// NEW IN STEP 14: the filter at the door, and the shapes of what leaves.
+import { leaveTheDoor, type Redaction, type Shown, type ShownPage } from "./boundary.ts";
+import type { Classification } from "./classification.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
@@ -58,8 +61,33 @@ const registry = loadRegistry(contractsFromDisk());
  * explains the gap rather than papering over it.
  */
 export type OperationAnswer =
+  | {
+      readonly kind: "data";
+      readonly askedBy: string;
+      /** NEW IN STEP 14: the invoice as this caller may see it — a field above the clearance is gone. */
+      readonly invoice: Shown<Invoice>;
+      /** NEW IN STEP 14: the highest label among the fields that are still there (DSOR-CLS-03). */
+      readonly classification: Classification;
+      /** NEW IN STEP 14: what was taken out, and why (DSOR-CLS-02b). Empty for a human. */
+      readonly redactions: readonly Redaction[];
+    }
+  /** STEP 13: many rows, and where the next page starts. */
+  | {
+      readonly kind: "page";
+      readonly askedBy: string;
+      readonly page: ShownPage;
+      readonly classification: Classification;
+      readonly redactions: readonly Redaction[];
+    }
+  | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
+  | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
+
+/**
+ * NEW IN STEP 14: what a handler hands the door — the whole row, labelled by nobody yet. The door
+ * turns it into an OperationAnswer on the way out (boundary.ts), which is the only way out.
+ */
+export type HandlerAnswer =
   | { readonly kind: "data"; readonly askedBy: string; readonly invoice: Invoice }
-  /** NEW IN STEP 13: many rows, and where the next page starts. */
   | { readonly kind: "page"; readonly askedBy: string; readonly page: InvoicePage }
   | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
@@ -72,7 +100,7 @@ export type Handler = (
   tenant: string,
   hash: string,
   requestId: string,
-) => OperationAnswer | Promise<OperationAnswer>;
+) => HandlerAnswer | Promise<HandlerAnswer>;
 
 /** Contracts that describe an operation this step does not carry out yet. */
 const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set<string>();
@@ -985,9 +1013,16 @@ export function makeDoor(
     // §21.14 — execute. The only thing that happens after every check has said yes.
     const answer = Object.freeze(await handler(given, contract, principal.id, tenant, hash, id_));
 
-    // NEW IN STEP 13: and nothing oversize leaves. The decision was recorded as the ALLOW it was;
+    // NEW IN STEP 14: §19.2, before the response leaves. The handler handed back the whole row;
+    // what leaves for an agent has every field above its clearance taken out, says which, and
+    // carries its label. For any handler, including the careless one written next year: the door
+    // is the one way out, which is why the filter is here and not in invoice.ts.
+    const leaving = leaveTheDoor(principal, answer);
+
+    // STEP 13: and nothing oversize leaves. The decision was recorded as the ALLOW it was;
     // this is the program failing to carry it out within the rule, reported as its own error.
-    const tooBig = overTheCeiling(contract.id, answer);
+    // Measured after the filter, because the ceiling is on what leaves.
+    const tooBig = overTheCeiling(contract.id, leaving);
 
     if (tooBig !== undefined) {
       return Object.freeze({
@@ -997,7 +1032,7 @@ export function makeDoor(
       });
     }
 
-    return answer;
+    return leaving;
   };
 }
 

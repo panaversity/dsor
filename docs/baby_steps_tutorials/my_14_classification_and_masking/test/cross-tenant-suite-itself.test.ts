@@ -107,7 +107,8 @@ function honest(overrides: Partial<Deps> = {}): Deps {
 
       logs[OURS]!.push(record(requestId, "ALLOW", "ALLOWED", `${id}@1`));
 
-      return { kind: "data", askedBy: "user_123", invoice: OUR_INVOICE };
+      // STEP 14: what leaves the door carries its label and its list, so a fake does too.
+      return { kind: "data", askedBy: "user_123", invoice: OUR_INVOICE, classification: "confidential", redactions: [] };
     },
     ...overrides,
   };
@@ -129,7 +130,13 @@ describe("each question, honest and lied to", () => {
 
   it("refused: a door that hands the row over", async () => {
     const deps = honest({
-      call: async () => ({ kind: "data", askedBy: "user_123", invoice: THEIR_INVOICE }),
+      call: async () => ({
+        kind: "data",
+        askedBy: "user_123",
+        invoice: THEIR_INVOICE,
+        classification: "confidential",
+        redactions: [],
+      }),
     });
 
     await expect(questions.refused(deps, GET)).rejects.toThrow(/expected a refusal/);
