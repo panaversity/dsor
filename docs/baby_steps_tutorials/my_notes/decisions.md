@@ -2609,7 +2609,7 @@ took all three recommendations.
    The alternatives were a collection address with no id, which changes the grammar every step
    since 02 relies on, or an operation with no address, which the suite would have to be taught —
    the critic's addressless case from step 12, answered by not building one.
-3. **Two numbers in one file, and the pipeline refuses an oversize answer.** The handler's SQL
+3. **Two maxima and a default in one file, and the pipeline refuses an oversize answer.** The handler's SQL
    carries `LIMIT`; after the handler runs, the door checks the answer against both maxima and
    refuses one that exceeds them as the program's own error, never returned. Two layers, like
    steps 10 and 11: the query written next year that forgets its `LIMIT` is caught. Per-contract
@@ -2620,3 +2620,51 @@ took all three recommendations.
 
 The step's databases: `dsor_step13` on Neon and on the local server; the untouched copy ran 444
 and 30.
+
+## 103 · What step 13's build found: a cap no ordinary test can see (2026-10-08)
+
+The list slices the page it hands back — one row more is asked for, to know whether there is a
+next, and the extra is dropped. So every assertion about the page passes whether or not the SQL
+carries its `LIMIT`: a list that fetched the whole table and cut the page afterwards is correct in
+every way a test of the answer can measure, and it is exactly the leak §7.1 describes, one hop
+earlier. The test that sees it is a connection that counts what each statement returned, in front
+of the real one, asserting the database handed back the page plus one and nothing more — the same
+device step 11 used to prove every statement says its company. Breaks 1 and 5 of the README exist
+to show that without it the suite is blind to the thing the step is about.
+
+Two smaller things. `makeDoor` takes a handler table, defaulting to the program's own, because the
+door's measuring can only be tested with a handler that returns too much and the program has none;
+the table bypasses nothing the door checks, since a door is still every stage and the receipt. And
+the demo's "a million" line gets two invoices, because two is all the story has; the README says
+so rather than seed the demo to make a number appear.
+
+## 104 · The review's one design suggestion, declined: the page is not cut by bytes (2026-10-08)
+
+The hostile review of step 13 — five reviewers, one of them a mutation sweep of thirty-two
+one-line changes — found eight holes, every one closed with a test that failed first; the step's
+note lists them. One suggestion was about design and is recorded here because it was declined. A
+reviewer measured that a single row wider than 64 KiB — `vendor` is unbounded text — makes its
+page and its own `invoice.get` refuse with `INTERNAL_ERROR`, retry never, and proposed that
+`listInvoices` take rows while the running JSON size stays under the ceiling, so that the byte
+maximum shapes the page instead of refusing it.
+
+Declined, for three reasons. The learner chose the refusal at the door (decision 102, item 3), and
+a list that trims by bytes moves half of that decision back into the handler. A page whose size
+depends on the data hides the thing a wide row is — a column with no bound, which is a schema
+problem, and the honest fix is a bound on the column in a step that owns the schema. And the
+one-row case is not helped at all: an `invoice.get` of that row refuses whatever the list does. So
+the step refuses, the README says so, and the test that seeds such a row pins that both queries
+refuse rather than shrink. The remedy for a caller is a smaller `limit`; the remedy for the row is
+a later step.
+
+Two smaller declines, for the record. The door does not check that a page's rows belong to the
+request's company: the real handler cannot produce one that does not (the `WHERE` and RLS, and
+now a test of the `WHERE` alone), and a tenancy check at the door would be a second idea in this
+step. And `makeDoor` does not run `assertPaired` on a handler table a test hands it: a test's table
+is partial on purpose, and the resolve stage refuses an operation with no contract before any
+handler is looked up.
+
+A third, from the review's critic: widen the page type now, to rows of any kind, so that the door's
+row layer applies to the next list as well as to this one. Not in this step. There is one list, a
+type for lists that do not exist is a guess, and the README says what the next list must do; the
+widening belongs to the step that builds it.

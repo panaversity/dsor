@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, thirteen of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, fourteen of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -104,6 +104,7 @@ one before it:
 | `my_10_tenants` | 376 | a second company shares the program and the database: every row carries its company, every request is inside exactly one, another company's address is refused without revealing anything |
 | `my_11_row_level_security` | 412 | the second lock: PostgreSQL itself hides every other company's rows, told the company per statement inside its own transaction, and the program refuses to start as an account the lock does not apply to |
 | `my_12_cross_tenant_test_suite` | 444 | one generated test that calls every operation in the registry with another company's address, from an example request each contract carries, and fails by name for an operation it cannot call |
+| `my_13_bounded_queries` | 468 | invoice.list, with the size of the answer the server's: a maximum page size and result size on every query, a cursor that is an address, and a door that refuses an oversize answer whatever handler produced it |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -137,7 +138,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 101 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 104 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 35 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

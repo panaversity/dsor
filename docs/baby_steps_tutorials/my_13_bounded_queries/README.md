@@ -1,97 +1,86 @@
-# Step 12 · Cross-tenant test suite
+# Step 13 · Bounded queries
 
-**New in this step:** one generated test that calls **every** operation with another company's
-address, and grows by itself each time an operation is added.
+**New in this step:** `invoice.list`, the first operation that returns many rows, with the size of
+the answer decided by the server. Ask for a million, get one page.
 
 ## In plain words
 
-Step 11 keeps the companies apart with two locks, and `cross-tenant.test.ts` proves it — for the
-two operations that exist, by hand. Nothing ties that file to the list of operations. The day a
-third operation is added, it is tested only if somebody remembers.
+Until now every answer was one invoice. A list is different: how many rows come back is a number,
+and somebody chooses it. If the caller chooses, an agent in a loop asks for a million and gets the
+whole table. §7.1 says it in one sentence: an agent in a loop should not be able to download the
+whole customer table. The rule, `DSOR-QRY-01`, says the server enforces a maximum page size and a
+maximum result size on every query, whether or not the caller asked for a limit.
 
-This step adds a test that nobody has to remember. It reads the **registry**, the list of every
-operation and its contract, and for each one it asks the same six questions:
+Three things make that true here:
 
-1. Called with another company's address, is it refused with `TENANT_MISMATCH`, retry `never`?
-2. Is the refusal the same, *whole*, for a company that exists and one that does not — not the
-   words only, but everything the envelope carries — and does it say nothing about your company?
-3. Does the other company hold every invoice number the example names, and for a command, in the
-   same state as yours — so that a careless write would have something to do?
-4. After the call, are the other company's rows exactly as they were?
-5. Did the request leave exactly one decision in the caller's log, the `DENY`, and none in the
-   other company's?
-6. Does the same request work for its own company — so the refusals above are about the address —
-   and does the answer carry nothing of the other company?
+- **Two maxima and a default, in one file**, `src/queries.ts`: a page holds at most 100 rows, 25
+  when the caller says nothing, and an answer may be at most 64 KiB as JSON. The caller's number is capped, not
+  refused — asking for a million is an ordinary request that gets one page. A number that is not a
+  whole number above zero is not a request for rows at all, and is refused as invalid input. The
+  numbers are this step's own and provisional, like §44's ceilings: the specification names the
+  rule and not the figures.
+- **The next page comes after the last invoice on this one.** The page says which invoice it ended
+  on, as an address — `dsor://org_456/invoice/INV-02099` — and the caller sends that back as
+  `after`. The server reads the rows after it, in id order. A page shifts for nobody when a row is
+  added behind it, and there is no "row one million" to name. Because the cursor is an address,
+  the §21.6 scan refuses one from another company, and step 12's suite tests the list like every
+  other operation, with nothing new. The database reads the page from the primary key in
+  page-sized steps, and the company filter runs before the `LIMIT`, so a page is never short
+  because of step 11's lock. A cursor names a row the caller already holds, and one for a row
+  that does not exist answers the same as one that does, so it cannot be used to ask whether an
+  id exists.
+- **Two layers.** The handler's SQL carries `LIMIT`, and asks for one row more than the page so it
+  knows whether there is a next one. And after *any* handler runs, the door measures the answer —
+  every answer, commands and errors included — against both maxima and refuses one that exceeds
+  them as the program's own error. A query written next year that forgets its `LIMIT` is caught at
+  the door, not on the wire.
 
-And two questions of the suite itself, asked once: does the registry hold at least one operation,
-and are the three companies what the questions assume — `org_789` real, `org_000` not? A registry
-with none would register nothing above and look like a passing file; a third real company would
-turn question 2 into a comparison of two real refusals.
-
-To ask those questions of an operation nobody has written yet, the suite needs to know what request
-that operation takes. The answer lives with the operation: each contract carries one **example
-request** under its `extensions` field, with the key `com.panaversity.tutorial` — the one place the
-specification's schema lets a contract carry something of its own. Step 03 taught and tested that
-key on a made-up contract; these are the first shipped contracts that carry one. The suite takes the example,
-moves every address in it from `org_456` to `org_789`, and calls. An operation whose contract has
-no example does not get skipped. It gets a failing test with its name on it.
-
-So what grows by itself is the *asking*: six questions and one demo line per operation, with no
-edit to any test. Be exact about what still needs a human when an operation is added, because
-"grows by itself" is easy to over-read: the contract file, its line in `contractsFromDisk`, its
-handler, the example request, and a row in the other company for every invoice number the example
-names. The suite fails by name until the last two are there, and `main.test.ts`'s record counts
-move with every operation, since each refusal is a decision.
-
-What the suite is for, said plainly: it is the net under the two locks. Step 10's §21.6 scan reads
-only the top-level string arguments of a request, and step 11's lock trusts whatever company a
-statement says. A handler that reads an address from somewhere the scan does not look, and asks the
-store for the company *the address* names, slips both. **Why it matters** shows it happening.
+What this step does **not** do: it does not stop a caller from walking every page. One page per
+request is the rule; a thousand requests are a thousand decisions in the log, which is step 08's
+answer to a loop, and a budget on rows over a time window is `DSOR-CLS-04b`, an L2 rule for a
+later step. The ceiling is measured on the answer the door hands back, as JSON, before any
+transport. And it refuses rather than trims: an answer over 64 KiB is the program's own error, the
+caller's remedy is a smaller `limit`, and one row wider than the ceiling — `vendor` is unbounded
+text — has no remedy until the column is bounded. `bounded-queries.test.ts` seeds such a row and
+pins that `invoice.list` and `invoice.get` both refuse it.
 
 ## Why it matters
 
-Measured on a copy of step 11, the day before this step. A third operation, written the careless
-way: the address nested inside an argument, and the store asked for the company the address names
-rather than the request's.
+Measured on a copy of step 12 with a list written the obvious way — the caller's `limit`, straight
+into the SQL — and fifty thousand invoices seeded for `org_456`:
 
 ```text
-step 11's cross-tenant suite, on the three-operation program:   Tests  12 passed (12)
-
-user_123 of org_456 asks invoice.vendor for org_789's invoice:
-   handed: dsor://org_789/invoice/INV-1008  VENDOR-44  18000.00 USD
+org_456 holds 50002 invoices
+invoice.list { limit: 25 }         ->  25 rows,      1 KiB,  23 ms
+invoice.list { limit: 1,000,000 }  ->  50,002 rows, 3065 KiB, 105 ms
 ```
 
-The suite stayed green and the invoice leaked. Some other tests did fail — the ones that count the
-operations — and a learner fixes a count in a minute. Nothing asked the new operation whether it
-keeps companies apart. §14 calls a leak between customers the kind of bug that ends a product, and
-`DSOR-TEN-02b` is the rule that says the question must be asked of every operation, by a suite that
-ships with the implementation.
+Three megabytes in a tenth of a second, and nothing in the program said no. Every lock from steps
+10 and 11 held — every one of those rows was `org_456`'s — and the whole table still left in one
+answer, because the only number that mattered was the caller's.
 
-## What changed since step 11
+## What changed since step 12
 
 ```bash
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_11_row_level_security ../my_12_cross_tenant_test_suite
+# in Git Bash on Windows
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_12_cross_tenant_test_suite ../my_13_bounded_queries
 ```
 
 | File | What |
 | --- | --- |
-| `src/contracts/invoice.get.json`, `src/contracts/invoice.issue.json` | each carries an example request under `extensions["com.panaversity.tutorial"]` |
-| `src/registry.ts` | `exampleRequestOf`: reads that one key, and only an object |
-| `src/examples.ts` | new — `addressesIn` and `movedTo`, the two things a test does with an example, in one place for the suite and the demo |
-| `test/support/cross-tenant-suite.ts` | new — the suite, as a function: one `describe` per operation in the registry, six questions each, written once; the questions are plain functions a test can lie to |
-| `test/cross-tenant-suite-itself.test.ts` | new — each question fed an honest answer and then the lie it exists to catch; delete an assertion from a question and its lie passes here |
-| `test/cross-tenant-suite.test.ts` | new — the suite on PGlite, under `pnpm check` |
-| `test/cross-tenant-suite.db.test.ts` | new — the suite against the database `.env` names, under `pnpm test:db` |
-| `test/example-requests.test.ts` | new — every contract has an example, every example's addresses are in `org_456`, the reader takes the one key and ignores others |
-| `migrations/004_running_example.sql` | `org_789` gains `INV-1009`, so a careless command has a row to touch, and `INV-2001`, a number `org_456` lacks |
-| `test/invoices-in-postgres.test.ts` | the "not in yours" test asks for `INV-2001` now, since `INV-1009` is in both companies |
-| `src/main.ts` | a section that walks the registry the same way, one line per operation |
-| `test/main.test.ts` | those lines pinned; the record counts move by two |
-| everything else | a `NEW IN STEP 11` marker becoming `STEP 11` |
+| `src/queries.ts` | new — the two maxima and the default, `pageSizeFrom`, `bytesOf` |
+| `src/invoice.ts` | `listInvoices`: one page in id order after a cursor, `LIMIT` in the SQL, the next page's address |
+| `src/contracts/invoice.list.json` | new — a query, `invoice:read`, with an example request whose cursor is an address |
+| `src/registry.ts` | the third contract on the list |
+| `src/operations.ts` | the `page` answer; the `invoice.list` handler; `makeDoor` takes a handler table; `overTheCeiling`, and the door's refusal of an oversize answer |
+| `src/main.ts` | a page, its cursor sent back, and a request for a million |
+| `test/bounded-queries.test.ts` | new — seventeen tests: a counting connection that sees the `LIMIT` in the SQL and every other read of the table, three careless handlers fed to the door, one real row wider than an answer may be, a page of multibyte vendors, and the list asked as the owner with no row-level security |
+| `test/main.test.ts` | the three list lines pinned; every record count moves by four — one refusal in the generated section, three pages read |
+| `test/operations.test.ts`, `test/registry.test.ts`, `test/request-id.test.ts`, `test/who-is-calling.test.ts` | three operations, and a page is a query's success |
+| everything else | a `NEW IN STEP 12` marker becoming `STEP 12` |
 
-412 tests became 444, and the database tier's 16 became 30. The hand-written `cross-tenant.test.ts`
-from step 10 stays: it carries what the generated suite does not ask — the agent who works for
-both companies, the nested-argument limit, a door built with a forgetful validate stage.
+444 tests became 468, and the database tier's 30 became 36: step 12's suite grew by six questions
+for `invoice.list` without an edit, which is what step 12 promised.
 
 ## Run it
 
@@ -103,336 +92,254 @@ pnpm start
 The part that is this step:
 
 ```text
-Every operation, with another company's address:
+A list, one page at a time, and the ceiling:
 
-invoice.get    user_123              TENANT_MISMATCH          retry: never                dsor://org_789/invoice/INV-1008 is not an address in your company
-invoice.issue  user_123              TENANT_MISMATCH          retry: never                dsor://org_789/invoice/INV-1009 is not an address in your company
+limit 1                 user_123              (a page)                 1 invoices, next after dsor://org_456/invoice/INV-1008
+after the first         user_123              (a page)                 1 invoices, the last page
+limit 1,000,000         user_123              (a page)                 2 invoices, the last page
 ```
 
-Two lines because the registry holds two operations. Neither is named in `main.ts`; the loop reads
-the registry, takes each contract's example, moves its addresses to `org_789`, and calls. Add an
-operation and this prints three lines. Those two refusals are decisions, so the logs grow by them:
-`org_456: 17 records` on a fresh run, `34` on the second; `org_789` stays at `2` and `4`. One
-thing found by two reviewers running the suite at once: the demo builds its PostgreSQL on disk in
-this folder, and a second process using the folder at the same time — another `pnpm test`, another
-`pnpm start` — can fail `main.test.ts`. Run it alone.
+One invoice a page, so the page and its cursor can be seen on the story's two invoices; the cursor
+sent back; then a million asked for and two invoices given, because two is all there are. The
+ceiling of a hundred is not visible on two invoices — `bounded-queries.test.ts` seeds three hundred
+and watches it bite. What is visible is that the caller's number did not decide. And the generated
+section above it now prints three lines, one of them `invoice.list`, with no edit to `main.ts`.
+
+Each page read is a decision, so the logs grow: `org_456: 21 records` on a fresh run, `42` on the
+second; `org_789` stays at `2` and `4`.
 
 ### The database tier
 
-`pnpm check` needs no server. The twenty-eight tests in `pnpm test:db` — step 11's sixteen and this
-step's twelve — need two real logins and a database of this step's own. Copy step 11's `.env` and
-change the database name in both URLs:
+`pnpm check` needs no server. The thirty-six tests in `pnpm test:db` — step 12's thirty, and six
+generated for `invoice.list` — need two real logins and a database of this step's own. Copy step
+12's `.env` and change the database name in both URLs:
 
 ```bash
-cp ../my_11_row_level_security/.env .env     # then dsor_step11 -> dsor_step12 in both lines
+cp ../my_12_cross_tenant_test_suite/.env .env     # then dsor_step12 -> dsor_step13 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-This folder's own run was on Neon: `neonctl databases create --name dsor_step12`, a `GRANT CONNECT`
-through the owner's connection, five migrations, `30 passed`. Two things to know. This step changes
-`004_running_example.sql`, and a migration's checksum covers every byte of it, so a database that
-applied step 11's version refuses step 12's; a database of the step's own is the answer, as it was
-for step 11. And the generated suite, in this tier, deletes every invoice and every audit record
-that belongs to `org_456` or `org_789` in the database `.env` names before each question, and puts
-the story back afterwards — point it at a step-12 database only, never at one whose rows you want to
-keep.
+This folder's own run was on Neon: `neonctl databases create --name dsor_step13`, a `GRANT CONNECT`
+through the owner's connection, five migrations, `36 passed`. The one edit to a migration is a
+comment — step 12's `NEW IN STEP` marker retiring in `004` — and the checksum covers comments, so
+the database built from the copy before that edit refused to migrate and was rebuilt. An applied
+migration is never edited, and a comment is an edit.
 
 ## Break it
 
-Sixteen, measured twice on the full suite with the files one at a time, both runs agreeing. The counts
-are from a copy outside the repository, where one test skips because the specification is not
-beside it, so the total reads `428` with `1 skipped`; in the repository it is `428 passed`. The
-first three are the map's own exercise — *adding a new operation without tenant checks makes this
-suite fail* — done three ways. Each adds a contract file, a line in `contractsFromDisk`, and a
-handler, which is why their totals are larger: the suite grew by six questions for the newcomer.
+Eleven, measured twice on the full suite with the files one at a time, both runs agreeing. The
+counts are from a copy outside the repository, where one test skips because the specification is
+not beside it, so the total reads `468` with `1 skipped`; in the repository it is `468 passed`.
 
-### Break 1 · a careless third operation
+### Break 1 · the SQL loses its LIMIT
 
-`invoice.vendor`: a query whose address sits inside `ref`, where the §21.6 scan does not look, and
-whose handler asks the store for the company the address names. Its contract carries an example,
-`{ ref: { invoice: "dsor://org_456/invoice/INV-1008" } }`.
+In `src/invoice.ts`, delete the `LIMIT $3` and its parameter.
 
 ```text
- Tests  13 failed | 436 passed | 1 skipped (450)
+ Tests  1 failed | 466 passed | 1 skipped (468)
 ```
 
-Four of the thirteen are the suite's questions for `invoice.vendor`, by name: not refused, no refusal
-to compare, no `DENY` in the log, and — read it carefully — the other company's rows *are*
-untouched, because this one only reads. The other nine are step 03's operation counts and the
-demo's pins, which any third operation moves. The map's done-when, met.
+One test, and it is the one that could see it: a connection that counts what every statement
+returned, in front of the real one. Every other test still passes, because the handler slices the
+page — a list that fetched everything and cut the page afterwards would be correct and would still
+pull fifty thousand rows across the wire. The counting connection is the test that tells the two
+apart.
 
-### Break 2 · the same operation, with no example
+### Break 2 · the caller's number is not capped
+
+In `src/queries.ts`, in `pageSizeFrom`, return `given` instead of `Math.min(given, MAX_PAGE_SIZE)`.
 
 ```text
- Tests  9 failed | 435 passed | 1 skipped (445)
+ Tests  3 failed | 464 passed | 1 skipped (468)
 ```
 
-One test, named for the operation: *carries no example request, so this suite cannot call it — add
-one to its contract*. The other eight are step 03's operation counts and the demo's pins, one of
-which now reads `(no example request in its contract)`. This step's suite does not skip what it
-cannot test.
+The map's done-when, failed: a million is asked for, and the SQL is handed a million.
 
-### Break 3 · a careless command
+### Break 3 · no next page, ever
 
-`invoice.issue_ref`: issues whatever draft the nested address names, in the address's company.
+In `listInvoices`, make `next` always `undefined`.
 
 ```text
- Tests  13 failed | 436 passed | 1 skipped (450)
+ Tests  7 failed | 460 passed | 1 skipped (468)
 ```
 
-Four of the suite's questions again, and this time *the other company's rows exactly as they were* is one of them:
-`org_789`'s `INV-1009` went from `draft` to `issued`. The first version of this break, before
-`org_789` held an `INV-1009`, failed only three — the rows were untouched because there was nothing
-to touch, which is not the same as the command being careful. Question 3 exists because of that run.
+Seven: every test that walks the pages or expects a `next`, in this file and in step 12's suite.
 
-### Break 4 · the §21.6 scan switched off
+### Break 4 · the page includes the cursor's own row
 
-In `src/operations.ts`, in `validateTheInput`, change `if (address.tenant !== context.tenant)` to
-`if (false)`.
+Change `id > $2` to `id >= $2`.
 
 ```text
- Tests  19 failed | 424 passed | 1 skipped (444)
+ Tests  2 failed | 465 passed | 1 skipped (468)
 ```
 
-The suite is the net under the scan: every operation's refusal and log question fails, beside the
-tests of steps 10 and 11 that ask the scan directly.
+The walk through every page sees one invoice twice, and the test that asks for every row once, in
+order, says so.
 
-### Break 5 · a refusal that reveals
+### Break 5 · the page is cut after the fact
 
-Make the mismatch message end with `, which exists` when the company named is real.
+Hand the SQL `1000000` as its `LIMIT` and let the handler's slice do the work.
 
 ```text
- Tests  4 failed | 439 passed | 1 skipped (444)
+ Tests  1 failed | 466 passed | 1 skipped (468)
 ```
 
-Two are the suite's, one per operation; the other two are step 10's hand-written question and the
-demo's.
+The same one test as Break 1, for the same reason.
 
-### Break 6 · the other company loses `INV-1009`
+### Break 6 · the door stops measuring
 
-Delete that row from `004_running_example.sql`.
+In `src/operations.ts`, in `makeDoor`, change `if (tooBig !== undefined)` to `if (false)`.
 
 ```text
- Tests  1 failed | 442 passed | 1 skipped (444)
+ Tests  5 failed | 462 passed | 1 skipped (468)
 ```
 
-Question 3, for `invoice.issue`, with the fix in its message: *add it to 004_running_example.sql*.
+Five. The three careless handlers — a hundred and one rows, four rows carrying twenty-kilobyte
+vendors, a refusal carrying sixty-four kilobytes in its message — walk out of the door, and so do
+the page of multibyte vendors and the real row wider than the ceiling.
 
-### Break 7 · the example reader takes any key
+### Break 7 · the result size, a hundred times larger
 
-In `exampleRequestOf`, read the first value in `extensions` instead of the one key the tutorial
-owns.
+In `src/queries.ts`, make `MAX_RESULT_BYTES` `6400 * 1024`.
 
 ```text
- Tests  1 failed | 442 passed | 1 skipped (444)
+ Tests  2 failed | 465 passed | 1 skipped (468)
 ```
 
-The test that hands the reader a contract whose only extension is somebody else's key.
+Two: the tests built on literal sizes — four twenty-kilobyte vendors, three vendors of twenty
+thousand `€`. The two built on the constant follow it wherever it goes, which is Break 9's lesson
+again.
 
-### Break 8 · the demo forgets to move the address
+### Break 8 · the door measures rows and not bytes
 
-In `src/main.ts`, drop the `replaceAll` that moves `org_456` to `org_789`.
+Change `if (bytes > MAX_RESULT_BYTES)` to `if (false)`.
 
 ```text
- Tests  2 failed | 441 passed | 1 skipped (444)
+ Tests  4 failed | 463 passed | 1 skipped (468)
 ```
 
-The demo then prints `ALLOWED` lines, and the test that pins the section — one line per operation
-in the registry, each a `TENANT_MISMATCH` — says so. Step 11 learned to pin its demo lines from an
-evaluation that found them unpinned; this step pinned its own from the start.
+Four: every answer that is too big by bytes and not by rows.
 
-### Break 9 · `invoice.issue` loses its example
+### Break 9 · the default page is fifty
+
+In `src/queries.ts`, make `DEFAULT_PAGE_SIZE` `50`.
 
 ```text
- Tests  7 failed | 431 passed | 1 skipped (439)
+ Tests  1 failed | 466 passed | 1 skipped (468)
 ```
 
-The total shrinks by five: an operation without an example gets one failing question instead of
-six. The seven are that question, the two example tests, step 03's counts, and the demo's pins.
+One, and only since the literal `25` was pinned beside the constant: a mutation pass changed the
+default with every test green, because every test compared the page with the number the code
+reads. Changing a ceiling is allowed. It is a visible act now.
 
-### Break 10 · a smuggling operation
+### Break 10 · the list's example loses its address
 
-The hostile review's own exercise, and the reason two questions are worded the way they are. An
-operation that reads a nested address, fetches the other company's row, returns a refusal-shaped
-envelope — `TENANT_MISMATCH`, retry `never`, the same message — with the row tucked inside it, and
-writes a `DENY` of its own into the log after the pipeline's `ALLOW`. The first version of this
-suite compared the refusal's words and read the log's last record, and passed it.
+In `invoice.list.json`, make the example request `{ "limit": 2 }`.
 
 ```text
- Tests  11 failed | 438 passed | 1 skipped (450)
+ Tests  4 failed | 458 passed | 1 skipped (463)
 ```
 
-Question 2 now compares the whole envelope with the one for a company that does not exist, which
-cannot carry that company's row; question 5 asks for exactly one record for the request.
+Step 12's suite says what it says for an example with nothing to move, and its example test asks
+for an address in `org_456`. A list is tested only because its cursor is an address. The total
+drops by five, because the suite generates its questions from the example, and an example with no
+address has fewer to ask.
 
-### Break 11 · an example with no address
+### Break 11 · the demo asks for one instead of a million
 
-Change `invoice.get`'s example to `{ "status": "issued" }`.
+In `src/main.ts`, make `million` `{ limit: 1 }`.
 
 ```text
- Tests  4 failed | 434 passed | 1 skipped (439)
+ Tests  1 failed | 466 passed | 1 skipped (468)
 ```
 
-Two tests by name — the example test that wants an address in `org_456`, and the suite's own, which
-says there is nothing to move — and two of the demo's pins, since the demo then prints an `ALLOWED`
-line for that operation. The first version of the suite asked such an example to be both refused
-and allowed.
+The pin in `main.test.ts`, which reads the demo's label from the request it sends: a review
+changed the number beside a fixed label and nothing noticed.
 
-### Break 12 · the seed row already issued
-
-In `004_running_example.sql`, seed `org_789`'s `INV-1009` as `issued` instead of `draft`. A
-mutation pass found this one: a careless `invoice.issue` then finds nothing it can issue, the other
-company's rows stay untouched, and the first version of question 3 — which only asked that the
-number exists — was content.
-
-```text
- Tests  1 failed | 442 passed | 1 skipped (444)
-```
-
-Question 3 asks, for a command, that the other company's row is in the same state as yours — the
-state the example works in — and says what it found.
-
-### Break 13 · an assertion deleted from the suite
-
-Delete `expect(refusal.retry).toBe("never")` from question 1 in `test/support/cross-tenant-suite.ts`.
-The same mutation pass did this to six assertions one at a time, and every deletion passed the
-whole suite, because nothing tested the suite.
-
-```text
- Tests  1 failed | 442 passed | 1 skipped (444)
-```
-
-Now one test fails, in `cross-tenant-suite-itself.test.ts`: the lie that question exists to catch —
-a refusal whose retry class invites a retry — passes the weakened question, and the test that
-expected it to throw says so.
-
-### Break 14 · another assertion deleted: the other company's log
-
-Delete `expect((await deps.logOf(THEIRS)).length).toBe(theirLogBefore)` from question 5.
-
-```text
- Tests  1 failed | 442 passed | 1 skipped (444)
-```
-
-### Break 15 · a success answer that carries the other company's row
-
-The critic's exercise, after the reviewers'. Change `invoice.get`'s handler to return org_456's
-invoice with org_789's beside it, in a *successful* answer:
-`return { kind: "data", askedBy, invoice, leaked: await getInvoice("org_789", read.id) }`. The
-first version of question 6 asked only "not an error", and passed it — as did every other
-question, the self-test, and step 10's hand-written file.
-
-```text
- Tests  1 failed | 442 passed | 1 skipped (444)
-```
-
-Question 6 now reads the answer and refuses the other company's name and anything org_789 alone
-holds in the story: `18000.00`, `9100.00`, `4200.00`, `INV-2001`.
-
-### Break 16 · the company that does not exist starts existing
-
-In `src/tenant.ts`, add `org_000` to the list. Question 2's whole argument is that a company
-that does not exist cannot carry rows; with three real companies it compares two real refusals and
-proves less than its title says, and the first version of the suite had no guard.
-
-```text
- Tests  3 failed | 440 passed | 1 skipped (444)
-```
-
-Restore each break and confirm `pnpm check` prints `444 passed` again.
+Restore each break and confirm `pnpm check` prints `468 passed` again.
 
 ## Build it yourself with Claude Code
 
-Copy `my_11_row_level_security` to a new folder and ask:
+Copy `my_12_cross_tenant_test_suite` to a new folder and ask:
 
-> Start step 12, the cross-tenant test suite. Before any code: add a third operation to a copy of
-> step 11 without a tenant check, show me that step 11's tests stay green, and show me the leak.
-> Then ask me, one at a time, how the suite learns what request each operation takes, and where the
-> suite runs. Then build it a piece at a time, red first, and break each piece on purpose —
-> including adding a careless operation, which is the map's own exercise.
+> Start step 13, bounded queries. Before any code: add a list to a copy of step 12 the obvious way,
+> seed fifty thousand invoices, ask it for a million, and show me what comes back. Then ask me, one
+> at a time, how the caller gets the next page, how a list says which company it lists, and where
+> the two maxima live. Then build it a piece at a time, red first, and break each piece on purpose
+> — including a connection that counts what the database handed back.
 
 ## Check yourself
 
-1. The suite "grows by itself". What exactly grows without a human, and what still needs one?
-2. Why does each contract carry an example request, rather than the test file carrying a table?
-3. Step 11 has two locks. Why does this step need a third thing at all?
-4. The first version of the untouched-rows question passed for a careless command. Why, and what
-   was added?
-5. A contract arrives without an example request. What does the suite do, and why not skip it?
+1. The caller asks for a million rows. What comes back, and why is it not a refusal?
+2. Why is the cursor an address, and not a page number or a row offset?
+3. The handler's SQL already carries `LIMIT`. What is the door's measuring for?
+4. Which test would fail if the list fetched every row and cut the page afterwards, and why does
+   no other test notice?
+5. Does this step stop an agent from reading the whole table? What does, and what will?
 
 <details>
 <summary>Answers</summary>
 
-1. The asking grows: one `describe` with six questions appears for every operation in the
-   registry, with no edit to any test file. A human still writes the example request into the new
-   contract, and seeds the other company with every invoice number the example names. Until both
-   are there, the suite fails by name.
-2. Because the example describes the operation, so it belongs with the operation's spec sheet,
-   under the one key the schema allows for anything beside the spec's fields (`DSOR-SCH-02`). A
-   table in the test would need an edit for every new operation, and that edit is the thing people
-   forget.
-3. Because both locks can be slipped by a handler that is careless in the right way: the §21.6 scan
-   reads only top-level string arguments, and the row-level lock trusts whatever company a
-   statement says. A handler that reads a nested address and asks the store for *that* company gets
-   the row. Measured, in **Why it matters**. The suite is the net under the locks, and the rule
-   (`DSOR-TEN-02b`) says it must exist.
-4. `org_789` had no `INV-1009`, so the careless command found nothing to issue, and "the rows are
-   untouched" was true for the wrong reason. The suite now asks first that the other company holds
-   every number the example names, and the seed gives it one.
-5. It adds a failing test named for the operation, saying what to add and where. Skipping would
-   make a missing example look like a passing test, which is exactly the silence this step exists
-   to end.
+1. One page of a hundred, with the address of the last invoice on it as `next`. The rule says the
+   server *enforces* a maximum — the request is ordinary, the size is not the caller's to set. A
+   limit that is not a whole number above zero is a different thing, not a request for rows, and
+   that one is refused.
+2. A page number lets a caller name page 40,000, makes the database skip everything before it, and
+   shifts when a row is added in front. "After this invoice" is stable, cheap, and — because it is
+   an address — already checked by the §21.6 scan and already moved by step 12's suite. The company
+   still comes from the login, never from the cursor.
+3. The query written next year. The handler's `LIMIT` is the first layer; the door's measuring is
+   the second, and it holds for any handler, including one that forgot. Two layers, like steps 10
+   and 11.
+4. `the cap is in the SQL, not after the fact`: a connection that counts the rows every statement
+   returned. Every other test sees the page the handler hands back, which is correct either way;
+   only the counting connection sees what crossed the wire.
+5. No. One page per request is this step; a caller may walk every page. Each page is a decision in
+   the log, which is step 08's answer to a loop today, and a budget over a time window is
+   `DSOR-CLS-04b`, a later step.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-TEN-02b · L1]** An implementation MUST ship a cross-tenant test suite that exercises
-  every operation with a foreign-tenant URI. `test/support/cross-tenant-suite.ts`, run on PGlite
-  and against a real server, from the registry, with a failing test for any operation it cannot
-  call. ([§14](../../../specs/dsor/02-security.md#14-multi-tenancy))
-- **[DSOR-ERR-01b · L1]** An error MUST NOT reveal the existence or attributes of a resource the
-  caller is not authorized to read — asked of every operation: the same words for a company that
-  exists and one that does not, and nothing about the caller's own.
-- **[DSOR-IDN-03b · L1]** and **[DSOR-EXE-02 · L1]**, asked of every operation rather than claimed
-  anew: the other company's rows untouched, and the refusal a `DENY` in the caller's log with
-  nothing in the other company's.
+- **[DSOR-QRY-01 · L1]** DSoR MUST enforce a server-side maximum page size and maximum result size
+  on every query, whether or not the client asks for a limit. Page size: `LIMIT` in the SQL, capped
+  from the caller's number or the default, and the door refusing more rows than a page. Result
+  size: the door measuring every answer as JSON against 64 KiB, errors and commands included.
+  "Every query" is the door, which every operation goes through; the single-invoice answers of
+  `invoice.get` are measured too, and are a few hundred bytes.
+  ([§7.1](../../../specs/dsor/01-model.md#71-queries))
 
-**What the suite does not prove, said plainly.** It moves addresses of the form
-`dsor://org_456/…` found anywhere inside the example, and nothing else. An example that names no
-such address gets one failing test by name rather than six that contradict each other; an example
-that names its company some other way — a bare invoice number beside a company field, an encoded
-address — is moved into itself, and questions 1, 2, 4 and 5 then fail with "got data", which reads
-like a leak and is really an example the move could not reach. Question 3 reads invoice rows only,
-and says so by name for any other kind of address. Question 5 proves the `DENY` is the one record
-for the request; that it was written *before* the answer is step 08's one proof over the shared
-pipeline, not repeated per operation. The caller is `user_123` of `org_456` throughout; the agent
-who belongs to both companies, the nested-argument limit, and a door with a forgetful validate
-stage stay in step 10's hand-written file. And the suite tests the operations that exist against
-the tenants that exist: a third company in `tenant.ts` is a seed change and nothing else here —
-unless it is `org_000`, which a guard refuses. And the convention has a limit of its own: the
-example is never checked against the operation's input schema, because no step has request schemas
-yet, and every address in it moves at once, so an operation that checks one of two addresses and
-not the other is not told apart. The official step 12 keeps its examples outside the contract and
-searches answers for canaries; this one keeps them with the contract and searches answers for the
-four things `org_789` alone holds.
-
-**The map and this step disagree, and it is recorded.** The map says the suite "runs on a fresh
-Neon branch, so it can create two companies and destroy them without touching your data". This
-suite runs on PGlite, which is a fresh database every run, and again in the database tier against
-the database `.env` names, like every test before it. A branch per run needs the Neon CLI, a
-login and the network inside the tests, which no test here has; decision 99 in `my_notes` records
-the choice, and the map is left as written.
+**What this step leaves, said plainly.** The numbers are provisional. The result size is measured
+on the answer object, as JSON, before any transport — a wire format that pads could exceed it. A
+page is read as any read is: one record in the log, with no row count on it; `DSOR-CLS-05`'s row
+count for confidential reads is step 14's, where data has a classification — and because the
+record is written before the handler runs and the runtime cannot update the log, step 14 will
+write a second record after the fetch rather than add a field to this one. Today the log of a
+page of a hundred reads the same as the log of one `invoice.get`. Nothing here limits how many
+pages a caller walks. `limit` and `after` are checked in the handler, after the decision
+was recorded as ALLOW, because the validate stage does not read a contract's input schema yet —
+the schema names in `invoice.list.json` are placeholders, as in every contract since step 03 — so
+a bad `limit` is a refusal with an ALLOW record behind it, and an unknown argument such as `limti`
+passes in silence. An oversize answer leaves the same ALLOW record while the caller receives
+`INTERNAL_ERROR`; recording what happened after the decision is a later step. The ceiling is
+proven on PGlite: the database tier asks step 12's six questions of `invoice.list`, about
+tenancy, and no test names `DSOR-QRY-01` against a real server. And the door measures its own
+handlers' answers once, as plain data; it does not defend against a handler of the program's own
+that lies to `JSON.stringify`. And the door's row layer reads a page whose rows are invoices: the
+next operation that returns many rows — a list of payments, say — must answer as a page, carry
+`LIMIT` plus one in its SQL, and give its contract an example request with an address so that
+step 12's suite picks it up; until the page type holds rows of any kind, only the byte layer is
+universal.
 
 Rules nearby this step does **not** claim:
 
 | Rule | Why not |
 | --- | --- |
-| `DSOR-TEN-01c` | Isolation must not depend on agent behaviour or prompts. Held by every step, claimed by none. |
+| `DSOR-CLS-05` | A row count on the audit record of a confidential read. No data is classified yet. Step 14. |
 
-Everything earlier steps claimed still holds. One number from step 10 moved: `org_789` holds
-`INV-1009` and `INV-2001` now, and the test that asked for an invoice the other company has and
-yours does not asks for `INV-2001`.
+Everything earlier steps claimed still holds. Step 12's suite now asks its six questions of three
+operations, and `main.test.ts`'s record counts moved by four.
 
-**Next:** step 13, `bounded_queries` — `invoice.list`, and a server that caps the page size even when
-the caller asks for everything.
+**Next:** step 14, `classification_and_masking` — every field labelled by sensitivity, the agent given a
+clearance, and what is above it hidden before the answer leaves, with a list of what was hidden.
