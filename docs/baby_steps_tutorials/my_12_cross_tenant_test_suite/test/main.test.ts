@@ -14,6 +14,7 @@
 // part of the output that moves.
 
 import { execFileSync } from "node:child_process";
+import { operationIds } from "../src/operations.ts";
 import { rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -116,22 +117,23 @@ describe("the program a learner runs", () => {
 
     // STEP 10: two logs, printed one after the other — org_456's fifteen records and
     // org_789's two.
-    expect(rows).toHaveLength(17);
+    expect(rows).toHaveLength(19); // NEW IN STEP 12: two more refusals, one per operation
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
     // outside one company, and the agent's unsaid request counted once in each employer's log.
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(10);
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(12);
     expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(7);
 
-    // Sequences 0..14 for org_456 and then 0..1 for org_789: each chain counts from zero.
+    // Sequences 0..16 for org_456 and then 0..1 for org_789: each chain counts from zero.
+    // NEW IN STEP 12: 15 and 16 are the two refusals the generated section adds.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 15 records, chain verifies against the head: true");
+    expect(out).toContain("org_456: 17 records, chain verifies against the head: true");
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -177,22 +179,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(15);
+    expect(records(first, "org_456")).toBe(17);
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 15 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 17 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(30);
+    expect(records(second, "org_456")).toBe(34);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 30 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 34 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      34,
+      38,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -217,13 +219,13 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(17);
-    expect(hashesOf(second.raw)).toHaveLength(17);
+    expect(hashesOf(first.raw)).toHaveLength(19);
+    expect(hashesOf(second.raw)).toHaveLength(19);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
   // STEP 10: what the demo shows about two companies.
-  // NEW IN STEP 11: the two lines that are this step. An evaluation inverted them — no company
+  // STEP 11: the two lines that are this step. An evaluation inverted them — no company
   // for the first, org_789 for the second — and this file passed 9 of 9. The README's "Run it"
   // block was pasted output with nothing behind it, which is the failure this file's header says
   // it exists to stop.
@@ -237,6 +239,22 @@ describe("the program a learner runs", () => {
     expect(section.split("no company said")[0]).not.toContain("org_789");
   });
 
+  // NEW IN STEP 12: the lines that are this step, pinned, as step 11's were after an evaluation
+  // found them unpinned. One line per operation in the registry, every one a TENANT_MISMATCH.
+  it("DSOR-TEN-02b: the demo refuses every operation in the registry another company's address", () => {
+    const { raw } = demo();
+    const section = raw.split("Every operation, with another company's address:")[1] ?? "";
+    const lines = section.split("\n").filter((line) => /^invoice\./.test(line));
+
+    expect(lines.map((line) => line.split(/\s+/)[0])).toStrictEqual(operationIds().sort());
+
+    for (const line of lines) {
+      expect(line).toContain("TENANT_MISMATCH");
+      expect(line).toContain("dsor://org_789/");
+      expect(line).not.toContain("(no example request");
+    }
+  });
+
   it("DSOR-IDN-03b: the same invoice number is two different invoices, one per company", () => {
     const out = demo().report;
 
@@ -247,7 +265,9 @@ describe("the program a learner runs", () => {
   it("DSOR-ERR-01b: the four refusals, and the same words for a real company and one that does not exist", () => {
     const out = demo().report;
     // The envelope lines (they carry a retry class), not the audit rows that also say TENANT_MISMATCH.
-    const labelled = out
+    // NEW IN STEP 12: the section before "Every operation" — the two lines that section adds are
+    // the generated suite's and are pinned by their own test above.
+    const labelled = (out.split("Every operation, with another company's address:")[0] ?? "")
       .split("\n")
       .filter((line) => line.includes("TENANT_MISMATCH") && line.includes("retry:"));
 

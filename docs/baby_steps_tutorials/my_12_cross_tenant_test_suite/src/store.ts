@@ -1,4 +1,4 @@
-// The one database handle, shared by every store — and, NEW IN STEP 11, the one place a statement
+// The one database handle, shared by every store — and, STEP 11, the one place a statement
 // says which company it is for.
 //
 // Step 10 kept the two companies apart with a WHERE in every query. That is one lock, and the
@@ -20,7 +20,7 @@
  * store. There is one store — the SQL in audit.ts and invoice.ts — and two things that can execute
  * it.
  *
- * NEW IN STEP 11: the third argument. `tenant` is the company the statement is for. The statement
+ * STEP 11: the third argument. `tenant` is the company the statement is for. The statement
  * then runs in a transaction of its own that first sets `dsor.tenant_id` to that company, and the
  * setting dies with the transaction (DSOR-RP-01c) — so nothing is left on the connection for the
  * next request to inherit, which is the pool leak §36 warns about. Left out, the statement runs

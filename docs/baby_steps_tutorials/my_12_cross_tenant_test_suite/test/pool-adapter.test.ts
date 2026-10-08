@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the pool adapter, under the unit suite.
+// STEP 11: the pool adapter, under the unit suite.
 //
 // `overPool` is the adapter the program uses against a real server, and the unit suite runs on
 // PGlite, so nothing in `pnpm test` ever executed it. A mutation pass measured the consequence:

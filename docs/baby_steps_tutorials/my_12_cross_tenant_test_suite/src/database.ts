@@ -28,7 +28,7 @@ import { applyMigrations, type Runner } from "./migrations.ts";
 import { useDatabase, type Database } from "./audit.ts";
 
 /**
- * NEW IN STEP 11: PGlite, as a connection that can say the company.
+ * STEP 11: PGlite, as a connection that can say the company.
  *
  * A statement with a company runs inside `db.transaction`, which is a real BEGIN … COMMIT on
  * PGlite's one connection, with `set_config(…, true)` as its first statement — `true` meaning
@@ -49,7 +49,7 @@ export function overPGlite(db: PGlite): Database {
 }
 
 /**
- * NEW IN STEP 11: a `pg` pool, as a connection that can say the company.
+ * STEP 11: a `pg` pool, as a connection that can say the company.
  *
  * This is where the second trap on the map lives. `pool.query` hands each statement to whichever
  * connection is free, so a company set on one connection would be met again by a stranger's
@@ -154,7 +154,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                 -- helper whose owner skips the lock is refused for existing, not for being callable.
                 AND (
                   (${held("p.proowner")})
-                  -- NEW IN STEP 11: or an owner the second lock does not apply to. A helper owned
+                  -- STEP 11: or an owner the second lock does not apply to. A helper owned
                   -- by a BYPASSRLS role reads every company's rows while holding no right the
                   -- checks above would see; a review measured it. The owner of a tenant table, or
                   -- a member of it, may drop the policy from inside the helper.
@@ -170,7 +170,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               WHERE t.tgrelid IN (to_regclass('public.invoices'), to_regclass('public.audit'))
                 AND NOT t.tgisinternal
             ) AS has_trigger,
-            -- NEW IN STEP 11: both tenant tables exist. Asked first, because every question below
+            -- STEP 11: both tenant tables exist. Asked first, because every question below
             -- is about them, and a missing table would turn those answers into NULLs that an
             -- evaluation showed the guards could misread.
             (to_regclass('public.invoices') IS NOT NULL AND to_regclass('public.audit') IS NOT NULL)
@@ -265,7 +265,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 11: the questions no privilege check answers.
+  // STEP 11: the questions no privilege check answers.
   //
   // Everything above asks what the connection MAY DO. Row-level security can be skipped by an
   // account that may do nothing extra at all: BYPASSRLS is a property of the role, not a right on

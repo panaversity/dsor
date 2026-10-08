@@ -1,4 +1,4 @@
-// NEW IN STEP 11: PGlite has one connection, and a statement with a company must be a unit on it.
+// STEP 11: PGlite has one connection, and a statement with a company must be a unit on it.
 //
 // The adapter says the company inside a transaction, then runs the statement. On a pool each
 // transaction has its own connection. On PGlite there is one, and if a plain statement could slip

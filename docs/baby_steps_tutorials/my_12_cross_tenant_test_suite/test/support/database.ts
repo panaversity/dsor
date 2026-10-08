@@ -32,7 +32,7 @@ export async function aDatabase(): Promise<PGlite> {
     await db.exec(migration.sql);
   }
 
-  // NEW IN STEP 11: through the adapter, so that a statement can say its company — and AS THE
+  // STEP 11: through the adapter, so that a statement can say its company — and AS THE
   // APPLICATION. PGlite's one connection belongs to `postgres`, a superuser, and a superuser skips
   // every row-level policy. Tests that ran the stores as it would stay green whether or not a
   // store said its company, and would prove nothing about this step. So the connection drops to
@@ -79,7 +79,7 @@ function theOwner(): PGlite {
 }
 
 /**
- * NEW IN STEP 11: run something as the owner, then drop back to the application.
+ * STEP 11: run something as the owner, then drop back to the application.
  *
  * `SET ROLE` is per session and PGlite has one, so this is the only way a test gets owner rights:
  * for the body of `run`, and not a statement longer. The `finally` is the guarantee — a seam that
@@ -103,7 +103,7 @@ export async function asTheOwner<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /**
- * NEW IN STEP 11: erase one company's log, as the owner.
+ * STEP 11: erase one company's log, as the owner.
  *
  * `audit.ts` still exports the eraser, and it still runs as whoever is connected — which is now
  * the application, who may not DELETE. Tests import this one instead.

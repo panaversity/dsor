@@ -1,4 +1,4 @@
-// NEW IN STEP 11: every statement about rows says which company it is for, and says it to
+// STEP 11: every statement about rows says which company it is for, and says it to
 // PostgreSQL in a way that cannot outlive the statement.
 //
 // Step 10 kept the companies apart with a WHERE in every query. This step adds a second lock inside

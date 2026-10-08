@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the second lock. PostgreSQL itself hides every other company's rows.
+// STEP 11: the second lock. PostgreSQL itself hides every other company's rows.
 //
 // Step 10's lock is a WHERE in every query, held by the program alone. These tests go underneath
 // the program: raw SQL, as the application's own account, with and without a company said. What

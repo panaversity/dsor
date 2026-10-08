@@ -92,7 +92,7 @@ function aDecision(sequence: number, id = `audit:org_456:${sequence}`): [string,
 }
 
 /**
- * NEW IN STEP 11: a raw statement as the application, for org_456, on a real pooled connection.
+ * STEP 11: a raw statement as the application, for org_456, on a real pooled connection.
  *
  * Through the same adapter the program uses, so each statement takes a connection from the pool,
  * says the company for one transaction, and gives the connection back clean. Three racers through

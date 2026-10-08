@@ -6,6 +6,7 @@ import { callOperation } from "./operations.ts";
 import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
 import type { Login } from "./login.ts";
 import { openTheDatabase } from "./database.ts";
+import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -143,7 +144,7 @@ for (const [what, run] of [
   console.log(`${what.padEnd(26)} ${show(await run())}`);
 }
 
-// NEW IN STEP 11, and this is the step. The query step 10 could not survive: an invoice number and
+// STEP 11, and this is the step. The query step 10 could not survive: an invoice number and
 // no company. Step 10's lock is the WHERE the stores write, and this query has not got one. Run
 // through the program's own connection, which is `dsor_runtime` under the policies of migration
 // 005, it gets the company the statement said — and with none said, it gets nothing. Both answers
@@ -174,6 +175,29 @@ console.log(
 console.log(
   `  no company said:  ${asLines((await database.connection.query<Seen>(FORGOT_THE_COMPANY, ["INV-1008"])).rows)}`,
 );
+
+// NEW IN STEP 12, and this is the step. Every operation the registry holds, called with another
+// company's address — not the two named here by hand, but whatever the registry says, from the
+// example request each contract carries with every address in it moved to org_789. Add an
+// operation and this loop grows by one line, and test/support/cross-tenant-suite.ts grows by six
+// questions, without anyone editing either.
+console.log();
+console.log("Every operation, with another company's address:");
+console.log();
+
+for (const [id, contract] of loadRegistry(contractsFromDisk())) {
+  const example = exampleRequestOf(contract);
+  const theirs =
+    example === undefined
+      ? undefined
+      : (JSON.parse(
+          JSON.stringify(example).replaceAll("dsor://org_456/", "dsor://org_789/"),
+        ) as Record<string, unknown>);
+
+  console.log(
+    `${id.padEnd(14)} ${theirs === undefined ? "(no example request in its contract)" : show(await callOperation(SUPERVISOR, id, theirs))}`,
+  );
+}
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

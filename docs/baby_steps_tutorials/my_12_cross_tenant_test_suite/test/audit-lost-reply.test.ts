@@ -33,11 +33,11 @@ const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" };
 
 let real: PGlite;
-/** NEW IN STEP 11: `real`, as a connection whose statements can say their company. */
+/** STEP 11: `real`, as a connection whose statements can say their company. */
 let connection: Database;
 
 beforeEach(async () => {
-  // NEW IN STEP 11: through the support, so the stores run as the application here too. This
+  // STEP 11: through the support, so the stores run as the application here too. This
   // file used to build its own PGlite and never SET ROLE, so every fake forwarded the company to a
   // superuser that ignores it — an evaluation measured the fakes' tenant being enforced nowhere.
   real = await aDatabase();

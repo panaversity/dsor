@@ -1,4 +1,4 @@
-// NEW IN STEP 11: a connection that dies during COMMIT, on a real server.
+// STEP 11: a connection that dies during COMMIT, on a real server.
 //
 // Step 09 proved the lost-reply recovery with a fake database in front of PGlite. The pool adapter
 // is new in this step, and it has a moment of its own that PGlite cannot show: the server commits,

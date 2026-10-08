@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the second trap on the map, on real connections.
+// STEP 11: the second trap on the map, on real connections.
 //
 // A company set on a connection stays on that connection. A pool hands the same connection to the
 // next statement that asks, whoever that statement is for — so a company set *per connection* is

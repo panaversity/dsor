@@ -166,7 +166,7 @@ describe("the identity the program itself connects as", () => {
 
 describe("refuseIfItCanRewriteHistory", () => {
   it("DSOR-AUD-04a: refuses a connection that may rewrite the audit table", async () => {
-    // The owner's connection, which is what the program used to hold. NEW IN STEP 11: `aDatabase`
+    // The owner's connection, which is what the program used to hold. STEP 11: `aDatabase`
     // hands out the application's connection, so the owner's has to be asked for.
     const db = await aDatabase();
 
@@ -259,7 +259,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE TABLE audit (result TEXT);");
-    // NEW IN STEP 11: both tenant tables must exist, or the check refuses before this test's question.
+    // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON audit TO editor;");
@@ -367,7 +367,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE TABLE audit (result TEXT);");
-    // NEW IN STEP 11: both tenant tables must exist, or the check refuses before this test's question.
+    // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON audit TO editor;");
@@ -429,7 +429,7 @@ describe("the one door to the audit log's database", () => {
       }
     }
 
-    // NEW IN STEP 11: store.ts was rewritten around `theDatabase(tenant)`, and one comment that
+    // STEP 11: store.ts was rewritten around `theDatabase(tenant)`, and one comment that
     // named the function went with the old text — 4 to 3. The tripwire fired, which is its job.
     expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4, "store.ts": 3 });
   });

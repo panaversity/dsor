@@ -31,11 +31,11 @@ import { overPGlite } from "../src/database.ts";
 import { aDatabase } from "./support/database.ts";
 
 let real: PGlite;
-/** NEW IN STEP 11: `real`, as a connection whose statements can say their company. */
+/** STEP 11: `real`, as a connection whose statements can say their company. */
 let connection: Database;
 
 beforeEach(async () => {
-  // NEW IN STEP 11: through the support, so the stores run as the application here too. This
+  // STEP 11: through the support, so the stores run as the application here too. This
   // file used to build its own PGlite and never SET ROLE, so every fake forwarded the company to a
   // superuser that ignores it — an evaluation measured the fakes' tenant being enforced nowhere.
   real = await aDatabase();

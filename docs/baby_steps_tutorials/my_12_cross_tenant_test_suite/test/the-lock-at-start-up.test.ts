@@ -1,4 +1,4 @@
-// NEW IN STEP 11: the program refuses to start as an account the second lock does not apply to.
+// STEP 11: the program refuses to start as an account the second lock does not apply to.
 //
 // Step 09's start-up check asks what the connection MAY DO: UPDATE the log, become a role that
 // may, call a function that may. Row-level security adds a question no privilege check answers,

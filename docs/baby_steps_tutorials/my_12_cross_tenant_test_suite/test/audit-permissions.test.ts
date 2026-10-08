@@ -108,7 +108,7 @@ function splitValues(values: string): string[] {
 /**
  * Run SQL as the application's own account, and say what happened.
  *
- * NEW IN STEP 11: for org_456, said the way the program says it — inside the statement's own
+ * STEP 11: for org_456, said the way the program says it — inside the statement's own
  * transaction. Without it the lock of migration 005 hides every row and refuses every write, and
  * these tests would be measuring the lock rather than the grants.
  */
@@ -304,7 +304,7 @@ describe("what the table itself refuses", () => {
   it("DSOR-AUD-01: one record id cannot be written twice, even in another chain", async () => {
     await db.exec(A_DECISION);
 
-    // NEW IN STEP 11: the row's company moves with its chain, or `chain_matches_tenant` refuses it
+    // STEP 11: the row's company moves with its chain, or `chain_matches_tenant` refuses it
     // first and the primary key is never asked.
     const elsewhere = A_DECISION.replace("'audit:org_456', 0,", "'audit:org_999', 7,").replace(
       "'org_456', 'decision'",
@@ -612,7 +612,7 @@ describe("erasing the log, which only a test may do", () => {
       A_DECISION.replace(
         "'audit:org_456:0:0', 'audit:org_456'",
         "'audit:org_999:0:0', 'audit:org_999'",
-      ).replace("'org_456', 'decision'", "'org_999', 'decision'"), // NEW IN STEP 11: chain and company agree
+      ).replace("'org_456', 'decision'", "'org_999', 'decision'"), // STEP 11: chain and company agree
     );
 
     const before = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");

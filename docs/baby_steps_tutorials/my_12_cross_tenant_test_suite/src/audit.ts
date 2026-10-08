@@ -473,7 +473,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // itself. The interleaving does not need real concurrency, only control over the order, and
   // `audit-race.test.ts` holds one writer at this read while another commits. What does need a real
   // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
-  // NEW IN STEP 11: for this chain's company, and every statement below says so to PostgreSQL.
+  // STEP 11: for this chain's company, and every statement below says so to PostgreSQL.
   const db = theDatabase(tenant);
   // `AS at_position`, and the alias is load-bearing. `SELECT sequence::text` names its output column
   // `sequence`, and PostgreSQL resolves a bare name in ORDER BY to an **output** column first — so

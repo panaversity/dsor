@@ -1,4 +1,4 @@
--- NEW IN STEP 11: the second lock. PostgreSQL itself hides every other company's rows.
+-- STEP 11: the second lock. PostgreSQL itself hides every other company's rows.
 --
 -- Step 10 kept the two companies apart with a WHERE in every query. That is one lock, and the
 -- program holds it alone. Measured on step 10's own database, as dsor_runtime:
