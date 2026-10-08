@@ -12,5 +12,14 @@
 INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status) VALUES
   ('org_456', 'INV-1008', 'VENDOR-44', 31400.00, 'USD', 'issued'),
   ('org_456', 'INV-1009', 'VENDOR-44', 2500.00,  'USD', 'draft'),
-  ('org_789', 'INV-1008', 'VENDOR-44', 18000.00, 'USD', 'draft')
+  ('org_789', 'INV-1008', 'VENDOR-44', 18000.00, 'USD', 'draft'),
+  -- NEW IN STEP 12: org_789 holds every invoice number the examples name, as a draft. The
+  -- cross-tenant suite asks, for each operation, that the other company's rows are untouched
+  -- after a call with its address — and a careless command can only touch a row that is there.
+  -- Without this row the question passed for invoice.issue because org_789 had no INV-1009,
+  -- which is not the same as the command being careful; the suite now refuses that hollow pass.
+  ('org_789', 'INV-1009', 'VENDOR-44', 9100.00,  'USD', 'draft'),
+  -- And one number org_789 alone has, so a test can still ask for an invoice the other company
+  -- holds and be told there is no such invoice in yours.
+  ('org_789', 'INV-2001', 'VENDOR-44', 4200.00,  'USD', 'draft')
 ON CONFLICT (tenant_id, id) DO NOTHING;

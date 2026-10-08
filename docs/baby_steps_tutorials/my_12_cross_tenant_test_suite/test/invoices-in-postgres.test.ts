@@ -123,9 +123,11 @@ describe("the store, asked inside one company", () => {
   });
 
   it("DSOR-IDN-03b: an invoice the other company has is not found in yours", async () => {
-    // org_456 has INV-1009; org_789 does not.
-    expect(await getInvoice("org_456", "INV-1009")).toBeDefined();
-    expect(await getInvoice("org_789", "INV-1009")).toBeUndefined();
+    // org_789 has INV-2001; org_456 does not. NEW IN STEP 12: this used to be INV-1009, which
+    // org_789 did not hold until the cross-tenant suite asked for every example's number to exist
+    // in the other company too, so that a careless command has a row to touch.
+    expect(await getInvoice("org_789", "INV-2001")).toBeDefined();
+    expect(await getInvoice("org_456", "INV-2001")).toBeUndefined();
   });
 
   it("DSOR-IDN-03b: issuing org_789's INV-1008 leaves org_456's INV-1008 exactly as it was", async () => {
