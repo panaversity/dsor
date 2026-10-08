@@ -223,8 +223,12 @@ if (firstPage.kind === "page" && firstPage.page.next !== undefined) {
   );
 }
 
+// The label is built from the request it describes, so the two cannot drift apart: a review
+// changed the million to a two and the line still read "limit 1,000,000".
+const million = { limit: 1_000_000 };
+
 console.log(
-  `${"limit 1,000,000".padEnd(23)} ${show(await callOperation(SUPERVISOR, "invoice.list", { limit: 1_000_000 }))}`,
+  `${`limit ${million.limit.toLocaleString("en-US")}`.padEnd(23)} ${show(await callOperation(SUPERVISOR, "invoice.list", million))}`,
 );
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
