@@ -118,7 +118,7 @@ describe("the program a learner runs", () => {
     // STEP 10: two logs, printed one after the other — org_456's seventeen records and
     // org_789's two. NEW IN STEP 12: seventeen, not fifteen, because the generated section refuses
     // one request per operation, and a refusal is a decision.
-    expect(rows).toHaveLength(19);
+    expect(rows).toHaveLength(20); // STEP 13: one more refusal, for invoice.list
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -126,16 +126,16 @@ describe("the program a learner runs", () => {
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(12);
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(13);
     expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(7);
 
     // Sequences 0..16 for org_456 and then 0..1 for org_789: each chain counts from zero.
     // NEW IN STEP 12: 15 and 16 are the two refusals the generated section adds.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 1,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 17 records, chain verifies against the head: true");
+    expect(out).toContain("org_456: 18 records, chain verifies against the head: true");
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -181,22 +181,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(17);
+    expect(records(first, "org_456")).toBe(18);
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 17 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 18 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(34);
+    expect(records(second, "org_456")).toBe(36);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 34 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 36 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      38,
+      40,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -221,8 +221,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(19);
-    expect(hashesOf(second.raw)).toHaveLength(19);
+    expect(hashesOf(first.raw)).toHaveLength(20);
+    expect(hashesOf(second.raw)).toHaveLength(20);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 

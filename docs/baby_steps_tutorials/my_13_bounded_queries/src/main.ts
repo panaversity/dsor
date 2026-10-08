@@ -37,6 +37,12 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     return `${who} ${r.outcome.padEnd(24)} ${invoice.uri}  ${invoice.status}`;
   }
 
+  if (answer.kind === "page") {
+    const p = answer.page;
+
+    return `${who} ${"(a page)".padEnd(24)} ${p.invoices.length} invoices${p.next === undefined ? ", the last page" : `, next after ${p.next}`}`;
+  }
+
   const i = answer.invoice;
 
   return `${who} ${"(no envelope)".padEnd(24)} ${i.uri}  ${i.amount.value} ${i.amount.currency}  ${i.status}`;

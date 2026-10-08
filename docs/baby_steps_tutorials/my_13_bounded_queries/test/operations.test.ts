@@ -22,12 +22,12 @@ import {
 } from "../src/envelopes.ts";
 import { aDatabase } from "./support/database.ts";
 
-/** A stand-in handler table with both operations, for assertPaired tests. */
+/** A stand-in handler table with every operation, for assertPaired tests. STEP 13: three. */
 function handlersForBoth() {
   const stub = () =>
     ({ kind: "error", askedBy: "user_123", envelope: refusal("CONFLICT", "x") }) as const;
 
-  return { "invoice.get": stub, "invoice.issue": stub };
+  return { "invoice.get": stub, "invoice.issue": stub, "invoice.list": stub };
 }
 
 /** The error envelope a refusal came back in, or a failure if it was not a refusal. */
@@ -64,7 +64,7 @@ describe("callOperation", () => {
     // The strongest support this step can give DSOR-OPR-01. It does not prove nobody
     // imports getInvoice behind the registry's back: there is no door to close until
     // step 42. It does prove the two lists cannot drift apart.
-    expect(operationIds().sort()).toEqual(["invoice.get", "invoice.issue"]);
+    expect(operationIds().sort()).toEqual(["invoice.get", "invoice.issue", "invoice.list"]); // NEW IN STEP 13
   });
 
   // assertPaired runs at start-up, so these hand it the two lists directly. Asserting
@@ -140,7 +140,7 @@ describe("callOperation", () => {
   it("DSOR-OPR-01: on load, every contract is accounted for", async () => {
     const ids = operationIds();
 
-    expect(ids).toEqual(["invoice.get", "invoice.issue"]);
+    expect(ids).toEqual(["invoice.get", "invoice.issue", "invoice.list"]); // STEP 13: three
 
     // Each id either runs, or refuses for the single allowed reason. A contract nobody
     // had thought about would refuse with "no contract for", which cannot happen for an
@@ -412,10 +412,12 @@ describe("callOperation", () => {
     const registry = loadRegistry(contractsFromDisk());
     const contracts = [...registry.keys()].length;
 
-    // A legitimate queue: invoice.issue has a contract and, here, no handler yet.
+    // A legitimate queue: invoice.issue and invoice.list have contracts and, here, no handler yet.
     const onlyGet = { "invoice.get": handlersForBoth()["invoice.get"]! };
 
-    expect(assertPaired(registry, onlyGet, new Set(["invoice.issue"]))).toBe(contracts + 1);
+    expect(assertPaired(registry, onlyGet, new Set(["invoice.issue", "invoice.list"]))).toBe(
+      contracts + 2,
+    );
 
     // And with nothing waiting, it is the contracts alone.
     expect(assertPaired(registry, handlersForBoth(), new Set())).toBe(contracts);

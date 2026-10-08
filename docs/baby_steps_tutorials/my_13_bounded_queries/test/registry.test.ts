@@ -21,7 +21,7 @@ describe("the operation registry", () => {
   it("DSOR-OPR-01: every contract this step ships validates against operation-contract.schema.json", () => {
     const registry = loadRegistry(contractsFromDisk());
 
-    expect([...registry.keys()].sort()).toEqual(["invoice.get", "invoice.issue"]);
+    expect([...registry.keys()].sort()).toEqual(["invoice.get", "invoice.issue", "invoice.list"]);
   });
 
   // The map's "done when" for this step, word for word.

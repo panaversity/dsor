@@ -147,3 +147,43 @@ export async function issueInvoice(tenantId: string, id: string): Promise<IssueO
 
   return { kind: "not_draft", status: current.status };
 }
+
+/** One page of a company's invoices, and where the next page starts, if there is one. */
+export interface InvoicePage {
+  readonly invoices: readonly Invoice[];
+  /** The address of the last invoice on this page, to send back as `after`. Absent on the last page. */
+  readonly next: string | undefined;
+}
+
+/**
+ * NEW IN STEP 13: a company's invoices, in id order, one page at a time.
+ *
+ * `after` is an invoice id; the page holds the rows whose id sorts after it, so the caller walks
+ * the list by sending back the last id of each page. An id that does not exist is fine — the rows
+ * after where it would sort come back — and a row added behind the cursor never shifts the pages
+ * ahead, which a page number cannot promise.
+ *
+ * `limit` is already the server's number by the time it arrives here (queries.ts); the SQL asks
+ * for one more than that, which is how the page knows whether there is a next one without a
+ * second count query.
+ */
+export async function listInvoices(
+  tenantId: string,
+  after: string | undefined,
+  limit: number,
+): Promise<InvoicePage> {
+  const { rows } = await theDatabase(tenantId).query<Row>(
+    `SELECT ${COLUMNS} FROM public.invoices
+     WHERE tenant_id = $1 AND ($2::text IS NULL OR id > $2)
+     ORDER BY id
+     LIMIT $3`,
+    [tenantId, after ?? null, limit + 1],
+  );
+  const page = rows.slice(0, limit).map(fromRow);
+  const more = rows.length > limit;
+
+  return Object.freeze({
+    invoices: Object.freeze(page),
+    next: more ? page.at(-1)?.uri : undefined,
+  });
+}

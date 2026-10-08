@@ -32,7 +32,8 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 
 /** The request id on whatever came back, whichever kind of answer it is. */
 function idOf(answer: Awaited<ReturnType<typeof callOperation>>): string {
-  if (answer.kind === "data") {
+  if (answer.kind === "data" || answer.kind === "page") {
+    // STEP 13: a page is a query's success too, and carries no envelope either.
     throw new Error("a query's success carries no envelope, so no id — see the README's gap");
   }
 

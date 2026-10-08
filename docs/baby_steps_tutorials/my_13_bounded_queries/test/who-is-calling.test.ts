@@ -396,7 +396,7 @@ describe("who you are comes from the login, never from the arguments", () => {
 
         expect(answer.askedBy, where).toBe(who);
 
-        if (answer.kind !== "data") {
+        if (answer.kind !== "data" && answer.kind !== "page") {
           expect(answer.envelope.correlation.principal_id, `${where} envelope`).toBe(who);
         }
       }

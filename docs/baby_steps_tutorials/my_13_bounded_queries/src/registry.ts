@@ -203,7 +203,7 @@ export function loadRegistry(
 export function contractsFromDisk(): readonly ContractDocument[] {
   // Named one by one rather than by listing the folder, so that adding a contract is a
   // visible edit here. A step that scanned a directory could pick up a stray file.
-  return ["invoice.get", "invoice.issue"].map((id) => ({
+  return ["invoice.get", "invoice.issue", "invoice.list"].map((id) => ({
     where: `src/contracts/${id}.json`,
     expectedId: id,
     document: read(`./contracts/${id}.json`),

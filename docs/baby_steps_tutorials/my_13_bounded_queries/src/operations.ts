@@ -21,7 +21,7 @@ import {
 // Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
 import { type Login, principalFrom, tenantClaimed } from "./login.ts";
-import { getInvoice, issueInvoice, type Invoice } from "./invoice.ts";
+import { getInvoice, issueInvoice, listInvoices, type Invoice, type InvoicePage } from "./invoice.ts";
 import { tenantFor } from "./tenant.ts";
 import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
 import { holds } from "./permissions.ts";
@@ -32,6 +32,7 @@ import {
   type Stage,
   type StageResult,
 } from "./pipeline.ts";
+import { pageSizeFrom } from "./queries.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
@@ -52,6 +53,8 @@ const registry = loadRegistry(contractsFromDisk());
  */
 export type OperationAnswer =
   | { readonly kind: "data"; readonly askedBy: string; readonly invoice: Invoice }
+  /** NEW IN STEP 13: many rows, and where the next page starts. */
+  | { readonly kind: "page"; readonly askedBy: string; readonly page: InvoicePage }
   | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
 
@@ -169,6 +172,31 @@ const handlers: Readonly<Record<string, Handler>> = {
     }
 
     return { kind: "data", askedBy, invoice };
+  },
+
+  // NEW IN STEP 13: the first query that returns many rows, and the ceiling is the server's.
+  "invoice.list": async (args, contract, askedBy, tenant, _hash, requestId) => {
+    const limit = pageSizeFrom(Object.hasOwn(args, "limit") ? args["limit"] : undefined);
+
+    if (typeof limit !== "number") {
+      return { kind: "error", askedBy, envelope: refusal("VALIDATION_FAILED", limit.refused, requestId, askedBy) };
+    }
+
+    // The cursor is an address, so the §21.6 scan has already refused one from another company.
+    // Read the way `invoice` is read, and optional: no cursor means the first page.
+    let after: string | undefined;
+
+    if (Object.hasOwn(args, "after")) {
+      const read = invoiceIdFrom({ invoice: args["after"] }, contract, askedBy, tenant, requestId);
+
+      if ("refused" in read) {
+        return { kind: "error", askedBy, envelope: read.refused };
+      }
+
+      after = read.id;
+    }
+
+    return { kind: "page", askedBy, page: await listInvoices(tenant, after, limit) };
   },
 
   "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {
