@@ -56,7 +56,11 @@ describe("the ceiling", () => {
   it("DSOR-QRY-01: asking for one million rows returns one page", async () => {
     const page = await pageFor(SUPERVISOR, { limit: 1_000_000 });
 
-    expect(page.invoices).toHaveLength(MAX_PAGE_SIZE);
+    // The literal, not the constant: a test that compares the page with the number the code reads
+    // passes whatever the number is. A mutation pass changed the default to fifty and every test
+    // stayed green. Changing the ceiling is allowed; it is a visible act here.
+    expect(page.invoices).toHaveLength(100);
+    expect(MAX_PAGE_SIZE).toBe(100);
     // And the page says where the next one starts, as an address.
     expect(page.next).toBe(page.invoices.at(-1)?.uri);
   });
@@ -64,7 +68,8 @@ describe("the ceiling", () => {
   it("DSOR-QRY-01: with no limit at all, the server picks the page size", async () => {
     const page = await pageFor(SUPERVISOR, {});
 
-    expect(page.invoices).toHaveLength(DEFAULT_PAGE_SIZE);
+    expect(page.invoices).toHaveLength(25); // the literal, for the reason above
+    expect(DEFAULT_PAGE_SIZE).toBe(25);
     expect(page.next).toBeDefined();
   });
 
