@@ -139,7 +139,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 108 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 109 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

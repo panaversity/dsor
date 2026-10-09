@@ -2701,6 +2701,10 @@ the row. The step's databases: `dsor_step14` on Neon and on the local server.
 
 ## 106 · What step 14's build found: the record of a read is a second record, and a grant that does not grow (2026-10-09)
 
+> **Superseded in part by decision 109, the same day.** The row count moved out of `extensions`
+> into the record's own `row_count` field, which the schema had all along. The rest of this entry
+> stands.
+
 Two things the build taught, neither of them a choice the learner had.
 
 **The record of a read is a second record.** `DSOR-CLS-05` wants a read of confidential data
@@ -2801,4 +2805,27 @@ What step 14 does instead: says it. The README has a paragraph of its own — "t
 still cannot tell you" — naming all five endings and where the answer arrives. A learner who reads
 the log of a refused read and wonders why it says ALLOWED finds the answer in the step, not in a
 surprise.
+
+## 109 · The row count goes in the record's own `row_count`, not under `extensions` (2026-10-09)
+
+**Decided by:** the learner, who took the recommendation after the problem was shown in plain
+words, with the record of a read drawn both ways side by side.
+**What:** the record of a read keeps how many rows it returned in `row_count`, the field
+`audit-record.schema.json` has for it, beside `resources`. Until now the count was under
+`extensions["com.panaversity.tutorial"].row_count`. Migration `007_read_row_count.sql` adds the
+column, and grants `INSERT` on it column by column, as 006 does.
+**Why:** decision 106 put the count under `extensions` because the build believed the schema had
+no field for it, and a comment in `audit.ts` said so. The schema has one: `row_count`, a whole
+number of at least 0. `extensions` is for the fields an implementation adds (`DSOR-SCH-02`). So a
+checker that follows the specification looked in `row_count`, found nothing, and could not know
+that the count was there under a name only this tutorial uses. Found by a read of the whole
+repository on 2026-10-09.
+**Cost:** a second migration in one step. 006 cannot be edited: it has been applied on Neon, and a
+migration's checksum covers every byte, comments included (lesson 40). So 006's comment still says
+the count goes under `extensions`, and 007's comment says why that is no longer true. The
+`extensions` column stays, and step 14 writes nothing to it.
+**Rejected:** keeping the count under `extensions` and correcting the two comments. No database
+change, and a count that only this tutorial can find. Also rejected: rewriting 006 and making the
+step's Neon database again. The step would read cleaner, and it needs a database deleted, which is
+the learner's action to take.
 
