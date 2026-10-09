@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaymentCreateRequest",
+  "description": "The input of payment.create: the canonical URI of the invoice to pay, and the version of that invoice its caller decided on. DSoR reads the amount and the vendor from the invoice itself (step 17's README, decision 4), and drafts only while the invoice still has that version (step 21's README, decision 6). This tutorial's own schema: the specification names payment.create and does not define its input. The pattern is the specification's resourceUri; the /invoice/ part beside it is this tutorial's, as in InvoiceGetRequest.",
+  "type": "object",
+  "properties": {
+    "invoice": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/invoice/"
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "The version of the invoice that the caller read, and decided on. §38 names expected_version an argument of a tool; that it names the invoice's version here is this tutorial's decision (step 21's README, decisions 3 to 5). At most 2147483647, the largest version the database's integer column holds (step 21's README, decision 10)."
+    }
+  },
+  "required": ["invoice", "expected_version"],
+  "additionalProperties": false
+}

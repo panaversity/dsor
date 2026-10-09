@@ -1,0 +1,46 @@
+{
+  "Invoice": {
+    "id": "internal",
+    "tenant_id": "internal",
+    "vendor_id": "internal",
+    "status": "internal",
+    "amount": "confidential Money",
+    "open_amount": "confidential Money",
+    "version": "internal"
+  },
+  "Money": {
+    "value": "confidential",
+    "currency": "confidential"
+  },
+  "InvoicePage": {
+    "items": "Invoice[]",
+    "next_cursor": "internal",
+    "capped": "public Capped"
+  },
+  "Capped": {
+    "asked": "public",
+    "max": "public"
+  },
+  "Payment": {
+    "id": "internal",
+    "tenant_id": "internal",
+    "invoice_id": "internal",
+    "vendor_id": "internal",
+    "status": "internal",
+    "amount": "confidential Money",
+    "version": "internal"
+  },
+  "InvoiceIssueResult": {},
+  "Delegation": {
+    "tenant_id": "internal",
+    "id": "internal",
+    "status": "internal",
+    "cancelled": "internal"
+  },
+  "Brake": {
+    "tenant_id": "internal",
+    "id": "internal",
+    "target": "internal",
+    "status": "internal"
+  }
+}
