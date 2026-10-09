@@ -15,11 +15,13 @@ Four things make it asked here:
 
 - **Every field has a label**, one of `public`, `internal`, `confidential`, `restricted`, in one
   file: `src/classification.ts`. The amount is `confidential` and the id, the vendor and the
-  status are `internal`, as in the specification's own example (§4); the two fields that name the
-  row are `internal` too, which is this tutorial's label; and a bank account is `restricted`
-  before any column holds one, because the label comes with the design. A field that is not in
-  the table is `confidential` (`DSOR-CLS-01`). That is the rule and not a convenience: the day
-  someone adds a `notes` field to an invoice and forgets to label it, the agent does not see it.
+  status are `internal`, as in the specification's own example
+  ([§6](../../../specs/dsor/01-model.md#6-business-entities-and-the-canonical-model)); the two
+  fields that name the row are `internal` too, which is this tutorial's label; and a bank account
+  is `restricted` before any column holds one, because the label comes with the design. A field
+  that is not in the table is `confidential` (`DSOR-CLS-01`). That is the rule and not a
+  convenience: the day someone adds a `notes` field to an invoice and forgets to label it, the
+  agent does not see it.
 - **The agent has a clearance**, `internal`, written beside it in `src/people.ts`. An agent nobody
   cleared reads `public` fields only — the lock stays locked when the paperwork is missing. The
   two people have no clearance and are not filtered: a human reads on a screen, and the role

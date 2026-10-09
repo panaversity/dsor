@@ -171,11 +171,11 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
  * Everything else is filtered by who is asking, labelled, and told what it lost.
  */
 export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): OperationAnswer {
-  // Two things this boundary does not do, said here because a review measured both. An error is
+  // One thing this boundary does not do, said here because a review measured it. An error is
   // untouched: its message is free text, so a handler must never put a field's value in one — a
-  // rule for handlers, not a filter. And a label covers a field's value whole: a field whose
-  // value is an object is shown whole or withheld whole, so a handler must not nest a sensitive
-  // value under a lower-labelled field. Both belong to the entity schema (DSOR-ENT-01b).
+  // rule for handlers, not a filter. A value with parts inside is the filter's job: it is
+  // confidential whatever its field is called, and money, the one exception, takes the label of
+  // its field (`filterRow` and `isPlain`, decision 107).
   if (answer.kind === "error") {
     return answer;
   }

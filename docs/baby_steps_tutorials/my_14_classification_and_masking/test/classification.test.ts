@@ -25,7 +25,8 @@ describe("the labels", () => {
   });
 
   it("the running example's invoice is labelled as the specification's own example is", () => {
-    // §4's entity schema: id internal, vendor internal, amount confidential, status internal.
+    // The entity schema in §6 of 01-model.md: id, vendor (§6's vendor_id) and status internal,
+    // amount confidential.
     expect(labelOf("invoice", "amount")).toBe("confidential");
     expect(labelOf("invoice", "id")).toBe("internal");
     expect(labelOf("invoice", "vendor")).toBe("internal");
