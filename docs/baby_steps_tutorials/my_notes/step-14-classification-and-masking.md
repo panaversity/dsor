@@ -1,10 +1,10 @@
 # Step 14 · Classification and masking
 
-Folder: [`my_14_classification_and_masking`](../my_14_classification_and_masking/README.md) · 502
+Folder: [`my_14_classification_and_masking`](../my_14_classification_and_masking/README.md) · 504
 tests, plus 39 in the database tier
 Spec: [§19](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) ·
 `DSOR-CLS-01`, `DSOR-CLS-02a`, `DSOR-CLS-02b`, `DSOR-CLS-03`, `DSOR-CLS-05`
-Both tiers have run: 502 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the step's
+Both tiers have run: 504 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the step's
 own database `dsor_step14`, six migrations applied, one new. Decisions [105 to 108](decisions.md).
 
 ## What the step is
