@@ -120,8 +120,11 @@ export interface AuditRecord {
   readonly reason?: string;
   /** NEW IN STEP 14: the rows a read returned, by address — the resource scope of DSOR-CLS-05. */
   readonly resources?: readonly string[];
-  /** NEW IN STEP 14: what the schema has no field for, under a namespace: the row count. */
-  readonly extensions?: Readonly<Record<string, unknown>>;
+  /**
+   * NEW IN STEP 14: how many rows a read returned, in the field the schema has for it. It was under
+   * `extensions` until decision 109, because a comment here said the schema had no such field.
+   */
+  readonly row_count?: number;
   readonly correlation: {
     readonly request_id: string;
     readonly tenant_id?: string;
@@ -157,8 +160,8 @@ export interface DecisionToRecord {
   readonly reason?: string;
   /** NEW IN STEP 14: for a `classified_read`, the addresses of the rows that left. */
   readonly resources?: readonly string[];
-  /** NEW IN STEP 14: for a `classified_read`, `{ "com.panaversity.tutorial": { row_count } }`. */
-  readonly extensions?: Readonly<Record<string, unknown>>;
+  /** NEW IN STEP 14: for a `classified_read`, how many rows left — the record's `row_count`. */
+  readonly rowCount?: number;
 }
 
 /**
@@ -440,7 +443,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const payloadHashGiven = decision.payloadHash;
   const reason = decision.reason === undefined ? undefined : clip(decision.reason);
   const resources = decision.resources === undefined ? undefined : [...decision.resources];
-  const extensions = decision.extensions;
+  const rowCount = decision.rowCount;
 
   // No subject, or no company: counted, not recorded. The second is new in step 10, and it is rare
   // by construction — `recordTheDecision` writes a no-company refusal to every company the caller
@@ -608,8 +611,8 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     body.resources = resources;
   }
 
-  if (extensions !== undefined) {
-    body.extensions = extensions;
+  if (rowCount !== undefined) {
+    body.row_count = rowCount;
   }
 
   body.record_hash = hashOf(body);
@@ -783,7 +786,7 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
     `INSERT INTO public.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
        identity, correlation, operation, payload_hash, "authorization", result, reason,
-       resources, extensions
+       resources, row_count
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
     [
       written.record_id,
@@ -801,9 +804,10 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
       written.authorization ?? null,
       written.result,
       written.reason ?? null,
-      // NEW IN STEP 14. As JSON text, like identity and correlation.
+      // NEW IN STEP 14. The addresses as JSON text, like identity and correlation; the count as
+      // the whole number it is (migration 007, decision 109).
       written.resources === undefined ? null : JSON.stringify(written.resources),
-      written.extensions === undefined ? null : JSON.stringify(written.extensions),
+      written.row_count ?? null,
     ],
   );
 }
@@ -823,7 +827,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
     `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash,
             to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
             tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
-            reason, resources, extensions
+            reason, resources, row_count
      FROM public.audit WHERE chain = $1 ORDER BY sequence`,
     [chainOf(tenant)],
   );
@@ -858,7 +862,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
         "authorization",
         "reason",
         "resources",
-        "extensions",
+        "row_count",
       ]) {
         if (row[field] !== null && row[field] !== undefined) {
           record[field] = row[field];

@@ -969,7 +969,8 @@ async function recordTheRead(
       result: "READ",
       operation: `${contract.id}@${contract.version}`,
       resources: rows.map((row) => row.uri),
-      extensions: { "com.panaversity.tutorial": { row_count: rows.length } },
+      // Decision 109: in the record's own `row_count`, the field the schema has for it.
+      rowCount: rows.length,
     });
   } catch {
     // Whether the store lost the reply or refused the write, the record is not there (`audit`

@@ -21,8 +21,6 @@ import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
-const TUTORIAL = "com.panaversity.tutorial";
-
 let db: PGlite;
 
 beforeAll(async () => {
@@ -38,8 +36,9 @@ afterAll(async () => {
   await db.close();
 });
 
-const rowCountOf = (record: AuditRecord): unknown =>
-  (record.extensions?.[TUTORIAL] as Record<string, unknown> | undefined)?.["row_count"];
+// Decision 109: the count is in the record's own `row_count`, the field the schema has for it. It
+// was under `extensions`, where a checker that follows the specification does not look.
+const rowCountOf = (record: AuditRecord): unknown => record.row_count;
 
 describe("a confidential read is written down", () => {
   it("DSOR-CLS-05: the supervisor's read of one invoice — after the decision, naming the row and the count", async () => {
@@ -56,6 +55,7 @@ describe("a confidential read is written down", () => {
     expect(read.identity.actor_chain).toStrictEqual([]); // nobody acts on anyone's behalf until step 18
     expect(read.resources).toStrictEqual([INV_1008]);
     expect(rowCountOf(read)).toBe(1);
+    expect("extensions" in read).toBe(false); // nothing left under the tutorial's own name
     expect(read.result).toBe("READ");
     expect(verifyChain(log)).toBe(true);
   });

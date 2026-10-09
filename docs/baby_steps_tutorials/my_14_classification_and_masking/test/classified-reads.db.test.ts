@@ -24,7 +24,6 @@ const haveAServer = (APPLICATION ?? "").trim() !== "" && (OWNER ?? "").trim() !=
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
-const TUTORIAL = "com.panaversity.tutorial";
 
 let owner: Pool;
 let application: Pool;
@@ -78,19 +77,23 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
 
     expect(log.map((r) => r.kind)).toStrictEqual(["decision", "classified_read"]);
     expect(log[1]?.resources).toStrictEqual([INV_1008]);
-    expect((log[1]?.extensions?.[TUTORIAL] as { row_count: number }).row_count).toBe(1);
+    expect(log[1]?.row_count).toBe(1); // decision 109: the schema's own field
     expect(verifyChain(log, await theHead("org_456"))).toBe(true);
 
-    // As the owner, straight from the table: the columns hold what the record says.
+    // As the owner, straight from the table: the columns hold what the record says, and the count
+    // is in `row_count`, not in the `extensions` column that migration 006 added.
     const { rows } = await owner.query<{
       resources: string[];
-      extensions: Record<string, unknown>;
+      row_count: number;
+      extensions: unknown;
     }>(
-      "SELECT resources, extensions FROM public.audit WHERE tenant = 'org_456' AND kind = 'classified_read'",
+      "SELECT resources, row_count, extensions FROM public.audit WHERE tenant = 'org_456' AND kind = 'classified_read'",
     );
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.resources).toStrictEqual([INV_1008]);
+    expect(rows[0]?.row_count).toBe(1);
+    expect(rows[0]?.extensions).toBeNull();
   });
 
   it("the agent's read of the same invoice left as internal and is one record, the decision", async () => {
@@ -99,14 +102,14 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
     expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision"]);
   });
 
-  it("migration 006: the application may write the two new columns and still may not change them", async () => {
+  it("migrations 006 and 007: the application may write the three new columns and still may not change them", async () => {
     const { rows } = await owner.query<{ column: string; insert: boolean; update: boolean }>(
       `SELECT c.column_name AS "column",
               has_column_privilege('dsor_runtime', 'public.audit', c.column_name, 'INSERT') AS insert,
               has_column_privilege('dsor_runtime', 'public.audit', c.column_name, 'UPDATE') AS update
        FROM information_schema.columns c
        WHERE c.table_schema = 'public' AND c.table_name = 'audit'
-         AND c.column_name IN ('resources', 'extensions', 'recorded_at')
+         AND c.column_name IN ('resources', 'extensions', 'row_count', 'recorded_at')
        ORDER BY c.column_name`,
     );
 
@@ -114,6 +117,7 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
       { column: "extensions", insert: true, update: false },
       { column: "recorded_at", insert: false, update: false }, // step 09's witness, still unreachable
       { column: "resources", insert: true, update: false },
+      { column: "row_count", insert: true, update: false }, // migration 007, decision 109
     ]);
   });
 });

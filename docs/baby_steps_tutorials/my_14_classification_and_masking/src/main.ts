@@ -268,9 +268,7 @@ for (const company of ["org_456", "org_789"]) {
   for (const record of await theLog(company)) {
     // NEW IN STEP 14: a read that handed out confidential data is a record of its own, after the
     // decision that allowed it: `read` where a decision says ALLOW or DENY, and how many rows left.
-    const rows = (
-      record.extensions?.["com.panaversity.tutorial"] as { row_count?: number } | undefined
-    )?.row_count;
+    const rows = record.row_count;
     const isARead = record.kind === "classified_read";
 
     console.log(
