@@ -133,6 +133,22 @@ command must declare a strategy. If `none` counts, a command can declare that no
 checked, and the rule asks only for a word. Step 21's learner build accepts `none` at start-up,
 and no shipped command declares it. Should §23 name `none`, and say which commands may use it?
 
+### Who is a tenant administrator?
+
+DSOR-DEL-04a says a slip "MUST be revocable by its delegator and by a tenant administrator", and
+§26.1 lets "the requester or a tenant administrator" call `proposal.cancel`. The specification
+defines no role and no permission for a tenant administrator, and the running example has none.
+Step 25's design proposes a role of the tutorial's own, `tenant_admin`, held by a new person,
+`admin_100` (decision L2). Should the specification name the role, or a permission for it?
+
+### May an agent pull the emergency brake?
+
+DSOR-OPS-01d lets only "a human holding `control:suspend`" lift a suspension or a freeze, and §45
+says that agents "never lift suspensions". Nothing says who may *pull* the brake. A watchdog
+agent could stop a runaway agent in seconds, at 03:10, when no person is awake. A compromised
+agent could freeze every agent in the company. Step 25's design recommends people only, both
+ways (decision L6). Should §18 say who may apply a suspension or a freeze?
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -410,6 +426,19 @@ Step 08 found one more on 2026-09-27:
     working that helped".
   - **Database runs time out under load.** With seven suites on Neon at once, a few tests
     timed out at 30 seconds, in runs before and after the fix. Every rerun was green.
+
+### A race test that fails while its draft is on its way (found 2026-10-09)
+
+- **Where:** `test/limits.db.test.ts`, the test of a draft decided on the invoice's next version, in
+  step 24 (`mj_24_limits_with_reservations`). Step 25 copied the same pattern into
+  `test/revocation.db.test.ts`.
+- **What:** the test holds a row lock from a second connection, and its `finally` releases that
+  connection with no ROLLBACK. When the test fails before its COMMIT, the row stays locked and the
+  draft stays on its way. The next test's owner script runs with `spawnSync`, which blocks the
+  test process, so the draft can never finish, and the script waits for its lock until its time
+  limit. Step 25b's reviewer hit a 10-minute pile-up.
+- **Fixed in:** steps 25 and 25b. Their `finally` rolls back, releases, and waits for the draft.
+- **Still in:** step 24. Repeat the fix there by hand, if step 24 is run again.
 
 ## Proposed for the house list and the map
 
@@ -1199,6 +1228,87 @@ the README with its downside, for the learner to review before the session on st
 - **The unit tests' group names did not match the README's claims.** The groups said C1 to C6, and
   the README's claims are C1 to C15. Each group now names the README's claims.
 - **Nothing is committed.**
+
+### Step 25, the design before the session (2026-10-09)
+
+The learner read the story page of steps 22 to 24, then asked for step 25's design: "design 25
+… and then 22-25 will be understood after that". So this design came before the step's
+understanding session, against the usual order, at the learner's request. Steps 22 to 24 were
+committed and pushed on 2026-10-08, at the learner's request: c155f8f, f6dbc25, 6bd3909,
+2a36250, and bf56a81 for the `.env.example` files the learner copied in.
+
+- **The folder:** `mj_25_revocation_and_the_emergency_brake`, a copy of step 24, with
+  `.env.example` this time. Its README holds the design only. Its code and tests are step 24's.
+- **Nothing is decided.** Nine questions for the learner, L1 to L9, each with options, downsides,
+  and a recommendation, and ten details that Claude Code proposes, D1 to D10.
+- **The first question is the step's size (L1).** Tearing up a slip and pulling the brake are one
+  goal and two mechanisms. The recommendation is to split them, 25 and 25b, as 19 and 19b were.
+- **The hardest question is the race (L8).** Line ④ runs before the claim's transaction, so a
+  draft can pass line ④ a moment before the brake, and still enter EXECUTING. The recommendation
+  checks again inside the claim's transaction, under a lock that the brake takes alone.
+- **Step 24 already has part of it:** line ③ refuses a torn-up slip with `DELEGATION_REVOKED`,
+  and reads the slip from the store at every call, which meets §44's L3 bound for revocation.
+- **Two words that look alike:** step 19b suspends slips, and step 25 suspends agents. The README
+  warns about it, and the session should check that the difference landed.
+- **Two questions for the specification,** above: who a tenant administrator is, and whether an
+  agent may pull the brake. They go to `research/open-questions.md` at the hand-over.
+- **Next:** the understanding session of steps 22 (parts 3 to 5), 23, 24, and 25. Then L1 to L9
+  through the ask tool, one at a time. Then the build.
+- **Nothing is committed.**
+
+### Step 25, the build and the review (2026-10-09)
+
+The learner asked for the build before the understanding session: "first complete 25 build",
+then "Keep 25b, then 26". So Claude Code took each recommendation of the design, and marked each
+decision "(Claude Code)", for the learner to review.
+
+- **The folder** became `mj_25_revocation` when decision L1 split the step. Step 25b, the
+  emergency brake, is a folder of its own.
+- **The README names its decisions as the code does:** L1 to L5 for the design's questions, D1
+  to D15 for the ones found while designing and building. The first README numbered them 1 to
+  16, and most of the code's references pointed nowhere.
+- **The first sweep:** 35 small breaks. 26 were killed, 8 survived and got tests, and 1 was
+  killed by accident, by a test that timed out under load. Two mistakes: two sweeps ran at once
+  on one database, and two tests waited on the whole server's locks.
+- **The review:** two medium findings and five small ones. The check of who is asking ran inside
+  the work, after DSoR had said yes, so a refusal was recorded ALLOW, and a dry run said
+  VALIDATED (M1). "Revocable by its delegator" held only because every signer was a supervisor
+  (M2). All were fixed red first, except two that are a comment and an open question. A sweep of
+  the 18 fixes: 16 killed, 1 survived and got a test, and 1 was caught by a timeout.
+- **Lessons for the next builds:**
+  - A check that only reads belongs at line ⑨, not in the work. A refusal from the work is
+    recorded ALLOW, and a dry run cannot see it.
+  - A refusal that tells "not yours" from "not there" tells which records exist.
+  - "People only" is `type === "human"`, never "not an agent". A list of what is refused misses
+    the type nobody thought of.
+  - Inside a claim, read only through the claim's own stores. A read that takes a second
+    connection from a small pool can wait for ever.
+  - Redact `postgresql://` as well as `postgres://`. A scratch copy's `.env` was printed by
+    mistake on 2026-10-09: local passwords only, for the scratch PostgreSQL.
+- **For the learner's session:** each "(Claude Code)" decision, and the six that the review
+  changed: L3, D3, D4, D7, D13, and D15.
+
+### Step 25b, the emergency brake, built while the learner was away (2026-10-09)
+
+The learner chose the split, "Keep 25b, then 26", and then asked for the build at once: "go ahead,
+build 25b after 25 is done". So Claude Code took the recommendations of step 25's design
+questions L6 to L9, and marked each decision "(Claude Code)", for the learner to review.
+
+- **The folder:** `mj_25b_the_emergency_brake`, a copy of step 25, database `dsor_step25b`. Step 24's
+  markers were still in step 25, and were removed there first; step 25's were removed in 25b.
+- **Line ④ is built.** It reads `dsor.brakes` at every call and refuses each command from a braked
+  agent, in every mode. The check runs again right after line ⑧, inside the claim, under a
+  PostgreSQL advisory lock: shared for an agent's command, alone for a pull.
+- **Found while building:** the brake's refusal was masked inside the claim and not at line ④, so
+  an agent of low clearance heard two different answers for one brake. Its words are public now.
+- **Found by the sweep:** a test that fails must still end. The two race tests left a transaction
+  open when they failed, and the file waited for ever.
+- **A mistake in the sweep's runner:** a time limit killed `npx`, and vitest went on running
+  against the sweep's database beside the next break's run, so the first run's database
+  results could not be trusted, and the sweep ran again. Lesson: a time limit kills the whole
+  process group. In the end all 28 breaks were killed by the tests meant for them.
+- **For the learner's session:** L3, L6 to L9, and D1 to D14 in the README, and the two new
+  questions for the specification, 102 and 103.
 
 ## Still unknown
 

@@ -585,6 +585,9 @@ for a human. An agent may gather evidence; it does not settle these alone.
     table). DSOR-DEL-04c cancels a revoked slip's proposals that are `PENDING_APPROVAL` or
     `APPROVED`, and not one that is READY, so a READY proposal under a torn-up slip waits
     forever. Should the picture draw READY to CANCELLED, EXPIRED, and INVALIDATED?
+    Step 25's learner build shows the cost: when user_123 tears up del_100, the agent's prepared
+    draft waits in READY for ever, and holds 31,400.00 USD of the day for a slip that can spend
+    nothing.
 91. **Does a command refused before line 8 leave a proposal?** §26.1 says that every command
     invocation in `execute` or `propose_only` mode creates a proposal. §21 puts line 8 after the
     permission check, the input check, and the claim of the key, so a refusal at one of them
@@ -633,3 +636,27 @@ for a human. An agent may gather evidence; it does not settle these alone.
     nothing of how DSoR learns the amount of a command. Step 24's learner build lets the contract
     name it, beside its `bind`, as `spends: state.invoice.open_amount`. Should the operation
     contract have a field for the amount a command counts against a limit?
+100. **Who is a tenant administrator?** DSOR-DEL-04a lets "a tenant administrator" revoke any
+    delegation. The specification defines no role, permission, or claim that makes a person one.
+    Step 25's learner build adds a role of its own, `tenant_admin`, held by a new person,
+    admin_100, and checks it in DSoR's own work, against the caller's roles in the active
+    company only. Should the specification name the role, or the permission that makes a person a
+    tenant administrator?
+101. **Does DSOR-SRC-02b cover the record a call acts on?** The rule refuses "a tenant, principal,
+    or delegation identifier inside operation arguments that disagrees with the security
+    context". `delegation.revoke` names the slip it tears up, and a person calls under no slip,
+    so read word by word the rule refuses every tear-up. Step 25's learner build names the slip
+    in a field called `slip`, which line ③ does not read as a claimed authority, as
+    `payment.cancel` names its payment. Should the rule say that it covers the authority a call
+    claims, and not the record a call acts on?
+102. **May an agent pull the emergency brake?** DSOR-OPS-01d and §45 say that only a human
+    holding `control:suspend` lifts a suspension or a freeze. Nothing says who may pull one. A
+    watchdog agent could stop a runaway agent in seconds; a compromised one could freeze the
+    whole company until a person wakes up. Step 25b's learner build lets only a person holding
+    `control:suspend` pull it too. Should the specification say who may pull the brake?
+103. **Which operations stop an agent?** §13.3 lets a person revoke a delegation, and §18 lets one
+    suspend an agent or freeze a tenant. Neither names an operation, an input, or a permission
+    for revocation. Steps 25 and 25b's learner builds add `delegation.revoke`, `control.suspend`,
+    and `control.lift`, and name a brake's target by a URI of their own: `dsor://org_456/agent/{id}`
+    and `dsor://org_456/tenant/org_456`. Should the specification name these operations and
+    their targets, as §26.1 names `proposal.execute`?
