@@ -1,0 +1,4 @@
+{
+  "org_456": { "kind": "idp_lookup", "max_staleness": "PT1H" },
+  "org_789": { "kind": "idp_lookup", "max_staleness": "PT4H" }
+}
