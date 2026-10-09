@@ -34,7 +34,8 @@ Four pieces, each red first, committed, broken on purpose:
    the door filters before it measures the ceiling.
 3. **The record of a read** — `recordTheRead` in `operations.ts`, `resources` and `extensions`
    through `audit.ts`'s hash, INSERT and read-back, migration 006, and if the record cannot be
-   written the rows do not leave. Three tests on Neon.
+   written the rows do not leave. Three tests on Neon. The count went under `extensions`, and
+   decision 109 moved it to the schema's own `row_count`, with migration 007 (below).
 4. **The demo** — the two lines that are no longer the same, and `read` lines in the printed log.
 
 ## What the build found
@@ -150,3 +151,18 @@ two statements in `makeDoor`, held by the fault test and not by a stage; a princ
 its caller is a human, which its header now says; and the specification's own example clears this
 agent for `confidential` and withholds the amount through an egress policy this step does not
 build, so the step lowers the clearance instead and says so.
+
+## After the step: the row count (decision 109, 2026-10-09)
+
+A read of the whole repository found that the record of a read kept its count under `extensions`,
+while `audit-record.schema.json` has a field for it, `row_count`. A comment in `audit.ts` had said
+the schema had none. The learner chose to move it, and it moved in three commits: the decision;
+migration 007, which adds the column and its `GRANT`; and the move itself, red first.
+
+- The tests changed and did not grow: 504 under `pnpm check`, and 39 under `pnpm test:db` on
+  Neon, with 007 applied.
+- Broken on purpose: no count written, 3 failed; `theLog` not reading `row_count` back, 7,
+  because the count is inside the hash; 007 without its `GRANT`, 185, because every INSERT names
+  the column.
+- The README's fifteen breaks, measured again: all fifteen the same. A first pass on a slow machine
+  gave five wrong numbers, with tests skipped, and was thrown away.

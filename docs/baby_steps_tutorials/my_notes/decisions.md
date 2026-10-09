@@ -2829,3 +2829,29 @@ change, and a count that only this tutorial can find. Also rejected: rewriting 0
 step's Neon database again. The step would read cleaner, and it needs a database deleted, which is
 the learner's action to take.
 
+**Red first.** The two tests that read the count failed on `expected undefined to be 1` and
+`expected undefined to be 2`, and the typecheck refused `row_count` on `AuditRecord`. The tests
+changed and did not grow: `pnpm check` 504, and `pnpm test:db` 39 on Neon with 007 applied.
+
+**Proved by breaking it**, in a copy outside the repository, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| no `rowCount` written | 3: the two count tests and the demo's `READ, 1 row` | 3, those three |
+| `theLog` does not read `row_count` back | about a dozen | 7: those three, and four tests that verify a chain holding a person's read, because the count is inside the hash |
+| 007 without its `GRANT` | dozens: only the reads | 185 |
+
+The third prediction was wrong, and the reason is the lesson of 006 again. Every `INSERT` into the
+log names `row_count`, and sends a NULL when a record has no count. PostgreSQL asks for the column
+privilege for every column a statement names, whatever the value. So without the grant every
+write to the log was refused, decisions included, as in Break 12. Run twice, 185 both times, and
+the README's Break 12 now says so.
+
+**The README's fifteen breaks, measured again.** All fifteen give the README's counts. The first
+pass did not. It slowed down from break 8 on — seven results in twenty-five minutes, where a run
+takes one — and five runs came back with numbers the README does not have, break 11 with 32 tests
+skipped where the README has 1. A skipped test there means a test file's setup ran out of time, so
+those runs measured the machine and not the code (lesson 11: the total and the skips are the
+tell). Run again one at a time on a quiet machine, the five gave 17, 2, 2, 185 and 65, the
+README's numbers.
+

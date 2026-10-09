@@ -78,14 +78,15 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_13
 | `src/boundary.ts` | new — the model boundary: `leaveTheDoor` filters a row by the caller's clearance, labels the answer, and lists what it took out, for one invoice, a page, and a command's receipt |
 | `src/people.ts` | a principal may carry a `clearance`; the agent's is `internal` |
 | `src/operations.ts` | `HandlerAnswer` (what a handler hands the door, the whole row) and `OperationAnswer` (what leaves, labelled); the door calls `leaveTheDoor` before the ceiling; `recordTheRead` writes the record of a confidential read, before the answer leaves |
-| `src/audit.ts` | a record may carry `resources` and `extensions`, hashed, inserted, read back |
+| `src/audit.ts` | a record may carry `resources` and `row_count`, hashed, inserted, read back |
 | `src/envelopes.ts` | a result envelope may carry `classification` and `redactions` — the schema always had the two fields |
-| `migrations/006_classified_reads.sql` | new — the two columns, and a `GRANT INSERT` on exactly those two columns |
+| `migrations/006_classified_reads.sql` | new — two columns, `resources` and `extensions`, and a `GRANT INSERT` on exactly those two. Since decision 109 nothing writes `extensions` |
+| `migrations/007_read_row_count.sql` | new — `row_count`, the field the schema has for a read's row count, and a `GRANT INSERT` on it (decision 109) |
 | `src/main.ts` | the two lines that are no longer the same; a page says its label; the printed log shows a read as `read` with its row count |
 | `test/classification.test.ts` | new — seven tests: the table, the default, the order, the clearance, the restricted label |
 | `test/model-boundary.test.ts` | new — nineteen tests: one invoice, a page, a receipt, a field nobody labelled, a row with no address, a restricted field, a page of rows that do not look alike, an empty page, the cursor, the ceiling measured on what leaves, a receipt that does not validate, a value with parts inside, an amount that is one value, and an answer the door cannot filter |
 | `test/classified-reads.test.ts` | new — eight tests: the record after the decision, a page's record, a restricted read's record, the agent's read and an empty page leaving none, a row with no address refused, and two connections that drop the record's INSERT |
-| `test/classified-reads.db.test.ts` | new — three tests on a real server: the record in the real table, and the two columns writable and not changeable |
+| `test/classified-reads.db.test.ts` | new — three tests on a real server: the record in the real table, and the three new columns writable and not changeable |
 | `test/main.test.ts` | the two lines pinned whole; a `read` line pinned; every record count moves — five reads in a run |
 | ten older tests | `decision-first`, `audit-lost-reply`, `pipeline`, `invoices-in-postgres`, `cross-tenant-suite-itself`, `bounded-queries`: one record per request became two for a supervisor's read; three tenancy tests that read the agent's amount now read what the agent may see |
 | everything else | a `NEW IN STEP 13` marker becoming `STEP 13` |
@@ -136,18 +137,21 @@ cp ../my_13_bounded_queries/.env .env     # then dsor_step13 -> dsor_step14 in b
 pnpm migrate && pnpm test:db
 ```
 
-`pnpm migrate` applies `006_classified_reads.sql`. The migration is two `ADD COLUMN`s and one
-`GRANT`, and the grant is the lesson: step 09's `GRANT INSERT` on the log names its columns one by
-one, so that the application can never write `recorded_at`, and a column-level grant does not grow
-with the table. The first version of the migration stopped at the `ALTER`, and every INSERT —
-decisions included — was refused with `permission denied for table audit`. The three real-server
-tests pin it: `has_column_privilege` says INSERT yes and UPDATE no for the two new columns, and
-`recorded_at` is still unreachable. This folder's own run was on Neon, `36 passed` before the step
-and `39 passed` after it.
+`pnpm migrate` applies `006_classified_reads.sql` and `007_read_row_count.sql`. 006 is two
+`ADD COLUMN`s and one `GRANT`, and the grant is the lesson: step 09's `GRANT INSERT` on the log
+names its columns one by one, so that the application can never write `recorded_at`, and a
+column-level grant does not grow with the table. The first version of the migration stopped at the
+`ALTER`, and every INSERT — decisions included — was refused with `permission denied for table
+audit`. 007 adds `row_count`, the field `audit-record.schema.json` has for a read's row count. 006
+missed it and put the count under `extensions` (decision 109). 007 needs its own `GRANT`, for the
+same reason. The three real-server tests pin both: `has_column_privilege` says INSERT yes and UPDATE
+no for the three new columns, and `recorded_at` is still unreachable. This folder's own run was on
+Neon: `36 passed` before the step, `39 passed` after it, and `39 passed` again after 007.
 
 ## Break it
 
-Fifteen, measured twice on the full suite with the files one at a time, both runs agreeing. The
+Fifteen, measured twice on the full suite with the files one at a time, both runs agreeing, and
+measured again after decision 109 moved the row count, all fifteen the same. The
 counts are from a copy outside the repository, where one test skips because the specification is
 not beside it, so the total reads `504` with `1 skipped`; in the repository it is `504 passed`.
 
@@ -282,6 +286,11 @@ Delete the `GRANT INSERT (resources, extensions)` line.
 A hundred and eighty-five, more than a third of the suite: a column-level grant does not grow
 with the table, so every INSERT into the log is refused, and a decision that cannot be written
 down is a request that is not carried out.
+
+Migration 007's `GRANT INSERT (row_count)` teaches the same thing a second time. Delete that line
+instead, and the count is the same 185, measured twice, though only the record of a read ever
+holds a number in `row_count`. Every INSERT names the column, and sends a NULL when there is no
+count. PostgreSQL wants the privilege for every column a statement names, whatever the value.
 
 ### Break 13 · the label can see inside a nested value
 
