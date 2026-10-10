@@ -31,6 +31,8 @@ export function storyStatements(): readonly string[] {
     rowsFrom("004_running_example.sql"),
     rowsFrom("010_payments_running_example.sql"),
     rowsFrom("014_delegations_running_example.sql"),
+    // STEP 19: and del_100's mode, which 015's default does not give it (decision 130).
+    rowsFrom("017_del_100_may_be_used_unattended.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",
   ];

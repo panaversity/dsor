@@ -183,9 +183,9 @@ describe("an address for another company", () => {
     // company directory, which a test may replace), and a slip in org_789's name; the program's own
     // people are unchanged.
     await asTheOwner(() =>
-      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
                VALUES ('org_789', 'del_789', 'user_789', 'accounts-payable-fte', ARRAY['invoice:issue'],
-                       'active', '2099-12-31T23:59:59Z')`),
+                       ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`),
     );
     useDirectory("org_789", aDirectory("org_789", { holds: { user_789: ["invoice:issue"] } }));
 

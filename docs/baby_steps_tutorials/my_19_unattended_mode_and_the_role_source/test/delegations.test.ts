@@ -386,9 +386,10 @@ describe("a slip lends only what its signer holds in its own company", () => {
     // Asked of the signer in the slip's company: user_123 holds invoice:issue in org_456 and
     // nothing in org_789, so the agent may not issue there however the slip reads.
     await owner(
-      `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+      // STEP 19: and it may be used unattended, so the refusal is the signer's, not the mode's.
+      `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
        VALUES ('org_789', 'del_789', 'user_123', 'accounts-payable-fte', ARRAY['invoice:issue'],
-               'active', '2099-12-31T23:59:59Z')`,
+               ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`,
     );
 
     const answer = await callOperation(

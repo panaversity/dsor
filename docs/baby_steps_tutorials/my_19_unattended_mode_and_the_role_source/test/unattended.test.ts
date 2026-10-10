@@ -74,6 +74,44 @@ describe("a slip says in which modes it may be used", () => {
     expect(refusal.message).toMatch(/unattended/);
   });
 
+  it("DSOR-DEL-07: a slip that names no modes allows none the agent can use alone", async () => {
+    // Decision 130: the default was unattended, so the database, not the signer, made a slip usable
+    // with nobody present.
+    await asTheOwner(() =>
+      db.exec(
+        `UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100';
+         INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+         VALUES ('org_456', 'del_200', 'user_123', 'accounts-payable-fte', ARRAY['payment:cancel'],
+                 'active', '2099-12-31T23:59:59Z')`,
+      ),
+    );
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("DELEGATION_REQUIRED");
+    expect(refusal.message).toMatch(/del_200 does not allow unattended/);
+  });
+
+  it("a slip is signed by someone other than its own agent", async () => {
+    // Decision 130: a slip the agent signed for itself ran. The agent cannot write slips; the store
+    // still should not hold one.
+    const answer = await asTheOwner(async () => {
+      try {
+        await db.exec(
+          `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+           VALUES ('org_456', 'del_201', 'accounts-payable-fte', 'accounts-payable-fte',
+                   ARRAY['payment:cancel'], 'suspended', '2099-12-31T23:59:59Z')`,
+        );
+
+        return "allowed";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    });
+
+    expect(answer).toMatch(/check constraint/);
+  });
+
   it("DSOR-DEL-07: a slip's modes are never empty, and only the two the specification names", async () => {
     for (const modes of ["ARRAY[]::text[]", "ARRAY['at_night']"]) {
       const answer = await asTheOwner(async () => {
