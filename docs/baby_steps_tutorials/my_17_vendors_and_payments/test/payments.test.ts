@@ -192,6 +192,28 @@ describe("payment.create", () => {
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
   });
 
+  it("the handler reads what the payload hash describes, not the caller's object again", async () => {
+    // NEW IN STEP 17, decision 126: the arguments were copied one level deep, and the hash was taken
+    // from that copy's text, but a nested amount was read again from the caller's own object. A
+    // value that answers differently the second time hashed 31400.00 and paid 1.00, a review measured.
+    let reads = 0;
+    const amount = {
+      currency: "USD",
+      get value() {
+        reads += 1;
+
+        return reads === 1 ? "31400.00" : "1.00";
+      },
+    };
+
+    const receipt = receiptOf(
+      await callOperation(SUPERVISOR, "payment.create", { invoice: INV_1008, amount }),
+    );
+
+    expect(receipt.data?.["amount"]).toStrictEqual({ value: "31400.00", currency: "USD" });
+    expect(reads).toBe(1);
+  });
+
   it("the largest amount the column holds, to the cent, is made as it was sent", async () => {
     const receipt = receiptOf(
       await callOperation(SUPERVISOR, "payment.create", {

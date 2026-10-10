@@ -682,15 +682,46 @@ const authorize: Stage["run"] = (context) => {
  * Only partly, and the README says so. What is here is the copy-once and the can-it-be-written-down
  * check from step 04. Canonical JSON, where key order is settled, is step 29.
  */
+/** NEW IN STEP 17: an argument JSON would write as something else, named. */
+class NotWritable extends Error {}
+
+/** NEW IN STEP 17: a value and everything inside it, frozen. Plain data, which JSON.parse makes. */
+function frozenAllTheWay<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const inner of Object.values(value)) {
+      frozenAllTheWay(inner);
+    }
+
+    Object.freeze(value);
+  }
+
+  return value;
+}
+
 const validateTheInput: Stage["run"] = (context) => {
   const askedBy = context.principal?.id ?? "(nobody)";
 
   try {
-    const given = Object.freeze({ ...context.args });
-
     // Written down **once**, and the text is kept. Nothing below reads the caller's object again:
     // a second read can answer differently, and it used to.
-    const written = JSON.stringify(given);
+    //
+    // NEW IN STEP 17: and refused where the text would not be faithful. JSON writes NaN and Infinity
+    // as null, so a request for NaN used to be hashed as a request for null; with the copy below made
+    // from the text, the handler would read null too. A number JSON cannot write is refused here, by
+    // name, which is what step 13 asked of a refusal (decision 126).
+    const written = JSON.stringify({ ...context.args }, (key: string, value: unknown) => {
+      if (typeof value === "number" && !Number.isFinite(value)) {
+        throw new NotWritable(`${key} is ${String(value)}`);
+      }
+
+      return value;
+    });
+
+    // NEW IN STEP 17: and everything below, the handler included, reads a copy made from that text,
+    // every level of it. The copy was one level deep, and a nested `amount` was read again from the
+    // caller's own object: a value that answered differently the second time hashed 31400.00 and
+    // paid 1.00, a review measured (decision 126). What is checked and run is what the hash describes.
+    const given = frozenAllTheWay(JSON.parse(written) as Readonly<Record<string, unknown>>);
 
     // STEP 10: DSOR-SRC-02b in full. A tenant or principal identifier inside the arguments
     // that DISAGREES with the security context is refused, not ignored. Step 05 ignored them — the
@@ -770,11 +801,13 @@ const validateTheInput: Stage["run"] = (context) => {
     }
 
     return carryOn({ ...context, given, payloadHash: payloadHash(written) });
-  } catch {
+  } catch (error) {
     return refuse(
       askedBy,
       "VALIDATION_FAILED",
-      `${nameOf(context.id)} was given arguments that cannot be written down`,
+      error instanceof NotWritable
+        ? `${nameOf(context.id)} was given arguments that cannot be written down: ${error.message}`
+        : `${nameOf(context.id)} was given arguments that cannot be written down`,
       context.requestId,
     );
   }
