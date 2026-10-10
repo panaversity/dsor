@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 10 also have a second learner's
-builds, `my_01` to `my_10`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 15 also have a second learner's
+builds, `my_01` to `my_15`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, fifteen of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, sixteen of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -106,6 +106,7 @@ one before it:
 | `my_12_cross_tenant_test_suite` | 444 | one generated test that calls every operation in the registry with another company's address, from an example request each contract carries, and fails by name for an operation it cannot call |
 | `my_13_bounded_queries` | 468 | invoice.list, with the size of the answer the server's: a maximum page size and result size on every query, a cursor that is an address, and a door that refuses an oversize answer whatever handler produced it |
 | `my_14_classification_and_masking` | 512 | every field labelled, the agent cleared for internal, a field above it left out of the answer and listed before the answer leaves, every answer labelled, and a read that handed out confidential data written down with its rows and their count |
+| `my_15_freshness_labels` | 524 | every answer says how old its data is, when it was read and from where, in a label the code that read writes; the door refuses a read with no label, and a `current` label stamped before the request began |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -139,7 +140,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 120 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 121 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

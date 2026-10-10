@@ -3327,3 +3327,42 @@ The connector is named for what is read, the PostgreSQL database that holds the 
 step's database tier will need its own database, `dsor_step15`; the copied `.env` still names
 step 14's, and changing it is the learner's.
 
+## 121 · What step 15's review found, and what the learner chose (2026-10-10)
+
+**Decided by:** the learner, who took all three recommendations after the findings were shown in
+plain words.
+**The review.** One reviewer, read-only, with probes in its own copy, told this time to assume a
+careless handler, as decision 119 says. It found no way for a careless handler to get data past
+the door, and no wrong label on any of the program's own reads. It found:
+
+1. **A query answered with a receipt leaves unlabelled.** The door insisted on a label only when an
+   answer was a single invoice or a page. A query's code that copied `invoice.issue` and answered
+   with a receipt would leave with no time, no mode and no connector, and its read would not be
+   written down either. **Chosen: fix it.** The door knows which operations are queries, and
+   refuses a query that answers with a receipt, as the program's own error.
+2. **The label's time.** It was taken just after the database replied, a round trip after the
+   data was read, so a label claimed a little more freshness than was true. And the door accepted
+   any text JavaScript reads as a date, `"2026"` among them, and a time in the future. **Chosen:
+   tighten it.** The time is taken just before the query, so the data is at least as fresh as the
+   label says. This changes decision 120's "right after the read" to "right before". And the door
+   accepts only an exact ISO time, like `2026-10-10T21:30:05.123Z`, not in the future.
+3. **Small gaps.** No test of its own for a label with no connector at all, a time that is a date
+   object, the page path of a label with something riding along, or the exact moment the request
+   began. And `leaveTheDoor`, called directly, let a label through whole. **Chosen: add the four
+   cases, and keep only a label's three parts there too.**
+
+Written down, and not fixed:
+
+- **The door checks when a label was stamped, not whether the stamper read the database.** A
+  cache behind the store, or code that saved rows and labelled them again on the next request,
+  would label saved rows `current`, and the door would let them out: the label is as true as the
+  code that writes it. So the README's "the first cache a later step adds cannot pass its saved
+  values off as fresh" said more than the code does, and so did the subject of the piece-3 commit.
+  The README now says what the door does: it refuses a `current` label stamped before the request
+  began. The step that adds a cache must label that cache's answers itself.
+- **A clock moved backwards.** An honest read can then look older than the request, and the door
+  refuses it with retry `never`, though a second try would succeed. Rare, and stated in the README.
+- **Sentences now false**, corrected: `getInvoice`'s comment said it returns `undefined`;
+  `HandlerAnswer`'s said "labelled by nobody yet"; `docs/status.md` said "Steps 01 to 10" beside
+  `my_01` to `my_15`.
+
