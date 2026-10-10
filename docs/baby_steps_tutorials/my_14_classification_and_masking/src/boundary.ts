@@ -112,7 +112,7 @@ function isValue(value: unknown): boolean {
  *
  * A value with no parts, and one compound value: money, which is `{ value, currency }` and one
  * amount in this program's vocabulary — NEW IN STEP 14, decision 110 — in a field declared to hold
- * money. The specification's entity schema declares the type of every field
+ * money (`moneyField`). The specification's entity schema declares the type of every field
  * (`amount: { type: money, classification: confidential }`), and the field's type decides, not the
  * value's shape. Money anywhere else is a value with parts inside: a handler that moved the amount
  * into `vendor` sent it to the agent, labelled `internal`, until this asked about the field.
@@ -123,8 +123,26 @@ function isValue(value: unknown): boolean {
  * then changed nothing anywhere — a break that had failed twenty-six tests failed two. A label
  * that cannot be lowered is a label nobody is reading.
  */
-function isPlain(value: unknown, entity: string, field: string): boolean {
-  return isScalar(value) || (isMoney(value) && holdsMoney(entity, field));
+function isPlain(value: unknown, moneyField: boolean): boolean {
+  return isScalar(value) || (isMoney(value) && moneyField);
+}
+
+/**
+ * The label a value takes in a field labelled `declared`: the field's own label when the label can
+ * see the value whole, and at least confidential when it cannot. `moneyField` says whether the
+ * field is declared to hold money (`holdsMoney`).
+ *
+ * NEW IN STEP 14, decision 113: a function of its own, exported so a test can hand it a money field
+ * labelled internal, which the story's table does not have. In the table, the one money field is
+ * confidential, which is what the raise gives anyway, so deleting the money rule changed no answer
+ * and failed no test.
+ */
+export function labelOfValue(
+  declared: Classification,
+  value: unknown,
+  moneyField: boolean,
+): Classification {
+  return isPlain(value, moneyField) ? declared : highestOf([declared, "confidential"]);
 }
 
 /** One row, as `principal` may see it. A human sees every field; an agent sees up to its clearance. */
@@ -140,14 +158,12 @@ function filterRow(principal: Principal, row: object): Filtered {
 
   for (const [field, value] of Object.entries(row)) {
     // A label describes a value it can see the whole of. A value with parts inside — an object, an
-    // array, a thing with its own `toJSON` — is confidential whatever its field is called: a
-    // reviewer got the amount out of the agent's answer inside a `vendor` that was an object, and
+    // array, a thing with its own `toJSON` — is at least confidential whatever its field is called:
+    // a reviewer got the amount out of the agent's answer inside a `vendor` that was an object, and
     // this is `DSOR-CLS-01` one level down. The amount is confidential already, so nothing in the
     // story moves; the day a field holds something with parts, the agent does not see it. Money is
     // a value with parts too, except in a field declared to hold money (decision 110).
-    const label = isPlain(value, entity, field)
-      ? labelOf(entity, field)
-      : highestOf([labelOf(entity, field), "confidential"]);
+    const label = labelOfValue(labelOf(entity, field), value, holdsMoney(entity, field));
 
     if (filtered && isAbove(label, clearance)) {
       withheld.push(field);

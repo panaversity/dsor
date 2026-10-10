@@ -15,7 +15,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Invoice } from "../src/invoice.ts";
-import { leaveTheDoor } from "../src/boundary.ts";
+import { labelOfValue, leaveTheDoor } from "../src/boundary.ts";
 import { refusal, success } from "../src/envelopes.ts";
 import {
   callOperation,
@@ -288,6 +288,19 @@ describe("a value the label cannot see inside", () => {
 });
 
 describe("the one compound value a label can describe", () => {
+  it("DSOR-CLS-01: money takes its field's label only in a money field, and anything else with parts is at least confidential", () => {
+    // Decision 113. The story's one money field, `amount`, is confidential, and that is what a
+    // value the label cannot see whole is raised to anyway. So with the table as it is, deleting
+    // the money rule changed no answer and failed no test. A field labelled internal shows it.
+    const money = { value: "31400.00", currency: "USD" };
+
+    expect(labelOfValue("internal", money, true)).toBe("internal");
+    expect(labelOfValue("internal", money, false)).toBe("confidential");
+    expect(labelOfValue("internal", "VENDOR-44", false)).toBe("internal");
+    expect(labelOfValue("internal", { name: "VENDOR-44" }, true)).toBe("confidential");
+    expect(labelOfValue("restricted", money, false)).toBe("restricted");
+  });
+
   it("DSOR-CLS-01: an amount is one value, so its own label governs it — the break that lowers it is visible", async () => {
     // Money is `{ value, currency }`: an object with parts, and one value in this program's
     // vocabulary. Measured: with every object treated as unlabelled, lowering `amount` to
