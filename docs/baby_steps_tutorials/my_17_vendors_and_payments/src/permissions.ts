@@ -34,10 +34,12 @@ import type { Principal } from "./people.ts";
  * which DSOR-IDN-04a requires and which is steps 18 and 19. Here they sit in the source, like
  * the people beside them.
  */
+// NEW IN STEP 17: the supervisor and the agent may make a draft payment and take one back. The
+// CFO approves payments, in a later step, and makes none (decision 125).
 export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  ap_supervisor: Object.freeze(["invoice:read", "invoice:issue"]),
+  ap_supervisor: Object.freeze(["invoice:read", "invoice:issue", "payment:create", "payment:cancel"]),
   approver: Object.freeze(["invoice:read", "payment:approve"]),
-  ap_worker: Object.freeze(["invoice:read", "invoice:issue"]),
+  ap_worker: Object.freeze(["invoice:read", "invoice:issue", "payment:create", "payment:cancel"]),
 });
 
 /**

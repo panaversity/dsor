@@ -5,7 +5,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll } from "vitest";
-import { crossTenantSuite } from "./support/cross-tenant-suite.ts";
+import { crossTenantSuite, ROWS_OF, type Row } from "./support/cross-tenant-suite.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 let db: PGlite;
@@ -26,11 +26,8 @@ crossTenantSuite({
   },
   rowsOf: (tenant) =>
     asTheOwner(async () => {
-      const { rows } = await db.query<{ id: string; status: string }>(
-        `SELECT tenant_id, id, vendor, amount_value::text AS amount, amount_currency, status
-         FROM public.invoices WHERE tenant_id = $1 ORDER BY id`,
-        [tenant],
-      );
+      // STEP 17: invoices and payments, from the one query both tiers run.
+      const { rows } = await db.query<Row>(ROWS_OF, [tenant]);
 
       return rows;
     }),

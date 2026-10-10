@@ -9,6 +9,7 @@ import type { Login } from "./login.ts";
 import { openTheDatabase } from "./database.ts";
 import { movedTo } from "./examples.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
+import { paymentsOf } from "./payment.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -47,9 +48,11 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   if (answer.kind === "result") {
     const r = answer.envelope;
-    const invoice = r.data as { uri: string; status: string };
+    // STEP 17: an invoice's receipt or a payment's: an address and a status either way.
+    const row = r.data as { uri: string; status: string };
 
-    return `${who} ${r.outcome.padEnd(24)} ${invoice.uri}  ${invoice.status}${withheld(r.redactions)}`;
+    // NEW IN STEP 17: and whether its effect can be undone, which every receipt says now.
+    return `${who} ${r.outcome.padEnd(24)} ${row.uri}  ${row.status.padEnd(9)}  ${r.semantics}${withheld(r.redactions)}`;
   }
 
   if (answer.kind === "page") {
@@ -258,6 +261,56 @@ const million = { limit: 1_000_000 };
 console.log(
   `${`limit ${million.limit.toLocaleString("en-US")}`.padEnd(23)} ${show(await callOperation(SUPERVISOR, "invoice.list", million))}`,
 );
+
+// NEW IN STEP 17, and this is the step. Every command says, in its contract and on every receipt,
+// whether its effect can be undone. A payment is made as a draft, and a draft can be taken back:
+// payment.create names payment.cancel as what undoes it. The agent makes a second payment for
+// INV-1008 by mistake, though INV-1008 has PAY-901 already, and takes it back. Step 20 stops the
+// duplicate before it is made; until then, a mistake that can be undone is one that can be put right.
+console.log();
+console.log("Can it be undone? Every command says so in its contract:");
+console.log();
+
+for (const contract of loadRegistry(contractsFromDisk()).values()) {
+  if (contract.kind === "command") {
+    const undo = contract.execution?.compensated_by;
+
+    console.log(
+      `  ${contract.id.padEnd(15)} ${contract.execution?.semantics}${undo === undefined ? "" : `, undone by ${undo.join(", ")}`}`,
+    );
+  }
+}
+
+console.log();
+console.log("And on every receipt:");
+console.log();
+
+const twice = await callOperation(AGENT, "payment.create", {
+  invoice: INV_1008,
+  amount: { value: "31400.00", currency: "USD" },
+});
+
+console.log(show(twice));
+
+if (twice.kind === "result") {
+  const mistake = String(twice.envelope.data?.["uri"]);
+
+  console.log(show(await callOperation(AGENT, "payment.cancel", { payment: mistake })));
+  // And once is all it takes: a cancelled payment stays cancelled.
+  console.log(show(await callOperation(AGENT, "payment.cancel", { payment: mistake })));
+}
+
+console.log();
+console.log("org_456's payments, as the database holds them now:");
+console.log();
+
+for (const payment of await paymentsOf("org_456")) {
+  const amount = `${payment.amount.value} ${payment.amount.currency}`;
+
+  console.log(
+    `  ${payment.id}  ${payment.status.padEnd(9)}  ${amount.padEnd(13)}  pays ${payment.invoice} to ${payment.vendor}`,
+  );
+}
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

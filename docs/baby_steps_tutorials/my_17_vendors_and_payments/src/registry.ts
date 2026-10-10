@@ -34,7 +34,11 @@ export interface OperationContract {
   readonly risk: { readonly level: "low" | "medium" | "high" | "critical" };
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
-  readonly execution?: { readonly semantics: string };
+  /**
+   * NEW IN STEP 17: `compensated_by`, the operations that undo this one. The schema requires it of
+   * a compensatable or saga command.
+   */
+  readonly execution?: { readonly semantics: string; readonly compensated_by?: readonly string[] };
   /**
    * STEP 12: whatever a contract carries beside the specification's own fields, keyed
    * by a reverse-DNS name (DSOR-SCH-02). This step keeps one thing there: an example request.
@@ -203,9 +207,13 @@ export function loadRegistry(
 export function contractsFromDisk(): readonly ContractDocument[] {
   // Named one by one rather than by listing the folder, so that adding a contract is a
   // visible edit here. A step that scanned a directory could pick up a stray file.
-  return ["invoice.get", "invoice.issue", "invoice.list"].map((id) => ({
-    where: `src/contracts/${id}.json`,
-    expectedId: id,
-    document: read(`./contracts/${id}.json`),
-  }));
+  //
+  // NEW IN STEP 17: payment.cancel and payment.create (decision 125).
+  return ["invoice.get", "invoice.issue", "invoice.list", "payment.cancel", "payment.create"].map(
+    (id) => ({
+      where: `src/contracts/${id}.json`,
+      expectedId: id,
+      document: read(`./contracts/${id}.json`),
+    }),
+  );
 }

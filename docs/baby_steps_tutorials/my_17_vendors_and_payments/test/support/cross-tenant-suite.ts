@@ -41,19 +41,41 @@ import { parseUri } from "../../src/uri.ts";
 /** The caller in org_456 for every test here. The agent belongs to both companies; user_123 to one. */
 export const SUPERVISOR = { loggedInAs: "user_123" };
 
+/** "an invoice", "a payment". */
+const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
+
 /** The story's company, the other real one, and one that does not exist. */
 export const OURS = "org_456";
 export const THEIRS = "org_789";
 export const NOBODYS = "org_000";
 
-/** What org_789 alone holds, from 004_running_example.sql: a success answer must carry none of it. */
-export const CANARIES: readonly string[] = ["18000.00", "9100.00", "4200.00", "INV-2001"];
+/**
+ * What org_789 alone holds, from 004_running_example.sql: a success answer must carry none of it.
+ * NEW IN STEP 17: and its PAY-901's amount, from 010_payments_running_example.sql.
+ */
+export const CANARIES: readonly string[] = ["18000.00", "9100.00", "4200.00", "INV-2001", "7700.00"];
 
-/** One invoice row as the owner reads it: enough to see whether it moved, and what state it is in. */
+/**
+ * One row of a company's, as the owner reads it: enough to see whether it moved, and what state it
+ * is in. NEW IN STEP 17: an invoice or a payment, so each row says which.
+ */
 export interface Row {
+  readonly entity: string;
   readonly id: string;
   readonly status: string;
 }
+
+/**
+ * NEW IN STEP 17: the one query both tiers' `rowsOf` runs, as the owner: every invoice and payment
+ * of one company, each with what a careless command could change about it.
+ */
+export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS invoice,
+                               amount_value::text AS amount, amount_currency AS currency, status
+                          FROM public.invoices WHERE tenant_id = $1
+                        UNION ALL
+                        SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status
+                          FROM public.payments WHERE tenant_id = $1
+                        ORDER BY entity, id`;
 
 export interface SuiteHooks {
   /** Put every row and every log back to how the story starts. Runs before each test. */
@@ -150,31 +172,35 @@ export const questions = {
     // careful. And found by a mutation pass: an INV-1009 seeded already `issued` passed too,
     // because the careless command found nothing it could issue. So for a command, the other
     // company's row must be in the same state as yours — the state the example works in.
-    const ours = new Map((await deps.rowsOf(OURS)).map((row) => [row.id, row.status]));
-    const theirs = new Map((await deps.rowsOf(THEIRS)).map((row) => [row.id, row.status]));
+    // STEP 17: keyed by kind and number, because an invoice and a payment are different rows.
+    const key = (row: { entity: string; id: string }): string => `${row.entity}/${row.id}`;
+    const ours = new Map((await deps.rowsOf(OURS)).map((row) => [key(row), row.status]));
+    const theirs = new Map((await deps.rowsOf(THEIRS)).map((row) => [key(row), row.status]));
     const addresses = addressesIn(c.example);
 
     expect(addresses.length, `${c.id}: the example names no address`).toBeGreaterThan(0);
 
     for (const address of addresses) {
       const parsed = parseUri(address);
+      const row = key(parsed);
 
-      // Only invoices live in a table this suite can read; another kind of address is named
-      // here rather than mistaken for a missing invoice.
       expect(
-        parsed.entity,
-        `${c.id}: ${address} is not an invoice address; teach rowsOf about ${parsed.entity}`,
-      ).toBe("invoice");
+        ["invoice", "payment"],
+        `${c.id}: ${address} is neither an invoice nor a payment; teach rowsOf about ${parsed.entity}`,
+      ).toContain(parsed.entity);
       expect(
-        theirs.has(parsed.id),
-        `${THEIRS} has no ${parsed.id}; add it to 004_running_example.sql`,
+        theirs.has(row),
+        `${THEIRS} has no ${parsed.id} (${withArticle(parsed.entity)}); add it to the running example`,
       ).toBe(true);
 
-      if (c.contract.effect !== "read") {
+      // STEP 17: asked of a command that changes a row, and not of one that only adds rows. A
+      // careless payment.create would not touch the other company's invoice: it would add a
+      // payment there, which rowsUntouched sees as a row that was not there before (decision 125).
+      if (c.contract.effect === "mutating" || c.contract.effect === "destructive") {
         expect(
-          theirs.get(parsed.id),
-          `${THEIRS}'s ${parsed.id} is ${theirs.get(parsed.id)}, yours is ${ours.get(parsed.id)}: a careless ${c.id} would find nothing to do to it`,
-        ).toBe(ours.get(parsed.id));
+          theirs.get(row),
+          `${THEIRS}'s ${parsed.id} is ${theirs.get(row)}, yours is ${ours.get(row)}: a careless ${c.id} would find nothing to do to it`,
+        ).toBe(ours.get(row));
       }
     }
   },

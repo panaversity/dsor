@@ -124,7 +124,9 @@ describe("the program a learner runs", () => {
     // STEP 10: two logs, printed one after the other — org_456's seventeen records and
     // org_789's two. STEP 12: seventeen, not fifteen, because the generated section refuses
     // one request per operation, and a refusal is a decision.
-    expect(rows).toHaveLength(23); // STEP 13: one more refusal for invoice.list, and three pages read
+    // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
+    // each payment operation from the generated section, and the agent's three payment decisions.
+    expect(rows).toHaveLength(28);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -132,18 +134,19 @@ describe("the program a learner runs", () => {
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(13);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(10); // STEP 13: three pages read
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(15);
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(13); // STEP 13: three pages read
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
-    // STEP 14: the gaps — 1, 5, 21, 23, 25 — are the records of reads, which this filter does not
-    // count: the supervisor's and the CFO's reads of one invoice, and the three pages, each
-    // written down after the decision that allowed it. The agent's reads leave no such record.
+    // STEP 14: the gaps — 1, 5, 23, 25, 27 since step 17 — are the records of reads, which this
+    // filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
+    // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 0, 1,
+      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29, 30, 0,
+      1,
     ]);
 
-    expect(out).toContain("org_456: 26 records, chain verifies against the head: true"); // STEP 14: 21 decisions, 5 reads
+    expect(out).toContain("org_456: 31 records, chain verifies against the head: true"); // STEP 17: 26 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -189,30 +192,35 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(26); // STEP 14: 21 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(31); // STEP 17: 26 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 26 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 31 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(52);
+    expect(records(second, "org_456")).toBe(62);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 52 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 62 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      46,
+      56,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
     // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
     // died with the process — every run issued it afresh.
-    expect(first).toContain("accounts-payable-fte  COMMITTED");
+    //
+    // STEP 17: the invoice's own line. The agent's payment is committed on every run, a new
+    // number each time, so "no COMMITTED at all" stopped being the question.
+    const issued = `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} dsor://org_456/invoice/INV-1009`;
+
+    expect(first).toContain(issued);
     expect(second).toContain("accounts-payable-fte  CONFLICT");
-    expect(second).not.toContain("accounts-payable-fte  COMMITTED");
+    expect(second).not.toContain(issued);
   });
 
   // The hashes move every run, because the time a decision was made is part of what is hashed.
@@ -229,8 +237,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(28); // STEP 14: 26 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(28);
+    expect(hashesOf(first.raw)).toHaveLength(33); // STEP 17: 31 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(33);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -273,7 +281,8 @@ describe("the program a learner runs", () => {
   it("DSOR-TEN-02b: the demo refuses every operation in the registry another company's address", () => {
     const { raw } = demo();
     const section = raw.split("Every operation, with another company's address:")[1] ?? "";
-    const lines = section.split("\n").filter((line) => /^invoice\./.test(line));
+    // STEP 17: every operation's line, invoices and payments, read from the left margin.
+    const lines = section.split("\n").filter((line) => /^[a-z]+\.[a-z]+\s/.test(line));
 
     expect(lines.map((line) => line.split(/\s+/)[0])).toStrictEqual(operationIds().sort());
 
@@ -305,6 +314,45 @@ describe("the program a learner runs", () => {
     const lines = demo().raw.split("\n");
 
     expect(lines[1]).toMatch(/^The audit log is dsor\.audit, in DSoR's own schema, in /);
+  });
+
+  it("DSOR-EXE-05a: the demo lists what each command's contract says about undoing it", () => {
+    // NEW IN STEP 17: read from the contracts, so a contract that changes changes this.
+    const out = demo().raw;
+
+    expect(out).toContain(
+      [
+        "  invoice.issue   atomic",
+        "  payment.cancel  atomic",
+        "  payment.create  compensatable, undone by payment.cancel",
+      ].join("\n"),
+    );
+  });
+
+  it("DSOR-EXE-05b: the demo's receipts say whether each can be undone, and a mistake is taken back once", () => {
+    // NEW IN STEP 17: the agent's second payment for INV-1008, which already has PAY-901. Its
+    // receipt says compensatable, and withholds the amount; the cancel's says atomic; a second
+    // cancel is refused.
+    const out = demo().raw;
+    const pay902 = "dsor://org_456/payment/PAY-902";
+
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} ${pay902}  ${"draft".padEnd(9)}  compensatable\n${" ".repeat(24)}withheld: amount (clearance)`,
+    );
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} ${pay902}  ${"cancelled".padEnd(9)}  atomic`,
+    );
+    expect(out).toContain("PAY-902 is cancelled, and only a draft payment can be cancelled");
+  });
+
+  it("DSOR-TEN-01a: the demo ends with PAY-901 a draft for 31,400.00 USD, and the mistake cancelled", () => {
+    // NEW IN STEP 17: the step's "done when", as the database holds it after the receipts.
+    const out = demo().raw;
+
+    expect(out).toContain(
+      "  PAY-901  draft      31400.00 USD   pays dsor://org_456/invoice/INV-1008 to dsor://org_456/vendor/VENDOR-44\n" +
+        "  PAY-902  cancelled  31400.00 USD   pays dsor://org_456/invoice/INV-1008 to dsor://org_456/vendor/VENDOR-44",
+    );
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {

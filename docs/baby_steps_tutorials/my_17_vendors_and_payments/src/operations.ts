@@ -29,7 +29,11 @@ import {
   type InvoicePage,
 } from "./invoice.ts";
 import { tenantFor } from "./tenant.ts";
-import { contractsFromDisk, loadRegistry, type OperationContract } from "./registry.ts";
+import {
+  contractsFromDisk,
+  loadRegistry,
+  type OperationContract,
+} from "./registry.ts";
 import { holds } from "./permissions.ts";
 import {
   assertPipeline,
@@ -52,6 +56,7 @@ import type { Classification } from "./classification.ts";
 // STEP 15: how old an answer's data is, and the door's check that a read says so.
 import { cannotBeLabelled, type Freshness } from "./freshness.ts";
 import { parseUri } from "./uri.ts";
+import { cancelPayment, createPayment, paymentAmountFrom } from "./payment.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
 import { audit, OutcomeUnknown } from "./audit.ts";
@@ -129,30 +134,39 @@ export type Handler = (
 /** Contracts that describe an operation this step does not carry out yet. */
 const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set<string>();
 
+/** "an invoice", "a payment": the article English puts before a word. */
+const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
+
 /**
- * Reads the `invoice` argument as a canonical address and returns the invoice id, or the
- * refusal that stopped it.
+ * Reads one argument as a canonical address of one entity, and returns the id, or the refusal that
+ * stopped it.
+ *
+ * NEW IN STEP 17: the argument and the entity are the caller's to name. Until step 16 every address
+ * an operation took was its own kind, an invoice for `invoice.*`, so the entity was read from the
+ * operation's name. `payment.create` takes an invoice's address, and that guess would refuse it
+ * (decision 125).
  *
  * Every refusal here is `VALIDATION_FAILED` or `TENANT_MISMATCH`, and both are `never`
  * retryable: asking again with the same bad address cannot start working.
  */
-function invoiceIdFrom(
+function idFrom(
   args: Readonly<Record<string, unknown>>,
+  entity: string,
   contract: OperationContract,
   askedBy: string,
   tenant: string,
   requestId: string,
 ): { readonly id: string } | { readonly refused: ErrorEnvelope } {
-  // The caller's **own** `invoice`, not one inherited from a prototype. A name an object merely
+  // The caller's **own** argument, not one inherited from a prototype. A name an object merely
   // inherits is a name nobody in this program chose — the same reason the login reads its field
   // this way, and the same reason step 06 looks a role up with Object.hasOwn.
-  const given = Object.hasOwn(args, "invoice") ? args["invoice"] : undefined;
+  const given = Object.hasOwn(args, entity) ? args[entity] : undefined;
 
   if (typeof given !== "string") {
     return {
       refused: refusal(
         "VALIDATION_FAILED",
-        `${contract.id} needs an invoice address, and got ${typeof given}`,
+        `${contract.id} needs ${withArticle(entity)} address, and got ${typeof given}`,
         requestId,
         askedBy,
       ),
@@ -166,8 +180,6 @@ function invoiceIdFrom(
   } catch (error) {
     return { refused: refusal("VALIDATION_FAILED", (error as Error).message, requestId, askedBy) };
   }
-
-  const namedFor = contract.id.split(".")[0];
 
   // STEP 10: the address names a company, and it has to be the company this REQUEST is for.
   // `validate the input` decided that at §21.6, before the decision was recorded, and refused with
@@ -187,11 +199,11 @@ function invoiceIdFrom(
     };
   }
 
-  if (parsed.entity !== namedFor) {
+  if (parsed.entity !== entity) {
     return {
       refused: refusal(
         "VALIDATION_FAILED",
-        `${contract.id} is named for ${namedFor}, and ${given} names ${parsed.entity}`,
+        `${contract.id} needs ${withArticle(entity)} address, and ${given} names ${withArticle(parsed.entity)}`,
         requestId,
         askedBy,
       ),
@@ -203,7 +215,7 @@ function invoiceIdFrom(
 
 const handlers: Readonly<Record<string, Handler>> = {
   "invoice.get": async (args, contract, askedBy, tenant, _hash, requestId) => {
-    const read = invoiceIdFrom(args, contract, askedBy, tenant, requestId);
+    const read = idFrom(args, "invoice", contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
@@ -250,7 +262,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     let after: string | undefined;
 
     if (Object.hasOwn(args, "after")) {
-      const read = invoiceIdFrom({ invoice: args["after"] }, contract, askedBy, tenant, requestId);
+      const read = idFrom({ invoice: args["after"] }, "invoice", contract, askedBy, tenant, requestId);
 
       if ("refused" in read) {
         return { kind: "error", askedBy, envelope: read.refused };
@@ -266,7 +278,7 @@ const handlers: Readonly<Record<string, Handler>> = {
   },
 
   "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {
-    const read = invoiceIdFrom(args, contract, askedBy, tenant, requestId);
+    const read = idFrom(args, "invoice", contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
       return { kind: "error", askedBy, envelope: read.refused };
@@ -307,6 +319,107 @@ const handlers: Readonly<Record<string, Handler>> = {
       askedBy,
       envelope: success({
         data: outcome.invoice as unknown as Record<string, unknown>,
+        semantics: contract.execution?.semantics ?? "atomic",
+        payloadHash: hash,
+        tenant,
+        principalId: askedBy,
+        requestId,
+      }),
+    };
+  },
+
+  // NEW IN STEP 17: a draft payment for one of the company's invoices, to its vendor (decision 125).
+  "payment.create": async (args, contract, askedBy, tenant, hash, requestId) => {
+    const read = idFrom(args, "invoice", contract, askedBy, tenant, requestId);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    // Checked before anything is written. A bad amount is the caller's to fix, so never retryable.
+    const amount = paymentAmountFrom(Object.hasOwn(args, "amount") ? args["amount"] : undefined);
+
+    if (typeof amount === "string") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal("VALIDATION_FAILED", amount, requestId, askedBy),
+      };
+    }
+
+    const outcome = await createPayment(tenant, read.id, amount);
+
+    if (outcome.kind === "no_invoice") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "RESOURCE_NOT_FOUND",
+          `${read.id} is not an invoice we hold`,
+          requestId,
+          askedBy,
+        ),
+      };
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: outcome.payment as unknown as Record<string, unknown>,
+        semantics: contract.execution?.semantics ?? "atomic",
+        payloadHash: hash,
+        tenant,
+        principalId: askedBy,
+        requestId,
+      }),
+    };
+  },
+
+  // NEW IN STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
+  // own permission, its own decision in the log (DSOR-EXE-05c).
+  "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId) => {
+    const read = idFrom(args, "payment", contract, askedBy, tenant, requestId);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const outcome = await cancelPayment(tenant, read.id);
+
+    if (outcome.kind === "not_found") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "RESOURCE_NOT_FOUND",
+          `${read.id} is not a payment we hold`,
+          requestId,
+          askedBy,
+        ),
+      };
+    }
+
+    // CONFLICT, never retryable, as for an invoice that is not a draft: only a person changing the
+    // payment could make the same request work.
+    if (outcome.kind === "not_draft") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "CONFLICT",
+          `${read.id} is ${outcome.status}, and only a draft payment can be cancelled`,
+          requestId,
+          askedBy,
+        ),
+      };
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: outcome.payment as unknown as Record<string, unknown>,
         semantics: contract.execution?.semantics ?? "atomic",
         payloadHash: hash,
         tenant,

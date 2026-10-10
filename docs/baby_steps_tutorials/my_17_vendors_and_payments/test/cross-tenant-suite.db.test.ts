@@ -10,7 +10,7 @@ import { useDatabase } from "../src/audit.ts";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { storyStatements } from "./support/story.ts";
-import { crossTenantSuite } from "./support/cross-tenant-suite.ts";
+import { crossTenantSuite, ROWS_OF, type Row } from "./support/cross-tenant-suite.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
@@ -57,11 +57,8 @@ describe.skipIf(!haveAServer)("against a real server", () => {
   crossTenantSuite({
     reset: putTheStoryBack,
     rowsOf: async (tenant) => {
-      const { rows } = await owner.query<{ id: string; status: string }>(
-        `SELECT tenant_id, id, vendor, amount_value::text AS amount, amount_currency, status
-         FROM public.invoices WHERE tenant_id = $1 ORDER BY id`,
-        [tenant],
-      );
+      // STEP 17: invoices and payments, from the one query both tiers run.
+      const { rows } = await owner.query<Row>(ROWS_OF, [tenant]);
 
       return rows;
     },

@@ -73,12 +73,12 @@ function honest(overrides: Partial<Deps> = {}): Deps {
   const logs: Record<string, AuditRecord[]> = { [OURS]: [], [THEIRS]: [] };
   const rows: Record<string, Row[]> = {
     [OURS]: [
-      { id: "INV-1008", status: "issued" },
-      { id: "INV-1009", status: "draft" },
+      { entity: "invoice", id: "INV-1008", status: "issued" },
+      { entity: "invoice", id: "INV-1009", status: "draft" },
     ],
     [THEIRS]: [
-      { id: "INV-1008", status: "draft" },
-      { id: "INV-1009", status: "draft" },
+      { entity: "invoice", id: "INV-1008", status: "draft" },
+      { entity: "invoice", id: "INV-1009", status: "draft" },
     ],
   };
   let n = 0;
@@ -219,7 +219,7 @@ describe("each question, honest and lied to", () => {
 
   it("somethingToTouch: the other company lacks the number", async () => {
     const deps = honest({
-      rowsOf: async (tenant) => (tenant === THEIRS ? [] : [{ id: "INV-1009", status: "draft" }]),
+      rowsOf: async (tenant) => (tenant === THEIRS ? [] : [{ entity: "invoice", id: "INV-1009", status: "draft" }]),
     });
 
     await expect(questions.somethingToTouch(deps, ISSUE)).rejects.toThrow(/has no INV-1009/);
@@ -230,7 +230,7 @@ describe("each question, honest and lied to", () => {
     // to do, and the untouched-rows question true for the wrong reason.
     const deps = honest({
       rowsOf: async (tenant) => [
-        { id: "INV-1009", status: tenant === THEIRS ? "issued" : "draft" },
+        { entity: "invoice", id: "INV-1009", status: tenant === THEIRS ? "issued" : "draft" },
       ],
     });
 
@@ -239,18 +239,46 @@ describe("each question, honest and lied to", () => {
     await questions.somethingToTouch(
       honest({
         rowsOf: async (tenant) => [
-          { id: "INV-1008", status: tenant === THEIRS ? "paid" : "issued" },
+          { entity: "invoice", id: "INV-1008", status: tenant === THEIRS ? "paid" : "issued" },
         ],
       }),
       GET,
     );
   });
 
+  it("somethingToTouch: a command that only adds rows is not asked whether the states match", async () => {
+    // NEW IN STEP 17: a careless payment.create would add a payment in the other company, not change
+    // its invoice, so the invoice's state is not the question; rowsUntouched sees the new row.
+    const create = caseFor("payment.create", registry.get("payment.create")!, {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      amount: { value: "31400.00", currency: "USD" },
+    });
+
+    await questions.somethingToTouch(honest(), create);
+  });
+
+  it("somethingToTouch: a payment's number is looked for among the payments", async () => {
+    // NEW IN STEP 17: an invoice INV-1008 is not a payment, and the other company must hold the
+    // payment the example names.
+    const cancel = caseFor("payment.cancel", registry.get("payment.cancel")!, {
+      payment: "dsor://org_456/payment/PAY-901",
+    });
+    const withPayments = honest({
+      rowsOf: async () => [{ entity: "payment", id: "PAY-901", status: "draft" }],
+    });
+    const invoicesOnly = honest({
+      rowsOf: async () => [{ entity: "invoice", id: "PAY-901", status: "draft" }],
+    });
+
+    await questions.somethingToTouch(withPayments, cancel);
+    await expect(questions.somethingToTouch(invoicesOnly, cancel)).rejects.toThrow(/has no PAY-901/);
+  });
+
   it("rowsUntouched: a call that changed the other company's row", async () => {
     let calls = 0;
     const deps = honest({
       rowsOf: async (tenant) =>
-        tenant === THEIRS ? [{ id: "INV-1009", status: calls > 0 ? "issued" : "draft" }] : [],
+        tenant === THEIRS ? [{ entity: "invoice", id: "INV-1009", status: calls > 0 ? "issued" : "draft" }] : [],
     });
     const base = deps.call;
 

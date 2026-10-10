@@ -47,6 +47,17 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     // account is stored it is already restricted. The fourth label reaches the door through it.
     bank_account: "restricted",
   }),
+  // NEW IN STEP 17: a payment, labelled like the invoice it pays. Its amount is the same kind of
+  // secret, so the agent that makes a payment is not shown back the amount it sent (decision 125).
+  payment: Object.freeze({
+    uri: "internal",
+    tenantId: "internal",
+    id: "internal",
+    vendor: "internal",
+    invoice: "internal",
+    amount: "confidential",
+    status: "internal",
+  }),
 });
 
 /**
@@ -60,6 +71,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
  */
 const moneyFields: Readonly<Record<string, readonly string[]>> = Object.freeze({
   invoice: Object.freeze(["amount"]),
+  payment: Object.freeze(["amount"]),
 });
 
 /** Whether this field is declared to hold money. Asks for the list's own keys only. */

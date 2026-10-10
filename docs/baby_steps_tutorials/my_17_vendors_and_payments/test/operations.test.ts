@@ -27,7 +27,14 @@ function handlersForBoth() {
   const stub = () =>
     ({ kind: "error", askedBy: "user_123", envelope: refusal("CONFLICT", "x") }) as const;
 
-  return { "invoice.get": stub, "invoice.issue": stub, "invoice.list": stub };
+  // STEP 17: and the two payment operations.
+  return {
+    "invoice.get": stub,
+    "invoice.issue": stub,
+    "invoice.list": stub,
+    "payment.cancel": stub,
+    "payment.create": stub,
+  };
 }
 
 /** The error envelope a refusal came back in, or a failure if it was not a refusal. */
@@ -64,7 +71,13 @@ describe("callOperation", () => {
     // The strongest support this step can give DSOR-OPR-01. It does not prove nobody
     // imports getInvoice behind the registry's back: there is no door to close until
     // step 42. It does prove the two lists cannot drift apart.
-    expect(operationIds().sort()).toEqual(["invoice.get", "invoice.issue", "invoice.list"]); // STEP 13
+    expect(operationIds().sort()).toEqual([
+      "invoice.get",
+      "invoice.issue",
+      "invoice.list",
+      "payment.cancel", // STEP 17
+      "payment.create",
+    ]);
   });
 
   // assertPaired runs at start-up, so these hand it the two lists directly. Asserting
@@ -140,7 +153,14 @@ describe("callOperation", () => {
   it("DSOR-OPR-01: on load, every contract is accounted for", async () => {
     const ids = operationIds();
 
-    expect(ids).toEqual(["invoice.get", "invoice.issue", "invoice.list"]); // STEP 13: three
+    // STEP 13: three. STEP 17: five, with the payments.
+    expect(ids).toEqual([
+      "invoice.get",
+      "invoice.issue",
+      "invoice.list",
+      "payment.cancel",
+      "payment.create",
+    ]);
 
     // Each id either runs, or refuses for the single allowed reason. A contract nobody
     // had thought about would refuse with "no contract for", which cannot happen for an
@@ -412,12 +432,11 @@ describe("callOperation", () => {
     const registry = loadRegistry(contractsFromDisk());
     const contracts = [...registry.keys()].length;
 
-    // A legitimate queue: invoice.issue and invoice.list have contracts and, here, no handler yet.
+    // A legitimate queue: every operation but invoice.get has a contract and, here, no handler yet.
     const onlyGet = { "invoice.get": handlersForBoth()["invoice.get"]! };
+    const waiting = new Set(["invoice.issue", "invoice.list", "payment.cancel", "payment.create"]);
 
-    expect(assertPaired(registry, onlyGet, new Set(["invoice.issue", "invoice.list"]))).toBe(
-      contracts + 2,
-    );
+    expect(assertPaired(registry, onlyGet, waiting)).toBe(contracts + waiting.size);
 
     // And with nothing waiting, it is the contracts alone.
     expect(assertPaired(registry, handlersForBoth(), new Set())).toBe(contracts);
