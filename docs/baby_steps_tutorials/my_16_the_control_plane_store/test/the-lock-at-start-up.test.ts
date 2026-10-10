@@ -186,6 +186,28 @@ describe("a window past the lock", () => {
     expect(rows[0]?.log).toBeNull();
   });
 
+  it("DSOR-MOD-01: a SECURITY DEFINER function whose owner may create in the schema dsor is refused", async () => {
+    // NEW IN STEP 16: the application may create nothing in dsor, and through a helper whose owner
+    // may, it made dsor.proposals anyway, a review measured (decision 124).
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_builder");
+      await db.exec("GRANT USAGE, CREATE ON SCHEMA dsor TO a_builder");
+      await db.exec(`CREATE FUNCTION make_proposals() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+                     AS $$ BEGIN CREATE TABLE dsor.proposals (id text); END $$`);
+      await db.exec("ALTER FUNCTION make_proposals() OWNER TO a_builder");
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+
+    // And the route is real: as the application, one call, and a table stands in dsor.
+    await db.exec("SELECT make_proposals()");
+    const { rows } = await db.query<{ owner: string }>(
+      "SELECT tableowner AS owner FROM pg_tables WHERE schemaname = 'dsor' AND tablename = 'proposals'",
+    );
+
+    expect(rows).toStrictEqual([{ owner: "a_builder" }]);
+  });
+
   it("DSOR-RP-01a: a view the owner made is a window past the lock, and is refused", async () => {
     // A view runs with its owner's rights, and its owner is a superuser here — so a view over the
     // invoices shows every company, to anybody who may SELECT from the view.

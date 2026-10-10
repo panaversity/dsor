@@ -193,6 +193,11 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                   OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
                               WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                                 AND pg_has_role(p.proowner, ns.nspowner, 'MEMBER'))
+                  -- NEW IN STEP 16: or may create in either schema, and so make a table there for
+                  -- whoever calls it. A review made dsor.proposals that way (decision 124).
+                  OR EXISTS (SELECT 1 FROM pg_namespace ns
+                              WHERE ns.nspname IN ('dsor', 'public')
+                                AND has_schema_privilege(p.proowner, ns.oid, 'CREATE'))
                 )
             ) AS may_by_function,
             EXISTS (
@@ -248,10 +253,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (answer.may_by_function !== false) {
     throw new Error(
       `there is a SECURITY DEFINER function whose owner may ${FORBIDDEN.join(", ")} the audit ` +
-        `table, skips the row-level lock, or owns a tenant table or the schema it is in — a ` +
-        `rewrite, a read or a drop by proxy for whoever reaches it, through a grant, a membership, ` +
-        `an aggregate or a trigger. This program expects no such helper. Drop the function, or ` +
-        `give it an owner that holds nothing.`,
+        `table, skips the row-level lock, owns a tenant table or the schema it is in, or may ` +
+        `create in that schema — a rewrite, a read, a drop or a table of its own, by proxy for ` +
+        `whoever reaches it, through a grant, a membership, an aggregate or a trigger. This ` +
+        `program expects no such helper. Drop the function, or give it an owner that holds nothing.`,
     );
   }
 
