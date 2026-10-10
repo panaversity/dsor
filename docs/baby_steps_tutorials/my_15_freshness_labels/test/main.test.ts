@@ -67,7 +67,13 @@ function demo(): { raw: string; report: string } {
     throw new Error(`the demo did not run on the on-disk route:\n${raw.split("\n")[1]}`);
   }
 
-  return { raw, report: raw.replace(/sha256:[0-9a-f]+/g, "sha256:HASH") };
+  // NEW IN STEP 15: and the time each read was read, which also changes on every run.
+  return {
+    raw,
+    report: raw
+      .replace(/sha256:[0-9a-f]+/g, "sha256:HASH")
+      .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME"),
+  };
 }
 
 describe("the program a learner runs", () => {
@@ -288,6 +294,16 @@ describe("the program a learner runs", () => {
     // Two lines for the agent: the row, and under it what the door took out of it.
     expect(out).toContain(
       `${"accounts-payable-fte".padEnd(21)} ${"(internal)".padEnd(24)} dsor://org_456/invoice/INV-1008  ${"(amount withheld)".padEnd(17)}  issued\n${" ".repeat(24)}withheld: amount (clearance)`,
+    );
+  });
+
+  it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
+    // NEW IN STEP 15: under each read, a line of its own: the mode, when, and from where. The time
+    // changes every run, so the test pins its shape, not its value.
+    const out = demo().raw;
+
+    expect(out).toMatch(
+      /accounts-payable-fte {2}\(internal\) .*INV-1008 .*issued\n {24}withheld: amount \(clearance\)\n {24}current, read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z from postgres\n/,
     );
   });
 

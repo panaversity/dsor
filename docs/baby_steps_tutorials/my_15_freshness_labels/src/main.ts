@@ -4,6 +4,7 @@ import { greet } from "./greet.ts";
 // STEP 06: the same invoice, asked for by two people, one line apart.
 import { callOperation } from "./operations.ts";
 import { countedWithoutARecord, theHead, theLog, verifyChain } from "./audit.ts";
+import type { Freshness } from "./freshness.ts";
 import type { Login } from "./login.ts";
 import { openTheDatabase } from "./database.ts";
 import { movedTo } from "./examples.ts";
@@ -30,6 +31,11 @@ function withheld(redactions: readonly { field: string; reason: string }[] | und
     : `\n${" ".repeat(24)}withheld: ${redactions.map((r) => `${r.field} (${r.reason})`).join(", ")}`;
 }
 
+// NEW IN STEP 15: how old a read is, on a line of its own under it: the mode, when, from where.
+function howOld(freshness: Freshness): string {
+  return `\n${" ".repeat(24)}${freshness.mode}, read at ${freshness.observed_at} from ${freshness.connector}`;
+}
+
 function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
   const who = answer.askedBy.padEnd(21);
 
@@ -49,7 +55,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
   if (answer.kind === "page") {
     const p = answer.page;
 
-    return `${who} ${`(a page, ${answer.classification})`.padEnd(24)} ${p.invoices.length} invoices${p.next === undefined ? ", the last page" : `, next after ${p.next}`}${withheld(answer.redactions)}`;
+    return `${who} ${`(a page, ${answer.classification})`.padEnd(24)} ${p.invoices.length} invoices${p.next === undefined ? ", the last page" : `, next after ${p.next}`}${withheld(answer.redactions)}${howOld(answer.freshness)}`;
   }
 
   const i = answer.invoice;
@@ -61,7 +67,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   // STEP 14: the answer's own label where "(no envelope)" used to be — a query's success
   // still has no envelope, and now it says how sensitive what it holds is.
-  return `${who} ${`(${answer.classification})`.padEnd(24)} ${i.uri}  ${amount}  ${i.status}${withheld(answer.redactions)}`;
+  return `${who} ${`(${answer.classification})`.padEnd(24)} ${i.uri}  ${amount}  ${i.status}${withheld(answer.redactions)}${howOld(answer.freshness)}`;
 }
 
 const database = await openTheDatabase();
