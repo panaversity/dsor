@@ -58,8 +58,9 @@ function ownString(from: unknown, key: string): string | undefined {
  * A pretend login.
  *
  * One field, on purpose. There is nowhere to say "I am logged in as this person and also
- * acting as that agent". An agent acting *for* a person is a real thing in DSoR and needs a
- * permission slip — a delegation — which arrives in step 18.
+ * acting as that agent". STEP 18: an agent's commands run under a permission slip a person
+ * signed, which DSoR finds itself; nothing in the login names one. An agent acting beside a person
+ * who is logged in, `on_behalf_of`, is step 45.
  *
  * This does **not** meet DSOR-IDN-02a, and an earlier version of this comment claimed it
  * did. That rule says an agent must authenticate with its own credentials, never a human's

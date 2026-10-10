@@ -562,9 +562,10 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     tenant,
     kind,
     identity: {
-      // `direct`, with an empty actor chain, because that is what is true today: a person calls
-      // and nothing acts on anyone's behalf. Step 42 brings delegation, and with it
-      // `on_behalf_of` and a chain with an agent in it. `role_source` and not `token`, because
+      // `direct`, with an empty actor chain. STEP 18: and for an agent's command under a slip too,
+      // which is not yet true of it: step 19 records such a decision as `unattended`, with the slip's
+      // signer as its subject and the agent in its actor chain (DSOR-DEL-08); `on_behalf_of` is
+      // step 45. This said step 42, which builds no delegation. `role_source` and not `token`, because
       // step 06's roles come from a table this program owns, not from a signed token.
       mode: "direct",
       subject,
