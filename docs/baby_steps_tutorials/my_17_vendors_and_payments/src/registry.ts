@@ -204,7 +204,29 @@ export function loadRegistry(
   // contract that names a compensation nothing can run promises an undo nobody can carry out, and
   // the program stops here, before a caller relies on it (DSOR-EXE-05c, decision 125).
   for (const contract of registry.values()) {
-    for (const undo of contract.execution?.compensated_by ?? []) {
+    const undos = contract.execution?.compensated_by ?? [];
+
+    // And it names something, once, and not itself. The schema takes an empty list, so a
+    // contract could promise an undo and name none; and a careless contract that named
+    // payment.create where it meant payment.cancel would promise an undo that pays twice
+    // (decision 126).
+    const semantics = contract.execution?.semantics;
+
+    if ((semantics === "compensatable" || semantics === "saga") && undos.length === 0) {
+      throw new TypeError(`${contract.id} is ${semantics}, and names nothing that undoes it`);
+    }
+
+    for (const [at, undo] of undos.entries()) {
+      if (undos.indexOf(undo) !== at) {
+        throw new TypeError(`${contract.id} names ${undo} twice among what undoes it`);
+      }
+
+      if (undo === contract.id) {
+        throw new TypeError(`${contract.id} is undone by itself, which undoes nothing`);
+      }
+    }
+
+    for (const undo of undos) {
       const named = registry.get(undo);
 
       if (named === undefined) {

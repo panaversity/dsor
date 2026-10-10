@@ -316,7 +316,32 @@ describe("what undoes an operation is an operation the program has", () => {
   });
 
   it("DSOR-EXE-05c: an operation that can be undone, and names nothing that undoes it, is refused", () => {
-    // The specification's schema refuses it already; this pins that the registry asks the schema.
+    // Without the key, the specification's schema refuses it. With an empty list, the schema takes
+    // it, and the registry used to (decision 126): an undo promised and none named.
     expect(() => loadRegistry(withExecution({ semantics: "compensatable" }))).toThrow(/compensated_by/);
+    expect(() =>
+      loadRegistry(withExecution({ semantics: "compensatable", compensated_by: [] })),
+    ).toThrow(/names nothing that undoes it/);
+    expect(() => loadRegistry(withExecution({ semantics: "saga", compensated_by: [] }))).toThrow(
+      /names nothing that undoes it/,
+    );
+  });
+
+  it("DSOR-EXE-05c: an operation is not its own undo, and names each undo once", () => {
+    // NEW IN STEP 17, decision 126: a careless contract that named payment.create where it meant
+    // payment.cancel promised an undo that makes a second payment.
+    expect(() =>
+      loadRegistry(
+        withExecution({ semantics: "compensatable", compensated_by: ["payment.create"] }),
+      ),
+    ).toThrow(/payment\.create is undone by itself/);
+    expect(() =>
+      loadRegistry(
+        withExecution({
+          semantics: "compensatable",
+          compensated_by: ["payment.cancel", "payment.cancel"],
+        }),
+      ),
+    ).toThrow(/names payment\.cancel twice/);
   });
 });
