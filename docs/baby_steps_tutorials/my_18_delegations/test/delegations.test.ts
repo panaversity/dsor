@@ -11,8 +11,19 @@
 // delegator's current authority, the delegation's grants and constraints, and the token scopes.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
+import { rolesOfThisProgram, useRoleSource } from "../src/authority.ts";
+import type { ErrorEnvelope } from "../src/envelopes.ts";
+import { callOperation, type OperationAnswer } from "../src/operations.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const INV_1008 = "dsor://org_456/invoice/INV-1008";
+const INV_1009 = "dsor://org_456/invoice/INV-1009";
+const PAY_901 = "dsor://org_456/payment/PAY-901";
+const AMOUNT = Object.freeze({ value: "31400.00", currency: "USD" });
 
 let db: PGlite;
 
@@ -28,6 +39,21 @@ beforeEach(async () => {
   await resetTheStory();
   await forgetTheLog("org_456");
 });
+
+afterEach(() => {
+  useRoleSource(undefined);
+});
+
+function refusalOf(answer: OperationAnswer): ErrorEnvelope {
+  if (answer.kind !== "error") {
+    throw new Error(`expected a refusal, got ${JSON.stringify(answer)}`);
+  }
+
+  return answer.envelope;
+}
+
+const create = (login: object, amount: object = AMOUNT): Promise<OperationAnswer> =>
+  callOperation(login as never, "payment.create", { invoice: INV_1008, amount });
 
 const owner = (sql: string): Promise<unknown> => asTheOwner(() => db.exec(sql));
 
@@ -114,5 +140,113 @@ describe("the slip, in DSoR's own store", () => {
 
     // Not testing nothing: the owner may, and the slip is still there afterwards for the others.
     await owner("UPDATE dsor.delegations SET status = 'active' WHERE id = 'del_100'");
+  });
+});
+
+describe("an agent's command runs under its slip", () => {
+  it("DSOR-DEL-01a: the agent makes a payment under del_100", async () => {
+    expect((await create(AGENT)).kind).toBe("result");
+  });
+
+  it("DSOR-DEL-01a: with no active slip, the agent's command is refused, and the refusal is recorded", async () => {
+    await owner("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'");
+
+    const refusal = refusalOf(await create(AGENT));
+
+    expect(refusal.code).toBe("DELEGATION_REQUIRED");
+    expect(refusal.retry).toBe("never");
+
+    const decisions = (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+    expect(decisions.map((r) => `${r.operation} ${r.authorization} ${r.result}`)).toStrictEqual([
+      "payment.create@1 DENY DELEGATION_REQUIRED",
+    ]);
+  });
+
+  it("DSOR-DEL-01a: an expired slip is refused as expired", async () => {
+    await owner("UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'");
+
+    expect(refusalOf(await create(AGENT)).code).toBe("DELEGATION_EXPIRED");
+  });
+
+  it("the agent's reads need no slip: its own role reads", async () => {
+    await owner("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'");
+
+    expect((await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })).kind).toBe("data");
+  });
+
+  it("a person's command needs no slip: a person's power is their role's", async () => {
+    await owner("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'");
+
+    expect((await create(SUPERVISOR)).kind).toBe("result");
+  });
+});
+
+describe("the agent never has more power than the person who signed, right now", () => {
+  it("DSOR-DEL-02: removing a permission from user_123 removes it from the agent on the next request", async () => {
+    // The step's "done when". The same slip, the same agent, one request apart: only what user_123
+    // holds changed in between.
+    expect((await create(AGENT)).kind).toBe("result");
+
+    useRoleSource((person, tenant) =>
+      person === "user_123"
+        ? ["invoice:read", "invoice:issue", "payment:cancel"]
+        : rolesOfThisProgram(person, tenant),
+    );
+
+    const refusal = refusalOf(await create(AGENT));
+
+    expect(refusal.code).toBe("AUTHORIZATION_DENIED");
+    expect(refusal.message).toMatch(/payment:create/);
+  });
+
+  it("DSOR-DEL-02: a permission the slip does not grant is not the agent's, whatever the signer holds", async () => {
+    await owner(
+      "UPDATE dsor.delegations SET permissions = ARRAY['payment:create', 'payment:cancel'] WHERE id = 'del_100'",
+    );
+
+    // user_123 may issue invoices; the slip no longer lets the agent.
+    expect(refusalOf(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 })).code).toBe(
+      "AUTHORIZATION_DENIED",
+    );
+  });
+
+  it("DSOR-DEL-01b: a scope the slip does not grant adds nothing", async () => {
+    await owner(
+      "UPDATE dsor.delegations SET permissions = ARRAY['payment:create', 'payment:cancel'] WHERE id = 'del_100'",
+    );
+
+    const scoped = { ...AGENT, scopes: ["invoice:issue", "payment:create"] };
+
+    expect(refusalOf(await callOperation(scoped, "invoice.issue", { invoice: INV_1009 })).code).toBe(
+      "AUTHORIZATION_DENIED",
+    );
+  });
+
+  it("DSOR-DEL-01b: scopes narrow: a slip permission the scopes leave out is not held", async () => {
+    const scoped = { ...AGENT, scopes: ["payment:cancel"] };
+
+    expect(refusalOf(await create(scoped)).code).toBe("AUTHORIZATION_DENIED");
+    expect((await callOperation(scoped, "payment.cancel", { payment: PAY_901 })).kind).toBe("result");
+  });
+});
+
+describe("a slip lends only what its signer holds in its own company", () => {
+  it("DSOR-DEL-02: a slip in org_789, signed by user_123, who belongs to org_456, grants nothing", async () => {
+    // Asked of the signer in the slip's company: user_123 holds invoice:issue in org_456 and
+    // nothing in org_789, so the agent may not issue there however the slip reads.
+    await owner(
+      `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+       VALUES ('org_789', 'del_789', 'user_123', 'accounts-payable-fte', ARRAY['invoice:issue'],
+               'active', '2099-12-31T23:59:59Z')`,
+    );
+
+    const answer = await callOperation(
+      { loggedInAs: "accounts-payable-fte", tenant: "org_789" },
+      "invoice.issue",
+      { invoice: "dsor://org_789/invoice/INV-1009" },
+    );
+
+    expect(refusalOf(answer).code).toBe("AUTHORIZATION_DENIED");
   });
 });

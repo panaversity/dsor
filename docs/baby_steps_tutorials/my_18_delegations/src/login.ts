@@ -83,6 +83,49 @@ export interface Login {
    * say one of theirs — `tenantFor` in tenant.ts decides.
    */
   readonly tenant?: string;
+  /**
+   * NEW IN STEP 18: what this login allows, when it says. A real token's scopes, in step 44; here,
+   * the same thing said in the login. They only ever narrow: a permission the login's scopes leave
+   * out is not held, and a scope adds nothing anyone did not already hold (DSOR-DEL-01b).
+   */
+  readonly scopes?: readonly string[];
+}
+
+/** NEW IN STEP 18: what the login's scopes say, as for the company: none, a list, or malformed. */
+export type ScopesClaim =
+  | { readonly kind: "none" }
+  | { readonly kind: "scopes"; readonly scopes: readonly string[] }
+  | { readonly kind: "malformed" };
+
+/**
+ * NEW IN STEP 18: the login's scopes, read as data. A list of permissions, each text, read once
+ * into a frozen copy; anything else that is present is `malformed`, never absent, for the reason
+ * `tenantClaimed` gives: a wrong claim is not no claim.
+ */
+export function scopesClaimed(login: Login | undefined): ScopesClaim {
+  if (login === null || typeof login !== "object") {
+    return { kind: "none" };
+  }
+
+  try {
+    if (!Object.hasOwn(login, "scopes")) {
+      return { kind: "none" };
+    }
+
+    const given: unknown = login.scopes;
+
+    if (!Array.isArray(given)) {
+      return { kind: "malformed" };
+    }
+
+    const scopes = [...(given as unknown[])];
+
+    return scopes.every((scope) => typeof scope === "string" && scope !== "")
+      ? { kind: "scopes", scopes: Object.freeze(scopes as string[]) }
+      : { kind: "malformed" };
+  } catch {
+    return { kind: "malformed" };
+  }
 }
 
 /**

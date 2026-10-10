@@ -481,7 +481,9 @@ describe("the decision is written down first", () => {
     // `validate the input` gets past every check and is caught by §21.11's own completeness check.
     // Either way the caller gets INTERNAL_ERROR and the record says so.
     for (const [lazied, why] of [
-      ["resolve the operation", /reached authorize without/],
+      // STEP 18: the delegation stage, §21.3, now runs first after the operation, and is the one
+      // that finds no contract.
+      ["resolve the operation", /reached the delegation without/],
       ["validate the input", /reached §21.11 without/],
     ] as const) {
       await fresh();

@@ -39,7 +39,9 @@ import type { Principal } from "./people.ts";
 export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze({
   ap_supervisor: Object.freeze(["invoice:read", "invoice:issue", "payment:create", "payment:cancel"]),
   approver: Object.freeze(["invoice:read", "payment:approve"]),
-  ap_worker: Object.freeze(["invoice:read", "invoice:issue", "payment:create", "payment:cancel"]),
+  // NEW IN STEP 18: the agent's own role reads. Every command it sends runs under a permission
+  // slip a person signed, and its power there is computed from the slip (decision 127).
+  ap_worker: Object.freeze(["invoice:read"]),
 });
 
 /**

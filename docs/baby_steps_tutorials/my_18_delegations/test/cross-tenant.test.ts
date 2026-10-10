@@ -30,7 +30,8 @@ import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { theLog } from "../src/audit.ts";
 import type { Context } from "../src/pipeline.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
+import { rolesOfThisProgram, useRoleSource } from "../src/authority.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -177,13 +178,29 @@ describe("an address for another company", () => {
     // exact command and got a receipt in the wrong company's proposal space.
     await resetTheStory();
 
-    const answer = await callOperation(AGENT_FOR_789, "invoice.issue", { invoice: THEIRS });
+    // STEP 18: an agent's command runs under a slip, and nobody in the story belongs to org_789 to
+    // sign one. So this test makes a signer there for itself, through the role source a test may
+    // replace, and a slip in org_789's name; the program's own people are unchanged.
+    await asTheOwner(() =>
+      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+               VALUES ('org_789', 'del_789', 'user_789', 'accounts-payable-fte', ARRAY['invoice:issue'],
+                       'active', '2099-12-31T23:59:59Z')`),
+    );
+    useRoleSource((person, tenant) =>
+      person === "user_789" && tenant === "org_789" ? ["invoice:issue"] : rolesOfThisProgram(person, tenant),
+    );
 
-    if (answer.kind !== "result") {
-      throw new Error(`expected a result, got ${answer.kind}`);
+    try {
+      const answer = await callOperation(AGENT_FOR_789, "invoice.issue", { invoice: THEIRS });
+
+      if (answer.kind !== "result") {
+        throw new Error(`expected a result, got ${JSON.stringify(answer)}`);
+      }
+
+      expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_789\/proposal\/prop_\d{4}$/);
+    } finally {
+      useRoleSource(undefined);
     }
-
-    expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_789\/proposal\/prop_\d{4}$/);
   });
 
   // No rule id. This pins decision 88 — TENANT_MISMATCH for another company's address,

@@ -116,12 +116,8 @@ describe("permissions", () => {
       "invoice:read",
       "payment:approve",
     ]);
-    expect([...permissionsOf(person("accounts-payable-fte"))].sort()).toEqual([
-      "invoice:issue",
-      "invoice:read",
-      "payment:cancel",
-      "payment:create",
-    ]);
+    // STEP 18: the agent's own role reads; its commands run under a permission slip.
+    expect([...permissionsOf(person("accounts-payable-fte"))].sort()).toEqual(["invoice:read"]);
   });
 
   // The one the step is named after. A role nobody granted anything holds nothing — it is not

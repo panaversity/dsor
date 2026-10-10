@@ -53,6 +53,8 @@ describe("the pipeline", () => {
       // question is a question inside one company.
       "resolve the tenant",
       "resolve the operation",
+      // STEP 18: §21 step 3, after the operation, because it asks whether that is a command.
+      "resolve the delegation",
       "authorize",
       "validate the input",
       "record the decision",
@@ -63,7 +65,7 @@ describe("the pipeline", () => {
   // roadmap: 1 to 5 is missing the tenant, the delegation and the operational status; after 6 come
   // the idempotency claim, the proposal, the preconditions and the controls.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 5, 6, 11]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -116,13 +118,14 @@ describe("the pipeline", () => {
       fake(1, "authenticate"),
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
+      fake(3, "resolve the delegation"), // STEP 18
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(6);
+    expect(assertPipeline(whole)).toBe(7);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -481,6 +484,7 @@ describe("the pipeline", () => {
       fake(2, "resolve the tenant"),
       fake(3, "claim the idempotency key", "command"),
       fake(null, "resolve the operation"),
+      fake(3, "resolve the delegation"), // STEP 18: required, so present
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(11, "record the decision"),
@@ -493,13 +497,14 @@ describe("the pipeline", () => {
       fake(1, "authenticate"),
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
+      fake(3, "resolve the delegation"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(7);
+    expect(assertPipeline(inOrder)).toBe(8);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -518,6 +523,29 @@ describe("the pipeline", () => {
   // other three unproven, and that removing `authorize`'s own guard made the door THROW at the
   // caller with all 161 tests green. And two callers, not one, asserted against the login rather
   // than a literal — the literal was lesson 10 in this step's own new test.
+  it("DSOR-DEL-01a: with the delegation stage doing nothing, an agent's command is INTERNAL_ERROR, never its role's", async () => {
+    // NEW IN STEP 18: §21.3's proof of work is checked at §21.5. An agent's command that reaches
+    // authorize with no slip resolved would otherwise be judged by the agent's own role: refused
+    // today for the wrong reason, and let through on the day that role grants a command.
+    const list = PIPELINE.map((stage) =>
+      stage.name === "resolve the delegation"
+        ? Object.freeze({ ...stage, run: (context: Context) => ({ kind: "carry_on" as const, context }) })
+        : stage,
+    );
+    const answer = await makeDoor(list)(
+      { loggedInAs: "accounts-payable-fte", tenant: "org_456" },
+      "payment.cancel",
+      { payment: "dsor://org_456/payment/PAY-901" },
+    );
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.envelope.message).toMatch(/no permission slip resolved/);
+  });
+
   it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", async () => {
     for (const login of [{ loggedInAs: "user_123" }, { loggedInAs: "cfo_100" }]) {
       // Only the stages that FILL something can leave the walk short. Two stages fill nothing, and
@@ -531,7 +559,10 @@ describe("the pipeline", () => {
       //     they prove the real stage records. A door built with a **substituted** no-op recorder is
       //     not caught by anything, and cannot be — `assertPipeline` reads names and flags, never
       //     what a function does. The test below pins that limit so a later step meets it on purpose.
-      const fillsNothing = new Set(["authorize", "record the decision"]);
+      //
+      // STEP 18: and `resolve the delegation`, for these two callers: it fills something only for an
+      // agent's command, and these are people reading. Its own test is below.
+      const fillsNothing = new Set(["authorize", "record the decision", "resolve the delegation"]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
       for (const lazied of fillers) {
@@ -750,8 +781,9 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    // STEP 10: six stages now, so 720 orderings. Still exactly one is accepted.
-    expect(all).toHaveLength(720);
+    // STEP 10: six stages now, so 720 orderings. STEP 18: seven, so 5040. Still exactly one is
+    // accepted: the delegation stage is required after the operation is resolved.
+    expect(all).toHaveLength(5040);
 
     const accepted = all.filter((list) => {
       try {

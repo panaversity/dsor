@@ -20,7 +20,9 @@ import {
 } from "./envelopes.ts";
 // Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
-import { type Login, principalFrom, tenantClaimed } from "./login.ts";
+import { type Login, principalFrom, scopesClaimed, tenantClaimed } from "./login.ts";
+import { holdsNow } from "./authority.ts";
+import { activeSlipFor, effectiveAuthority } from "./delegation.ts";
 import {
   getInvoice,
   issueInvoice,
@@ -572,7 +574,77 @@ const authenticate: Stage["run"] = (context) => {
     });
   }
 
-  return carryOn({ ...context, principal: who.principal });
+  // NEW IN STEP 18: and what the login's scopes allow, read as data. A list that is present and
+  // not a list of permissions is a wrong claim, refused as the login it belongs to (decision 127).
+  const scopes = scopesClaimed(context.login);
+
+  if (scopes.kind === "malformed") {
+    return refuse(
+      who.principal.id,
+      "AUTHENTICATION_REQUIRED",
+      "the login's scopes are not a list of permissions",
+      context.requestId,
+    );
+  }
+
+  return carryOn({
+    ...context,
+    principal: who.principal,
+    scopes: scopes.kind === "scopes" ? scopes.scopes : undefined,
+  });
+};
+
+/**
+ * NEW IN STEP 18: §21.3 — resolve the delegation, and establish what the agent may do under it.
+ *
+ * For an agent's command only. A person's power is their role's, and an agent's reads are its own
+ * role's; a command an agent sends runs under the one active slip DSoR finds for it in this
+ * company, never one the request names. The agent's power for this decision is computed here, now:
+ * the slip's permissions, cut down to what its signer holds in this company at this moment, and to
+ * the login's scopes. `authorize`, at §21.5, asks that power instead of the agent's role
+ * (DSOR-DEL-01a, DSOR-DEL-02, decision 127).
+ */
+const resolveTheDelegation: Stage["run"] = async (context) => {
+  const { principal, tenant, contract } = context;
+
+  if (principal === undefined || tenant === undefined || contract === undefined) {
+    return refuse(
+      principal?.id ?? "(nobody)",
+      "INTERNAL_ERROR",
+      "the pipeline reached the delegation without a principal, a tenant and a contract",
+      context.requestId,
+    );
+  }
+
+  if (principal.type !== "agent" || contract.kind !== "command") {
+    return carryOn(context);
+  }
+
+  const slip = await activeSlipFor(tenant, principal.id);
+
+  if (slip === undefined) {
+    return refuse(
+      principal.id,
+      "DELEGATION_REQUIRED",
+      `${principal.id} holds no active permission slip in ${tenant}, and an agent's command needs one`,
+      context.requestId,
+    );
+  }
+
+  if (Date.parse(slip.expiresAt) <= Date.now()) {
+    return refuse(
+      principal.id,
+      "DELEGATION_EXPIRED",
+      `${slip.id} expired at ${slip.expiresAt}`,
+      context.requestId,
+    );
+  }
+
+  // A signer the role source does not know in this company holds nothing there, and the agent
+  // holds nothing under them.
+  const authority = effectiveAuthority(slip, holdsNow(slip.delegator, tenant) ?? [], context.scopes);
+
+  return carryOn({ ...context, delegation: slip, authority });
 };
 
 /**
@@ -664,11 +736,34 @@ const authorize: Stage["run"] = (context) => {
     );
   }
 
-  if (!holds(principal, contract.authorization.permission)) {
+  // NEW IN STEP 18: §21.3's proof of work. An agent's command always reaches here with the power
+  // computed under its slip; one that arrives without it met a delegation stage that did nothing,
+  // and falling back to the agent's own role would refuse it for the wrong reason, or, on the day
+  // that role grants a command, let it through with no slip at all.
+  if (principal.type === "agent" && contract.kind === "command" && context.authority === undefined) {
+    return refuse(
+      principal.id,
+      "INTERNAL_ERROR",
+      "the pipeline reached authorize with an agent's command and no permission slip resolved",
+      context.requestId,
+    );
+  }
+
+  // NEW IN STEP 18: an agent's command asks the power §21.3 computed under its slip; everyone else
+  // asks their role. Either way, the login's scopes may only take away (DSOR-DEL-01b).
+  const permission = contract.authorization.permission;
+  const held =
+    context.authority !== undefined
+      ? context.authority.includes(permission)
+      : holds(principal, permission) && (context.scopes?.includes(permission) ?? true);
+
+  if (!held) {
     return refuse(
       principal.id,
       "AUTHORIZATION_DENIED",
-      `${principal.id} may not call ${nameOf(context.id)}`,
+      context.delegation !== undefined
+        ? `${principal.id} may not call ${nameOf(context.id)} under ${context.delegation.id}: the slip, what ${context.delegation.delegator} holds now, or the login's scopes leave out ${permission}`
+        : `${principal.id} may not call ${nameOf(context.id)}`,
       context.requestId,
     );
   }
@@ -1030,6 +1125,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(1, "authenticate", "both", authenticate),
   stage(2, "resolve the tenant", "both", resolveTheTenant),
   stage(null, "resolve the operation", "both", resolveTheOperation),
+  // NEW IN STEP 18. §21.3: whose slip an agent's command runs under, and what it may do there.
+  stage(3, "resolve the delegation", "both", resolveTheDelegation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
