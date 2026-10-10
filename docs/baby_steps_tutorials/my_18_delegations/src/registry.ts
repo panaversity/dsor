@@ -35,6 +35,11 @@ export interface OperationContract {
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
   /**
+   * NEW IN STEP 18: whether an agent needs a permission slip to call it. The schema requires it of a
+   * command, and the registry refuses a command that says no (decision 128).
+   */
+  readonly delegation?: { readonly required: boolean };
+  /**
    * STEP 17: `compensated_by`, the operations that undo this one. The schema requires it of
    * a compensatable or saga command, and the registry checks each one is a command it has.
    */
@@ -204,6 +209,15 @@ export function loadRegistry(
   // contract that names a compensation nothing can run promises an undo nobody can carry out, and
   // the program stops here, before a caller relies on it (DSOR-EXE-05c, decision 125).
   for (const contract of registry.values()) {
+    // NEW IN STEP 18: every command an agent sends runs under a slip (DSOR-DEL-01a), so a command
+    // whose contract says it needs none would tell its reader something this program does not do.
+    // The three said so until a review's answer found it (decision 128).
+    if (contract.kind === "command" && contract.delegation?.required !== true) {
+      throw new TypeError(
+        `${contract.id} is a command, and its contract says it needs no permission slip; every command an agent sends needs one`,
+      );
+    }
+
     const undos = contract.execution?.compensated_by ?? [];
 
     // And it names something, once, and not itself. The schema takes an empty list, so a

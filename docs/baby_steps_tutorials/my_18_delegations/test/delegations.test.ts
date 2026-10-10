@@ -17,6 +17,7 @@ import { rolesOfThisProgram, useRoleSource } from "../src/authority.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
 import { overPGlite } from "../src/database.ts";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { useDatabase, type Database } from "../src/store.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
@@ -401,6 +402,28 @@ describe("up to a limit", () => {
 
   it("the limit is the slip's, not the person's: user_123 may make a payment above it", async () => {
     expect((await create(SUPERVISOR, { value: "75000.00", currency: "USD" })).kind).toBe("result");
+  });
+});
+
+describe("every command's contract says it needs a slip", () => {
+  it("DSOR-DEL-01a: the commands' contracts say a slip is required, and the registry refuses one that says not", () => {
+    // Decision 128: the three said `required: false` while the program refused every agent command
+    // without a slip. A contract is the operation's spec sheet, and that line of it was false.
+    for (const contract of loadRegistry(contractsFromDisk()).values()) {
+      if (contract.kind === "command") {
+        expect(contract.delegation?.required, contract.id).toBe(true);
+      }
+    }
+
+    const saysNo = contractsFromDisk().map((c) =>
+      c.expectedId === "payment.create"
+        ? { ...c, document: { ...(c.document as object), delegation: { required: false } } }
+        : c,
+    );
+
+    expect(() => loadRegistry(saysNo)).toThrow(
+      /payment\.create is a command, and its contract says it needs no permission slip/,
+    );
   });
 });
 
