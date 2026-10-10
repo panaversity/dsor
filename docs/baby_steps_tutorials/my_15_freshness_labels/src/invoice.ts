@@ -10,7 +10,7 @@
 // Rule DSOR-TEN-01a: every tenant-owned resource MUST carry its tenant_id.
 // Rule DSOR-IDN-03b: an operation MUST NOT read or write across tenants.
 
-import { justRead, type Labelled } from "./freshness.ts";
+import { type Labelled, readNow } from "./freshness.ts";
 import { money, type Money } from "./money.ts";
 import { theDatabase } from "./store.ts";
 import { formatUri } from "./uri.ts";
@@ -77,19 +77,22 @@ function fromRow(row: Row): Invoice {
  * Returns `undefined` when that company has no such invoice — including when another company has
  * one by that number. A missing invoice is an ordinary answer, not a crash.
  *
- * NEW IN STEP 15: with how fresh it is, labelled right after the read (DSOR-FRS-01a).
+ * NEW IN STEP 15: with how fresh it is (DSOR-FRS-01a). The label is taken just before the query,
+ * so the row is at least as fresh as it says: taken after the reply, it claimed a round trip more
+ * freshness than was true (decision 121).
  */
 export async function getInvoice(
   tenantId: string,
   id: string,
 ): Promise<Labelled<Invoice | undefined>> {
+  const freshness = readNow();
   const { rows } = await theDatabase(tenantId).query<Row>(
     `SELECT ${COLUMNS} FROM public.invoices WHERE tenant_id = $1 AND id = $2`,
     [tenantId, id],
   );
   const row = rows[0];
 
-  return justRead(row === undefined ? undefined : fromRow(row));
+  return Object.freeze({ value: row === undefined ? undefined : fromRow(row), freshness });
 }
 
 /**
@@ -173,13 +176,15 @@ export interface InvoicePage {
  * for one more than that, which is how the page knows whether there is a next one without a
  * second count query.
  *
- * NEW IN STEP 15: with how fresh it is, one label for the page, because a page is one read.
+ * NEW IN STEP 15: with how fresh it is, one label for the page, because a page is one read, taken
+ * just before the query, as `getInvoice`'s is.
  */
 export async function listInvoices(
   tenantId: string,
   after: string | undefined,
   limit: number,
 ): Promise<Labelled<InvoicePage>> {
+  const freshness = readNow();
   const { rows } = await theDatabase(tenantId).query<Row>(
     `SELECT ${COLUMNS} FROM public.invoices
      WHERE tenant_id = $1 AND ($2::text IS NULL OR id > $2)
@@ -190,10 +195,11 @@ export async function listInvoices(
   const page = rows.slice(0, limit).map(fromRow);
   const more = rows.length > limit;
 
-  return justRead(
-    Object.freeze({
+  return Object.freeze({
+    value: Object.freeze({
       invoices: Object.freeze(page),
       next: more ? page.at(-1)?.uri : undefined,
     }),
-  );
+    freshness,
+  });
 }

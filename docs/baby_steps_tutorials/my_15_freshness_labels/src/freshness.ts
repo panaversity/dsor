@@ -49,22 +49,18 @@ export interface Labelled<T> {
 /** The one connector this program reads through: the PostgreSQL database that holds the invoices. */
 export const CONNECTOR = "postgres";
 
-/** The label of rows read from the system of record just now: `current`, on this program's clock. */
+/**
+ * The label of rows about to be read from the system of record, within this request: `current`, on
+ * this program's clock. The code that reads takes it just before its query (decision 121), so the
+ * rows are at least as fresh as it says. The door does not know where data came from, so it cannot
+ * write the label, only insist on one (decision 120).
+ */
 export function readNow(): Freshness {
   return Object.freeze({
     mode: "current",
     observed_at: new Date().toISOString(),
     connector: CONNECTOR,
   });
-}
-
-/**
- * Rows just read from the system of record, labelled `current`, because they were read within this
- * request. The label is taken right after the read returns, by the code that read (decision 120):
- * the door does not know where data came from, so it cannot write the label, only insist on one.
- */
-export function justRead<T>(value: T): Labelled<T> {
-  return Object.freeze({ value, freshness: readNow() });
 }
 
 /**
@@ -121,8 +117,16 @@ export function cannotBeLabelled(
     return "returned a read whose label names no freshness mode";
   }
 
-  if (typeof observed_at !== "string" || Number.isNaN(Date.parse(observed_at))) {
-    return "returned a read whose label says no time it was read";
+  // Decision 121: an exact ISO time, as `readNow` writes it. JavaScript reads "2026" as a date.
+  const at = typeof observed_at === "string" ? Date.parse(observed_at) : Number.NaN;
+
+  if (Number.isNaN(at) || new Date(at).toISOString() !== observed_at) {
+    return "returned a read whose label says no exact time it was read";
+  }
+
+  // And not later than now: nothing has been read in the future.
+  if (at > Date.now()) {
+    return "returned a read whose label says it was read later than now";
   }
 
   if (typeof connector !== "string" || connector === "") {
@@ -131,8 +135,10 @@ export function cannotBeLabelled(
 
   // §27: `current` means read from the system of record within this request. A time from before
   // the request began was not, so the label lies, and the door refuses it rather than correcting
-  // it: relabelling would let the data out and hide the bug that wrote the lie (decision 120).
-  if (mode === "current" && Date.parse(observed_at) < startedAt) {
+  // it: relabelling would let the data out and hide the bug that wrote the lie (decision 120). The
+  // door checks when a label was stamped; it cannot know whether the code that stamped it really
+  // read the database, so a cache must label its own answers (decision 121).
+  if (mode === "current" && at < startedAt) {
     return "returned a value labelled current that was read before this request began";
   }
 

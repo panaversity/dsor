@@ -10,10 +10,14 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { leaveTheDoor } from "../src/boundary.ts";
+import { overPGlite } from "../src/database.ts";
 import { success } from "../src/envelopes.ts";
-import { readNow } from "../src/freshness.ts";
+import { cannotBeLabelled, readNow } from "../src/freshness.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
+import { findPerson } from "../src/people.ts";
+import { useDatabase } from "../src/store.ts";
 import { aDatabase, resetInvoices } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -109,7 +113,20 @@ describe("the door insists on a label", () => {
     ["a mode that is not one of the four", () => ({ ...readNow(), mode: "fresh" })],
     ["no time", () => ({ ...readNow(), observed_at: undefined })],
     ["a time that is not a time", () => ({ ...readNow(), observed_at: "yesterday" })],
-    ["no connector", () => ({ ...readNow(), connector: "" })],
+    // Decision 121: an exact ISO time only, and not one in the future. JavaScript reads "2026" as
+    // a date, and a date object is not text at all. The year is labelled observational, so the
+    // check on an old `current` cannot be what refuses it: measured, it was, until this said so.
+    [
+      "a time that is only a year",
+      () => ({ ...readNow(), mode: "observational", observed_at: "2026" }),
+    ],
+    ["a time that is a date object", () => ({ ...readNow(), observed_at: new Date() })],
+    [
+      "a time in the future",
+      () => ({ ...readNow(), observed_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() }),
+    ],
+    ["an empty connector", () => ({ ...readNow(), connector: "" })],
+    ["no connector at all", () => ({ mode: "current", observed_at: new Date().toISOString() })],
   ];
 
   for (const [what, label] of notALabel) {
@@ -158,19 +175,31 @@ describe("the door insists on a label", () => {
   });
 
   it("DSOR-FRS-01a: the label that leaves is exactly its three parts, so nothing rides along in it", async () => {
-    // Decision 117's lesson, for the label: built from its named parts, not copied whole.
+    // Decision 117's lesson, for the label: built from its named parts, not copied whole. On a
+    // single invoice and on a page (decision 121), and through `leaveTheDoor` alone as well.
     const door = handingLabel(() => ({ ...readNow(), copy: INV_1008_ROW }));
-    const answer = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+    const direct = leaveTheDoor(findPerson("accounts-payable-fte")!, {
+      kind: "data",
+      askedBy: "accounts-payable-fte",
+      invoice: INV_1008_ROW,
+      freshness: { ...readNow(), copy: INV_1008_ROW } as never,
+    });
 
-    expect(answer.kind).toBe("data");
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+      direct,
+    ]) {
+      expect(answer.kind === "data" || answer.kind === "page").toBe(true);
 
-    if (answer.kind === "data") {
-      expect(Object.keys(answer.freshness).sort()).toStrictEqual([
-        "connector",
-        "mode",
-        "observed_at",
-      ]);
-      expect(JSON.stringify(answer)).not.toContain("31400.00");
+      if (answer.kind === "data" || answer.kind === "page") {
+        expect(Object.keys(answer.freshness).sort()).toStrictEqual([
+          "connector",
+          "mode",
+          "observed_at",
+        ]);
+        expect(JSON.stringify(answer)).not.toContain("31400.00");
+      }
     }
   });
 });
@@ -217,6 +246,61 @@ describe("a value read before this request is never current", () => {
         observed_at: savedAt,
         connector: "postgres",
       });
+    }
+  });
+
+  it("DSOR-FRS-01b: the line is the moment the request began: read then is current, a millisecond earlier is not", () => {
+    // Decision 121: only an hour-old label was tested, so a door that allowed any slack under an
+    // hour would have passed.
+    const startedAt = Date.now() - 1000;
+    const readAt = (ms: number) => ({
+      kind: "data" as const,
+      askedBy: "accounts-payable-fte",
+      invoice: INV_1008_ROW,
+      freshness: {
+        mode: "current" as const,
+        observed_at: new Date(ms).toISOString(),
+        connector: "postgres",
+      },
+    });
+
+    expect(cannotBeLabelled(readAt(startedAt), startedAt, "query")).toBeUndefined();
+    expect(cannotBeLabelled(readAt(startedAt - 1), startedAt, "query")).toMatch(
+      /before this request began/,
+    );
+  });
+});
+
+describe("when the label's time is taken", () => {
+  it("DSOR-FRS-01a: before the query, so the data is at least as fresh as the label says", async () => {
+    // Decision 121. Taken after the reply, the time was a round trip later than the data, so the
+    // label claimed more freshness than was true. A connection that answers 50 ms late shows it:
+    // the label's time must be no later than the moment the invoices were asked for.
+    const real = overPGlite(db);
+    let asked = 0;
+
+    useDatabase({
+      query: async <T>(sql: string, params?: unknown[], tenant?: string) => {
+        if (sql.includes("FROM public.invoices")) {
+          asked = Date.now();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        return real.query<T>(sql, params, tenant);
+      },
+    });
+
+    try {
+      const answer = await callOperation(AGENT, "invoice.get", { invoice: INV_1008 });
+
+      expect(answer.kind).toBe("data");
+
+      if (answer.kind === "data") {
+        expect(asked).toBeGreaterThan(0);
+        expect(Date.parse(answer.freshness.observed_at)).toBeLessThanOrEqual(asked);
+      }
+    } finally {
+      useDatabase(real);
     }
   });
 });

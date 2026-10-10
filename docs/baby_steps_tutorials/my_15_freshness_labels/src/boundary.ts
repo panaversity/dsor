@@ -211,19 +211,20 @@ function copyRow(row: unknown): unknown {
 export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
   const { kind, askedBy } = answer;
 
-  // NEW IN STEP 15: a read's freshness label is copied once too, as its three named parts.
+  // NEW IN STEP 15: a read's freshness label is copied once too, like a row. What leaves keeps only
+  // its three named parts: `leaveTheDoor` does that, in one place (decision 121).
   if (kind === "data") {
     return Object.freeze({
       kind,
       askedBy,
       invoice: copyRow(answer.invoice) as Invoice,
-      freshness: labelFrom(answer.freshness) as Freshness,
+      freshness: copyRow(answer.freshness) as Freshness,
     });
   }
 
   if (kind === "page") {
     const page: unknown = answer.page;
-    const freshness = labelFrom(answer.freshness) as Freshness;
+    const freshness = copyRow(answer.freshness) as Freshness;
 
     if (page === null || typeof page !== "object") {
       return Object.freeze({ kind, askedBy, page: page as InvoicePage, freshness });
@@ -367,8 +368,9 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
       invoice: shown as Shown<Invoice>,
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
-      // NEW IN STEP 15: how old the data is goes out with it (DSOR-FRS-01a).
-      freshness: answer.freshness,
+      // NEW IN STEP 15: how old the data is goes out with it (DSOR-FRS-01a), as its three named
+      // parts here too, so `leaveTheDoor` alone lets nothing ride along in it (decision 121).
+      freshness: labelFrom(answer.freshness) as Freshness,
     });
   }
 
@@ -404,7 +406,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
       page: Object.freeze({ invoices: Object.freeze(invoices), next }),
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
-      freshness: answer.freshness,
+      freshness: labelFrom(answer.freshness) as Freshness,
     });
   }
 
