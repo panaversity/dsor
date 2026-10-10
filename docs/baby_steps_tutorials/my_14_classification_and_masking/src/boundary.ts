@@ -15,7 +15,14 @@
 // Rule DSOR-CLS-03: every query response MUST carry a classification label equal to the highest
 // classification among the fields it contains.
 
-import { type Classification, clearanceOf, highestOf, isAbove, labelOf } from "./classification.ts";
+import {
+  type Classification,
+  clearanceOf,
+  highestOf,
+  holdsMoney,
+  isAbove,
+  labelOf,
+} from "./classification.ts";
 import { validateEnvelope } from "./envelopes.ts";
 import type { Invoice } from "./invoice.ts";
 import type { HandlerAnswer, OperationAnswer } from "./operations.ts";
@@ -64,25 +71,18 @@ function entityOf(row: object): string {
   }
 }
 
-/**
- * Whether a label can describe this value whole, or there are parts inside it nobody labelled.
- *
- * A plain value — text, a number, a boolean, nothing — and one compound value: money, which is
- * `{ value, currency }` and is one amount in this program's vocabulary, as it is in the
- * specification's entity schema (`amount: { type: money, classification: confidential }`).
- *
- * Measured, and the reason money is named here: with every object treated as something the label
- * cannot see, the table's own `amount: "confidential"` stopped mattering, because the rule
- * re-raised an `internal` amount to confidential anyway. Lowering the amount's label in the table
- * then changed nothing anywhere — a break that had failed twenty-six tests failed two. A label
- * that cannot be lowered is a label nobody is reading.
- */
-function isPlain(value: unknown): boolean {
-  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
-    return true;
+/** A value with no parts inside: text, a number, a boolean, nothing. */
+function isScalar(value: unknown): boolean {
+  return value === null || (typeof value !== "object" && typeof value !== "function");
+}
+
+/** Money's shape: `{ value, currency }`, both text, and nothing else. */
+function isMoney(value: unknown): boolean {
+  if (isScalar(value)) {
+    return false;
   }
 
-  const keys = Object.keys(value);
+  const keys = Object.keys(value as object);
 
   return (
     keys.length === 2 &&
@@ -91,6 +91,39 @@ function isPlain(value: unknown): boolean {
     typeof (value as { value: unknown }).value === "string" &&
     typeof (value as { currency: unknown }).currency === "string"
   );
+}
+
+/**
+ * A value, and not a row: what `cannotBeFiltered` refuses where a row was expected.
+ *
+ * NEW IN STEP 14, decision 110: a question of its own. It was `isPlain`, and so the same function
+ * answered "is this a row?" for the door and "can the label see this whole?" for the filter.
+ * Measured: Break 13 made `isPlain` say yes to everything, and 62 of its 65 failures were the door
+ * refusing every answer as not a row. Only three were the label.
+ */
+function isValue(value: unknown): boolean {
+  return isScalar(value) || isMoney(value);
+}
+
+/**
+ * Whether this field's label can describe this value whole, or there are parts inside it nobody
+ * labelled.
+ *
+ * A value with no parts, and one compound value: money, which is `{ value, currency }` and one
+ * amount in this program's vocabulary — NEW IN STEP 14, decision 110 — in a field declared to hold
+ * money. The specification's entity schema declares the type of every field
+ * (`amount: { type: money, classification: confidential }`), and the field's type decides, not the
+ * value's shape. Money anywhere else is a value with parts inside: a handler that moved the amount
+ * into `vendor` sent it to the agent, labelled `internal`, until this asked about the field.
+ *
+ * Measured, and the reason money is named at all: with every object treated as something the label
+ * cannot see, the table's own `amount: "confidential"` stopped mattering, because the rule
+ * re-raised an `internal` amount to confidential anyway. Lowering the amount's label in the table
+ * then changed nothing anywhere — a break that had failed twenty-six tests failed two. A label
+ * that cannot be lowered is a label nobody is reading.
+ */
+function isPlain(value: unknown, entity: string, field: string): boolean {
+  return isScalar(value) || (isMoney(value) && holdsMoney(entity, field));
 }
 
 /** One row, as `principal` may see it. A human sees every field; an agent sees up to its clearance. */
@@ -109,8 +142,9 @@ function filterRow(principal: Principal, row: object): Filtered {
     // array, a thing with its own `toJSON` — is confidential whatever its field is called: a
     // reviewer got the amount out of the agent's answer inside a `vendor` that was an object, and
     // this is `DSOR-CLS-01` one level down. The amount is confidential already, so nothing in the
-    // story moves; the day a field holds something with parts, the agent does not see it.
-    const label = isPlain(value)
+    // story moves; the day a field holds something with parts, the agent does not see it. Money is
+    // a value with parts too, except in a field declared to hold money (decision 110).
+    const label = isPlain(value, entity, field)
       ? labelOf(entity, field)
       : highestOf([labelOf(entity, field), "confidential"]);
 
@@ -146,17 +180,17 @@ const whatItIs = (value: unknown): string => (value === null ? "null" : typeof v
  */
 export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
   if (answer.kind === "data") {
-    return isPlain(answer.invoice)
+    return isValue(answer.invoice)
       ? `returned ${whatItIs(answer.invoice)} where one row was expected`
       : undefined;
   }
 
   if (answer.kind === "page") {
-    if (isPlain(answer.page) || !Array.isArray(answer.page.invoices)) {
+    if (isValue(answer.page) || !Array.isArray(answer.page.invoices)) {
       return "returned a page with no rows in it";
     }
 
-    const row = answer.page.invoices.findIndex((held) => isPlain(held));
+    const row = answer.page.invoices.findIndex((held) => isValue(held));
 
     return row === -1
       ? undefined
@@ -174,8 +208,8 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // One thing this boundary does not do, said here because a review measured it. An error is
   // untouched: its message is free text, so a handler must never put a field's value in one — a
   // rule for handlers, not a filter. A value with parts inside is the filter's job: it is
-  // confidential whatever its field is called, and money, the one exception, takes the label of
-  // its field (`filterRow` and `isPlain`, decision 107).
+  // confidential whatever its field is called (decision 107), and money, the one exception, takes
+  // its field's label only in a field declared to hold money (`isPlain`, decision 110).
   if (answer.kind === "error") {
     return answer;
   }

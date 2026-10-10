@@ -10,7 +10,14 @@
 // it needs is here.)
 
 import { describe, expect, it } from "vitest";
-import { clearanceOf, highestOf, isAbove, LABELS, labelOf } from "../src/classification.ts";
+import {
+  clearanceOf,
+  highestOf,
+  holdsMoney,
+  isAbove,
+  LABELS,
+  labelOf,
+} from "../src/classification.ts";
 import { findPerson } from "../src/people.ts";
 
 describe("the labels", () => {
@@ -34,6 +41,11 @@ describe("the labels", () => {
     // The two that name the row.
     expect(labelOf("invoice", "uri")).toBe("internal");
     expect(labelOf("invoice", "tenantId")).toBe("internal");
+    // Decision 110: and the amount is the one field declared to hold money, as §6 declares
+    // `amount: { type: money }`. Nothing else is, and a name an object only inherits is no entity.
+    expect(holdsMoney("invoice", "amount")).toBe(true);
+    expect(holdsMoney("invoice", "vendor")).toBe(false);
+    expect(holdsMoney("constructor", "name")).toBe(false);
   });
 
   it("the four labels are ordered, and 'above' means strictly above", () => {

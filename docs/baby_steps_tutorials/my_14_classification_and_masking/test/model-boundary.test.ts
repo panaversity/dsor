@@ -299,6 +299,29 @@ describe("the one compound value a label can describe", () => {
       }
     }
   });
+
+  it("DSOR-CLS-01: money in a field not declared to hold money is confidential, whatever that field's label", async () => {
+    // Decision 110. Money keeps its field's label only in a field the table declares as money.
+    // Measured before it: a handler that moved the amount into `vendor` sent it to the agent,
+    // labelled internal, with nothing in the list.
+    const door = makeDoor(PIPELINE, {
+      "invoice.get": handing(
+        aRow({ amount: undefined, vendor: { value: "31400.00", currency: "USD" } }),
+      ),
+    });
+    const theirs = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+    const ours = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    if (theirs.kind === "data" && ours.kind === "data") {
+      expect(JSON.stringify(theirs)).not.toContain("31400.00");
+      expect(theirs.redactions.map((r) => r.field)).toStrictEqual(["vendor"]);
+      expect(theirs.classification).toBe("internal");
+      // The person sees it, and the answer is labelled for what it holds: an amount.
+      expect(ours.classification).toBe("confidential");
+    } else {
+      throw new Error(`expected data, got ${theirs.kind} and ${ours.kind}`);
+    }
+  });
 });
 
 describe("an answer the door cannot filter", () => {

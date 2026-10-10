@@ -49,6 +49,24 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
   }),
 });
 
+/**
+ * NEW IN STEP 14, decision 110: the fields declared to hold money, by entity.
+ *
+ * Money, `{ value, currency }`, is one value only in one of these fields, and its field's label
+ * describes it whole. Anywhere else it is a value with parts inside, and confidential. The
+ * specification's entity schema gives every field a type as well as a label (§6, DSOR-ENT-01b):
+ * `amount: { type: money, classification: confidential }`. This list is that type, for money only.
+ * If it ever disagrees with the labels, the stricter answer wins.
+ */
+const moneyFields: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  invoice: Object.freeze(["amount"]),
+});
+
+/** Whether this field is declared to hold money. Asks for the list's own keys only. */
+export function holdsMoney(entity: string, field: string): boolean {
+  return Object.hasOwn(moneyFields, entity) && (moneyFields[entity] ?? []).includes(field);
+}
+
 /** The label of one field. A field, or an entity, that nobody labelled is confidential. */
 export function labelOf(entity: string, field: string): Classification {
   return labels[entity]?.[field] ?? "confidential";
