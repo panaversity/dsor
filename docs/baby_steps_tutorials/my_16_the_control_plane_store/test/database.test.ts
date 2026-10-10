@@ -225,7 +225,9 @@ describe("refuseIfItCanRewriteHistory", () => {
       query: async <T>() => ({ rows: [] as T[] }),
     };
 
-    await expect(refuseIfItCanRewriteHistory(silent)).rejects.toThrow(/did not say who/);
+    // NEW IN STEP 16: "did not say", not "did not say who": whether the tables exist is asked
+    // first now, on its own, so it is the first question a silent database leaves unanswered.
+    await expect(refuseIfItCanRewriteHistory(silent)).rejects.toThrow(/did not say/);
   });
 
   it("DSOR-AUD-04a: an answer that is neither true nor false is refused, not read as false", async () => {
@@ -242,8 +244,14 @@ describe("refuseIfItCanRewriteHistory", () => {
       { who: "x", may: false, may_by_set_role: false, may_by_function: false },
       { may: false, may_by_set_role: false, may_by_function: false, has_trigger: false }, // no `who`
     ]) {
+      // NEW IN STEP 16: the tables question answered truly, and every other question evasively.
+      // Every row here lacked `tables_present`, so from step 11 on each one was refused by the
+      // tables check, the first guard, and none reached the guards it was written for. Now they
+      // do. Each row is still refused by the first guard it does not satisfy, and this test asks
+      // no more than that (decision 123).
       const db: Database = {
-        query: async <T>() => ({ rows: [evasive as T] }),
+        query: async <T>(sql: string) =>
+          ({ rows: [(sql.includes("AS tables_present") ? { tables_present: true } : evasive) as T] }),
       };
 
       await expect(refuseIfItCanRewriteHistory(db), JSON.stringify(evasive)).rejects.toThrow();

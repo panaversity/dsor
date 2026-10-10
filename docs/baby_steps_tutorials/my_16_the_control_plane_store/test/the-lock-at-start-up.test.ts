@@ -256,6 +256,17 @@ describe("what an evaluation found past the first fixes", () => {
       /tenant table is missing/,
     );
   });
+
+  it("a server that missed migration 008 is refused in the step's own words too", async () => {
+    // NEW IN STEP 16: the log where migrations 001 to 007 leave it, in public, and no dsor at all.
+    // The test above drops the invoices only, and for the log the step's own words never appeared:
+    // a review measured `schema "dsor" does not exist` instead (decision 123).
+    await asTheOwner(() => db.exec("ALTER TABLE dsor.audit SET SCHEMA public; DROP SCHEMA dsor;"));
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /tenant table is missing/,
+    );
+  });
 });
 
 describe("a lock that is not there", () => {

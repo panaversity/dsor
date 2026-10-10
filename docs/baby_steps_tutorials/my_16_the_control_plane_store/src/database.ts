@@ -125,6 +125,32 @@ const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
  * preference, so the program refuses to start rather than writing a log it could quietly edit.
  */
 export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
+  // STEP 11: both tenant tables exist, asked before anything else, because every question below is
+  // about them, and a missing table would turn those answers into NULLs that an evaluation showed
+  // the guards could misread. NEW IN STEP 16: asked on its own as well. It was a column of the
+  // query below, which also asks `has_table_privilege(…, 'dsor.audit', …)`, and that is an error
+  // for a name that is not there: on a server that missed migration 008, a review measured
+  // `schema "dsor" does not exist`, and the words below never appeared. `to_regclass` says NULL.
+  const { rows: present } = await db.query<{ tables_present: boolean }>(
+    `SELECT to_regclass('public.invoices') IS NOT NULL AND to_regclass('dsor.audit') IS NOT NULL
+              AS tables_present`,
+  );
+
+  // No row at all is a question not answered, and is refused as that, like the one below.
+  if (present[0] === undefined) {
+    throw new Error(
+      "the database did not say whether the tenant tables exist, so nothing it says about them " +
+        "can be trusted; refusing to start",
+    );
+  }
+
+  if (present[0].tables_present !== true) {
+    throw new Error(
+      `a tenant table is missing: public.invoices and dsor.audit must both exist before the ` +
+        `program runs. Apply the migrations.`,
+    );
+  }
+
   const held = (role: string): string =>
     FORBIDDEN.map((p) => `has_table_privilege(${role}, 'dsor.audit', '${p}')`).join(" OR ");
   const { rows } = await db.query<{
@@ -133,7 +159,6 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     may_by_set_role: boolean;
     may_by_function: boolean;
     has_trigger: boolean;
-    tables_present: boolean;
   }>(
     `SELECT current_user AS who,
             ${held("current_user")} AS may,
@@ -169,14 +194,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               SELECT 1 FROM pg_trigger t
               WHERE t.tgrelid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                 AND NOT t.tgisinternal
-            ) AS has_trigger,
-            -- STEP 11: both tenant tables exist. Asked first, because every question below
-            -- is about them, and a missing table would turn those answers into NULLs that an
-            -- evaluation showed the guards could misread. NEW IN STEP 16: the log is looked for
-            -- in dsor, where migration 008 moved it; a program still looking in public refuses
-            -- to start.
-            (to_regclass('public.invoices') IS NOT NULL AND to_regclass('dsor.audit') IS NOT NULL)
-              AS tables_present`,
+            ) AS has_trigger`,
   );
 
   const answer = rows[0];
@@ -188,13 +206,6 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     throw new Error(
       "the database did not say who this connection is, so the audit log cannot be trusted to be " +
         "append-only; refusing to start",
-    );
-  }
-
-  if (answer.tables_present !== true) {
-    throw new Error(
-      `a tenant table is missing: public.invoices and dsor.audit must both exist before the ` +
-        `program runs. Apply the migrations.`,
     );
   }
 
