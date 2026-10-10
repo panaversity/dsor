@@ -72,7 +72,9 @@ function demo(): { raw: string; report: string } {
     raw,
     report: raw
       .replace(/sha256:[0-9a-f]+/g, "sha256:HASH")
-      .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME"),
+      .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME")
+      // NEW IN STEP 19: and when the company's directory knew what the signer holds.
+      .replace(/(as of|holds at) \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "$1 TIME"),
   };
 }
 
@@ -113,8 +115,13 @@ describe("the program a learner runs", () => {
 
     expect(refusals.length).toBeGreaterThanOrEqual(6);
 
-    // And no refusal in the demo invites a retry that could not help.
-    expect(out).not.toContain("retry: safe_same_key");
+    // And no refusal in the demo invites a retry that could not help. NEW IN STEP 19: the two that
+    // invite one are the directory's, which had no answer DSoR could use; the same request goes
+    // through once it has.
+    const retryable = refusals.filter((line) => line.includes("retry: safe_same_key"));
+
+    expect(retryable).toHaveLength(2);
+    expect(retryable.every((line) => line.includes("DEPENDENCY_TIMEOUT"))).toBe(true);
   });
 
   it("DSOR-EXE-02: the log it prints has the decisions in it, and the chain verifies", () => {
@@ -126,8 +133,9 @@ describe("the program a learner runs", () => {
     // one request per operation, and a refusal is a decision.
     // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
     // each payment operation from the generated section, and the agent's three payment decisions.
-    // STEP 18: 30, with the two refusals of the slip's section.
-    expect(rows).toHaveLength(30);
+    // STEP 18: 30, with the two refusals of the slip's section. NEW IN STEP 19: 32, with the
+    // two of the directory's.
+    expect(rows).toHaveLength(32);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -135,7 +143,7 @@ describe("the program a learner runs", () => {
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(17);
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(19);
     expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(13); // STEP 13: three pages read
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
@@ -144,10 +152,10 @@ describe("the program a learner runs", () => {
     // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
       0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29,
-      30, 31, 32, 0, 1,
+      30, 31, 32, 33, 34, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 33 records, chain verifies against the head: true"); // STEP 18: 28 decisions, 5 reads
+    expect(out).toContain("org_456: 35 records, chain verifies against the head: true"); // STEP 19: 30 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -193,22 +201,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(33); // STEP 18: 28 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(35); // STEP 19: 30 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 33 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 35 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(66);
+    expect(records(second, "org_456")).toBe(70);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 66 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 70 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      60,
+      64,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -238,8 +246,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(35); // STEP 18: 33 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(35);
+    expect(hashesOf(first.raw)).toHaveLength(37); // STEP 19: 35 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(37);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -374,6 +382,20 @@ describe("the program a learner runs", () => {
     expect(out).toContain(
       `${denied}accounts-payable-fte may not call payment.create under del_100: the slip, what user_123 holds now, or the login's scopes leave out payment:create`,
     );
+  });
+
+  it("DSOR-DEL-08: the demo shows an agent's command as user_123's authority, and the directory off or stale refusing the next", () => {
+    // NEW IN STEP 19: the record of the agent's first command under del_100, then two requests, each
+    // one decision: the company's directory switched off, and then answering with what it knew
+    // 25 hours ago. Both refused, not waved through (decision 129).
+    const out = demo().raw;
+    const timeout = `${"accounts-payable-fte".padEnd(21)} ${"DEPENDENCY_TIMEOUT".padEnd(24)} retry: ${"safe_same_key".padEnd(20)} what user_123 holds in org_456 now could not be established: org_456's directory`;
+
+    expect(out).toMatch(
+      /  invoice\.issue@1  unattended: user_123's authority, used by accounts-payable-fte under del_100\n {19}what user_123 holds, from the company's directory as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\n/,
+    );
+    expect(out).toContain(`${timeout} did not answer. Nothing was done; it is safe to send again`);
+    expect(out).toContain(`${timeout} last knew what user_123 holds at `);
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {

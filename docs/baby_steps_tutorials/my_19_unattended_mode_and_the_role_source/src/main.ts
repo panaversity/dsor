@@ -370,6 +370,50 @@ console.log(
 
 useDirectory("org_456", undefined);
 
+// NEW IN STEP 19: at 2 a.m. nobody is logged in. The agent's first command under del_100 was
+// user_123's authority, used by the agent, and the log says exactly that. Then two requests, each
+// one decision: the company's directory switched off, and then answering with what it knew 25 hours
+// ago. Both refused, not waved through (DSOR-DEL-08, DSOR-IDN-06, decision 129).
+console.log();
+console.log("At 2 a.m. nobody is logged in. Whose authority did the agent use?");
+console.log();
+
+const unattended = (await theLog("org_456")).find(
+  (record) => record.kind === "decision" && record.identity.mode === "unattended",
+);
+
+if (unattended !== undefined) {
+  const { identity } = unattended;
+  const operation = unattended.operation ?? "(none resolved)";
+
+  console.log(
+    `  ${operation}  ${identity.mode}: ${identity.subject}'s authority, used by ${identity.actor_chain.join(", ")} under ${unattended.delegation ?? "no slip"}`,
+  );
+  console.log(
+    `  ${" ".repeat(operation.length)}  what ${identity.subject} holds, from the company's directory as of ${identity.subject_authority.as_of}`,
+  );
+}
+
+const aSmallPayment = {
+  invoice: INV_1009,
+  amount: { value: "2500.00", currency: "USD" },
+};
+
+console.log();
+console.log("The company's directory is switched off:");
+console.log();
+useDirectory("org_456", aDirectory("org_456", { down: true }));
+console.log(show(await callOperation(AGENT, "payment.create", aSmallPayment)));
+console.log();
+console.log("It answers again, with what it knew 25 hours ago:");
+console.log();
+useDirectory(
+  "org_456",
+  aDirectory("org_456", { asOf: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() }),
+);
+console.log(show(await callOperation(AGENT, "payment.create", aSmallPayment)));
+useDirectory("org_456", undefined);
+
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
 // have lost, and they are the most interesting lines here.
