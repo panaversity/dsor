@@ -1,4 +1,4 @@
-// NEW IN STEP 14: every field has a label, and a field with no label is confidential.
+// STEP 14: every field has a label, and a field with no label is confidential.
 //
 // Measured on step 13's demo: the agent reads INV-1008 and gets `31400.00 USD`, the same line as
 // the supervisor — and an agent's answer travels to a model provider outside the company. Nothing

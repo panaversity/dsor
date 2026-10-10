@@ -39,7 +39,7 @@ import {
   type StageResult,
 } from "./pipeline.ts";
 import { bytesOf, MAX_PAGE_SIZE, MAX_RESULT_BYTES, pageSizeFrom } from "./queries.ts";
-// NEW IN STEP 14: the filter at the door, and the shapes of what leaves.
+// STEP 14: the filter at the door, and the shapes of what leaves.
 import {
   cannotBeFiltered,
   copyOnce,
@@ -71,11 +71,11 @@ export type OperationAnswer =
   | {
       readonly kind: "data";
       readonly askedBy: string;
-      /** NEW IN STEP 14: the invoice as this caller may see it — a field above the clearance is gone. */
+      /** STEP 14: the invoice as this caller may see it — a field above the clearance is gone. */
       readonly invoice: Shown<Invoice>;
-      /** NEW IN STEP 14: the highest label among the fields that are still there (DSOR-CLS-03). */
+      /** STEP 14: the highest label among the fields that are still there (DSOR-CLS-03). */
       readonly classification: Classification;
-      /** NEW IN STEP 14: what was taken out, and why (DSOR-CLS-02b). Empty for a human. */
+      /** STEP 14: what was taken out, and why (DSOR-CLS-02b). Empty for a human. */
       readonly redactions: readonly Redaction[];
     }
   /** STEP 13: many rows, and where the next page starts. */
@@ -90,7 +90,7 @@ export type OperationAnswer =
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
 
 /**
- * NEW IN STEP 14: what a handler hands the door — the whole row, labelled by nobody yet. The door
+ * STEP 14: what a handler hands the door — the whole row, labelled by nobody yet. The door
  * turns it into an OperationAnswer on the way out (boundary.ts), which is the only way out.
  */
 export type HandlerAnswer =
@@ -912,7 +912,7 @@ function overTheCeiling(id: string, answer: OperationAnswer): string | undefined
 }
 
 /**
- * NEW IN STEP 14: the record of a read, when what is leaving is confidential or restricted.
+ * STEP 14: the record of a read, when what is leaving is confidential or restricted.
  *
  * The rows come from the handler's answer — the rows the read touched, whatever the caller may see
  * of them — and the label from what is leaving, because the rule is about data that is *returned*.
@@ -1098,13 +1098,13 @@ export function makeDoor(
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    // NEW IN STEP 14, decision 116: and what it hands back is read once, here. The check, the
+    // STEP 14, decision 116: and what it hands back is read once, here. The check, the
     // filter, the ceiling and the record of the read below all work from this copy, so for an
     // answer that is data, a part that would answer differently on a second read never gets one.
     // Code written to trick the copy is decision 119's.
     const answer = copyOnce(await handler(given, contract, principal.id, tenant, hash, id_));
 
-    // NEW IN STEP 14: and an answer this program cannot filter is this program's bug, said in an
+    // STEP 14: and an answer this program cannot filter is this program's bug, said in an
     // envelope rather than thrown. Before the filter, because the filter is what would crash.
     const unfilterable = cannotBeFiltered(answer);
 
@@ -1121,7 +1121,7 @@ export function makeDoor(
       });
     }
 
-    // NEW IN STEP 14: §19.2, before the response leaves. The handler handed back the whole row;
+    // STEP 14: §19.2, before the response leaves. The handler handed back the whole row;
     // what leaves for an agent has every field above its clearance taken out, says which, and
     // carries its label. For any handler, including the careless one written next year: the door
     // is the one way out, which is why the filter is here and not in invoice.ts.
@@ -1140,7 +1140,7 @@ export function makeDoor(
       });
     }
 
-    // NEW IN STEP 14: a read that is handing out confidential data is written down first — who,
+    // STEP 14: a read that is handing out confidential data is written down first — who,
     // the operation, which rows, how many (DSOR-CLS-05). A second record, because the decision was
     // recorded before the handler ran and the log is never amended. Before the answer leaves, and
     // if it cannot be written, the answer does not leave: a read nobody wrote down did not happen.

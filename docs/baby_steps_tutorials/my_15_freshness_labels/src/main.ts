@@ -21,7 +21,7 @@ const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_
 const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
-// NEW IN STEP 14: what the door took out, if anything, on a line of its own under the answer.
+// STEP 14: what the door took out, if anything, on a line of its own under the answer.
 // Under it and not beside it, because a review measured the one-line version at 135 columns: on a
 // default Windows console the note wrapped away from the row it belongs to.
 function withheld(redactions: readonly { field: string; reason: string }[] | undefined): string {
@@ -59,7 +59,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     i.amount === undefined ? "(amount withheld)" : `${i.amount.value} ${i.amount.currency}`
   ).padEnd(17);
 
-  // NEW IN STEP 14: the answer's own label where "(no envelope)" used to be — a query's success
+  // STEP 14: the answer's own label where "(no envelope)" used to be — a query's success
   // still has no envelope, and now it says how sensitive what it holds is.
   return `${who} ${`(${answer.classification})`.padEnd(24)} ${i.uri}  ${amount}  ${i.status}${withheld(answer.redactions)}`;
 }
@@ -71,7 +71,7 @@ console.log(`The audit log is in ${database.where}.`);
 console.log();
 
 // The same read, by two different callers. Switching is just a different login.
-// NEW IN STEP 14, and this is the step: the two lines are no longer the same. The supervisor's
+// STEP 14, and this is the step: the two lines are no longer the same. The supervisor's
 // carries the amount and the label `confidential`; the agent's has the amount taken out, is
 // labelled `internal` — the highest label among what is left — and says what was withheld and
 // why. The agent is cleared for `internal`, and the amount of an invoice is confidential
@@ -266,7 +266,7 @@ for (const company of ["org_456", "org_789"]) {
   console.log();
 
   for (const record of await theLog(company)) {
-    // NEW IN STEP 14: a read that handed out confidential data is a record of its own, after the
+    // STEP 14: a read that handed out confidential data is a record of its own, after the
     // decision that allowed it: `read` where a decision says ALLOW or DENY, and how many rows left.
     const rows = record.row_count;
     const isARead = record.kind === "classified_read";

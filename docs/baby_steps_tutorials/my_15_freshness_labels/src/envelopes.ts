@@ -104,9 +104,9 @@ export interface ResultEnvelope {
   readonly semantics: string;
   readonly data: Readonly<Record<string, unknown>>;
   readonly correlation: Correlation;
-  /** NEW IN STEP 14: the label of what `data` still holds, set by the door on its way out. */
+  /** STEP 14: the label of what `data` still holds, set by the door on its way out. */
   readonly classification?: Classification;
-  /** NEW IN STEP 14: what the door took out of `data` for this caller, and why. */
+  /** STEP 14: what the door took out of `data` for this caller, and why. */
   readonly redactions?: readonly Redaction[];
 }
 

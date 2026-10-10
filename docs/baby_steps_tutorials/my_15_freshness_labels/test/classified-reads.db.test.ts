@@ -1,4 +1,4 @@
-// NEW IN STEP 14: the record of a read, on a real server, as the real application login.
+// STEP 14: the record of a read, on a real server, as the real application login.
 //
 // The in-process tests prove the record is written and what it holds. Two things only a real
 // database can prove: that `dsor_runtime` may write the two new columns and still may not change

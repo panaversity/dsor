@@ -118,10 +118,10 @@ export interface AuditRecord {
   readonly authorization?: "ALLOW" | "DENY";
   readonly result: string;
   readonly reason?: string;
-  /** NEW IN STEP 14: the rows a read returned, by address — the resource scope of DSOR-CLS-05. */
+  /** STEP 14: the rows a read returned, by address — the resource scope of DSOR-CLS-05. */
   readonly resources?: readonly string[];
   /**
-   * NEW IN STEP 14: how many rows a read returned, in the field the schema has for it. It was under
+   * STEP 14: how many rows a read returned, in the field the schema has for it. It was under
    * `extensions` until decision 109, because a comment here said the schema had no such field.
    */
   readonly row_count?: number;
@@ -158,9 +158,9 @@ export interface DecisionToRecord {
   readonly authorization?: "ALLOW" | "DENY";
   readonly payloadHash?: string;
   readonly reason?: string;
-  /** NEW IN STEP 14: for a `classified_read`, the addresses of the rows that left. */
+  /** STEP 14: for a `classified_read`, the addresses of the rows that left. */
   readonly resources?: readonly string[];
-  /** NEW IN STEP 14: for a `classified_read`, how many rows left — the record's `row_count`. */
+  /** STEP 14: for a `classified_read`, how many rows left — the record's `row_count`. */
   readonly rowCount?: number;
 }
 
@@ -605,7 +605,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     body.reason = reason;
   }
 
-  // NEW IN STEP 14: inside the hash like everything else, so a record of a read that names fewer
+  // STEP 14: inside the hash like everything else, so a record of a read that names fewer
   // rows than it returned is a record that does not verify.
   if (resources !== undefined) {
     body.resources = resources;
@@ -804,7 +804,7 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
       written.authorization ?? null,
       written.result,
       written.reason ?? null,
-      // NEW IN STEP 14. The addresses as JSON text, like identity and correlation; the count as
+      // STEP 14. The addresses as JSON text, like identity and correlation; the count as
       // the whole number it is (migration 007, decision 109).
       written.resources === undefined ? null : JSON.stringify(written.resources),
       written.row_count ?? null,

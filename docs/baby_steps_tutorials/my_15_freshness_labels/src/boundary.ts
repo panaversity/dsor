@@ -1,4 +1,4 @@
-// NEW IN STEP 14: the model boundary. Whatever leaves the door for an agent is, in practice, sent
+// STEP 14: the model boundary. Whatever leaves the door for an agent is, in practice, sent
 // to a model provider's servers. So the door takes out every field above the agent's clearance
 // before the answer leaves, lists what it took out, and labels what is left.
 //
@@ -96,7 +96,7 @@ function isMoney(value: unknown): boolean {
 /**
  * A value, and not a row: what `cannotBeFiltered` refuses where a row was expected.
  *
- * NEW IN STEP 14, decision 110: a question of its own. It was `isPlain`, and so the same function
+ * STEP 14, decision 110: a question of its own. It was `isPlain`, and so the same function
  * answered "is this a row?" for the door and "can the label see this whole?" for the filter.
  * Measured: Break 13 made `isPlain` say yes to everything, and all 65 of its failures were the
  * door refusing every answer as not a row. Three of those tests are about the label, and they are
@@ -111,7 +111,7 @@ function isValue(value: unknown): boolean {
  * labelled.
  *
  * A value with no parts, and one compound value: money, which is `{ value, currency }` and one
- * amount in this program's vocabulary — NEW IN STEP 14, decision 110 — in a field declared to hold
+ * amount in this program's vocabulary — STEP 14, decision 110 — in a field declared to hold
  * money (`moneyField`). The specification's entity schema declares the type of every field
  * (`amount: { type: money, classification: confidential }`), and the field's type decides, not the
  * value's shape. Money anywhere else is a value with parts inside: a handler that moved the amount
@@ -132,7 +132,7 @@ function isPlain(value: unknown, moneyField: boolean): boolean {
  * see the value whole, and at least confidential when it cannot. `moneyField` says whether the
  * field is declared to hold money (`holdsMoney`).
  *
- * NEW IN STEP 14, decision 113: a function of its own, exported so a test can hand it a money field
+ * STEP 14, decision 113: a function of its own, exported so a test can hand it a money field
  * labelled internal, which the story's table does not have. In the table, the one money field is
  * confidential, which is what the raise gives anyway, so deleting the money rule changed no answer
  * and failed no test.
@@ -192,7 +192,7 @@ function copyRow(row: unknown): unknown {
 }
 
 /**
- * NEW IN STEP 14, decision 116: the door's one copy of what a handler handed it.
+ * STEP 14, decision 116: the door's one copy of what a handler handed it.
  *
  * Every part is read once, here, into plain frozen objects: a page's rows and its cursor, each
  * row's own fields, a receipt's or an error's envelope. The check, the filter, the ceiling and the
@@ -253,7 +253,7 @@ export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
 }
 
 /**
- * NEW IN STEP 14, decision 117: the parts of a receipt its schema closes. The two it leaves open,
+ * STEP 14, decision 117: the parts of a receipt its schema closes. The two it leaves open,
  * `requires` and `extensions`, take anything, and the door writes `data`, `classification` and
  * `redactions` itself.
  */
@@ -288,7 +288,7 @@ function closedPartsOf(envelope: object): Record<string, unknown> {
 const whatItIs = (value: unknown): string => (value === null ? "null" : typeof value);
 
 /**
- * NEW IN STEP 14: why the door cannot filter this answer, or nothing.
+ * STEP 14: why the door cannot filter this answer, or nothing.
  *
  * A handler that answers with no row, with a row that is not a row, or with a page whose cursor is
  * not its last row's address, is a bug in this program, and the door says so in an envelope with a
@@ -314,7 +314,7 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
       return `returned ${whatItIs(answer.page.invoices[row])} as row ${row + 1} of a page`;
     }
 
-    // NEW IN STEP 14, decision 112: the cursor is the address of the page's last row, which is what
+    // STEP 14, decision 112: the cursor is the address of the page's last row, which is what
     // step 13 made it, or there is none. The filter never looks inside `next`, so anything else is
     // stopped here: a handler that put the row there sent the amount to the agent, labelled
     // internal, with `amount` listed as withheld beside it.
@@ -332,7 +332,7 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
  * What the handler's answer becomes on its way out. An error's envelope is untouched: it carries
  * no data. Everything else is filtered by who is asking, labelled, and told what it lost.
  *
- * NEW IN STEP 14, decision 112: every way out builds the answer here, from its known parts, and
+ * STEP 14, decision 112: every way out builds the answer here, from its known parts, and
  * writes who asked from the principal the pipeline checked. What a handler wrote in `askedBy` is
  * never read: a handler that put the row there, behind a cast, sent the amount past the filter,
  * with `amount` listed as withheld beside it.
@@ -400,7 +400,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // for the label and the list (result-envelope.schema.json). Rebuilt, and validated again, because
   // `success` validated the envelope it built and this is a different one.
   //
-  // NEW IN STEP 14, decision 117: rebuilt from its closed parts, never copied whole. A row under
+  // STEP 14, decision 117: rebuilt from its closed parts, never copied whole. A row under
   // `requires` or `extensions`, which the schema lets hold anything, left for the agent beside a
   // filtered `data`, with `amount` listed as withheld.
   //

@@ -1,4 +1,4 @@
-// NEW IN STEP 14: every field has a label that says how sensitive it is, and the agent has a
+// STEP 14: every field has a label that says how sensitive it is, and the agent has a
 // clearance that says how far up it may read.
 //
 // Measured on step 13's demo: `accounts-payable-fte` reads INV-1008 and gets `31400.00 USD`, the
@@ -50,7 +50,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
 });
 
 /**
- * NEW IN STEP 14, decision 110: the fields declared to hold money, by entity.
+ * STEP 14, decision 110: the fields declared to hold money, by entity.
  *
  * Money, `{ value, currency }`, is one value only in one of these fields, and its field's label
  * describes it whole. Anywhere else it is a value with parts inside, and at least confidential. The
@@ -69,7 +69,7 @@ export function holdsMoney(entity: string, field: string): boolean {
 
 /** The label of one field. A field, or an entity, that nobody labelled is confidential. */
 export function labelOf(entity: string, field: string): Classification {
-  // NEW IN STEP 14, decision 111: the table's own names only, for the entity and for the field.
+  // STEP 14, decision 111: the table's own names only, for the entity and for the field.
   // `labels[entity]?.[field]` walked the prototype chain: `toString` found a built-in function,
   // which is no label, and `constructor` found `Object`. Neither is ever above a clearance, so a
   // field with either name left for the agent. Decision 36 fixed the same bug for roles.

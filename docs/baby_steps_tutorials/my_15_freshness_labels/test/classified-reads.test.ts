@@ -1,4 +1,4 @@
-// NEW IN STEP 14: a read that handed out confidential data is written down — who, what, which rows,
+// STEP 14: a read that handed out confidential data is written down — who, what, which rows,
 // and how many — before the answer leaves.
 //
 // Step 13's log says ALLOW for a read of one invoice and ALLOW for a page of a hundred, and nothing

@@ -1,4 +1,4 @@
-// NEW IN STEP 14: what leaves the door for an agent has been filtered by its clearance, says so,
+// STEP 14: what leaves the door for an agent has been filtered by its clearance, says so,
 // and carries a label.
 //
 // Measured on step 13's demo: the agent reads INV-1008 and gets `31400.00 USD`, the same line as

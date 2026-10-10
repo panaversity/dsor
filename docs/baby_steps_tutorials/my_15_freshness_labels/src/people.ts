@@ -51,7 +51,7 @@ export interface Principal {
    */
   readonly role: string;
   /**
-   * NEW IN STEP 14: how far up this principal may read. An agent's answers cross the model
+   * STEP 14: how far up this principal may read. An agent's answers cross the model
    * boundary, so every field above its clearance is left out before the answer leaves. The two
    * people carry none: a human is not filtered (decision 105), the role decides what a human may
    * do. An agent with none reads public fields only — see `clearanceOf`.
@@ -95,7 +95,7 @@ const person = (id: string, type: PrincipalType, role: string, ...tenants: strin
 const people: readonly Principal[] = Object.freeze([
   person("user_123", "human", "ap_supervisor", "org_456"),
   person("cfo_100", "human", "approver", "org_456"),
-  // NEW IN STEP 14: cleared for `internal`. The amount of an invoice is confidential, so the agent
+  // STEP 14: cleared for `internal`. The amount of an invoice is confidential, so the agent
   // sees the invoice and not the amount, which is the map's "done when".
   Object.freeze({
     ...person("accounts-payable-fte", "agent", "ap_worker", "org_456", "org_789"),
