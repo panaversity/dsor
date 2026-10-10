@@ -19,12 +19,17 @@ import { theDatabase } from "./store.ts";
 
 export type DelegationStatus = "active" | "suspended" | "revoked" | "expired";
 
+/** NEW IN STEP 19: how a slip may be used: with a person present, or with nobody (decision 129). */
+export type IdentityMode = "on_behalf_of" | "unattended";
+
 export interface Delegation {
   readonly id: string;
   readonly tenant: string;
   readonly delegator: string;
   readonly delegate: string;
   readonly permissions: readonly string[];
+  /** NEW IN STEP 19: the modes it may be used in, never none (DSOR-DEL-07, migration 015). */
+  readonly modes: readonly IdentityMode[];
   /** Up to how much one payment may be, or `undefined` for no limit. */
   readonly perTransactionLimit: Money | undefined;
   readonly status: DelegationStatus;
@@ -42,6 +47,7 @@ interface Row {
   readonly delegator: string;
   readonly delegate: string;
   readonly permissions: readonly string[];
+  readonly modes: readonly IdentityMode[];
   readonly limit_value: string | null;
   readonly limit_currency: string | null;
   readonly status: DelegationStatus;
@@ -67,7 +73,7 @@ export type SlipFound =
  */
 export async function activeSlipFor(tenant: string, delegate: string): Promise<SlipFound> {
   const { rows } = await theDatabase(tenant).query<Row>(
-    `SELECT tenant, id, delegator, delegate, permissions,
+    `SELECT tenant, id, delegator, delegate, permissions, modes,
             per_transaction_limit_value::text AS limit_value,
             per_transaction_limit_currency AS limit_currency,
             status, to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at
@@ -97,6 +103,7 @@ export async function activeSlipFor(tenant: string, delegate: string): Promise<S
     delegator: row.delegator,
     delegate: row.delegate,
     permissions: Object.freeze([...row.permissions]),
+    modes: Object.freeze([...row.modes]),
     perTransactionLimit:
       row.limit_value === null || row.limit_currency === null
         ? undefined

@@ -669,6 +669,18 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   const slip = found.slip;
 
+  // NEW IN STEP 19: in a mode the slip allows. An agent's command is unattended: the agent logged
+  // in as itself, and nobody is present. A slip for use beside a person is no slip for the agent
+  // alone at night (DSOR-DEL-07, decision 129).
+  if (!slip.modes.includes("unattended")) {
+    return refuse(
+      principal.id,
+      "DELEGATION_REQUIRED",
+      `${slip.id} does not allow unattended use, and nobody is present`,
+      context.requestId,
+    );
+  }
+
   // In force only when its expiry is shown to be later than now. Asked this way round because
   // `NaN <= now` is false: an expiry JavaScript cannot read, a year after 9999, passed as not
   // expired, and a review committed a payment under it (decision 128).
