@@ -23,7 +23,7 @@ import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { assertPipeline, type Context, type Stage } from "../src/pipeline.ts";
-import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
 const CFO = { loggedInAs: "cfo_100" } as const;
@@ -36,7 +36,7 @@ async function fresh(): Promise<void> {
   resetRequestIds();
   resetProposalIds();
   resetClock();
-  await resetInvoices();
+  await resetTheStory();
 }
 
 // STEP 09: the log lives in a database, so these tests need one. A single PGlite for the

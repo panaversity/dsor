@@ -13,7 +13,8 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theHead, theLog, verifyChain } from "../src/audit.ts";
 import { overPool } from "../src/database.ts";
-import { applyMigrations, asRunner, migrationsIn } from "../src/migrations.ts";
+import { applyMigrations, asRunner } from "../src/migrations.ts";
+import { storyStatements } from "./support/story.ts";
 import { callOperation } from "../src/operations.ts";
 import { useDatabase } from "../src/store.ts";
 
@@ -41,12 +42,9 @@ beforeAll(async () => {
 
 /** The rows as the story starts, and an empty log, as the owner. */
 async function putTheStoryBack(): Promise<void> {
-  await owner.query("DELETE FROM public.invoices WHERE tenant_id IN ('org_456', 'org_789')");
-
-  for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
-    if (migration.name === "004_running_example.sql") {
-      await owner.query(migration.sql);
-    }
+  // NEW IN STEP 17: the invoices and the payments that pay them, from one list (story.ts).
+  for (const statement of storyStatements()) {
+    await owner.query(statement);
   }
 
   await owner.query("DELETE FROM dsor.audit WHERE tenant IN ('org_456', 'org_789')");

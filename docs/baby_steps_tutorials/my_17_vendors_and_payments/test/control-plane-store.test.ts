@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { migrationsIn } from "../src/migrations.ts";
 import { callOperation } from "../src/operations.ts";
-import { aDatabase, asTheOwner, forgetTheLog, resetInvoices } from "./support/database.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -26,7 +26,7 @@ let db: PGlite;
 
 beforeAll(async () => {
   db = await aDatabase();
-  await resetInvoices();
+  await resetTheStory();
 });
 
 afterAll(async () => {
@@ -51,14 +51,15 @@ describe("DSoR's own store", () => {
     expect(await tablesIn("public")).not.toContain("audit");
   });
 
-  it("DSOR-MOD-01: the business's schema holds the business's table, and nothing of DSoR's", async () => {
+  it("DSOR-MOD-01: the business's schema holds the business's tables, and nothing of DSoR's", async () => {
     // The migrations' own record, `public.applied_migrations`, is not DSoR's paperwork in the
     // rule's list: it records the shape of the business's tables and DSoR's alike. It stays where
     // it is (decision 122 moved the log only). The migration tool makes it on a real server; this
     // database is built by applying the files directly, so here there is none.
     const ofTheBusiness = (await tablesIn("public")).filter((t) => t !== "applied_migrations");
 
-    expect(ofTheBusiness).toStrictEqual(["invoices"]);
+    // STEP 17: and the vendors and payments, the business's records too (decision 125).
+    expect(ofTheBusiness).toStrictEqual(["invoices", "payments", "vendors"]);
   });
 
   it("DSOR-MOD-01: a decision recorded through the door lands in dsor.audit", async () => {

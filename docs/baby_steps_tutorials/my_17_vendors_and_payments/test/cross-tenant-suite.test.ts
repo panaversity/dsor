@@ -6,7 +6,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll } from "vitest";
 import { crossTenantSuite } from "./support/cross-tenant-suite.ts";
-import { aDatabase, asTheOwner, forgetTheLog, resetInvoices } from "./support/database.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 let db: PGlite;
 
@@ -20,7 +20,7 @@ afterAll(async () => {
 
 crossTenantSuite({
   reset: async () => {
-    await resetInvoices();
+    await resetTheStory();
     await forgetTheLog("org_456");
     await forgetTheLog("org_789");
   },

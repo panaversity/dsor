@@ -18,7 +18,7 @@ import type { Invoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { findPerson } from "../src/people.ts";
 import { useDatabase } from "../src/store.ts";
-import { aDatabase, resetInvoices } from "./support/database.ts";
+import { aDatabase, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -28,7 +28,7 @@ let db: PGlite;
 
 beforeAll(async () => {
   db = await aDatabase();
-  await resetInvoices();
+  await resetTheStory();
 });
 
 afterAll(async () => {

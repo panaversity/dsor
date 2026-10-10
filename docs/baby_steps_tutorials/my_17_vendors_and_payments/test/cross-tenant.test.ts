@@ -30,7 +30,7 @@ import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { theLog } from "../src/audit.ts";
 import type { Context } from "../src/pipeline.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -175,7 +175,7 @@ describe("an address for another company", () => {
   it("DSOR-TEN-01a: a command run inside org_789 gets a proposal address inside org_789", async () => {
     // `success()` used to build `dsor://org_456/proposal/...` for every tenant; a review ran this
     // exact command and got a receipt in the wrong company's proposal space.
-    await resetInvoices();
+    await resetTheStory();
 
     const answer = await callOperation(AGENT_FOR_789, "invoice.issue", { invoice: THEIRS });
 

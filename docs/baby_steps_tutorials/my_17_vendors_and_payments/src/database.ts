@@ -106,6 +106,28 @@ export const APPLICATION_ROLE = "dsor_runtime";
 const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 
 /**
+ * NEW IN STEP 17: the tenant tables, each with the column that names its company, in one place.
+ *
+ * Every question below about "the tenant tables" is asked of this list. It was two names written
+ * out in seven places, and step 17 adds two tables: one list is what keeps a new table from being
+ * checked in six places and forgotten in the seventh (decision 125).
+ */
+const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = Object.freeze([
+  ["public.invoices", "tenant_id"],
+  ["public.vendors", "tenant_id"],
+  ["public.payments", "tenant_id"],
+  ["dsor.audit", "tenant"],
+]);
+
+/** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
+const TENANT_REGCLASSES = TENANT_TABLES.map(([table]) => `to_regclass('${table}')`).join(", ");
+
+/** The tables as words, for a refusal. */
+const TENANT_TABLE_NAMES = `${TENANT_TABLES.slice(0, -1)
+  .map(([table]) => table)
+  .join(", ")} and ${TENANT_TABLES.at(-1)?.[0] ?? ""}`;
+
+/**
  * Stop the program if the connection it is about to use holds UPDATE, DELETE or TRUNCATE on
  * `dsor.audit`.
  *
@@ -132,7 +154,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // for a name that is not there: on a server that missed migration 008, a review measured
   // `schema "dsor" does not exist`, and the words below never appeared. `to_regclass` says NULL.
   const { rows: present } = await db.query<{ tables_present: boolean }>(
-    `SELECT to_regclass('public.invoices') IS NOT NULL AND to_regclass('dsor.audit') IS NOT NULL
+    `SELECT ${TENANT_TABLES.map(([table]) => `to_regclass('${table}') IS NOT NULL`).join(" AND ")}
               AS tables_present`,
   );
 
@@ -146,8 +168,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (present[0].tables_present !== true) {
     throw new Error(
-      `a tenant table is missing: public.invoices and dsor.audit must both exist before the ` +
-        `program runs. Apply the migrations.`,
+      `a tenant table is missing: ${TENANT_TABLE_NAMES} must all exist before the program ` +
+        `runs. Apply the migrations.`,
     );
   }
 
@@ -186,12 +208,12 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                   OR EXISTS (SELECT 1 FROM pg_roles o WHERE o.oid = p.proowner
                               AND (o.rolsuper OR o.rolbypassrls))
                   OR EXISTS (SELECT 1 FROM pg_class c
-                              WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
+                              WHERE c.oid IN (${TENANT_REGCLASSES})
                                 AND pg_has_role(p.proowner, c.relowner, 'MEMBER'))
                   -- STEP 16: or of the schema one is in, who may drop the table from inside
                   -- the helper. A review measured the owner of dsor dropping the log.
                   OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
-                              WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
+                              WHERE c.oid IN (${TENANT_REGCLASSES})
                                 AND pg_has_role(p.proowner, ns.nspowner, 'MEMBER'))
                   -- STEP 16: or may create in either schema, and so make a table there for
                   -- whoever calls it. A review made dsor.proposals that way (decision 124).
@@ -202,7 +224,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
             ) AS may_by_function,
             EXISTS (
               SELECT 1 FROM pg_trigger t
-              WHERE t.tgrelid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
+              WHERE t.tgrelid IN (${TENANT_REGCLASSES})
                 AND NOT t.tgisinternal
             ) AS has_trigger`,
   );
@@ -329,7 +351,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     already_said: string | null;
   }>(
     `WITH tenant_table (rel, col) AS (
-       VALUES (to_regclass('public.invoices'), 'tenant_id'), (to_regclass('dsor.audit'), 'tenant')
+       VALUES ${TENANT_TABLES.map(([table, column]) => `(to_regclass('${table}'), '${column}')`).join(", ")}
      ),
      policy_text (rel, qual) AS (
        SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))' FROM tenant_table
@@ -348,7 +370,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                                         WHERE d.datname = current_database()), 'MEMBER')
               AS owns_database,
             -- STEP 16: the schema each tenant table is in, and who owns it (decision 123).
-            (SELECT string_agg(ns.nspname, ', ' ORDER BY ns.nspname)
+            -- NEW IN STEP 17: DISTINCT, because public now holds three of the tenant tables, and
+            -- without it the refusal named the schema three times, measured.
+            (SELECT string_agg(DISTINCT ns.nspname, ', ' ORDER BY ns.nspname)
                FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
                JOIN pg_namespace ns ON ns.oid = c.relnamespace
               WHERE pg_has_role(current_user, ns.nspowner, 'MEMBER')) AS owns_schema,
@@ -456,9 +480,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (second.locked !== true) {
     throw new Error(
-      `the second lock is not on: public.invoices and dsor.audit must each have row-level ` +
-        `security enabled, forced, and exactly the one policy migrations/005_row_level_security.sql ` +
-        `writes — no other policy beside it, and none that reads differently.`,
+      `the second lock is not on: ${TENANT_TABLE_NAMES} must each have row-level security ` +
+        `enabled, forced, and exactly the one policy migrations 005 and 011 write — no other ` +
+        `policy beside it, and none that reads differently.`,
     );
   }
 
@@ -474,9 +498,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (second.reads_beyond !== null) {
     throw new Error(
       `this connection is \`${answer.who}\`, and it may read \`${second.reads_beyond}\`, which is ` +
-        `not one of the two tenant tables. A view or a table beside them is a window past the ` +
-        `lock: a view runs with its owner's rights, and a table without a policy hides nothing. ` +
-        `The application may read public.invoices and dsor.audit, and nothing else.`,
+        `not one of the tenant tables. A view or a table beside them is a window past the lock: ` +
+        `a view runs with its owner's rights, and a table without a policy hides nothing. The ` +
+        `application may read ${TENANT_TABLE_NAMES}, and nothing else.`,
     );
   }
 }

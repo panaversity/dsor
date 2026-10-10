@@ -19,7 +19,7 @@ import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operatio
 import { bytesOf, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESULT_BYTES } from "../src/queries.ts";
 import { overPGlite } from "../src/database.ts";
 import { useDatabase } from "../src/store.ts";
-import { aDatabase, asTheOwner, resetInvoices } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT_FOR_789 = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
@@ -28,7 +28,7 @@ let db: PGlite;
 
 beforeAll(async () => {
   db = await aDatabase();
-  await resetInvoices();
+  await resetTheStory();
   // Three hundred more invoices for org_456 and thirty for org_789, as the owner: enough for three
   // full pages and a partial one, and enough to see that a page never crosses a company.
   await asTheOwner(() =>

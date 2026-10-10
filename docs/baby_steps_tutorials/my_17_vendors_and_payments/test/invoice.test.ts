@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { parseUri } from "../src/uri.ts";
-import { aDatabase, resetInvoices } from "./support/database.ts";
+import { aDatabase, resetTheStory } from "./support/database.ts";
 
 let db: Awaited<ReturnType<typeof aDatabase>>;
 
@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await resetInvoices();
+  await resetTheStory();
 });
 
 afterAll(async () => {

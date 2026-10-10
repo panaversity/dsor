@@ -14,7 +14,7 @@ import { audit, theHead, theLog, type DecisionToRecord } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 let db: PGlite;
 
@@ -28,7 +28,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   useDatabase(overPGlite(db));
-  await resetInvoices();
+  await resetTheStory();
   await forgetTheLog("org_456");
 });
 

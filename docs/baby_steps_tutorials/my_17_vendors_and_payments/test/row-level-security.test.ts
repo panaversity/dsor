@@ -12,7 +12,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { aDatabase, asTheOwner, resetInvoices } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 
 let db: PGlite;
 
@@ -38,7 +38,7 @@ const TWO_RECORDS = `
           'decision', '{}', '{}', 'ALLOWED')`;
 
 beforeEach(async () => {
-  await resetInvoices();
+  await resetTheStory();
   await asTheOwner(async () => {
     await db.exec("DELETE FROM dsor.audit");
     await db.exec(TWO_RECORDS);

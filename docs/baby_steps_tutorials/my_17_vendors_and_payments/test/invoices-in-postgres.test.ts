@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { callOperation } from "../src/operations.ts";
-import { aDatabase, asTheOwner, resetInvoices } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const AGENT_FOR_789 = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
@@ -26,7 +26,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await resetInvoices();
+  await resetTheStory();
 });
 
 afterAll(async () => {

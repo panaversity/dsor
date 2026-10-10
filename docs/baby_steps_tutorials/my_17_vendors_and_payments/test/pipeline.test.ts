@@ -10,7 +10,7 @@ import { assertPipeline, runPipeline, applies, type Context, type Stage } from "
 import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 import { theLog } from "../src/audit.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { aDatabase, forgetTheLog, resetInvoices } from "./support/database.ts";
+import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
 function fake(
@@ -243,7 +243,7 @@ describe("the pipeline", () => {
    */
   it("DSOR-EXE-02: nothing executes without the record §21.11 wrote", async () => {
     await forgetTheLog("org_456");
-    await resetInvoices();
+    await resetTheStory();
 
     const blind = PIPELINE.map((stage) =>
       stage.name === "record the decision"
@@ -581,7 +581,7 @@ describe("the pipeline", () => {
   it("DSOR-AUT-01b: a door whose authorize does nothing passes the list check and is caught here", async () => {
     // INV-1009 is the story's only draft, and the test above issues it. Decision 59's seam is what
     // stops this test depending on the order it happens to run in.
-    await resetInvoices();
+    await resetTheStory();
 
     const hollow = PIPELINE.map((stage) =>
       stage.name === "authorize"

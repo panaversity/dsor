@@ -8,7 +8,8 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe } from "vitest";
 import { useDatabase } from "../src/audit.ts";
 import { overPool } from "../src/database.ts";
-import { applyMigrations, asRunner, migrationsIn } from "../src/migrations.ts";
+import { applyMigrations, asRunner } from "../src/migrations.ts";
+import { storyStatements } from "./support/story.ts";
 import { crossTenantSuite } from "./support/cross-tenant-suite.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
@@ -31,13 +32,9 @@ beforeAll(async () => {
 
 /** The rows as the story starts, as the owner: the application may neither add nor remove rows. */
 async function putTheStoryBack(): Promise<void> {
-  // The story's companies only, so a database that also holds somebody else's rows keeps them.
-  await owner.query("DELETE FROM public.invoices WHERE tenant_id IN ('org_456', 'org_789')");
-
-  for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
-    if (migration.name === "004_running_example.sql") {
-      await owner.query(migration.sql);
-    }
+  // NEW IN STEP 17: the invoices and the payments that pay them, from one list (story.ts).
+  for (const statement of storyStatements()) {
+    await owner.query(statement);
   }
 
   await owner.query("DELETE FROM dsor.audit WHERE tenant IN ('org_456', 'org_789')");

@@ -11,6 +11,7 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { migrationsIn } from "../../src/migrations.ts";
+import { storyStatements } from "./story.ts";
 import { APPLICATION_ROLE, overPGlite } from "../../src/database.ts";
 import { forgetTheLog as forgetTheLogAsWhoeverIsConnected } from "../../src/audit.ts";
 import { useDatabase } from "../../src/store.ts";
@@ -46,26 +47,20 @@ export async function aDatabase(): Promise<PGlite> {
 }
 
 /**
- * STEP 10: put the invoices back to how the story starts.
+ * STEP 10: put the invoices back to how the story starts. NEW IN STEP 17: and the payments
+ * that pay them, and the next payment's number, from the one list both tiers use (story.ts).
  *
  * A test seam, as the owner: the application holds neither DELETE nor INSERT on invoices, which is
- * the point. The rows come from `004_running_example.sql` — the one place the story is written —
- * rather than from a second copy of it here, so the two can never disagree.
+ * the point. The rows come from the migrations that wrote them, never from a second copy here.
  */
-export async function resetInvoices(): Promise<void> {
+export async function resetTheStory(): Promise<void> {
   // As the owner, with no company said: these rows belong to two companies, and the owner is a
   // superuser here, which no policy filters.
   await asTheOwner(async () => {
     const db = theOwner();
 
-    await db.query("DELETE FROM public.invoices");
-
-    for (const migration of migrationsIn(
-      fileURLToPath(new URL("../../migrations", import.meta.url)),
-    )) {
-      if (migration.name === "004_running_example.sql") {
-        await db.query(migration.sql);
-      }
+    for (const statement of storyStatements()) {
+      await db.exec(statement);
     }
   });
 }
