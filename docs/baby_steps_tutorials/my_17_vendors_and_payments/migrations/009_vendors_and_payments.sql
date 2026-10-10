@@ -24,11 +24,17 @@ CREATE TABLE public.vendors (
 -- It starts at 902 because PAY-901 is the running example's own draft (010).
 CREATE SEQUENCE public.payment_numbers START WITH 902;
 
+-- NEW IN STEP 17, decision 126: an invoice and its vendor, as one thing a key can point at. The
+-- primary key already makes (tenant_id, id) unique; this names the vendor beside it, so that a
+-- payment's key below can say "this invoice, with this vendor", and mean both.
+ALTER TABLE public.invoices ADD CONSTRAINT invoices_tenant_id_id_vendor_key UNIQUE (tenant_id, id, vendor);
+
 CREATE TABLE public.payments (
   tenant_id       TEXT NOT NULL,
   id              TEXT NOT NULL DEFAULT 'PAY-' || nextval('public.payment_numbers'),
   -- The invoice's own vendor, copied when the payment is made: a payment cannot name one vendor
-  -- and pay another's invoice. The two keys below make the database say so too.
+  -- and pay another's invoice. The key to the invoice below names the vendor too, so the database
+  -- refuses it whatever the program does (decision 126).
   vendor          TEXT NOT NULL,
   invoice         TEXT NOT NULL,
   -- Exact, never a float, and above zero: a payment of nothing, or of less than nothing, is a
@@ -40,9 +46,11 @@ CREATE TABLE public.payments (
   status          TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'cancelled')),
   PRIMARY KEY (tenant_id, id),
   -- With the company inside each key, a payment can only point at its own company's vendor and
-  -- invoice, whatever the program does.
+  -- invoice; and with the vendor inside the second, only at the invoice's own vendor. A review
+  -- wrote VENDOR-77 against INV-1008 through the first version, which tied each to the company
+  -- and not to each other (decision 126).
   FOREIGN KEY (tenant_id, vendor) REFERENCES public.vendors (tenant_id, id),
-  FOREIGN KEY (tenant_id, invoice) REFERENCES public.invoices (tenant_id, id)
+  FOREIGN KEY (tenant_id, invoice, vendor) REFERENCES public.invoices (tenant_id, id, vendor)
 );
 
 ALTER SEQUENCE public.payment_numbers OWNED BY public.payments.id;

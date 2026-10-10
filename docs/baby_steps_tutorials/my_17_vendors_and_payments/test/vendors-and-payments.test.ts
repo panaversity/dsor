@@ -120,6 +120,50 @@ describe("the running example's vendor and payment", () => {
 
     expect(refused).toMatch(/foreign key/);
   });
+
+  it("DSOR-TEN-01a: a payment's vendor is its invoice's vendor, whatever the program does", async () => {
+    // NEW IN STEP 17, decision 126: the keys tied the vendor and the invoice to the same company,
+    // not to each other. A review wrote PAY-902 for VENDOR-77 against INV-1008, whose vendor is
+    // VENDOR-44, as the application, and it was accepted.
+    // A vendor of its own, removed again: the story's reset puts payments and invoices back, not
+    // vendors, and the other tests here count the vendors.
+    await asTheOwner(() =>
+      db.exec("INSERT INTO public.vendors (tenant_id, id, status) VALUES ('org_456', 'VENDOR-77', 'approved')"),
+    );
+
+    try {
+      expect(
+        await attempt(
+          `INSERT INTO public.payments (tenant_id, vendor, invoice, amount_value, amount_currency)
+           VALUES ('org_456', 'VENDOR-77', 'INV-1008', 10.00, 'USD')`,
+        ),
+      ).toMatch(/foreign key/);
+    } finally {
+      await asTheOwner(async () => {
+        await db.exec("DELETE FROM public.payments WHERE vendor = 'VENDOR-77'");
+        await db.exec("DELETE FROM public.vendors WHERE id = 'VENDOR-77'");
+      });
+    }
+  });
+
+  it("DSOR-TEN-01a: an invoice names a vendor its company has", async () => {
+    // NEW IN STEP 17, decision 126: or a payment for it would fail halfway, after its ALLOW was
+    // recorded, on the payment's own key to the vendor.
+    const refused = await asTheOwner(async () => {
+      try {
+        await db.exec(
+          `INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status)
+           VALUES ('org_456', 'INV-7000', 'VENDOR-99', 10.00, 'USD', 'issued')`,
+        );
+
+        return "allowed";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    });
+
+    expect(refused).toMatch(/foreign key/);
+  });
 });
 
 describe("the second lock on the new tables", () => {

@@ -250,13 +250,19 @@ describe("the second layer: the door", () => {
     // unreadable until the column is bounded. Pinned here so the README's sentence stays true.
     const wide = "dsor://org_456/invoice/INV-00001";
 
-    await asTheOwner(() =>
-      db.query(
+    // STEP 17: an invoice names a vendor its company has (migration 012), so the wide vendor is
+    // made first, and removed after the invoice.
+    await asTheOwner(async () => {
+      await db.query(
+        `INSERT INTO public.vendors (tenant_id, id, status) VALUES ('org_456', repeat('V', $1), 'approved')`,
+        [MAX_RESULT_BYTES + 1],
+      );
+      await db.query(
         `INSERT INTO public.invoices (tenant_id, id, vendor, amount_value, amount_currency, status)
          VALUES ('org_456', 'INV-00001', repeat('V', $1), 1, 'USD', 'issued')`,
         [MAX_RESULT_BYTES + 1],
-      ),
-    );
+      );
+    });
 
     try {
       for (const [operation, args] of [
@@ -274,7 +280,10 @@ describe("the second layer: the door", () => {
         }
       }
     } finally {
-      await asTheOwner(() => db.query("DELETE FROM public.invoices WHERE id = 'INV-00001'"));
+      await asTheOwner(async () => {
+        await db.query("DELETE FROM public.invoices WHERE id = 'INV-00001'");
+        await db.query("DELETE FROM public.vendors WHERE id LIKE 'VVVV%'");
+      });
     }
   });
 });
