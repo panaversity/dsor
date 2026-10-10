@@ -1,11 +1,11 @@
 # Step 14 · Classification and masking
 
-Folder: [`my_14_classification_and_masking`](../my_14_classification_and_masking/README.md) · 506
+Folder: [`my_14_classification_and_masking`](../my_14_classification_and_masking/README.md) · 512
 tests, plus 39 in the database tier
 Spec: [§19](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) ·
 `DSOR-CLS-01`, `DSOR-CLS-02a`, `DSOR-CLS-02b`, `DSOR-CLS-03`, `DSOR-CLS-05`
-Both tiers have run: 506 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the step's
-own database `dsor_step14`, seven migrations applied, two new. Decisions [105 to 111](decisions.md).
+Both tiers have run: 512 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the step's
+own database `dsor_step14`, seven migrations applied, two new. Decisions [105 to 119](decisions.md).
 
 ## What the step is
 
@@ -190,4 +190,44 @@ with a run before anything was fixed. The learner chose to close both, each in c
 - A hostile review of the two found no new way past the filter through a row. It found two parts
   of an answer the filter never looks at, `askedBy` and a page's `next`, a gap from the step's
   first build; two guards no test pins; and sentences in the comments, the notes and the README
-  that said more than was measured. The sentences are corrected; the rest is not yet decided.
+  that said more than was measured. The sentences are corrected, and the rest is decisions 112 to
+  114, below.
+
+## After the step: the parts of an answer that are not rows (decisions 112 to 119, 2026-10-10)
+
+The door filtered every field of every row, and took the rest of the answer from the handler as it
+was. The learner chose to close that where it can be closed, to give the guards no test pinned a
+test each, and to write down what is left. Two hostile reviews ran, one after each round of fixes.
+
+- **Who asked, and a page's cursor** (decision 112). A handler that put the row in `askedBy`, or in
+  a page's `next`, sent the amount to the agent, with `amount` listed as withheld beside it. Now
+  the door writes who asked itself, on every way out. A page whose cursor is not its last row's
+  address is refused as the program's own error.
+- **Read once** (decision 116). The second review found the cursor checked on one read and copied
+  on another: a getter got the row out. And the record of a read took the rows from the handler a
+  second time: handed INV-1008, it wrote down INV-1009. Now `copyOnce` reads a handler's answer
+  once, and the check, the filter, the ceiling and the record all work from that copy.
+- **Receipts from their closed parts** (decision 117). A receipt's envelope was copied whole, with
+  two parts that take anything, and one with no data was not checked at all. Now it is built from
+  the parts its schema closes and always checked. Unlike an error, a receipt has no part that takes
+  anything, so this closes the way a row got out. Its free text is in `correlation`, the open
+  question 50 channel. A receipt that waits for an approval cannot leave until step 17 brings
+  `requires` back through the filter.
+- **Two guards no test pinned** (decision 113). The money rule is `labelOfValue` now, tested with a
+  money field labelled `internal`. Deleting the rule used to fail nothing. The door's row check is
+  tested with money, as the agent too. Asked only as the supervisor, the test stayed green with the
+  row check broken, because a second guard refuses that read anyway. Three more cases came from
+  the second review (decision 118): a cursor that only looks like the address, a cursor on an empty
+  page, and a page whose rows are not rows.
+- **Written down, not fixed.** Two checks that fail open in cases nothing here can reach (decision
+  114). And an error's envelope, which the door passes on unread: a row under `items` or
+  `extensions`, both open in the error schema, reaches the agent, and the message is free text
+  anyway, so the rule for handlers stays (decision 115).
+- **Where the hunt stopped** (decision 119). The third review found four more ways past the door,
+  and every one needs code written on purpose to trick it: a list that lies about its own methods,
+  a part that changes its answer between reads, a hidden function in a receipt, a function dressed
+  as a row. Code like that could write the amount as text into a field anyway, which no filter can
+  see. So the door is built against careless handlers, and the four are written down. The reviews
+  had been told to assume the handler was trying to get the amount out, a stronger threat than
+  this step is about, and that is why each round found more.
+- Six new tests: 512.
