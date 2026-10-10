@@ -178,6 +178,9 @@ const REQUIRED: readonly string[] = Object.freeze([
   "resolve the delegation",
   "authorize",
   "validate the input",
+  // NEW IN STEP 18: required too, because without it a payment above the slip's limit goes
+  // through with nothing to say it was ever checked.
+  "check the slip's limit",
   // STEP 08. Last of the five, and that position is the requirement: DSOR-EXE-02 says the
   // decision is recorded *before the response is returned*, so nothing that produces a response may
   // sit between the checks and this line.

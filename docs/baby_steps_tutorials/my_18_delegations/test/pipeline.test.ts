@@ -57,6 +57,8 @@ describe("the pipeline", () => {
       "resolve the delegation",
       "authorize",
       "validate the input",
+      // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
+      "check the slip's limit",
       "record the decision",
     ]);
   });
@@ -65,7 +67,7 @@ describe("the pipeline", () => {
   // roadmap: 1 to 5 is missing the tenant, the delegation and the operational status; after 6 come
   // the idempotency claim, the proposal, the preconditions and the controls.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 11]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -89,9 +91,12 @@ describe("the pipeline", () => {
     expect(applies(only, "command")).toBe(true);
   });
 
-  it("DSOR-EXE-01b: every stage in the real list applies to both kinds, for now", () => {
+  it("DSOR-EXE-01b: every stage in the real list applies to both kinds, but the slip's limit", () => {
+    // STEP 18: the first command-only stage. A query carries no payment to compare with a limit.
     for (const stage of PIPELINE) {
-      expect(applies(stage, "query"), stage.name).toBe(true);
+      const commandOnly = stage.name === "check the slip's limit";
+
+      expect(applies(stage, "query"), stage.name).toBe(!commandOnly);
       expect(applies(stage, "command"), stage.name).toBe(true);
     }
   });
@@ -121,11 +126,12 @@ describe("the pipeline", () => {
       fake(3, "resolve the delegation"), // STEP 18
       fake(5, "authorize"),
       fake(6, "validate the input"),
+      fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(7);
+    expect(assertPipeline(whole)).toBe(8);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -487,6 +493,7 @@ describe("the pipeline", () => {
       fake(3, "resolve the delegation"), // STEP 18: required, so present
       fake(5, "authorize"),
       fake(6, "validate the input"),
+      fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
 
@@ -501,10 +508,11 @@ describe("the pipeline", () => {
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
+      fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(8);
+    expect(assertPipeline(inOrder)).toBe(9);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -562,7 +570,14 @@ describe("the pipeline", () => {
       //
       // STEP 18: and `resolve the delegation`, for these two callers: it fills something only for an
       // agent's command, and these are people reading. Its own test is below.
-      const fillsNothing = new Set(["authorize", "record the decision", "resolve the delegation"]);
+      //
+      // And `check the slip's limit`, which only refuses, and only commands.
+      const fillsNothing = new Set([
+        "authorize",
+        "record the decision",
+        "resolve the delegation",
+        "check the slip's limit",
+      ]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
       for (const lazied of fillers) {
@@ -781,9 +796,9 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    // STEP 10: six stages now, so 720 orderings. STEP 18: seven, so 5040. Still exactly one is
-    // accepted: the delegation stage is required after the operation is resolved.
-    expect(all).toHaveLength(5040);
+    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. Still exactly one is
+    // accepted: the delegation stage is required after the operation, and the limit after the input.
+    expect(all).toHaveLength(40320);
 
     const accepted = all.filter((list) => {
       try {

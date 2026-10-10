@@ -144,6 +144,17 @@ export async function cancelPayment(tenantId: string, id: string): Promise<Cance
  * would become 31400.01. And at most sixteen digits before the point, all NUMERIC(18, 2) holds,
  * so that a seventeenth is refused here and not halfway through a statement.
  */
+/**
+ * NEW IN STEP 18: an amount in cents, exactly, for comparing two amounts in one currency. A BigInt,
+ * never a `number`: "50000.01" must compare as above "50000.00" whatever the digits. For an amount
+ * with at most two decimals, which is every amount a payment or a limit may hold.
+ */
+export function centsOf(amount: Money): bigint {
+  const [whole = "0", fraction = ""] = amount.value.split(".");
+
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
+}
+
 export function paymentAmountFrom(given: unknown): Money | string {
   if (given === null || typeof given !== "object" || Array.isArray(given)) {
     return "a payment needs an amount: an object with a value and a currency";

@@ -60,7 +60,7 @@ import type { Classification } from "./classification.ts";
 // STEP 15: how old an answer's data is, and the door's check that a read says so.
 import { cannotBeLabelled, type Freshness } from "./freshness.ts";
 import { parseUri } from "./uri.ts";
-import { cancelPayment, createPayment, paymentAmountFrom } from "./payment.ts";
+import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./payment.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
 import { audit, OutcomeUnknown } from "./audit.ts";
@@ -909,6 +909,53 @@ const validateTheInput: Stage["run"] = (context) => {
 };
 
 /**
+ * NEW IN STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
+ *
+ * After the input is validated, because the amount is the validated copy's: the one the payload hash
+ * describes. Only under a slip with a limit, and only for a request that carries an amount; one that
+ * is malformed is the handler's to refuse. An amount in another currency than the limit cannot be
+ * compared with it, and a comparison that cannot convert resolves restrictively (DSOR-MON-04): refused.
+ * The rest of §21.10, controls and limits over time, is steps 24 and 27's.
+ */
+const checkTheSlipsLimit: Stage["run"] = (context) => {
+  const slip = context.delegation;
+  const limit = slip?.perTransactionLimit;
+  const given = context.given;
+
+  if (slip === undefined || limit === undefined || given === undefined || !Object.hasOwn(given, "amount")) {
+    return carryOn(context);
+  }
+
+  const amount = paymentAmountFrom(given["amount"]);
+
+  if (typeof amount === "string") {
+    return carryOn(context);
+  }
+
+  const askedBy = context.principal?.id ?? "(nobody)";
+
+  if (amount.currency !== limit.currency) {
+    return refuse(
+      askedBy,
+      "AUTHORIZATION_DENIED",
+      `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment, so it is refused`,
+      context.requestId,
+    );
+  }
+
+  if (centsOf(amount) > centsOf(limit)) {
+    return refuse(
+      askedBy,
+      "AUTHORIZATION_DENIED",
+      `${amount.value} ${amount.currency} is above ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment`,
+      context.requestId,
+    );
+  }
+
+  return carryOn(context);
+};
+
+/**
  * §21.11 — record the decision. Always, including a DENY.
  *
  * This is the step. Everything above decides; this writes down what was decided, and it runs before
@@ -1129,6 +1176,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
+  // NEW IN STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
+  stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
   alsoAfterARefusal(11, "record the decision", "both", recordTheDecision),
 ]);

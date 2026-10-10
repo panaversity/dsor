@@ -250,3 +250,25 @@ describe("a slip lends only what its signer holds in its own company", () => {
     expect(refusalOf(answer).code).toBe("AUTHORIZATION_DENIED");
   });
 });
+
+describe("up to a limit", () => {
+  it("DSOR-DEL-02: 50,000.00 USD is within del_100's limit, and 50,000.01 is not", async () => {
+    expect((await create(AGENT, { value: "50000.00", currency: "USD" })).kind).toBe("result");
+
+    const refusal = refusalOf(await create(AGENT, { value: "50000.01", currency: "USD" }));
+
+    expect(refusal.code).toBe("AUTHORIZATION_DENIED");
+    expect(refusal.message).toMatch(/50000\.00 USD/);
+  });
+
+  it("DSOR-DEL-02: an amount in another currency cannot be compared with the limit, so it is refused", async () => {
+    // DSOR-MON-04's rule for a comparison that cannot convert: restrictively.
+    expect(refusalOf(await create(AGENT, { value: "10.00", currency: "EUR" })).code).toBe(
+      "AUTHORIZATION_DENIED",
+    );
+  });
+
+  it("the limit is the slip's, not the person's: user_123 may make a payment above it", async () => {
+    expect((await create(SUPERVISOR, { value: "75000.00", currency: "USD" })).kind).toBe("result");
+  });
+});
