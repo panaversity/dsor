@@ -317,7 +317,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-EXE-05a: the demo lists what each command's contract says about undoing it", () => {
-    // NEW IN STEP 17: read from the contracts, so a contract that changes changes this.
+    // STEP 17: read from the contracts, so a contract that changes changes this.
     const out = demo().raw;
 
     expect(out).toContain(
@@ -330,7 +330,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-EXE-05b: the demo's receipts say whether each can be undone, and a mistake is taken back once", () => {
-    // NEW IN STEP 17: the agent's second payment for INV-1008, which already has PAY-901. Its
+    // STEP 17: the agent's second payment for INV-1008, which already has PAY-901. Its
     // receipt says compensatable, and withholds the amount; the cancel's says atomic; a second
     // cancel is refused.
     const out = demo().raw;
@@ -347,7 +347,7 @@ describe("the program a learner runs", () => {
 
   it("the demo ends with PAY-901 a draft for 31,400.00 USD, and the mistake cancelled", () => {
     // No rule id: it reads the demo's report, which proves nothing a rule asks (decision 126).
-    // NEW IN STEP 17: the step's "done when", as the database holds it after the receipts.
+    // STEP 17: the step's "done when", as the database holds it after the receipts.
     const out = demo().raw;
 
     expect(out).toContain(

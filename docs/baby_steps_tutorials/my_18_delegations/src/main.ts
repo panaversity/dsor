@@ -51,7 +51,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     // STEP 17: an invoice's receipt or a payment's: an address and a status either way.
     const row = r.data as { uri: string; status: string };
 
-    // NEW IN STEP 17: and whether its effect can be undone, which every receipt says now.
+    // STEP 17: and whether its effect can be undone, which every receipt says now.
     return `${who} ${r.outcome.padEnd(24)} ${row.uri}  ${row.status.padEnd(9)}  ${r.semantics}${withheld(r.redactions)}`;
   }
 
@@ -262,7 +262,7 @@ console.log(
   `${`limit ${million.limit.toLocaleString("en-US")}`.padEnd(23)} ${show(await callOperation(SUPERVISOR, "invoice.list", million))}`,
 );
 
-// NEW IN STEP 17, and this is the step. Every command says, in its contract and on every receipt,
+// STEP 17, and this is the step. Every command says, in its contract and on every receipt,
 // whether its effect can be undone. A payment is made as a draft, and a draft can be taken back:
 // payment.create names payment.cancel as what undoes it. The agent makes a second payment for
 // INV-1008 by mistake, though INV-1008 has PAY-901 already, and takes it back. Step 20 stops the

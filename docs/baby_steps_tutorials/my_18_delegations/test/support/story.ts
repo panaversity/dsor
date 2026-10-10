@@ -1,4 +1,4 @@
-// NEW IN STEP 17: the statements that put the story's rows back, in one place for both tiers.
+// STEP 17: the statements that put the story's rows back, in one place for both tiers.
 //
 // Three places did this for the invoices alone, each deleting them and running 004 again. Since
 // step 17 a payment points at its invoice, so the payments must go first and come back after, and

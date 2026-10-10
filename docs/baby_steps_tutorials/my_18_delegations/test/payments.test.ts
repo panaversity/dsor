@@ -1,4 +1,4 @@
-// NEW IN STEP 17: the first command whose effect can be undone, and the operation that undoes it.
+// STEP 17: the first command whose effect can be undone, and the operation that undoes it.
 //
 // `payment.create` makes a draft payment for one of the company's invoices, to that invoice's own
 // vendor. `payment.cancel` takes a draft back. And every command now says, in its contract and on
@@ -175,7 +175,7 @@ describe("payment.create", () => {
   });
 
   it("a payment in another currency than its invoice is refused before anything is written", async () => {
-    // NEW IN STEP 17, decision 126: a USD invoice was paid in EUR, and in ZZZ, which is no currency.
+    // STEP 17, decision 126: a USD invoice was paid in EUR, and in ZZZ, which is no currency.
     // Converting between currencies is step 26's; until then a payment is in its invoice's.
     for (const currency of ["EUR", "ZZZ"]) {
       const refusal = refusalOf(
@@ -193,7 +193,7 @@ describe("payment.create", () => {
   });
 
   it("the handler reads what the payload hash describes, not the caller's object again", async () => {
-    // NEW IN STEP 17, decision 126: the arguments were copied one level deep, and the hash was taken
+    // STEP 17, decision 126: the arguments were copied one level deep, and the hash was taken
     // from that copy's text, but a nested amount was read again from the caller's own object. A
     // value that answers differently the second time hashed 31400.00 and paid 1.00, a review measured.
     let reads = 0;
@@ -335,7 +335,7 @@ describe("the door says the semantics, from the contract", () => {
     expect(receipt.semantics).toBe("compensatable");
   });
   it("DSOR-EXE-05b: a command that answers like a query is refused, not let out without its semantics", async () => {
-    // NEW IN STEP 17, decision 126: a handler that began as a copy of invoice.get made the payment
+    // STEP 17, decision 126: a handler that began as a copy of invoice.get made the payment
     // and answered with a row, which carries no semantics anywhere, and the door let it out.
     const careless: Handler = async (_args, _contract, askedBy, tenant) => {
       const made = await createPayment(tenant, "INV-1008", AMOUNT);
@@ -392,7 +392,7 @@ describe("what undoes an operation is an operation the program has", () => {
   });
 
   it("DSOR-EXE-05c: an operation is not its own undo, and names each undo once", () => {
-    // NEW IN STEP 17, decision 126: a careless contract that named payment.create where it meant
+    // STEP 17, decision 126: a careless contract that named payment.create where it meant
     // payment.cancel promised an undo that makes a second payment.
     expect(() =>
       loadRegistry(

@@ -1,4 +1,4 @@
-// NEW IN STEP 17: two more record types, the vendors a company pays and the payments it makes.
+// STEP 17: two more record types, the vendors a company pays and the payments it makes.
 //
 // They are the business's records, beside the invoices, under the same two locks: every key starts
 // with the company, and the second lock hides another company's rows from a statement that forgot
@@ -122,7 +122,7 @@ describe("the running example's vendor and payment", () => {
   });
 
   it("DSOR-TEN-01a: a payment's vendor is its invoice's vendor, whatever the program does", async () => {
-    // NEW IN STEP 17, decision 126: the keys tied the vendor and the invoice to the same company,
+    // STEP 17, decision 126: the keys tied the vendor and the invoice to the same company,
     // not to each other. A review wrote PAY-902 for VENDOR-77 against INV-1008, whose vendor is
     // VENDOR-44, as the application, and it was accepted.
     // A vendor of its own, removed again: the story's reset puts payments and invoices back, not
@@ -147,7 +147,7 @@ describe("the running example's vendor and payment", () => {
   });
 
   it("DSOR-TEN-01a: an invoice names a vendor its company has", async () => {
-    // NEW IN STEP 17, decision 126: or a payment for it would fail halfway, after its ALLOW was
+    // STEP 17, decision 126: or a payment for it would fail halfway, after its ALLOW was
     // recorded, on the payment's own key to the vendor.
     const refused = await asTheOwner(async () => {
       try {

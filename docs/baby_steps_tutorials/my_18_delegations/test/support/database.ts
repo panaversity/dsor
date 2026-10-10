@@ -47,7 +47,7 @@ export async function aDatabase(): Promise<PGlite> {
 }
 
 /**
- * STEP 10: put the invoices back to how the story starts. NEW IN STEP 17: and the payments
+ * STEP 10: put the invoices back to how the story starts. STEP 17: and the payments
  * that pay them, and the next payment's number, from the one list both tiers use (story.ts).
  *
  * A test seam, as the owner: the application holds neither DELETE nor INSERT on invoices, which is

@@ -35,7 +35,7 @@ export interface OperationContract {
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
   /**
-   * NEW IN STEP 17: `compensated_by`, the operations that undo this one. The schema requires it of
+   * STEP 17: `compensated_by`, the operations that undo this one. The schema requires it of
    * a compensatable or saga command, and the registry checks each one is a command it has.
    */
   readonly execution?: { readonly semantics: string; readonly compensated_by?: readonly string[] };
@@ -200,7 +200,7 @@ export function loadRegistry(
     registry.set(contract.id, contract);
   }
 
-  // NEW IN STEP 17: what undoes an operation is an operation this program has, and a command. A
+  // STEP 17: what undoes an operation is an operation this program has, and a command. A
   // contract that names a compensation nothing can run promises an undo nobody can carry out, and
   // the program stops here, before a caller relies on it (DSOR-EXE-05c, decision 125).
   for (const contract of registry.values()) {
@@ -245,7 +245,7 @@ export function loadRegistry(
 }
 
 /**
- * NEW IN STEP 17: a command's execution semantics, as its contract declares them.
+ * STEP 17: a command's execution semantics, as its contract declares them.
  *
  * No default. `?? "atomic"` stood here, in each handler, until step 17: a guess for a contract that
  * says nothing, which DSOR-OPR-02b forbids. The schema requires the semantics of every command, so
@@ -266,7 +266,7 @@ export function contractsFromDisk(): readonly ContractDocument[] {
   // Named one by one rather than by listing the folder, so that adding a contract is a
   // visible edit here. A step that scanned a directory could pick up a stray file.
   //
-  // NEW IN STEP 17: payment.cancel and payment.create (decision 125).
+  // STEP 17: payment.cancel and payment.create (decision 125).
   return ["invoice.get", "invoice.issue", "invoice.list", "payment.cancel", "payment.create"].map(
     (id) => ({
       where: `src/contracts/${id}.json`,

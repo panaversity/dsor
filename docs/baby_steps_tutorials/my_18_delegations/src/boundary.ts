@@ -339,7 +339,7 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
 }
 
 /**
- * NEW IN STEP 17: a command's receipt, saying the execution semantics its contract declares.
+ * STEP 17: a command's receipt, saying the execution semantics its contract declares.
  *
  * Written by the door, from the contract, on every receipt, whatever the handler wrote. The
  * semantics are the contract's promise about whether an effect can be undone, and a careless
@@ -442,7 +442,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // label and no list, and is built and checked like any other: a review made the door throw on
   // it, after the command had run, and another found it leaving unchecked. A PENDING_APPROVAL one
   // cannot leave yet: its schema requires `requires`, which is left out above, so the check below
-  // refuses it. Step 27 brings `requires` back through the filter. NEW IN STEP 17: this said step
+  // refuses it. Step 27 brings `requires` back through the filter. STEP 17: this said step
   // 17, which holds no command for approval; the map's step 27 is the first (decision 125).
   const closed = closedPartsOf(answer.envelope);
   const data: unknown = answer.envelope.data;

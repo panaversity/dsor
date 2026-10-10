@@ -42,7 +42,7 @@ beforeAll(async () => {
 
 /** The rows as the story starts, and an empty log, as the owner. */
 async function putTheStoryBack(): Promise<void> {
-  // NEW IN STEP 17: the invoices and the payments that pay them, from one list (story.ts).
+  // STEP 17: the invoices and the payments that pay them, from one list (story.ts).
   for (const statement of storyStatements()) {
     await owner.query(statement);
   }

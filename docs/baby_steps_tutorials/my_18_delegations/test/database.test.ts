@@ -283,7 +283,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // NEW IN STEP 17: four of them now.
+    // STEP 17: four of them now.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
@@ -395,7 +395,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-TEN-01a: an application that may add invoices column by column is refused too", async () => {
-    // NEW IN STEP 17: `has_table_privilege(…, 'INSERT')` is false for a grant that names columns,
+    // STEP 17: `has_table_privilege(…, 'INSERT')` is false for a grant that names columns,
     // so a grant of every column passed the check above. Found writing the same check for payments.
     const db = await aDatabase();
 
@@ -411,7 +411,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-TEN-01a: an application that may change vendors, or more of a payment than its status, is refused at start-up", async () => {
-    // NEW IN STEP 17: the same question, asked of the two new tables (decision 125). The
+    // STEP 17: the same question, asked of the two new tables (decision 125). The
     // application reads the vendors, makes a draft payment and changes a payment's status.
     for (const grant of [
       "GRANT INSERT (tenant_id, id, status) ON public.vendors TO dsor_runtime",
@@ -444,7 +444,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-TEN-01a: an application that may choose a payment's number is refused at start-up", async () => {
-    // NEW IN STEP 17, decision 126: UPDATE on the sequence lets `setval` pick the next payment's
+    // STEP 17, decision 126: UPDATE on the sequence lets `setval` pick the next payment's
     // number; a review set it to 4999 and the next payment was PAY-5000, with start-up content.
     const db = await aDatabase();
 
@@ -458,7 +458,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-TEN-01a: rights on the business's tables one SET ROLE away are refused too", async () => {
-    // NEW IN STEP 17, decision 126: the log's rights have been asked of every role the application
+    // STEP 17, decision 126: the log's rights have been asked of every role the application
     // can become since step 09; the invoices', the vendors' and the payments' were asked of the
     // application alone, and a review passed start-up with DELETE on the payments one SET ROLE away.
     for (const [grant, words] of [
@@ -488,7 +488,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // NEW IN STEP 17: four of them now.
+    // STEP 17: four of them now.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");

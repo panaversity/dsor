@@ -51,13 +51,13 @@ export const NOBODYS = "org_000";
 
 /**
  * What org_789 alone holds, from 004_running_example.sql: a success answer must carry none of it.
- * NEW IN STEP 17: and its PAY-901's amount, from 010_payments_running_example.sql.
+ * STEP 17: and its PAY-901's amount, from 010_payments_running_example.sql.
  */
 export const CANARIES: readonly string[] = ["18000.00", "9100.00", "4200.00", "INV-2001", "7700.00"];
 
 /**
  * One row of a company's, as the owner reads it: enough to see whether it moved, and what state it
- * is in. NEW IN STEP 17: an invoice or a payment, so each row says which.
+ * is in. STEP 17: an invoice or a payment, so each row says which.
  */
 export interface Row {
   readonly entity: string;
@@ -66,7 +66,7 @@ export interface Row {
 }
 
 /**
- * NEW IN STEP 17: the one query both tiers' `rowsOf` runs, as the owner: every invoice and payment
+ * STEP 17: the one query both tiers' `rowsOf` runs, as the owner: every invoice and payment
  * of one company, each with what a careless command could change about it.
  */
 export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS invoice,

@@ -1,4 +1,4 @@
-// NEW IN STEP 17: payments, the first record a command makes instead of changing.
+// STEP 17: payments, the first record a command makes instead of changing.
 //
 // A payment pays one invoice, for an amount, to that invoice's own vendor. `payment.create` makes
 // it as a draft and `payment.cancel` takes it back, which is what makes `payment.create`
@@ -55,7 +55,7 @@ function fromRow(row: Row): Payment {
 export type CreateOutcome =
   | { readonly kind: "created"; readonly payment: Payment }
   | { readonly kind: "no_invoice" }
-  /** NEW IN STEP 17, decision 126: the invoice is in another currency, which is `currency`. */
+  /** STEP 17, decision 126: the invoice is in another currency, which is `currency`. */
   | { readonly kind: "wrong_currency"; readonly currency: string };
 
 /**
@@ -65,7 +65,7 @@ export type CreateOutcome =
  * between reading the invoice and writing the payment for anything to change. The number and the
  * status are the database's: a sequence gives the next number, and a new payment is a draft.
  *
- * NEW IN STEP 17, decision 126: and only in the invoice's currency. A USD invoice was paid in EUR,
+ * STEP 17, decision 126: and only in the invoice's currency. A USD invoice was paid in EUR,
  * and in ZZZ, which is no currency; converting is step 26's.
  */
 export async function createPayment(

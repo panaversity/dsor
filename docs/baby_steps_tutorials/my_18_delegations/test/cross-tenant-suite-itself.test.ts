@@ -247,7 +247,7 @@ describe("each question, honest and lied to", () => {
   });
 
   it("somethingToTouch: a payment's number is looked for among the payments", async () => {
-    // NEW IN STEP 17: an invoice INV-1008 is not a payment, and the other company must hold the
+    // STEP 17: an invoice INV-1008 is not a payment, and the other company must hold the
     // payment the example names.
     const cancel = caseFor("payment.cancel", registry.get("payment.cancel")!, {
       payment: "dsor://org_456/payment/PAY-901",

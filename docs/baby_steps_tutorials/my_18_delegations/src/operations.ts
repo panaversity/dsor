@@ -143,7 +143,7 @@ const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : 
  * Reads one argument as a canonical address of one entity, and returns the id, or the refusal that
  * stopped it.
  *
- * NEW IN STEP 17: the handler names the argument and the entity it needs. Until step 16 every address
+ * STEP 17: the handler names the argument and the entity it needs. Until step 16 every address
  * an operation took was its own kind, an invoice for `invoice.*`, so the entity was read from the
  * operation's name. `payment.create` takes an invoice's address, and that guess would refuse it
  * (decision 125).
@@ -280,7 +280,7 @@ const handlers: Readonly<Record<string, Handler>> = {
   },
 
   "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {
-    // NEW IN STEP 17: read before anything changes, so a contract without one stops the command
+    // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
     const semantics = semanticsOf(contract);
 
@@ -334,9 +334,9 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // NEW IN STEP 17: a draft payment for one of the company's invoices, to its vendor (decision 125).
+  // STEP 17: a draft payment for one of the company's invoices, to its vendor (decision 125).
   "payment.create": async (args, contract, askedBy, tenant, hash, requestId) => {
-    // NEW IN STEP 17: read before anything changes, so a contract without one stops the command
+    // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
     const semantics = semanticsOf(contract);
 
@@ -372,7 +372,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       };
     }
 
-    // NEW IN STEP 17, decision 126: the caller's to fix, so never retryable.
+    // STEP 17, decision 126: the caller's to fix, so never retryable.
     if (outcome.kind === "wrong_currency") {
       return {
         kind: "error",
@@ -400,10 +400,10 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // NEW IN STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
+  // STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
   // own permission, its own decision in the log (DSOR-EXE-05c).
   "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId) => {
-    // NEW IN STEP 17: read before anything changes, so a contract without one stops the command
+    // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
     const semantics = semanticsOf(contract);
 
@@ -682,10 +682,10 @@ const authorize: Stage["run"] = (context) => {
  * Only partly, and the README says so. What is here is the copy-once and the can-it-be-written-down
  * check from step 04. Canonical JSON, where key order is settled, is step 29.
  */
-/** NEW IN STEP 17: an argument JSON would write as something else, named. */
+/** STEP 17: an argument JSON would write as something else, named. */
 class NotWritable extends Error {}
 
-/** NEW IN STEP 17: a value and everything inside it, frozen. Plain data, which JSON.parse makes. */
+/** STEP 17: a value and everything inside it, frozen. Plain data, which JSON.parse makes. */
 function frozenAllTheWay<T>(value: T): T {
   if (value !== null && typeof value === "object") {
     for (const inner of Object.values(value)) {
@@ -705,7 +705,7 @@ const validateTheInput: Stage["run"] = (context) => {
     // Written down **once**, and the text is kept. Nothing below reads the caller's object again:
     // a second read can answer differently, and it used to.
     //
-    // NEW IN STEP 17: and refused where the text would not be faithful. JSON writes NaN and Infinity
+    // STEP 17: and refused where the text would not be faithful. JSON writes NaN and Infinity
     // as null, so a request for NaN used to be hashed as a request for null; with the copy below made
     // from the text, the handler would read null too. A number JSON cannot write is refused here, by
     // name, which is what step 13 asked of a refusal (decision 126).
@@ -717,7 +717,7 @@ const validateTheInput: Stage["run"] = (context) => {
       return value;
     });
 
-    // NEW IN STEP 17: and everything below, the handler included, reads a copy made from that text,
+    // STEP 17: and everything below, the handler included, reads a copy made from that text,
     // every level of it. The copy was one level deep, and a nested `amount` was read again from the
     // caller's own object: a value that answered differently the second time hashed 31400.00 and
     // paid 1.00, a review measured (decision 126). What is checked and run is what the hash describes.
@@ -1339,7 +1339,7 @@ export function makeDoor(
       });
     }
 
-    // NEW IN STEP 17: and a command answers with a receipt, which is where its semantics go. A
+    // STEP 17: and a command answers with a receipt, which is where its semantics go. A
     // handler that began as a copy of invoice.get made the payment and answered with a row, which
     // carries no semantics anywhere, and the door let it out (decision 126). The door's own error,
     // as for a query that answers with a receipt above.
@@ -1361,7 +1361,7 @@ export function makeDoor(
     // carries its label. For any handler, including the careless one written next year: the door
     // is the one way out, which is why the filter is here and not in invoice.ts.
     //
-    // NEW IN STEP 17: and a command's receipt says the semantics its contract declares, written
+    // STEP 17: and a command's receipt says the semantics its contract declares, written
     // here, from the contract, whatever the handler wrote (DSOR-EXE-05b, decision 125). A query has
     // none, and a query that answered with a receipt was refused above.
     const semantics = contract.execution?.semantics;

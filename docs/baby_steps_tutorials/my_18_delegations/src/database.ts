@@ -106,7 +106,7 @@ export const APPLICATION_ROLE = "dsor_runtime";
 const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 
 /**
- * NEW IN STEP 17: the tenant tables, each with the column that names its company, in one place.
+ * STEP 17: the tenant tables, each with the column that names its company, in one place.
  *
  * Every question below about "the tenant tables" is asked of this list. It was two names written
  * out in seven places, and step 17 adds two tables: one list is what keeps a new table from being
@@ -123,7 +123,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
 const TENANT_REGCLASSES = TENANT_TABLES.map(([table]) => `to_regclass('${table}')`).join(", ");
 
 /**
- * NEW IN STEP 17: a question asked of every role this connection is, or can become with SET ROLE.
+ * STEP 17: a question asked of every role this connection is, or can become with SET ROLE.
  * `pg_has_role(…, 'MEMBER')` sees a membership whether or not it is inherited, and a role is a
  * member of itself, so the connection's own rights are asked too (decision 126).
  */
@@ -358,7 +358,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                                         WHERE d.datname = current_database()), 'MEMBER')
               AS owns_database,
             -- STEP 16: the schema each tenant table is in, and who owns it (decision 123).
-            -- NEW IN STEP 17: DISTINCT, because public now holds three of the tenant tables, and
+            -- STEP 17: DISTINCT, because public now holds three of the tenant tables, and
             -- without it the refusal named the schema three times, measured.
             (SELECT string_agg(DISTINCT ns.nspname, ', ' ORDER BY ns.nspname)
                FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
@@ -492,7 +492,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 17: the rights on the business's tables, asked last. Asked of every role the
+  // STEP 17: the rights on the business's tables, asked last. Asked of every role the
   // connection can be, they would refuse an owner one SET ROLE away as "may delete", which is
   // true and not the reason; the ownership questions above name the reason (decision 126).
   //
@@ -501,14 +501,14 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // add nor remove rows. An administrator who grants more has made the same kind of mistake as
   // pointing DSOR_DB_URL at the owner, and a critic's next attack was exactly that grant.
   //
-  // NEW IN STEP 17: asked of every role this connection can be, itself and one SET ROLE away, as
+  // STEP 17: asked of every role this connection can be, itself and one SET ROLE away, as
   // the log's rights have been since step 09. A review passed start-up with DELETE on the payments
   // held by a role the application could become (decision 126); the invoices had the same gap.
   const { rows: invoices } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanBe(
       (role) => `has_column_privilege(${role}, 'public.invoices', 'tenant_id', 'UPDATE')
          OR has_column_privilege(${role}, 'public.invoices', 'id', 'UPDATE')
-         -- NEW IN STEP 17: any column, not the table. A grant that names columns is invisible to
+         -- STEP 17: any column, not the table. A grant that names columns is invisible to
          -- has_table_privilege, so a grant of every column passed this check, measured.
          OR has_any_column_privilege(${role}, 'public.invoices', 'INSERT')
          OR has_table_privilege(${role}, 'public.invoices', 'DELETE')
@@ -524,7 +524,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 17: the vendors and the payments, in the same spirit (decision 125). The
+  // STEP 17: the vendors and the payments, in the same spirit (decision 125). The
   // application reads the vendors and changes nothing about them. It makes a draft payment and
   // changes a payment's status, and nothing else: not its company or number, which are its identity
   // (DSOR-TEN-01a), not whom it pays, for which invoice or how much, and it neither chooses a new
