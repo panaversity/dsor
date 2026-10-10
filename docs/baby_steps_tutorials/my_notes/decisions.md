@@ -2855,3 +2855,27 @@ those runs measured the machine and not the code (lesson 11: the total and the s
 tell). Run again one at a time on a quiet machine, the five gave 17, 2, 2, 185 and 65, the
 README's numbers.
 
+## 110 · Money keeps its field's label only in a field declared to hold money (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the gap was shown in plain words,
+with the agent's answer drawn both ways.
+**What:** a money value, `{ value, currency }`, is one value, described whole by its field's label,
+only in a field the table declares as money: today `invoice.amount`. Anywhere else it is a value
+with parts inside, and so confidential (decision 107): withheld from an agent, and listed.
+`classification.ts` keeps the list beside the labels, and `holdsMoney` asks it.
+**Why:** decision 107's exception was given by the value's shape, not by its field. Measured on
+2026-10-09: a handler that returned `vendor: { value: "31400.00", currency: "USD" }` sent the amount
+to the agent, labelled `internal`, with nothing in the list of what was withheld. The
+specification's entity schema gives every field a type as well as a label (§6, `DSOR-ENT-01b`):
+`amount: { type: money, classification: confidential }`. A field's declared type decides, not a
+value's shape.
+**Cost:** a second list beside the labels, and the two must agree. When they disagree, the stricter
+answer wins: money in a field not on the list is confidential. One new test, and the README's
+fifteen breaks measured again. Break 13 was measured first, and most of it was another guard:
+`isPlain` was also the door's "is this a row?" check, so 62 of its 65 failures were the door
+refusing every answer as not a row. The two jobs are two functions now, and Break 13 measures the
+label alone.
+**Rejected:** saying it plainly in the README and leaving the code. Cheap, and a handler's mistake
+stays a leak. An amount written as text in `vendor` still leaves either way, because a label
+describes a field and not the value in it (open question 50).
+
