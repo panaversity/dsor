@@ -1,0 +1,17 @@
+{
+  "id": "invoice.list",
+  "version": 1,
+  "kind": "query",
+  "effect": "read",
+  "input": { "schema": "InvoiceListRequest" },
+  "output": { "schema": "InvoicePage" },
+  "authorization": { "permission": "invoice:read" },
+  "tenancy": { "required": true },
+  "risk": { "level": "low" },
+  "audit": { "level": "standard" },
+  "extensions": {
+    "com.panaversity.tutorial": {
+      "example_request": { "after": "dsor://org_456/invoice/INV-1008", "limit": 2 }
+    }
+  }
+}

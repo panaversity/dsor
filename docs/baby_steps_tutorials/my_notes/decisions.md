@@ -3399,3 +3399,41 @@ a fresh read labelled `observational` fails 4, because one stand-in counts on `r
 "copied from" as a marker for a pattern copied from a schema. The comment is reworded, folded into
 the commit that wrote it, and the guard ran after each commit that followed.
 
+## 122 · Step 16's three decisions, taken by the learner before any code (2026-10-10)
+
+The problem was shown first, on step 15 as copied. `DSOR-MOD-01` asks DSoR to own its paperwork,
+durably, in a store of its own, and two things in step 15 fall short. DSoR's only paperwork in the
+database, the log, is `public.audit`, filed beside the business's `public.invoices` in the schema
+the business's own tools treat as theirs: an accounting upgrade that resets its tables, or a
+cleanup that empties `public`, takes the evidence with it. And what DSoR keeps only in memory is
+forgotten at every restart: run twice, the program named Monday's receipt and Tuesday's receipt
+both `dsor://org_456/proposal/prop_0001`, two actions with one address. The map's answer is a
+second schema, `dsor`, in the same database, so that in step 36 a business change and DSoR's
+record of it can be saved together. Three questions, one at a time, in plain words; the learner
+took all three recommendations.
+
+1. **The log only moves now.** It is the only paperwork in the database today. Every other kind,
+   permission slips, approvals, counters and locks, arrives in `dsor` with the step that builds it.
+   Rejected: a proposal counter in `dsor` as well, so that a restart never reuses a number. It is a
+   second piece in this step, and building a receipt would become a database call in every
+   command. So proposal numbers keep restarting at `prop_0001` until step 22, and the comment in
+   `envelopes.ts` that promised them for step 16 is corrected.
+2. **The table moves as it is.** One new migration moves `public.audit` into `dsor`: every record,
+   the hash chain, the grants and the row-level security go with it, and nothing is copied. A
+   record's hash covers its own fields and not the table's name (`hashOf` in `audit.ts`), so the
+   move cannot break the chain. Migrations 001 to 007 still say `public.audit`, because an applied
+   migration is never edited. Rejected: a new, empty log in `dsor` beside the old one, which would
+   leave two logs, the chain broken in two, and the old evidence still among the business's
+   tables.
+3. **The two-logs gap stays, and its comment is corrected.** A refusal written into both companies'
+   logs, before DSoR knows which company a request is for, is two writes, not one: if the second
+   fails after the first, one log holds it and the other does not. The program already tells the
+   caller exactly which logs got the record. Making both writes one transaction needs one
+   connection held across them, which the database layer does not offer. Rejected: building that
+   transaction now, a second idea in this step. The comment in `operations.ts` that said "step
+   16's" now says it waits for the step that builds transactions, which the map first needs in
+   step 36.
+
+The step's database is `dsor_step16` on Neon, made through the owner login in the copied `.env`;
+changing the database name in that file is the learner's.
+
