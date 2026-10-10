@@ -2955,15 +2955,15 @@ no difference. What it did find:
 1. **Two parts of an answer the filter never looks at:** `askedBy`, and a page's `next` while the
    rows' addresses are shown. A handler that put a row in either sent the amount to the agent, with
    `amount` listed as withheld beside it. This is a gap from the step's first build, not from these
-   two decisions. Not yet decided.
+   two decisions. Decision 112: fix it now.
 2. **Two guards no test pins.** With today's table, the money exception changes no answer, because
    the one money field is confidential either way. Deleting it fails nothing, and quietly undoes
    what decision 107 measured. And no test hands the door money where a row should be, so its row
-   check could forget money and stay green. Not yet decided.
+   check could forget money and stay green. Decision 113: a test for each.
 3. **Two checks that fail open, both unreachable today.** `isMoney` trusts a value's own visible
    keys, so a hidden `toJSON` passes. That matters only for an agent cleared for `confidential`.
    And a word that is not one of the four labels ranks below `public`. Decision 111 removed the
-   place such a word came from. Not yet decided.
+   place such a word came from. Decision 114: write them down, and do not fix them.
 4. **Sentences that said more than was measured.** These are corrected:
    - All 65 of Break 13's old failures were the door, not 62. The three label tests went through
      the door too, and were refused before any label was worked out.
@@ -2977,4 +2977,71 @@ no difference. What it did find:
 One consequence of decision 110 that the review found and nothing had recorded: a person's read
 of a row with money in `vendor` is labelled `confidential` now. So it writes a record of a
 classified read, which it did not before. That is `DSOR-CLS-05` doing its job.
+
+## 112 · The door writes who asked, and a page's cursor must be its last row's address (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the finding was shown with a run:
+a page whose `next` held the whole last row left for the agent with `31400.00` in it, labelled
+`internal`, with `amount` listed as withheld beside it.
+**What:** the two parts of an answer that the filter never looked at.
+
+- `askedBy` is written by the door, from the principal the pipeline checked, for every kind of
+  answer. What a handler puts there is not read.
+- A page's `next` must be the address of the page's own last row, which is what step 13 made the
+  cursor, or absent. Anything else is refused before the filter, as the program's own error with
+  retry `never`, like a page with no rows in it.
+
+**Why:** the door filtered every field of every row, and copied `askedBy` and `next` as the handler
+gave them. A handler that put a row in either, behind a cast, sent the amount to the agent, and the
+list beside it said the amount had been withheld. It is decision 107's mistake, the amount inside
+`vendor`, in two places the filter never looked. Found by the review of decisions 110 and 111. It
+dates from the step's first build.
+**Cost:** a handler still writes `askedBy`, because `HandlerAnswer` has the field, and the door
+ignores it. And the check ties the cursor to step 13's design: a later cursor that is not the last
+row's address must change this check too, on purpose.
+**Rejected:** writing it down as a limit, the learner's other option. Also rejected: accepting any
+`next` that is a well-formed address. That stops a row, but a handler could still write text into
+an address, and the agent would read it. The last row's address is the one value `next` can
+honestly hold, and the agent sees that address in the row already.
+
+## 113 · Two guards get a test of their own (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:**
+
+- The money rule becomes a function of its own, `labelOfValue` in `boundary.ts`. It takes the
+  field's declared label, the value, and whether the field is declared to hold money. Its test
+  gives it a field labelled `internal`, which the story's table does not have, so the rule's
+  effect can be seen.
+- The door's test for "no row at all" hands it money where a row should be.
+
+**Why:** with today's table, the money rule changed no answer. The one money field, `amount`, is
+confidential, and without the rule it would be raised to confidential anyway. So deleting the rule
+failed nothing, and it quietly undid what decision 107 measured: the table's label for a money
+field would stop mattering. And the door's row check could forget money and stay green, because no
+test handed the door money as a row.
+**Cost:** one function exported so a test can call it, as `makeDoor` is exported so a test can
+build a door.
+**Rejected:** writing the two gaps down only.
+
+## 114 · Two checks that fail open are written down, and not fixed (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** two checks would let data through, in cases nothing in this step can reach. They stay as
+they are, and are written down here and in the README's limits.
+
+1. `isMoney` trusts a value's own visible keys. A money-shaped value with a hidden `toJSON` passes
+   as money, and the answer then carries whatever `toJSON` returns. It matters only in a money field
+   the agent may read, and the one money field, `amount`, is above this agent's clearance.
+2. `rankOf` ranks a word that is not one of the four labels below `public`, so such a word is never
+   above a clearance. Decision 111 removed the place one came from.
+
+**Why:** neither can happen in this step, and each fix is code and tests in a step that is already
+long.
+**Cost:** a later step must come back here. The specification's own example clears this agent for
+`confidential` and holds the amount back with an egress policy; the step that builds that policy
+raises the clearance, and the first check matters from then on. A fifth label would make the
+second matter.
+**Rejected:** fixing both now: a fresh money value built from its two strings at the door, and an
+unknown word ranked above every label.
 
