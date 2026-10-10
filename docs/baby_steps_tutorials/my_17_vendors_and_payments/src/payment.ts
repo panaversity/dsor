@@ -102,7 +102,12 @@ export type CancelOutcome =
   | { readonly kind: "not_found" }
   | { readonly kind: "not_draft"; readonly status: Exclude<PaymentStatus, "draft"> };
 
-/** Take a draft payment back. Only a draft: a cancelled payment stays cancelled. */
+/**
+ * Take a draft payment back, and only a draft. A cancelled payment stays cancelled because this
+ * statement changes drafts only: the application's UPDATE right on `status` could set one back to a
+ * draft, and nothing in the database stops it (decision 126). The proposal's states, in step 22,
+ * are where a state that cannot go back is made a rule.
+ */
 export async function cancelPayment(tenantId: string, id: string): Promise<CancelOutcome> {
   const { rows } = await theDatabase(tenantId).query<Row>(
     `UPDATE public.payments SET status = 'cancelled'

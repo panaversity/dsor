@@ -143,7 +143,7 @@ const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : 
  * Reads one argument as a canonical address of one entity, and returns the id, or the refusal that
  * stopped it.
  *
- * NEW IN STEP 17: the argument and the entity are the caller's to name. Until step 16 every address
+ * NEW IN STEP 17: the handler names the argument and the entity it needs. Until step 16 every address
  * an operation took was its own kind, an invoice for `invoice.*`, so the entity was read from the
  * operation's name. `payment.create` takes an invoice's address, and that guess would refuse it
  * (decision 125).

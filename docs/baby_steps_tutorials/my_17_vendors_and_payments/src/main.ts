@@ -296,7 +296,7 @@ if (twice.kind === "result") {
   const mistake = String(twice.envelope.data?.["uri"]);
 
   console.log(show(await callOperation(AGENT, "payment.cancel", { payment: mistake })));
-  // And once is all it takes: a cancelled payment stays cancelled.
+  // And a second cancel is refused: payment.cancel changes only a draft.
   console.log(show(await callOperation(AGENT, "payment.cancel", { payment: mistake })));
 }
 

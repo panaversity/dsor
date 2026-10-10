@@ -339,15 +339,6 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
 }
 
 /**
- * What the handler's answer becomes on its way out. An error's envelope is untouched: it carries
- * no data. Everything else is filtered by who is asking, labelled, and told what it lost.
- *
- * STEP 14, decision 112: every way out builds the answer here, from its known parts, and
- * writes who asked from the principal the pipeline checked. What a handler wrote in `askedBy` is
- * never read: a handler that put the row there, behind a cast, sent the amount past the filter,
- * with `amount` listed as withheld beside it.
- */
-/**
  * NEW IN STEP 17: a command's receipt, saying the execution semantics its contract declares.
  *
  * Written by the door, from the contract, on every receipt, whatever the handler wrote. The
@@ -366,6 +357,15 @@ export function withTheContractsSemantics(answer: HandlerAnswer, semantics: stri
   }) as HandlerAnswer;
 }
 
+/**
+ * What the handler's answer becomes on its way out. An error's envelope is untouched: it carries
+ * no data. Everything else is filtered by who is asking, labelled, and told what it lost.
+ *
+ * STEP 14, decision 112: every way out builds the answer here, from its known parts, and
+ * writes who asked from the principal the pipeline checked. What a handler wrote in `askedBy` is
+ * never read: a handler that put the row there, behind a cast, sent the amount past the filter,
+ * with `amount` listed as withheld beside it.
+ */
 export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): OperationAnswer {
   // One thing this boundary does not do, said here because a review measured it. An error's
   // envelope is untouched: its message is free text, so a handler must never put a field's value in

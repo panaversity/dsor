@@ -5,7 +5,7 @@
 // to say which company it is about (decision 125). The commands that use them are in
 // payments.test.ts; this file is about the tables, and what the application may do to them.
 //
-// Rule DSOR-TEN-01a: a tenant-owned resource MUST be identified by its tenant and its id together.
+// Rule DSOR-TEN-01a: every tenant-owned resource MUST carry its `tenant_id`.
 // Rule DSOR-RP-01b: tenant tables MUST use FORCE ROW LEVEL SECURITY.
 // Rule DSOR-RP-01d: a query executed with no tenant setting MUST yield no rows.
 

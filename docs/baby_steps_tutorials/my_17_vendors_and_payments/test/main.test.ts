@@ -345,7 +345,8 @@ describe("the program a learner runs", () => {
     expect(out).toContain("PAY-902 is cancelled, and only a draft payment can be cancelled");
   });
 
-  it("DSOR-TEN-01a: the demo ends with PAY-901 a draft for 31,400.00 USD, and the mistake cancelled", () => {
+  it("the demo ends with PAY-901 a draft for 31,400.00 USD, and the mistake cancelled", () => {
+    // No rule id: it reads the demo's report, which proves nothing a rule asks (decision 126).
     // NEW IN STEP 17: the step's "done when", as the database holds it after the receipts.
     const out = demo().raw;
 
