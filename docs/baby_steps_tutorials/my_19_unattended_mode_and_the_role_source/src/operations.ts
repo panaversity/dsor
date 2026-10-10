@@ -581,7 +581,7 @@ const authenticate: Stage["run"] = (context) => {
     });
   }
 
-  // NEW IN STEP 18: and what the login's scopes allow, read as data. A list that is present and
+  // STEP 18: and what the login's scopes allow, read as data. A list that is present and
   // not a list of permissions is a wrong claim, refused as the login it belongs to (decision 127).
   const scopes = scopesClaimed(context.login);
 
@@ -602,7 +602,7 @@ const authenticate: Stage["run"] = (context) => {
 };
 
 /**
- * NEW IN STEP 18: §21.3 — resolve the delegation, and establish what the agent may do under it.
+ * STEP 18: §21.3 — resolve the delegation, and establish what the agent may do under it.
  *
  * For an agent's command only. A person's power is their role's, and an agent's reads are its own
  * role's; a command an agent sends runs under the one active slip DSoR finds for it in this
@@ -789,7 +789,7 @@ const authorize: Stage["run"] = (context) => {
     );
   }
 
-  // NEW IN STEP 18: §21.3's proof of work. An agent's command always reaches here with the power
+  // STEP 18: §21.3's proof of work. An agent's command always reaches here with the power
   // computed under its slip; one that arrives without it met a delegation stage that did nothing,
   // and falling back to the agent's own role would refuse it for the wrong reason, or, on the day
   // that role grants a command, let it through with no slip at all.
@@ -806,7 +806,7 @@ const authorize: Stage["run"] = (context) => {
     );
   }
 
-  // NEW IN STEP 18: an agent's command asks the power §21.3 computed under its slip; everyone else
+  // STEP 18: an agent's command asks the power §21.3 computed under its slip; everyone else
   // asks their role. Either way, the login's scopes may only take away (DSOR-DEL-01b).
   const permission = contract.authorization.permission;
   const held =
@@ -894,7 +894,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    // NEW IN STEP 18: the permission slip, which DSOR-SRC-02b names beside the company and the
+    // STEP 18: the permission slip, which DSOR-SRC-02b names beside the company and the
     // person. DSoR found it at §21.3, or found none, for a person; a request that names another, or
     // names one where there is none, is refused (decision 127).
     for (const key of ["delegation", "delegation_id"]) {
@@ -980,7 +980,7 @@ const validateTheInput: Stage["run"] = (context) => {
 };
 
 /**
- * NEW IN STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
+ * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
  *
  * After the input is validated, because the amount is the validated copy's: the one the payload hash
  * describes. Only under a slip with a limit, and only for a request that carries an amount; one that
@@ -1250,11 +1250,11 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(1, "authenticate", "both", authenticate),
   stage(2, "resolve the tenant", "both", resolveTheTenant),
   stage(null, "resolve the operation", "both", resolveTheOperation),
-  // NEW IN STEP 18. §21.3: whose slip an agent's command runs under, and what it may do there.
+  // STEP 18. §21.3: whose slip an agent's command runs under, and what it may do there.
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
-  // NEW IN STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
+  // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
   alsoAfterARefusal(11, "record the decision", "both", recordTheDecision),

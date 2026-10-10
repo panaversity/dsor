@@ -117,7 +117,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["public.vendors", "tenant_id"],
   ["public.payments", "tenant_id"],
   ["dsor.audit", "tenant"],
-  // NEW IN STEP 18: the permission slips, DSoR's second kind of paperwork (decision 127).
+  // STEP 18: the permission slips, DSoR's second kind of paperwork (decision 127).
   ["dsor.delegations", "tenant"],
 ]);
 
@@ -129,7 +129,7 @@ const TENANT_REGCLASSES = TENANT_TABLES.map(([table]) => `to_regclass('${table}'
  * `pg_has_role(…, 'MEMBER')` sees a membership whether or not it is inherited, and a role is a
  * member of itself, so the connection's own rights are asked too (decision 126).
  *
- * NEW IN STEP 18: and of every role it acts as through a helper. A SECURITY DEFINER function runs
+ * STEP 18: and of every role it acts as through a helper. A SECURITY DEFINER function runs
  * with its owner's rights, whoever calls it, and the log's question has been asked of those owners
  * since step 09; the business's tables' and the slips' were not. A review lifted del_100's limit
  * through such a helper (decision 128).
@@ -569,7 +569,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 18: the permission slips. The application reads them and writes none: a slip it
+  // STEP 18: the permission slips. The application reads them and writes none: a slip it
   // could write is a slip it could sign for itself (decision 127).
   const { rows: slips } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs(

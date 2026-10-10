@@ -1,4 +1,4 @@
-// NEW IN STEP 18: the permission slip, and the power an agent has under it (decision 127).
+// STEP 18: the permission slip, and the power an agent has under it (decision 127).
 //
 // A delegation is a slip a person signs for an agent: these permissions, up to this much per
 // payment, until this date. DSoR keeps the slips in its own store and finds the one that applies

@@ -532,7 +532,7 @@ describe("the pipeline", () => {
   // caller with all 161 tests green. And two callers, not one, asserted against the login rather
   // than a literal — the literal was lesson 10 in this step's own new test.
   it("DSOR-DEL-01a: with the delegation stage doing nothing, an agent's command is INTERNAL_ERROR, never its role's", async () => {
-    // NEW IN STEP 18: §21.3's proof of work is checked at §21.5. An agent's command that reaches
+    // STEP 18: §21.3's proof of work is checked at §21.5. An agent's command that reaches
     // authorize with no slip resolved would otherwise be judged by the agent's own role: refused
     // today for the wrong reason, and let through on the day that role grants a command.
     const list = PIPELINE.map((stage) =>

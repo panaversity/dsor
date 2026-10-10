@@ -358,7 +358,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-DEL-02: the demo's agent is refused above del_100's limit, and on the next request after user_123 loses a permission", () => {
-    // NEW IN STEP 18: the slip, then its two halves, each one request.
+    // STEP 18: the slip, then its two halves, each one request.
     const out = demo().raw;
     const agent = "accounts-payable-fte".padEnd(21);
     const denied = `${agent} ${"AUTHORIZATION_DENIED".padEnd(24)} retry: ${"never".padEnd(20)} `;

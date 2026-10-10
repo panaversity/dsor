@@ -60,12 +60,12 @@ export interface Context {
   /** STEP 10: the one company this request is for, from §21 step 2. */
   readonly tenant?: string;
   readonly contract?: OperationContract;
-  /** NEW IN STEP 18: what the login's scopes allow, when it carries any. They only narrow. */
+  /** STEP 18: what the login's scopes allow, when it carries any. They only narrow. */
   readonly scopes?: readonly string[];
-  /** NEW IN STEP 18: the slip an agent's command runs under, from §21.3. */
+  /** STEP 18: the slip an agent's command runs under, from §21.3. */
   readonly delegation?: Delegation;
   /**
-   * NEW IN STEP 18: what the agent may do under that slip, at this decision: the slip's permissions,
+   * STEP 18: what the agent may do under that slip, at this decision: the slip's permissions,
    * cut down to what its signer holds now and to the login's scopes. `authorize` asks this, and not
    * the agent's role, when it is there.
    */
@@ -172,13 +172,13 @@ const REQUIRED: readonly string[] = Object.freeze([
   // compare against.
   "resolve the tenant",
   "resolve the operation",
-  // NEW IN STEP 18: after the operation, because it asks whether the operation is a command, and
+  // STEP 18: after the operation, because it asks whether the operation is a command, and
   // before authorize, which asks the power it computes. Required by name, so a pipeline without it
   // is refused at load, not discovered on an agent's first command (decision 127).
   "resolve the delegation",
   "authorize",
   "validate the input",
-  // NEW IN STEP 18: required too, because without it a payment above the slip's limit goes
+  // STEP 18: required too, because without it a payment above the slip's limit goes
   // through with nothing to say it was ever checked.
   "check the slip's limit",
   // STEP 08. Last of the five, and that position is the requirement: DSOR-EXE-02 says the

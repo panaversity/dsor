@@ -33,7 +33,7 @@ import type { Principal } from "./people.ts";
  * A real deployment reads these from a role source — a directory or an identity provider —
  * which DSOR-IDN-04a requires. Here they sit in the source, like the people beside them.
  *
- * NEW IN STEP 18: and the program asks for a person's permissions through a role source,
+ * STEP 18: and the program asks for a person's permissions through a role source,
  * `authority.ts`, which reads this list; step 19 puts a company directory behind it.
  */
 // STEP 17: the supervisor and the agent may make a draft payment and take one back. The
@@ -46,7 +46,7 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
     "payment:cancel",
   ]),
   approver: Object.freeze(["invoice:read", "payment:approve"]),
-  // NEW IN STEP 18: the agent's own role reads. Every command it sends runs under a permission
+  // STEP 18: the agent's own role reads. Every command it sends runs under a permission
   // slip a person signed, and its power there is computed from the slip (decision 127).
   ap_worker: Object.freeze(["invoice:read"]),
 });

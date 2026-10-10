@@ -286,7 +286,7 @@ describe("refuseIfItCanRewriteHistory", () => {
       "CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');",
     );
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now. NEW IN STEP 18: five, with the slips.
+    // STEP 17: four of them now. STEP 18: five, with the slips.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
@@ -512,7 +512,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-DEL-01a: an application that may write a permission slip is refused at start-up", async () => {
-    // NEW IN STEP 18: a slip the application could write is a slip it could sign for itself
+    // STEP 18: a slip the application could write is a slip it could sign for itself
     // (decision 127). Each right, and one of them one SET ROLE away.
     for (const grant of [
       "GRANT INSERT ON dsor.delegations TO dsor_runtime",
@@ -544,7 +544,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now. NEW IN STEP 18: five, with the slips.
+    // STEP 17: four of them now. STEP 18: five, with the slips.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",

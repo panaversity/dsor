@@ -35,7 +35,7 @@ export interface OperationContract {
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
   /**
-   * NEW IN STEP 18: whether an agent needs a permission slip to call it. The schema requires it of a
+   * STEP 18: whether an agent needs a permission slip to call it. The schema requires it of a
    * command, and the registry refuses a command that says no (decision 128).
    */
   readonly delegation?: { readonly required: boolean };
@@ -209,7 +209,7 @@ export function loadRegistry(
   // contract that names a compensation nothing can run promises an undo nobody can carry out, and
   // the program stops here, before a caller relies on it (DSOR-EXE-05c, decision 125).
   for (const contract of registry.values()) {
-    // NEW IN STEP 18: every command an agent sends runs under a slip (DSOR-DEL-01a), so a command
+    // STEP 18: every command an agent sends runs under a slip (DSOR-DEL-01a), so a command
     // whose contract says it needs none would tell its reader something this program does not do.
     // The three said so until a review's answer found it (decision 128).
     if (contract.kind === "command" && contract.delegation?.required !== true) {

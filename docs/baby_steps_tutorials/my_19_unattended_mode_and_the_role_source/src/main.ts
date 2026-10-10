@@ -314,7 +314,7 @@ for (const payment of await paymentsOf("org_456")) {
   );
 }
 
-// NEW IN STEP 18, and this is the step. Every command the agent sent above ran under a permission
+// STEP 18, and this is the step. Every command the agent sent above ran under a permission
 // slip, del_100, which user_123 signed: DSoR found it, and worked out what the agent may do from it
 // at each decision. Two more requests show the two halves of that: above the slip's limit is
 // refused, and when user_123 loses a permission, the agent loses it on the very next request,

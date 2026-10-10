@@ -1,4 +1,4 @@
-// NEW IN STEP 18: the permission slip.
+// STEP 18: the permission slip.
 //
 // The agent's own role reads; every command it sends runs under a slip a person signed, found by DSoR
 // from the company and the agent, and its power for that command is the slip's permissions, cut down
@@ -457,7 +457,7 @@ describe("every command's contract says it needs a slip", () => {
 });
 
 describe("a slip named in the arguments", () => {
-  // NEW IN STEP 18: DSOR-SRC-02b names a delegation identifier beside the company and the person.
+  // STEP 18: DSOR-SRC-02b names a delegation identifier beside the company and the person.
   // DSoR finds the slip itself; a request that names one is making a claim, and a claim that
   // disagrees with the slip DSoR found is refused and recorded (decision 127).
   it("DSOR-SRC-02b: an agent's request that names another slip is refused, and naming its own changes nothing", async () => {

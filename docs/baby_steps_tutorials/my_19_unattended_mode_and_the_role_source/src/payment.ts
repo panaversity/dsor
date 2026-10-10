@@ -136,7 +136,7 @@ export async function cancelPayment(tenantId: string, id: string): Promise<Cance
 }
 
 /**
- * NEW IN STEP 18: an amount in cents, exactly, for comparing two amounts in one currency. A BigInt,
+ * STEP 18: an amount in cents, exactly, for comparing two amounts in one currency. A BigInt,
  * never a `number`: "50000.01" must compare as above "50000.00" whatever the digits. For an amount
  * with at most two decimals, which is every amount a payment or a limit may hold.
  *

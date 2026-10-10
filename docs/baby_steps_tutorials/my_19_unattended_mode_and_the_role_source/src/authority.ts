@@ -1,4 +1,4 @@
-// NEW IN STEP 18: what a person holds right now, asked at every decision (decision 127).
+// STEP 18: what a person holds right now, asked at every decision (decision 127).
 //
 // An agent's power under a slip is never more than its signer's, at the moment of the decision. So
 // DSoR asks where a person's permissions come from every time, and copies them nowhere: not into the

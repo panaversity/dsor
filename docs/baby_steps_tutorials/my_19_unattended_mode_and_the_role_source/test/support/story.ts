@@ -25,7 +25,7 @@ export function storyStatements(): readonly string[] {
 
   return [
     "DELETE FROM public.payments WHERE tenant_id IN ('org_456', 'org_789')",
-    // NEW IN STEP 18: and the slips, which a test may revoke or expire.
+    // STEP 18: and the slips, which a test may revoke or expire.
     "DELETE FROM dsor.delegations WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM public.invoices WHERE tenant_id IN ('org_456', 'org_789')",
     rowsFrom("004_running_example.sql"),
