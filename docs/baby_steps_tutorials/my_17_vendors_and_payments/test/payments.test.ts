@@ -174,6 +174,24 @@ describe("payment.create", () => {
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
   });
 
+  it("a payment in another currency than its invoice is refused before anything is written", async () => {
+    // NEW IN STEP 17, decision 126: a USD invoice was paid in EUR, and in ZZZ, which is no currency.
+    // Converting between currencies is step 26's; until then a payment is in its invoice's.
+    for (const currency of ["EUR", "ZZZ"]) {
+      const refusal = refusalOf(
+        await callOperation(SUPERVISOR, "payment.create", {
+          invoice: INV_1008,
+          amount: { value: "31400.00", currency },
+        }),
+      );
+
+      expect(refusal.code, currency).toBe("VALIDATION_FAILED");
+      expect(refusal.message, currency).toMatch(/INV-1008 is in USD/);
+    }
+
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
   it("the largest amount the column holds, to the cent, is made as it was sent", async () => {
     const receipt = receiptOf(
       await callOperation(SUPERVISOR, "payment.create", {

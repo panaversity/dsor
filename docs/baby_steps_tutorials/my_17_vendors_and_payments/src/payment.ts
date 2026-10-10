@@ -54,7 +54,9 @@ function fromRow(row: Row): Payment {
 
 export type CreateOutcome =
   | { readonly kind: "created"; readonly payment: Payment }
-  | { readonly kind: "no_invoice" };
+  | { readonly kind: "no_invoice" }
+  /** NEW IN STEP 17, decision 126: the invoice is in another currency, which is `currency`. */
+  | { readonly kind: "wrong_currency"; readonly currency: string };
 
 /**
  * Make a draft payment for one of this company's invoices, to that invoice's vendor.
@@ -62,6 +64,9 @@ export type CreateOutcome =
  * One statement: the vendor is read from the invoice in the same INSERT, so there is no moment
  * between reading the invoice and writing the payment for anything to change. The number and the
  * status are the database's: a sequence gives the next number, and a new payment is a draft.
+ *
+ * NEW IN STEP 17, decision 126: and only in the invoice's currency. A USD invoice was paid in EUR,
+ * and in ZZZ, which is no currency; converting is step 26's.
  */
 export async function createPayment(
   tenantId: string,
@@ -72,15 +77,24 @@ export async function createPayment(
     `INSERT INTO public.payments (tenant_id, vendor, invoice, amount_value, amount_currency)
      SELECT i.tenant_id, i.vendor, i.id, $3::numeric, $4
        FROM public.invoices i
-      WHERE i.tenant_id = $1 AND i.id = $2
+      WHERE i.tenant_id = $1 AND i.id = $2 AND i.amount_currency = $4
      RETURNING ${COLUMNS}`,
     [tenantId, invoiceId, amount.value, amount.currency],
   );
   const created = rows[0];
 
-  return created === undefined
-    ? { kind: "no_invoice" }
-    : { kind: "created", payment: fromRow(created) };
+  if (created !== undefined) {
+    return { kind: "created", payment: fromRow(created) };
+  }
+
+  // Nothing made: no such invoice, or one in another currency. Asked to say which.
+  const { rows: found } = await theDatabase(tenantId).query<{ currency: string }>(
+    "SELECT amount_currency AS currency FROM public.invoices WHERE tenant_id = $1 AND id = $2",
+    [tenantId, invoiceId],
+  );
+  const currency = found[0]?.currency;
+
+  return currency === undefined ? { kind: "no_invoice" } : { kind: "wrong_currency", currency };
 }
 
 export type CancelOutcome =

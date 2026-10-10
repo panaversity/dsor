@@ -372,6 +372,20 @@ const handlers: Readonly<Record<string, Handler>> = {
       };
     }
 
+    // NEW IN STEP 17, decision 126: the caller's to fix, so never retryable.
+    if (outcome.kind === "wrong_currency") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal(
+          "VALIDATION_FAILED",
+          `${read.id} is in ${outcome.currency}, and a payment is in its invoice's currency`,
+          requestId,
+          askedBy,
+        ),
+      };
+    }
+
     return {
       kind: "result",
       askedBy,
