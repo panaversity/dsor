@@ -298,7 +298,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   const { rows: invoices } = await db.query<{ may: boolean }>(
     `SELECT has_column_privilege(current_user, 'public.invoices', 'tenant_id', 'UPDATE')
          OR has_column_privilege(current_user, 'public.invoices', 'id', 'UPDATE')
-         OR has_table_privilege(current_user, 'public.invoices', 'INSERT')
+         -- NEW IN STEP 17: any column, not the table. A grant that names columns is invisible to
+         -- has_table_privilege, so a grant of every column passed this check, measured.
+         OR has_any_column_privilege(current_user, 'public.invoices', 'INSERT')
          OR has_table_privilege(current_user, 'public.invoices', 'DELETE')
          OR has_table_privilege(current_user, 'public.invoices', 'TRUNCATE') AS may`,
   );
@@ -308,6 +310,36 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, and it may move, renumber, add or delete invoices. ` +
         `The application may change an invoice's status and nothing else. See ` +
         `migrations/003_invoices.sql.`,
+    );
+  }
+
+  // NEW IN STEP 17: the vendors and the payments, in the same spirit (decision 125). The
+  // application reads the vendors and changes nothing about them. It makes a draft payment and
+  // changes a payment's status, and nothing else: not its company or number, which are its identity
+  // (DSOR-TEN-01a), not whom it pays, for which invoice or how much, and it neither chooses a new
+  // payment's number or status nor removes one.
+  const { rows: payments } = await db.query<{ may: boolean }>(
+    `SELECT has_any_column_privilege(current_user, 'public.vendors', 'INSERT')
+         OR has_any_column_privilege(current_user, 'public.vendors', 'UPDATE')
+         OR has_table_privilege(current_user, 'public.vendors', 'DELETE')
+         OR has_table_privilege(current_user, 'public.vendors', 'TRUNCATE')
+         OR has_column_privilege(current_user, 'public.payments', 'id', 'INSERT')
+         OR has_column_privilege(current_user, 'public.payments', 'status', 'INSERT')
+         OR has_column_privilege(current_user, 'public.payments', 'tenant_id', 'UPDATE')
+         OR has_column_privilege(current_user, 'public.payments', 'id', 'UPDATE')
+         OR has_column_privilege(current_user, 'public.payments', 'vendor', 'UPDATE')
+         OR has_column_privilege(current_user, 'public.payments', 'invoice', 'UPDATE')
+         OR has_column_privilege(current_user, 'public.payments', 'amount_value', 'UPDATE')
+         OR has_column_privilege(current_user, 'public.payments', 'amount_currency', 'UPDATE')
+         OR has_table_privilege(current_user, 'public.payments', 'DELETE')
+         OR has_table_privilege(current_user, 'public.payments', 'TRUNCATE') AS may`,
+  );
+
+  if (payments[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may change a vendor, or more of a payment ` +
+        `than its status. The application reads the vendors, makes a draft payment and changes a ` +
+        `payment's status, and nothing else. See migrations/009_vendors_and_payments.sql.`,
     );
   }
 

@@ -394,6 +394,55 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-TEN-01a: an application that may add invoices column by column is refused too", async () => {
+    // NEW IN STEP 17: `has_table_privilege(…, 'INSERT')` is false for a grant that names columns,
+    // so a grant of every column passed the check above. Found writing the same check for payments.
+    const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
+    await db.exec(
+      "GRANT INSERT (tenant_id, id, vendor, amount_value, amount_currency, status) ON public.invoices TO dsor_runtime",
+    );
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/invoices/);
+
+    await db.close();
+  });
+
+  it("DSOR-TEN-01a: an application that may change vendors, or more of a payment than its status, is refused at start-up", async () => {
+    // NEW IN STEP 17: the same question, asked of the two new tables (decision 125). The
+    // application reads the vendors, makes a draft payment and changes a payment's status.
+    for (const grant of [
+      "GRANT INSERT (tenant_id, id, status) ON public.vendors TO dsor_runtime",
+      "GRANT UPDATE (status) ON public.vendors TO dsor_runtime",
+      "GRANT DELETE ON public.vendors TO dsor_runtime",
+      "GRANT TRUNCATE ON public.vendors TO dsor_runtime",
+      "GRANT INSERT (id) ON public.payments TO dsor_runtime",
+      "GRANT INSERT (status) ON public.payments TO dsor_runtime",
+      "GRANT UPDATE (tenant_id) ON public.payments TO dsor_runtime",
+      "GRANT UPDATE (id) ON public.payments TO dsor_runtime",
+      "GRANT UPDATE (vendor) ON public.payments TO dsor_runtime",
+      "GRANT UPDATE (invoice) ON public.payments TO dsor_runtime",
+      "GRANT UPDATE (amount_value) ON public.payments TO dsor_runtime",
+      "GRANT UPDATE (amount_currency) ON public.payments TO dsor_runtime",
+      "GRANT DELETE ON public.payments TO dsor_runtime",
+      "GRANT TRUNCATE ON public.payments TO dsor_runtime",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(
+        /009_vendors_and_payments/,
+      );
+
+      await db.close();
+    }
+  });
+
   it("DSOR-AUD-04a: a right reached through inherited role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL
