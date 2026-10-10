@@ -708,6 +708,20 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
   try {
     signer = authorityNow(slip.delegator, tenant);
   } catch (error) {
+    // Decision 130: an answer DSoR has and cannot use, stale or saying nothing, is a freshness
+    // failure, and waiting for a fresh one is what helps: FRESHNESS_UNSATISFIABLE, after_delay.
+    if (
+      error instanceof AuthorityNotEstablished &&
+      (error.why === "stale" || error.why === "unusable")
+    ) {
+      return refuse(
+        principal.id,
+        "FRESHNESS_UNSATISFIABLE",
+        `what ${slip.delegator} holds in ${tenant} now could not be established: ${error.message}. Nothing was done`,
+        context.requestId,
+      );
+    }
+
     return notEstablished(
       `what ${slip.delegator} holds in ${tenant} now`,
       error instanceof AuthorityNotEstablished ? error.message : undefined,

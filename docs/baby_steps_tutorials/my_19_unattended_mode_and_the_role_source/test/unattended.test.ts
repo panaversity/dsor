@@ -103,10 +103,56 @@ describe("the company directory", () => {
     expect(refusal.message).toMatch(/did not answer/);
   });
 
-  it("DSOR-IDN-06: an answer older than 24 hours is no answer", async () => {
-    useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(25) }));
+  it("DSOR-IDN-06: an answer older than 24 hours is no answer, and the refusal does not say when it was", async () => {
+    // Decision 130: FRESHNESS_UNSATISFIABLE, retry after_delay, because sending it again at once
+    // cannot help; and the agent is not told when the directory last knew its signer.
+    const asOf = hoursAgo(25);
 
-    expect(refusalOf(await cancel(AGENT)).code).toBe("DEPENDENCY_TIMEOUT");
+    useDirectory("org_456", aDirectory("org_456", { asOf }));
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("FRESHNESS_UNSATISFIABLE");
+    expect(refusal.retry).toBe("after_delay");
+    expect(refusal.message).not.toContain(asOf.slice(0, 13));
+  });
+
+  it("DSOR-IDN-06: an answer dated in the future, with no zone, or in a year past 9999 is no answer", async () => {
+    // Decision 130: each of these passed, or broke the record, before. A year ahead and 9999 counted
+    // as fresh; a time with no zone was read in this host's zone; a year past 9999 broke the
+    // record's own schema check, and a healthy store answered EVIDENCE_STORE_UNAVAILABLE.
+    for (const asOf of [
+      hoursAgo(-24 * 365),
+      "9999-12-31T23:59:59.000Z",
+      "+275760-09-13T00:00:00.000Z",
+      hoursAgo(1).replace("Z", ""),
+    ]) {
+      useDirectory("org_456", aDirectory("org_456", { asOf }));
+
+      expect(refusalOf(await cancel(AGENT)).code, asOf).toBe("FRESHNESS_UNSATISFIABLE");
+    }
+  });
+
+  it("DSOR-IDN-06: a directory a few minutes ahead of this program's clock still counts", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(-4 / 60) }));
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+  });
+
+  it("DSOR-IDN-06: an answer that is not a list of permissions and a time is no answer", async () => {
+    const answers: unknown[] = [
+      { permissions: "payment:cancel", asOf: hoursAgo(1) },
+      { permissions: [42], asOf: hoursAgo(1) },
+      { permissions: ["payment:cancel"], asOf: new Date() },
+      undefined,
+      Promise.resolve({ permissions: ["payment:cancel"], asOf: hoursAgo(1) }),
+    ];
+
+    for (const answer of answers) {
+      useDirectory("org_456", { lookup: () => answer as never });
+
+      expect(refusalOf(await cancel(AGENT)).code, String(answer)).toBe("FRESHNESS_UNSATISFIABLE");
+    }
   });
 
   it("DSOR-IDN-06: an answer from 23 hours ago still counts", async () => {
@@ -118,7 +164,7 @@ describe("the company directory", () => {
   it("DSOR-IDN-06: an answer whose time is not a time is no answer", async () => {
     useDirectory("org_456", aDirectory("org_456", { asOf: "yesterday" }));
 
-    expect(refusalOf(await cancel(AGENT)).code).toBe("DEPENDENCY_TIMEOUT");
+    expect(refusalOf(await cancel(AGENT)).code).toBe("FRESHNESS_UNSATISFIABLE");
   });
 
   it("DSOR-IDN-05: a company with no directory is refused every agent command", async () => {

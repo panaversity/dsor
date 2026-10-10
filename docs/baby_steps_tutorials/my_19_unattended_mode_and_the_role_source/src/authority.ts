@@ -26,8 +26,39 @@ export interface Authority {
   readonly asOf: string;
 }
 
-/** A person's authority could not be established: the case `DSOR-IDN-06` refuses. */
-export class AuthorityNotEstablished extends Error {}
+/**
+ * How far ahead of this program's clock a directory's clock may be, and its answer still count
+ * (decision 130). Two clocks never agree to the millisecond; a year ahead is not a clock difference.
+ */
+export const CLOCK_SKEW_MS: number = 5 * 60 * 1000;
+
+/**
+ * A time as RFC 3339 writes one, with its zone: `Z`, or an offset. Without a zone, JavaScript reads
+ * a time in this host's zone, which is not the directory's (decision 130).
+ */
+const WITH_ITS_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * A person's authority could not be established: the case `DSOR-IDN-06` refuses.
+ *
+ * `stale` and `unusable` are answers DSoR has and cannot use, which waiting for a fresh one fixes;
+ * `no_answer` and `no_directory` are no answer at all (decision 130). `asOf` is the directory's own
+ * time, when it gave a usable one, so the record can say it.
+ */
+export class AuthorityNotEstablished extends Error {
+  readonly why: "no_directory" | "no_answer" | "unusable" | "stale";
+  readonly asOf: string | undefined;
+
+  constructor(
+    why: "no_directory" | "no_answer" | "unusable" | "stale",
+    message: string,
+    asOf?: string,
+  ) {
+    super(message);
+    this.why = why;
+    this.asOf = asOf;
+  }
+}
 
 /**
  * What one person holds in one company at this moment, by that company's directory.
@@ -40,7 +71,7 @@ export function authorityNow(person: string, tenant: string): Authority {
   const directory = directoryOf(tenant);
 
   if (directory === null) {
-    throw new AuthorityNotEstablished(`${tenant} has no directory to ask`);
+    throw new AuthorityNotEstablished("no_directory", `${tenant} has no directory to ask`);
   }
 
   let answer: unknown;
@@ -48,30 +79,57 @@ export function authorityNow(person: string, tenant: string): Authority {
   try {
     answer = directory.lookup(person);
   } catch {
-    throw new AuthorityNotEstablished(`${tenant}'s directory did not answer`);
+    throw new AuthorityNotEstablished("no_answer", `${tenant}'s directory did not answer`);
   }
 
-  const { permissions, asOf } = (answer ?? {}) as Partial<Authority>;
+  const saysNothing = new AuthorityNotEstablished(
+    "unusable",
+    `${tenant}'s directory gave an answer about ${person} that says nothing this program can use`,
+  );
+
+  // Copied first, then checked: what is checked is what is used. It was checked and then copied, and
+  // a list that answered differently the second time was checked as one list and used as another
+  // (decision 130).
+  let permissions: unknown;
+  let asOf: unknown;
+
+  try {
+    const given = (answer ?? {}) as { readonly permissions?: unknown; readonly asOf?: unknown };
+
+    permissions = Array.isArray(given.permissions) ? [...given.permissions] : given.permissions;
+    asOf = given.asOf;
+  } catch {
+    throw saysNothing;
+  }
 
   if (
     !Array.isArray(permissions) ||
     !permissions.every((p) => typeof p === "string") ||
-    typeof asOf !== "string"
+    typeof asOf !== "string" ||
+    !WITH_ITS_ZONE.test(asOf) ||
+    Number.isNaN(Date.parse(asOf))
   ) {
-    throw new AuthorityNotEstablished(`${tenant}'s directory gave an answer that says nothing`);
+    throw saysNothing;
   }
 
-  // "Is the answer at most 24 hours old?", asked so that every answer but yes refuses: a time the
-  // program cannot read is NaN, and `NaN <= bound` is false, which decision 128 learned the hard way.
-  if (!(Date.now() - Date.parse(asOf) <= STALENESS_BOUND_MS)) {
+  const knewAt = Date.parse(asOf);
+  const age = Date.now() - knewAt;
+  // In the one spelling the record's schema reads. With the zone required, only the spelling changes.
+  const written = new Date(knewAt).toISOString();
+
+  // At most 24 hours old, and not from the future beyond the clocks' difference. An answer dated a
+  // year ahead counted as fresh, and would have until its date was a day past (decision 130).
+  if (age > STALENESS_BOUND_MS) {
     throw new AuthorityNotEstablished(
-      `${tenant}'s directory last knew what ${person} holds at ${asOf}, more than 24 hours ago`,
+      "stale",
+      `${tenant}'s directory's answer about ${person} is more than 24 hours old`,
+      written,
     );
   }
 
-  // Written down in the one spelling the record's schema reads, whatever spelling the directory used.
-  return Object.freeze({
-    permissions: Object.freeze([...permissions]),
-    asOf: new Date(Date.parse(asOf)).toISOString(),
-  });
+  if (age < -CLOCK_SKEW_MS) {
+    throw saysNothing;
+  }
+
+  return Object.freeze({ permissions: Object.freeze(permissions as string[]), asOf: written });
 }

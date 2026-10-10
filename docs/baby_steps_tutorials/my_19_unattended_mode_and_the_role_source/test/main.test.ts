@@ -74,7 +74,7 @@ function demo(): { raw: string; report: string } {
       .replace(/sha256:[0-9a-f]+/g, "sha256:HASH")
       .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME")
       // NEW IN STEP 19: and when the company's directory knew what the signer holds.
-      .replace(/(as of|holds at) \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "$1 TIME"),
+      .replace(/as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "as of TIME"),
   };
 }
 
@@ -115,12 +115,12 @@ describe("the program a learner runs", () => {
 
     expect(refusals.length).toBeGreaterThanOrEqual(6);
 
-    // And no refusal in the demo invites a retry that could not help. NEW IN STEP 19: the two that
-    // invite one are the directory's, which had no answer DSoR could use; the same request goes
-    // through once it has.
+    // And no refusal in the demo invites a retry that could not help. NEW IN STEP 19: the one that
+    // invites the same request again is the directory's that did not answer, which goes through
+    // once it does. Its stale answer asks for a wait instead (decision 130).
     const retryable = refusals.filter((line) => line.includes("retry: safe_same_key"));
 
-    expect(retryable).toHaveLength(2);
+    expect(retryable).toHaveLength(1);
     expect(retryable.every((line) => line.includes("DEPENDENCY_TIMEOUT"))).toBe(true);
   });
 
@@ -395,7 +395,10 @@ describe("the program a learner runs", () => {
       /  invoice\.issue@1  unattended: user_123's authority, used by accounts-payable-fte under del_100\n {19}what user_123 holds, from the company's directory as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\n/,
     );
     expect(out).toContain(`${timeout} did not answer. Nothing was done; it is safe to send again`);
-    expect(out).toContain(`${timeout} last knew what user_123 holds at `);
+    // Decision 130: a stale answer asks for a wait, and does not tell the agent how old it was.
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"FRESHNESS_UNSATISFIABLE".padEnd(24)} retry: ${"after_delay".padEnd(20)} what user_123 holds in org_456 now could not be established: org_456's directory's answer about user_123 is more than 24 hours old. Nothing was done`,
+    );
   });
 
   it("DSOR-IDN-02b: the printed log tells the agent's records under a slip from user_123's own", () => {
