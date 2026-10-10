@@ -3366,3 +3366,36 @@ Written down, and not fixed:
   `HandlerAnswer`'s said "labelled by nobody yet"; `docs/status.md` said "Steps 01 to 10" beside
   `my_01` to `my_15`.
 
+**Red first.** `invoice.get` answering with a `success()` receipt left as a `result`. Then four
+more failed: a time that is only a year, a time in the future, a label with a row riding along
+through `leaveTheDoor`, and a label taken after a reply 50 ms late. The year was first refused
+anyway, by the old-`current` check, so it tested nothing of its own until it was labelled
+`observational`: lesson 18, measured. Then the whole suite: 531.
+
+**Proved by breaking it**, in a copy, each guard alone, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| a query may answer with a receipt | 1: the receipt test | 1, that test |
+| the label stamped after the reply | 1: the time taken before the query | 1, that test |
+| any text JavaScript reads as a date | 1: the year | 1, that test |
+| a time in the future accepted | 1: the future | 1, that test |
+| `leaveTheDoor` lets a single invoice's label through whole | 1: the three-parts test | 1, that test |
+| a second of slack before the request began | 1: the line to the millisecond | 1, that test |
+| a label with no connector key accepted | 1: no connector at all | 1, that test |
+
+A label's parts were first trimmed in two places, `copyOnce` and `leaveTheDoor`, so removing either
+alone would have failed nothing. The trimming lives in `leaveTheDoor` only, and `copyOnce` copies
+the label once, like a row. A date object is refused by the exact-time check: it is not the text
+`toISOString` writes.
+
+**The README's ten breaks**, measured twice on the final code, one at a time, and the two runs
+agreed on all ten: 4, 19, 12, 1, 1, 2, 1, 1, 1 and 1. A first measurement, on the code before this
+decision, was stopped halfway when the review meant the code would change. Two counts are larger
+than the piece that built them had measured. Dropping a single invoice's label fails 19, because
+the demo, from piece 4 on, prints every read's label and crashes on the first one without it. And
+a fresh read labelled `observational` fails 4, because one stand-in counts on `readNow` saying
+`current`. The guard then caught a comment that said "copied from a command": it reads any
+"copied from" as a marker for a pattern copied from a schema. The comment is reworded, folded into
+the commit that wrote it, and the guard ran after each commit that followed.
+
