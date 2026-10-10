@@ -272,3 +272,27 @@ describe("up to a limit", () => {
     expect((await create(SUPERVISOR, { value: "75000.00", currency: "USD" })).kind).toBe("result");
   });
 });
+
+describe("a slip named in the arguments", () => {
+  // NEW IN STEP 18: DSOR-SRC-02b names a delegation identifier beside the company and the person.
+  // DSoR finds the slip itself; a request that names one is making a claim, and a claim that
+  // disagrees with the slip DSoR found is refused and recorded (decision 127).
+  it("DSOR-SRC-02b: an agent's request that names another slip is refused, and naming its own changes nothing", async () => {
+    const other = refusalOf(
+      await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_999" }),
+    );
+
+    expect(other.code).toBe("AUTHORIZATION_DENIED");
+    expect(
+      (await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_100" })).kind,
+    ).toBe("result");
+  });
+
+  it("DSOR-SRC-02b: a person's request that names a slip is refused: a person acts under none", async () => {
+    expect(
+      refusalOf(
+        await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, delegation: "del_100" }),
+      ).code,
+    ).toBe("AUTHORIZATION_DENIED");
+  });
+});

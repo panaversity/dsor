@@ -824,14 +824,28 @@ const validateTheInput: Stage["run"] = (context) => {
     // bought nothing. The specification asks for more: a caller who writes a company or a person
     // into the arguments that is not the request's is making a claim, and a claim that disagrees
     // with who they are is refused and recorded as the DENY it is. One that agrees passes, because
-    // it does not disagree. Four names count as identifiers here; a delegation identifier joins
-    // them in step 18, when delegations exist. Everything else a caller plants stays ignored.
+    // it does not disagree. Four names count as identifiers here, and STEP 18 adds two for the
+    // slip. Everything else a caller plants stays ignored.
     for (const key of ["tenant", "tenant_id"]) {
       if (Object.hasOwn(given, key) && given[key] !== context.tenant) {
         return refuse(
           askedBy,
           "TENANT_MISMATCH",
           "the arguments name a company that is not this request's",
+          context.requestId,
+        );
+      }
+    }
+
+    // NEW IN STEP 18: the permission slip, which DSOR-SRC-02b names beside the company and the
+    // person. DSoR found it at §21.3, or found none, for a person; a request that names another, or
+    // names one where there is none, is refused (decision 127).
+    for (const key of ["delegation", "delegation_id"]) {
+      if (Object.hasOwn(given, key) && given[key] !== context.delegation?.id) {
+        return refuse(
+          askedBy,
+          "AUTHORIZATION_DENIED",
+          "the arguments name a permission slip that is not this request's",
           context.requestId,
         );
       }
