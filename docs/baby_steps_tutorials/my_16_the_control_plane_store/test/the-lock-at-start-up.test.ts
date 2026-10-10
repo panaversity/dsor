@@ -91,6 +91,35 @@ describe("an account the lock does not apply to", () => {
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner/);
   });
+
+  // NEW IN STEP 16: the schemas the tenant tables are in. A schema's owner may drop any table in
+  // it, even one it does not own, and nothing above asked who owns them. A review measured it:
+  // `dsor` handed to the application, start-up passed, and one `DROP TABLE dsor.audit` erased
+  // every record (decision 123). Each case then drops the table, so the route is shown to be real.
+  for (const [id, schema, table] of [
+    ["DSOR-AUD-04a", "dsor", "dsor.audit"],
+    ["DSOR-RP-01a", "public", "public.invoices"],
+  ] as const) {
+    it(`${id}: an account that owns the schema ${schema} is refused — it may drop ${table}`, async () => {
+      await asTheOwner(() => db.exec(`ALTER SCHEMA ${schema} OWNER TO ${APPLICATION_ROLE}`));
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        new RegExp(`the schema \`${schema}\``),
+      );
+
+      await expect(db.exec(`DROP TABLE ${table} CASCADE`)).resolves.toBeDefined();
+    });
+  }
+
+  it("DSOR-AUD-04a: an account that may become the owner of the schema dsor is refused", async () => {
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER SCHEMA dsor OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/the schema `dsor`/);
+  });
 });
 
 describe("a window past the lock", () => {
@@ -116,6 +145,27 @@ describe("a window past the lock", () => {
     expect(rows.map((r) => r.all_invoices)).toStrictEqual(["org_456", "org_789"]);
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+  });
+
+  it("DSOR-AUD-04a: a SECURITY DEFINER function whose owner owns the schema dsor is refused", async () => {
+    // NEW IN STEP 16: the question asked of the connection, asked of a helper's owner too, as the
+    // check already does for a tenant table's owner. This owner holds no right on the log, and
+    // owns its schema: the helper may drop the log for whoever calls it (decision 123).
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE folder_keeper");
+      await db.exec("ALTER SCHEMA dsor OWNER TO folder_keeper");
+      await db.exec(`CREATE FUNCTION drop_the_log() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+                     AS $$ BEGIN DROP TABLE dsor.audit; END $$`);
+      await db.exec("ALTER FUNCTION drop_the_log() OWNER TO folder_keeper");
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+
+    // And the route is real: as the application, one call, and the log is gone.
+    await db.exec("SELECT drop_the_log()");
+    const { rows } = await db.query<{ log: string | null }>("SELECT to_regclass('dsor.audit')::text AS log");
+
+    expect(rows[0]?.log).toBeNull();
   });
 
   it("DSOR-RP-01a: a view the owner made is a window past the lock, and is refused", async () => {

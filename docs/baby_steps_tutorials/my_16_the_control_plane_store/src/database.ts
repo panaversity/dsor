@@ -188,6 +188,11 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                   OR EXISTS (SELECT 1 FROM pg_class c
                               WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                                 AND pg_has_role(p.proowner, c.relowner, 'MEMBER'))
+                  -- NEW IN STEP 16: or of the schema one is in, who may drop the table from inside
+                  -- the helper. A review measured the owner of dsor dropping the log.
+                  OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+                              WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
+                                AND pg_has_role(p.proowner, ns.nspowner, 'MEMBER'))
                 )
             ) AS may_by_function,
             EXISTS (
@@ -243,9 +248,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (answer.may_by_function !== false) {
     throw new Error(
       `there is a SECURITY DEFINER function whose owner may ${FORBIDDEN.join(", ")} the audit ` +
-        `table, or skips the row-level lock — a rewrite or a read by proxy for whoever reaches it, ` +
-        `through a grant, a membership, an aggregate or a trigger. This program expects no such ` +
-        `helper. Drop the function, or give it an owner that holds nothing.`,
+        `table, skips the row-level lock, or owns a tenant table or the schema it is in — a ` +
+        `rewrite, a read or a drop by proxy for whoever reaches it, through a grant, a membership, ` +
+        `an aggregate or a trigger. This program expects no such helper. Drop the function, or ` +
+        `give it an owner that holds nothing.`,
     );
   }
 
@@ -310,6 +316,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     bypasses: boolean;
     bypassing_roles: string | null;
     owns_tenant_table: boolean;
+    owns_schema: string | null;
     locked: boolean;
     reads_beyond: string | null;
     already_said: string | null;
@@ -329,6 +336,11 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               SELECT 1 FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
               WHERE pg_has_role(current_user, c.relowner, 'MEMBER')
             ) AS owns_tenant_table,
+            -- NEW IN STEP 16: the schema each tenant table is in, and who owns it (decision 123).
+            (SELECT string_agg(ns.nspname, ', ' ORDER BY ns.nspname)
+               FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
+               JOIN pg_namespace ns ON ns.oid = c.relnamespace
+              WHERE pg_has_role(current_user, ns.nspowner, 'MEMBER')) AS owns_schema,
             (SELECT bool_and(
                 c.relrowsecurity AND c.relforcerowsecurity
                 AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 1
@@ -380,6 +392,18 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, which owns, or may become the owner of, a tenant ` +
         `table. An owner may drop the lock on its own table. Tenant tables belong to the account ` +
         `that runs the migrations, never to \`${APPLICATION_ROLE}\`.`,
+    );
+  }
+
+  // NEW IN STEP 16: the schemas the tenant tables are in. A schema's owner may drop any table in
+  // it, even one it does not own, and nothing here asked who owns them: a review handed `dsor` to
+  // the application, start-up passed, and one DROP TABLE erased every record (decision 123).
+  if (second.owns_schema !== null) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, which owns, or may become the owner of, the schema ` +
+        `\`${second.owns_schema}\`, where a tenant table is kept. A schema's owner may drop any ` +
+        `table in it, even one it does not own, and every row goes with it. Schemas belong to the ` +
+        `account that runs the migrations, never to \`${APPLICATION_ROLE}\`.`,
     );
   }
 
