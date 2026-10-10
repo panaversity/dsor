@@ -108,7 +108,7 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
               has_column_privilege('dsor_runtime', 'dsor.audit', c.column_name, 'INSERT') AS insert,
               has_column_privilege('dsor_runtime', 'dsor.audit', c.column_name, 'UPDATE') AS update
        FROM information_schema.columns c
-       WHERE c.table_schema = 'public' AND c.table_name = 'audit'
+       WHERE c.table_schema = 'dsor' AND c.table_name = 'audit'
          AND c.column_name IN ('resources', 'extensions', 'row_count', 'recorded_at')
        ORDER BY c.column_name`,
     );
