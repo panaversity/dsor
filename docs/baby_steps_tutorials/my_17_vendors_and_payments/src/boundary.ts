@@ -347,6 +347,25 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
  * never read: a handler that put the row there, behind a cast, sent the amount past the filter,
  * with `amount` listed as withheld beside it.
  */
+/**
+ * NEW IN STEP 17: a command's receipt, saying the execution semantics its contract declares.
+ *
+ * Written by the door, from the contract, on every receipt, whatever the handler wrote. The
+ * semantics are the contract's promise about whether an effect can be undone, and a careless
+ * handler that began as a copy of another command would repeat that command's promise instead
+ * (DSOR-EXE-05b, decision 125). Anything that is not a receipt goes through as it came.
+ */
+export function withTheContractsSemantics(answer: HandlerAnswer, semantics: string): HandlerAnswer {
+  if (answer.kind !== "result") {
+    return answer;
+  }
+
+  return Object.freeze({
+    ...answer,
+    envelope: Object.freeze({ ...answer.envelope, semantics }),
+  }) as HandlerAnswer;
+}
+
 export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): OperationAnswer {
   // One thing this boundary does not do, said here because a review measured it. An error's
   // envelope is untouched: its message is free text, so a handler must never put a field's value in

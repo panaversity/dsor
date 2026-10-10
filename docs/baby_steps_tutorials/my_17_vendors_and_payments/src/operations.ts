@@ -32,6 +32,7 @@ import { tenantFor } from "./tenant.ts";
 import {
   contractsFromDisk,
   loadRegistry,
+  semanticsOf,
   type OperationContract,
 } from "./registry.ts";
 import { holds } from "./permissions.ts";
@@ -48,6 +49,7 @@ import {
   cannotBeFiltered,
   copyOnce,
   leaveTheDoor,
+  withTheContractsSemantics,
   type Redaction,
   type Shown,
   type ShownPage,
@@ -278,6 +280,10 @@ const handlers: Readonly<Record<string, Handler>> = {
   },
 
   "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {
+    // NEW IN STEP 17: read before anything changes, so a contract without one stops the command
+    // first. The door writes the same value on the receipt, from the contract, whatever this says.
+    const semantics = semanticsOf(contract);
+
     const read = idFrom(args, "invoice", contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
@@ -319,7 +325,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       askedBy,
       envelope: success({
         data: outcome.invoice as unknown as Record<string, unknown>,
-        semantics: contract.execution?.semantics ?? "atomic",
+        semantics,
         payloadHash: hash,
         tenant,
         principalId: askedBy,
@@ -330,6 +336,10 @@ const handlers: Readonly<Record<string, Handler>> = {
 
   // NEW IN STEP 17: a draft payment for one of the company's invoices, to its vendor (decision 125).
   "payment.create": async (args, contract, askedBy, tenant, hash, requestId) => {
+    // NEW IN STEP 17: read before anything changes, so a contract without one stops the command
+    // first. The door writes the same value on the receipt, from the contract, whatever this says.
+    const semantics = semanticsOf(contract);
+
     const read = idFrom(args, "invoice", contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
@@ -367,7 +377,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       askedBy,
       envelope: success({
         data: outcome.payment as unknown as Record<string, unknown>,
-        semantics: contract.execution?.semantics ?? "atomic",
+        semantics,
         payloadHash: hash,
         tenant,
         principalId: askedBy,
@@ -379,6 +389,10 @@ const handlers: Readonly<Record<string, Handler>> = {
   // NEW IN STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
   // own permission, its own decision in the log (DSOR-EXE-05c).
   "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId) => {
+    // NEW IN STEP 17: read before anything changes, so a contract without one stops the command
+    // first. The door writes the same value on the receipt, from the contract, whatever this says.
+    const semantics = semanticsOf(contract);
+
     const read = idFrom(args, "payment", contract, askedBy, tenant, requestId);
 
     if ("refused" in read) {
@@ -420,7 +434,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       askedBy,
       envelope: success({
         data: outcome.payment as unknown as Record<string, unknown>,
-        semantics: contract.execution?.semantics ?? "atomic",
+        semantics,
         payloadHash: hash,
         tenant,
         principalId: askedBy,
@@ -1282,7 +1296,15 @@ export function makeDoor(
     // what leaves for an agent has every field above its clearance taken out, says which, and
     // carries its label. For any handler, including the careless one written next year: the door
     // is the one way out, which is why the filter is here and not in invoice.ts.
-    const leaving = leaveTheDoor(principal, answer);
+    //
+    // NEW IN STEP 17: and a command's receipt says the semantics its contract declares, written
+    // here, from the contract, whatever the handler wrote (DSOR-EXE-05b, decision 125). A query has
+    // none, and a query that answered with a receipt was refused above.
+    const semantics = contract.execution?.semantics;
+    const leaving = leaveTheDoor(
+      principal,
+      semantics === undefined ? answer : withTheContractsSemantics(answer, semantics),
+    );
 
     // STEP 13: and nothing oversize leaves. The decision was recorded as the ALLOW it was;
     // this is the program failing to carry it out within the rule, reported as its own error.

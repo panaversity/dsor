@@ -36,7 +36,7 @@ export interface OperationContract {
   readonly idempotency?: { readonly required: boolean };
   /**
    * NEW IN STEP 17: `compensated_by`, the operations that undo this one. The schema requires it of
-   * a compensatable or saga command.
+   * a compensatable or saga command, and the registry checks each one is a command it has.
    */
   readonly execution?: { readonly semantics: string; readonly compensated_by?: readonly string[] };
   /**
@@ -200,7 +200,43 @@ export function loadRegistry(
     registry.set(contract.id, contract);
   }
 
+  // NEW IN STEP 17: what undoes an operation is an operation this program has, and a command. A
+  // contract that names a compensation nothing can run promises an undo nobody can carry out, and
+  // the program stops here, before a caller relies on it (DSOR-EXE-05c, decision 125).
+  for (const contract of registry.values()) {
+    for (const undo of contract.execution?.compensated_by ?? []) {
+      const named = registry.get(undo);
+
+      if (named === undefined) {
+        throw new TypeError(`${contract.id} is undone by ${undo}, which is not an operation this program has`);
+      }
+
+      if (named.kind !== "command") {
+        throw new TypeError(
+          `${contract.id} is undone by ${undo}, which is a query: a query changes nothing, so it undoes nothing`,
+        );
+      }
+    }
+  }
+
   return registry;
+}
+
+/**
+ * NEW IN STEP 17: a command's execution semantics, as its contract declares them.
+ *
+ * No default. `?? "atomic"` stood here, in each handler, until step 17: a guess for a contract that
+ * says nothing, which DSOR-OPR-02b forbids. The schema requires the semantics of every command, so
+ * the throw below is for a contract that never passed the registry.
+ */
+export function semanticsOf(contract: OperationContract): string {
+  const semantics = contract.execution?.semantics;
+
+  if (semantics === undefined) {
+    throw new TypeError(`${contract.id} declares no execution semantics, and none is assumed`);
+  }
+
+  return semantics;
 }
 
 /** Reads every contract file that ships with this step. */

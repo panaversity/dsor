@@ -13,9 +13,16 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
-import type { ErrorEnvelope, ResultEnvelope } from "../src/envelopes.ts";
-import { callOperation, type OperationAnswer } from "../src/operations.ts";
-import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
+import { success, type ErrorEnvelope, type ResultEnvelope } from "../src/envelopes.ts";
+import {
+  callOperation,
+  makeDoor,
+  PIPELINE,
+  type Handler,
+  type OperationAnswer,
+} from "../src/operations.ts";
+import { createPayment } from "../src/payment.ts";
+import { contractsFromDisk, loadRegistry, type ContractDocument } from "../src/registry.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -251,5 +258,65 @@ describe("payment.cancel", () => {
       "payment.cancel@1 DENY AUTHORIZATION_DENIED",
       "payment.cancel@1 ALLOW ALLOWED",
     ]);
+  });
+});
+
+describe("the door says the semantics, from the contract", () => {
+  it("DSOR-EXE-05b: a handler that writes the wrong semantics does not change what the caller is told", async () => {
+    // A careless handler, begun as a copy of one whose effect commits once: it makes the payment,
+    // and says `atomic` on the receipt. The contract says the payment can be undone, and the door
+    // says so.
+    const careless: Handler = async (_args, _contract, askedBy, tenant, hash, requestId) => {
+      const made = await createPayment(tenant, "INV-1008", AMOUNT);
+
+      if (made.kind !== "created") {
+        throw new Error("the story has no INV-1008 to pay");
+      }
+
+      return {
+        kind: "result",
+        askedBy,
+        envelope: success({
+          data: made.payment as unknown as Record<string, unknown>,
+          semantics: "atomic",
+          payloadHash: hash,
+          tenant,
+          principalId: askedBy,
+          requestId,
+        }),
+      };
+    };
+    const door = makeDoor(PIPELINE, { "payment.create": careless });
+
+    const receipt = receiptOf(await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }));
+
+    expect(receipt.semantics).toBe("compensatable");
+  });
+});
+
+describe("what undoes an operation is an operation the program has", () => {
+  /** The contracts on disk, with payment.create's execution replaced. */
+  const withExecution = (execution: unknown): ContractDocument[] =>
+    contractsFromDisk().map((contract) =>
+      contract.expectedId === "payment.create"
+        ? { ...contract, document: { ...(contract.document as object), execution } }
+        : contract,
+    );
+
+  it("DSOR-EXE-05c: an operation undone by one this program does not have stops the program", () => {
+    expect(() =>
+      loadRegistry(withExecution({ semantics: "compensatable", compensated_by: ["payment.vanish"] })),
+    ).toThrow(/payment\.vanish/);
+  });
+
+  it("DSOR-EXE-05c: a query cannot undo anything, so naming one stops the program", () => {
+    expect(() =>
+      loadRegistry(withExecution({ semantics: "compensatable", compensated_by: ["invoice.get"] })),
+    ).toThrow(/invoice\.get.*query/);
+  });
+
+  it("DSOR-EXE-05c: an operation that can be undone, and names nothing that undoes it, is refused", () => {
+    // The specification's schema refuses it already; this pins that the registry asks the schema.
+    expect(() => loadRegistry(withExecution({ semantics: "compensatable" }))).toThrow(/compensated_by/);
   });
 });
