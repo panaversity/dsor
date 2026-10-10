@@ -15,6 +15,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog, verifyChain, type AuditRecord } from "../src/audit.ts";
 import { aDirectory, useDirectory } from "../src/directory.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
@@ -139,5 +140,84 @@ describe("the company directory", () => {
     useDirectory("org_456", aDirectory("org_456", { down: true }));
 
     expect((await cancel(SUPERVISOR)).kind).toBe("result");
+  });
+});
+
+describe("whose authority the record says", () => {
+  const decisions = async (): Promise<AuditRecord[]> =>
+    (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+  it("DSOR-DEL-08: the subject is the slip's signer, the agent is in the actor chain, and the slip is named", async () => {
+    const asOf = hoursAgo(1);
+
+    useDirectory("org_456", aDirectory("org_456", { asOf }));
+    await cancel(AGENT);
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity).toStrictEqual({
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+      subject_authority: { source: "role_source", as_of: asOf },
+    });
+    expect(decision?.delegation).toBe("del_100");
+    // The agent logged in, and the correlation still says so.
+    expect(decision?.correlation.principal_id).toBe("accounts-payable-fte");
+  });
+
+  it("DSOR-DEL-10: a refusal under the slip is recorded the same way", async () => {
+    await callOperation(AGENT, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      amount: { value: "60000.00", currency: "USD" },
+    });
+
+    const [decision] = await decisions();
+
+    expect(decision?.result).toBe("LIMIT_EXCEEDED");
+    expect(decision?.identity.mode).toBe("unattended");
+    expect(decision?.identity.subject).toBe("user_123");
+    expect(decision?.delegation).toBe("del_100");
+  });
+
+  it("DSOR-DEL-08: never from the request: a planted subject changes nothing on the record", async () => {
+    await cancel(AGENT, { subject: "cfo_100" });
+
+    expect((await decisions())[0]?.identity.subject).toBe("user_123");
+  });
+
+  it("a person's decision stays direct, with nobody in the chain and no slip", async () => {
+    await cancel(SUPERVISOR);
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity.mode).toBe("direct");
+    expect(decision?.identity.subject).toBe("user_123");
+    expect(decision?.identity.actor_chain).toStrictEqual([]);
+    expect(decision?.delegation).toBeUndefined();
+  });
+
+  it("an agent's command refused before its slip was in hand stays direct: no one's authority was used", async () => {
+    await asTheOwner(() =>
+      db.exec("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'"),
+    );
+    await cancel(AGENT);
+
+    const [decision] = await decisions();
+
+    expect(decision?.result).toBe("DELEGATION_REQUIRED");
+    expect(decision?.identity.mode).toBe("direct");
+    expect(decision?.identity.subject).toBe("accounts-payable-fte");
+    expect(decision?.delegation).toBeUndefined();
+  });
+
+  it("DSOR-AUD-04b: the slip is inside the hash: the chain verifies, and a slip changed afterwards breaks it", async () => {
+    await cancel(AGENT);
+
+    expect(verifyChain(await theLog("org_456"))).toBe(true);
+
+    await asTheOwner(() => db.exec("UPDATE dsor.audit SET delegation = 'del_999'"));
+
+    expect(verifyChain(await theLog("org_456"))).toBe(false);
   });
 });

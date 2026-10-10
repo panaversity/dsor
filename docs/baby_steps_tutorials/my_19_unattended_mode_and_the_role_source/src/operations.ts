@@ -716,7 +716,7 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   const authority = effectiveAuthority(slip, signer.permissions, context.scopes);
 
-  return carryOn({ ...context, delegation: slip, authority });
+  return carryOn({ ...context, delegation: slip, authority, authorityAsOf: signer.asOf });
 };
 
 /**
@@ -1163,6 +1163,18 @@ const recordTheDecision: Stage["run"] = async (context) => {
         reason: outcome === undefined ? undefined : outcome.message,
         ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
         ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
+        // NEW IN STEP 19: an agent's command under a slip is recorded as the signer's authority,
+        // used by the agent: `unattended`, from what §21.3 established and never from the request
+        // (DSOR-DEL-08, DSOR-DEL-10, decision 129).
+        ...(context.delegation === undefined || context.authorityAsOf === undefined
+          ? {}
+          : {
+              underSlip: {
+                delegation: context.delegation.id,
+                delegator: context.delegation.delegator,
+                asOf: context.authorityAsOf,
+              },
+            }),
       });
 
       if (written !== undefined && tenant !== undefined) {

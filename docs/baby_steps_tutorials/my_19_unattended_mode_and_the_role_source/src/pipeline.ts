@@ -70,6 +70,11 @@ export interface Context {
    * the agent's role, when it is there.
    */
   readonly authority?: readonly string[];
+  /**
+   * NEW IN STEP 19: when the company's directory knew what the slip's signer holds. The decision
+   * record keeps it as `subject_authority.as_of` (DSOR-DEL-10, decision 129).
+   */
+  readonly authorityAsOf?: string;
   readonly given?: Readonly<Record<string, unknown>>;
   /**
    * The fingerprint of the arguments, from the text the validate stage wrote down.

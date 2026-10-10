@@ -125,6 +125,8 @@ export interface AuditRecord {
    * `extensions` until decision 109, because a comment here said the schema had no such field.
    */
   readonly row_count?: number;
+  /** NEW IN STEP 19: the slip an agent acted under, for an `unattended` record. */
+  readonly delegation?: string;
   readonly correlation: {
     readonly request_id: string;
     readonly tenant_id?: string;
@@ -162,6 +164,17 @@ export interface DecisionToRecord {
   readonly resources?: readonly string[];
   /** STEP 14: for a `classified_read`, how many rows left — the record's `row_count`. */
   readonly rowCount?: number;
+  /**
+   * NEW IN STEP 19: for an agent's command under a slip, whose authority it used: the slip, the
+   * person who signed it, and when the company's directory knew what they hold. The record is then
+   * `unattended`, its subject the signer, and the agent, `subject` above, its actor chain
+   * (DSOR-DEL-08, DSOR-DEL-10, decision 129).
+   */
+  readonly underSlip?: {
+    readonly delegation: string;
+    readonly delegator: string;
+    readonly asOf: string;
+  };
 }
 
 /**
@@ -444,6 +457,8 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const reason = decision.reason === undefined ? undefined : clip(decision.reason);
   const resources = decision.resources === undefined ? undefined : [...decision.resources];
   const rowCount = decision.rowCount;
+  // NEW IN STEP 19: copied once, like everything above.
+  const underSlip = decision.underSlip === undefined ? undefined : { ...decision.underSlip };
 
   // No subject, or no company: counted, not recorded. The second is new in step 10, and it is rare
   // by construction — `recordTheDecision` writes a no-company refusal to every company the caller
@@ -561,17 +576,26 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     at,
     tenant,
     kind,
-    identity: {
-      // `direct`, with an empty actor chain. STEP 18: and for an agent's command under a slip too,
-      // which is not yet true of it: step 19 records such a decision as `unattended`, with the slip's
-      // signer as its subject and the agent in its actor chain (DSOR-DEL-08); `on_behalf_of` is
-      // step 45. This said step 42, which builds no delegation. `role_source` and not `token`, because
-      // step 06's roles come from a table this program owns, not from a signed token.
-      mode: "direct",
-      subject,
-      actor_chain: [],
-      subject_authority: { source: "role_source", as_of: at },
-    },
+    // NEW IN STEP 19: an agent's command under a slip is the signer's authority, used by the agent:
+    // `unattended`, the signer its subject, the agent its actor chain, and the directory's time
+    // for the signer's authority (DSOR-DEL-08, DSOR-DEL-10, decision 129). Everything else is
+    // `direct`, with an empty actor chain; `on_behalf_of` is step 45. `role_source` and not
+    // `token` either way, because a person's roles come from a list this program owns, and the
+    // signer's from the company's directory, never from a signed token.
+    identity:
+      underSlip === undefined
+        ? {
+            mode: "direct",
+            subject,
+            actor_chain: [],
+            subject_authority: { source: "role_source", as_of: at },
+          }
+        : {
+            mode: "unattended",
+            subject: underSlip.delegator,
+            actor_chain: [subject],
+            subject_authority: { source: "role_source", as_of: underSlip.asOf },
+          },
     result,
     correlation: {
       request_id: requestId,
@@ -616,14 +640,19 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     body.row_count = rowCount;
   }
 
+  // NEW IN STEP 19: inside the hash, so a record whose slip is changed afterwards does not verify.
+  if (underSlip !== undefined) {
+    body.delegation = underSlip.delegation;
+  }
+
   body.record_hash = hashOf(body);
 
   // Frozen, and frozen deeply enough to matter: `readonly` is erased before Node runs, so without
   // this a caller who is handed a record can edit it. Each nested part is **spread**, not written out
   // a second time — a review pointed out that re-authoring `subject_authority` here meant the same
-  // literal existed twice, which is lesson 17: a guard written twice can be half-broken. When step 42
-  // puts an agent into `actor_chain`, the hash would have covered the real chain while the stored
-  // record showed `[]`.
+  // literal existed twice, which is lesson 17: a guard written twice can be half-broken. Step 19 puts
+  // an agent into `actor_chain`: with the literal written twice, the hash would have covered the
+  // real chain while the stored record showed `[]`.
   const identity = body.identity as Record<string, unknown>;
   const written = Object.freeze({
     ...body,
@@ -789,8 +818,8 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
     `INSERT INTO dsor.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
        identity, correlation, operation, payload_hash, "authorization", result, reason,
-       resources, row_count
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+       resources, row_count, delegation
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
     [
       written.record_id,
       written.chain,
@@ -811,6 +840,8 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
       // the whole number it is (migration 007, decision 109).
       written.resources === undefined ? null : JSON.stringify(written.resources),
       written.row_count ?? null,
+      // NEW IN STEP 19: migration 016's column, for the schema's field.
+      written.delegation ?? null,
     ],
   );
 }
@@ -830,7 +861,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
     `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash,
             to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
             tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
-            reason, resources, row_count
+            reason, resources, row_count, delegation
      FROM dsor.audit WHERE chain = $1 ORDER BY sequence`,
     [chainOf(tenant)],
   );
@@ -866,6 +897,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
         "reason",
         "resources",
         "row_count",
+        "delegation",
       ]) {
         if (row[field] !== null && row[field] !== undefined) {
           record[field] = row[field];
