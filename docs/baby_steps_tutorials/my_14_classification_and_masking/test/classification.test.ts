@@ -25,6 +25,9 @@ describe("the labels", () => {
     // Nobody labelled a notes field, or an entity called "payroll" at all.
     expect(labelOf("invoice", "notes")).toBe("confidential");
     expect(labelOf("payroll", "salary")).toBe("confidential");
+    // Decision 111: nor a name the table only inherits, as every JavaScript object does.
+    expect(labelOf("invoice", "toString")).toBe("confidential");
+    expect(labelOf("constructor", "name")).toBe("confidential");
   });
 
   it("restricted is in the table before any column is: a bank account", () => {

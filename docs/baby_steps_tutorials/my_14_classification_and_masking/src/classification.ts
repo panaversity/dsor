@@ -69,7 +69,15 @@ export function holdsMoney(entity: string, field: string): boolean {
 
 /** The label of one field. A field, or an entity, that nobody labelled is confidential. */
 export function labelOf(entity: string, field: string): Classification {
-  return labels[entity]?.[field] ?? "confidential";
+  // NEW IN STEP 14, decision 111: the table's own names only, for the entity and for the field.
+  // `labels[entity]?.[field]` walked the prototype chain: `toString` found a built-in function,
+  // which is no label, and `constructor` found `Object`. Neither is ever above a clearance, so a
+  // field with either name left for the agent. Decision 36 fixed the same bug for roles.
+  const fields = Object.hasOwn(labels, entity) ? labels[entity] : undefined;
+
+  return fields !== undefined && Object.hasOwn(fields, field)
+    ? (fields[field] ?? "confidential")
+    : "confidential";
 }
 
 /** Where a label sits in the order: public 0, restricted 3. */

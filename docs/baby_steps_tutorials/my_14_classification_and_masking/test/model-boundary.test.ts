@@ -181,6 +181,27 @@ describe("the field nobody labelled", () => {
     }
   });
 
+  it("DSOR-CLS-01: a field named like something every object inherits is unlabelled too, so it is confidential", async () => {
+    // Decision 111. The label table is a JavaScript object, and every object inherits `toString`
+    // and `valueOf`. The table used to answer those names with built-in functions, which are no
+    // label at all, so the rule that an unlabelled field is confidential never fired. Measured
+    // before: both left for the agent with the amount in them.
+    const door = makeDoor(PIPELINE, {
+      "invoice.get": handing(
+        aRow({ amount: undefined, toString: "31400.00 USD", valueOf: "31400.00 USD" }),
+      ),
+    });
+    const theirs = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+
+    if (theirs.kind === "data") {
+      expect(JSON.stringify(theirs)).not.toContain("31400.00");
+      expect(theirs.redactions.map((r) => r.field)).toStrictEqual(["toString", "valueOf"]);
+      expect(theirs.classification).toBe("internal");
+    } else {
+      throw new Error(`expected data, got ${theirs.kind}`);
+    }
+  });
+
   it("DSOR-CLS-01: a row with no address belongs to no entity, so every field of it is confidential", async () => {
     // One with no uri at all, one whose uri is not an address. The agent gets an empty invoice
     // and a list of everything; the label of nothing is public, and the list is the only sign.
