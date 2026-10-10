@@ -1032,6 +1032,9 @@ export function makeDoor(
   assertPipeline(checked);
 
   return async (login, id, args) => {
+    // NEW IN STEP 15: when this request began, on this program's clock. A read labelled `current`
+    // must have happened after it (DSOR-FRS-01b), and this is the clock its label's time comes from.
+    const startedAt = Date.now();
     // STEP 08: one id for this request, minted here — before the first stage, because the
     // request exists before any answer does. Every refusal and every success below is handed this
     // same id, so the record step 08 writes and the answer the caller reads name the same request.
@@ -1145,7 +1148,7 @@ export function makeDoor(
     // NEW IN STEP 15: and a read leaves only with a label that says how old it is (decision 120).
     // The code that read writes the label; the door does not know where data came from, so it
     // cannot write one, and insists on one instead.
-    const unlabelled = cannotBeLabelled(answer);
+    const unlabelled = cannotBeLabelled(answer, startedAt);
 
     if (unlabelled !== undefined) {
       return Object.freeze({

@@ -89,8 +89,11 @@ export function labelFrom(handed: unknown): unknown {
  * invoice or a page with no label, or with a label that is not one, is a bug in this program,
  * refused in an envelope with a code and a retry class. The messages never repeat what the handler
  * wrote, because a label that is not one could be carrying anything.
+ *
+ * `startedAt` is when this request began, on this program's clock, the clock the label's time
+ * comes from. A `current` label from before it is a saved copy calling itself fresh: DSOR-FRS-01b.
  */
-export function cannotBeLabelled(answer: HandlerAnswer): string | undefined {
+export function cannotBeLabelled(answer: HandlerAnswer, startedAt: number): string | undefined {
   if (answer.kind !== "data" && answer.kind !== "page") {
     return undefined;
   }
@@ -113,6 +116,13 @@ export function cannotBeLabelled(answer: HandlerAnswer): string | undefined {
 
   if (typeof connector !== "string" || connector === "") {
     return "returned a read whose label names no connector";
+  }
+
+  // §27: `current` means read from the system of record within this request. A time from before
+  // the request began was not, so the label lies, and the door refuses it rather than correcting
+  // it: relabelling would let the data out and hide the bug that wrote the lie (decision 120).
+  if (mode === "current" && Date.parse(observed_at) < startedAt) {
+    return "returned a value labelled current that was read before this request began";
   }
 
   return undefined;

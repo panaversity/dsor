@@ -6,6 +6,7 @@
 //
 // Rule DSOR-FRS-01a: every query result MUST state `observed_at`, the `resource_version` where one
 // exists, the connector, and the freshness mode actually delivered.
+// Rule DSOR-FRS-01b: DSoR MUST NOT label a cached value `CURRENT`.
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -142,6 +143,52 @@ describe("the door insists on a label", () => {
         "observed_at",
       ]);
       expect(JSON.stringify(answer)).not.toContain("31400.00");
+    }
+  });
+});
+
+describe("a value read before this request is never current", () => {
+  // §27: `current` is read from the system of record within this request. A label that says
+  // `current` with a time from before the request began is a saved copy calling itself fresh, the
+  // lie DSOR-FRS-01b forbids. The door knows when the request began, on the program's own clock,
+  // the same clock the label's time comes from (decision 120).
+  const anHourAgo = (): string => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  it("DSOR-FRS-01b: a value read an hour ago and labelled current is the program's own error, never to retry", async () => {
+    const door = handingLabel(() => ({ ...readNow(), observed_at: anHourAgo() }));
+
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+    ]) {
+      expect(answer.kind).toBe("error");
+
+      if (answer.kind === "error") {
+        expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+        expect(answer.envelope.retry).toBe("never");
+      }
+    }
+  });
+
+  it("DSOR-FRS-01b: the same saved value, labelled for what it is, leaves with its label and its time", async () => {
+    // Decision 120 rejected relabelling: the door does not change a label, it refuses a false one.
+    // A label that tells the truth about a saved copy is no lie, and leaves as it came.
+    const savedAt = anHourAgo();
+    const door = handingLabel(() => ({
+      mode: "observational",
+      observed_at: savedAt,
+      connector: "postgres",
+    }));
+    const answer = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+
+    expect(answer.kind).toBe("data");
+
+    if (answer.kind === "data") {
+      expect(answer.freshness).toStrictEqual({
+        mode: "observational",
+        observed_at: savedAt,
+        connector: "postgres",
+      });
     }
   });
 });
