@@ -246,17 +246,6 @@ describe("each question, honest and lied to", () => {
     );
   });
 
-  it("somethingToTouch: a command that only adds rows is not asked whether the states match", async () => {
-    // NEW IN STEP 17: a careless payment.create would add a payment in the other company, not change
-    // its invoice, so the invoice's state is not the question; rowsUntouched sees the new row.
-    const create = caseFor("payment.create", registry.get("payment.create")!, {
-      invoice: "dsor://org_456/invoice/INV-1008",
-      amount: { value: "31400.00", currency: "USD" },
-    });
-
-    await questions.somethingToTouch(honest(), create);
-  });
-
   it("somethingToTouch: a payment's number is looked for among the payments", async () => {
     // NEW IN STEP 17: an invoice INV-1008 is not a payment, and the other company must hold the
     // payment the example names.

@@ -193,10 +193,11 @@ export const questions = {
         `${THEIRS} has no ${parsed.id} (${withArticle(parsed.entity)}); add it to the running example`,
       ).toBe(true);
 
-      // STEP 17: asked of a command that changes a row, and not of one that only adds rows. A
-      // careless payment.create would not touch the other company's invoice: it would add a
-      // payment there, which rowsUntouched sees as a row that was not there before (decision 125).
-      if (c.contract.effect === "mutating" || c.contract.effect === "destructive") {
+      // STEP 17: asked of every command, the ones that only add rows too. Decision 125 asked it only
+      // of commands that change a row, with payment.create's example on INV-1008, issued in one
+      // company and a draft in the other: step 12's hollow pass, waiting for the day a precondition
+      // arrives. The example names INV-1009, a draft in both (decision 126).
+      if (c.contract.effect !== "read") {
         expect(
           theirs.get(row),
           `${THEIRS}'s ${parsed.id} is ${theirs.get(row)}, yours is ${ours.get(row)}: a careless ${c.id} would find nothing to do to it`,
@@ -320,7 +321,7 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
         await questions.sameWhole(deps, c);
       });
 
-      it(`the other company holds every invoice number ${id}'s example names, in the same state, so a careless write would have something to touch`, async () => {
+      it(`the other company holds every invoice and payment number ${id}'s example names, in the same state, so a careless write would have something to touch`, async () => {
         await hooks.reset();
         await questions.somethingToTouch(deps, c);
       });
