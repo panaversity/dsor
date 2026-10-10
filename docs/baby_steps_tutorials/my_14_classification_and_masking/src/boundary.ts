@@ -174,10 +174,11 @@ const whatItIs = (value: unknown): string => (value === null ? "null" : typeof v
 /**
  * NEW IN STEP 14: why the door cannot filter this answer, or nothing.
  *
- * A handler that answers with no row, or with a row that is not a row, is a bug in this program,
- * and the door says so in an envelope with a code and a retry class. A review handed the door a
- * `data` answer whose invoice was `null` and got a raw `TypeError` out of it instead — after the
- * decision was recorded, and for a command after the side effect, with nothing a caller can read.
+ * A handler that answers with no row, with a row that is not a row, or with a page whose cursor is
+ * not its last row's address, is a bug in this program, and the door says so in an envelope with a
+ * code and a retry class. A review handed the door a `data` answer whose invoice was `null` and got
+ * a raw `TypeError` out of it instead — after the decision was recorded, and for a command after
+ * the side effect, with nothing a caller can read.
  */
 export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
   if (answer.kind === "data") {
@@ -193,9 +194,19 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
 
     const row = answer.page.invoices.findIndex((held) => isValue(held));
 
-    return row === -1
+    if (row !== -1) {
+      return `returned ${whatItIs(answer.page.invoices[row])} as row ${row + 1} of a page`;
+    }
+
+    // NEW IN STEP 14, decision 112: the cursor is the address of the page's last row, which is what
+    // step 13 made it, or there is none. The filter never looks inside `next`, so anything else is
+    // stopped here: a handler that put the row there sent the amount to the agent, labelled
+    // internal, with `amount` listed as withheld beside it.
+    const next = answer.page.next;
+
+    return next === undefined || next === answer.page.invoices.at(-1)?.uri
       ? undefined
-      : `returned ${whatItIs(answer.page.invoices[row])} as row ${row + 1} of a page`;
+      : "returned a page whose next is not the address of its last row";
   }
 
   return undefined;

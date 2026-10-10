@@ -594,4 +594,44 @@ describe("the parts of an answer that are not rows", () => {
       expect(JSON.stringify(answer), answer.kind).not.toContain("31400.00");
     }
   });
+
+  it("DSOR-CLS-02a: a page's next is its last row's address or nothing, and anything else is the program's own error", async () => {
+    // Step 13 made the cursor the address of the page's last row. Measured before: a page whose
+    // `next` held the whole last row left for the agent with 31400.00 in it, labelled internal.
+    const INV_1009 = "dsor://org_456/invoice/INV-1009";
+    const rows = [aRow({}), aRow({ uri: INV_1009, id: "INV-1009" })] as Invoice[];
+    const aPageWith = (next: unknown) =>
+      makeDoor(PIPELINE, {
+        "invoice.list": async () => ({
+          kind: "page",
+          askedBy: "accounts-payable-fte",
+          page: { invoices: rows, next: next as string | undefined },
+        }),
+      });
+
+    // The last row itself, the first row's address, an address from no row on the page, and text
+    // that is not an address at all.
+    for (const next of [rows[1], INV_1008, "dsor://org_456/invoice/INV-1010", "31400.00 USD"]) {
+      const theirs = await aPageWith(next)(AGENT, "invoice.list", {});
+
+      expect(theirs.kind, String(next)).toBe("error");
+      expect(JSON.stringify(theirs), String(next)).not.toContain("31400.00");
+
+      if (theirs.kind === "error") {
+        expect(theirs.envelope.code).toBe("INTERNAL_ERROR");
+        expect(theirs.envelope.retry).toBe("never");
+      }
+    }
+
+    // The honest cursor, the last row's address, and none at all, still leave.
+    for (const next of [INV_1009, undefined]) {
+      const theirs = await aPageWith(next)(AGENT, "invoice.list", {});
+
+      expect(theirs.kind, String(next)).toBe("page");
+
+      if (theirs.kind === "page") {
+        expect(theirs.page.next).toBe(next);
+      }
+    }
+  });
 });
