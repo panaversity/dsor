@@ -122,6 +122,14 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
 const TENANT_REGCLASSES = TENANT_TABLES.map(([table]) => `to_regclass('${table}')`).join(", ");
 
+/**
+ * NEW IN STEP 17: a question asked of every role this connection is, or can become with SET ROLE.
+ * `pg_has_role(…, 'MEMBER')` sees a membership whether or not it is inherited, and a role is a
+ * member of itself, so the connection's own rights are asked too (decision 126).
+ */
+const forAnyRoleItCanBe = (question: (role: string) => string): string =>
+  `EXISTS (SELECT 1 FROM pg_roles r WHERE pg_has_role(current_user, r.oid, 'MEMBER') AND (${question("r.oid")}))`;
+
 /** The tables as words, for a refusal. */
 const TENANT_TABLE_NAMES = `${TENANT_TABLES.slice(0, -1)
   .map(([table]) => table)
@@ -288,58 +296,6 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `log or the invoices runs inside this program's own statements with its owner's rights — ` +
         `an evaluation measured a trigger on the invoices smuggling every company's rows out ` +
         `through the application's own UPDATE. Drop the trigger, or change this check deliberately.`,
-    );
-  }
-
-  // STEP 10: the invoices table too. The application may change an invoice's status and
-  // nothing else — a row's company and number are its identity (DSOR-TEN-01a) — and it may neither
-  // add nor remove rows. An administrator who grants more has made the same kind of mistake as
-  // pointing DSOR_DB_URL at the owner, and a critic's next attack was exactly that grant.
-  const { rows: invoices } = await db.query<{ may: boolean }>(
-    `SELECT has_column_privilege(current_user, 'public.invoices', 'tenant_id', 'UPDATE')
-         OR has_column_privilege(current_user, 'public.invoices', 'id', 'UPDATE')
-         -- NEW IN STEP 17: any column, not the table. A grant that names columns is invisible to
-         -- has_table_privilege, so a grant of every column passed this check, measured.
-         OR has_any_column_privilege(current_user, 'public.invoices', 'INSERT')
-         OR has_table_privilege(current_user, 'public.invoices', 'DELETE')
-         OR has_table_privilege(current_user, 'public.invoices', 'TRUNCATE') AS may`,
-  );
-
-  if (invoices[0]?.may !== false) {
-    throw new Error(
-      `this connection is \`${answer.who}\`, and it may move, renumber, add or delete invoices. ` +
-        `The application may change an invoice's status and nothing else. See ` +
-        `migrations/003_invoices.sql.`,
-    );
-  }
-
-  // NEW IN STEP 17: the vendors and the payments, in the same spirit (decision 125). The
-  // application reads the vendors and changes nothing about them. It makes a draft payment and
-  // changes a payment's status, and nothing else: not its company or number, which are its identity
-  // (DSOR-TEN-01a), not whom it pays, for which invoice or how much, and it neither chooses a new
-  // payment's number or status nor removes one.
-  const { rows: payments } = await db.query<{ may: boolean }>(
-    `SELECT has_any_column_privilege(current_user, 'public.vendors', 'INSERT')
-         OR has_any_column_privilege(current_user, 'public.vendors', 'UPDATE')
-         OR has_table_privilege(current_user, 'public.vendors', 'DELETE')
-         OR has_table_privilege(current_user, 'public.vendors', 'TRUNCATE')
-         OR has_column_privilege(current_user, 'public.payments', 'id', 'INSERT')
-         OR has_column_privilege(current_user, 'public.payments', 'status', 'INSERT')
-         OR has_column_privilege(current_user, 'public.payments', 'tenant_id', 'UPDATE')
-         OR has_column_privilege(current_user, 'public.payments', 'id', 'UPDATE')
-         OR has_column_privilege(current_user, 'public.payments', 'vendor', 'UPDATE')
-         OR has_column_privilege(current_user, 'public.payments', 'invoice', 'UPDATE')
-         OR has_column_privilege(current_user, 'public.payments', 'amount_value', 'UPDATE')
-         OR has_column_privilege(current_user, 'public.payments', 'amount_currency', 'UPDATE')
-         OR has_table_privilege(current_user, 'public.payments', 'DELETE')
-         OR has_table_privilege(current_user, 'public.payments', 'TRUNCATE') AS may`,
-  );
-
-  if (payments[0]?.may !== false) {
-    throw new Error(
-      `this connection is \`${answer.who}\`, and it may change a vendor, or more of a payment ` +
-        `than its status. The application reads the vendors, makes a draft payment and changes a ` +
-        `payment's status, and nothing else. See migrations/009_vendors_and_payments.sql.`,
     );
   }
 
@@ -533,6 +489,73 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `not one of the tenant tables. A view or a table beside them is a window past the lock: ` +
         `a view runs with its owner's rights, and a table without a policy hides nothing. The ` +
         `application may read ${TENANT_TABLE_NAMES}, and nothing else.`,
+    );
+  }
+
+  // NEW IN STEP 17: the rights on the business's tables, asked last. Asked of every role the
+  // connection can be, they would refuse an owner one SET ROLE away as "may delete", which is
+  // true and not the reason; the ownership questions above name the reason (decision 126).
+  //
+  // STEP 10: the invoices table too. The application may change an invoice's status and
+  // nothing else — a row's company and number are its identity (DSOR-TEN-01a) — and it may neither
+  // add nor remove rows. An administrator who grants more has made the same kind of mistake as
+  // pointing DSOR_DB_URL at the owner, and a critic's next attack was exactly that grant.
+  //
+  // NEW IN STEP 17: asked of every role this connection can be, itself and one SET ROLE away, as
+  // the log's rights have been since step 09. A review passed start-up with DELETE on the payments
+  // held by a role the application could become (decision 126); the invoices had the same gap.
+  const { rows: invoices } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanBe(
+      (role) => `has_column_privilege(${role}, 'public.invoices', 'tenant_id', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.invoices', 'id', 'UPDATE')
+         -- NEW IN STEP 17: any column, not the table. A grant that names columns is invisible to
+         -- has_table_privilege, so a grant of every column passed this check, measured.
+         OR has_any_column_privilege(${role}, 'public.invoices', 'INSERT')
+         OR has_table_privilege(${role}, 'public.invoices', 'DELETE')
+         OR has_table_privilege(${role}, 'public.invoices', 'TRUNCATE')`,
+    )} AS may`,
+  );
+
+  if (invoices[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may move, renumber, add or delete invoices, ` +
+        `itself or one SET ROLE away. The application may change an invoice's status and nothing ` +
+        `else. See migrations/003_invoices.sql.`,
+    );
+  }
+
+  // NEW IN STEP 17: the vendors and the payments, in the same spirit (decision 125). The
+  // application reads the vendors and changes nothing about them. It makes a draft payment and
+  // changes a payment's status, and nothing else: not its company or number, which are its identity
+  // (DSOR-TEN-01a), not whom it pays, for which invoice or how much, and it neither chooses a new
+  // payment's number or status nor removes one. The number is the sequence's: UPDATE on it lets
+  // `setval` choose the next one, and a review made PAY-5000 that way (decision 126).
+  const { rows: payments } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanBe(
+      (role) => `has_any_column_privilege(${role}, 'public.vendors', 'INSERT')
+         OR has_any_column_privilege(${role}, 'public.vendors', 'UPDATE')
+         OR has_table_privilege(${role}, 'public.vendors', 'DELETE')
+         OR has_table_privilege(${role}, 'public.vendors', 'TRUNCATE')
+         OR has_column_privilege(${role}, 'public.payments', 'id', 'INSERT')
+         OR has_column_privilege(${role}, 'public.payments', 'status', 'INSERT')
+         OR has_column_privilege(${role}, 'public.payments', 'tenant_id', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.payments', 'id', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.payments', 'vendor', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.payments', 'invoice', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.payments', 'amount_value', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.payments', 'amount_currency', 'UPDATE')
+         OR has_table_privilege(${role}, 'public.payments', 'DELETE')
+         OR has_table_privilege(${role}, 'public.payments', 'TRUNCATE')
+         OR has_sequence_privilege(${role}, 'public.payment_numbers', 'UPDATE')`,
+    )} AS may`,
+  );
+
+  if (payments[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may change a vendor, more of a payment than ` +
+        `its status, or a payment's number, itself or one SET ROLE away. The application reads ` +
+        `the vendors, makes a draft payment and changes a payment's status, and nothing else. See ` +
+        `migrations/009_vendors_and_payments.sql.`,
     );
   }
 }

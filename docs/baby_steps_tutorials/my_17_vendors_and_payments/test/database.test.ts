@@ -443,6 +443,41 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-TEN-01a: an application that may choose a payment's number is refused at start-up", async () => {
+    // NEW IN STEP 17, decision 126: UPDATE on the sequence lets `setval` pick the next payment's
+    // number; a review set it to 4999 and the next payment was PAY-5000, with start-up content.
+    const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
+    await db.exec("GRANT UPDATE ON SEQUENCE public.payment_numbers TO dsor_runtime");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/payment's number/);
+
+    await db.close();
+  });
+
+  it("DSOR-TEN-01a: rights on the business's tables one SET ROLE away are refused too", async () => {
+    // NEW IN STEP 17, decision 126: the log's rights have been asked of every role the application
+    // can become since step 09; the invoices', the vendors' and the payments' were asked of the
+    // application alone, and a review passed start-up with DELETE on the payments one SET ROLE away.
+    for (const [grant, words] of [
+      ["GRANT DELETE ON public.payments TO writer", /payment/],
+      ["GRANT UPDATE ON SEQUENCE public.payment_numbers TO writer", /payment's number/],
+      ["GRANT DELETE ON public.invoices TO writer", /invoices/],
+    ] as const) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(`CREATE ROLE writer; ${grant}; GRANT writer TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(words);
+
+      await db.close();
+    }
+  });
+
   it("DSOR-AUD-04a: a right reached through inherited role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL
