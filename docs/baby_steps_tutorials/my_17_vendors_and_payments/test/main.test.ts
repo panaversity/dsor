@@ -298,7 +298,7 @@ describe("the program a learner runs", () => {
   });
 
   it("the demo says its log is dsor.audit, in DSoR's own schema", () => {
-    // NEW IN STEP 16: the second line of the demo names where the log lives now (decision 122).
+    // STEP 16: the second line of the demo names where the log lives now (decision 122).
     // Its words only, so it names no rule: the line is printed from a fixed string, and this test
     // would pass wherever the log lived. The tests in control-plane-store.test.ts are the proof of
     // DSOR-MOD-01 (decision 123).

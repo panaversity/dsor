@@ -92,7 +92,7 @@ describe("an account the lock does not apply to", () => {
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner/);
   });
 
-  // NEW IN STEP 16: the schemas the tenant tables are in. A schema's owner may drop any table in
+  // STEP 16: the schemas the tenant tables are in. A schema's owner may drop any table in
   // it, even one it does not own, and nothing above asked who owns them. A review measured it:
   // `dsor` handed to the application, start-up passed, and one `DROP TABLE dsor.audit` erased
   // every record (decision 123). Each case then drops the table, so the route is shown to be real.
@@ -112,7 +112,7 @@ describe("an account the lock does not apply to", () => {
   }
 
   it("DSOR-AUD-04a: an account that owns the database is refused, even with public given back", async () => {
-    // NEW IN STEP 16: one login that owns its own database is the commonest careless setup. It was
+    // STEP 16: one login that owns its own database is the commonest careless setup. It was
     // caught only because `public` belongs to `pg_database_owner`, and doing what that refusal said,
     // giving the schema back, let the program start (decision 124). A database's owner may drop it.
     await asTheOwner(() =>
@@ -166,7 +166,7 @@ describe("a window past the lock", () => {
   });
 
   it("DSOR-AUD-04a: a SECURITY DEFINER function whose owner owns the schema dsor is refused", async () => {
-    // NEW IN STEP 16: the question asked of the connection, asked of a helper's owner too, as the
+    // STEP 16: the question asked of the connection, asked of a helper's owner too, as the
     // check already does for a tenant table's owner. This owner holds no right on the log, and
     // owns its schema: the helper may drop the log for whoever calls it (decision 123).
     await asTheOwner(async () => {
@@ -187,7 +187,7 @@ describe("a window past the lock", () => {
   });
 
   it("DSOR-MOD-01: a SECURITY DEFINER function whose owner may create in the schema dsor is refused", async () => {
-    // NEW IN STEP 16: the application may create nothing in dsor, and through a helper whose owner
+    // STEP 16: the application may create nothing in dsor, and through a helper whose owner
     // may, it made dsor.proposals anyway, a review measured (decision 124).
     await asTheOwner(async () => {
       await db.exec("CREATE ROLE a_builder");
@@ -348,7 +348,7 @@ describe("what an evaluation found past the first fixes", () => {
   });
 
   it("a server that missed migration 008 is refused in the step's own words too", async () => {
-    // NEW IN STEP 16: the log where migrations 001 to 007 leave it, in public, and no dsor at all.
+    // STEP 16: the log where migrations 001 to 007 leave it, in public, and no dsor at all.
     // The test above drops the invoices only, and for the log the step's own words never appeared:
     // a review measured `schema "dsor" does not exist` instead (decision 123).
     await asTheOwner(() => db.exec("ALTER TABLE dsor.audit SET SCHEMA public; DROP SCHEMA dsor;"));
@@ -360,7 +360,7 @@ describe("what an evaluation found past the first fixes", () => {
 });
 
 describe("a schema the application may create things in", () => {
-  // NEW IN STEP 16: only the migrations, run as the owner, put tables in DSoR's schema or the
+  // STEP 16: only the migrations, run as the owner, put tables in DSoR's schema or the
   // business's. A table the application made there would be its own, every row of it, and a later
   // step's migration would find its name taken. A review measured the application making
   // `dsor.proposals` six steps before step 22 builds it (decision 123). Migration 008 takes

@@ -1,4 +1,4 @@
-// NEW IN STEP 16: DSoR's paperwork has a place of its own, a schema called `dsor`, beside the
+// STEP 16: DSoR's paperwork has a place of its own, a schema called `dsor`, beside the
 // business's tables in the same database.
 //
 // Measured on step 15: DSoR's only paperwork in the database, the log, was `public.audit`, filed

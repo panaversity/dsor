@@ -132,7 +132,7 @@ async function asTheApplication(sql: string): Promise<string> {
 /**
  * Re-apply 002_runtime_user.sql — the file under test, not a hand-written copy of it.
  *
- * NEW IN STEP 16: with the log's new address. The file still says `public.audit`, because an
+ * STEP 16: with the log's new address. The file still says `public.audit`, because an
  * applied migration is never edited, and since migration 008 the log is `dsor.audit`. What the
  * file's lines take back is the question here, not where the table lives, so the one name is
  * swapped and every line of the file is otherwise what ran.

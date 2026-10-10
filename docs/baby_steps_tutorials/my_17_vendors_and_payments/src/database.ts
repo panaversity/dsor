@@ -127,7 +127,7 @@ const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // STEP 11: both tenant tables exist, asked before anything else, because every question below is
   // about them, and a missing table would turn those answers into NULLs that an evaluation showed
-  // the guards could misread. NEW IN STEP 16: asked on its own as well. It was a column of the
+  // the guards could misread. STEP 16: asked on its own as well. It was a column of the
   // query below, which also asks `has_table_privilege(…, 'dsor.audit', …)`, and that is an error
   // for a name that is not there: on a server that missed migration 008, a review measured
   // `schema "dsor" does not exist`, and the words below never appeared. `to_regclass` says NULL.
@@ -188,12 +188,12 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                   OR EXISTS (SELECT 1 FROM pg_class c
                               WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                                 AND pg_has_role(p.proowner, c.relowner, 'MEMBER'))
-                  -- NEW IN STEP 16: or of the schema one is in, who may drop the table from inside
+                  -- STEP 16: or of the schema one is in, who may drop the table from inside
                   -- the helper. A review measured the owner of dsor dropping the log.
                   OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
                               WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                                 AND pg_has_role(p.proowner, ns.nspowner, 'MEMBER'))
-                  -- NEW IN STEP 16: or may create in either schema, and so make a table there for
+                  -- STEP 16: or may create in either schema, and so make a table there for
                   -- whoever calls it. A review made dsor.proposals that way (decision 124).
                   OR EXISTS (SELECT 1 FROM pg_namespace ns
                               WHERE ns.nspname IN ('dsor', 'public')
@@ -343,16 +343,16 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               SELECT 1 FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
               WHERE pg_has_role(current_user, c.relowner, 'MEMBER')
             ) AS owns_tenant_table,
-            -- NEW IN STEP 16: the database they are in, and who owns it (decision 124).
+            -- STEP 16: the database they are in, and who owns it (decision 124).
             pg_has_role(current_user, (SELECT d.datdba FROM pg_database d
                                         WHERE d.datname = current_database()), 'MEMBER')
               AS owns_database,
-            -- NEW IN STEP 16: the schema each tenant table is in, and who owns it (decision 123).
+            -- STEP 16: the schema each tenant table is in, and who owns it (decision 123).
             (SELECT string_agg(ns.nspname, ', ' ORDER BY ns.nspname)
                FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
                JOIN pg_namespace ns ON ns.oid = c.relnamespace
               WHERE pg_has_role(current_user, ns.nspowner, 'MEMBER')) AS owns_schema,
-            -- NEW IN STEP 16: where it may create things, itself or one SET ROLE away, as each
+            -- STEP 16: where it may create things, itself or one SET ROLE away, as each
             -- role and schema, so the refusal can say which grant to take back (decision 124).
             (SELECT string_agg(DISTINCT r.rolname || ' on ' || ns.nspname, ', '
                                ORDER BY r.rolname || ' on ' || ns.nspname)
@@ -414,7 +414,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 16: the database the tenant tables are in. One login that owns its own database is
+  // STEP 16: the database the tenant tables are in. One login that owns its own database is
   // the commonest careless setup. It was caught only through `public`, whose owner is the
   // database's, and giving that schema back let the program start, measured (decision 124). A
   // database's owner may drop it, and asked first, the refusal says so instead of naming `public`.
@@ -427,7 +427,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 16: the schemas the tenant tables are in. A schema's owner may drop any table in
+  // STEP 16: the schemas the tenant tables are in. A schema's owner may drop any table in
   // it, even one it does not own, and nothing here asked who owns them: a review handed `dsor` to
   // the application, start-up passed, and one DROP TABLE erased every record (decision 123).
   if (second.owns_schema !== null) {
@@ -439,7 +439,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 16: and it may create nothing in them. Only the migrations put tables there: one the
+  // STEP 16: and it may create nothing in them. Only the migrations put tables there: one the
   // application made would be its own, every row of it, and a later step's migration would find
   // its name taken. Migration 008 takes CREATE on dsor back; this asks PostgreSQL, because a grant
   // made after the migrations passes them by (decision 123).

@@ -225,7 +225,7 @@ describe("refuseIfItCanRewriteHistory", () => {
       query: async <T>() => ({ rows: [] as T[] }),
     };
 
-    // NEW IN STEP 16: whether the tables exist is asked first now, on its own, so it is the first
+    // STEP 16: whether the tables exist is asked first now, on its own, so it is the first
     // question a silent database leaves unanswered. Its own words, not "did not say", which the
     // next question's refusal shares and would pass too (decision 124).
     await expect(refuseIfItCanRewriteHistory(silent)).rejects.toThrow(
@@ -234,7 +234,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-AUD-04a: a database that answers the first question and then nothing is refused, not trusted", async () => {
-    // NEW IN STEP 16: the second question's own refusal, which the test above no longer reaches.
+    // STEP 16: the second question's own refusal, which the test above no longer reaches.
     const halfSilent: Database = {
       query: async <T>(sql: string) => ({
         rows: (sql.includes("AS tables_present") ? [{ tables_present: true }] : []) as T[],
@@ -258,7 +258,7 @@ describe("refuseIfItCanRewriteHistory", () => {
       { who: "x", may: false, may_by_set_role: false, may_by_function: false },
       { may: false, may_by_set_role: false, may_by_function: false, has_trigger: false }, // no `who`
     ]) {
-      // NEW IN STEP 16: the tables question answered truly, and every other question evasively.
+      // STEP 16: the tables question answered truly, and every other question evasively.
       // Every row here lacked `tables_present`, so from step 11 on six of the seven were refused by
       // the tables check, and the one with no `who` by the `who` question, which came first: none
       // reached the guard it was written for. Now they do. Each row is still refused by the first
@@ -285,7 +285,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
-    // NEW IN STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
+    // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
     // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
     // UPDATE failed with "permission denied for schema dsor", a review measured, and the test still
     // passed. The last lines below ask for the route itself, so that cannot happen quietly again.
@@ -302,7 +302,7 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SET ROLE away/);
 
-    // NEW IN STEP 16: and what the check refused is a real route: as `editor`, the record changes.
+    // STEP 16: and what the check refused is a real route: as `editor`, the record changes.
     await db.exec("SET ROLE editor");
     const rewrite = await db.query("UPDATE dsor.audit SET result = 'REWRITTEN'");
 
