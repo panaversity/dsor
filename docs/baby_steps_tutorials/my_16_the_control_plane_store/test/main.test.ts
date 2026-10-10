@@ -297,6 +297,13 @@ describe("the program a learner runs", () => {
     );
   });
 
+  it("DSOR-MOD-01: the demo says its log is dsor.audit, in DSoR's own schema", () => {
+    // NEW IN STEP 16: the second line of the demo names where the log lives now (decision 122).
+    const lines = demo().raw.split("\n");
+
+    expect(lines[1]).toMatch(/^The audit log is dsor\.audit, in DSoR's own schema, in /);
+  });
+
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
     // STEP 15: under each read, a line of its own: the mode, when, and from where. The time
     // changes every run, so the test pins its shape, not its value.

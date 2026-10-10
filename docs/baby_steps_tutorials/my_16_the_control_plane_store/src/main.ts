@@ -73,7 +73,8 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 const database = await openTheDatabase();
 
 console.log(greet("accounts-payable-fte"));
-console.log(`The audit log is in ${database.where}.`);
+// NEW IN STEP 16: and the log is DSoR's own, in its own schema, not among the business's tables.
+console.log(`The audit log is dsor.audit, in DSoR's own schema, in ${database.where}.`);
 console.log();
 
 // The same read, by two different callers. Switching is just a different login.

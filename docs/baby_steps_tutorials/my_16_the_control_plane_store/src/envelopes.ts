@@ -287,8 +287,9 @@ export function success(answer: {
   // STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names
   // its company. This was `dsor://org_456/proposal/...` for every tenant — a hostile review ran a
   // command as org_789 and got a receipt in org_456's proposal space. The counter is still
-  // process-wide, which is fine for a number that only has to be unique; the proposal store that
-  // makes it real arrives in step 16.
+  // process-wide, and it starts again with every run: two runs name two different proposals
+  // `prop_0001`, measured on step 15. Step 16 gave DSoR a store of its own and moved the log into
+  // it; the proposal store that makes this number real arrives in step 22 (decision 122).
   const id = String(proposalCount).padStart(4, "0");
   const envelope: ResultEnvelope = Object.freeze({
     outcome: "COMMITTED" as const,

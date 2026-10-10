@@ -791,8 +791,10 @@ const recordTheDecision: Stage["run"] = async (context) => {
     // method, and a transaction needs one connection held across statements, which the pool does
     // not promise. So when the second write fails after the first committed, the caller is told
     // exactly that, not "nothing was written". A review measured the old message against one log
-    // holding the DENY and the other empty. Writing every home in one transaction is step 16's,
-    // when the control-plane store arrives with a connection of its own.
+    // holding the DENY and the other empty. Writing every home in one transaction waits for the
+    // step that builds transactions, which the map first needs in step 36: step 16's store shares
+    // the database, and the database layer still offers no transaction across statements
+    // (decision 122).
     return refuse(
       principal?.id ?? "(nobody)",
       "EVIDENCE_STORE_UNAVAILABLE",

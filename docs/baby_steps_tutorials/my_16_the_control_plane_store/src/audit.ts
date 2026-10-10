@@ -782,6 +782,8 @@ function isUniqueViolation(error: unknown): boolean {
  * them.
  */
 async function insert(db: Statements, written: AuditRecord): Promise<void> {
+  // NEW IN STEP 16: the log is `dsor.audit`, in DSoR's own schema, since migration 008 moved it
+  // out of the business's `public` (DSOR-MOD-01, decision 122). Every statement here names it so.
   await db.query(
     `INSERT INTO dsor.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,

@@ -172,7 +172,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
             ) AS has_trigger,
             -- STEP 11: both tenant tables exist. Asked first, because every question below
             -- is about them, and a missing table would turn those answers into NULLs that an
-            -- evaluation showed the guards could misread.
+            -- evaluation showed the guards could misread. NEW IN STEP 16: the log is looked for
+            -- in dsor, where migration 008 moved it; a program still looking in public refuses
+            -- to start.
             (to_regclass('public.invoices') IS NOT NULL AND to_regclass('dsor.audit') IS NOT NULL)
               AS tables_present`,
   );
