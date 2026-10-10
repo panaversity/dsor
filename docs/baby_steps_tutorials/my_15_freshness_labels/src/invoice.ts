@@ -74,8 +74,8 @@ function fromRow(row: Row): Invoice {
 /**
  * Finds one invoice by its company and its id.
  *
- * Returns `undefined` when that company has no such invoice — including when another company has
- * one by that number. A missing invoice is an ordinary answer, not a crash.
+ * The invoice is `undefined` when that company has no such invoice — including when another
+ * company has one by that number. A missing invoice is an ordinary answer, not a crash.
  *
  * NEW IN STEP 15: with how fresh it is (DSOR-FRS-01a). The label is taken just before the query,
  * so the row is at least as fresh as it says: taken after the reply, it claimed a round trip more

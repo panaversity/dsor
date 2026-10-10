@@ -96,9 +96,9 @@ export type OperationAnswer =
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
 
 /**
- * STEP 14: what a handler hands the door — the whole row, labelled by nobody yet. The door
+ * STEP 14: what a handler hands the door — the whole row, with no classification yet. The door
  * turns it into an OperationAnswer on the way out (boundary.ts), which is the only way out.
- * NEW IN STEP 15: a read hands over its freshness label too, written by the code that read.
+ * NEW IN STEP 15: a read hands over its freshness label, written by the code that read.
  */
 export type HandlerAnswer =
   | {
