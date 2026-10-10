@@ -264,9 +264,9 @@ describe("a lock that is not there", () => {
   // trigger is there: a guarantee the program depends on is checked, not assumed.
   for (const [undo, reason] of [
     ["ALTER TABLE public.invoices NO FORCE ROW LEVEL SECURITY", /forced/],
-    ["ALTER TABLE public.audit DISABLE ROW LEVEL SECURITY", /row-level security/],
-    ["DROP POLICY tenant_isolation ON public.audit", /policy/],
-    ["CREATE POLICY for_app ON public.audit TO dsor_runtime USING (true)", /policy/],
+    ["ALTER TABLE dsor.audit DISABLE ROW LEVEL SECURITY", /row-level security/],
+    ["DROP POLICY tenant_isolation ON dsor.audit", /policy/],
+    ["CREATE POLICY for_app ON dsor.audit TO dsor_runtime USING (true)", /policy/],
   ] as const) {
     it(`DSOR-RP-01b: refuses to start when the lock is off — ${undo}`, async () => {
       await asTheOwner(() => db.exec(undo));

@@ -1,6 +1,6 @@
 // STEP 09: the guarantee, against a real PostgreSQL.
 //
-// This is the step's "done when": `UPDATE audit …` must fail with a permission error. Step 08's
+// This is the step's "done when": `UPDATE dsor.audit …` must fail with a permission error. Step 08's
 // chain makes tampering *detectable*; this makes it *refused*, and the thing doing the refusing is
 // not our code.
 //
@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 /** One decision, shaped like the record step 08 writes. */
-const A_DECISION = `INSERT INTO audit (
+const A_DECISION = `INSERT INTO dsor.audit (
   record_id, chain, sequence, previous_hash, record_hash, at,
   tenant, kind, identity, correlation, operation, "authorization", result
 ) VALUES (
@@ -129,11 +129,18 @@ async function asTheApplication(sql: string): Promise<string> {
   }
 }
 
-/** Re-apply 002_runtime_user.sql — the file under test, not a hand-written copy of it. */
+/**
+ * Re-apply 002_runtime_user.sql — the file under test, not a hand-written copy of it.
+ *
+ * NEW IN STEP 16: with the log's new address. The file still says `public.audit`, because an
+ * applied migration is never edited, and since migration 008 the log is `dsor.audit`. What the
+ * file's lines take back is the question here, not where the table lives, so the one name is
+ * swapped and every line of the file is otherwise what ran.
+ */
 async function reapplyThePermissions(): Promise<void> {
   for (const migration of migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)))) {
     if (migration.name === "002_runtime_user.sql") {
-      await db.exec(migration.sql);
+      await db.exec(migration.sql.replaceAll("public.audit", "dsor.audit"));
     }
   }
 }
@@ -174,15 +181,15 @@ const TABLE_ONLY = ["DELETE", "TRIGGER", "TRUNCATE"] as const;
 async function privilegesOfTheApplication(): Promise<string[]> {
   const columnwise = PER_COLUMN.map(
     (privilege, i) =>
-      `(has_table_privilege('dsor_runtime', 'public.audit', '${privilege}') OR EXISTS (
+      `(has_table_privilege('dsor_runtime', 'dsor.audit', '${privilege}') OR EXISTS (
           SELECT 1 FROM pg_attribute a
-          WHERE a.attrelid = 'public.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
-            AND has_column_privilege('dsor_runtime', 'public.audit', a.attname, '${privilege}')
+          WHERE a.attrelid = 'dsor.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+            AND has_column_privilege('dsor_runtime', 'dsor.audit', a.attname, '${privilege}')
         )) AS any_${i}`,
   );
   const tablewise = TABLE_ONLY.map(
     (privilege, i) =>
-      `has_table_privilege('dsor_runtime', 'public.audit', '${privilege}') AS all_${i}`,
+      `has_table_privilege('dsor_runtime', 'dsor.audit', '${privilege}') AS all_${i}`,
   );
   const held = await db.query<Record<string, boolean>>(
     `SELECT ${[...columnwise, ...tablewise].join(", ")}`,
@@ -198,7 +205,7 @@ async function privilegesOfTheApplication(): Promise<string[]> {
 /** Can the application write this one column? `recorded_at` is the column it must not. */
 async function mayInsertColumn(column: string): Promise<boolean> {
   const { rows } = await db.query<{ may: boolean }>(
-    "SELECT has_column_privilege('dsor_runtime', 'public.audit', $1, 'INSERT') AS may",
+    "SELECT has_column_privilege('dsor_runtime', 'dsor.audit', $1, 'INSERT') AS may",
     [column],
   );
 
@@ -208,19 +215,19 @@ async function mayInsertColumn(column: string): Promise<boolean> {
 describe("what the application may do to the log", () => {
   it("DSOR-AUD-04a: it may add a decision and read it back", async () => {
     expect(await asTheApplication(A_DECISION)).toBe("allowed");
-    expect(await asTheApplication("SELECT 1 FROM audit")).toBe("allowed");
+    expect(await asTheApplication("SELECT 1 FROM dsor.audit")).toBe("allowed");
   });
 
   // The step's "done when", in one assertion.
   it("DSOR-AUD-04a: it may not change a decision that was written", async () => {
     await db.exec(A_DECISION);
 
-    expect(await asTheApplication("UPDATE audit SET result = 'ALLOWED'")).toMatch(
+    expect(await asTheApplication("UPDATE dsor.audit SET result = 'ALLOWED'")).toMatch(
       /permission denied for table audit/,
     );
 
     // And the record is untouched, which is the part that matters.
-    const after = await db.query<{ result: string }>("SELECT result FROM audit");
+    const after = await db.query<{ result: string }>("SELECT result FROM dsor.audit");
 
     expect(after.rows[0]!.result).toBe("AUTHORIZATION_DENIED");
   });
@@ -231,19 +238,21 @@ describe("what the application may do to the log", () => {
     // DELETE and TRUNCATE are different privileges. Revoking one leaves the other, and TRUNCATE
     // empties the whole table in a single statement — so a log the application can TRUNCATE is not
     // append-only, whatever else is true of it.
-    expect(await asTheApplication("DELETE FROM audit")).toMatch(
+    expect(await asTheApplication("DELETE FROM dsor.audit")).toMatch(
       /permission denied for table audit/,
     );
-    expect(await asTheApplication("TRUNCATE audit")).toMatch(/permission denied for table audit/);
+    expect(await asTheApplication("TRUNCATE dsor.audit")).toMatch(
+      /permission denied for table audit/,
+    );
 
-    const after = await db.query("SELECT 1 FROM audit");
+    const after = await db.query("SELECT 1 FROM dsor.audit");
 
     expect(after.rows).toHaveLength(1);
   });
 
   // Two ways round the privileges that a REVOKE on the table alone does not close.
   it("DSOR-AUD-04a: it may not drop the table, or make a table of its own", async () => {
-    expect(await asTheApplication("DROP TABLE audit")).toMatch(/must be owner of table audit/);
+    expect(await asTheApplication("DROP TABLE dsor.audit")).toMatch(/must be owner of table audit/);
 
     // A role that can create tables can create one called `audit` earlier on its own search path,
     // and then every INSERT lands somewhere nobody is auditing.
@@ -268,11 +277,11 @@ describe("what the application may do to the log", () => {
     expect(before).toEqual(["INSERT", "SELECT"]);
 
     // No error. This is the trap.
-    expect(await asTheApplication("GRANT UPDATE ON audit TO dsor_runtime")).toBe("allowed");
+    expect(await asTheApplication("GRANT UPDATE ON dsor.audit TO dsor_runtime")).toBe("allowed");
 
     // And nothing changed, which is the only thing worth asserting.
     expect(await privilegesOfTheApplication()).toEqual(["INSERT", "SELECT"]);
-    expect(await asTheApplication("UPDATE audit SET result = 'ALLOWED'")).toMatch(
+    expect(await asTheApplication("UPDATE dsor.audit SET result = 'ALLOWED'")).toMatch(
       /permission denied for table audit/,
     );
   });
@@ -343,7 +352,7 @@ describe("what the table itself refuses", () => {
   it("DSOR-AUD-01: every required column is refused when it is missing", async () => {
     const required = await db.query<{ name: string }>(
       `SELECT a.attname AS name FROM pg_attribute a
-       WHERE a.attrelid = 'public.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+       WHERE a.attrelid = 'dsor.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
          AND a.attnotnull
          -- recorded_at is NOT NULL with a default, so leaving it out is not an error.
          AND NOT EXISTS (SELECT 1 FROM pg_attrdef d WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum)
@@ -437,7 +446,7 @@ describe("the REVOKE lines, where there is something to revoke", () => {
     // is, so the application gets UPDATE without anybody granting it to the application.
     //
     // All three of UPDATE, DELETE and TRUNCATE, and that is the point. This test granted only
-    // UPDATE, and `REVOKE ALL ON audit FROM PUBLIC` narrowed to `REVOKE UPDATE ON audit FROM
+    // UPDATE, and `REVOKE ALL ON dsor.audit FROM PUBLIC` narrowed to `REVOKE UPDATE ON dsor.audit FROM
     // PUBLIC` left all 301 tests passing — because the one privilege the test granted was the one
     // the narrowed line still removed. Measured with the narrowed line:
     //
@@ -445,7 +454,7 @@ describe("the REVOKE lines, where there is something to revoke", () => {
     //
     // A log the application can DELETE from or TRUNCATE is not append-only, so the test has to
     // grant everything the line claims to take back.
-    await db.exec("GRANT UPDATE, DELETE, TRUNCATE ON audit TO PUBLIC;");
+    await db.exec("GRANT UPDATE, DELETE, TRUNCATE ON dsor.audit TO PUBLIC;");
     await db.exec(A_DECISION);
 
     // Not testing nothing: all three really do reach the application through PUBLIC.
@@ -456,15 +465,15 @@ describe("the REVOKE lines, where there is something to revoke", () => {
       "TRUNCATE",
       "UPDATE",
     ]);
-    expect(await asTheApplication("UPDATE audit SET result = 'ALLOWED'")).toBe("allowed");
+    expect(await asTheApplication("UPDATE dsor.audit SET result = 'ALLOWED'")).toBe("allowed");
 
     // Re-running the migration takes them back.
     await reapplyThePermissions();
 
     for (const forbidden of [
-      "UPDATE audit SET result = 'ALLOWED'",
-      "DELETE FROM audit",
-      "TRUNCATE audit",
+      "UPDATE dsor.audit SET result = 'ALLOWED'",
+      "DELETE FROM dsor.audit",
+      "TRUNCATE dsor.audit",
     ]) {
       expect(await asTheApplication(forbidden), forbidden).toMatch(
         /permission denied for table audit/,
@@ -484,7 +493,7 @@ describe("the REVOKE lines, where there is something to revoke", () => {
    * below because it is its own privilege and the easiest of the three to leave out.
    */
   it("DSOR-AUD-04a: privileges granted directly are taken back by the migration", async () => {
-    await db.exec("GRANT UPDATE, DELETE, TRUNCATE ON audit TO dsor_runtime;");
+    await db.exec("GRANT UPDATE, DELETE, TRUNCATE ON dsor.audit TO dsor_runtime;");
 
     expect(await privilegesOfTheApplication()).toEqual([
       "DELETE",
@@ -500,17 +509,19 @@ describe("the REVOKE lines, where there is something to revoke", () => {
   });
 
   it("DSOR-AUD-04a: TRUNCATE in particular is taken back", async () => {
-    await db.exec("GRANT TRUNCATE ON audit TO dsor_runtime;");
+    await db.exec("GRANT TRUNCATE ON dsor.audit TO dsor_runtime;");
     await db.exec(A_DECISION);
 
-    expect(await asTheApplication("TRUNCATE audit")).toBe("allowed");
+    expect(await asTheApplication("TRUNCATE dsor.audit")).toBe("allowed");
 
     await db.exec(A_DECISION);
     await reapplyThePermissions();
 
-    expect(await asTheApplication("TRUNCATE audit")).toMatch(/permission denied for table audit/);
+    expect(await asTheApplication("TRUNCATE dsor.audit")).toMatch(
+      /permission denied for table audit/,
+    );
 
-    const left = await db.query("SELECT 1 FROM audit");
+    const left = await db.query("SELECT 1 FROM dsor.audit");
 
     expect(left.rows).toHaveLength(1);
   });
@@ -531,7 +542,7 @@ describe("the database's own witness", () => {
     await db.exec(A_DECISION.replace("'2026-10-02T09:14:00Z'", "'2019-01-01T00:00:00Z'"));
 
     const row = await db.query<{ at: Date; recorded_at: Date }>(
-      "SELECT at, recorded_at FROM audit",
+      "SELECT at, recorded_at FROM dsor.audit",
     );
     const { at, recorded_at } = row.rows[0]!;
 
@@ -553,7 +564,7 @@ describe("the database's own witness", () => {
    * file at once, and the body was right. Two things were wrong with it.
    *
    * It ran as the **owner**, through `db.exec`, which can set any column and proves nothing about
-   * the application. And a table-level `GRANT INSERT ON audit` covers every column, so the
+   * the application. And a table-level `GRANT INSERT ON dsor.audit` covers every column, so the
    * application really could forge the witness:
    *
    *     INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
@@ -573,7 +584,7 @@ describe("the database's own witness", () => {
     expect(await mayInsertColumn("recorded_at")).toBe(false);
 
     // Nothing was written, so there is no forged witness to find.
-    const rows = await db.query("SELECT 1 FROM public.audit");
+    const rows = await db.query("SELECT 1 FROM dsor.audit");
 
     expect(rows.rows).toHaveLength(0);
   });
@@ -585,7 +596,7 @@ describe("the database's own witness", () => {
     // added to the grant fails here rather than in production.
     const columns = await db.query<{ name: string }>(
       `SELECT a.attname AS name FROM pg_attribute a
-       WHERE a.attrelid = 'public.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+       WHERE a.attrelid = 'dsor.audit'::regclass AND a.attnum > 0 AND NOT a.attisdropped
        ORDER BY a.attnum`,
     );
 
@@ -598,13 +609,13 @@ describe("the database's own witness", () => {
     // And it can read the witness. A log the application cannot read is not a log it can verify.
     await db.exec(A_DECISION);
 
-    expect(await asTheApplication("SELECT recorded_at FROM public.audit")).toBe("allowed");
+    expect(await asTheApplication("SELECT recorded_at FROM dsor.audit")).toBe("allowed");
   });
 });
 
 describe("erasing the log, which only a test may do", () => {
   it("DSOR-AUD-04c: forgetTheLog erases this chain and leaves every other chain alone", async () => {
-    // The chain filter is claimed in audit.ts and was tested by nothing: `DELETE FROM public.audit`
+    // The chain filter is claimed in audit.ts and was tested by nothing: `DELETE FROM dsor.audit`
     // with no WHERE survived every test. One chain today; step 10 brings a second tenant, and a test
     // for the first tenant that wipes the second's history is the bug this prevents.
     await db.exec(A_DECISION);
@@ -615,14 +626,14 @@ describe("erasing the log, which only a test may do", () => {
       ).replace("'org_456', 'decision'", "'org_999', 'decision'"), // STEP 11: chain and company agree
     );
 
-    const before = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");
+    const before = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM dsor.audit");
 
     expect(before.rows[0]?.n).toBe("2");
 
     useDatabase(overPGlite(db));
     await forgetTheLog("org_456");
 
-    const left = await db.query<{ chain: string }>("SELECT chain FROM public.audit");
+    const left = await db.query<{ chain: string }>("SELECT chain FROM dsor.audit");
 
     expect(left.rows.map((r) => r.chain)).toStrictEqual(["audit:org_999"]);
   });
@@ -635,7 +646,7 @@ describe("a table the application makes to stand in front of the real one", () =
    * `dsor_runtime` may not UPDATE or DELETE the audit log. It may still **create a temporary
    * table**, because `TEMPORARY` on a database is granted to `PUBLIC` by default — and `pg_temp` is
    * searched *before* `public`, implicitly, whatever `search_path` says. So an unqualified
-   * `INSERT INTO audit` lands in the application's own throwaway table, which disappears when the
+   * `INSERT INTO dsor.audit` lands in the application's own throwaway table, which disappears when the
    * connection closes.
    *
    * Measured, before every table name was schema-qualified:
@@ -650,13 +661,14 @@ describe("a table the application makes to stand in front of the real one", () =
    * would close this door and is not portable to write in a migration, and `search_path` cannot
    * demote `pg_temp` for an unqualified name.
    *
-   * What closes it is naming the schema: `public.audit`, every time, in every statement.
+   * What closes it is naming the schema: `dsor.audit`, every time, in every statement.
    */
   it("DSOR-AUD-01: a temp table named `audit` does not catch the log", async () => {
     await db.exec("SET ROLE dsor_runtime;");
-    await db.exec("CREATE TEMP TABLE audit (LIKE public.audit INCLUDING ALL)");
+    await db.exec("CREATE TEMP TABLE audit (LIKE dsor.audit INCLUDING ALL)");
 
-    // Not testing nothing: the shadow table really does exist and really is found first.
+    // Not testing nothing: the shadow table really does exist and really is found first. The bare
+    // name, on purpose: it is what a statement that forgot the schema would ask for.
     const resolved = await db.query<{ schema: string }>(
       `SELECT n.nspname AS schema FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -681,7 +693,7 @@ describe("a table the application makes to stand in front of the real one", () =
     // said, and this count is about which table the row went to, not whose it is.
     await db.exec("RESET ROLE;");
 
-    const real = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM public.audit");
+    const real = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM dsor.audit");
     const shadow = await db.query<{ n: string }>("SELECT count(*)::text AS n FROM pg_temp.audit");
 
     expect(real.rows[0]?.n).toBe("1");
@@ -697,9 +709,9 @@ describe("a table the application makes to stand in front of the real one", () =
     // the migrate script, the migration files, and the test support that erases the table.
     //
     // The first version scanned `src/audit.ts` only, under a commit titled "every table name names
-    // its schema", while `CREATE TABLE audit` and three `ON audit` sat in the migrations and a
-    // `DELETE FROM audit` in test support. A review listed them. The migration ones matter most:
-    // `GRANT ... ON audit` resolves through `search_path` like any query, so a `pg_temp.audit` in
+    // its schema", while `CREATE TABLE audit` and three `ON dsor.audit` sat in the migrations and a
+    // `DELETE FROM dsor.audit` in test support. A review listed them. The migration ones matter most:
+    // `GRANT ... ON dsor.audit` resolves through `search_path` like any query, so a `pg_temp.audit` in
     // the owner's session would have taken the grant and left the real table with nothing.
     //
     // Comments are stripped first, because several of them quote the unqualified form on purpose
@@ -724,7 +736,7 @@ describe("a table the application makes to stand in front of the real one", () =
         : raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
       // Case-insensitive, because SQL is: `from audit` and `From Audit` passed the first version. A
-      // review also added LOCK and REFERENCES, and the regclass cast — `'audit'::regclass` resolves
+      // review also added LOCK and REFERENCES, and the regclass cast — `'dsor.audit'::regclass` resolves
       // through `search_path` exactly like a bare name, so `pg_temp.audit` wins there too.
       for (const keyword of [
         "FROM",

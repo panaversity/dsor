@@ -49,7 +49,7 @@ async function putTheStoryBack(): Promise<void> {
     }
   }
 
-  await owner.query("DELETE FROM public.audit WHERE tenant IN ('org_456', 'org_789')");
+  await owner.query("DELETE FROM dsor.audit WHERE tenant IN ('org_456', 'org_789')");
 }
 
 beforeEach(async () => {
@@ -87,7 +87,7 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
       row_count: number;
       extensions: unknown;
     }>(
-      "SELECT resources, row_count, extensions FROM public.audit WHERE tenant = 'org_456' AND kind = 'classified_read'",
+      "SELECT resources, row_count, extensions FROM dsor.audit WHERE tenant = 'org_456' AND kind = 'classified_read'",
     );
 
     expect(rows).toHaveLength(1);
@@ -105,8 +105,8 @@ describe.skipIf(!haveAServer)("the record of a read, against a real server", () 
   it("migrations 006 and 007: the application may write the three new columns and still may not change them", async () => {
     const { rows } = await owner.query<{ column: string; insert: boolean; update: boolean }>(
       `SELECT c.column_name AS "column",
-              has_column_privilege('dsor_runtime', 'public.audit', c.column_name, 'INSERT') AS insert,
-              has_column_privilege('dsor_runtime', 'public.audit', c.column_name, 'UPDATE') AS update
+              has_column_privilege('dsor_runtime', 'dsor.audit', c.column_name, 'INSERT') AS insert,
+              has_column_privilege('dsor_runtime', 'dsor.audit', c.column_name, 'UPDATE') AS update
        FROM information_schema.columns c
        WHERE c.table_schema = 'public' AND c.table_name = 'audit'
          AND c.column_name IN ('resources', 'extensions', 'row_count', 'recorded_at')

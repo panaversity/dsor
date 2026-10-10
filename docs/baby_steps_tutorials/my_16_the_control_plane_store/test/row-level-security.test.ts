@@ -30,7 +30,7 @@ const FORGOT_THE_COMPANY =
 
 /** One record per company, written by the owner, so that the log has something to hide. */
 const TWO_RECORDS = `
-  INSERT INTO public.audit (record_id, chain, sequence, previous_hash, record_hash, at, tenant,
+  INSERT INTO dsor.audit (record_id, chain, sequence, previous_hash, record_hash, at, tenant,
                             kind, identity, correlation, result)
   VALUES ('audit:org_456:0', 'audit:org_456', 0, 'sha256:AAAA', 'sha256:BBBB', now(), 'org_456',
           'decision', '{}', '{}', 'ALLOWED'),
@@ -40,7 +40,7 @@ const TWO_RECORDS = `
 beforeEach(async () => {
   await resetInvoices();
   await asTheOwner(async () => {
-    await db.exec("DELETE FROM public.audit");
+    await db.exec("DELETE FROM dsor.audit");
     await db.exec(TWO_RECORDS);
   });
 });
@@ -79,7 +79,7 @@ describe("the second lock, on reads", () => {
 
   it("DSOR-TEN-01b: the audit log is locked the same way", async () => {
     const rows = await asTheApplication<{ tenant: string }>(
-      "SELECT tenant FROM public.audit ORDER BY tenant",
+      "SELECT tenant FROM dsor.audit ORDER BY tenant",
       "org_789",
     );
 
@@ -88,7 +88,7 @@ describe("the second lock, on reads", () => {
 
   it("DSOR-RP-01d: with no company said, the application gets no rows at all", async () => {
     expect(await asTheApplication(FORGOT_THE_COMPANY)).toStrictEqual([]);
-    expect(await asTheApplication("SELECT tenant FROM public.audit")).toStrictEqual([]);
+    expect(await asTheApplication("SELECT tenant FROM dsor.audit")).toStrictEqual([]);
   });
 
   it("a company that has no rows is answered like no company", async () => {
@@ -132,7 +132,7 @@ describe("the second lock, on writes", () => {
       db.transaction(async (tx) => {
         await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
         await tx.query(
-          `INSERT INTO public.audit (record_id, chain, sequence, previous_hash, record_hash, at,
+          `INSERT INTO dsor.audit (record_id, chain, sequence, previous_hash, record_hash, at,
                                      tenant, kind, identity, correlation, result)
            VALUES ('audit:org_789:1', 'audit:org_789', 1, 'sha256:CCCC', 'sha256:DDDD', now(),
                    'org_789', 'decision', '{}', '{}', 'ALLOWED')`,
@@ -152,7 +152,7 @@ describe("the chain and the company agree", () => {
       db.transaction(async (tx) => {
         await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
         await tx.query(
-          `INSERT INTO public.audit (record_id, chain, sequence, previous_hash, record_hash, at,
+          `INSERT INTO dsor.audit (record_id, chain, sequence, previous_hash, record_hash, at,
                                      tenant, kind, identity, correlation, result)
            VALUES ('audit:org_789:0', 'audit:org_789', 0, 'sha256:AAAA', 'sha256:EEEE', now(),
                    'org_456', 'decision', '{}', '{}', 'ALLOWED')`,

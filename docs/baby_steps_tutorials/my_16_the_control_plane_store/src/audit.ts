@@ -269,9 +269,9 @@ export interface Head {
  */ export async function theHead(tenant: string): Promise<Head> {
   const { rows } = await theDatabase(tenant).query<{ count: string; last_hash: string | null }>(
     `SELECT count(*)::text AS count,
-            (SELECT record_hash FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
+            (SELECT record_hash FROM dsor.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1)
               AS last_hash
-     FROM public.audit WHERE chain = $1`,
+     FROM dsor.audit WHERE chain = $1`,
     [chainOf(tenant)],
   );
   const row = rows[0];
@@ -497,7 +497,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // text" — met again in SQL, where the cast creates it silently. Nine records passed before it bit.
   const { rows: tail } = await db.query<{ at_position: string; record_hash: string }>(
     `SELECT sequence::text AS at_position, record_hash
-     FROM public.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1`,
+     FROM dsor.audit WHERE chain = $1 ORDER BY sequence DESC LIMIT 1`,
     [chain],
   );
   const last = tail[0];
@@ -696,7 +696,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
 
     try {
       const { rows } = await db.query<{ record_hash: string }>(
-        "SELECT record_hash FROM public.audit WHERE record_id = $1",
+        "SELECT record_hash FROM dsor.audit WHERE record_id = $1",
         [written.record_id],
       );
 
@@ -783,7 +783,7 @@ function isUniqueViolation(error: unknown): boolean {
  */
 async function insert(db: Statements, written: AuditRecord): Promise<void> {
   await db.query(
-    `INSERT INTO public.audit (
+    `INSERT INTO dsor.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
        identity, correlation, operation, payload_hash, "authorization", result, reason,
        resources, row_count
@@ -828,7 +828,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
             to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
             tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
             reason, resources, row_count
-     FROM public.audit WHERE chain = $1 ORDER BY sequence`,
+     FROM dsor.audit WHERE chain = $1 ORDER BY sequence`,
     [chainOf(tenant)],
   );
 
@@ -900,7 +900,7 @@ export async function forgetTheLog(tenant: string): Promise<void> {
   //
   // This chain only. `theHead` and `theLog` filter by `chain`, and so must the eraser, or step 10's
   // second tenant finds its history gone the first time a test for the first tenant cleans up.
-  await theDatabase(tenant).query("DELETE FROM public.audit WHERE chain = $1", [chainOf(tenant)]);
+  await theDatabase(tenant).query("DELETE FROM dsor.audit WHERE chain = $1", [chainOf(tenant)]);
   // Process-wide on purpose, while the DELETE above is per chain: §29's flood counter counts
   // refusals that have no subject or no company, so there is no tenant to key it by, and any
   // company's eraser zeroes it for all.

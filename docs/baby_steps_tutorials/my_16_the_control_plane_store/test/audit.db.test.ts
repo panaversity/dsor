@@ -1,7 +1,7 @@
 // The two things one in-process connection cannot prove.
 //
 // `audit-permissions.test.ts` runs against PGlite — real PostgreSQL, in-process — and proves that
-// `UPDATE audit` is refused. It has one connection, so it reaches the application's account with
+// `UPDATE dsor.audit` is refused. It has one connection, so it reaches the application's account with
 // `SET ROLE` rather than by logging in as it, and it cannot race itself. Those two gaps are what
 // this file is for, and they need a server.
 //
@@ -49,7 +49,7 @@ beforeAll(async () => {
   application = new Pool({ connectionString: APPLICATION, max: 3 });
 
   await applyMigrations(asRunner(owner), fileURLToPath(new URL("../migrations", import.meta.url)));
-  await owner.query("DELETE FROM audit");
+  await owner.query("DELETE FROM dsor.audit");
 });
 
 afterAll(async () => {
@@ -63,7 +63,7 @@ afterAll(async () => {
   // which cost an hour to explain, and which a learner running `pnpm test:db` before `pnpm start`
   // would hit with no idea why. A test that shares a database with the program cleans up after
   // itself. Found live 2026-10-04.
-  await owner?.query("DELETE FROM audit");
+  await owner?.query("DELETE FROM dsor.audit");
   await owner?.end();
   await application?.end();
 });
@@ -71,7 +71,7 @@ afterAll(async () => {
 /** One decision, shaped like the record the program writes. */
 function aDecision(sequence: number, id = `audit:org_456:${sequence}`): [string, unknown[]] {
   return [
-    `INSERT INTO audit (
+    `INSERT INTO dsor.audit (
        record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
        identity, correlation, result
      ) VALUES ($1, 'audit:org_456', $2, $3, $4, now(), 'org_456', 'decision', $5, $6, 'ALLOWED')`,
@@ -116,15 +116,15 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
 
   it("DSOR-AUD-04a: the application, logged in as itself, may not change or delete a record", async () => {
     for (const forbidden of [
-      "UPDATE audit SET result = 'ALLOWED'",
-      "DELETE FROM audit",
-      "TRUNCATE audit",
+      "UPDATE dsor.audit SET result = 'ALLOWED'",
+      "DELETE FROM dsor.audit",
+      "TRUNCATE dsor.audit",
     ]) {
       await expect(forOrg456(forbidden), forbidden).rejects.toThrow(/permission denied/);
     }
 
     // Still there, which is the assertion that matters.
-    const left = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM audit");
+    const left = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM dsor.audit");
 
     expect(left.rows[0]!.n).not.toBe("0");
   });
@@ -148,7 +148,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
    * is checkable rather than decorative.
    */
   it("DSOR-AUD-01: two writers cannot both claim one position in the chain", async () => {
-    await owner.query("DELETE FROM audit");
+    await owner.query("DELETE FROM dsor.audit");
 
     // Three different record ids, all claiming position 0 of the same chain. Nothing here collides
     // on the primary key, so only the unique constraint can refuse them.
@@ -169,7 +169,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
       expect(message.message).toMatch(/audit_chain_sequence_key/);
     }
 
-    const rows = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM audit");
+    const rows = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM dsor.audit");
 
     expect(rows.rows[0]!.n).toBe("1");
   });
@@ -177,7 +177,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
   it("DSOR-AUD-01: one record id cannot be written twice, by the primary key", async () => {
     // The other constraint, kept as its own test now that the one above no longer covers it by
     // accident. Same id, two different positions — so only `audit_pkey` can refuse it.
-    await owner.query("DELETE FROM audit");
+    await owner.query("DELETE FROM dsor.audit");
 
     const [first, firstParams] = aDecision(0, "audit:org_456:same");
     const [second, secondParams] = aDecision(1, "audit:org_456:same");
@@ -189,7 +189,7 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
   it("DSOR-AUD-04a: the application cannot grant itself the rights back", async () => {
     // Accepted with a warning and granting nothing, which is PostgreSQL's way — so the assertion is
     // about the privilege, never about whether the statement threw. Lesson 19.
-    await application.query("GRANT UPDATE ON audit TO dsor_runtime").catch(() => undefined);
+    await application.query("GRANT UPDATE ON dsor.audit TO dsor_runtime").catch(() => undefined);
 
     // Asked of PostgreSQL, not of the grant catalogue. This read `role_table_grants` and expected
     // `["INSERT", "SELECT"]`, and it broke the day `002_runtime_user.sql` started granting INSERT
@@ -205,13 +205,13 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
       del: boolean;
       truncate: boolean;
     }>(
-      `SELECT has_column_privilege('dsor_runtime', 'public.audit', 'record_id', 'INSERT') AS insert_any,
-              has_column_privilege('dsor_runtime', 'public.audit', 'recorded_at', 'INSERT')
+      `SELECT has_column_privilege('dsor_runtime', 'dsor.audit', 'record_id', 'INSERT') AS insert_any,
+              has_column_privilege('dsor_runtime', 'dsor.audit', 'recorded_at', 'INSERT')
                 AS insert_recorded_at,
-              has_table_privilege('dsor_runtime', 'public.audit', 'SELECT')   AS select,
-              has_table_privilege('dsor_runtime', 'public.audit', 'UPDATE')   AS update,
-              has_table_privilege('dsor_runtime', 'public.audit', 'DELETE')   AS del,
-              has_table_privilege('dsor_runtime', 'public.audit', 'TRUNCATE') AS truncate`,
+              has_table_privilege('dsor_runtime', 'dsor.audit', 'SELECT')   AS select,
+              has_table_privilege('dsor_runtime', 'dsor.audit', 'UPDATE')   AS update,
+              has_table_privilege('dsor_runtime', 'dsor.audit', 'DELETE')   AS del,
+              has_table_privilege('dsor_runtime', 'dsor.audit', 'TRUNCATE') AS truncate`,
     );
     const held = may.rows[0]!;
 
@@ -259,7 +259,7 @@ describe.skipIf(!haveAServer)("the program's own door, pointed at a real server"
       const who = await opened.connection.query<{ u: string }>("SELECT current_user AS u");
 
       expect(who.rows[0]?.u).toBe("dsor_runtime");
-      await expect(opened.connection.query("UPDATE public.audit SET result = 'x'")).rejects.toThrow(
+      await expect(opened.connection.query("UPDATE dsor.audit SET result = 'x'")).rejects.toThrow(
         /permission denied/,
       );
     } finally {
@@ -285,7 +285,7 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
   });
 
   it("DSOR-AUD-01: a collision of the program's own row shape is refused by the primary key", async () => {
-    await owner.query("DELETE FROM audit");
+    await owner.query("DELETE FROM dsor.audit");
 
     const [sql, params] = aDecision(0); // record_id audit:org_456:0 AND (chain, sequence) = (…, 0)
 
@@ -300,7 +300,7 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
   });
 
   it("DSOR-AUD-01: three writers at once, on three real connections, leave one verifiable chain", async () => {
-    await owner.query("DELETE FROM audit");
+    await owner.query("DELETE FROM dsor.audit");
     setClock(() => "2026-10-04T00:00:00.000Z");
     useDatabase(overPool(application)); // a pool of three: the three calls really do run side by side
 

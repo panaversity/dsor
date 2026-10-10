@@ -193,7 +193,7 @@ describe("before the answer leaves", () => {
 
     useDatabase({
       query: async <T>(sql: string, params?: unknown[], tenant?: string) => {
-        if (sql.includes("INSERT INTO public.audit") && params?.[7] === "classified_read") {
+        if (sql.includes("INSERT INTO dsor.audit") && params?.[7] === "classified_read") {
           throw new Error("the evidence store is down");
         }
 
@@ -224,7 +224,7 @@ describe("before the answer leaves", () => {
 
     useDatabase({
       query: async <T>(sql: string, params?: unknown[], tenant?: string) => {
-        if (sql.includes("INSERT INTO public.audit") && params?.[7] === "classified_read") {
+        if (sql.includes("INSERT INTO dsor.audit") && params?.[7] === "classified_read") {
           dropped = true;
           throw new Error("the evidence store is down");
         }

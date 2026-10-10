@@ -33,11 +33,11 @@ beforeAll(async () => {
   owner = new Pool({ connectionString: OWNER, max: 1 });
   application = new Pool({ connectionString: APPLICATION, max: 2 });
   await applyMigrations(asRunner(owner), fileURLToPath(new URL("../migrations", import.meta.url)));
-  await owner.query("DELETE FROM audit");
+  await owner.query("DELETE FROM dsor.audit");
 });
 
 afterEach(async () => {
-  await owner?.query("DELETE FROM audit");
+  await owner?.query("DELETE FROM dsor.audit");
 });
 
 afterAll(async () => {
@@ -121,7 +121,7 @@ describe.skipIf(!haveAServer)("a connection that dies during COMMIT, on a real s
 
     // The row is there — the server did commit — and the caller holds the record of it, not an
     // error that would have sent them to retry a decision already on record.
-    const rows = await owner.query<{ record_id: string }>("SELECT record_id FROM audit");
+    const rows = await owner.query<{ record_id: string }>("SELECT record_id FROM dsor.audit");
 
     expect(rows.rows.map((r) => r.record_id)).toStrictEqual(["audit:org_456:0"]);
     expect(record?.record_id).toBe("audit:org_456:0");
@@ -132,7 +132,7 @@ describe.skipIf(!haveAServer)("a connection that dies during COMMIT, on a real s
 
     await expect(audit(aDecision("req_commit"))).rejects.toBeInstanceOf(OutcomeUnknown);
 
-    const rows = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM audit");
+    const rows = await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM dsor.audit");
 
     expect(rows.rows[0]?.n).toBe("1"); // "retry safely" would have been a lie
   });

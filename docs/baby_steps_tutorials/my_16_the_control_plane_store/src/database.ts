@@ -107,7 +107,7 @@ const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
 
 /**
  * Stop the program if the connection it is about to use holds UPDATE, DELETE or TRUNCATE on
- * `public.audit`.
+ * `dsor.audit`.
  *
  * That sentence is narrower than "could rewrite the audit log" on purpose. `has_table_privilege`
  * answers for the *privilege*, not for every *route* to the effect: a `SECURITY DEFINER` function
@@ -126,7 +126,7 @@ const FORBIDDEN = ["UPDATE", "DELETE", "TRUNCATE"] as const;
  */
 export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   const held = (role: string): string =>
-    FORBIDDEN.map((p) => `has_table_privilege(${role}, 'public.audit', '${p}')`).join(" OR ");
+    FORBIDDEN.map((p) => `has_table_privilege(${role}, 'dsor.audit', '${p}')`).join(" OR ");
   const { rows } = await db.query<{
     who: string;
     may: boolean;
@@ -161,19 +161,19 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                   OR EXISTS (SELECT 1 FROM pg_roles o WHERE o.oid = p.proowner
                               AND (o.rolsuper OR o.rolbypassrls))
                   OR EXISTS (SELECT 1 FROM pg_class c
-                              WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('public.audit'))
+                              WHERE c.oid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                                 AND pg_has_role(p.proowner, c.relowner, 'MEMBER'))
                 )
             ) AS may_by_function,
             EXISTS (
               SELECT 1 FROM pg_trigger t
-              WHERE t.tgrelid IN (to_regclass('public.invoices'), to_regclass('public.audit'))
+              WHERE t.tgrelid IN (to_regclass('public.invoices'), to_regclass('dsor.audit'))
                 AND NOT t.tgisinternal
             ) AS has_trigger,
             -- STEP 11: both tenant tables exist. Asked first, because every question below
             -- is about them, and a missing table would turn those answers into NULLs that an
             -- evaluation showed the guards could misread.
-            (to_regclass('public.invoices') IS NOT NULL AND to_regclass('public.audit') IS NOT NULL)
+            (to_regclass('public.invoices') IS NOT NULL AND to_regclass('dsor.audit') IS NOT NULL)
               AS tables_present`,
   );
 
@@ -191,7 +191,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (answer.tables_present !== true) {
     throw new Error(
-      `a tenant table is missing: public.invoices and public.audit must both exist before the ` +
+      `a tenant table is missing: public.invoices and dsor.audit must both exist before the ` +
         `program runs. Apply the migrations.`,
     );
   }
@@ -302,7 +302,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     already_said: string | null;
   }>(
     `WITH tenant_table (rel, col) AS (
-       VALUES (to_regclass('public.invoices'), 'tenant_id'), (to_regclass('public.audit'), 'tenant')
+       VALUES (to_regclass('public.invoices'), 'tenant_id'), (to_regclass('dsor.audit'), 'tenant')
      ),
      policy_text (rel, qual) AS (
        SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))' FROM tenant_table
@@ -372,7 +372,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (second.locked !== true) {
     throw new Error(
-      `the second lock is not on: public.invoices and public.audit must each have row-level ` +
+      `the second lock is not on: public.invoices and dsor.audit must each have row-level ` +
         `security enabled, forced, and exactly the one policy migrations/005_row_level_security.sql ` +
         `writes — no other policy beside it, and none that reads differently.`,
     );
@@ -392,7 +392,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, and it may read \`${second.reads_beyond}\`, which is ` +
         `not one of the two tenant tables. A view or a table beside them is a window past the ` +
         `lock: a view runs with its owner's rights, and a table without a policy hides nothing. ` +
-        `The application may read public.invoices and public.audit, and nothing else.`,
+        `The application may read public.invoices and dsor.audit, and nothing else.`,
     );
   }
 }

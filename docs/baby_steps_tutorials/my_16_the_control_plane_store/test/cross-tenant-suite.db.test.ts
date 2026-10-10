@@ -40,7 +40,7 @@ async function putTheStoryBack(): Promise<void> {
     }
   }
 
-  await owner.query("DELETE FROM public.audit WHERE tenant IN ('org_456', 'org_789')");
+  await owner.query("DELETE FROM dsor.audit WHERE tenant IN ('org_456', 'org_789')");
 }
 
 afterAll(async () => {

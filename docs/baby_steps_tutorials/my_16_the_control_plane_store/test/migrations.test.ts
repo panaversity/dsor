@@ -39,12 +39,16 @@ describe("finding the migrations", () => {
   it("reads every .sql file, with its number, its name and its text", () => {
     const dir = folderWith({
       "001_audit.sql": "CREATE TABLE audit ();",
-      "002_runtime_user.sql": "REVOKE UPDATE ON audit FROM dsor_runtime;",
+      "002_runtime_user.sql": "REVOKE UPDATE ON dsor.audit FROM dsor_runtime;",
     });
 
     expect(migrationsIn(dir)).toEqual([
       { number: 1, name: "001_audit.sql", sql: "CREATE TABLE audit ();" },
-      { number: 2, name: "002_runtime_user.sql", sql: "REVOKE UPDATE ON audit FROM dsor_runtime;" },
+      {
+        number: 2,
+        name: "002_runtime_user.sql",
+        sql: "REVOKE UPDATE ON dsor.audit FROM dsor_runtime;",
+      },
     ]);
   });
 

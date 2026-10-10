@@ -63,9 +63,9 @@ async function identity(db: Database): Promise<{
   }>(
     `SELECT current_user AS who,
             COALESCE((SELECT rolsuper FROM pg_roles WHERE rolname = current_user), false) AS superuser,
-            has_table_privilege(current_user, 'public.audit', 'UPDATE')   AS update,
-            has_table_privilege(current_user, 'public.audit', 'DELETE')   AS del,
-            has_table_privilege(current_user, 'public.audit', 'TRUNCATE') AS truncate`,
+            has_table_privilege(current_user, 'dsor.audit', 'UPDATE')   AS update,
+            has_table_privilege(current_user, 'dsor.audit', 'DELETE')   AS del,
+            has_table_privilege(current_user, 'dsor.audit', 'TRUNCATE') AS truncate`,
   );
 
   return rows[0]!;
@@ -98,9 +98,9 @@ describe("the identity the program itself connects as", () => {
 
     // And not only according to `has_table_privilege`: actually attempted, and actually refused.
     for (const forbidden of [
-      "UPDATE audit SET result = 'rewritten'",
-      "DELETE FROM audit",
-      "TRUNCATE audit",
+      "UPDATE dsor.audit SET result = 'rewritten'",
+      "DELETE FROM dsor.audit",
+      "TRUNCATE dsor.audit",
     ]) {
       await expect(db.query(forbidden)).rejects.toThrow(/permission denied/i);
     }
@@ -258,17 +258,18 @@ describe("refuseIfItCanRewriteHistory", () => {
     const db = await PGlite.create();
 
     await db.exec("CREATE ROLE dsor_runtime;");
-    await db.exec("CREATE TABLE audit (result TEXT);");
+    await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
+    await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
-    await db.exec("GRANT UPDATE ON audit TO editor;");
+    await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime WITH INHERIT FALSE;");
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
     // Not testing nothing: the privilege check alone really does say "may not".
     const { rows } = await db.query<{ may: boolean }>(
-      "SELECT has_table_privilege(current_user, 'public.audit', 'UPDATE') AS may",
+      "SELECT has_table_privilege(current_user, 'dsor.audit', 'UPDATE') AS may",
     );
 
     expect(rows[0]?.may).toBe(false);
@@ -288,12 +289,12 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("RESET ROLE");
     await db.exec(`CREATE FUNCTION rewrite(t text) RETURNS void LANGUAGE sql SECURITY DEFINER
-                   AS $$ UPDATE public.audit SET result = t $$;`);
+                   AS $$ UPDATE dsor.audit SET result = t $$;`);
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
     // Not testing nothing: the privilege check alone really does say "may not".
     const { rows } = await db.query<{ may: boolean }>(
-      "SELECT has_table_privilege(current_user, 'public.audit', 'UPDATE') AS may",
+      "SELECT has_table_privilege(current_user, 'dsor.audit', 'UPDATE') AS may",
     );
 
     expect(rows[0]?.may).toBe(false);
@@ -330,7 +331,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("RESET ROLE");
     await db.exec(`CREATE FUNCTION tamper() RETURNS trigger LANGUAGE plpgsql
                    AS $$ BEGIN NEW.result := 'TAMPERED'; RETURN NEW; END $$;
-                   CREATE TRIGGER t BEFORE INSERT ON public.audit FOR EACH ROW EXECUTE FUNCTION tamper();`);
+                   CREATE TRIGGER t BEFORE INSERT ON dsor.audit FOR EACH ROW EXECUTE FUNCTION tamper();`);
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/trigger/);
@@ -366,11 +367,12 @@ describe("refuseIfItCanRewriteHistory", () => {
     const db = await PGlite.create();
 
     await db.exec("CREATE ROLE dsor_runtime;");
-    await db.exec("CREATE TABLE audit (result TEXT);");
+    await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
+    await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
-    await db.exec("GRANT UPDATE ON audit TO editor;");
+    await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 

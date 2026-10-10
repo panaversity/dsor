@@ -307,7 +307,7 @@ describe("the audit log", () => {
 
     // Delete the newest row, as only the owner can.
     await asTheOwner(() =>
-      db.exec("DELETE FROM audit WHERE sequence = (SELECT max(sequence) FROM audit)"),
+      db.exec("DELETE FROM dsor.audit WHERE sequence = (SELECT max(sequence) FROM dsor.audit)"),
     );
 
     const shortened = await theLog("org_456");
@@ -646,7 +646,7 @@ describe("the audit log", () => {
    * handed out were still in the array, so two live decisions could carry one id. That is why the id
    * had a reset counter in it.
    *
-   * Here the reset is `DELETE FROM audit`. The id is freed because the record holding it is gone, so
+   * Here the reset is `DELETE FROM dsor.audit`. The id is freed because the record holding it is gone, so
    * reusing it collides with nothing — and the PRIMARY KEY is what guarantees that, not our care.
    * Also worth saying plainly: nothing in a real deployment deletes, because the application's own
    * account has no DELETE. Only a test holding the owner's connection can reach this at all.
