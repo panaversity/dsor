@@ -283,9 +283,10 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now.
+    // STEP 17: four of them now. NEW IN STEP 18: five, with the slips.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);");
+    await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
     // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
@@ -478,6 +479,29 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-DEL-01a: an application that may write a permission slip is refused at start-up", async () => {
+    // NEW IN STEP 18: a slip the application could write is a slip it could sign for itself
+    // (decision 127). Each right, and one of them one SET ROLE away.
+    for (const grant of [
+      "GRANT INSERT ON dsor.delegations TO dsor_runtime",
+      "GRANT UPDATE (permissions) ON dsor.delegations TO dsor_runtime",
+      "GRANT DELETE ON dsor.delegations TO dsor_runtime",
+      "CREATE ROLE signer; GRANT UPDATE ON dsor.delegations TO signer; GRANT signer TO dsor_runtime WITH INHERIT FALSE",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(
+        /may write a permission slip/,
+      );
+
+      await db.close();
+    }
+  });
+
   it("DSOR-AUD-04a: a right reached through inherited role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL
@@ -488,9 +512,10 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now.
+    // STEP 17: four of them now. NEW IN STEP 18: five, with the slips.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);");
+    await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");

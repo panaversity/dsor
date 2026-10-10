@@ -117,6 +117,8 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["public.vendors", "tenant_id"],
   ["public.payments", "tenant_id"],
   ["dsor.audit", "tenant"],
+  // NEW IN STEP 18: the permission slips, DSoR's second kind of paperwork (decision 127).
+  ["dsor.delegations", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -556,6 +558,25 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `its status, or a payment's number, itself or one SET ROLE away. The application reads ` +
         `the vendors, makes a draft payment and changes a payment's status, and nothing else. See ` +
         `migrations/009_vendors_and_payments.sql.`,
+    );
+  }
+
+  // NEW IN STEP 18: the permission slips. The application reads them and writes none: a slip it
+  // could write is a slip it could sign for itself (decision 127).
+  const { rows: slips } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanBe(
+      (role) => `has_any_column_privilege(${role}, 'dsor.delegations', 'INSERT')
+         OR has_any_column_privilege(${role}, 'dsor.delegations', 'UPDATE')
+         OR has_table_privilege(${role}, 'dsor.delegations', 'DELETE')
+         OR has_table_privilege(${role}, 'dsor.delegations', 'TRUNCATE')`,
+    )} AS may`,
+  );
+
+  if (slips[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may write a permission slip, itself or one ` +
+        `SET ROLE away. An agent's power comes from slips a person signed; the application reads ` +
+        `them and writes none. See migrations/013_delegations.sql.`,
     );
   }
 }

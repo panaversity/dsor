@@ -362,7 +362,9 @@ describe("what an evaluation found past the first fixes", () => {
     // STEP 16: the log where migrations 001 to 007 leave it, in public, and no dsor at all.
     // The test above drops the invoices only, and for the log the step's own words never appeared:
     // a review measured `schema "dsor" does not exist` instead (decision 123).
-    await asTheOwner(() => db.exec("ALTER TABLE dsor.audit SET SCHEMA public; DROP SCHEMA dsor;"));
+    // STEP 18: CASCADE, because a server that missed 008 missed every migration after it too, and
+    // dsor holds the slips of 013 now.
+    await asTheOwner(() => db.exec("ALTER TABLE dsor.audit SET SCHEMA public; DROP SCHEMA dsor CASCADE;"));
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /tenant table is missing/,
@@ -425,6 +427,9 @@ describe("a lock that is not there", () => {
     ["ALTER TABLE public.vendors DISABLE ROW LEVEL SECURITY", /row-level security/],
     ["DROP POLICY tenant_isolation ON public.payments", /policy/],
     ["CREATE POLICY for_app ON public.vendors TO dsor_runtime USING (true)", /policy/],
+    // STEP 18: and the permission slips.
+    ["ALTER TABLE dsor.delegations NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["DROP POLICY tenant_isolation ON dsor.delegations", /policy/],
   ] as const) {
     it(`DSOR-RP-01b: refuses to start when the lock is off — ${undo}`, async () => {
       await asTheOwner(() => db.exec(undo));
