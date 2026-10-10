@@ -10,6 +10,8 @@ import { openTheDatabase } from "./database.ts";
 import { movedTo } from "./examples.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
 import { paymentsOf } from "./payment.ts";
+import { rolesOfThisProgram, useRoleSource } from "./authority.ts";
+import { activeSlipFor } from "./delegation.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -311,6 +313,57 @@ for (const payment of await paymentsOf("org_456")) {
     `  ${payment.id}  ${payment.status.padEnd(9)}  ${amount.padEnd(13)}  pays ${payment.invoice} to ${payment.vendor}`,
   );
 }
+
+// NEW IN STEP 18, and this is the step. Every command the agent sent above ran under a permission
+// slip, del_100, which user_123 signed: DSoR found it, and worked out what the agent may do from it
+// at each decision. Two more requests show the two halves of that: above the slip's limit is
+// refused, and when user_123 loses a permission, the agent loses it on the very next request,
+// with nothing in the slip changed. The demo plays the company directory's part here, through the
+// role source a test may replace; step 19 gives the program a directory of its own.
+console.log();
+console.log("Under whose authority? The agent's commands run under a permission slip:");
+console.log();
+
+const slip = await activeSlipFor("org_456", "accounts-payable-fte");
+
+if (slip !== undefined) {
+  const limit = slip.perTransactionLimit;
+
+  console.log(`  ${slip.id}  ${slip.delegator} for ${slip.delegate}: ${slip.permissions.join(", ")}`);
+  console.log(
+    `  ${" ".repeat(slip.id.length)}  up to ${limit === undefined ? "any amount" : `${limit.value} ${limit.currency}`} a payment, until ${slip.expiresAt.slice(0, 10)}`,
+  );
+}
+
+console.log();
+console.log(
+  show(
+    await callOperation(AGENT, "payment.create", {
+      invoice: INV_1009,
+      amount: { value: "60000.00", currency: "USD" },
+    }),
+  ),
+);
+console.log();
+console.log("user_123 moves to another team, and no longer holds payment:create:");
+console.log();
+
+useRoleSource((person, tenant) =>
+  person === "user_123"
+    ? (rolesOfThisProgram(person, tenant) ?? []).filter((permission) => permission !== "payment:create")
+    : rolesOfThisProgram(person, tenant),
+);
+
+console.log(
+  show(
+    await callOperation(AGENT, "payment.create", {
+      invoice: INV_1009,
+      amount: { value: "2500.00", currency: "USD" },
+    }),
+  ),
+);
+
+useRoleSource(undefined);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
