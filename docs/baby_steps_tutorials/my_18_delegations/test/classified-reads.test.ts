@@ -53,7 +53,7 @@ describe("a confidential read is written down", () => {
 
     expect(read.operation).toBe("invoice.get@1");
     expect(read.identity.subject).toBe("user_123");
-    expect(read.identity.actor_chain).toStrictEqual([]); // nobody acts on anyone's behalf until step 18
+    expect(read.identity.actor_chain).toStrictEqual([]); // the record names an actor chain from step 19
     expect(read.resources).toStrictEqual([INV_1008]);
     expect(rowCountOf(read)).toBe(1);
     expect("extensions" in read).toBe(false); // nothing left under the tutorial's own name

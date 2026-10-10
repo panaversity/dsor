@@ -6,7 +6,8 @@
 // here starts fresh.
 //
 // The calls here ask as the agent, because from step 06 only a caller who holds invoice:issue gets
-// past the gate, and this file is about the arguments rather than about authority.
+// past the gate, and this file is about the arguments rather than about authority. From step 18
+// the agent holds it under del_100, the slip user_123 signed.
 
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

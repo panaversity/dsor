@@ -31,8 +31,10 @@ import type { Principal } from "./people.ts";
  * most powerful account in the company becomes the one most worth stealing.
  *
  * A real deployment reads these from a role source — a directory or an identity provider —
- * which DSOR-IDN-04a requires and which is steps 18 and 19. Here they sit in the source, like
- * the people beside them.
+ * which DSOR-IDN-04a requires. Here they sit in the source, like the people beside them.
+ *
+ * NEW IN STEP 18: and the program asks for a person's permissions through a role source,
+ * `authority.ts`, which reads this list; step 19 puts a company directory behind it.
  */
 // STEP 17: the supervisor and the agent may make a draft payment and take one back. The
 // CFO approves payments, in a later step, and makes none (decision 125).

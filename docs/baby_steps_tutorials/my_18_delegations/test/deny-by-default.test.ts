@@ -245,7 +245,8 @@ describe("anything not granted is refused", () => {
     }
   });
 
-  // The agent holds invoice:issue, so it must get past the gate. INV-1008 is already issued, so
+  // The agent holds invoice:issue, under del_100 since step 18, whose own role only reads; so it
+  // must get past the gate. INV-1008 is already issued, so
   // the honest proof is the refusal it gets *instead* of AUTHORIZATION_DENIED: CONFLICT comes
   // from the business rule, which only runs once authority is settled. That way this test does
   // not need the one draft invoice, which the last test uses.

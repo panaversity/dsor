@@ -1,13 +1,17 @@
 -- NEW IN STEP 18: the running example's permission slip, del_100 (decision 127).
 --
 -- user_123 lets accounts-payable-fte issue invoices and make and cancel payments, up to 50,000.00
--- USD each. The specification's del_100 also names payment:execute and vendor:read; this program has
--- neither yet, and a slip grants only what exists. And the specification's expires at the end of
--- 2026: this one at the end of 2099, so that the tutorial does not stop working on 1 January 2027.
--- The tests that need an expired slip make one.
+-- USD each. The specification's del_100 grants invoice:read, vendor:read, payment:create and
+-- payment:execute. Both grant payment:create. This one leaves out invoice:read, because the agent's
+-- own role reads and a slip is for commands; vendor:read and payment:execute, because this program
+-- has neither operation yet; and it adds invoice:issue and payment:cancel, the commands it has
+-- besides (decision 128). Its modes, daily total, counterparties and hours come in later steps.
+-- And the specification's expires at the end of 2026: this one at the end of 2099, so that the
+-- tutorial does not stop working on 1 January 2027. The tests that need an expired slip make one.
 --
--- After the lock, so this file says its company first: the lock holds the owner too, because 013
--- forces it, and a row written with no company said would fail the policy's WITH CHECK. The tests
+-- The file says its company first, for an owner the lock holds: 013 forces the lock on the table's
+-- owner, and a row written with no company said would fail the policy's WITH CHECK. PGlite's owner
+-- and Neon's skip row-level security altogether, so no test shows the line is needed. The tests
 -- put the story back by running this file again, which is why it says ON CONFLICT DO NOTHING.
 
 SELECT set_config('dsor.tenant_id', 'org_456', true);
