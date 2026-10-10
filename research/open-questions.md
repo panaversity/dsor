@@ -587,7 +587,12 @@ for a human. An agent may gather evidence; it does not settle these alone.
     forever. Should the picture draw READY to CANCELLED, EXPIRED, and INVALIDATED?
     Step 25's learner build shows the cost: when user_123 tears up del_100, the agent's prepared
     draft waits in READY for ever, and holds 31,400.00 USD of the day for a slip that can spend
-    nothing.
+    nothing. On 2026-10-10 that learner proposed yes for two of the three: §26.2 draws
+    READY → CANCELLED and READY → EXPIRED, DSOR-DEL-04c names READY, and a new requirement gives
+    a READY proposal an expiry. Step 25c's learner build, `mj_25c_ready_can_end`, builds the
+    proposal: a tear-up cancels a READY proposal with the slip's other waiting work, and a sweep
+    expires one when its company's lifetime has passed, at most §44's 30 days for an approval.
+    READY → INVALIDATED is left open.
 91. **Does a command refused before line 8 leave a proposal?** §26.1 says that every command
     invocation in `execute` or `propose_only` mode creates a proposal. §21 puts line 8 after the
     permission check, the input check, and the claim of the key, so a refusal at one of them
@@ -622,7 +627,9 @@ for a human. An agent may gather evidence; it does not settle these alone.
     build first read the list as "READY holds nothing", and its review changed that: a prepared
     call reserves, and the reservation is held while the proposal waits. Nothing releases it yet,
     because READY has no move to CANCELLED or EXPIRED (question 90). Should DSOR-DEL-06c name
-    READY, and DSOR-DEL-06d name the move that ends a READY proposal's wait?
+    READY, and DSOR-DEL-06d name the move that ends a READY proposal's wait? Step 25c's learner
+    build, of the change proposed under question 90, releases a READY proposal's booking at
+    CANCELLED and at EXPIRED, as DSOR-DEL-06d's list already allows.
 97. **Does undoing a command give its spending back?** A COMMITTED proposal's reservation stays
     counted. When `payment.cancel` cancels the draft, no money has moved, but the day's total
     still holds the draft's amount. Step 24's learner build gives nothing back: the cancel is a
@@ -660,3 +667,15 @@ for a human. An agent may gather evidence; it does not settle these alone.
     and `control.lift`, and name a brake's target by a URI of their own: `dsor://org_456/agent/{id}`
     and `dsor://org_456/tenant/org_456`. Should the specification name these operations and
     their targets, as §26.1 names `proposal.execute`?
+104. **Does a suspension refuse a dry run?** §18 says a suspended agent "can make no state
+    change". A `validate_only` call makes none, so the words allow it. Step 25b's learner build
+    refuses it, at line 4, because a dry run must hear what the real call would hear (DSOR-OPR-06).
+    On 2026-10-10 that learner proposed that §18 say so: a suspension or a freeze refuses a command
+    from the agent in every invocation mode, `validate_only` included. Should it?
+105. **Who expires a proposal, and through what?** §26.2 draws moves to EXPIRED, and §44 bounds
+    how long an approval may live, but no operation expires a proposal and no principal is named
+    to do it. Step 25c's learner build adds DSoR's own command `proposal.expire_due { company }`,
+    with its key, its proposal, and its record, called by a login of subject type `system`,
+    `dsor-scheduler`, whose role holds `proposal:expire` only. The time is the database's own:
+    each proposal's `expires_at`, set once when it is made. Should the specification name an
+    expiry operation, the kind of principal that calls it, and whose clock decides?
