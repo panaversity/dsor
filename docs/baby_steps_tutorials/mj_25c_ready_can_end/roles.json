@@ -1,0 +1,14 @@
+{
+  "ap_supervisor": [
+    "invoice:read",
+    "invoice:issue",
+    "payment:create",
+    "payment:cancel",
+    "delegation:revoke",
+    "control:suspend"
+  ],
+  "CFO": ["invoice:read", "delegation:revoke"],
+  "ap_clerk": ["invoice:read", "payment:create.propose", "delegation:revoke"],
+  "tenant_admin": ["delegation:revoke", "control:suspend"],
+  "scheduler": ["proposal:expire"]
+}

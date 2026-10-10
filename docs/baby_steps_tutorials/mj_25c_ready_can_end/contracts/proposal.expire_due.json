@@ -1,0 +1,46 @@
+{
+  "id": "proposal.expire_due",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "ProposalExpireDueRequest"
+  },
+  "output": {
+    "schema": "ProposalExpiry"
+  },
+  "authorization": {
+    "permission": "proposal:expire"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "medium"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "system_only": true
+    }
+  }
+}
