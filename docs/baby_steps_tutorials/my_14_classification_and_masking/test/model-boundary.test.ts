@@ -16,8 +16,14 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Invoice } from "../src/invoice.ts";
 import { leaveTheDoor } from "../src/boundary.ts";
-import { success } from "../src/envelopes.ts";
-import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
+import { refusal, success } from "../src/envelopes.ts";
+import {
+  callOperation,
+  makeDoor,
+  PIPELINE,
+  type Handler,
+  type OperationAnswer,
+} from "../src/operations.ts";
 import { labelOf } from "../src/classification.ts";
 import { findPerson } from "../src/people.ts";
 import { aDatabase, resetInvoices } from "./support/database.ts";
@@ -519,6 +525,73 @@ describe("a page of rows that do not look alike", () => {
     if (leaving.kind === "page") {
       expect(leaving.page.next).toBeUndefined();
       expect(leaving.redactions.map((r) => r.field)).toContain("next");
+    }
+  });
+});
+
+describe("the parts of an answer that are not rows", () => {
+  // Decision 112. The door filtered every field of every row, and copied the rest of the answer as
+  // the handler gave it. A handler that put the row somewhere else, behind a cast, sent the amount
+  // to the agent, with `amount` listed as withheld beside it.
+  const smuggled = { who: "accounts-payable-fte", amount: { value: "31400.00", currency: "USD" } };
+  const lying = smuggled as unknown as string;
+
+  it("DSOR-CLS-02a: who asked is written by the door, whatever the handler wrote there", async () => {
+    // Measured before: the first three answers carried 31400.00 in `askedBy`, through the door.
+    const answers: OperationAnswer[] = [
+      await makeDoor(PIPELINE, {
+        "invoice.get": async () => ({ kind: "data", askedBy: lying, invoice: aRow({}) as Invoice }),
+      })(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await makeDoor(PIPELINE, {
+        "invoice.list": async () => ({
+          kind: "page",
+          askedBy: lying,
+          page: { invoices: [aRow({}) as Invoice], next: undefined },
+        }),
+      })(AGENT, "invoice.list", {}),
+      await makeDoor(PIPELINE, {
+        "invoice.get": async () => ({
+          kind: "error",
+          askedBy: lying,
+          envelope: refusal("VALIDATION_FAILED", "no such invoice"),
+        }),
+      })(AGENT, "invoice.get", { invoice: INV_1008 }),
+    ];
+
+    // And a command's receipt, with its row and without one, straight through the filter: every
+    // way out of the door writes who asked.
+    const receipt = success({
+      data: aRow({}) as Readonly<Record<string, unknown>>,
+      semantics: "atomic",
+      payloadHash: "sha256:0",
+      tenant: "org_456",
+      requestId: "req_0",
+      principalId: "accounts-payable-fte",
+    });
+
+    const withoutItsRow = { ...receipt, data: undefined } as unknown as typeof receipt;
+
+    for (const envelope of [receipt, withoutItsRow]) {
+      answers.push(
+        leaveTheDoor(findPerson("accounts-payable-fte")!, {
+          kind: "result",
+          askedBy: lying,
+          envelope,
+        }),
+      );
+    }
+
+    expect(answers.map((answer) => answer.kind)).toStrictEqual([
+      "data",
+      "page",
+      "error",
+      "result",
+      "result",
+    ]);
+
+    for (const answer of answers) {
+      expect(answer.askedBy, answer.kind).toBe("accounts-payable-fte");
+      expect(JSON.stringify(answer), answer.kind).not.toContain("31400.00");
     }
   });
 });

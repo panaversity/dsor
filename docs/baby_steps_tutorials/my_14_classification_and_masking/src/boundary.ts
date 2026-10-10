@@ -202,17 +202,22 @@ export function cannotBeFiltered(answer: HandlerAnswer): string | undefined {
 }
 
 /**
- * What the handler's answer becomes on its way out. An error is untouched: it carries no data.
- * Everything else is filtered by who is asking, labelled, and told what it lost.
+ * What the handler's answer becomes on its way out. An error's envelope is untouched: it carries
+ * no data. Everything else is filtered by who is asking, labelled, and told what it lost.
+ *
+ * NEW IN STEP 14, decision 112: every way out builds the answer here, from its known parts, and
+ * writes who asked from the principal the pipeline checked. What a handler wrote in `askedBy` is
+ * never read: a handler that put the row there, behind a cast, sent the amount past the filter,
+ * with `amount` listed as withheld beside it.
  */
 export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): OperationAnswer {
-  // One thing this boundary does not do, said here because a review measured it. An error is
-  // untouched: its message is free text, so a handler must never put a field's value in one — a
-  // rule for handlers, not a filter. A value with parts inside is the filter's job: it is
+  // One thing this boundary does not do, said here because a review measured it. An error's
+  // envelope is untouched: its message is free text, so a handler must never put a field's value in
+  // one — a rule for handlers, not a filter. A value with parts inside is the filter's job: it is
   // confidential whatever its field is called (decision 107), and money, the one exception, takes
   // its field's label only in a field declared to hold money (`isPlain`, decision 110).
   if (answer.kind === "error") {
-    return answer;
+    return Object.freeze({ kind: "error", askedBy: principal.id, envelope: answer.envelope });
   }
 
   if (answer.kind === "data") {
@@ -220,7 +225,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
 
     return Object.freeze({
       kind: "data",
-      askedBy: answer.askedBy,
+      askedBy: principal.id,
       // What filterRow hands back is the invoice with zero or more fields gone, and that is what
       // Shown<Invoice> says. The cast is the one place the two meet.
       invoice: shown as Shown<Invoice>,
@@ -257,7 +262,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
 
     return Object.freeze({
       kind: "page",
-      askedBy: answer.askedBy,
+      askedBy: principal.id,
       page: Object.freeze({ invoices: Object.freeze(invoices), next }),
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
@@ -269,10 +274,10 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // `success` validated the envelope it built and this is a different one.
   //
   // `data` is optional in that schema, and step 17's first PENDING_APPROVAL receipt will have
-  // none. A receipt with no data has nothing to filter and nothing to label, so it leaves as it
-  // came: a review made the door throw on it, after the command had run.
+  // none. A receipt with no data has nothing to filter and nothing to label, so its envelope leaves
+  // as it came: a review made the door throw on it, after the command had run.
   if (answer.envelope.data === undefined) {
-    return answer;
+    return Object.freeze({ kind: "result", askedBy: principal.id, envelope: answer.envelope });
   }
 
   const { shown, labels, withheld } = filterRow(principal, answer.envelope.data);
@@ -287,5 +292,5 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
     throw new TypeError("built a result envelope that does not validate, after filtering it");
   }
 
-  return Object.freeze({ kind: "result", askedBy: answer.askedBy, envelope });
+  return Object.freeze({ kind: "result", askedBy: principal.id, envelope });
 }
