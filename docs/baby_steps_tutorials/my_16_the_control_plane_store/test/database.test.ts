@@ -264,8 +264,9 @@ describe("refuseIfItCanRewriteHistory", () => {
       // reached the guard it was written for. Now they do. Each row is still refused by the first
       // guard it does not satisfy, and this test asks no more than that (decisions 123 and 124).
       const db: Database = {
-        query: async <T>(sql: string) =>
-          ({ rows: [(sql.includes("AS tables_present") ? { tables_present: true } : evasive) as T] }),
+        query: async <T>(sql: string) => ({
+          rows: [(sql.includes("AS tables_present") ? { tables_present: true } : evasive) as T],
+        }),
       };
 
       await expect(refuseIfItCanRewriteHistory(db), JSON.stringify(evasive)).rejects.toThrow();
@@ -281,7 +282,9 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
-    await db.exec("CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');");
+    await db.exec(
+      "CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');",
+    );
     // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
