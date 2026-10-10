@@ -3289,3 +3289,41 @@ answer into plain data and refuses what is not data. It closes the four with les
 makes a value with its own `toJSON` refuse the whole answer, and it still lets text through. It
 would have taken about an hour and a half more.
 
+## 120 · Step 15's four decisions, taken by the learner before any code (2026-10-10)
+
+The problem was shown first, on step 14's running demo, run on the local database so step 14's
+Neon database was not touched. The agent's answer for INV-1008 is the whole of it: `issued`, with
+no time and no source. The story: at 09:00 the agent reads INV-1008, `issued`, and writes that into
+its memory; at 09:30 user_123 pays it; at 10:00 the agent plans the day's payments from its memory,
+and nothing tells it, or a person checking its work, that its copy is an hour old. And from the
+inside: a later step adds a cache, and a saved "unpaid" that called itself fresh would let a check
+pass that should stop a second payment. The rules are §27's `DSOR-FRS-01a` and `DSOR-FRS-01b`. §27
+has no "Why it matters" of its own, so the story is the step's. Four questions, one at a time, in
+plain words; the learner took all four recommendations.
+
+1. **`current`, lowercase, as the schemas write it.** The specification writes the mode two ways:
+   `CURRENT` in §27's prose and in `decision-bundle.schema.json`, `current` in the common, contract
+   and connector schemas (open question 51). Our own `invoice.issue.json` already says
+   `"freshness": "current"`, so an answer's delivered mode and a contract's required mode can be
+   compared exactly. The cost: a reader meets both spellings, and the README says which and why.
+2. **The code that reads the database writes the label, and the door insists on one.**
+   `getInvoice` and `listInvoices` hand back the rows with their label, taken right after the read.
+   The handler passes it on, and the door refuses an answer with no label as the program's own
+   error, like a row with no address. Rejected: the door writing it for every answer. The door
+   does not know where the data came from, so it would call everything current, a saved copy
+   included, which is the lie the rule forbids.
+3. **An old value labelled `current` is refused.** §27 defines `current` as read from the system of
+   record within this request, so the door compares the label's `observed_at` with the moment the
+   request began, both on the program's own clock. Earlier means a saved copy calling itself fresh:
+   the program's own error, never to retry. Rejected: relabelling it `observational` and letting it
+   leave. The data would arrive honestly labelled, and the bug that mislabelled it would stay
+   hidden.
+4. **No row version until step 21.** `DSOR-FRS-01a` asks for `resource_version` where one exists,
+   and no invoice has one: nothing counts a row's changes until step 21, optimistic concurrency.
+   Rejected: adding a version column now, which is step 21's whole idea in this step, with a
+   migration, and a version step 21 would then build on without designing.
+
+The connector is named for what is read, the PostgreSQL database that holds the invoices. The
+step's database tier will need its own database, `dsor_step15`; the copied `.env` still names
+step 14's, and changing it is the learner's.
+
