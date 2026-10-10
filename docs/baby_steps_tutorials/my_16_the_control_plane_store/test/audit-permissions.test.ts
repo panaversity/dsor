@@ -1,6 +1,6 @@
 // STEP 09: the guarantee, against a real PostgreSQL.
 //
-// This is the step's "done when": `UPDATE dsor.audit …` must fail with a permission error. Step 08's
+// This is the step's "done when": `UPDATE audit …` must fail with a permission error. Step 08's
 // chain makes tampering *detectable*; this makes it *refused*, and the thing doing the refusing is
 // not our code.
 //
@@ -446,7 +446,7 @@ describe("the REVOKE lines, where there is something to revoke", () => {
     // is, so the application gets UPDATE without anybody granting it to the application.
     //
     // All three of UPDATE, DELETE and TRUNCATE, and that is the point. This test granted only
-    // UPDATE, and `REVOKE ALL ON dsor.audit FROM PUBLIC` narrowed to `REVOKE UPDATE ON dsor.audit FROM
+    // UPDATE, and `REVOKE ALL ON audit FROM PUBLIC` narrowed to `REVOKE UPDATE ON audit FROM
     // PUBLIC` left all 301 tests passing — because the one privilege the test granted was the one
     // the narrowed line still removed. Measured with the narrowed line:
     //
@@ -564,7 +564,7 @@ describe("the database's own witness", () => {
    * file at once, and the body was right. Two things were wrong with it.
    *
    * It ran as the **owner**, through `db.exec`, which can set any column and proves nothing about
-   * the application. And a table-level `GRANT INSERT ON dsor.audit` covers every column, so the
+   * the application. And a table-level `GRANT INSERT ON audit` covers every column, so the
    * application really could forge the witness:
    *
    *     INSERT SUCCEEDED. at=2026-10-04 05:00:00+05  recorded_at=1999-01-01 05:00:00+05
@@ -615,7 +615,7 @@ describe("the database's own witness", () => {
 
 describe("erasing the log, which only a test may do", () => {
   it("DSOR-AUD-04c: forgetTheLog erases this chain and leaves every other chain alone", async () => {
-    // The chain filter is claimed in audit.ts and was tested by nothing: `DELETE FROM dsor.audit`
+    // The chain filter is claimed in audit.ts and was tested by nothing: `DELETE FROM public.audit`
     // with no WHERE survived every test. One chain today; step 10 brings a second tenant, and a test
     // for the first tenant that wipes the second's history is the bug this prevents.
     await db.exec(A_DECISION);
@@ -646,7 +646,7 @@ describe("a table the application makes to stand in front of the real one", () =
    * `dsor_runtime` may not UPDATE or DELETE the audit log. It may still **create a temporary
    * table**, because `TEMPORARY` on a database is granted to `PUBLIC` by default — and `pg_temp` is
    * searched *before* `public`, implicitly, whatever `search_path` says. So an unqualified
-   * `INSERT INTO dsor.audit` lands in the application's own throwaway table, which disappears when the
+   * `INSERT INTO audit` lands in the application's own throwaway table, which disappears when the
    * connection closes.
    *
    * Measured, before every table name was schema-qualified:
@@ -709,9 +709,9 @@ describe("a table the application makes to stand in front of the real one", () =
     // the migrate script, the migration files, and the test support that erases the table.
     //
     // The first version scanned `src/audit.ts` only, under a commit titled "every table name names
-    // its schema", while `CREATE TABLE audit` and three `ON dsor.audit` sat in the migrations and a
-    // `DELETE FROM dsor.audit` in test support. A review listed them. The migration ones matter most:
-    // `GRANT ... ON dsor.audit` resolves through `search_path` like any query, so a `pg_temp.audit` in
+    // its schema", while `CREATE TABLE audit` and three `ON audit` sat in the migrations and a
+    // `DELETE FROM audit` in test support. A review listed them. The migration ones matter most:
+    // `GRANT ... ON audit` resolves through `search_path` like any query, so a `pg_temp.audit` in
     // the owner's session would have taken the grant and left the real table with nothing.
     //
     // Comments are stripped first, because several of them quote the unqualified form on purpose
@@ -736,7 +736,7 @@ describe("a table the application makes to stand in front of the real one", () =
         : raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
       // Case-insensitive, because SQL is: `from audit` and `From Audit` passed the first version. A
-      // review also added LOCK and REFERENCES, and the regclass cast — `'dsor.audit'::regclass` resolves
+      // review also added LOCK and REFERENCES, and the regclass cast — `'audit'::regclass` resolves
       // through `search_path` exactly like a bare name, so `pg_temp.audit` wins there too.
       for (const keyword of [
         "FROM",
