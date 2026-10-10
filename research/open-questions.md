@@ -40,6 +40,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
    embeds?
 9. **The rate source contract.** §9 names a tenant rate source. What interface does it
    have, and how is a stale or missing rate reported?
+   Step 26's learner build, `mj_26_money_done_right`, answers one way. A rate source is a series
+   of sheets: how much of each currency one unit of the sheet's base buys, as the source wrote
+   it. DSoR's own command `rate.load` takes a sheet from a login of subject type `system`,
+   `dsor-rates`, and writes it once in DSoR's own store. A missing or stale rate is reported to the
+   agent as `LIMIT_EXCEEDED`, "no usable rate", with no currency, because the currency is the
+   bill's and the agent's clearance may hide it. The decision's record names the currency and the
+   cause.
 10. **Tokenized fields as command inputs** (DSOR-CLS-02c). The rule exists; the token
     format and lifetime do not.
 11. **MCP catalog size.** §38.1 recommends domain-scoped endpoints. Nothing has
@@ -679,3 +686,15 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `dsor-scheduler`, whose role holds `proposal:expire` only. The time is the database's own:
     each proposal's `expires_at`, set once when it is made. Should the specification name an
     expiry operation, the kind of principal that calls it, and whose clock decides?
+106. **How is a converted reservation rounded?** DSOR-MON-06 converts each reservation into the
+    limit's currency, and a quotient such as 9,000 × 1.0800 ÷ 0.8532 never ends. The
+    specification names no scale and no direction. Step 26's learner build keeps six places
+    after the point and rounds up, so the day's total can hold a millionth too much, never a
+    millionth too little. A comparison needs no rounding, because it multiplies across. Should
+    DSOR-MON-06 name the scale and the direction?
+107. **From which time does a rate's age count, and who vouches for it?** DSOR-MON-04 refuses a
+    rate "older than `max_rate_age`", and DSOR-MON-05 records "the rate timestamp", but neither
+    says which time that is. Step 26's learner build counts from the time the source published
+    the sheet, as the loader sends it, by the database's clock, and refuses a time in the future.
+    So a loader that sends an old sheet with a new time makes it fresh. Should the specification
+    name the time, and say who vouches for it?

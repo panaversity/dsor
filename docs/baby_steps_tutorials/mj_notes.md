@@ -1459,6 +1459,18 @@ gone, and no part needed one.
      DSOR-MON-05 itself stays step 33's.
   8. Step 25c, a READY proposal that can be cancelled and can expire, is built first, from 25b.
      Step 26 then copies 25c.
+- **The design questions, 2026-10-10, after 25c was built,** all taken as recommended: a new
+  login `dsor-rates` loads the rates; each company keeps its own; a rate is kept as its source
+  wrote it; one conversion takes both rates from the newest sheet; a rate's age counts from the
+  sheet's publication, by the database's clock; a sheet is written once; a refusal for no usable
+  rate names the cause; a sheet from a source the policy does not name is refused. They are D1 to
+  D8 in `mj_26_money_done_right/README.md`.
+- **The break predictions:** B1, B4, and B5 as expected. B2, an old sheet used as if fresh, was
+  predicted as still refused, "something else in DSoR still finds the sheet too old". B3 showed a
+  mistake in the design, not in the learner: the design expected a booking kept in EUR to pass,
+  and the learner said it is refused from the first, because step 24's reservation store refuses
+  another currency. The learner was right, so B5 was added for this step's own rule, one day's
+  total in the limit's currency.
 
 ### Step 25c, the learner's proposal, built (2026-10-10)
 
@@ -1508,6 +1520,54 @@ copied from step 25b, with database `dsor_step25c`. Step 26 copies it.
     gets a server of its own, so it can never change the step's own password.
 - **For the learner's session:** D5 to D15, the habit behind B1 and B4, and open questions 104
   and 105.
+
+### Step 26, money done right, built (2026-10-10)
+
+Step 26 copies step 25c, as decision L8 asked, with database `dsor_step26`.
+
+- **The decisions:** L1 to L8 and D1 to D8 were the learner's, each taken as recommended. D9 to
+  D15 are Claude Code's, found while designing, for the learner to review. The review changed the
+  learner's D7 and added D16 and D17, for the learner to review too.
+- **The breaks, against the learner's predictions:** B1, B3, B4, and B5 were predicted right. B2
+  was missed: the learner expected that "something else in DSoR still finds the sheet too old".
+  Nothing else does. One line decides that a rate is too old, and without it Tuesday's sheet
+  converted on Saturday. Whether a second guard belongs there is left open.
+- **Found while building:** the tests' own role table had no `rate_loader`; step 24's test of
+  another currency expected the old words; the claim store had to give its rates to a dry run; a
+  refusal records the rates it was refused with; and the owner's `add` made every test invoice in
+  USD.
+- **The sweep:** 41 small breaks, 34 killed. The 7 that survived each got a test, and a second run
+  killed all 7.
+- **The review:** one high finding, three medium, and several small ones. The high one: the words
+  of a refusal for no usable rate named the bill's currency, which the agent's clearance hides, and
+  a dry run told it with no key at all. D7, as recommended, carried the leak, and its downside was
+  written as "which currencies have no rate", so the learner could not see it. Now the agent hears
+  "no usable rate", and the record names the currency and the cause. The medium ones: a repeated or
+  future sheet was refused inside the work, after DSoR said yes (D16 moves it to line ⑨); nothing
+  tested each company's own policy, source, and sheets; and nothing loaded an older sheet after a
+  newer one.
+- **The second sweep:** 20 breaks, 8 of them the reviewer's that no test saw. All 20 were killed.
+- **Lessons for the next builds:**
+  - A guard that stands behind two others still needs a test of its own. The schema and the
+    database's CHECK both keep a rate of zero away, so nothing tested the third guard, and a zero
+    there makes every bill fit.
+  - `toMatchObject` proves only what it names. A record that says too much passes it.
+  - A test of a unique index needs rows that every other key lets through. Here the primary key
+    refused each second sheet first, so the one-base index was never tried.
+  - Test a function at its own edge. With a sheet that lists USD, "USD kept as it is" and "USD
+    converted at 1" give the same answer.
+  - Words are output too. A refusal's message leaves DSoR like any field, so everything it holds
+    must be within the caller's clearance. A decision's downside must name what the caller learns,
+    and from whom it is hidden.
+  - A check that refuses inside the work, after DSoR said yes, ends the proposal FAILED and lets a
+    dry run say yes. Step 25 found this once; ask "does every refusal come before the work?" for
+    each new command.
+  - When both companies of the story share a setting, a test cannot tell "this company's setting"
+    from "the first company's". Give the second company a different value in at least one test.
+  - A race is tested by making it happen: hold the first call inside its claim, wait until the
+    second is waiting on its lock, then let the first go.
+- **For the learner's session:** D9 to D17, D7 as the review changed it, the habit behind B2, and
+  open questions 106 and 107.
 
 ## Still unknown
 
