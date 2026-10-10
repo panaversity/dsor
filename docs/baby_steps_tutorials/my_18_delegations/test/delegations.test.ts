@@ -353,6 +353,35 @@ describe("the agent never has more power than the person who signed, right now",
   });
 });
 
+describe("scopes, and a slip that is not active", () => {
+  // Decision 128: the code refused each of these already, and no test said so. Deleting the line that
+  // refuses each kept every test green.
+  it("DSOR-DEL-01b: scopes that are not a list of permissions are refused, never read as no scopes", async () => {
+    for (const scopes of ["payment:create", [""], [42], { 0: "payment:create" }]) {
+      expect(refusalOf(await create({ ...AGENT, scopes })).code, JSON.stringify(scopes)).toBe(
+        "AUTHENTICATION_REQUIRED",
+      );
+    }
+  });
+
+  it("DSOR-DEL-01b: an empty list of scopes allows nothing", async () => {
+    expect(refusalOf(await create({ ...AGENT, scopes: [] })).code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  it("a person's scopes narrow the person too", async () => {
+    expect(refusalOf(await create({ ...SUPERVISOR, scopes: ["invoice:read"] })).code).toBe(
+      "AUTHORIZATION_DENIED",
+    );
+    expect((await create({ ...SUPERVISOR, scopes: ["payment:create"] })).kind).toBe("result");
+  });
+
+  it("DSOR-DEL-01a: a suspended slip is no active slip", async () => {
+    await owner("UPDATE dsor.delegations SET status = 'suspended' WHERE id = 'del_100'");
+
+    expect(refusalOf(await create(AGENT)).code).toBe("DELEGATION_REQUIRED");
+  });
+});
+
 describe("a slip lends only what its signer holds in its own company", () => {
   it("DSOR-DEL-02: a slip in org_789, signed by user_123, who belongs to org_456, grants nothing", async () => {
     // Asked of the signer in the slip's company: user_123 holds invoice:issue in org_456 and
