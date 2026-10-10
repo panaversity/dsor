@@ -511,6 +511,21 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-AUD-04a: an UPDATE granted on one column of the log is refused at start-up too", async () => {
+    // NEW IN STEP 19, decision 130: `has_table_privilege` says no to a grant that names columns.
+    // A review granted UPDATE on the log's new `delegation` column, start-up passed, and the
+    // application changed a record's slip; only the chain noticed.
+    const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
+    await db.exec("GRANT UPDATE (delegation) ON dsor.audit TO dsor_runtime");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/the audit table/);
+
+    await db.close();
+  });
+
   it("DSOR-DEL-01a: an application that may write a permission slip is refused at start-up", async () => {
     // STEP 18: a slip the application could write is a slip it could sign for itself
     // (decision 127). Each right, and one of them one SET ROLE away.
