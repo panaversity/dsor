@@ -3623,3 +3623,165 @@ Then the unit tests: 548.
 The four pieces were built in one working tree and committed one at a time: each piece's hunks
 staged alone, the staged files copied out and typechecked, and its tests run there before the
 commit.
+
+## 125 · Step 17's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Every command so far changes one thing, an invoice's status, and none says whether
+its effect can be taken back. An agent that acts at night, and the person who supervises it, need
+that answer before the agent acts, not after: a draft payment can be cancelled, and a payment the
+bank has sent cannot. And there is no payment yet. The running example's PAY-901, a 31,400.00 USD
+draft paying INV-1008 to VENDOR-44, has nowhere to live, and VENDOR-44 is only a word in an invoice
+row. `invoice.issue`'s receipt says `semantics: atomic` only because its handler copies the
+contract's value, with `?? "atomic"` behind it: a guess where a contract is silent, which
+`DSOR-OPR-02b` forbids. And two comments promise step 17 a `PENDING_APPROVAL` receipt, which arrives
+with approvals, much later in the map.
+
+1. **Vendors and payments live in `public`**, beside the invoices, under the same lock, with every
+   key starting with the company. Rejected: `dsor`, which holds DSoR's paperwork, not the business's
+   records.
+2. **The database numbers a payment**, from a sequence. PAY-901 is the running example's own draft,
+   and the specification's running example has it at the start of the story, as it has INV-1008: so
+   a migration puts it there, in both companies, and the sequence starts at 902. Rejected: the caller
+   names the number, which lets it pick one that exists, and would make step 20's problem, a retry
+   that creates a second payment, impossible to see. Rejected: PAY-901 made by the demo's first
+   `payment.create`, which leaves the cross-tenant suite nothing to cancel in either company.
+3. **`payment.create` takes an invoice and an amount.** The vendor is the invoice's own, copied in the
+   same statement, so a payment cannot name one vendor and pay another's invoice. Rejected: the
+   vendor as a third input. Rejected: always the invoice's full amount, because later steps compare
+   what a payment pays with what the invoice still owes.
+4. **The semantics.** `payment.create` is `compensatable`, undone by `payment.cancel`.
+   `payment.cancel` is `atomic`: one statement, and a cancelled payment stays cancelled.
+   `invoice.issue` stays `atomic`.
+5. **The door writes a command's semantics from its contract**, on every receipt. A handler's value
+   is not used, and the `?? "atomic"` goes. Rejected: the handler writes it and the door checks,
+   because a command has run by the time its receipt reaches the door, and refusing then would tell
+   the caller "failed" about a change that happened.
+6. **A compensating operation must exist.** The program refuses to start if a contract names one that
+   is not a command it has. It runs under the full pipeline because it is an ordinary operation:
+   its own permission, its own decision in the log.
+7. **Who may.** `payment:create` and `payment:cancel` for the supervisor and the agent. The CFO
+   approves, in a later step, and does not make or cancel payments.
+8. **An amount is checked before anything is written:** above zero, at most two decimal places,
+   because the column holds two and PostgreSQL would round a third away without a word, and at most
+   sixteen digits before the point, all the column holds.
+9. **The cross-tenant suite learns payments.** It reads both kinds of row; org_789's PAY-901 amount,
+   7700.00, becomes a canary; and "the other company's row is in the same state" is asked of a
+   command that changes a row, not of one that only adds rows, where it means nothing: a careless
+   `payment.create` shows as a new row in the other company, which the suite already catches.
+   **Reversed by decision 126**: the setup was step 12's hollow pass, waiting for a precondition.
+10. **The two comments that promise step 17 a `PENDING_APPROVAL` receipt** name the step that builds
+    approvals.
+
+**Red first.** The tables: eleven tests failed before migration 009 existed, and once the tables
+were there, start-up refused every program for reading two tables it did not know. The rights: both
+tests resolved instead of refusing. The commands: with the tests alone staged, sixteen failed, no
+contracts and no handlers. The semantics at the door: three failed, a careless handler's `atomic`
+reaching the caller and both registry refusals. Then the unit tests: 596, and 608 after decision 126; the database tier,
+on a local PostgreSQL 17 set up like Neon: 51, from 39, the cross-tenant suite's six questions for each
+new operation.
+
+**Proved by breaking it**, in a copy, on the whole suite, each run twice and each prediction written
+first:
+
+| Break | Predicted | Measured, twice |
+| --- | --- | --- |
+| `payment.create` declared `atomic`, no undo named | about 7 | 7 |
+| the door passes on the handler's semantics | 1: the careless handler | 1, that test |
+| a cancelled payment can be cancelled again | 2: the double cancel and the demo | those 2 |
+| an amount with three decimals gets through | 1 | 1 |
+| the statement forgets the invoice's company, `$1` kept | 0: the lock holds | 0 |
+| `DELETE` granted on the payments | dozens: start-up refuses | 29 |
+| the tenant tables' list forgets the payments | dozens | 33 |
+
+Measured on the final code, after decision 126, which is why two of the counts differ from the
+first measurement, stopped when the review arrived: 45 and 28 then, 29 and 33 now, because 126
+asks the rights questions after the ownership questions.
+
+The first version of the fifth break deleted the company from the statement's WHERE, and measured
+something else: `$1` was then unused, PostgreSQL could not tell its type, and every payment failed,
+26 tests. A break has to change one thing. The second version keeps `$1` in the statement and
+removes only the company, and shows what the step meant to show.
+
+## 126 · What step 17's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, with the recommended
+option each time; each is open to reversal.
+
+**The review.** One reviewer, read-only, with probes in its own copy and the careless model of
+decision 119. It found company isolation holding everywhere: the WHERE clause, the setting the lock
+reads, the lock's WITH CHECK, and keys that start with the company. It found the door writing the
+contract's semantics on every receipt, the agent's included, and `payment.cancel` an ordinary
+operation in every respect. It found eight problems, each reproduced by a probe.
+
+**Chosen:**
+
+1. **What undoes an operation must be named, once, and not be itself.** The schema lets a
+   `compensatable` contract say `compensated_by: []`, and the registry took it: an undo promised
+   and none named. It took a name listed twice and an operation named as its own undo, too. The
+   registry refuses all three now. The test titled "names nothing that undoes it" had only deleted
+   the key; it sends the empty list as well.
+2. **A payment's vendor is its invoice's, by the database too.** Migration 009's comment said the
+   keys made the database agree; they tied vendor and invoice to the same company, not to each
+   other, and the application could write PAY-902 for VENDOR-77 against INV-1008, whose vendor is
+   VENDOR-44 (measured). The payment's key now points at the invoice and its vendor together. And an
+   invoice must name a vendor the company has, so a payment for an invoice whose vendor does not
+   exist cannot fail halfway with a foreign-key error, which it did, after its ALLOW was recorded.
+3. **Start-up asks about the payment numbers.** A grant of UPDATE on the sequence passed start-up,
+   and `setval` then chose the next payment's number (measured), against the commit that said the
+   application never chooses one. It refuses that grant now.
+4. **Rights one `SET ROLE` away count, on the business's tables too.** A role with DELETE on the
+   payments, which the application could become, passed start-up; so did the same for the invoices
+   since step 10. The rights questions are asked of every role the application can become, as the
+   log's have been since step 09.
+5. **A command answers with a receipt, or the door refuses it.** A careless handler that answered
+   `payment.create` like a query made the payment and left with no semantics at all (measured). The
+   door refuses such an answer as its own error, as it refuses a query that answers with a receipt.
+6. **A payment is in its invoice's currency.** A USD invoice was paid in EUR, and in `ZZZ`, which is
+   no currency (measured). A payment in another currency is refused before anything is written;
+   converting between currencies is step 26's.
+7. **The handler reads what the hash describes.** The arguments were copied once, shallowly, and a
+   nested `amount` was read again from the caller's own object, though a comment said nothing
+   below read it again: a getter could hash one amount and pay another (measured; code written to
+   trick the door is outside decision 119's model, but the comment was false). The handler now
+   gets a copy made from the text that was hashed.
+8. **The cross-tenant suite asks the same-state question of every command again**, and
+   `payment.create`'s example names INV-1009, a draft in both companies. Decision 125's ninth
+   choice is reversed: with INV-1008 issued in one company and a draft in the other, the setup was
+   step 12's hollow pass waiting for the day a precondition arrives.
+9. **Tests for loosening the new tables' lock**: forcing off, a policy dropped or added, an owner
+   one `SET ROLE` away. The code refused each already (measured); no test said so.
+10. **Smaller truths.** A test quoted `DSOR-TEN-01a` wrongly, and a demo test claimed it; a doc
+    comment sat above the wrong function; "the caller's to name" meant the handler; and "a
+    cancelled payment stays cancelled" rests on `cancelPayment`'s WHERE clause, because the
+    application's UPDATE right on `status` could set one back to a draft. Each is corrected or said.
+
+**Written down, and not fixed:** a handler that throws leaves the door as a thrown error, not an
+envelope, and has since step 03. For a command, the honest answer is `OUTCOME_UNKNOWN`, which
+step 37 builds with §25's machinery. Choices 2 and 3 close the two ways step 17 had added; an owner
+who restarts the sequence below numbers already used is the one left.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: the
+registry took the empty list and the operation named as its own undo; the application wrote VENDOR-77
+against INV-1008, and an invoice named VENDOR-99; start-up passed with UPDATE on the sequence and
+with DELETE on the payments one `SET ROLE` away; a careless handler's row left the door; the EUR
+payment was committed; the payment was made for 1.00. One more red came on the way: the copy made
+from the hashed text read `NaN` as `null`, and step 13's test of a refusal that names its value
+failed until such a number is refused at validation, by name. The suite reversal and the smaller
+truths had no red to see. Then the unit tests: 608.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's ten, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| start-up stops asking about the sequence | 2: the grant, and its `SET ROLE` case | those 2 |
+| the business's rights asked of the application alone | 1: the `SET ROLE` test | 1, that test |
+| a command that answers with a row is let out | 1: the careless handler | 1, that test |
+| a payment in another currency gets through | 1: EUR and ZZZ | 1, that test |
+| the handler reads the caller's object again | 1: the getter | 3: that test, and two older ones that count reads of the arguments, because this break also spread the caller's arguments a second time; a break should change one thing, and this one changed two |
+| an invoice may name a vendor its company does not have | 1: VENDOR-99 | 1, that test |
+| an operation may be its own undo | 1: the self-undo test | 1, that test |

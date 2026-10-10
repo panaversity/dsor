@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 16 also have a second learner's
-builds, `my_01` to `my_16`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 17 also have a second learner's
+builds, `my_01` to `my_17`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, seventeen of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, eighteen of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -108,6 +108,7 @@ one before it:
 | `my_14_classification_and_masking` | 512 | every field labelled, the agent cleared for internal, a field above it left out of the answer and listed before the answer leaves, every answer labelled, and a read that handed out confidential data written down with its rows and their count |
 | `my_15_freshness_labels` | 531 | every answer says how old its data is, when it was read and from where, in a label the code that read writes; the door refuses a read with no label, and a `current` label stamped before the request began |
 | `my_16_the_control_plane_store` | 548 | DSoR's log moves out of the business's tables into a schema of its own, `dsor`, in the same database: the first piece of paperwork in its control-plane store. The program refuses to start if the application owns that schema or may create things in it |
+| `my_17_vendors_and_payments` | 608 | vendors and payments, two more record types under the same locks; every command says, in its contract and on every receipt, whether its effect can be undone, and `payment.create` is undone by `payment.cancel` |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -141,7 +142,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 124 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 126 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
