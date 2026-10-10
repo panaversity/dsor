@@ -398,6 +398,28 @@ describe("the program a learner runs", () => {
     expect(out).toContain(`${timeout} last knew what user_123 holds at `);
   });
 
+  it("DSOR-IDN-02b: the printed log tells the agent's records under a slip from user_123's own", () => {
+    // NEW IN STEP 19: the subject of an unattended record is user_123, so the line says who acted,
+    // and under which slip. user_123's own records say nothing more.
+    const lines = demo().report.split("\n");
+    const theAgents = lines.filter((line) =>
+      line.endsWith("unattended: by accounts-payable-fte under del_100"),
+    );
+
+    expect(theAgents.length).toBeGreaterThanOrEqual(5);
+    expect(theAgents.every((line) => /\s{2}user_123\s/.test(line))).toBe(true);
+    expect(lines).toContain(
+      [
+        " 7",
+        "ALLOW",
+        "invoice.issue@1".padEnd(19),
+        "user_123".padEnd(21),
+        "ALLOWED".padEnd(22),
+        "sha256:HASH...  unattended: by accounts-payable-fte under del_100",
+      ].join("  "),
+    );
+  });
+
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
     // STEP 15: under each read, a line of its own: the mode, when, and from where. The time
     // changes every run, so the test pins its shape, not its value.

@@ -444,6 +444,13 @@ for (const company of ["org_456", "org_789"]) {
           : record.result
         ).padEnd(22),
         `${record.record_hash.slice(0, 14)}...`,
+        // NEW IN STEP 19: an unattended record's subject is the slip's signer, so the line says who
+        // acted, and under which slip (decision 129).
+        ...(record.identity.mode === "unattended"
+          ? [
+              `unattended: by ${record.identity.actor_chain.join(", ")} under ${record.delegation ?? "no slip"}`,
+            ]
+          : []),
       ].join("  "),
     );
   }
