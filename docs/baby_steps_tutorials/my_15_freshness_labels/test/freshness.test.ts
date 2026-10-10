@@ -9,7 +9,9 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation } from "../src/operations.ts";
+import { readNow } from "../src/freshness.ts";
+import type { Invoice } from "../src/invoice.ts";
+import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
 import { aDatabase, resetInvoices } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -63,6 +65,83 @@ describe("every answer says how old its data is", () => {
 
       expect(observed).toBeGreaterThanOrEqual(before);
       expect(observed).toBeLessThanOrEqual(after);
+    }
+  });
+});
+
+/** INV-1008 as a handler might hand it over, built in the test rather than read. */
+const INV_1008_ROW = Object.freeze({
+  uri: INV_1008,
+  tenantId: "org_456",
+  id: "INV-1008",
+  vendor: "VENDOR-44",
+  amount: Object.freeze({ value: "31400.00", currency: "USD" }),
+  status: "issued",
+}) as unknown as Invoice;
+
+/** A door whose invoice.get and invoice.list hand over INV-1008 with whatever label they are given. */
+const handingLabel = (label: () => unknown) =>
+  makeDoor(PIPELINE, {
+    "invoice.get": async (_args, _contract, askedBy) => ({
+      kind: "data",
+      askedBy,
+      invoice: INV_1008_ROW,
+      freshness: label() as never,
+    }),
+    "invoice.list": async (_args, _contract, askedBy) => ({
+      kind: "page",
+      askedBy,
+      page: { invoices: [INV_1008_ROW], next: undefined },
+      freshness: label() as never,
+    }),
+  });
+
+describe("the door insists on a label", () => {
+  // Decision 120: the code that reads writes the label, and the door refuses a read without one,
+  // as the program's own error, like a row with no address. A read written next year that forgets
+  // its label fails loudly instead of answering.
+  const notALabel: readonly [string, () => unknown][] = [
+    ["no label at all", () => undefined],
+    // Decision 120 spells the modes as the schemas do. §27's capitals are not one of them here.
+    ["its mode in capitals", () => ({ ...readNow(), mode: "CURRENT" })],
+    ["a mode that is not one of the four", () => ({ ...readNow(), mode: "fresh" })],
+    ["no time", () => ({ ...readNow(), observed_at: undefined })],
+    ["a time that is not a time", () => ({ ...readNow(), observed_at: "yesterday" })],
+    ["no connector", () => ({ ...readNow(), connector: "" })],
+  ];
+
+  for (const [what, label] of notALabel) {
+    it(`DSOR-FRS-01a: a read with ${what} is the program's own error, never to retry`, async () => {
+      const door = handingLabel(label);
+
+      for (const answer of [
+        await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+        await door(AGENT, "invoice.list", {}),
+      ]) {
+        expect(answer.kind).toBe("error");
+
+        if (answer.kind === "error") {
+          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.retry).toBe("never");
+        }
+      }
+    });
+  }
+
+  it("DSOR-FRS-01a: the label that leaves is exactly its three parts, so nothing rides along in it", async () => {
+    // Decision 117's lesson, for the label: built from its named parts, not copied whole.
+    const door = handingLabel(() => ({ ...readNow(), copy: INV_1008_ROW }));
+    const answer = await door(AGENT, "invoice.get", { invoice: INV_1008 });
+
+    expect(answer.kind).toBe("data");
+
+    if (answer.kind === "data") {
+      expect(Object.keys(answer.freshness).sort()).toStrictEqual([
+        "connector",
+        "mode",
+        "observed_at",
+      ]);
+      expect(JSON.stringify(answer)).not.toContain("31400.00");
     }
   });
 });

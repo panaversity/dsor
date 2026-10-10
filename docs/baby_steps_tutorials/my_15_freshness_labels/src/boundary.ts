@@ -24,7 +24,7 @@ import {
   labelOf,
 } from "./classification.ts";
 import { type ResultEnvelope, validateEnvelope } from "./envelopes.ts";
-import type { Freshness } from "./freshness.ts";
+import { type Freshness, labelFrom } from "./freshness.ts";
 import type { Invoice, InvoicePage } from "./invoice.ts";
 import type { HandlerAnswer, OperationAnswer } from "./operations.ts";
 import type { Principal } from "./people.ts";
@@ -211,19 +211,19 @@ function copyRow(row: unknown): unknown {
 export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
   const { kind, askedBy } = answer;
 
-  // NEW IN STEP 15: a read's freshness label is copied once too, like a row.
+  // NEW IN STEP 15: a read's freshness label is copied once too, as its three named parts.
   if (kind === "data") {
     return Object.freeze({
       kind,
       askedBy,
       invoice: copyRow(answer.invoice) as Invoice,
-      freshness: copyRow(answer.freshness) as Freshness,
+      freshness: labelFrom(answer.freshness) as Freshness,
     });
   }
 
   if (kind === "page") {
     const page: unknown = answer.page;
-    const freshness = copyRow(answer.freshness) as Freshness;
+    const freshness = labelFrom(answer.freshness) as Freshness;
 
     if (page === null || typeof page !== "object") {
       return Object.freeze({ kind, askedBy, page: page as InvoicePage, freshness });

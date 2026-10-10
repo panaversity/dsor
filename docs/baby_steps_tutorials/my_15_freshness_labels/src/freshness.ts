@@ -10,6 +10,8 @@
 // exists, the connector, and the freshness mode actually delivered.
 // Rule DSOR-FRS-01b: DSoR MUST NOT label a cached value `CURRENT`.
 
+import type { HandlerAnswer } from "./operations.ts";
+
 /**
  * How fresh an answer is, in the schemas' own spelling (decision 120). `current` is read from the
  * system of record within this request. `bounded_staleness` is no older than an agreed age.
@@ -29,6 +31,14 @@ export interface Freshness {
   /** Where they were read from. */
   readonly connector: string;
 }
+
+/** The four modes, spelled as the schemas spell them. Anything else is not a mode. */
+const MODES: readonly string[] = Object.freeze([
+  "current",
+  "bounded_staleness",
+  "observational",
+  "connector_defined",
+]);
 
 /** What a read hands back: the rows, and how fresh they are. */
 export interface Labelled<T> {
@@ -55,4 +65,55 @@ export function readNow(): Freshness {
  */
 export function justRead<T>(value: T): Labelled<T> {
   return Object.freeze({ value, freshness: readNow() });
+}
+
+/**
+ * A label as the door keeps it: its three named parts, each read once, and nothing else, so nothing
+ * rides along in it (decision 117's lesson, for the label). Anything that is not an object stays as
+ * it is, for `cannotBeLabelled` to refuse.
+ */
+export function labelFrom(handed: unknown): unknown {
+  if (handed === null || typeof handed !== "object") {
+    return handed;
+  }
+
+  const { mode, observed_at, connector } = handed as Readonly<Record<string, unknown>>;
+
+  return Object.freeze({ mode, observed_at, connector });
+}
+
+/**
+ * Why the door cannot let this read leave, as far as its label goes, or nothing.
+ *
+ * The code that reads writes the label, and the door insists on one (decision 120): a single
+ * invoice or a page with no label, or with a label that is not one, is a bug in this program,
+ * refused in an envelope with a code and a retry class. The messages never repeat what the handler
+ * wrote, because a label that is not one could be carrying anything.
+ */
+export function cannotBeLabelled(answer: HandlerAnswer): string | undefined {
+  if (answer.kind !== "data" && answer.kind !== "page") {
+    return undefined;
+  }
+
+  const label: unknown = answer.freshness;
+
+  if (label === null || typeof label !== "object") {
+    return "returned a read with no freshness label";
+  }
+
+  const { mode, observed_at, connector } = label as Readonly<Record<string, unknown>>;
+
+  if (typeof mode !== "string" || !MODES.includes(mode)) {
+    return "returned a read whose label names no freshness mode";
+  }
+
+  if (typeof observed_at !== "string" || Number.isNaN(Date.parse(observed_at))) {
+    return "returned a read whose label says no time it was read";
+  }
+
+  if (typeof connector !== "string" || connector === "") {
+    return "returned a read whose label names no connector";
+  }
+
+  return undefined;
 }

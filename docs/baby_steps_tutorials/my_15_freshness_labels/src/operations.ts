@@ -49,8 +49,8 @@ import {
   type ShownPage,
 } from "./boundary.ts";
 import type { Classification } from "./classification.ts";
-// NEW IN STEP 15: how old an answer's data is.
-import type { Freshness } from "./freshness.ts";
+// NEW IN STEP 15: how old an answer's data is, and the door's check that a read says so.
+import { cannotBeLabelled, type Freshness } from "./freshness.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
@@ -1136,6 +1136,24 @@ export function makeDoor(
         envelope: refusal(
           "INTERNAL_ERROR",
           `${nameOf(contract.id)} ${unfilterable}`,
+          id_,
+          principal.id,
+        ),
+      });
+    }
+
+    // NEW IN STEP 15: and a read leaves only with a label that says how old it is (decision 120).
+    // The code that read writes the label; the door does not know where data came from, so it
+    // cannot write one, and insists on one instead.
+    const unlabelled = cannotBeLabelled(answer);
+
+    if (unlabelled !== undefined) {
+      return Object.freeze({
+        kind: "error",
+        askedBy: principal.id,
+        envelope: refusal(
+          "INTERNAL_ERROR",
+          `${nameOf(contract.id)} ${unlabelled}`,
           id_,
           principal.id,
         ),
