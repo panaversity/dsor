@@ -985,7 +985,9 @@ const validateTheInput: Stage["run"] = (context) => {
  * After the input is validated, because the amount is the validated copy's: the one the payload hash
  * describes. Only under a slip with a limit, and only for a request that carries an amount; one that
  * is malformed is the handler's to refuse. An amount in another currency than the limit cannot be
- * compared with it, and a comparison that cannot convert resolves restrictively (DSOR-MON-04): refused.
+ * compared with it, and a comparison that cannot convert resolves restrictively (DSOR-MON-04): the
+ * limit is treated as exceeded. Either way the code is LIMIT_EXCEEDED, which DSOR-DEL-06e names for
+ * a command that would exceed a limit; it was AUTHORIZATION_DENIED, for no reason (decision 128).
  * The rest of §21.10, controls and limits over time, is steps 24 and 27's.
  */
 const checkTheSlipsLimit: Stage["run"] = (context) => {
@@ -1013,7 +1015,7 @@ const checkTheSlipsLimit: Stage["run"] = (context) => {
   if (amount.currency !== limit.currency) {
     return refuse(
       askedBy,
-      "AUTHORIZATION_DENIED",
+      "LIMIT_EXCEEDED",
       `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment, so it is refused`,
       context.requestId,
     );
@@ -1022,7 +1024,7 @@ const checkTheSlipsLimit: Stage["run"] = (context) => {
   if (centsOf(amount) > centsOf(limit)) {
     return refuse(
       askedBy,
-      "AUTHORIZATION_DENIED",
+      "LIMIT_EXCEEDED",
       `${amount.value} ${amount.currency} is above ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment`,
       context.requestId,
     );

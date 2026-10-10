@@ -367,8 +367,9 @@ describe("the program a learner runs", () => {
       "  del_100  user_123 for accounts-payable-fte: invoice:issue, payment:create, payment:cancel\n" +
         "           up to 50000.00 USD a payment, until 2099-12-31",
     );
+    // Decision 128: LIMIT_EXCEEDED, the code DSOR-DEL-06e names for a limit.
     expect(out).toContain(
-      `${denied}60000.00 USD is above del_100's limit of 50000.00 USD a payment`,
+      `${agent} ${"LIMIT_EXCEEDED".padEnd(24)} retry: ${"after_delay".padEnd(20)} 60000.00 USD is above del_100's limit of 50000.00 USD a payment`,
     );
     expect(out).toContain(
       `${denied}accounts-payable-fte may not call payment.create under del_100: the slip, what user_123 holds now, or the login's scopes leave out payment:create`,

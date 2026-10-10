@@ -378,7 +378,9 @@ describe("up to a limit", () => {
 
     const refusal = refusalOf(await create(AGENT, { value: "50000.01", currency: "USD" }));
 
-    expect(refusal.code).toBe("AUTHORIZATION_DENIED");
+    // DSOR-DEL-06e's code for a command that would exceed a limit; decision 127 said
+    // AUTHORIZATION_DENIED with no reason, and decision 128 found none.
+    expect(refusal.code).toBe("LIMIT_EXCEEDED");
     expect(refusal.message).toMatch(/50000\.00 USD/);
   });
 
@@ -386,14 +388,14 @@ describe("up to a limit", () => {
     // Compared in cents, never as text: "100000.00" < "50000.00" as strings, because "1" < "5".
     // Nothing else here would notice a limit compared that way.
     expect(refusalOf(await create(AGENT, { value: "100000.00", currency: "USD" })).code).toBe(
-      "AUTHORIZATION_DENIED",
+      "LIMIT_EXCEEDED",
     );
   });
 
   it("DSOR-DEL-02: an amount in another currency cannot be compared with the limit, so it is refused", async () => {
-    // DSOR-MON-04's rule for a comparison that cannot convert: restrictively.
+    // DSOR-MON-04's rule for a comparison that cannot convert: the limit is treated as exceeded.
     expect(refusalOf(await create(AGENT, { value: "10.00", currency: "EUR" })).code).toBe(
-      "AUTHORIZATION_DENIED",
+      "LIMIT_EXCEEDED",
     );
   });
 
