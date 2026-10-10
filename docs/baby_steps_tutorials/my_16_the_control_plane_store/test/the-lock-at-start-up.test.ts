@@ -111,6 +111,22 @@ describe("an account the lock does not apply to", () => {
     });
   }
 
+  it("DSOR-AUD-04a: an account that owns the database is refused, even with public given back", async () => {
+    // NEW IN STEP 16: one login that owns its own database is the commonest careless setup. It was
+    // caught only because `public` belongs to `pg_database_owner`, and doing what that refusal said,
+    // giving the schema back, let the program start (decision 124). A database's owner may drop it.
+    await asTheOwner(() =>
+      db.exec(`DO $$ BEGIN
+                 EXECUTE format('ALTER DATABASE %I OWNER TO ${APPLICATION_ROLE}', current_database());
+               END $$;
+               ALTER SCHEMA public OWNER TO postgres;`),
+    );
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may become the owner of, the database/,
+    );
+  });
+
   it("DSOR-AUD-04a: an account that may become the owner of the schema dsor is refused", async () => {
     await asTheOwner(async () => {
       await db.exec("CREATE ROLE a_plain_owner");

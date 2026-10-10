@@ -316,6 +316,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     bypasses: boolean;
     bypassing_roles: string | null;
     owns_tenant_table: boolean;
+    owns_database: boolean;
     owns_schema: string | null;
     creates_in: string | null;
     locked: boolean;
@@ -337,6 +338,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               SELECT 1 FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
               WHERE pg_has_role(current_user, c.relowner, 'MEMBER')
             ) AS owns_tenant_table,
+            -- NEW IN STEP 16: the database they are in, and who owns it (decision 124).
+            pg_has_role(current_user, (SELECT d.datdba FROM pg_database d
+                                        WHERE d.datname = current_database()), 'MEMBER')
+              AS owns_database,
             -- NEW IN STEP 16: the schema each tenant table is in, and who owns it (decision 123).
             (SELECT string_agg(ns.nspname, ', ' ORDER BY ns.nspname)
                FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
@@ -399,6 +404,19 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, which owns, or may become the owner of, a tenant ` +
         `table. An owner may drop the lock on its own table. Tenant tables belong to the account ` +
         `that runs the migrations, never to \`${APPLICATION_ROLE}\`.`,
+    );
+  }
+
+  // NEW IN STEP 16: the database the tenant tables are in. One login that owns its own database is
+  // the commonest careless setup. It was caught only through `public`, whose owner is the
+  // database's, and giving that schema back let the program start, measured (decision 124). A
+  // database's owner may drop it, and asked first, the refusal says so instead of naming `public`.
+  if (second.owns_database !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, which owns, or may become the owner of, the database ` +
+        `it is connected to. A database's owner may drop it, and every table and every record ` +
+        `with it. The database belongs to the account that runs the migrations, never to ` +
+        `\`${APPLICATION_ROLE}\`.`,
     );
   }
 
