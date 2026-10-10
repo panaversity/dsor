@@ -373,17 +373,33 @@ describe("an answer the door cannot filter", () => {
     // name a row with no address. For the agent both parts are withheld, nothing confidential is
     // left to write down, and only the row check stands between it and an empty invoice. Measured:
     // with the row check forgetting money, the supervisor's case alone stayed green.
+    // Decision 118: alone, and as the only row of a page. The page half of the check had no test:
+    // without it, money gave the agent a page of one empty row, labelled public.
     for (const row of [null, undefined, "INV-1008", { value: "31400.00", currency: "USD" }]) {
-      const door = makeDoor(PIPELINE, { "invoice.get": handing(row as unknown as object) });
+      const alone = makeDoor(PIPELINE, { "invoice.get": handing(row as unknown as object) });
+      const onAPage = makeDoor(PIPELINE, {
+        "invoice.list": async (_args, _contract, askedBy) => ({
+          kind: "page",
+          askedBy,
+          page: { invoices: [row as unknown as Invoice], next: undefined },
+        }),
+      });
 
       for (const caller of [SUPERVISOR, AGENT]) {
-        const answer = await door(caller, "invoice.get", { invoice: INV_1008 });
+        const answers = [
+          ["alone", await alone(caller, "invoice.get", { invoice: INV_1008 })],
+          ["on a page", await onAPage(caller, "invoice.list", {})],
+        ] as const;
 
-        expect(answer.kind, `${String(row)}, asked by ${caller.loggedInAs}`).toBe("error");
+        for (const [where, answer] of answers) {
+          const what = `${String(row)} ${where}, asked by ${caller.loggedInAs}`;
 
-        if (answer.kind === "error") {
-          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
-          expect(answer.envelope.retry).toBe("never");
+          expect(answer.kind, what).toBe("error");
+
+          if (answer.kind === "error") {
+            expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+            expect(answer.envelope.retry).toBe("never");
+          }
         }
       }
     }
@@ -671,9 +687,21 @@ describe("the parts of an answer that are not rows", () => {
         }),
       });
 
-    // The last row itself, the first row's address, an address from no row on the page, and text
-    // that is not an address at all.
-    for (const next of [rows[1], INV_1008, "dsor://org_456/invoice/INV-1010", "31400.00 USD"]) {
+    // The last row itself, the first row's address, an address from no row on the page, text that
+    // is not an address at all, and (decision 118) an object that turns into the last row's address
+    // when it is compared loosely, with the amount inside it.
+    const lookalike = {
+      toString: () => INV_1009,
+      amount: { value: "31400.00", currency: "USD" },
+    };
+
+    for (const next of [
+      rows[1],
+      INV_1008,
+      "dsor://org_456/invoice/INV-1010",
+      "31400.00 USD",
+      lookalike,
+    ]) {
       const theirs = await aPageWith(next)(AGENT, "invoice.list", {});
 
       expect(theirs.kind, String(next)).toBe("error");
@@ -695,6 +723,17 @@ describe("the parts of an answer that are not rows", () => {
         expect(theirs.page.next).toBe(next);
       }
     }
+
+    // Decision 118: and a cursor on a page with no rows, which has no last row to come after.
+    const nothingToComeAfter = await makeDoor(PIPELINE, {
+      "invoice.list": async () => ({
+        kind: "page",
+        askedBy: "accounts-payable-fte",
+        page: { invoices: [], next: INV_1008 },
+      }),
+    })(AGENT, "invoice.list", {});
+
+    expect(nothingToComeAfter.kind).toBe("error");
   });
 
   it("DSOR-CLS-02a: the door reads an answer once, so no part of it is one thing to the check and another to the filter", async () => {
