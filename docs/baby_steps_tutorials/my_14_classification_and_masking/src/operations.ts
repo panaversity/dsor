@@ -42,6 +42,7 @@ import { bytesOf, MAX_PAGE_SIZE, MAX_RESULT_BYTES, pageSizeFrom } from "./querie
 // NEW IN STEP 14: the filter at the door, and the shapes of what leaves.
 import {
   cannotBeFiltered,
+  copyOnce,
   leaveTheDoor,
   type Redaction,
   type Shown,
@@ -1097,7 +1098,10 @@ export function makeDoor(
     }
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
-    const answer = Object.freeze(await handler(given, contract, principal.id, tenant, hash, id_));
+    // NEW IN STEP 14, decision 116: and what it hands back is read once, here. The check, the
+    // filter, the ceiling and the record of the read below all work from this copy, so a part that
+    // answers differently on a second read never gets one.
+    const answer = copyOnce(await handler(given, contract, principal.id, tenant, hash, id_));
 
     // NEW IN STEP 14: and an answer this program cannot filter is this program's bug, said in an
     // envelope rather than thrown. Before the filter, because the filter is what would crash.

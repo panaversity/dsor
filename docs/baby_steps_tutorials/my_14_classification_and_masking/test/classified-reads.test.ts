@@ -121,6 +121,40 @@ describe("restricted, and nothing", () => {
     expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual(["decision"]);
   });
 
+  it("DSOR-CLS-05: the record names the rows that were returned, because the door reads the answer once", async () => {
+    // Decision 116. The record of a read took the rows from the handler a second time, so a page
+    // whose rows answered differently on that read was written down as other rows.
+    const first = aRow({}) as Invoice;
+    const second = aRow({ uri: "dsor://org_456/invoice/INV-1009", id: "INV-1009" }) as Invoice;
+    let reads = 0;
+    const door = makeDoor(PIPELINE, {
+      "invoice.list": async (_args, _contract, askedBy) => ({
+        kind: "page",
+        askedBy,
+        page: {
+          get invoices() {
+            reads += 1;
+
+            return reads % 2 === 1 ? [first] : [second];
+          },
+          next: undefined,
+        },
+      }),
+    });
+    const answer = await door(SUPERVISOR, "invoice.list", {});
+
+    expect(answer.kind).toBe("page");
+
+    if (answer.kind === "page") {
+      const read = (await theLog("org_456")).at(-1)!;
+
+      expect(read.kind).toBe("classified_read");
+      expect(read.resources).toStrictEqual(answer.page.invoices.map((row) => row.uri));
+    }
+
+    expect(reads).toBe(1);
+  });
+
   it("a confidential row with no address cannot be written down, so it does not leave — as the program's own error, never to retry", async () => {
     // The record names rows by address. A row without one is a handler's bug, not the store's:
     // INTERNAL_ERROR with retry never, not EVIDENCE_STORE_UNAVAILABLE with retry safe — a review

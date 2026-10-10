@@ -24,7 +24,7 @@ import {
   labelOf,
 } from "./classification.ts";
 import { validateEnvelope } from "./envelopes.ts";
-import type { Invoice } from "./invoice.ts";
+import type { Invoice, InvoicePage } from "./invoice.ts";
 import type { HandlerAnswer, OperationAnswer } from "./operations.ts";
 import type { Principal } from "./people.ts";
 import { parseUri } from "./uri.ts";
@@ -183,6 +183,72 @@ const redactionsFor = (fields: Iterable<string>): readonly Redaction[] =>
       Object.freeze({ field, reason: "clearance", treatment: "omitted" } as const),
     ),
   );
+
+/** A row's own fields, each read once, into a plain frozen object. A row that is not one stays. */
+function copyRow(row: unknown): unknown {
+  return row !== null && typeof row === "object"
+    ? Object.freeze(Object.fromEntries(Object.entries(row)))
+    : row;
+}
+
+/**
+ * NEW IN STEP 14, decision 116: the door's one copy of what a handler handed it.
+ *
+ * Every part is read once, here, into plain frozen objects: a page's rows and its cursor, each
+ * row's own fields, a receipt's or an error's envelope. The check, the filter, the ceiling and the
+ * record of the read all work from the copy. The door used to read the handler's answer once per
+ * question and trust the reads to agree: a `next` that answered the check with the last row's
+ * address and the filter with the row got the row out, and the record of a read named rows other
+ * than the ones returned. `payloadHash` keeps the same rule for a request's arguments.
+ *
+ * A row is read by position, never through its list's own methods, and a field's value is copied
+ * as it is: the copy goes one level into each row, as far as the door decides anything. A shape
+ * that is not what the type says is copied as it came, for `cannotBeFiltered` to refuse.
+ */
+export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
+  const { kind, askedBy } = answer;
+
+  if (kind === "data") {
+    return Object.freeze({ kind, askedBy, invoice: copyRow(answer.invoice) as Invoice });
+  }
+
+  if (kind === "page") {
+    const page: unknown = answer.page;
+
+    if (page === null || typeof page !== "object") {
+      return Object.freeze({ kind, askedBy, page: page as InvoicePage });
+    }
+
+    const { invoices, next } = page as { invoices: unknown; next: unknown };
+    const rows = Array.isArray(invoices)
+      ? Object.freeze(Array.prototype.map.call(invoices, copyRow))
+      : invoices;
+
+    return Object.freeze({
+      kind,
+      askedBy,
+      page: Object.freeze({ invoices: rows, next }) as unknown as InvoicePage,
+    });
+  }
+
+  const envelope: unknown = answer.envelope;
+
+  if (envelope === null || typeof envelope !== "object") {
+    return answer;
+  }
+
+  const parts: Record<string, unknown> = Object.fromEntries(Object.entries(envelope));
+
+  if (kind === "result" && parts["data"] !== undefined) {
+    parts["data"] = copyRow(parts["data"]);
+  }
+
+  return Object.freeze({
+    kind,
+    askedBy,
+    envelope: Object.freeze(parts),
+  }) as unknown as HandlerAnswer;
+}
 
 /** What a value is, for a message: `null`, or its type. */
 const whatItIs = (value: unknown): string => (value === null ? "null" : typeof value);

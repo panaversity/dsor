@@ -655,4 +655,64 @@ describe("the parts of an answer that are not rows", () => {
       }
     }
   });
+
+  it("DSOR-CLS-02a: the door reads an answer once, so no part of it is one thing to the check and another to the filter", async () => {
+    // Decision 116. Measured before, by the review and again here: a `next` that answered the
+    // check with the last row's address and the filter with the row got the row out, labelled
+    // internal. So did a rows list with its own `at`, which the check asked and the filter never did.
+    // And a row's address can name the entity on one read and carry the amount on the next.
+    const INV_1009 = "dsor://org_456/invoice/INV-1009";
+    const rows = [aRow({}), aRow({ uri: INV_1009, id: "INV-1009" })] as Invoice[];
+    let reads = 0;
+    const twoFaced = await makeDoor(PIPELINE, {
+      "invoice.list": async () => ({
+        kind: "page",
+        askedBy: "accounts-payable-fte",
+        page: {
+          invoices: rows,
+          get next() {
+            reads += 1;
+
+            return (reads === 1 ? INV_1009 : rows[1]) as string;
+          },
+        },
+      }),
+    })(AGENT, "invoice.list", {});
+
+    expect(JSON.stringify(twoFaced)).not.toContain("31400.00");
+    expect(reads).toBe(1);
+
+    const invoices = [...rows];
+
+    Object.defineProperty(invoices, "at", { value: () => ({ uri: rows[1] }) });
+
+    const ownAt = await makeDoor(PIPELINE, {
+      "invoice.list": async () => ({
+        kind: "page",
+        askedBy: "accounts-payable-fte",
+        page: { invoices, next: rows[1] as unknown as string },
+      }),
+    })(AGENT, "invoice.list", {});
+
+    expect(ownAt.kind).toBe("error");
+    expect(JSON.stringify(ownAt)).not.toContain("31400.00");
+
+    let uriReads = 0;
+    const shifty = Object.defineProperty({ ...aRow({ amount: undefined }) }, "uri", {
+      enumerable: true,
+      get() {
+        uriReads += 1;
+
+        return uriReads === 1 ? INV_1008 : "31400.00 USD";
+      },
+    });
+    const twoAddresses = await makeDoor(PIPELINE, { "invoice.get": handing(shifty) })(
+      AGENT,
+      "invoice.get",
+      { invoice: INV_1008 },
+    );
+
+    expect(JSON.stringify(twoAddresses)).not.toContain("31400.00");
+    expect(uriReads).toBe(1);
+  });
 });
