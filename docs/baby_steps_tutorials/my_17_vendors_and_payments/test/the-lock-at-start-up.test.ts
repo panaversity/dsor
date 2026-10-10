@@ -111,6 +111,17 @@ describe("an account the lock does not apply to", () => {
     });
   }
 
+  it("DSOR-RP-01a: an account that may become the owner of the payments is refused", async () => {
+    // STEP 17, decision 126: the payments are a tenant table, asked about like the invoices.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER TABLE public.payments OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
+  });
+
   it("DSOR-AUD-04a: an account that owns the database is refused, even with public given back", async () => {
     // STEP 16: one login that owns its own database is the commonest careless setup. It was
     // caught only because `public` belongs to `pg_database_owner`, and doing what that refusal said,
@@ -408,6 +419,12 @@ describe("a lock that is not there", () => {
     ["ALTER TABLE dsor.audit DISABLE ROW LEVEL SECURITY", /row-level security/],
     ["DROP POLICY tenant_isolation ON dsor.audit", /policy/],
     ["CREATE POLICY for_app ON dsor.audit TO dsor_runtime USING (true)", /policy/],
+    // STEP 17: the vendors and the payments too, which the code refused already and no test said
+    // (decision 126).
+    ["ALTER TABLE public.payments NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["ALTER TABLE public.vendors DISABLE ROW LEVEL SECURITY", /row-level security/],
+    ["DROP POLICY tenant_isolation ON public.payments", /policy/],
+    ["CREATE POLICY for_app ON public.vendors TO dsor_runtime USING (true)", /policy/],
   ] as const) {
     it(`DSOR-RP-01b: refuses to start when the lock is off — ${undo}`, async () => {
       await asTheOwner(() => db.exec(undo));
