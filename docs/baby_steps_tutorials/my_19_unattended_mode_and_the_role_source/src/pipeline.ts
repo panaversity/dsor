@@ -127,7 +127,11 @@ export interface Context {
  */
 export type StageResult =
   | { readonly kind: "carry_on"; readonly context: Context }
-  | { readonly kind: "refused"; readonly answer: OperationAnswer };
+  /**
+   * NEW IN STEP 19: and, when the stage learned something the record should say before it
+   * refused, what it learned. §21.3 found the slip and then refused under it (decision 130).
+   */
+  | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context?: Context };
 
 /** One line of the checklist. */
 export interface Stage {
@@ -448,7 +452,7 @@ export async function runPipeline(
       // this answer depends on". DSOR-EXE-02 is a promise about the answer, so if it cannot be kept
       // the caller must be told that instead of being told the original no.
       refused = result.answer;
-      context = Object.freeze({ ...context, refusal: result.answer });
+      context = Object.freeze({ ...(result.context ?? context), refusal: result.answer });
 
       continue;
     }

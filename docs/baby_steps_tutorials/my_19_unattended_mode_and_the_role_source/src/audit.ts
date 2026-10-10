@@ -173,7 +173,12 @@ export interface DecisionToRecord {
   readonly underSlip?: {
     readonly delegation: string;
     readonly delegator: string;
-    readonly asOf: string;
+    /**
+     * Left out when the directory gave no time DSoR could use, or was never asked. The schema still
+     * requires one, and the record then has the decision's own: `subject_authority.as_of` has no way
+     * to say the authority was never established, a question for the specification (decision 130).
+     */
+    readonly asOf?: string;
   };
 }
 
@@ -594,7 +599,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
             mode: "unattended",
             subject: underSlip.delegator,
             actor_chain: [subject],
-            subject_authority: { source: "role_source", as_of: underSlip.asOf },
+            subject_authority: { source: "role_source", as_of: underSlip.asOf ?? at },
           },
     result,
     correlation: {

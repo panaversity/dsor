@@ -554,7 +554,42 @@ describe("the pipeline", () => {
     }
 
     expect(answer.envelope.code).toBe("INTERNAL_ERROR");
-    expect(answer.envelope.message).toMatch(/no permission slip resolved/);
+    expect(answer.envelope.message).toMatch(
+      /no permission slip, or no time for its signer's authority, resolved/,
+    );
+  });
+
+  it("DSOR-DEL-10: with the delegation stage forgetting the signer's time, an agent's command is INTERNAL_ERROR, never recorded as direct", async () => {
+    // NEW IN STEP 19: a review replaced §21.3 with one that found the slip and the power and left
+    // out the time, and the command ran, recorded as the agent acting for itself (decision 130).
+    const list = PIPELINE.map((stage) =>
+      stage.name === "resolve the delegation"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              return done.kind === "carry_on"
+                ? {
+                    kind: "carry_on" as const,
+                    context: { ...done.context, authorityAsOf: undefined },
+                  }
+                : done;
+            },
+          })
+        : stage,
+    );
+    const answer = await makeDoor(list)(
+      { loggedInAs: "accounts-payable-fte", tenant: "org_456" },
+      "payment.cancel",
+      { payment: "dsor://org_456/payment/PAY-901" },
+    );
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
   });
 
   it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", async () => {

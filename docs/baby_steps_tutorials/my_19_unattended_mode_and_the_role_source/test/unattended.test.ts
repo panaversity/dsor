@@ -243,7 +243,70 @@ describe("whose authority the record says", () => {
     expect(decision?.delegation).toBeUndefined();
   });
 
-  it("an agent's command refused before its slip was in hand stays direct: no one's authority was used", async () => {
+  it("DSOR-DEL-10: every refusal after DSoR found the slip is recorded under it", async () => {
+    // Decision 130: these five were recorded as the agent acting for itself, with no slip, and for
+    // the directory as if the role source had answered at that moment.
+    const cases: readonly (readonly [string, () => Promise<unknown>, string])[] = [
+      [
+        "a slip that does not allow unattended",
+        () =>
+          asTheOwner(() =>
+            db.exec(
+              "UPDATE dsor.delegations SET modes = ARRAY['on_behalf_of'] WHERE id = 'del_100'",
+            ),
+          ),
+        "DELEGATION_REQUIRED",
+      ],
+      [
+        "an expired slip",
+        () =>
+          asTheOwner(() =>
+            db.exec(
+              "UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'",
+            ),
+          ),
+        "DELEGATION_EXPIRED",
+      ],
+      ["no directory", async () => useDirectory("org_456", null), "DEPENDENCY_TIMEOUT"],
+      [
+        "a directory that does not answer",
+        async () => useDirectory("org_456", aDirectory("org_456", { down: true })),
+        "DEPENDENCY_TIMEOUT",
+      ],
+      [
+        "a stale answer",
+        async () => useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(25) })),
+        "FRESHNESS_UNSATISFIABLE",
+      ],
+    ];
+
+    for (const [what, arrange, code] of cases) {
+      await resetTheStory();
+      await forgetTheLog("org_456");
+      useDirectory("org_456", undefined);
+      await arrange();
+      await cancel(AGENT);
+
+      const [decision] = await decisions();
+
+      expect(decision?.result, what).toBe(code);
+      expect(decision?.identity.mode, what).toBe("unattended");
+      expect(decision?.identity.subject, what).toBe("user_123");
+      expect(decision?.identity.actor_chain, what).toStrictEqual(["accounts-payable-fte"]);
+      expect(decision?.delegation, what).toBe("del_100");
+    }
+  });
+
+  it("DSOR-DEL-10: a stale answer is recorded with the directory's own time, not the decision's", async () => {
+    const asOf = hoursAgo(25);
+
+    useDirectory("org_456", aDirectory("org_456", { asOf }));
+    await cancel(AGENT);
+
+    expect((await decisions())[0]?.identity.subject_authority.as_of).toBe(asOf);
+  });
+
+  it("an agent's command refused before DSoR found an active slip stays direct: no one's authority was used", async () => {
     await asTheOwner(() =>
       db.exec("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'"),
     );

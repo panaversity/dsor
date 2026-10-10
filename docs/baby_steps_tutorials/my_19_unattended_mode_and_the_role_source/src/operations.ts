@@ -631,13 +631,11 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
   // other, recorded at §21.11, and safe to send again, because nothing has run. Both used to leave
   // the door as a thrown error with nothing recorded, and with the database down an agent got a
   // stack trace where a person got EVIDENCE_STORE_UNAVAILABLE (DSOR-IDN-06, decision 128).
-  const notEstablished = (what: string, why?: string): StageResult =>
+  const notEstablished = (what: string): StageResult =>
     refuse(
       principal.id,
       "DEPENDENCY_TIMEOUT",
-      why === undefined
-        ? `${what} could not be read, so nothing was done; it is safe to send again`
-        : `${what} could not be established: ${why}. Nothing was done; it is safe to send again`,
+      `${what} could not be read, so nothing was done; it is safe to send again`,
       context.requestId,
     );
 
@@ -671,15 +669,32 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   const slip = found.slip;
 
+  // NEW IN STEP 19: from here on DSoR has found the slip, and a refusal is a refusal under it. The
+  // record says so: `unattended`, the signer its subject, the agent in its actor chain, the slip
+  // named, and the directory's time for the signer's authority when it gave one. These refusals
+  // were recorded as the agent acting for itself (decision 130).
+  const underTheSlip = (code: string, message: string, authorityAsOf?: string): StageResult =>
+    Object.freeze({
+      kind: "refused" as const,
+      answer: Object.freeze({
+        kind: "error" as const,
+        askedBy: principal.id,
+        envelope: refusal(code, message, context.requestId, principal.id),
+      }),
+      context: Object.freeze({
+        ...context,
+        delegation: slip,
+        ...(authorityAsOf === undefined ? {} : { authorityAsOf }),
+      }),
+    });
+
   // NEW IN STEP 19: in a mode the slip allows. An agent's command is unattended: the agent logged
   // in as itself, and nobody is present. A slip for use beside a person is no slip for the agent
   // alone at night (DSOR-DEL-07, decision 129).
   if (!slip.modes.includes("unattended")) {
-    return refuse(
-      principal.id,
+    return underTheSlip(
       "DELEGATION_REQUIRED",
       `${slip.id} does not allow unattended use, and nobody is present`,
-      context.requestId,
     );
   }
 
@@ -689,13 +704,11 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
   const until = slip.expiresAt === undefined ? Number.NaN : Date.parse(slip.expiresAt);
 
   if (!(until > Date.now())) {
-    return refuse(
-      principal.id,
+    return underTheSlip(
       "DELEGATION_EXPIRED",
       Number.isNaN(until)
         ? `${slip.id}'s expiry is not a time this program can read, so it is not known to be in force`
         : `${slip.id} expired at ${slip.expiresAt}`,
-      context.requestId,
     );
   }
 
@@ -714,17 +727,18 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
       error instanceof AuthorityNotEstablished &&
       (error.why === "stale" || error.why === "unusable")
     ) {
-      return refuse(
-        principal.id,
+      return underTheSlip(
         "FRESHNESS_UNSATISFIABLE",
         `what ${slip.delegator} holds in ${tenant} now could not be established: ${error.message}. Nothing was done`,
-        context.requestId,
+        error.asOf,
       );
     }
 
-    return notEstablished(
-      `what ${slip.delegator} holds in ${tenant} now`,
-      error instanceof AuthorityNotEstablished ? error.message : undefined,
+    return underTheSlip(
+      "DEPENDENCY_TIMEOUT",
+      error instanceof AuthorityNotEstablished
+        ? `what ${slip.delegator} holds in ${tenant} now could not be established: ${error.message}. Nothing was done; it is safe to send again`
+        : `what ${slip.delegator} holds in ${tenant} now could not be read, so nothing was done; it is safe to send again`,
     );
   }
 
@@ -829,12 +843,14 @@ const authorize: Stage["run"] = (context) => {
   if (
     principal.type === "agent" &&
     contract.kind === "command" &&
-    context.authority === undefined
+    // NEW IN STEP 19: and a time for its signer's authority, or the record would say `direct`
+    // of a command that ran under a slip (decision 130).
+    (context.authority === undefined || context.authorityAsOf === undefined)
   ) {
     return refuse(
       principal.id,
       "INTERNAL_ERROR",
-      "the pipeline reached authorize with an agent's command and no permission slip resolved",
+      "the pipeline reached authorize with an agent's command and no permission slip, or no time for its signer's authority, resolved",
       context.requestId,
     );
   }
@@ -1180,13 +1196,16 @@ const recordTheDecision: Stage["run"] = async (context) => {
         // NEW IN STEP 19: an agent's command under a slip is recorded as the signer's authority,
         // used by the agent: `unattended`, from what §21.3 established and never from the request
         // (DSOR-DEL-08, DSOR-DEL-10, decision 129).
-        ...(context.delegation === undefined || context.authorityAsOf === undefined
+        //
+        // Decision 130: whenever §21.3 found the slip, refusals after it included, and with the
+        // directory's time when it gave one; with none, the record has the decision's own.
+        ...(context.delegation === undefined
           ? {}
           : {
               underSlip: {
                 delegation: context.delegation.id,
                 delegator: context.delegation.delegator,
-                asOf: context.authorityAsOf,
+                ...(context.authorityAsOf === undefined ? {} : { asOf: context.authorityAsOf }),
               },
             }),
       });
