@@ -1,0 +1,14 @@
+{
+  "org_456": {
+    "control_currency": "USD",
+    "rate_source": "ecb-daily",
+    "max_rate_age": "P3D",
+    "on_unconvertible": "restrictive"
+  },
+  "org_789": {
+    "control_currency": "EUR",
+    "rate_source": "ecb-daily",
+    "max_rate_age": "P7D",
+    "on_unconvertible": "restrictive"
+  }
+}

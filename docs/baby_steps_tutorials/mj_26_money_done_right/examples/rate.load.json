@@ -1,0 +1,11 @@
+{
+  "company": "dsor://org_456/tenant/org_456",
+  "source": "ecb-daily",
+  "base": "EUR",
+  "published_at": "2026-10-06T14:00:00.000Z",
+  "rates": {
+    "USD": "1.0800",
+    "GBP": "0.8532",
+    "PKR": "302.40"
+  }
+}
