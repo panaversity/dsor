@@ -99,7 +99,8 @@ export function effectiveAuthority(
   return Object.freeze(
     slip.permissions.filter(
       (permission) =>
-        signerHoldsNow.includes(permission) && (scopes === undefined || scopes.includes(permission)),
+        signerHoldsNow.includes(permission) &&
+        (scopes === undefined || scopes.includes(permission)),
     ),
   );
 }

@@ -143,8 +143,8 @@ describe("the program a learner runs", () => {
     // filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
     // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29, 30, 31,
-      32, 0, 1,
+      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29,
+      30, 31, 32, 0, 1,
     ]);
 
     expect(out).toContain("org_456: 33 records, chain verifies against the head: true"); // STEP 18: 28 decisions, 5 reads
@@ -367,7 +367,9 @@ describe("the program a learner runs", () => {
       "  del_100  user_123 for accounts-payable-fte: invoice:issue, payment:create, payment:cancel\n" +
         "           up to 50000.00 USD a payment, until 2099-12-31",
     );
-    expect(out).toContain(`${denied}60000.00 USD is above del_100's limit of 50000.00 USD a payment`);
+    expect(out).toContain(
+      `${denied}60000.00 USD is above del_100's limit of 50000.00 USD a payment`,
+    );
     expect(out).toContain(
       `${denied}accounts-payable-fte may not call payment.create under del_100: the slip, what user_123 holds now, or the login's scopes leave out payment:create`,
     );

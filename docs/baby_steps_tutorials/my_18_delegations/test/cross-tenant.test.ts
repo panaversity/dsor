@@ -187,7 +187,9 @@ describe("an address for another company", () => {
                        'active', '2099-12-31T23:59:59Z')`),
     );
     useRoleSource((person, tenant) =>
-      person === "user_789" && tenant === "org_789" ? ["invoice:issue"] : rolesOfThisProgram(person, tenant),
+      person === "user_789" && tenant === "org_789"
+        ? ["invoice:issue"]
+        : rolesOfThisProgram(person, tenant),
     );
 
     try {

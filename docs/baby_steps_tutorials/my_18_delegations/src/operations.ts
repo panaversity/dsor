@@ -266,7 +266,14 @@ const handlers: Readonly<Record<string, Handler>> = {
     let after: string | undefined;
 
     if (Object.hasOwn(args, "after")) {
-      const read = idFrom({ invoice: args["after"] }, "invoice", contract, askedBy, tenant, requestId);
+      const read = idFrom(
+        { invoice: args["after"] },
+        "invoice",
+        contract,
+        askedBy,
+        tenant,
+        requestId,
+      );
 
       if ("refused" in read) {
         return { kind: "error", askedBy, envelope: read.refused };
@@ -642,7 +649,11 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   // A signer the role source does not know in this company holds nothing there, and the agent
   // holds nothing under them.
-  const authority = effectiveAuthority(slip, holdsNow(slip.delegator, tenant) ?? [], context.scopes);
+  const authority = effectiveAuthority(
+    slip,
+    holdsNow(slip.delegator, tenant) ?? [],
+    context.scopes,
+  );
 
   return carryOn({ ...context, delegation: slip, authority });
 };
@@ -740,7 +751,11 @@ const authorize: Stage["run"] = (context) => {
   // computed under its slip; one that arrives without it met a delegation stage that did nothing,
   // and falling back to the agent's own role would refuse it for the wrong reason, or, on the day
   // that role grants a command, let it through with no slip at all.
-  if (principal.type === "agent" && contract.kind === "command" && context.authority === undefined) {
+  if (
+    principal.type === "agent" &&
+    contract.kind === "command" &&
+    context.authority === undefined
+  ) {
     return refuse(
       principal.id,
       "INTERNAL_ERROR",
@@ -936,7 +951,12 @@ const checkTheSlipsLimit: Stage["run"] = (context) => {
   const limit = slip?.perTransactionLimit;
   const given = context.given;
 
-  if (slip === undefined || limit === undefined || given === undefined || !Object.hasOwn(given, "amount")) {
+  if (
+    slip === undefined ||
+    limit === undefined ||
+    given === undefined ||
+    !Object.hasOwn(given, "amount")
+  ) {
     return carryOn(context);
   }
 

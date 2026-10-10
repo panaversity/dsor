@@ -192,7 +192,9 @@ describe("a window past the lock", () => {
 
     // And the route is real: as the application, one call, and the log is gone.
     await db.exec("SELECT drop_the_log()");
-    const { rows } = await db.query<{ log: string | null }>("SELECT to_regclass('dsor.audit')::text AS log");
+    const { rows } = await db.query<{ log: string | null }>(
+      "SELECT to_regclass('dsor.audit')::text AS log",
+    );
 
     expect(rows[0]?.log).toBeNull();
   });
@@ -364,7 +366,9 @@ describe("what an evaluation found past the first fixes", () => {
     // a review measured `schema "dsor" does not exist` instead (decision 123).
     // STEP 18: CASCADE, because a server that missed 008 missed every migration after it too, and
     // dsor holds the slips of 013 now.
-    await asTheOwner(() => db.exec("ALTER TABLE dsor.audit SET SCHEMA public; DROP SCHEMA dsor CASCADE;"));
+    await asTheOwner(() =>
+      db.exec("ALTER TABLE dsor.audit SET SCHEMA public; DROP SCHEMA dsor CASCADE;"),
+    );
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /tenant table is missing/,
@@ -386,7 +390,9 @@ describe("a schema the application may create things in", () => {
       await asTheOwner(() => db.exec(`GRANT CREATE ON SCHEMA ${schema} TO ${APPLICATION_ROLE}`));
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        new RegExp(`only the migrations should, itself or one SET ROLE away: ${APPLICATION_ROLE} on ${schema}`),
+        new RegExp(
+          `only the migrations should, itself or one SET ROLE away: ${APPLICATION_ROLE} on ${schema}`,
+        ),
       );
 
       // And the route is real: as the application, a table of a later step's name, its own.

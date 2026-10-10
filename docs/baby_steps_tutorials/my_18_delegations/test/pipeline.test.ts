@@ -537,7 +537,10 @@ describe("the pipeline", () => {
     // today for the wrong reason, and let through on the day that role grants a command.
     const list = PIPELINE.map((stage) =>
       stage.name === "resolve the delegation"
-        ? Object.freeze({ ...stage, run: (context: Context) => ({ kind: "carry_on" as const, context }) })
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
         : stage,
     );
     const answer = await makeDoor(list)(

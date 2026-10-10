@@ -230,7 +230,9 @@ export function loadRegistry(
       const named = registry.get(undo);
 
       if (named === undefined) {
-        throw new TypeError(`${contract.id} is undone by ${undo}, which is not an operation this program has`);
+        throw new TypeError(
+          `${contract.id} is undone by ${undo}, which is not an operation this program has`,
+        );
       }
 
       if (named.kind !== "command") {

@@ -240,7 +240,9 @@ describe("payment.create", () => {
 
 describe("payment.cancel", () => {
   it("DSOR-EXE-05b: takes PAY-901 back, and says how: atomic, one statement that commits or not", async () => {
-    const receipt = receiptOf(await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }));
+    const receipt = receiptOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }),
+    );
 
     expect(receipt.semantics).toBe("atomic");
     expect(receipt.data?.["status"]).toBe("cancelled");
@@ -250,7 +252,9 @@ describe("payment.cancel", () => {
   it("a cancelled payment is not cancelled again: CONFLICT, and asking again cannot help", async () => {
     receiptOf(await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }));
 
-    const refusal = refusalOf(await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }));
+    const refusal = refusalOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }),
+    );
 
     expect(refusal.code).toBe("CONFLICT");
     expect(refusal.retry).toBe("never");
@@ -259,14 +263,18 @@ describe("payment.cancel", () => {
 
   it("a payment the company does not hold is not found", async () => {
     const refusal = refusalOf(
-      await callOperation(SUPERVISOR, "payment.cancel", { payment: "dsor://org_456/payment/PAY-999" }),
+      await callOperation(SUPERVISOR, "payment.cancel", {
+        payment: "dsor://org_456/payment/PAY-999",
+      }),
     );
 
     expect(refusal.code).toBe("RESOURCE_NOT_FOUND");
   });
 
   it("an invoice's address is not a payment's", async () => {
-    const refusal = refusalOf(await callOperation(SUPERVISOR, "payment.cancel", { payment: INV_1008 }));
+    const refusal = refusalOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: INV_1008 }),
+    );
 
     expect(refusal.code).toBe("VALIDATION_FAILED");
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
@@ -330,7 +338,9 @@ describe("the door says the semantics, from the contract", () => {
     };
     const door = makeDoor(PIPELINE, { "payment.create": careless });
 
-    const receipt = receiptOf(await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }));
+    const receipt = receiptOf(
+      await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
 
     expect(receipt.semantics).toBe("compensatable");
   });
@@ -369,7 +379,9 @@ describe("what undoes an operation is an operation the program has", () => {
 
   it("DSOR-EXE-05c: an operation undone by one this program does not have stops the program", () => {
     expect(() =>
-      loadRegistry(withExecution({ semantics: "compensatable", compensated_by: ["payment.vanish"] })),
+      loadRegistry(
+        withExecution({ semantics: "compensatable", compensated_by: ["payment.vanish"] }),
+      ),
     ).toThrow(/payment\.vanish/);
   });
 
@@ -382,7 +394,9 @@ describe("what undoes an operation is an operation the program has", () => {
   it("DSOR-EXE-05c: an operation that can be undone, and names nothing that undoes it, is refused", () => {
     // Without the key, the specification's schema refuses it. With an empty list, the schema takes
     // it, and the registry used to (decision 126): an undo promised and none named.
-    expect(() => loadRegistry(withExecution({ semantics: "compensatable" }))).toThrow(/compensated_by/);
+    expect(() => loadRegistry(withExecution({ semantics: "compensatable" }))).toThrow(
+      /compensated_by/,
+    );
     expect(() =>
       loadRegistry(withExecution({ semantics: "compensatable", compensated_by: [] })),
     ).toThrow(/names nothing that undoes it/);

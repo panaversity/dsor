@@ -264,8 +264,9 @@ describe("refuseIfItCanRewriteHistory", () => {
       // reached the guard it was written for. Now they do. Each row is still refused by the first
       // guard it does not satisfy, and this test asks no more than that (decisions 123 and 124).
       const db: Database = {
-        query: async <T>(sql: string) =>
-          ({ rows: [(sql.includes("AS tables_present") ? { tables_present: true } : evasive) as T] }),
+        query: async <T>(sql: string) => ({
+          rows: [(sql.includes("AS tables_present") ? { tables_present: true } : evasive) as T],
+        }),
       };
 
       await expect(refuseIfItCanRewriteHistory(db), JSON.stringify(evasive)).rejects.toThrow();
@@ -281,11 +282,15 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
-    await db.exec("CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');");
+    await db.exec(
+      "CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');",
+    );
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
     // STEP 17: four of them now. NEW IN STEP 18: five, with the slips.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
-    await db.exec("CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);");
+    await db.exec(
+      "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
+    );
     await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
@@ -470,7 +475,9 @@ describe("refuseIfItCanRewriteHistory", () => {
       const db = await aDatabase();
 
       await db.exec("RESET ROLE");
-      await db.exec(`CREATE ROLE writer; ${grant}; GRANT writer TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+      await db.exec(
+        `CREATE ROLE writer; ${grant}; GRANT writer TO ${APPLICATION_ROLE} WITH INHERIT FALSE`,
+      );
       await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(words);
@@ -514,7 +521,9 @@ describe("refuseIfItCanRewriteHistory", () => {
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
     // STEP 17: four of them now. NEW IN STEP 18: five, with the slips.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
-    await db.exec("CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);");
+    await db.exec(
+      "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
+    );
     await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");

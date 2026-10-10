@@ -164,7 +164,9 @@ describe("an agent's command runs under its slip", () => {
   });
 
   it("DSOR-DEL-01a: an expired slip is refused as expired", async () => {
-    await owner("UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'");
+    await owner(
+      "UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'",
+    );
 
     expect(refusalOf(await create(AGENT)).code).toBe("DELEGATION_EXPIRED");
   });
@@ -218,16 +220,18 @@ describe("the agent never has more power than the person who signed, right now",
 
     const scoped = { ...AGENT, scopes: ["invoice:issue", "payment:create"] };
 
-    expect(refusalOf(await callOperation(scoped, "invoice.issue", { invoice: INV_1009 })).code).toBe(
-      "AUTHORIZATION_DENIED",
-    );
+    expect(
+      refusalOf(await callOperation(scoped, "invoice.issue", { invoice: INV_1009 })).code,
+    ).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-DEL-01b: scopes narrow: a slip permission the scopes leave out is not held", async () => {
     const scoped = { ...AGENT, scopes: ["payment:cancel"] };
 
     expect(refusalOf(await create(scoped)).code).toBe("AUTHORIZATION_DENIED");
-    expect((await callOperation(scoped, "payment.cancel", { payment: PAY_901 })).kind).toBe("result");
+    expect((await callOperation(scoped, "payment.cancel", { payment: PAY_901 })).kind).toBe(
+      "result",
+    );
   });
 });
 
@@ -292,14 +296,18 @@ describe("a slip named in the arguments", () => {
 
     expect(other.code).toBe("AUTHORIZATION_DENIED");
     expect(
-      (await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_100" })).kind,
+      (await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_100" }))
+        .kind,
     ).toBe("result");
   });
 
   it("DSOR-SRC-02b: a person's request that names a slip is refused: a person acts under none", async () => {
     expect(
       refusalOf(
-        await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, delegation: "del_100" }),
+        await callOperation(SUPERVISOR, "payment.cancel", {
+          payment: PAY_901,
+          delegation: "del_100",
+        }),
       ).code,
     ).toBe("AUTHORIZATION_DENIED");
   });

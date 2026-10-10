@@ -53,7 +53,13 @@ export const NOBODYS = "org_000";
  * What org_789 alone holds, from 004_running_example.sql: a success answer must carry none of it.
  * STEP 17: and its PAY-901's amount, from 010_payments_running_example.sql.
  */
-export const CANARIES: readonly string[] = ["18000.00", "9100.00", "4200.00", "INV-2001", "7700.00"];
+export const CANARIES: readonly string[] = [
+  "18000.00",
+  "9100.00",
+  "4200.00",
+  "INV-2001",
+  "7700.00",
+];
 
 /**
  * One row of a company's, as the owner reads it: enough to see whether it moved, and what state it

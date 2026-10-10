@@ -329,7 +329,9 @@ const slip = await activeSlipFor("org_456", "accounts-payable-fte");
 if (slip !== undefined) {
   const limit = slip.perTransactionLimit;
 
-  console.log(`  ${slip.id}  ${slip.delegator} for ${slip.delegate}: ${slip.permissions.join(", ")}`);
+  console.log(
+    `  ${slip.id}  ${slip.delegator} for ${slip.delegate}: ${slip.permissions.join(", ")}`,
+  );
   console.log(
     `  ${" ".repeat(slip.id.length)}  up to ${limit === undefined ? "any amount" : `${limit.value} ${limit.currency}`} a payment, until ${slip.expiresAt.slice(0, 10)}`,
   );
@@ -350,7 +352,9 @@ console.log();
 
 useRoleSource((person, tenant) =>
   person === "user_123"
-    ? (rolesOfThisProgram(person, tenant) ?? []).filter((permission) => permission !== "payment:create")
+    ? (rolesOfThisProgram(person, tenant) ?? []).filter(
+        (permission) => permission !== "payment:create",
+      )
     : rolesOfThisProgram(person, tenant),
 );
 
