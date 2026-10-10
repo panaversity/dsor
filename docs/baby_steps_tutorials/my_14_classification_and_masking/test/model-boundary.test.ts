@@ -16,7 +16,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Invoice } from "../src/invoice.ts";
 import { labelOfValue, leaveTheDoor } from "../src/boundary.ts";
-import { refusal, success } from "../src/envelopes.ts";
+import { refusal, success, validateEnvelope } from "../src/envelopes.ts";
 import {
   callOperation,
   makeDoor,
@@ -389,7 +389,7 @@ describe("an answer the door cannot filter", () => {
     }
   });
 
-  it("a receipt that carries no data leaves as it came, with no label and no list", () => {
+  it("a receipt that carries no data leaves with no label and no list", () => {
     // `data` is optional in result-envelope.schema.json, and step 17's first PENDING_APPROVAL
     // receipt has none. A review made the door throw on it, after the command had run. There is
     // nothing to filter and nothing to label: no data, no label.
@@ -451,9 +451,12 @@ describe("the ceiling measures what leaves", () => {
     }
   });
 
-  it("DSOR-ERR-01a: a filtered receipt is validated again, so one that does not validate never leaves", () => {
+  it("DSOR-ERR-01a: every receipt is validated again, with its row or without, so one that does not validate never leaves", () => {
     // `success` validated the envelope it built; the door builds a second one with the label and
     // the list in it, and validates that. A mutation turned the second check off and stayed green.
+    // Decision 117: a field the schema does not have is left out now, not refused, so the receipt
+    // that does not validate is one whose own parts are wrong. And a receipt with no row is checked
+    // too: it used to leave unchecked.
     const envelope = success({
       data: aRow({}) as Readonly<Record<string, unknown>>,
       semantics: "atomic",
@@ -462,18 +465,56 @@ describe("the ceiling measures what leaves", () => {
       requestId: "req_0",
       principalId: "user_123",
     });
-    const smuggled = {
-      ...envelope,
-      surprise: "a field the schema does not have",
-    } as typeof envelope;
+    const wrong = { ...envelope, outcome: "SHIPPED" } as unknown as typeof envelope;
+    const wrongWithoutItsRow = { ...wrong, data: undefined } as unknown as typeof envelope;
 
-    expect(() =>
-      leaveTheDoor(findPerson("user_123")!, {
+    for (const receipt of [wrong, wrongWithoutItsRow]) {
+      expect(() =>
+        leaveTheDoor(findPerson("user_123")!, {
+          kind: "result",
+          askedBy: "user_123",
+          envelope: receipt,
+        }),
+      ).toThrow(/does not validate/);
+    }
+  });
+
+  it("DSOR-CLS-02a: a receipt is built from its named parts, so nothing a handler adds beside them leaves", () => {
+    // Decision 117. The door copied a receipt's envelope whole. The schema lets `requires` and
+    // `extensions` hold anything, and measured before: a row under either left for the agent beside
+    // a filtered `data`, with `amount` listed as withheld. A receipt with no row carried even a
+    // field the schema does not have, because it was not checked at all.
+    const agent = findPerson("accounts-payable-fte")!;
+    const row = aRow({ uri: "dsor://org_456/invoice/INV-1009", id: "INV-1009" });
+    const receipt = success({
+      data: row as Readonly<Record<string, unknown>>,
+      semantics: "atomic",
+      payloadHash: "sha256:0",
+      tenant: "org_456",
+      requestId: "req_0",
+      principalId: "accounts-payable-fte",
+    });
+    const withoutItsRow = { ...receipt, data: undefined };
+    const smuggling = [
+      { ...receipt, requires: [row] },
+      { ...receipt, extensions: { "com.example.copy": row } },
+      { ...withoutItsRow, extensions: { "com.example.copy": row } },
+      { ...withoutItsRow, surprise: row },
+    ];
+
+    for (const envelope of smuggling) {
+      const leaving = leaveTheDoor(agent, {
         kind: "result",
-        askedBy: "user_123",
-        envelope: smuggled,
-      }),
-    ).toThrow(/does not validate/);
+        askedBy: agent.id,
+        envelope: envelope as unknown as typeof receipt,
+      });
+
+      expect(JSON.stringify(leaving)).not.toContain("31400.00");
+
+      if (leaving.kind === "result") {
+        expect(validateEnvelope("result", leaving.envelope)).toBe(true);
+      }
+    }
   });
 });
 

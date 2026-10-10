@@ -23,7 +23,7 @@ import {
   isAbove,
   labelOf,
 } from "./classification.ts";
-import { validateEnvelope } from "./envelopes.ts";
+import { type ResultEnvelope, validateEnvelope } from "./envelopes.ts";
 import type { Invoice, InvoicePage } from "./invoice.ts";
 import type { HandlerAnswer, OperationAnswer } from "./operations.ts";
 import type { Principal } from "./people.ts";
@@ -250,6 +250,38 @@ export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
   }) as unknown as HandlerAnswer;
 }
 
+/**
+ * NEW IN STEP 14, decision 117: the parts of a receipt its schema closes. The two it leaves open,
+ * `requires` and `extensions`, take anything, and the door writes `data`, `classification` and
+ * `redactions` itself.
+ */
+const RECEIPT_PARTS: readonly string[] = Object.freeze([
+  "outcome",
+  "proposal",
+  "payload_hash",
+  "decision",
+  "semantics",
+  "expires_at",
+  "correlation",
+]);
+
+/** A receipt's closed parts, from the envelope's own fields, and nothing else. */
+function closedPartsOf(envelope: object): Record<string, unknown> {
+  const parts: Record<string, unknown> = {};
+
+  for (const part of RECEIPT_PARTS) {
+    const value: unknown = Object.hasOwn(envelope, part)
+      ? (envelope as Readonly<Record<string, unknown>>)[part]
+      : undefined;
+
+    if (value !== undefined) {
+      parts[part] = value;
+    }
+  }
+
+  return parts;
+}
+
 /** What a value is, for a message: `null`, or its type. */
 const whatItIs = (value: unknown): string => (value === null ? "null" : typeof value);
 
@@ -366,24 +398,36 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // for the label and the list (result-envelope.schema.json). Rebuilt, and validated again, because
   // `success` validated the envelope it built and this is a different one.
   //
+  // NEW IN STEP 14, decision 117: rebuilt from its closed parts, never copied whole. A row under
+  // `requires` or `extensions`, which the schema lets hold anything, left for the agent beside a
+  // filtered `data`, with `amount` listed as withheld.
+  //
   // `data` is optional in that schema, and step 17's first PENDING_APPROVAL receipt will have
-  // none. A receipt with no data has nothing to filter and nothing to label, so its envelope leaves
-  // as it came: a review made the door throw on it, after the command had run.
-  if (answer.envelope.data === undefined) {
-    return Object.freeze({ kind: "result", askedBy: principal.id, envelope: answer.envelope });
-  }
+  // none. A receipt with no data has nothing to filter and nothing to label, so it leaves with no
+  // label and no list, and is built and checked like any other: a review made the door throw on
+  // it, after the command had run, and another found it leaving unchecked.
+  const closed = closedPartsOf(answer.envelope);
+  const data: unknown = answer.envelope.data;
+  let envelope: Readonly<Record<string, unknown>> = Object.freeze(closed);
 
-  const { shown, labels, withheld } = filterRow(principal, answer.envelope.data);
-  const envelope = Object.freeze({
-    ...answer.envelope,
-    data: shown,
-    classification: highestOf(labels),
-    redactions: redactionsFor(withheld),
-  });
+  if (data !== undefined) {
+    const { shown, labels, withheld } = filterRow(principal, data as object);
+
+    envelope = Object.freeze({
+      ...closed,
+      data: shown,
+      classification: highestOf(labels),
+      redactions: redactionsFor(withheld),
+    });
+  }
 
   if (!validateEnvelope("result", envelope)) {
     throw new TypeError("built a result envelope that does not validate, after filtering it");
   }
 
-  return Object.freeze({ kind: "result", askedBy: principal.id, envelope });
+  return Object.freeze({
+    kind: "result",
+    askedBy: principal.id,
+    envelope: envelope as unknown as ResultEnvelope,
+  });
 }

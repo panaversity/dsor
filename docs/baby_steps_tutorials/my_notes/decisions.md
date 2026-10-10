@@ -3150,7 +3150,7 @@ and the record of a read would still read the rows twice.
 ## 117 · A receipt is built from its named parts, and every receipt is checked against its form (2026-10-10)
 
 **Decided by:** the learner, who took the recommendation.
-**What:** the door builds a command's receipt from the parts this program fills: `outcome`,
+**What:** the door builds a command's receipt from the parts its schema closes: `outcome`,
 `proposal`, `payload_hash`, `decision`, `semantics`, `expires_at` and `correlation`, and its own
 `data`, label and list. It checks every receipt against `result-envelope.schema.json`, with data
 or without. `requires` and `extensions`, which the schema lets hold anything, are left out.
