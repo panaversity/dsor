@@ -111,8 +111,8 @@ describe("the table", () => {
 
 describe("the store, asked inside one company", () => {
   it("DSOR-IDN-03b: INV-1008 is a different invoice in each company", async () => {
-    const ours = await getInvoice("org_456", "INV-1008");
-    const theirs = await getInvoice("org_789", "INV-1008");
+    const ours = (await getInvoice("org_456", "INV-1008")).value;
+    const theirs = (await getInvoice("org_789", "INV-1008")).value;
 
     expect(ours?.amount).toEqual({ value: "31400.00", currency: "USD" });
     expect(theirs?.amount).toEqual({ value: "18000.00", currency: "USD" });
@@ -126,17 +126,17 @@ describe("the store, asked inside one company", () => {
     // org_789 has INV-2001; org_456 does not. STEP 12: this used to be INV-1009, which
     // org_789 did not hold until the cross-tenant suite asked for every example's number to exist
     // in the other company too, so that a careless command has a row to touch.
-    expect(await getInvoice("org_789", "INV-2001")).toBeDefined();
-    expect(await getInvoice("org_456", "INV-2001")).toBeUndefined();
+    expect((await getInvoice("org_789", "INV-2001")).value).toBeDefined();
+    expect((await getInvoice("org_456", "INV-2001")).value).toBeUndefined();
   });
 
   it("DSOR-IDN-03b: issuing org_789's INV-1008 leaves org_456's INV-1008 exactly as it was", async () => {
-    const before = await getInvoice("org_456", "INV-1008");
+    const before = (await getInvoice("org_456", "INV-1008")).value;
     const outcome = await issueInvoice("org_789", "INV-1008");
 
     expect(outcome.kind).toBe("issued");
-    expect((await getInvoice("org_789", "INV-1008"))?.status).toBe("issued");
-    expect(await getInvoice("org_456", "INV-1008")).toEqual(before);
+    expect((await getInvoice("org_789", "INV-1008")).value?.status).toBe("issued");
+    expect((await getInvoice("org_456", "INV-1008")).value).toEqual(before);
   });
 });
 

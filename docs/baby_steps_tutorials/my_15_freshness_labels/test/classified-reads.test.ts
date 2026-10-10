@@ -13,6 +13,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog, verifyChain, type AuditRecord } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
+import { readNow } from "../src/freshness.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
 import { useDatabase } from "../src/store.ts";
@@ -85,6 +86,7 @@ describe("restricted, and nothing", () => {
       kind: "data",
       askedBy,
       invoice: row as Invoice,
+      freshness: readNow(),
     });
   };
   const aRow = (fields: Record<string, unknown>): object =>
@@ -139,6 +141,7 @@ describe("restricted, and nothing", () => {
           },
           next: undefined,
         },
+        freshness: readNow(),
       }),
     });
     const answer = await door(SUPERVISOR, "invoice.list", {});

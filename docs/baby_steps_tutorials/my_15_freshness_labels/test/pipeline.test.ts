@@ -277,7 +277,7 @@ describe("the pipeline", () => {
     expect(answer.askedBy).toBe("user_123");
 
     // The point of the whole step: no evidence, so nothing happened.
-    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
     expect(await theLog("org_456")).toHaveLength(0);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
@@ -287,7 +287,7 @@ describe("the pipeline", () => {
 
     expect(real.kind).toBe("result");
     expect(await theLog("org_456")).toHaveLength(1);
-    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("issued");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("issued");
   });
 
   /**

@@ -49,6 +49,8 @@ import {
   type ShownPage,
 } from "./boundary.ts";
 import type { Classification } from "./classification.ts";
+// NEW IN STEP 15: how old an answer's data is.
+import type { Freshness } from "./freshness.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
@@ -77,6 +79,8 @@ export type OperationAnswer =
       readonly classification: Classification;
       /** STEP 14: what was taken out, and why (DSOR-CLS-02b). Empty for a human. */
       readonly redactions: readonly Redaction[];
+      /** NEW IN STEP 15: how old the data is, and from where (DSOR-FRS-01a). */
+      readonly freshness: Freshness;
     }
   /** STEP 13: many rows, and where the next page starts. */
   | {
@@ -85,6 +89,8 @@ export type OperationAnswer =
       readonly page: ShownPage;
       readonly classification: Classification;
       readonly redactions: readonly Redaction[];
+      /** NEW IN STEP 15: one label for the page, because a page is one read. */
+      readonly freshness: Freshness;
     }
   | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
@@ -92,10 +98,21 @@ export type OperationAnswer =
 /**
  * STEP 14: what a handler hands the door — the whole row, labelled by nobody yet. The door
  * turns it into an OperationAnswer on the way out (boundary.ts), which is the only way out.
+ * NEW IN STEP 15: a read hands over its freshness label too, written by the code that read.
  */
 export type HandlerAnswer =
-  | { readonly kind: "data"; readonly askedBy: string; readonly invoice: Invoice }
-  | { readonly kind: "page"; readonly askedBy: string; readonly page: InvoicePage }
+  | {
+      readonly kind: "data";
+      readonly askedBy: string;
+      readonly invoice: Invoice;
+      readonly freshness: Freshness;
+    }
+  | {
+      readonly kind: "page";
+      readonly askedBy: string;
+      readonly page: InvoicePage;
+      readonly freshness: Freshness;
+    }
   | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
   | { readonly kind: "error"; readonly askedBy: string; readonly envelope: ErrorEnvelope };
 
@@ -194,7 +211,8 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     // STEP 10: inside this request's company. There is no "INV-1008" any more, only
     // "org_456's INV-1008", and the store is asked that way.
-    const invoice = await getInvoice(tenant, read.id);
+    // NEW IN STEP 15: and the read comes back with its label, which goes out with the row.
+    const { value: invoice, freshness } = await getInvoice(tenant, read.id);
 
     // Step 03 answered `undefined` here and left the caller to work out why. An absent
     // invoice is still an ordinary answer, and now it says so in a way a caller can act
@@ -212,7 +230,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       };
     }
 
-    return { kind: "data", askedBy, invoice };
+    return { kind: "data", askedBy, invoice, freshness };
   },
 
   // STEP 13: the first query that returns many rows, and the ceiling is the server's.
@@ -241,7 +259,10 @@ const handlers: Readonly<Record<string, Handler>> = {
       after = read.id;
     }
 
-    return { kind: "page", askedBy, page: await listInvoices(tenant, after, limit) };
+    // NEW IN STEP 15: one read, one label, for the whole page.
+    const { value: page, freshness } = await listInvoices(tenant, after, limit);
+
+    return { kind: "page", askedBy, page, freshness };
   },
 
   "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {

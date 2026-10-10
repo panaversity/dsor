@@ -10,6 +10,7 @@
 // Rule DSOR-TEN-01a: every tenant-owned resource MUST carry its tenant_id.
 // Rule DSOR-IDN-03b: an operation MUST NOT read or write across tenants.
 
+import { justRead, type Labelled } from "./freshness.ts";
 import { money, type Money } from "./money.ts";
 import { theDatabase } from "./store.ts";
 import { formatUri } from "./uri.ts";
@@ -75,15 +76,20 @@ function fromRow(row: Row): Invoice {
  *
  * Returns `undefined` when that company has no such invoice — including when another company has
  * one by that number. A missing invoice is an ordinary answer, not a crash.
+ *
+ * NEW IN STEP 15: with how fresh it is, labelled right after the read (DSOR-FRS-01a).
  */
-export async function getInvoice(tenantId: string, id: string): Promise<Invoice | undefined> {
+export async function getInvoice(
+  tenantId: string,
+  id: string,
+): Promise<Labelled<Invoice | undefined>> {
   const { rows } = await theDatabase(tenantId).query<Row>(
     `SELECT ${COLUMNS} FROM public.invoices WHERE tenant_id = $1 AND id = $2`,
     [tenantId, id],
   );
   const row = rows[0];
 
-  return row === undefined ? undefined : fromRow(row);
+  return justRead(row === undefined ? undefined : fromRow(row));
 }
 
 /**
@@ -123,7 +129,7 @@ export async function issueInvoice(tenantId: string, id: string): Promise<IssueO
     return { kind: "issued", invoice: fromRow(issued) };
   }
 
-  const current = await getInvoice(tenantId, id);
+  const current = (await getInvoice(tenantId, id)).value;
 
   if (current === undefined) {
     return { kind: "not_found" };
@@ -166,12 +172,14 @@ export interface InvoicePage {
  * `limit` is already the server's number by the time it arrives here (queries.ts); the SQL asks
  * for one more than that, which is how the page knows whether there is a next one without a
  * second count query.
+ *
+ * NEW IN STEP 15: with how fresh it is, one label for the page, because a page is one read.
  */
 export async function listInvoices(
   tenantId: string,
   after: string | undefined,
   limit: number,
-): Promise<InvoicePage> {
+): Promise<Labelled<InvoicePage>> {
   const { rows } = await theDatabase(tenantId).query<Row>(
     `SELECT ${COLUMNS} FROM public.invoices
      WHERE tenant_id = $1 AND ($2::text IS NULL OR id > $2)
@@ -182,8 +190,10 @@ export async function listInvoices(
   const page = rows.slice(0, limit).map(fromRow);
   const more = rows.length > limit;
 
-  return Object.freeze({
-    invoices: Object.freeze(page),
-    next: more ? page.at(-1)?.uri : undefined,
-  });
+  return justRead(
+    Object.freeze({
+      invoices: Object.freeze(page),
+      next: more ? page.at(-1)?.uri : undefined,
+    }),
+  );
 }

@@ -100,7 +100,7 @@ describe("the decision is written down first", () => {
     expect(record.operation).toBe("invoice.issue@1");
 
     // And the CFO's refusal did not issue the invoice, so the record is about a decision only.
-    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
   });
 
   // Why the request id had to be repaired first. Without this the record and the answer are two
@@ -283,7 +283,7 @@ describe("the decision is written down first", () => {
   // record fail its schema, which is the closest this step can get to "the store is down".
   it("DSOR-EXE-03b: if the decision cannot be written, nothing is carried out", async () => {
     await fresh();
-    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
 
     setClock(() => "the day before yesterday");
 
@@ -298,7 +298,7 @@ describe("the decision is written down first", () => {
     // Retry `safe_same_key`, because the request provably never ran — which is the next assertion.
     expect(answer.envelope.retry).toBe("safe_same_key");
     expect(await theLog("org_456")).toHaveLength(0);
-    expect((await getInvoice("org_456", "INV-1009"))?.status).toBe("draft");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
 
     resetClock();
 
@@ -504,7 +504,7 @@ describe("the decision is written down first", () => {
       expect((await theLog("org_456"))[0]!.reason, lazied).toMatch(why);
 
       // And nothing was carried out.
-      expect((await getInvoice("org_456", "INV-1009"))?.status, lazied).toBe("draft");
+      expect((await getInvoice("org_456", "INV-1009")).value?.status, lazied).toBe("draft");
     }
   });
 

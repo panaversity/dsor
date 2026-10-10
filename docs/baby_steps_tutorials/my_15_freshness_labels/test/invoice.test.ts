@@ -29,7 +29,7 @@ afterAll(async () => {
 
 /** org_456's invoice, or a thrown error that names it — so a test never reads an undefined. */
 async function ours(id: string) {
-  const found = await getInvoice("org_456", id);
+  const found = (await getInvoice("org_456", id)).value;
 
   if (found === undefined) {
     throw new Error(`org_456 should hold ${id}`);
@@ -56,12 +56,12 @@ describe("getInvoice", () => {
   });
 
   it("an id that is only the beginning of a real id finds nothing", async () => {
-    expect(await getInvoice("org_456", "INV-100")).toBeUndefined();
-    expect(await getInvoice("org_456", "INV")).toBeUndefined();
+    expect((await getInvoice("org_456", "INV-100")).value).toBeUndefined();
+    expect((await getInvoice("org_456", "INV")).value).toBeUndefined();
   });
 
   it("returns undefined for an invoice that does not exist", async () => {
-    expect(await getInvoice("org_456", "INV-9999")).toBeUndefined();
+    expect((await getInvoice("org_456", "INV-9999")).value).toBeUndefined();
   });
 
   it("DSOR-MON-01: every invoice handed out is frozen, amount included", async () => {
@@ -115,7 +115,7 @@ describe("getInvoice", () => {
 describe("issueInvoice", () => {
   it("an id nobody holds is not_found, and nothing is invented for it", async () => {
     expect(await issueInvoice("org_456", "INV-9999")).toEqual({ kind: "not_found" });
-    expect(await getInvoice("org_456", "INV-9999")).toBeUndefined();
+    expect((await getInvoice("org_456", "INV-9999")).value).toBeUndefined();
   });
 
   it("an invoice that is already issued reports not_draft, and says what it is instead", async () => {

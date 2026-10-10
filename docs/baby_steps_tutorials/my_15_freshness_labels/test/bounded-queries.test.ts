@@ -13,6 +13,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readNow } from "../src/freshness.ts";
 import { listInvoices, type Invoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
 import { bytesOf, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESULT_BYTES } from "../src/queries.ts";
@@ -141,6 +142,7 @@ describe("the second layer: the door", () => {
       kind: "page",
       askedBy,
       page: { invoices, next: undefined },
+      freshness: readNow(),
     });
   };
   const anInvoice = (i: number, vendor = "VENDOR-44"): Invoice =>
@@ -355,7 +357,9 @@ describe("whose rows", () => {
     // Through the door the second layer hides the first — a review removed the WHERE and every
     // test stayed green, because RLS still filtered. The owner bypasses RLS on PGlite (migration
     // 005 says so), so asked as the owner, the SQL alone is what answers.
-    const page = await asTheOwner(() => listInvoices("org_456", undefined, MAX_PAGE_SIZE));
+    const { value: page } = await asTheOwner(() =>
+      listInvoices("org_456", undefined, MAX_PAGE_SIZE),
+    );
 
     expect(page.invoices).toHaveLength(MAX_PAGE_SIZE);
     expect(new Set(page.invoices.map((i) => i.tenantId))).toStrictEqual(new Set(["org_456"]));

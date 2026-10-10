@@ -24,6 +24,7 @@ import {
   labelOf,
 } from "./classification.ts";
 import { type ResultEnvelope, validateEnvelope } from "./envelopes.ts";
+import type { Freshness } from "./freshness.ts";
 import type { Invoice, InvoicePage } from "./invoice.ts";
 import type { HandlerAnswer, OperationAnswer } from "./operations.ts";
 import type { Principal } from "./people.ts";
@@ -210,15 +211,22 @@ function copyRow(row: unknown): unknown {
 export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
   const { kind, askedBy } = answer;
 
+  // NEW IN STEP 15: a read's freshness label is copied once too, like a row.
   if (kind === "data") {
-    return Object.freeze({ kind, askedBy, invoice: copyRow(answer.invoice) as Invoice });
+    return Object.freeze({
+      kind,
+      askedBy,
+      invoice: copyRow(answer.invoice) as Invoice,
+      freshness: copyRow(answer.freshness) as Freshness,
+    });
   }
 
   if (kind === "page") {
     const page: unknown = answer.page;
+    const freshness = copyRow(answer.freshness) as Freshness;
 
     if (page === null || typeof page !== "object") {
-      return Object.freeze({ kind, askedBy, page: page as InvoicePage });
+      return Object.freeze({ kind, askedBy, page: page as InvoicePage, freshness });
     }
 
     const { invoices, next } = page as { invoices: unknown; next: unknown };
@@ -230,6 +238,7 @@ export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
       kind,
       askedBy,
       page: Object.freeze({ invoices: rows, next }) as unknown as InvoicePage,
+      freshness,
     });
   }
 
@@ -358,6 +367,8 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
       invoice: shown as Shown<Invoice>,
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
+      // NEW IN STEP 15: how old the data is goes out with it (DSOR-FRS-01a).
+      freshness: answer.freshness,
     });
   }
 
@@ -393,6 +404,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
       page: Object.freeze({ invoices: Object.freeze(invoices), next }),
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
+      freshness: answer.freshness,
     });
   }
 

@@ -123,7 +123,7 @@ describe("an address for another company", () => {
       expect(answer.envelope.code).toBe("TENANT_MISMATCH");
     }
 
-    expect((await getInvoice("org_789", "INV-1008"))?.status).toBe("draft");
+    expect((await getInvoice("org_789", "INV-1008")).value?.status).toBe("draft");
 
     const ours = await theLog("org_456");
 

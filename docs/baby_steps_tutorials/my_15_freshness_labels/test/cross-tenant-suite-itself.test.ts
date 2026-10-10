@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import type { AuditRecord } from "../src/audit.ts";
 import { refusal } from "../src/envelopes.ts";
+import { readNow } from "../src/freshness.ts";
 import type { OperationAnswer } from "../src/operations.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import {
@@ -114,6 +115,7 @@ function honest(overrides: Partial<Deps> = {}): Deps {
         invoice: OUR_INVOICE,
         classification: "confidential",
         redactions: [],
+        freshness: readNow(),
       };
     },
     ...overrides,
@@ -142,6 +144,7 @@ describe("each question, honest and lied to", () => {
         invoice: THEIR_INVOICE,
         classification: "confidential",
         redactions: [],
+        freshness: readNow(),
       }),
     });
 

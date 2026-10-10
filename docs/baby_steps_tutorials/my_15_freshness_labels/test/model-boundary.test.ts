@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Invoice } from "../src/invoice.ts";
 import { labelOfValue, leaveTheDoor } from "../src/boundary.ts";
 import { refusal, success, validateEnvelope } from "../src/envelopes.ts";
+import { readNow } from "../src/freshness.ts";
 import {
   callOperation,
   makeDoor,
@@ -138,7 +139,12 @@ describe("a command's receipt", () => {
 
 /** A careless handler: whatever row it is given, as the answer to invoice.get. */
 const handing = (row: object): Handler => {
-  return async (_args, _contract, askedBy) => ({ kind: "data", askedBy, invoice: row as Invoice });
+  return async (_args, _contract, askedBy) => ({
+    kind: "data",
+    askedBy,
+    invoice: row as Invoice,
+    freshness: readNow(),
+  });
 };
 
 /** A row like INV-1008's, with fields added or, given as `undefined`, taken away. */
@@ -382,6 +388,7 @@ describe("an answer the door cannot filter", () => {
           kind: "page",
           askedBy,
           page: { invoices: [row as unknown as Invoice], next: undefined },
+          freshness: readNow(),
         }),
       });
 
@@ -455,6 +462,7 @@ describe("the ceiling measures what leaves", () => {
       kind: "page",
       askedBy,
       page: { invoices: fat as Invoice[], next: undefined },
+      freshness: readNow(),
     });
     const door = makeDoor(PIPELINE, { "invoice.list": careless });
     const theirs = await door(AGENT, "invoice.list", {});
@@ -549,6 +557,7 @@ describe("a page of rows that do not look alike", () => {
       kind: "page",
       askedBy,
       page: { invoices: rows as Invoice[], next: undefined },
+      freshness: readNow(),
     });
     const door = makeDoor(PIPELINE, { "invoice.list": careless });
     const theirs = await door(AGENT, "invoice.list", {});
@@ -598,6 +607,7 @@ describe("a page of rows that do not look alike", () => {
       kind: "page",
       askedBy: agent.id,
       page: { invoices: [aRow({}) as Invoice], next: INV_1008 },
+      freshness: readNow(),
     });
 
     expect(leaving.kind).toBe("page");
@@ -620,13 +630,19 @@ describe("the parts of an answer that are not rows", () => {
     // Measured before: the first three answers carried 31400.00 in `askedBy`, through the door.
     const answers: OperationAnswer[] = [
       await makeDoor(PIPELINE, {
-        "invoice.get": async () => ({ kind: "data", askedBy: lying, invoice: aRow({}) as Invoice }),
+        "invoice.get": async () => ({
+          kind: "data",
+          askedBy: lying,
+          invoice: aRow({}) as Invoice,
+          freshness: readNow(),
+        }),
       })(AGENT, "invoice.get", { invoice: INV_1008 }),
       await makeDoor(PIPELINE, {
         "invoice.list": async () => ({
           kind: "page",
           askedBy: lying,
           page: { invoices: [aRow({}) as Invoice], next: undefined },
+          freshness: readNow(),
         }),
       })(AGENT, "invoice.list", {}),
       await makeDoor(PIPELINE, {
@@ -686,6 +702,7 @@ describe("the parts of an answer that are not rows", () => {
           kind: "page",
           askedBy: "accounts-payable-fte",
           page: { invoices: rows, next: next as string | undefined },
+          freshness: readNow(),
         }),
       });
 
@@ -732,6 +749,7 @@ describe("the parts of an answer that are not rows", () => {
         kind: "page",
         askedBy: "accounts-payable-fte",
         page: { invoices: [], next: INV_1008 },
+        freshness: readNow(),
       }),
     })(AGENT, "invoice.list", {});
 
@@ -758,6 +776,7 @@ describe("the parts of an answer that are not rows", () => {
             return (reads === 1 ? INV_1009 : rows[1]) as string;
           },
         },
+        freshness: readNow(),
       }),
     })(AGENT, "invoice.list", {});
 
@@ -773,6 +792,7 @@ describe("the parts of an answer that are not rows", () => {
         kind: "page",
         askedBy: "accounts-payable-fte",
         page: { invoices, next: rows[1] as unknown as string },
+        freshness: readNow(),
       }),
     })(AGENT, "invoice.list", {});
 
