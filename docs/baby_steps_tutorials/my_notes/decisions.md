@@ -2879,3 +2879,22 @@ label alone.
 stays a leak. An amount written as text in `vendor` still leaves either way, because a label
 describes a field and not the value in it (open question 50).
 
+## 111 · A field's label is looked up among the table's own names (2026-10-10)
+
+**Decided by:** the learner, who chose to fix it now, in a commit of its own, after the bug was
+shown with a run.
+**What:** `labelOf` answers from the label table's own keys only, for the entity and for the
+field, as `permissionsOf` has since decision 36. A name the table only inherits has no label, so
+it is confidential.
+**Why:** found while building decision 110, and measured. `labelOf("invoice", "toString")` returned
+a function, and `labelOf("constructor", "name")` returned `"Object"`. Neither is one of the four
+labels, so neither was ever above a clearance: a row with fields named `toString` and `valueOf`
+sent both to the agent with `31400.00 USD` in them, while `notes` beside them was withheld. A
+field with no declared classification is confidential (`DSOR-CLS-01`), and these two had none.
+It is decision 36's bug in a file written after it — lesson 13 again: a fix belongs everywhere its
+shape lives.
+**Cost:** one test, and a lookup that reads as a guard rather than one line. Only the program's own
+handlers could name such a field; the agent cannot.
+**Rejected:** recording it for a later session. The fix is one line, and until it lands a handler's
+mistake sends that field to the agent.
+
