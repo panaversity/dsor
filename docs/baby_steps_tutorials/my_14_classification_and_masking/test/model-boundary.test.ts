@@ -408,7 +408,9 @@ describe("an answer the door cannot filter", () => {
   it("a receipt that carries no data leaves with no label and no list", () => {
     // `data` is optional in result-envelope.schema.json, and step 17's first PENDING_APPROVAL
     // receipt has none. A review made the door throw on it, after the command had run. There is
-    // nothing to filter and nothing to label: no data, no label.
+    // nothing to filter and nothing to label: no data, no label. This one is COMMITTED. A real
+    // PENDING_APPROVAL receipt also needs `requires`, which the door leaves out until step 17
+    // (decision 117).
     const envelope = {
       outcome: "COMMITTED" as const,
       proposal: "dsor://org_456/proposal/prop_0001",

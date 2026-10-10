@@ -1099,8 +1099,9 @@ export function makeDoor(
 
     // §21.14 — execute. The only thing that happens after every check has said yes.
     // NEW IN STEP 14, decision 116: and what it hands back is read once, here. The check, the
-    // filter, the ceiling and the record of the read below all work from this copy, so a part that
-    // answers differently on a second read never gets one.
+    // filter, the ceiling and the record of the read below all work from this copy, so for an
+    // answer that is data, a part that would answer differently on a second read never gets one.
+    // Code written to trick the copy is decision 119's.
     const answer = copyOnce(await handler(given, contract, principal.id, tenant, hash, id_));
 
     // NEW IN STEP 14: and an answer this program cannot filter is this program's bug, said in an

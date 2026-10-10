@@ -3136,7 +3136,8 @@ with the row.
 frozen objects: the answer's parts, a page's rows and cursor, each row's fields, and a receipt's or
 an error's envelope. The check, the filter, the ceiling and the record of the read all work from
 that copy. A field's value with parts inside is copied as it is: the copy goes as deep as the door
-decides, which is one level into each row.
+decides, which is one level into each row. "Plain" holds for an answer that is data. Code written
+to trick the copy gets past it, as the next review showed (decision 119).
 **Why:** the door read the handler's answer more than once and trusted the reads to agree. The
 record of a read took the rows from the handler a second time, so it could name rows other than
 the ones returned. The program already keeps this rule for a request's arguments: `payloadHash`
@@ -3146,6 +3147,23 @@ is still read more than once, by the money check and when the answer is written 
 decision 114's first check.
 **Rejected:** fixing the cursor alone, by taking it from the door's own filtered rows. Smaller,
 and the record of a read would still read the rows twice.
+
+**Red first.** A `next` that answered the check with the last row's address and the filter with
+the row got the row out, labelled `internal`. A page whose rows answered differently on a second
+read was handed to the supervisor as INV-1008 and written down as INV-1009: what the review had
+found by reading, measured. A third case, a row whose address names the entity on one read and
+carries the amount on the next, was shown red by the fourth break below. Then the whole suite, on
+a copy: 510, all green but the one test that skips outside the repository.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| `copyOnce` hands the answer back as it came | 2: the two new tests | 2, those two |
+| the door does not use the copy | 2: the same two | 2, those two |
+| a page's rows list is not copied | 1: the read-once test, the list with its own `at` | 1, that test |
+| a row's fields are not copied | 1: the read-once test, the address read twice | 1, that test |
+| the cursor is read again on every look | 1: the read-once test, the getter | 1, that test |
 
 ## 117 · A receipt is built from its named parts, and every receipt is checked against its form (2026-10-10)
 
@@ -3157,12 +3175,28 @@ or without. `requires` and `extensions`, which the schema lets hold anything, ar
 **Why:** the door copied a receipt's envelope whole, and passed a receipt with no data on
 unchecked. A row under `requires` or `extensions` left for the agent beside a filtered `data`,
 with `amount` listed as withheld. A receipt with no data carried even a field the schema does not
-have. Unlike an error, a receipt has no free-text part, so naming its parts closes it.
+have. Unlike an error, a receipt has no part that takes anything, so naming its parts closes the
+way a row got out. Its free text is in `correlation`'s string fields, which is open question 50's
+channel. This sentence first said a receipt has no free-text part, which was false (decision 119).
 **Cost:** a later step that needs `requires` — step 17's receipts that wait for an approval — must
 add it back through the filter. And a receipt with a field the schema does not have no longer
 makes the door throw: the field is left out. The test that relied on the throw checks an invalid
 named part now.
 **Rejected:** writing it down, as decision 115 did for errors.
+
+**Red first.** A row under `requires` left for the agent beside a filtered `data`. A receipt with
+no row and a wrong `outcome` was not checked at all. Then the whole suite, on a copy: 511, all
+green but the one test that skips outside the repository.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the receipt copied whole again | 1: the closed-parts test | 1, that test |
+| a receipt with no data not checked | 1: the validation test, its no-data case | 1, that test |
+| `requires` counted among the closed parts | 1: the closed-parts test | 1, that test |
+| `extensions` counted among the closed parts | 1: the closed-parts test | 1, that test |
+| a receipt's data filtered when it has none | 4: every test that hands the door a receipt with no data | 4, those four |
 
 ## 118 · Three more guards get a test (2026-10-10)
 
@@ -3180,4 +3214,78 @@ all: without it, the agent gets `[{}]` labelled `public`.
 as it is, `amount` is confidential either way, so a door that always said "not a money field" gives
 the same answers. `labelOfValue`'s own test pins the rule (decision 113), and nothing outside the
 door can see the call.
+
+**Red first, by breaking.** These guards already worked, so the new cases passed at once. Each
+guard was then removed alone, before the new cases and after them, with the prediction written
+first: 0 before, as the review said, and 1 after.
+
+| Break | Before the new cases | After |
+| --- | --- | --- |
+| the cursor compared with `==` | 0 | 1: the cursor test |
+| the cursor check assuming a last row | 0 | 1: the cursor test |
+| no row check for a page | 0 | 1: the test for an answer that is not a row |
+
+**The README's fifteen breaks, measured again after decision 118.** Twice, one at a time on a
+quiet machine, and the two runs agreed on all fifteen. The suite is six tests longer than after
+decision 111, so every total moved by six. The failing counts that moved: Break 1 by three, Break
+5 by one, Break 6 by four, Break 7 by one, Break 8 by one, Break 9 by one, Break 12 by four, Break
+13 by one, Break 14 by two, and Break 15 by three. Break 15 had to change: the early return it
+deleted is gone (decision 117), so it makes the `if` around the receipt's filter always true, and
+teaches the same thing. Decision 109's 007 without its `GRANT` gave 191, twice. A first
+measurement after decision 113 was stopped halfway, when the review of 112 and 113 meant the code
+would change.
+
+## 119 · The door is built against a careless handler, not one written to trick it (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the third review's findings were
+shown, each reproduced here with the review's own probes.
+**What:** the hunt stops here. The door is built against a handler that makes a mistake: a row put
+in the wrong place, a part left over, an object where a value belongs. It is not built against a
+handler written to trick it. The third review, of decisions 116 to 118, found four more ways past
+the door, and each needs code like that:
+
+1. A rows list whose class overrides its own methods and constructor. The copy is built with the
+   handler's class, and its `at` answers the cursor check. The agent got the whole row.
+2. An answer whose `kind` answers one way five times and another way the sixth, with no envelope.
+   `copyOnce` hands back the handler's own object, and the later steps read `kind` again. The
+   agent got the whole row.
+3. A receipt whose `correlation` has a hidden `toJSON`, or is a Proxy. The schema check passes,
+   and writing the answer out calls the hidden function. The agent got the whole row.
+4. A function dressed as a row. It is not copied, and its address is read twice. The agent got
+   `31400.00 USD` as an address. For the supervisor, the record of the read named INV-1009 while
+   INV-1008 was returned.
+
+They are written down, and not fixed.
+**Why:** code written to trick the door does not need any of these. It can write the amount as
+text into a field an agent may read, `vendor: "31400.00 USD"`, and no copy or filter at the door
+can see that (open question 50). So closing these four would not change what the door can
+honestly promise. And a handler is this program's own code: code written to leak can leak through
+a log or a network call without passing the door at all. What stops it is reading the code, not a
+filter.
+**How the reviews got here.** The reviews of decisions 110 to 118 were each told to assume the
+handler is trying to get the amount out. That is a stronger threat than this step is about, and it
+is why each round found more. The fixes it led to still hold for careless code: 112, 113, 117 and
+118. Decision 116 still makes the record of a read name the rows that were returned, for any
+answer that is data.
+**Also from that review, written down and not fixed:**
+
+- A receipt that waits for an approval cannot leave yet. The schema requires `requires` for
+  `PENDING_APPROVAL`, and the door leaves `requires` out (decision 117). Measured: such a receipt,
+  valid as built, makes the door throw. Step 17 must bring `requires` back through the filter.
+  Two comments said such a receipt leaves; they say what is true now.
+- `copyOnce` reads a page's rows and cursor before the check. So three shapes the door used to
+  refuse cleanly now throw a raw error: a rows list holding a throwing getter, a throwing cursor
+  beside rows that are not a list, and a rows list with a throwing `constructor`. And a sparse
+  rows list of four million slots takes the copy 22 ms, so about 24 s at the largest length an
+  array can have. Each needs code written to trick or to break the door.
+- Two test cases, the list with its own `at` and the cursor on an empty page, check that the answer
+  is an error, but not its code and retry class. And no test hands the door a receipt or an error
+  whose parts answer differently on a second read.
+- Decision 116's "plain, frozen objects" and decision 117's "a receipt has no free-text part" said
+  more than the code does. Both are corrected where they stand.
+
+**Rejected:** one more round, with the platform's own deep copy, `structuredClone`, which turns an
+answer into plain data and refuses what is not data. It closes the four with less code. It also
+makes a value with its own `toJSON` refuse the whole answer, and it still lets text through. It
+would have taken about an hour and a half more.
 

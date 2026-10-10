@@ -201,9 +201,11 @@ function copyRow(row: unknown): unknown {
  * address and the filter with the row got the row out, and the record of a read named rows other
  * than the ones returned. `payloadHash` keeps the same rule for a request's arguments.
  *
- * A row is read by position, never through its list's own methods, and a field's value is copied
- * as it is: the copy goes one level into each row, as far as the door decides anything. A shape
- * that is not what the type says is copied as it came, for `cannotBeFiltered` to refuse.
+ * A row is read by position, and a field's value is copied as it is: the copy goes one level into
+ * each row, as far as the door decides anything. A shape that is not what the type says is copied
+ * as it came, for `cannotBeFiltered` to refuse. All of this holds for an answer that is data. Code
+ * written to trick the copy gets past it: a list whose class overrides its own methods, a `kind`
+ * that changes between reads, a function dressed as a row (decision 119).
  */
 export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
   const { kind, askedBy } = answer;
@@ -405,7 +407,9 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // `data` is optional in that schema, and step 17's first PENDING_APPROVAL receipt will have
   // none. A receipt with no data has nothing to filter and nothing to label, so it leaves with no
   // label and no list, and is built and checked like any other: a review made the door throw on
-  // it, after the command had run, and another found it leaving unchecked.
+  // it, after the command had run, and another found it leaving unchecked. A PENDING_APPROVAL one
+  // cannot leave yet: its schema requires `requires`, which is left out above, so the check below
+  // refuses it. Step 17 brings `requires` back through the filter.
   const closed = closedPartsOf(answer.envelope);
   const data: unknown = answer.envelope.data;
   let envelope: Readonly<Record<string, unknown>> = Object.freeze(closed);
