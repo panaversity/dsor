@@ -3004,6 +3004,35 @@ row's address must change this check too, on purpose.
 an address, and the agent would read it. The last row's address is the one value `next` can
 honestly hold, and the agent sees that address in the row already.
 
+**Red first.** Through the real door, with a handler that put the row in `askedBy`, the data, page
+and error answers all carried `31400.00` in `askedBy`. A page whose `next` held the last row left
+for the agent with `31400.00` in it, labelled `internal`, with `amount` listed as withheld.
+Another invoice's address, and the text `31400.00 USD`, left as well. Then the whole suite, on a
+copy: 508, all green but the one test that skips outside the repository.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| each of the five ways out copies the handler's `askedBy`, one at a time | 1 each: the new test | 1 each, that test |
+| no cursor check | 1: the new test | 1, that test |
+| any text accepted as a cursor | 1: the new test | 1, that test |
+| the cursor compared with the first row, not the last | the new test, and the tests that page through real invoices | 9: the new test and eight in `bounded-queries.test.ts` |
+
+The cursor test's first version had a page of one row, where the first row is also the last, so
+the fourth break would have passed it. It has two rows now.
+
+**Found while building it.** An error answer, and a receipt with no data, were handed back as the
+handler built them, so anything a handler added beside the envelope left too. Building every answer
+from its known parts stops that. Something added *inside* an error envelope still leaves: the
+error schema is closed except `items` and `extensions`, which take anything. Measured: an error
+with the row beside its envelope, and one with the row inside it, both left for the agent with
+`31400.00`. That is a decision of its own: decision 115.
+
+**The review then found it incomplete.** The cursor was checked on one read and copied on
+another, and a receipt's envelope was still copied whole. So "every answer is built from its
+known parts" was true of the answer and not of the envelope inside it. Decisions 116 and 117.
+
 ## 113 · Two guards get a test of their own (2026-10-10)
 
 **Decided by:** the learner, who took the recommendation.
@@ -3023,6 +3052,27 @@ test handed the door money as a row.
 **Cost:** one function exported so a test can call it, as `makeDoor` is exported so a test can
 build a door.
 **Rejected:** writing the two gaps down only.
+
+**Red first.** `labelOfValue is not a function`. Then the whole suite, on a copy: 509, all green
+but the one test that skips outside the repository. The second gap needed no new test: one test's
+list grew.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the money rule deleted, on the code before this decision | 0, as the review said | 0 |
+| the money rule deleted | 1: the new test | 1, that test |
+| money judged by its shape, in any field | 2: the new test and decision 110's boundary test | 2, those two |
+| a value the label cannot see whole keeps its field's label | 5: the new test and the four tests of a value with parts | 5, those five |
+| the row check forgets money, on the code before this decision | 0, as the review said | 0 |
+| the row check forgets money, with money added for the supervisor | 1: the extended test | 0 |
+| the row check forgets money, asked as the agent too | 1: the extended test | 1: the agent's money case |
+
+The sixth prediction was wrong, and lesson 18 is why. For the supervisor, a second guard catches
+money taken for a row: the record of the read cannot name a row with no address, so the read is
+refused anyway. For the agent, both parts are withheld, nothing confidential is left to write
+down, and the row check is the only guard. So the test asks as the agent too.
 
 ## 114 · Two checks that fail open are written down, and not fixed (2026-10-10)
 
@@ -3044,4 +3094,90 @@ raises the clearance, and the first check matters from then on. A fifth label wo
 second matter.
 **Rejected:** fixing both now: a fresh money value built from its two strings at the door, and an
 unknown word ranked above every label.
+
+## 115 · An error's envelope stays unread, and the rule for handlers names its open parts (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** the door passes an error answer's envelope on as the handler built it, as before. The
+README's rule for handlers, never to put a field's value in an error, now names the two parts of
+the error schema that take anything, `items` and `extensions`, beside the message, which is free
+text.
+**Why:** found while building decision 112, and measured against the door. A row under `items`,
+under `extensions`, or under `data`, a field the error schema does not have, left for the agent
+with `31400.00`. Closing the two open parts would not retire the rule, because the message can
+carry the amount anyway. And nothing in this program fills either part today. A later step that
+answers with one error per failed item may need `items`, and then its rows need the filter.
+**Cost:** a mistake in a handler can still send a row to the agent inside an error, as it can
+through the message.
+**Rejected:** the door rebuilding every error from the parts this program uses and dropping the
+open two, the learner's other option. Not offered, and noted here: checking an error's envelope
+against its schema, as the door checks a receipt. It would stop `data`, and let `items` and
+`extensions` through, so the rule for handlers would stay the same.
+
+**Then the hostile review of 112 and 113.** One reviewer, read-only, with probes in its own copy.
+`askedBy` held on all five ways out, and nothing else in the door builds an answer from a
+handler's parts. It found two ways round what decision 112 claimed, and both were reproduced
+here:
+
+- The cursor was checked on one read and copied on another. A getter on `next`, or a rows list
+  with its own `at`, passed the check and then handed the filter the whole row.
+- A receipt's envelope was copied whole. Its schema lets `requires` and `extensions` hold
+  anything, and a receipt with no data was not checked at all. Five shapes left with `31400.00`.
+
+It also found that the record of a read takes the rows from the handler a second time, and three
+guards with no test. Decisions 116 to 118.
+
+## 116 · The door copies a handler's answer once, and works only from the copy (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the review's probe was shown: a
+page whose `next` was a getter answered the check with the last row's address, and the filter
+with the row.
+**What:** as soon as a handler's answer reaches the door, `copyOnce` reads it once into plain,
+frozen objects: the answer's parts, a page's rows and cursor, each row's fields, and a receipt's or
+an error's envelope. The check, the filter, the ceiling and the record of the read all work from
+that copy. A field's value with parts inside is copied as it is: the copy goes as deep as the door
+decides, which is one level into each row.
+**Why:** the door read the handler's answer more than once and trusted the reads to agree. The
+record of a read took the rows from the handler a second time, so it could name rows other than
+the ones returned. The program already keeps this rule for a request's arguments: `payloadHash`
+takes text written down once, because two reads can disagree.
+**Cost:** a new function at the door, which every answer goes through. A field's value with parts
+is still read more than once, by the money check and when the answer is written out; that is
+decision 114's first check.
+**Rejected:** fixing the cursor alone, by taking it from the door's own filtered rows. Smaller,
+and the record of a read would still read the rows twice.
+
+## 117 · A receipt is built from its named parts, and every receipt is checked against its form (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** the door builds a command's receipt from the parts this program fills: `outcome`,
+`proposal`, `payload_hash`, `decision`, `semantics`, `expires_at` and `correlation`, and its own
+`data`, label and list. It checks every receipt against `result-envelope.schema.json`, with data
+or without. `requires` and `extensions`, which the schema lets hold anything, are left out.
+**Why:** the door copied a receipt's envelope whole, and passed a receipt with no data on
+unchecked. A row under `requires` or `extensions` left for the agent beside a filtered `data`,
+with `amount` listed as withheld. A receipt with no data carried even a field the schema does not
+have. Unlike an error, a receipt has no free-text part, so naming its parts closes it.
+**Cost:** a later step that needs `requires` — step 17's receipts that wait for an approval — must
+add it back through the filter. And a receipt with a field the schema does not have no longer
+makes the door throw: the field is left out. The test that relied on the throw checks an invalid
+named part now.
+**Rejected:** writing it down, as decision 115 did for errors.
+
+## 118 · Three more guards get a test (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** three cases, in tests that exist. A cursor that is an object which turns into the last
+row's address when compared loosely. A cursor on an empty page. And a page whose rows are not
+rows, asked as the supervisor and as the agent.
+**Why:** the review of 112 and 113 found each guard removable with no test failing. Loosening `===`
+to `==` would let the object out with the amount in it. Dropping the `?.` would make the empty page
+a raw `TypeError`. And the page half of the row check, from the step's first build, had no test at
+all: without it, the agent gets `[{}]` labelled `public`.
+**Cost:** a few lines.
+**Rejected:** writing them down only.
+**Not testable today:** that the door hands `holdsMoney`'s answer to the money rule. With the table
+as it is, `amount` is confidential either way, so a door that always said "not a money field" gives
+the same answers. `labelOfValue`'s own test pins the rule (decision 113), and nothing outside the
+door can see the call.
 
