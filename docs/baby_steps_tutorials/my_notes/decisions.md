@@ -3928,3 +3928,50 @@ beside the README's eight, which were measured twice:
 | an empty list of scopes read as no scopes | 1 | 1, that test |
 | a person's scopes are ignored | 1 | 1, that test |
 | a suspended slip counts as active | 2: the suspended slip, the revoked one | those 2 |
+
+## 129 · Step 19's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** At 2 a.m. the agent makes a payment under del_100, and the log says `direct`:
+subject `accounts-payable-fte`, nobody in the actor chain, no slip. It says the agent acted for
+itself, which is the opposite of what happened: the authority was `user_123`'s. And what `user_123`
+holds comes from this program's own list of people, which never changes while it runs. When
+`user_123` changes jobs on Monday, the company's directory knows and DSoR does not. `DSOR-IDN-05`
+asks that each company configure a role source DSoR can ask about a person who is not in the
+request, `DSOR-IDN-06` that a command be refused when that person's authority cannot be established
+within 24 hours, and `DSOR-DEL-07` that a slip say whether it may be used with nobody present.
+
+1. **An agent's command under a slip is `unattended`.** The agent logs in as itself and no person
+   is present. `on_behalf_of`, where the agent exchanges a present person's token, is step 45.
+   Everything else stays `direct`: a person, an agent's reads under its own role, and an agent's
+   command refused before its slip was in hand, because no one's authority was used. Rejected:
+   recording such a refusal as `unattended`, which needs a subject only a slip can name.
+2. **A slip says in which modes it may be used**: `modes`, never empty, from `on_behalf_of` and
+   `unattended`. An agent's command is accepted only under a slip that allows `unattended`
+   (`DSOR-DEL-07`), and refused with `DELEGATION_REQUIRED` otherwise. The specification's del_100
+   allows both; this one allows `unattended` alone, because a slip grants only what exists, as 014
+   said of its permissions, and `on_behalf_of` is step 45's. The column keeps that as its default,
+   because there is no operation to sign a slip yet, and the story's reset runs 014 again, which
+   names no modes; the operation that signs slips will name them. Rejected: no default, under which
+   014 cannot run again.
+3. **The subject is the slip's signer** (`DSOR-DEL-08`). The record of an agent's command under
+   del_100 says `unattended`, subject `user_123`, actor chain `accounts-payable-fte`, slip
+   `del_100`, and where `user_123`'s authority came from and when: the role source, as of the
+   directory's answer (`DSOR-DEL-10`). The correlation still names the agent, who logged in.
+   Nothing in the request is read for any of it. Rejected: the agent as the subject and the signer
+   in an extension, when the schema's `identity` has a place for each.
+4. **The role source is a company directory, a fake one**: one per company, a table in memory built
+   from this program's people, that a test or the demo can change, make stale, or switch off. It
+   says what a person holds and when that was true. DSoR asks it about the slip's signer at every
+   decision; a person who is logged in brings their own. Rejected: a table in DSoR's store, which
+   would make DSoR its own directory; and a real SCIM or identity-provider adapter, which needs a
+   service this tutorial does not run.
+5. **No answer within 24 hours is no answer** (`DSOR-IDN-06`, §44's bound for L2). A directory that
+   is down, a company with none, or an answer older than 24 hours refuses the command with
+   `DEPENDENCY_TIMEOUT`, safe to send again: the refusal decision 128 built at §21.3. Never the last
+   answer DSoR saw, which is exactly the months-old answer the rule exists for.
+6. **The record keeps the slip.** `dsor.audit` gains a `delegation` column for the schema's field,
+   the application may write it, and the chain's hash covers it, like every field.
