@@ -15,7 +15,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { theLog } from "../src/audit.ts";
 import { rolesOfThisProgram, useRoleSource } from "../src/authority.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
+import { overPGlite } from "../src/database.ts";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { useDatabase, type Database } from "../src/store.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -208,6 +210,70 @@ describe("an agent's command runs under its slip", () => {
     await owner("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'");
 
     expect((await create(SUPERVISOR)).kind).toBe("result");
+  });
+});
+
+describe("when the slip, or what its signer holds, cannot be read", () => {
+  // Decision 128: both left the door as a thrown error, with nothing recorded. Nothing has run at
+  // §21.3, so the refusal is safe to send again, and §21.11 records it like any other.
+  const decisions = async (): Promise<string[]> =>
+    (await theLog("org_456")).filter((r) => r.kind === "decision").map((r) => r.result);
+
+  /** The database, with one kind of statement failing, until `run` is done. */
+  async function withTheStoreFailing<T>(
+    fails: (sql: string) => boolean,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const real = overPGlite(db);
+    const failing: Database = {
+      query: (sql, params, tenant) =>
+        fails(sql)
+          ? Promise.reject(new Error("connection terminated"))
+          : real.query(sql, params, tenant),
+    };
+
+    useDatabase(failing);
+
+    try {
+      return await run();
+    } finally {
+      useDatabase(real);
+    }
+  }
+
+  it("DSOR-IDN-06: what the signer holds cannot be read, so the command is refused, safe to send again, and recorded", async () => {
+    useRoleSource(() => {
+      throw new Error("the directory did not answer");
+    });
+
+    const refusal = refusalOf(await create(AGENT));
+
+    expect(refusal.code).toBe("DEPENDENCY_TIMEOUT");
+    expect(refusal.retry).toBe("safe_same_key");
+    expect(await decisions()).toStrictEqual(["DEPENDENCY_TIMEOUT"]);
+  });
+
+  it("DSOR-EXE-02: the slip cannot be read, so the command is refused, and the refusal is recorded", async () => {
+    const answer = await withTheStoreFailing(
+      (sql) => sql.includes("dsor.delegations"),
+      () => create(AGENT),
+    );
+
+    expect(refusalOf(answer).code).toBe("DEPENDENCY_TIMEOUT");
+    expect(await decisions()).toStrictEqual(["DEPENDENCY_TIMEOUT"]);
+  });
+
+  it("DSOR-EXE-03b: with the database down, the agent is told what a person is told", async () => {
+    for (const login of [SUPERVISOR, AGENT]) {
+      const answer = await withTheStoreFailing(
+        () => true,
+        () => create(login),
+      );
+
+      expect(refusalOf(answer).code, login.loggedInAs).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    }
+
+    expect(await decisions()).toStrictEqual([]);
   });
 });
 

@@ -627,7 +627,25 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
     return carryOn(context);
   }
 
-  const slip = await activeSlipFor(tenant, principal.id);
+  // A slip DSoR cannot read, or a signer whose authority it cannot establish, is a refusal like any
+  // other, recorded at §21.11, and safe to send again, because nothing has run. Both used to leave
+  // the door as a thrown error with nothing recorded, and with the database down an agent got a
+  // stack trace where a person got EVIDENCE_STORE_UNAVAILABLE (DSOR-IDN-06, decision 128).
+  const notEstablished = (what: string): StageResult =>
+    refuse(
+      principal.id,
+      "DEPENDENCY_TIMEOUT",
+      `${what} could not be read, so nothing was done; it is safe to send again`,
+      context.requestId,
+    );
+
+  let slip;
+
+  try {
+    slip = await activeSlipFor(tenant, principal.id);
+  } catch {
+    return notEstablished(`${principal.id}'s permission slip in ${tenant}`);
+  }
 
   if (slip === undefined) {
     return refuse(
@@ -656,11 +674,15 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   // A signer the role source does not know in this company holds nothing there, and the agent
   // holds nothing under them.
-  const authority = effectiveAuthority(
-    slip,
-    holdsNow(slip.delegator, tenant) ?? [],
-    context.scopes,
-  );
+  let signerHolds;
+
+  try {
+    signerHolds = holdsNow(slip.delegator, tenant) ?? [];
+  } catch {
+    return notEstablished(`what ${slip.delegator} holds in ${tenant} now`);
+  }
+
+  const authority = effectiveAuthority(slip, signerHolds, context.scopes);
 
   return carryOn({ ...context, delegation: slip, authority });
 };
