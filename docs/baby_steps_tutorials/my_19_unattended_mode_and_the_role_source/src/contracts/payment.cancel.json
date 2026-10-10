@@ -1,0 +1,48 @@
+{
+  "id": "payment.cancel",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "PaymentCancelRequest"
+  },
+  "output": {
+    "schema": "Payment"
+  },
+  "authorization": {
+    "permission": "payment:cancel"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": true
+  },
+  "idempotency": {
+    "required": false
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": ["state.payment.status == \"draft\""]
+  },
+  "controls": [],
+  "risk": {
+    "level": "low"
+  },
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "com.panaversity.tutorial": {
+      "example_request": {
+        "payment": "dsor://org_456/payment/PAY-901"
+      }
+    }
+  }
+}
