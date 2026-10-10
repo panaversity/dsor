@@ -352,8 +352,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
                JOIN pg_namespace ns ON ns.oid = c.relnamespace
               WHERE pg_has_role(current_user, ns.nspowner, 'MEMBER')) AS owns_schema,
-            -- NEW IN STEP 16: the schemas it may create things in, itself or one SET ROLE away.
-            (SELECT string_agg(DISTINCT ns.nspname, ', ' ORDER BY ns.nspname)
+            -- NEW IN STEP 16: where it may create things, itself or one SET ROLE away, as each
+            -- role and schema, so the refusal can say which grant to take back (decision 124).
+            (SELECT string_agg(DISTINCT r.rolname || ' on ' || ns.nspname, ', '
+                               ORDER BY r.rolname || ' on ' || ns.nspname)
                FROM pg_namespace ns CROSS JOIN pg_roles r
               WHERE ns.nspname IN ('dsor', 'public')
                 AND pg_has_role(current_user, r.oid, 'MEMBER')
@@ -443,11 +445,12 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // made after the migrations passes them by (decision 123).
   if (second.creates_in !== null) {
     throw new Error(
-      `this connection is \`${answer.who}\`, which may create tables, views or functions in the ` +
-        `schema \`${second.creates_in}\`, itself or one SET ROLE away. Only the migrations put ` +
-        `things there: a table the application made would be its own, every row of it. Revoke ` +
-        `CREATE on the schema from \`${APPLICATION_ROLE}\`; see ` +
-        `migrations/008_the_control_plane_store.sql.`,
+      `this connection is \`${answer.who}\`, and it may create tables, views or functions where ` +
+        `only the migrations should, itself or one SET ROLE away: ${second.creates_in}. A table ` +
+        `the application made there would be its own, every row of it. Take CREATE on that schema ` +
+        `back from that role, or take away the membership that reaches it. Migrations ` +
+        `002_runtime_user.sql and 008_the_control_plane_store.sql take it back from ` +
+        `\`${APPLICATION_ROLE}\`, on public and on dsor.`,
     );
   }
 

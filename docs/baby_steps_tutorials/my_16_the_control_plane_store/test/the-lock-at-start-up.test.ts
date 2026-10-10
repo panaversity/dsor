@@ -373,7 +373,7 @@ describe("a schema the application may create things in", () => {
       await asTheOwner(() => db.exec(`GRANT CREATE ON SCHEMA ${schema} TO ${APPLICATION_ROLE}`));
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        new RegExp(`may create tables, views or functions in the schema \`${schema}\``),
+        new RegExp(`only the migrations should, itself or one SET ROLE away: ${APPLICATION_ROLE} on ${schema}`),
       );
 
       // And the route is real: as the application, a table of a later step's name, its own.
@@ -394,7 +394,7 @@ describe("a schema the application may create things in", () => {
     });
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-      /may create tables, views or functions in the schema `dsor`/,
+      /only the migrations should, itself or one SET ROLE away: a_builder on dsor/,
     );
   });
 });
