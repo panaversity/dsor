@@ -368,15 +368,23 @@ describe("an answer the door cannot filter", () => {
   it("a handler that returns no row at all is the program's own error, never a crash", async () => {
     // A review handed the door a `data` answer whose invoice was null and got a raw TypeError out
     // of it, after the decision was recorded: no envelope, no code, nothing a caller can read.
-    for (const row of [null, undefined, "INV-1008"]) {
+    // Decision 113: and money, which is one value and not a row, asked as the agent too. For the
+    // supervisor, money taken for a row is refused later anyway: the record of the read cannot
+    // name a row with no address. For the agent both parts are withheld, nothing confidential is
+    // left to write down, and only the row check stands between it and an empty invoice. Measured:
+    // with the row check forgetting money, the supervisor's case alone stayed green.
+    for (const row of [null, undefined, "INV-1008", { value: "31400.00", currency: "USD" }]) {
       const door = makeDoor(PIPELINE, { "invoice.get": handing(row as unknown as object) });
-      const answer = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
-      expect(answer.kind, String(row)).toBe("error");
+      for (const caller of [SUPERVISOR, AGENT]) {
+        const answer = await door(caller, "invoice.get", { invoice: INV_1008 });
 
-      if (answer.kind === "error") {
-        expect(answer.envelope.code).toBe("INTERNAL_ERROR");
-        expect(answer.envelope.retry).toBe("never");
+        expect(answer.kind, `${String(row)}, asked by ${caller.loggedInAs}`).toBe("error");
+
+        if (answer.kind === "error") {
+          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.retry).toBe("never");
+        }
       }
     }
   });
