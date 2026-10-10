@@ -49,32 +49,49 @@ interface Row {
   readonly expires_at: string | null;
 }
 
+/** What DSoR found when it looked for an agent's active slip in one company. */
+export type SlipFound =
+  | { readonly kind: "none" }
+  | { readonly kind: "one"; readonly slip: Delegation }
+  | { readonly kind: "more_than_one"; readonly ids: readonly string[] };
+
 /**
- * The agent's active slip in one company, or `undefined` when it has none.
+ * The agent's active slip in one company: none, one, or more than one.
  *
  * "Active" is the slip's status. Whether it has expired is the caller's to ask, against the time of
  * the decision, so that an expired slip is refused for being expired and not for being absent.
+ *
+ * More than one is said, never chosen between. Migration 013's index makes sure of one, and an owner
+ * can drop an index: a review did, added a slip with no limit beside del_100, and DSoR took
+ * whichever row came first (decision 128). So it reads up to two, and the caller refuses two.
  */
-export async function activeSlipFor(
-  tenant: string,
-  delegate: string,
-): Promise<Delegation | undefined> {
+export async function activeSlipFor(tenant: string, delegate: string): Promise<SlipFound> {
   const { rows } = await theDatabase(tenant).query<Row>(
     `SELECT tenant, id, delegator, delegate, permissions,
             per_transaction_limit_value::text AS limit_value,
             per_transaction_limit_currency AS limit_currency,
             status, to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at
        FROM dsor.delegations
-      WHERE tenant = $1 AND delegate = $2 AND status = 'active'`,
+      WHERE tenant = $1 AND delegate = $2 AND status = 'active'
+      ORDER BY id
+      LIMIT 2`,
     [tenant, delegate],
   );
+
+  if (rows.length > 1) {
+    return Object.freeze({
+      kind: "more_than_one",
+      ids: Object.freeze(rows.map((r) => r.id)),
+    });
+  }
+
   const row = rows[0];
 
   if (row === undefined) {
-    return undefined;
+    return Object.freeze({ kind: "none" });
   }
 
-  return Object.freeze({
+  const slip: Delegation = Object.freeze({
     id: row.id,
     tenant: row.tenant,
     delegator: row.delegator,
@@ -87,6 +104,8 @@ export async function activeSlipFor(
     status: row.status,
     expiresAt: row.expires_at ?? undefined,
   });
+
+  return Object.freeze({ kind: "one", slip });
 }
 
 /**

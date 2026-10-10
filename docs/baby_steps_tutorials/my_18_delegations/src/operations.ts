@@ -639,15 +639,26 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
       context.requestId,
     );
 
-  let slip;
+  let found;
 
   try {
-    slip = await activeSlipFor(tenant, principal.id);
+    found = await activeSlipFor(tenant, principal.id);
   } catch {
     return notEstablished(`${principal.id}'s permission slip in ${tenant}`);
   }
 
-  if (slip === undefined) {
+  // Decision 128: two slips are refused, never chosen between. Which one applies is DSoR's to know,
+  // and when it cannot know, the agent acts under neither.
+  if (found.kind === "more_than_one") {
+    return refuse(
+      principal.id,
+      "DELEGATION_REQUIRED",
+      `${principal.id} holds more than one active permission slip in ${tenant} (${found.ids.join(", ")}), and DSoR does not choose between them`,
+      context.requestId,
+    );
+  }
+
+  if (found.kind === "none") {
     return refuse(
       principal.id,
       "DELEGATION_REQUIRED",
@@ -655,6 +666,8 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
       context.requestId,
     );
   }
+
+  const slip = found.slip;
 
   // In force only when its expiry is shown to be later than now. Asked this way round because
   // `NaN <= now` is false: an expiry JavaScript cannot read, a year after 9999, passed as not

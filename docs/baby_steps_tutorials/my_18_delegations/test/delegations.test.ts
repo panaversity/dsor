@@ -118,6 +118,30 @@ describe("the slip, in DSoR's own store", () => {
     expect(second).toMatch(/one_active_slip_per_agent/);
   });
 
+  it("DSOR-DEL-01a: two active slips are refused, never chosen between", async () => {
+    // Decision 128: the index made sure of one, and nothing asked again. With the index dropped and a
+    // second slip with no limit beside del_100, a review's 60,000.00 USD payment was committed.
+    await owner("DROP INDEX dsor.one_active_slip_per_agent");
+
+    try {
+      await owner(
+        `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+         VALUES ('org_456', 'del_050', 'user_123', 'accounts-payable-fte', ARRAY['payment:create'],
+                 'active', '2099-12-31T23:59:59Z')`,
+      );
+
+      const refusal = refusalOf(await create(AGENT, { value: "60000.00", currency: "USD" }));
+
+      expect(refusal.code).toBe("DELEGATION_REQUIRED");
+      expect(refusal.message).toMatch(/del_050, del_100/);
+    } finally {
+      await owner("DELETE FROM dsor.delegations WHERE id = 'del_050'");
+      await owner(
+        "CREATE UNIQUE INDEX one_active_slip_per_agent ON dsor.delegations (tenant, delegate) WHERE status = 'active'",
+      );
+    }
+  });
+
   it("DSOR-RP-01b: the slips are under the second lock, forced, and a statement with no company sees none", async () => {
     const { rows } = await db.query<{ on: boolean; forced: boolean }>(
       "SELECT relrowsecurity AS on, relforcerowsecurity AS forced FROM pg_class WHERE oid = 'dsor.delegations'::regclass",

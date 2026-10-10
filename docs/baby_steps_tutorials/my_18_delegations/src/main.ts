@@ -324,9 +324,10 @@ console.log();
 console.log("Under whose authority? The agent's commands run under a permission slip:");
 console.log();
 
-const slip = await activeSlipFor("org_456", "accounts-payable-fte");
+const found = await activeSlipFor("org_456", "accounts-payable-fte");
 
-if (slip !== undefined) {
+if (found.kind === "one") {
+  const slip = found.slip;
   const limit = slip.perTransactionLimit;
 
   console.log(
