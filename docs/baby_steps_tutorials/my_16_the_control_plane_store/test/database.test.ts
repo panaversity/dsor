@@ -259,11 +259,15 @@ describe("refuseIfItCanRewriteHistory", () => {
 
     await db.exec("CREATE ROLE dsor_runtime;");
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
-    await db.exec("CREATE TABLE dsor.audit (result TEXT);");
+    await db.exec("CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');");
     // STEP 11: both tenant tables must exist, or the check refuses before this test's question.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
-    await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
+    // NEW IN STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
+    // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
+    // UPDATE failed with "permission denied for schema dsor", a review measured, and the test still
+    // passed. The last lines below ask for the route itself, so that cannot happen quietly again.
+    await db.exec("GRANT USAGE ON SCHEMA dsor TO editor; GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime WITH INHERIT FALSE;");
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
@@ -275,6 +279,12 @@ describe("refuseIfItCanRewriteHistory", () => {
     expect(rows[0]?.may).toBe(false);
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SET ROLE away/);
+
+    // NEW IN STEP 16: and what the check refused is a real route: as `editor`, the record changes.
+    await db.exec("SET ROLE editor");
+    const rewrite = await db.query("UPDATE dsor.audit SET result = 'REWRITTEN'");
+
+    expect(rewrite.affectedRows).toBe(1);
 
     await db.close();
   });
