@@ -1,4 +1,4 @@
-// NEW IN STEP 15: every answer says how old its data is, and from where.
+// STEP 15: every answer says how old its data is, and from where.
 //
 // Measured on step 14's demo: the agent's answer for INV-1008 is `issued`, and nothing more. It
 // does not say when that was true, or where it came from. An agent that keeps the answer in its

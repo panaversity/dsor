@@ -211,7 +211,7 @@ function copyRow(row: unknown): unknown {
 export function copyOnce(answer: HandlerAnswer): HandlerAnswer {
   const { kind, askedBy } = answer;
 
-  // NEW IN STEP 15: a read's freshness label is copied once too, like a row. What leaves keeps only
+  // STEP 15: a read's freshness label is copied once too, like a row. What leaves keeps only
   // its three named parts: `leaveTheDoor` does that, in one place (decision 121).
   if (kind === "data") {
     return Object.freeze({
@@ -368,7 +368,7 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
       invoice: shown as Shown<Invoice>,
       classification: highestOf(labels),
       redactions: redactionsFor(withheld),
-      // NEW IN STEP 15: how old the data is goes out with it (DSOR-FRS-01a), as its three named
+      // STEP 15: how old the data is goes out with it (DSOR-FRS-01a), as its three named
       // parts here too, so `leaveTheDoor` alone lets nothing ride along in it (decision 121).
       freshness: labelFrom(answer.freshness) as Freshness,
     });

@@ -77,7 +77,7 @@ function fromRow(row: Row): Invoice {
  * The invoice is `undefined` when that company has no such invoice — including when another
  * company has one by that number. A missing invoice is an ordinary answer, not a crash.
  *
- * NEW IN STEP 15: with how fresh it is (DSOR-FRS-01a). The label is taken just before the query,
+ * STEP 15: with how fresh it is (DSOR-FRS-01a). The label is taken just before the query,
  * so the row is at least as fresh as it says: taken after the reply, it claimed a round trip more
  * freshness than was true (decision 121).
  */
@@ -176,7 +176,7 @@ export interface InvoicePage {
  * for one more than that, which is how the page knows whether there is a next one without a
  * second count query.
  *
- * NEW IN STEP 15: with how fresh it is, one label for the page, because a page is one read, taken
+ * STEP 15: with how fresh it is, one label for the page, because a page is one read, taken
  * just before the query, as `getInvoice`'s is.
  */
 export async function listInvoices(

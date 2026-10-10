@@ -67,7 +67,7 @@ function demo(): { raw: string; report: string } {
     throw new Error(`the demo did not run on the on-disk route:\n${raw.split("\n")[1]}`);
   }
 
-  // NEW IN STEP 15: and the time each read was read, which also changes on every run.
+  // STEP 15: and the time each read was read, which also changes on every run.
   return {
     raw,
     report: raw
@@ -298,7 +298,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
-    // NEW IN STEP 15: under each read, a line of its own: the mode, when, and from where. The time
+    // STEP 15: under each read, a line of its own: the mode, when, and from where. The time
     // changes every run, so the test pins its shape, not its value.
     const out = demo().raw;
 

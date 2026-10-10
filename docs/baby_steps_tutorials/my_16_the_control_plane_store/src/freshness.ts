@@ -1,4 +1,4 @@
-// NEW IN STEP 15: every answer says how old its data is, and from where.
+// STEP 15: every answer says how old its data is, and from where.
 //
 // Measured on step 14's demo: the agent's answer for INV-1008 is `issued`, and nothing more. At
 // 09:00 the agent reads it and keeps it in its memory; at 09:30 user_123 pays the invoice; at 10:00

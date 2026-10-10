@@ -49,7 +49,7 @@ import {
   type ShownPage,
 } from "./boundary.ts";
 import type { Classification } from "./classification.ts";
-// NEW IN STEP 15: how old an answer's data is, and the door's check that a read says so.
+// STEP 15: how old an answer's data is, and the door's check that a read says so.
 import { cannotBeLabelled, type Freshness } from "./freshness.ts";
 import { parseUri } from "./uri.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
@@ -79,7 +79,7 @@ export type OperationAnswer =
       readonly classification: Classification;
       /** STEP 14: what was taken out, and why (DSOR-CLS-02b). Empty for a human. */
       readonly redactions: readonly Redaction[];
-      /** NEW IN STEP 15: how old the data is, and from where (DSOR-FRS-01a). */
+      /** STEP 15: how old the data is, and from where (DSOR-FRS-01a). */
       readonly freshness: Freshness;
     }
   /** STEP 13: many rows, and where the next page starts. */
@@ -89,7 +89,7 @@ export type OperationAnswer =
       readonly page: ShownPage;
       readonly classification: Classification;
       readonly redactions: readonly Redaction[];
-      /** NEW IN STEP 15: one label for the page, because a page is one read. */
+      /** STEP 15: one label for the page, because a page is one read. */
       readonly freshness: Freshness;
     }
   | { readonly kind: "result"; readonly askedBy: string; readonly envelope: ResultEnvelope }
@@ -98,7 +98,7 @@ export type OperationAnswer =
 /**
  * STEP 14: what a handler hands the door — the whole row, with no classification yet. The door
  * turns it into an OperationAnswer on the way out (boundary.ts), which is the only way out.
- * NEW IN STEP 15: a read hands over its freshness label, written by the code that read.
+ * STEP 15: a read hands over its freshness label, written by the code that read.
  */
 export type HandlerAnswer =
   | {
@@ -211,7 +211,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     // STEP 10: inside this request's company. There is no "INV-1008" any more, only
     // "org_456's INV-1008", and the store is asked that way.
-    // NEW IN STEP 15: and the read comes back with its label, which goes out with the row.
+    // STEP 15: and the read comes back with its label, which goes out with the row.
     const { value: invoice, freshness } = await getInvoice(tenant, read.id);
 
     // Step 03 answered `undefined` here and left the caller to work out why. An absent
@@ -259,7 +259,7 @@ const handlers: Readonly<Record<string, Handler>> = {
       after = read.id;
     }
 
-    // NEW IN STEP 15: one read, one label, for the whole page.
+    // STEP 15: one read, one label, for the whole page.
     const { value: page, freshness } = await listInvoices(tenant, after, limit);
 
     return { kind: "page", askedBy, page, freshness };
@@ -1032,7 +1032,7 @@ export function makeDoor(
   assertPipeline(checked);
 
   return async (login, id, args) => {
-    // NEW IN STEP 15: when this request began, on this program's clock. A read labelled `current`
+    // STEP 15: when this request began, on this program's clock. A read labelled `current`
     // must have happened after it (DSOR-FRS-01b), and this is the clock its label's time comes from.
     const startedAt = Date.now();
     // STEP 08: one id for this request, minted here — before the first stage, because the
@@ -1145,7 +1145,7 @@ export function makeDoor(
       });
     }
 
-    // NEW IN STEP 15: and a read leaves only with a label that says how old it is (decision 120).
+    // STEP 15: and a read leaves only with a label that says how old it is (decision 120).
     // The code that read writes the label; the door does not know where data came from, so it
     // cannot write one, and insists on one instead.
     const unlabelled = cannotBeLabelled(answer, startedAt, contract.kind);

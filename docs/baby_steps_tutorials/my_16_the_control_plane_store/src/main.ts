@@ -31,7 +31,7 @@ function withheld(redactions: readonly { field: string; reason: string }[] | und
     : `\n${" ".repeat(24)}withheld: ${redactions.map((r) => `${r.field} (${r.reason})`).join(", ")}`;
 }
 
-// NEW IN STEP 15: how old a read is, on a line of its own under it: the mode, when, from where.
+// STEP 15: how old a read is, on a line of its own under it: the mode, when, from where.
 function howOld(freshness: Freshness): string {
   return `\n${" ".repeat(24)}${freshness.mode}, read at ${freshness.observed_at} from ${freshness.connector}`;
 }
