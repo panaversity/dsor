@@ -1,11 +1,11 @@
 # Step 14 · Classification and masking
 
-Folder: [`my_14_classification_and_masking`](../my_14_classification_and_masking/README.md) · 504
+Folder: [`my_14_classification_and_masking`](../my_14_classification_and_masking/README.md) · 506
 tests, plus 39 in the database tier
 Spec: [§19](../../../specs/dsor/02-security.md#19-classification-and-read-side-governance) ·
 `DSOR-CLS-01`, `DSOR-CLS-02a`, `DSOR-CLS-02b`, `DSOR-CLS-03`, `DSOR-CLS-05`
-Both tiers have run: 504 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the step's
-own database `dsor_step14`, six migrations applied, one new. Decisions [105 to 108](decisions.md).
+Both tiers have run: 506 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the step's
+own database `dsor_step14`, seven migrations applied, two new. Decisions [105 to 111](decisions.md).
 
 ## What the step is
 
@@ -166,3 +166,28 @@ migration 007, which adds the column and its `GRANT`; and the move itself, red f
   the column.
 - The README's fifteen breaks, measured again: all fifteen the same. A first pass on a slow machine
   gave five wrong numbers, with tests skipped, and was thrown away.
+
+## After the step: money, and names the table only inherits (decisions 110 and 111, 2026-10-10)
+
+Two ways a value still reached the agent, both found while finishing the row count, and both shown
+with a run before anything was fixed. The learner chose to close both, each in commits of its own.
+
+- **Money was trusted by its shape** (decision 110). Decision 107 let money, `{ value, currency }`,
+  keep its field's label wherever it was. A handler that put the amount in `vendor` sent it to the
+  agent, labelled `internal`, and the list of what was withheld was empty. Now money keeps its
+  field's label only in a field declared to hold money, which today is `invoice.amount`. Anywhere
+  else it is a value with parts inside, so it is at least confidential.
+- **The label table answered names it only inherits** (decision 111). The table is a JavaScript
+  object, and every object inherits `toString`. `labelOf("invoice", "toString")` returned a
+  function, which is no label, so it was never above a clearance: fields named `toString` and
+  `valueOf` left for the agent with the amount in them. `labelOf` asks for the table's own names
+  now, as `permissionsOf` has since decision 36.
+- Two new tests: 506 under `pnpm check`, and 39 under `pnpm test:db` on Neon, unchanged.
+- Break 13 had been measuring another guard. The function it breaks also told the door what a row
+  is, so all 65 of its failures were the door refusing every row, the three tests about the label
+  among them. Those are two functions now, and Break 13 fails 4, all about the label.
+- The README's fifteen breaks, measured twice after both decisions, the two runs agreeing.
+- A hostile review of the two found no new way past the filter through a row. It found two parts
+  of an answer the filter never looks at, `askedBy` and a page's `next`, a gap from the step's
+  first build; two guards no test pins; and sentences in the comments, the notes and the README
+  that said more than was measured. The sentences are corrected; the rest is not yet decided.

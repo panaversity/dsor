@@ -2861,7 +2861,8 @@ README's numbers.
 with the agent's answer drawn both ways.
 **What:** a money value, `{ value, currency }`, is one value, described whole by its field's label,
 only in a field the table declares as money: today `invoice.amount`. Anywhere else it is a value
-with parts inside, and so confidential (decision 107): withheld from an agent, and listed.
+with parts inside, and so at least confidential (decision 107): withheld from this step's agent,
+which is cleared for `internal`, and listed.
 `classification.ts` keeps the list beside the labels, and `holdsMoney` asks it.
 **Why:** decision 107's exception was given by the value's shape, not by its field. Measured on
 2026-10-09: a handler that returned `vendor: { value: "31400.00", currency: "USD" }` sent the amount
@@ -2870,14 +2871,28 @@ specification's entity schema gives every field a type as well as a label (§6, 
 `amount: { type: money, classification: confidential }`. A field's declared type decides, not a
 value's shape.
 **Cost:** a second list beside the labels, and the two must agree. When they disagree, the stricter
-answer wins: money in a field not on the list is confidential. One new test, and the README's
-fifteen breaks measured again. Break 13 was measured first, and most of it was another guard:
-`isPlain` was also the door's "is this a row?" check, so 62 of its 65 failures were the door
-refusing every answer as not a row. The two jobs are two functions now, and Break 13 measures the
-label alone.
+answer wins: money in a field not on the list is at least confidential. One new test, and the
+README's fifteen breaks measured again, after decision 111 (below it). Break 13 was measured first,
+and it had been measuring another guard: `isPlain` was also the door's "is this a row?" check, so
+all 65 of its failures were the door refusing every answer as not a row, the three tests about the
+label among them. The two jobs are two functions now, and Break 13 measures the label alone.
 **Rejected:** saying it plainly in the README and leaving the code. Cheap, and a handler's mistake
 stays a leak. An amount written as text in `vendor` still leaves either way, because a label
 describes a field and not the value in it (open question 50).
+
+**Red first.** The new boundary test failed with the amount in the agent's answer, and the
+declaration's lines with `holdsMoney is not a function`. Then `pnpm check`: 505 passed.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| `holdsMoney` says yes for every field: money judged by its shape again | 2: the new test and the declaration's `vendor` line | 2, those two |
+| `holdsMoney` says no for every field | 1: the declaration's `amount` line | 1, that line |
+
+The second break is visible only to the declaration. In the story the amount is confidential either
+way, so the answers the agent and the supervisor get are the same with or without it, and the
+declaration's test is the one place that can say the list is wrong.
 
 ## 111 · A field's label is looked up among the table's own names (2026-10-10)
 
@@ -2895,6 +2910,71 @@ It is decision 36's bug in a file written after it — lesson 13 again: a fix be
 shape lives.
 **Cost:** one test, and a lookup that reads as a guard rather than one line. Only the program's own
 handlers could name such a field; the agent cannot.
-**Rejected:** recording it for a later session. The fix is one line, and until it lands a handler's
-mistake sends that field to the agent.
+**Rejected:** recording it for a later session. The fix is a few lines, and until it lands a
+handler's mistake sends that field to the agent.
+
+**Red first.** `expected [Function toString] to be 'confidential'`, and the amount in the agent's
+answer. Then `pnpm check`: 506 passed.
+
+**Proved by breaking it.** The lookup is two guards, one for the entity and one for the field, and
+each was removed alone, as lesson 18 asks: what does this guard catch that no other does?
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| no own-name check for the entity | 1: the `constructor` line of the unit test | 1, that line |
+| no own-name check for the field | 2: the `toString` line and the boundary test | 2, those two |
+
+**The README's fifteen breaks, measured again after both decisions.** Twice, one at a time on a
+quiet machine, and the two runs agreed on all fifteen. The suite is two tests longer, so every
+total moved by two. The failing counts that moved:
+
+- Breaks 1, 2, 3 and 5 fail two more, because both new tests read as the agent. Break 7 fails one
+  more, and Break 12 two more: 187.
+- Break 4 fails five, as before, but not the same five. The inherited-name test joined. The test
+  that refuses a confidential row with no address left: that row's amount is now money outside a
+  money field, so it stays confidential even with the default broken, and the read is still
+  refused. Measured on a copy of the code from before decision 110, with the same break.
+- Break 13 fails four where it failed sixty-five: the nested value, the value with its own
+  `toJSON`, the nearly-money value, and money in `vendor`. The README had explained the sixty-five
+  another way, as an amount read as its own label, "Break 6 in reverse". That explanation was
+  wrong.
+- Break 11 had always failed two tests, both with a connection that drops the record's INSERT,
+  while the README said one. It says two now.
+
+Decision 109's three breaks, twice more: no count written fails 3, the read-back without
+`row_count` 7, and 007 without its `GRANT` 187, the same in both runs. The README's Break 12 says
+187 now.
+
+**The hostile review of 110 and 111.** One reviewer, read-only, with probes in its own copy and no
+test runs while the breaks were being measured. It found no new way past the filter through a row.
+Money in `vendor`, fields named `toString`, `constructor` or `__proto__`, rows built with
+`Object.create`, hidden and symbol keys, a getter that changes its value, and arrays all held. The
+split changed nothing the door accepts: 96 answer shapes through the old and the new row check, and
+no difference. What it did find:
+
+1. **Two parts of an answer the filter never looks at:** `askedBy`, and a page's `next` while the
+   rows' addresses are shown. A handler that put a row in either sent the amount to the agent, with
+   `amount` listed as withheld beside it. This is a gap from the step's first build, not from these
+   two decisions. Not yet decided.
+2. **Two guards no test pins.** With today's table, the money exception changes no answer, because
+   the one money field is confidential either way. Deleting it fails nothing, and quietly undoes
+   what decision 107 measured. And no test hands the door money where a row should be, so its row
+   check could forget money and stay green. Not yet decided.
+3. **Two checks that fail open, both unreachable today.** `isMoney` trusts a value's own visible
+   keys, so a hidden `toJSON` passes. That matters only for an agent cleared for `confidential`.
+   And a word that is not one of the four labels ranks below `public`. Decision 111 removed the
+   place such a word came from. Not yet decided.
+4. **Sentences that said more than was measured.** These are corrected:
+   - All 65 of Break 13's old failures were the door, not 62. The three label tests went through
+     the door too, and were refused before any label was worked out.
+   - Money outside a money field is *at least* confidential. In `bank_account` it is restricted.
+   - Decision 111's fix is a few lines, not one.
+   - The README said the door applies the default "to whatever a handler returns". `askedBy` and
+     `next` make that untrue.
+   - The README's limits did not say that an amount written as text still leaves (open question
+     50).
+
+One consequence of decision 110 that the review found and nothing had recorded: a person's read
+of a row with money in `vendor` is labelled `confidential` now. So it writes a record of a
+classified read, which it did not before. That is `DSOR-CLS-05` doing its job.
 

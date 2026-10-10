@@ -74,8 +74,8 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_13
 
 | File | What |
 | --- | --- |
-| `src/classification.ts` | new — the four labels in order, the table of every entity's labels, `labelOf` (no label means confidential), `isAbove`, `highestOf`, `clearanceOf` |
-| `src/boundary.ts` | new — the model boundary: `leaveTheDoor` filters a row by the caller's clearance, labels the answer, and lists what it took out, for one invoice, a page, and a command's receipt |
+| `src/classification.ts` | new — the four labels in order, the table of every entity's labels, `labelOf` (no label means confidential, and a name the table only inherits has no label: decision 111), the fields declared to hold money and `holdsMoney` (decision 110), `isAbove`, `highestOf`, `clearanceOf` |
+| `src/boundary.ts` | new — the model boundary: `leaveTheDoor` filters a row by the caller's clearance, labels the answer, and lists what it took out, for one invoice, a page, and a command's receipt. Money is one value only in a field declared to hold money (decision 110) |
 | `src/people.ts` | a principal may carry a `clearance`; the agent's is `internal` |
 | `src/operations.ts` | `HandlerAnswer` (what a handler hands the door, the whole row) and `OperationAnswer` (what leaves, labelled); the door calls `leaveTheDoor` before the ceiling; `recordTheRead` writes the record of a confidential read, before the answer leaves |
 | `src/audit.ts` | a record may carry `resources` and `row_count`, hashed, inserted, read back |
@@ -83,15 +83,15 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_13
 | `migrations/006_classified_reads.sql` | new — two columns, `resources` and `extensions`, and a `GRANT INSERT` on exactly those two. Since decision 109 nothing writes `extensions` |
 | `migrations/007_read_row_count.sql` | new — `row_count`, the field the schema has for a read's row count, and a `GRANT INSERT` on it (decision 109) |
 | `src/main.ts` | the two lines that are no longer the same; a page says its label; the printed log shows a read as `read` with its row count |
-| `test/classification.test.ts` | new — seven tests: the table, the default, the order, the clearance, the restricted label |
-| `test/model-boundary.test.ts` | new — nineteen tests: one invoice, a page, a receipt, a field nobody labelled, a row with no address, a restricted field, a page of rows that do not look alike, an empty page, the cursor, the ceiling measured on what leaves, a receipt that does not validate, a value with parts inside, an amount that is one value, and an answer the door cannot filter |
+| `test/classification.test.ts` | new — seven tests: the table and the one field declared to hold money, the default (inherited names included), the order, the clearance, the restricted label |
+| `test/model-boundary.test.ts` | new — twenty-one tests: one invoice, a page, a receipt, a field nobody labelled, a field named like something every object inherits, a row with no address, a restricted field, a page of rows that do not look alike, an empty page, the cursor, the ceiling measured on what leaves, a receipt that does not validate, a value with parts inside, an amount that is one value, money in a field that is not a money field, and an answer the door cannot filter |
 | `test/classified-reads.test.ts` | new — eight tests: the record after the decision, a page's record, a restricted read's record, the agent's read and an empty page leaving none, a row with no address refused, and two connections that drop the record's INSERT |
 | `test/classified-reads.db.test.ts` | new — three tests on a real server: the record in the real table, and the three new columns writable and not changeable |
 | `test/main.test.ts` | the two lines pinned whole; a `read` line pinned; every record count moves — five reads in a run |
 | ten older tests | `decision-first`, `audit-lost-reply`, `pipeline`, `invoices-in-postgres`, `cross-tenant-suite-itself`, `bounded-queries`: one record per request became two for a supervisor's read; three tenancy tests that read the agent's amount now read what the agent may see |
 | everything else | a `NEW IN STEP 13` marker becoming `STEP 13` |
 
-468 tests became 504, and the database tier's 36 became 39.
+468 tests became 506, and the database tier's 36 became 39.
 
 ## Run it
 
@@ -150,17 +150,18 @@ Neon: `36 passed` before the step, `39 passed` after it, and `39 passed` again a
 
 ## Break it
 
-Fifteen, measured twice on the full suite with the files one at a time, both runs agreeing, and
-measured again after decision 109 moved the row count, all fifteen the same. The
-counts are from a copy outside the repository, where one test skips because the specification is
-not beside it, so the total reads `504` with `1 skipped`; in the repository it is `504 passed`.
+Fifteen, each measured on the full suite with the files one at a time. Decisions 110 and 111 added
+two tests and changed what Break 13 breaks, so all fifteen were measured again, twice, after both,
+and the two runs agreed. The counts are from a copy outside the repository, where one test
+skips because the specification is not beside it, so the total reads `506` with `1 skipped`; in
+the repository it is `506 passed`.
 
 ### Break 1 · the agent is not filtered
 
 In `src/boundary.ts`, in `filterRow`, make `filtered` always `false`.
 
 ```text
- Tests  26 failed | 477 passed | 1 skipped (504)
+ Tests  28 failed | 477 passed | 1 skipped (506)
 ```
 
 Every test that reads as the agent, and the demo's two lines: the amount is back.
@@ -170,7 +171,7 @@ Every test that reads as the agent, and the demo's two lines: the amount is back
 In `redactionsFor`, map over an empty slice.
 
 ```text
- Tests  13 failed | 490 passed | 1 skipped (504)
+ Tests  15 failed | 490 passed | 1 skipped (506)
 ```
 
 The field is still gone — the agent would conclude the invoice has no amount, which is exactly
@@ -181,7 +182,7 @@ what the list exists to prevent.
 In `filterRow`, push the label of a withheld field too.
 
 ```text
- Tests  16 failed | 487 passed | 1 skipped (504)
+ Tests  18 failed | 487 passed | 1 skipped (506)
 ```
 
 The agent's answer says `confidential` while holding nothing confidential: a label that lies high.
@@ -191,18 +192,19 @@ The agent's answer says `confidential` while holding nothing confidential: a lab
 In `src/classification.ts`, make `labelOf` fall back to `"public"`.
 
 ```text
- Tests  5 failed | 498 passed | 1 skipped (504)
+ Tests  5 failed | 500 passed | 1 skipped (506)
 ```
 
 The one rule the table cannot enforce by itself. The careless handler's `notes` walks out, and so
-does every field of a row with no address.
+do fields named `toString` and `valueOf`. So does every field of a row with no address, except its
+amount: money outside a field declared to hold money is confidential anyway (decision 110).
 
 ### Break 5 · the agent loses its clearance
 
 In `src/people.ts`, set the agent's `clearance` to `undefined`.
 
 ```text
- Tests  20 failed | 483 passed | 1 skipped (504)
+ Tests  22 failed | 483 passed | 1 skipped (506)
 ```
 
 The lock stays locked: an agent nobody cleared reads public fields only, and the invoice has none,
@@ -214,7 +216,7 @@ may see, not only what it may not.
 In the table, make `amount` `"internal"`.
 
 ```text
- Tests  33 failed | 470 passed | 1 skipped (504)
+ Tests  33 failed | 472 passed | 1 skipped (506)
 ```
 
 Thirty-three, the third most of any break here: the amount leaves for the agent, and nothing is
@@ -227,10 +229,10 @@ what measuring twice is for.
 Make `filtered` always `true`.
 
 ```text
- Tests  43 failed | 460 passed | 1 skipped (504)
+ Tests  44 failed | 461 passed | 1 skipped (506)
 ```
 
-Forty-three: a human with no clearance reads public fields only, so every test that reads as a
+Forty-four: a human with no clearance reads public fields only, so every test that reads as a
 person loses the row.
 
 ### Break 8 · the read is never written down
@@ -238,7 +240,7 @@ person loses the row.
 In `src/operations.ts`, in `recordTheRead`, return early for every answer.
 
 ```text
- Tests  17 failed | 486 passed | 1 skipped (504)
+ Tests  17 failed | 488 passed | 1 skipped (506)
 ```
 
 The eight tests of the record, and the older ones that now say a supervisor's read is two
@@ -249,7 +251,7 @@ records.
 Replace `rows.map((row) => row.uri)` with `[]`.
 
 ```text
- Tests  2 failed | 501 passed | 1 skipped (504)
+ Tests  2 failed | 503 passed | 1 skipped (506)
 ```
 
 The record exists, verifies, and names nothing: the two tests that read `resources` see it.
@@ -259,7 +261,7 @@ The record exists, verifies, and names nothing: the two tests that read `resourc
 Delete the check on `leaving.classification`.
 
 ```text
- Tests  9 failed | 494 passed | 1 skipped (504)
+ Tests  9 failed | 496 passed | 1 skipped (506)
 ```
 
 The agent's reads are written down too, and every count in the demo's log moves.
@@ -269,10 +271,10 @@ The agent's reads are written down too, and every count in the demo's log moves.
 In the `catch` of `recordTheRead`, return `undefined`.
 
 ```text
- Tests  2 failed | 501 passed | 1 skipped (504)
+ Tests  2 failed | 503 passed | 1 skipped (506)
 ```
 
-One test, the one with a connection that drops the record's INSERT: the rows left without a
+Two tests, the two with a connection that drops the record's INSERT: the rows left without a
 record. Everything else is green, because everything else has a store that works.
 
 ### Break 12 · migration 006 forgets the GRANT
@@ -280,15 +282,15 @@ record. Everything else is green, because everything else has a store that works
 Delete the `GRANT INSERT (resources, extensions)` line.
 
 ```text
- Tests  185 failed | 318 passed | 1 skipped (504)
+ Tests  187 failed | 318 passed | 1 skipped (506)
 ```
 
-A hundred and eighty-five, more than a third of the suite: a column-level grant does not grow
+A hundred and eighty-seven, more than a third of the suite: a column-level grant does not grow
 with the table, so every INSERT into the log is refused, and a decision that cannot be written
 down is a request that is not carried out.
 
 Migration 007's `GRANT INSERT (row_count)` teaches the same thing a second time. Delete that line
-instead, and the count is the same 185, measured twice, though only the record of a read ever
+instead, and the count is the same 187, measured twice, though only the record of a read ever
 holds a number in `row_count`. Every INSERT names the column, and sends a NULL when there is no
 count. PostgreSQL wants the privilege for every column a statement names, whatever the value.
 
@@ -297,19 +299,25 @@ count. PostgreSQL wants the privilege for every column a statement names, whatev
 In `src/boundary.ts`, make `isPlain` return `true` for everything.
 
 ```text
- Tests  65 failed | 438 passed | 1 skipped (504)
+ Tests  4 failed | 501 passed | 1 skipped (506)
 ```
 
-Sixty-five, and mostly not because of the nested row: with every value treated as plain, an amount
-— which is an object — is read as its declared label and nothing re-raises it, so this break is
-Break 6 in reverse as well. The two nested tests are two of the sixty-five.
+Four tests, and in each one the amount hides in `vendor`: inside an object, behind its own
+`toJSON`, in something that is nearly money, and as money itself in a field not declared to hold
+money. `vendor` is `internal`, so each value takes that label and leaves for the agent with the
+amount inside.
+
+Before decision 110 this break failed sixty-five tests, and only three of them were about the
+label. The door used the same function to tell a row from a value, so with it broken the door
+refused every row it was handed. The door has its own question now, `isValue`, and this break
+reaches the label alone.
 
 ### Break 14 · the door filters whatever it is handed
 
 Make `unfilterable` always `undefined`.
 
 ```text
- Tests  1 failed | 502 passed | 1 skipped (504)
+ Tests  1 failed | 504 passed | 1 skipped (506)
 ```
 
 The crash comes back: a handler that answers with no row throws out of the door instead of being
@@ -320,13 +328,13 @@ refused, after the decision was recorded.
 Delete the early return for a receipt whose `data` is absent.
 
 ```text
- Tests  1 failed | 502 passed | 1 skipped (504)
+ Tests  1 failed | 504 passed | 1 skipped (506)
 ```
 
 One test, and it is the shape step 17 will bring: filtering a receipt that has no data throws
 instead of answering.
 
-Restore each break and confirm `pnpm check` prints `504 passed` again.
+Restore each break and confirm `pnpm check` prints `506 passed` again.
 
 ## Build it yourself with Claude Code
 
@@ -373,8 +381,10 @@ Copy `my_13_bounded_queries` to a new folder and ask:
 6. Nothing of the vendor: a value with parts inside is confidential whatever its field is called,
    because a label cannot describe what it cannot see the whole of, and `vendor` is listed as
    withheld. An amount is the exception, and the only one: money is `{ value, currency }`, one
-   value in this program's vocabulary and a declared type in the specification's entity schema, so
-   its own label governs it. Without that exception the table's `amount: confidential` would stop
+   value in this program's vocabulary and a declared type in the specification's entity schema. In
+   a field declared to hold money, `amount`, its field's label governs it. Anywhere else, money is
+   a value with parts too: a `vendor` that *is* `{ value: "31400.00", currency: "USD" }` is withheld
+   as well (decision 110). Without the exception the table's `amount: confidential` would stop
    mattering, which is how the rule was measured — lowering it to `internal` changed nothing
    anywhere.
 
@@ -384,7 +394,9 @@ Copy `my_13_bounded_queries` to a new folder and ask:
 
 - **[DSOR-CLS-01 · L1]** A field with no declared classification MUST be treated as
   `CONFIDENTIAL`. `labelOf` falls back to `confidential` for a field, or an entity, that is not in
-  the table, and the door applies it to whatever a handler returns.
+  the table, and the door applies it to every field of every row a handler returns. "In the table"
+  means among its own names: `toString`, which every JavaScript object inherits, is not in it
+  (decision 111).
   ([§19.1](../../../specs/dsor/02-security.md#191-risk-and-data-classification))
 - **[DSOR-CLS-02a · L1]** For agent principals, DSoR MUST omit, mask, or tokenize any field above
   the agent's clearance or barred by the tenant's model-egress policy before the response leaves
@@ -411,13 +423,20 @@ of a read is empty until step 18, and "resource scope" is read here as the list 
 returned. A human is not filtered at all, and a principal of type `application` or `system` is
 treated like a human until a rule says otherwise. The labels live in a table in code, where the
 specification puts them in the entity schema (`DSOR-ENT-01b`), so nothing ties a label to the type
-it labels; and an entity that is not in the table gives an agent nothing at all — an empty row,
+it labels, except money: the fields that hold money are declared beside the labels (decision 110);
+and an entity that is not in the table gives an agent nothing at all — an empty row,
 labelled `public`, with every field listed — so the first payment row of a later step will arrive
 blank rather than loudly. The record of a read lists every address returned, so a page of a hundred
 is a record of a hundred addresses; it is written after the filter and before the answer leaves —
 "before" being the order of two statements in `makeDoor`, held by the fault test and not by a
 stage. An error answer is not filtered and carries no label: its message is free text, so a handler
-must never put a field's value in one, which is a rule for handlers and not a filter. And a bad
+must never put a field's value in one, which is a rule for handlers and not a filter. A label
+describes a field, not the text in it: an amount a handler writes as text into an `internal` field,
+`vendor: "31400.00 USD"`, leaves for the agent with nothing listed (open question 50). Two parts of
+an answer are never looked at by the filter: `askedBy`, which says who asked, and a page's `next`,
+its cursor, which is held back only when the rows' addresses are. A handler that put a row in
+either would send it whole, with `amount` listed as withheld beside it. The review of decisions 110
+and 111 found this, and it is not yet decided. And a bad
 `limit` still leaves an ALLOW record, as it did in step 13, because the validate stage does not
 read a contract's input schema yet.
 
