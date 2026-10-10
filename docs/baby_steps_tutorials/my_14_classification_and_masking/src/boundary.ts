@@ -98,8 +98,9 @@ function isMoney(value: unknown): boolean {
  *
  * NEW IN STEP 14, decision 110: a question of its own. It was `isPlain`, and so the same function
  * answered "is this a row?" for the door and "can the label see this whole?" for the filter.
- * Measured: Break 13 made `isPlain` say yes to everything, and 62 of its 65 failures were the door
- * refusing every answer as not a row. Only three were the label.
+ * Measured: Break 13 made `isPlain` say yes to everything, and all 65 of its failures were the
+ * door refusing every answer as not a row. Three of those tests are about the label, and they are
+ * the only ones that fail when the filter alone says yes.
  */
 function isValue(value: unknown): boolean {
   return isScalar(value) || isMoney(value);

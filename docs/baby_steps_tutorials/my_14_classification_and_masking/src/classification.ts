@@ -53,7 +53,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
  * NEW IN STEP 14, decision 110: the fields declared to hold money, by entity.
  *
  * Money, `{ value, currency }`, is one value only in one of these fields, and its field's label
- * describes it whole. Anywhere else it is a value with parts inside, and confidential. The
+ * describes it whole. Anywhere else it is a value with parts inside, and at least confidential. The
  * specification's entity schema gives every field a type as well as a label (§6, DSOR-ENT-01b):
  * `amount: { type: money, classification: confidential }`. This list is that type, for money only.
  * If it ever disagrees with the labels, the stricter answer wins.
