@@ -128,9 +128,17 @@ const TENANT_REGCLASSES = TENANT_TABLES.map(([table]) => `to_regclass('${table}'
  * STEP 17: a question asked of every role this connection is, or can become with SET ROLE.
  * `pg_has_role(…, 'MEMBER')` sees a membership whether or not it is inherited, and a role is a
  * member of itself, so the connection's own rights are asked too (decision 126).
+ *
+ * NEW IN STEP 18: and of every role it acts as through a helper. A SECURITY DEFINER function runs
+ * with its owner's rights, whoever calls it, and the log's question has been asked of those owners
+ * since step 09; the business's tables' and the slips' were not. A review lifted del_100's limit
+ * through such a helper (decision 128).
  */
-const forAnyRoleItCanBe = (question: (role: string) => string): string =>
-  `EXISTS (SELECT 1 FROM pg_roles r WHERE pg_has_role(current_user, r.oid, 'MEMBER') AND (${question("r.oid")}))`;
+const forAnyRoleItCanActAs = (question: (role: string) => string): string =>
+  `(EXISTS (SELECT 1 FROM pg_roles r WHERE pg_has_role(current_user, r.oid, 'MEMBER') AND (${question("r.oid")}))
+    OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND (${question("p.proowner")})))`;
 
 /** The tables as words, for a refusal. */
 const TENANT_TABLE_NAMES = `${TENANT_TABLES.slice(0, -1)
@@ -507,7 +515,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // the log's rights have been since step 09. A review passed start-up with DELETE on the payments
   // held by a role the application could become (decision 126); the invoices had the same gap.
   const { rows: invoices } = await db.query<{ may: boolean }>(
-    `SELECT ${forAnyRoleItCanBe(
+    `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_column_privilege(${role}, 'public.invoices', 'tenant_id', 'UPDATE')
          OR has_column_privilege(${role}, 'public.invoices', 'id', 'UPDATE')
          -- STEP 17: any column, not the table. A grant that names columns is invisible to
@@ -521,7 +529,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (invoices[0]?.may !== false) {
     throw new Error(
       `this connection is \`${answer.who}\`, and it may move, renumber, add or delete invoices, ` +
-        `itself or one SET ROLE away. The application may change an invoice's status and nothing ` +
+        `itself, one SET ROLE away, or through a helper function. The application may change an invoice's status and nothing ` +
         `else. See migrations/003_invoices.sql.`,
     );
   }
@@ -533,7 +541,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // payment's number or status nor removes one. The number is the sequence's: UPDATE on it lets
   // `setval` choose the next one, and a review made PAY-5000 that way (decision 126).
   const { rows: payments } = await db.query<{ may: boolean }>(
-    `SELECT ${forAnyRoleItCanBe(
+    `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_any_column_privilege(${role}, 'public.vendors', 'INSERT')
          OR has_any_column_privilege(${role}, 'public.vendors', 'UPDATE')
          OR has_table_privilege(${role}, 'public.vendors', 'DELETE')
@@ -555,16 +563,16 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (payments[0]?.may !== false) {
     throw new Error(
       `this connection is \`${answer.who}\`, and it may change a vendor, more of a payment than ` +
-        `its status, or a payment's number, itself or one SET ROLE away. The application reads ` +
-        `the vendors, makes a draft payment and changes a payment's status, and nothing else. See ` +
-        `migrations/009_vendors_and_payments.sql.`,
+        `its status, or a payment's number, itself, one SET ROLE away, or through a helper function. ` +
+        `The application reads the vendors, makes a draft payment and changes a payment's ` +
+        `status, and nothing else. See migrations/009_vendors_and_payments.sql.`,
     );
   }
 
   // NEW IN STEP 18: the permission slips. The application reads them and writes none: a slip it
   // could write is a slip it could sign for itself (decision 127).
   const { rows: slips } = await db.query<{ may: boolean }>(
-    `SELECT ${forAnyRoleItCanBe(
+    `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_any_column_privilege(${role}, 'dsor.delegations', 'INSERT')
          OR has_any_column_privilege(${role}, 'dsor.delegations', 'UPDATE')
          OR has_table_privilege(${role}, 'dsor.delegations', 'DELETE')
@@ -574,8 +582,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (slips[0]?.may !== false) {
     throw new Error(
-      `this connection is \`${answer.who}\`, and it may write a permission slip, itself or one ` +
-        `SET ROLE away. An agent's power comes from slips a person signed; the application reads ` +
+      `this connection is \`${answer.who}\`, and it may write a permission slip, itself, one ` +
+        `SET ROLE away, or through a helper function. An agent's power comes from slips a person signed; the application reads ` +
         `them and writes none. See migrations/013_delegations.sql.`,
     );
   }

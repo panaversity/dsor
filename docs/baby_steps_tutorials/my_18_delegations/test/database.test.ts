@@ -486,6 +486,31 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-DEL-01a: rights through a helper function's owner are refused too: slips, payments, invoices", async () => {
+    // Decision 128: start-up asked a helper's owner only about the log. A review lifted del_100's
+    // limit through a SECURITY DEFINER helper owned by a role that may update the slips, and
+    // committed 60,000.00 USD; the payments and the invoices had the same gap.
+    for (const [grant, words] of [
+      ["GRANT UPDATE ON dsor.delegations TO lifter", /may write a permission slip/],
+      ["GRANT DELETE ON public.payments TO lifter", /payment/],
+      ["GRANT DELETE ON public.invoices TO lifter", /invoices/],
+    ] as const) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(
+        `CREATE ROLE lifter; ${grant};
+         CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';
+         ALTER FUNCTION public.a_helper() OWNER TO lifter`,
+      );
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(words);
+
+      await db.close();
+    }
+  });
+
   it("DSOR-DEL-01a: an application that may write a permission slip is refused at start-up", async () => {
     // NEW IN STEP 18: a slip the application could write is a slip it could sign for itself
     // (decision 127). Each right, and one of them one SET ROLE away.
