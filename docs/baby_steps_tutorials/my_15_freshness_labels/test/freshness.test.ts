@@ -10,6 +10,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { success } from "../src/envelopes.ts";
 import { readNow } from "../src/freshness.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
@@ -128,6 +129,33 @@ describe("the door insists on a label", () => {
       }
     });
   }
+
+  it("DSOR-FRS-01a: a query that answers with a command's receipt is the program's own error, never to retry", async () => {
+    // Decision 121. A receipt carries no freshness label, so a query whose code copied
+    // invoice.issue's shape would leave unlabelled, and its read would not be written down either.
+    const door = makeDoor(PIPELINE, {
+      "invoice.get": async (_args, _contract, askedBy) => ({
+        kind: "result",
+        askedBy,
+        envelope: success({
+          data: INV_1008_ROW as unknown as Readonly<Record<string, unknown>>,
+          semantics: "atomic",
+          payloadHash: "sha256:0",
+          tenant: "org_456",
+          requestId: "req_0",
+          principalId: askedBy,
+        }),
+      }),
+    });
+    const answer = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    expect(answer.kind).toBe("error");
+
+    if (answer.kind === "error") {
+      expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.retry).toBe("never");
+    }
+  });
 
   it("DSOR-FRS-01a: the label that leaves is exactly its three parts, so nothing rides along in it", async () => {
     // Decision 117's lesson, for the label: built from its named parts, not copied whole.

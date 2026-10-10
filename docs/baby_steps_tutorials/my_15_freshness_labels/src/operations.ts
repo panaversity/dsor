@@ -1148,7 +1148,7 @@ export function makeDoor(
     // NEW IN STEP 15: and a read leaves only with a label that says how old it is (decision 120).
     // The code that read writes the label; the door does not know where data came from, so it
     // cannot write one, and insists on one instead.
-    const unlabelled = cannotBeLabelled(answer, startedAt);
+    const unlabelled = cannotBeLabelled(answer, startedAt, contract.kind);
 
     if (unlabelled !== undefined) {
       return Object.freeze({

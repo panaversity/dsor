@@ -92,8 +92,19 @@ export function labelFrom(handed: unknown): unknown {
  *
  * `startedAt` is when this request began, on this program's clock, the clock the label's time
  * comes from. A `current` label from before it is a saved copy calling itself fresh: DSOR-FRS-01b.
+ * `kind` is the operation's, from its contract: a query must answer with a read.
  */
-export function cannotBeLabelled(answer: HandlerAnswer, startedAt: number): string | undefined {
+export function cannotBeLabelled(
+  answer: HandlerAnswer,
+  startedAt: number,
+  kind: string,
+): string | undefined {
+  // Decision 121: a receipt carries no freshness label, so a query whose code answered with one,
+  // the way a command's code does, would leave unlabelled. The door knows which are queries.
+  if (kind === "query" && answer.kind === "result") {
+    return "answered a query with a command's receipt, which says nothing about how old it is";
+  }
+
   if (answer.kind !== "data" && answer.kind !== "page") {
     return undefined;
   }
