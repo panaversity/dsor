@@ -1292,6 +1292,23 @@ export function makeDoor(
       });
     }
 
+    // NEW IN STEP 17: and a command answers with a receipt, which is where its semantics go. A
+    // handler that began as a copy of invoice.get made the payment and answered with a row, which
+    // carries no semantics anywhere, and the door let it out (decision 126). The door's own error,
+    // as for a query that answers with a receipt above.
+    if (contract.kind === "command" && (answer.kind === "data" || answer.kind === "page")) {
+      return Object.freeze({
+        kind: "error",
+        askedBy: principal.id,
+        envelope: refusal(
+          "INTERNAL_ERROR",
+          `${nameOf(contract.id)} is a command, and answered with ${answer.kind === "data" ? "a row" : "a page"} instead of a receipt`,
+          id_,
+          principal.id,
+        ),
+      });
+    }
+
     // STEP 14: §19.2, before the response leaves. The handler handed back the whole row;
     // what leaves for an agent has every field above its clearance taken out, says which, and
     // carries its label. For any handler, including the careless one written next year: the door

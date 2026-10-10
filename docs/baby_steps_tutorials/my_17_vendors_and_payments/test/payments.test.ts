@@ -21,6 +21,8 @@ import {
   type Handler,
   type OperationAnswer,
 } from "../src/operations.ts";
+import { readNow } from "../src/freshness.ts";
+import { getInvoice } from "../src/invoice.ts";
 import { createPayment } from "../src/payment.ts";
 import { contractsFromDisk, loadRegistry, type ContractDocument } from "../src/registry.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
@@ -291,6 +293,28 @@ describe("the door says the semantics, from the contract", () => {
     const receipt = receiptOf(await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }));
 
     expect(receipt.semantics).toBe("compensatable");
+  });
+  it("DSOR-EXE-05b: a command that answers like a query is refused, not let out without its semantics", async () => {
+    // NEW IN STEP 17, decision 126: a handler that began as a copy of invoice.get made the payment
+    // and answered with a row, which carries no semantics anywhere, and the door let it out.
+    const careless: Handler = async (_args, _contract, askedBy, tenant) => {
+      const made = await createPayment(tenant, "INV-1008", AMOUNT);
+      const invoice = (await getInvoice(tenant, "INV-1008")).value;
+
+      if (made.kind !== "created" || invoice === undefined) {
+        throw new Error("the story has no INV-1008 to pay");
+      }
+
+      return { kind: "data", askedBy, invoice, freshness: readNow() };
+    };
+    const door = makeDoor(PIPELINE, { "payment.create": careless });
+
+    const refusal = refusalOf(
+      await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+
+    expect(refusal.code).toBe("INTERNAL_ERROR");
+    expect(refusal.message).toMatch(/answered with a row instead of a receipt/);
   });
 });
 
