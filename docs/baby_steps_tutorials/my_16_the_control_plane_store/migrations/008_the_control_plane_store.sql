@@ -14,11 +14,16 @@
 
 CREATE SCHEMA dsor;
 
--- A new schema gives PUBLIC nothing, unlike public itself; said anyway, so nobody has to know that.
+-- On a fresh server a new schema gives nobody anything, and these two lines take away nothing. On
+-- a server whose administrator set default privileges for schemas, a new schema can hand CREATE to
+-- every role and to the application by name; a review measured both (decision 123). So both are
+-- taken back here, each named, the way 002 takes CREATE on public back. Only the migrations, run as
+-- the owner, put anything in DSoR's schema: a table the application made there would be its own.
 REVOKE ALL ON SCHEMA dsor FROM PUBLIC;
+REVOKE CREATE ON SCHEMA dsor FROM dsor_runtime;
 
--- The application may look inside, and may create nothing there. What it may do to each table is
--- the table's own grant, and the log's grants move with it.
+-- The application may look inside, and that is all. What it may do to each table is the table's
+-- own grant, and the log's grants move with it.
 GRANT USAGE ON SCHEMA dsor TO dsor_runtime;
 
 ALTER TABLE public.audit SET SCHEMA dsor;

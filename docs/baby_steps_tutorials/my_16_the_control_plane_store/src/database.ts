@@ -317,6 +317,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     bypassing_roles: string | null;
     owns_tenant_table: boolean;
     owns_schema: string | null;
+    creates_in: string | null;
     locked: boolean;
     reads_beyond: string | null;
     already_said: string | null;
@@ -341,6 +342,12 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                FROM pg_class c JOIN tenant_table t ON t.rel = c.oid
                JOIN pg_namespace ns ON ns.oid = c.relnamespace
               WHERE pg_has_role(current_user, ns.nspowner, 'MEMBER')) AS owns_schema,
+            -- NEW IN STEP 16: the schemas it may create things in, itself or one SET ROLE away.
+            (SELECT string_agg(DISTINCT ns.nspname, ', ' ORDER BY ns.nspname)
+               FROM pg_namespace ns CROSS JOIN pg_roles r
+              WHERE ns.nspname IN ('dsor', 'public')
+                AND pg_has_role(current_user, r.oid, 'MEMBER')
+                AND has_schema_privilege(r.oid, ns.oid, 'CREATE')) AS creates_in,
             (SELECT bool_and(
                 c.relrowsecurity AND c.relforcerowsecurity
                 AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 1
@@ -404,6 +411,20 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `\`${second.owns_schema}\`, where a tenant table is kept. A schema's owner may drop any ` +
         `table in it, even one it does not own, and every row goes with it. Schemas belong to the ` +
         `account that runs the migrations, never to \`${APPLICATION_ROLE}\`.`,
+    );
+  }
+
+  // NEW IN STEP 16: and it may create nothing in them. Only the migrations put tables there: one the
+  // application made would be its own, every row of it, and a later step's migration would find
+  // its name taken. Migration 008 takes CREATE on dsor back; this asks PostgreSQL, because a grant
+  // made after the migrations passes them by (decision 123).
+  if (second.creates_in !== null) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, which may create tables, views or functions in the ` +
+        `schema \`${second.creates_in}\`, itself or one SET ROLE away. Only the migrations put ` +
+        `things there: a table the application made would be its own, every row of it. Revoke ` +
+        `CREATE on the schema from \`${APPLICATION_ROLE}\`; see ` +
+        `migrations/008_the_control_plane_store.sql.`,
     );
   }
 

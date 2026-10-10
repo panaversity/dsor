@@ -11,9 +11,11 @@
 // agent context, its delegations, controls, proposals, approvals, idempotency records, intent
 // records, cumulative-limit counters, holds, and audit evidence.
 
-import type { PGlite } from "@electric-sql/pglite";
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
+import { migrationsIn } from "../src/migrations.ts";
 import { callOperation } from "../src/operations.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetInvoices } from "./support/database.ts";
 
@@ -82,5 +84,51 @@ describe("DSoR's own store", () => {
     );
 
     expect(rows[0]).toStrictEqual({ use: true, create: false });
+  });
+});
+
+describe("creating nothing in dsor, on a server that hands out rights to every new schema", () => {
+  // A fresh schema gives nobody anything, so on a fresh server migration 008's REVOKE lines take
+  // away nothing, and deleting either would fail no test above. A server somebody administered
+  // first is another matter: ALTER DEFAULT PRIVILEGES hands rights out on every schema made from
+  // then on. A review measured it: with these two defaults, the application held CREATE on `dsor`
+  // after 008, and every role did once the line for PUBLIC was gone (decision 123).
+  it("DSOR-MOD-01: migration 008 takes CREATE on dsor back from every role and from the application", async () => {
+    const server = await PGlite.create();
+
+    try {
+      await server.exec(`
+        CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-throwaway-not-a-secret';
+        CREATE ROLE a_stranger;
+        ALTER DEFAULT PRIVILEGES GRANT USAGE, CREATE ON SCHEMAS TO PUBLIC;
+        ALTER DEFAULT PRIVILEGES GRANT CREATE ON SCHEMAS TO dsor_runtime;
+      `);
+
+      for (const migration of migrationsIn(
+        fileURLToPath(new URL("../migrations", import.meta.url)),
+      )) {
+        await server.exec(migration.sql);
+      }
+
+      const may = async (role: string, schema: string): Promise<unknown> =>
+        (
+          await server.query<{ use: boolean; create: boolean }>(
+            `SELECT has_schema_privilege($1::name, $2::text, 'USAGE') AS use,
+                    has_schema_privilege($1::name, $2::text, 'CREATE') AS create`,
+            [role, schema],
+          )
+        ).rows[0];
+
+      // Not testing nothing: a schema made now, with no REVOKE after it, hands CREATE to both.
+      await server.exec("CREATE SCHEMA witness");
+
+      expect(await may("a_stranger", "witness")).toStrictEqual({ use: true, create: true });
+      expect(await may("dsor_runtime", "witness")).toStrictEqual({ use: true, create: true });
+
+      expect(await may("a_stranger", "dsor")).toStrictEqual({ use: false, create: false });
+      expect(await may("dsor_runtime", "dsor")).toStrictEqual({ use: true, create: false });
+    } finally {
+      await server.close();
+    }
   });
 });

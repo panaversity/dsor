@@ -104,7 +104,7 @@ describe("an account the lock does not apply to", () => {
       await asTheOwner(() => db.exec(`ALTER SCHEMA ${schema} OWNER TO ${APPLICATION_ROLE}`));
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        new RegExp(`the schema \`${schema}\``),
+        new RegExp(`may become the owner of, the schema \`${schema}\``),
       );
 
       await expect(db.exec(`DROP TABLE ${table} CASCADE`)).resolves.toBeDefined();
@@ -118,7 +118,9 @@ describe("an account the lock does not apply to", () => {
       await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
     });
 
-    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/the schema `dsor`/);
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may become the owner of, the schema `dsor`/,
+    );
   });
 });
 
@@ -315,6 +317,46 @@ describe("what an evaluation found past the first fixes", () => {
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /tenant table is missing/,
+    );
+  });
+});
+
+describe("a schema the application may create things in", () => {
+  // NEW IN STEP 16: only the migrations, run as the owner, put tables in DSoR's schema or the
+  // business's. A table the application made there would be its own, every row of it, and a later
+  // step's migration would find its name taken. A review measured the application making
+  // `dsor.proposals` six steps before step 22 builds it (decision 123). Migration 008 takes
+  // CREATE back, and start-up asks PostgreSQL, because a later grant passes the migrations by.
+  for (const [id, schema] of [
+    ["DSOR-MOD-01", "dsor"],
+    ["DSOR-RP-01a", "public"],
+  ] as const) {
+    it(`${id}: an account that may create in the schema ${schema} is refused`, async () => {
+      await asTheOwner(() => db.exec(`GRANT CREATE ON SCHEMA ${schema} TO ${APPLICATION_ROLE}`));
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        new RegExp(`may create tables, views or functions in the schema \`${schema}\``),
+      );
+
+      // And the route is real: as the application, a table of a later step's name, its own.
+      await db.exec(`CREATE TABLE ${schema}.proposals (id text)`);
+      const { rows } = await db.query<{ owner: string }>(
+        `SELECT tableowner AS owner FROM pg_tables WHERE schemaname = '${schema}' AND tablename = 'proposals'`,
+      );
+
+      expect(rows).toStrictEqual([{ owner: APPLICATION_ROLE }]);
+    });
+  }
+
+  it("DSOR-MOD-01: an account one SET ROLE away from creating in the schema dsor is refused", async () => {
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_builder");
+      await db.exec("GRANT USAGE, CREATE ON SCHEMA dsor TO a_builder");
+      await db.exec(`GRANT a_builder TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may create tables, views or functions in the schema `dsor`/,
     );
   });
 });
