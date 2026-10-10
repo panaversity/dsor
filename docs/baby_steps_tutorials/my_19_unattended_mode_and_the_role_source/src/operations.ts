@@ -21,7 +21,7 @@ import {
 // Every call says who is asking, and STEP 06 every call is checked against what that
 // caller may do.
 import { type Login, principalFrom, scopesClaimed, tenantClaimed } from "./login.ts";
-import { holdsNow } from "./authority.ts";
+import { AuthorityNotEstablished, authorityNow } from "./authority.ts";
 import { activeSlipFor, effectiveAuthority } from "./delegation.ts";
 import {
   getInvoice,
@@ -631,11 +631,13 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
   // other, recorded at §21.11, and safe to send again, because nothing has run. Both used to leave
   // the door as a thrown error with nothing recorded, and with the database down an agent got a
   // stack trace where a person got EVIDENCE_STORE_UNAVAILABLE (DSOR-IDN-06, decision 128).
-  const notEstablished = (what: string): StageResult =>
+  const notEstablished = (what: string, why?: string): StageResult =>
     refuse(
       principal.id,
       "DEPENDENCY_TIMEOUT",
-      `${what} could not be read, so nothing was done; it is safe to send again`,
+      why === undefined
+        ? `${what} could not be read, so nothing was done; it is safe to send again`
+        : `${what} could not be established: ${why}. Nothing was done; it is safe to send again`,
       context.requestId,
     );
 
@@ -697,17 +699,22 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
     );
   }
 
-  // A signer the role source does not know in this company holds nothing there, and the agent
-  // holds nothing under them.
-  let signerHolds;
+  // A signer the directory does not know in this company holds nothing there, and the agent holds
+  // nothing under them. NEW IN STEP 19: asked of the company's directory, which may have no answer
+  // DSoR can use: none configured, no reply, or one more than 24 hours old. Each is refused, and the
+  // refusal says which (DSOR-IDN-05, DSOR-IDN-06, decision 129).
+  let signer;
 
   try {
-    signerHolds = holdsNow(slip.delegator, tenant) ?? [];
-  } catch {
-    return notEstablished(`what ${slip.delegator} holds in ${tenant} now`);
+    signer = authorityNow(slip.delegator, tenant);
+  } catch (error) {
+    return notEstablished(
+      `what ${slip.delegator} holds in ${tenant} now`,
+      error instanceof AuthorityNotEstablished ? error.message : undefined,
+    );
   }
 
-  const authority = effectiveAuthority(slip, signerHolds, context.scopes);
+  const authority = effectiveAuthority(slip, signer.permissions, context.scopes);
 
   return carryOn({ ...context, delegation: slip, authority });
 };

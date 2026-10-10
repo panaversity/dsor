@@ -13,7 +13,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
-import { rolesOfThisProgram, useRoleSource } from "../src/authority.ts";
+import { aDirectory, useDirectory } from "../src/directory.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
 import { overPGlite } from "../src/database.ts";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
@@ -44,7 +44,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  useRoleSource(undefined);
+  useDirectory("org_456", undefined);
 });
 
 function refusalOf(answer: OperationAnswer): ErrorEnvelope {
@@ -267,9 +267,7 @@ describe("when the slip, or what its signer holds, cannot be read", () => {
   }
 
   it("DSOR-IDN-06: what the signer holds cannot be read, so the command is refused, safe to send again, and recorded", async () => {
-    useRoleSource(() => {
-      throw new Error("the directory did not answer");
-    });
+    useDirectory("org_456", aDirectory("org_456", { down: true }));
 
     const refusal = refusalOf(await create(AGENT));
 
@@ -308,10 +306,11 @@ describe("the agent never has more power than the person who signed, right now",
     // holds changed in between.
     expect((await create(AGENT)).kind).toBe("result");
 
-    useRoleSource((person, tenant) =>
-      person === "user_123"
-        ? ["invoice:read", "invoice:issue", "payment:cancel"]
-        : rolesOfThisProgram(person, tenant),
+    useDirectory(
+      "org_456",
+      aDirectory("org_456", {
+        holds: { user_123: ["invoice:read", "invoice:issue", "payment:cancel"] },
+      }),
     );
 
     const refusal = refusalOf(await create(AGENT));

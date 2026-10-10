@@ -14,11 +14,13 @@
 // staleness bound, DSoR MUST deny the command.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { aDirectory, useDirectory } from "../src/directory.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
+const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const PAY_901 = "dsor://org_456/payment/PAY-901";
 
@@ -37,6 +39,10 @@ beforeEach(async () => {
   await forgetTheLog("org_456");
 });
 
+afterEach(() => {
+  useDirectory("org_456", undefined);
+});
+
 function refusalOf(answer: OperationAnswer): ErrorEnvelope {
   if (answer.kind !== "error") {
     throw new Error(`expected a refusal, got ${JSON.stringify(answer)}`);
@@ -47,6 +53,9 @@ function refusalOf(answer: OperationAnswer): ErrorEnvelope {
 
 const cancel = (login: object, args: object = {}): Promise<OperationAnswer> =>
   callOperation(login as never, "payment.cancel", { payment: PAY_901, ...args });
+
+const hoursAgo = (hours: number): string =>
+  new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
 describe("a slip says in which modes it may be used", () => {
   it("DSOR-DEL-07: del_100 allows unattended, and the agent's command runs", async () => {
@@ -78,5 +87,57 @@ describe("a slip says in which modes it may be used", () => {
 
       expect(answer, modes).toMatch(/check constraint/);
     }
+  });
+});
+
+describe("the company directory", () => {
+  it("DSOR-IDN-06: with the directory switched off, the agent is refused, not waved through", async () => {
+    // The map's "break it", as a test.
+    useDirectory("org_456", aDirectory("org_456", { down: true }));
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("DEPENDENCY_TIMEOUT");
+    expect(refusal.retry).toBe("safe_same_key");
+    expect(refusal.message).toMatch(/did not answer/);
+  });
+
+  it("DSOR-IDN-06: an answer older than 24 hours is no answer", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(25) }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("DEPENDENCY_TIMEOUT");
+  });
+
+  it("DSOR-IDN-06: an answer from 23 hours ago still counts", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(23) }));
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+  });
+
+  it("DSOR-IDN-06: an answer whose time is not a time is no answer", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: "yesterday" }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("DEPENDENCY_TIMEOUT");
+  });
+
+  it("DSOR-IDN-05: a company with no directory is refused every agent command", async () => {
+    useDirectory("org_456", null);
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("DEPENDENCY_TIMEOUT");
+  });
+
+  it("DSOR-IDN-06: what the directory says now is what counts: user_123 moved, and the agent is refused", async () => {
+    expect((await cancel(AGENT)).kind).toBe("result");
+
+    await resetTheStory();
+    useDirectory("org_456", aDirectory("org_456", { holds: { user_123: ["invoice:read"] } }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  it("a person who is logged in needs no directory: the directory down, user_123 still cancels", async () => {
+    useDirectory("org_456", aDirectory("org_456", { down: true }));
+
+    expect((await cancel(SUPERVISOR)).kind).toBe("result");
   });
 });

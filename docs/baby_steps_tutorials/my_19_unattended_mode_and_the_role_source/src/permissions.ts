@@ -34,7 +34,8 @@ import type { Principal } from "./people.ts";
  * which DSOR-IDN-04a requires. Here they sit in the source, like the people beside them.
  *
  * STEP 18: and the program asks for a person's permissions through a role source,
- * `authority.ts`, which reads this list; step 19 puts a company directory behind it.
+ * `authority.ts`. NEW IN STEP 19: that source is the company's directory, and the fake one in
+ * `directory.ts` builds its answers from this list.
  */
 // STEP 17: the supervisor and the agent may make a draft payment and take one back. The
 // CFO approves payments, in a later step, and makes none (decision 125).

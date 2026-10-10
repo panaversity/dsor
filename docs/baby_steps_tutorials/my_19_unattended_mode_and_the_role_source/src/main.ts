@@ -10,7 +10,7 @@ import { openTheDatabase } from "./database.ts";
 import { movedTo } from "./examples.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
 import { paymentsOf } from "./payment.ts";
-import { rolesOfThisProgram, useRoleSource } from "./authority.ts";
+import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -351,12 +351,12 @@ console.log();
 console.log("user_123 moves to another team, and no longer holds payment:create:");
 console.log();
 
-useRoleSource((person, tenant) =>
-  person === "user_123"
-    ? (rolesOfThisProgram(person, tenant) ?? []).filter(
-        (permission) => permission !== "payment:create",
-      )
-    : rolesOfThisProgram(person, tenant),
+// NEW IN STEP 19: the company's directory says so; step 18 played its part through a seam.
+useDirectory(
+  "org_456",
+  aDirectory("org_456", {
+    holds: { user_123: ["invoice:read", "invoice:issue", "payment:cancel"] },
+  }),
 );
 
 console.log(
@@ -368,7 +368,7 @@ console.log(
   ),
 );
 
-useRoleSource(undefined);
+useDirectory("org_456", undefined);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
