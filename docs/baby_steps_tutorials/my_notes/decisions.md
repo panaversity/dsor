@@ -3785,3 +3785,146 @@ beside the README's ten, which were measured twice:
 | the handler reads the caller's object again | 1: the getter | 3: that test, and two older ones that count reads of the arguments, because this break also spread the caller's arguments a second time; a break should change one thing, and this one changed two |
 | an invoice may name a vendor its company does not have | 1: VENDOR-99 | 1, that test |
 | an operation may be its own undo | 1: the self-undo test | 1, that test |
+
+## 127 · Step 18's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent holds power of its own. Its role, `ap_worker`, grants it
+`invoice:issue`, `payment:create` and `payment:cancel` outright, so nobody signed for what it does
+and nobody can take it back except by editing the program. Worse, its power does not follow any
+person's: if `user_123` moves to another job and loses `payment:create`, the agent keeps it, and
+keeps making payments in a name that no longer has the right. `DSOR-DEL-01a` asks that every command
+an agent sends be judged under an active permission slip held in DSoR's own store, and
+`DSOR-DEL-02` that the agent's power be computed at each decision as what the slip grants, cut down
+to what the person who signed it holds right then, and to what the agent's login allows.
+
+1. **The slip lives in `dsor.delegations`**, DSoR's own paperwork, the second kind in its store
+   after the log, under the same lock as every tenant table. The application may read it and
+   change nothing: there is no operation to sign a slip yet, so the running example's `del_100` is
+   put there by a migration, as `PAY-901` was. Rejected: `public`, which is the business's.
+2. **What a slip holds now:** who signed it, for which agent, which permissions, up to how much per
+   transaction, its status, and when it expires. Modes (`on_behalf_of`, `unattended`) are step
+   19's; daily totals and time windows are step 24's.
+3. **One active slip per agent per company**, made sure by a unique index. DSoR finds it itself,
+   from the company and the agent; nothing the request says chooses it. Rejected: the request
+   naming its slip, which is a claim, and claims are refused when they disagree (`DSOR-SRC-02b`).
+4. **The agent's own role keeps reading only.** Every command it sends needs a slip, and its power
+   for that command is the slip's permissions, cut down to the signer's current permissions and to
+   the login's scopes. Humans are unchanged: their power is their role's. **Corrected by decision
+   128:** a login's scopes narrow a person too.
+5. **A stage of its own, §21's third**, between finding the operation and authorizing it: "resolve
+   the delegation". A command from an agent with no active slip, an expired one, or one whose
+   signer has lost the permission is refused there, and the refusal is recorded like any other.
+   **Corrected by decision 128:** the third is refused at §21.5, as `AUTHORIZATION_DENIED`, where
+   the power computed at §21.3 is asked.
+6. **The signer's current authority is asked at every decision, in the slip's company**, from the
+   same place the program learns anyone's role, never copied into the slip. In the slip's company,
+   because a person holds nothing where they do not belong: user_123 could otherwise sign a slip in
+   org_789 and lend the agent power user_123 has only in org_456. Tests change it through a seam, as they
+   change the database; step 19 replaces the source with a company directory that can be down.
+7. **A login may carry scopes, which only narrow.** A scope the slip does not grant adds nothing
+   (`DSOR-DEL-01b`); a slip permission the scopes leave out is not held.
+8. **The per-transaction limit is checked against the request's amount** before the command runs:
+   above it, or in another currency, is refused, the second restrictively, as `DSOR-MON-04` says of
+   a comparison that cannot convert. **Decision 128** gives both the code `LIMIT_EXCEEDED`.
+9. **The decision record stays as it is.** Which slip, whose authority and in which mode an agent
+   acted are step 19's, where the subject of an unattended request is taken from the slip
+   (`DSOR-DEL-08`) and the record says so. Rejected: the slip's id alone now, in a record whose
+   mode and subject would still say the agent acted for itself.
+
+## 128 · What step 18's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. Each choice is the recommendation, and each is open to
+reversal.
+
+One reviewer, read-only, with probes in its own copy. It found no way for the agent to hold more than
+its signer holds now: scopes cannot widen anyone, the slip comes only from DSoR's store, a slip in
+another company grants nothing. It found four ways past a slip's expiry or its limit, each
+reproduced, and these were chosen:
+
+1. **A slip is in force only when its expiry is shown to be later than now.** `-infinity` came back
+   from the database as no time at all, `Date.parse` read it as `NaN`, and `NaN <= now` is false:
+   the slip passed, and a payment was committed (measured). A year after 9999 does the same, because
+   JavaScript cannot read it. The question is now asked the other way round, "is the expiry later
+   than now?", and every answer but yes is refused as expired. And the table refuses an infinite
+   expiry: migration 013 says so, edited in place, because no database that is kept has applied it.
+   Rejected: the table's check alone, which a year after 9999 passes.
+2. **A failure while finding the slip, or what its signer holds, is a refusal, and it is recorded.**
+   Both left the door as a thrown error with nothing recorded, and with the database down an agent
+   got a stack trace where a person got `EVIDENCE_STORE_UNAVAILABLE` (measured; in step 17 both got
+   the envelope). §21.3 now refuses with `DEPENDENCY_TIMEOUT`, retry `safe_same_key`, because
+   nothing has run; §21.11 records the refusal or, when the store is down as well, answers
+   `EVIDENCE_STORE_UNAVAILABLE` as it does for everyone. `DSOR-IDN-06` asks exactly this when the
+   signer's authority cannot be established. Rejected: `INTERNAL_ERROR`, retry never, which blames
+   the program for a store that did not answer.
+3. **DSoR never chooses between two slips.** "One active slip per agent" rested on an index, and
+   with the index dropped and a second active slip with no limit, DSoR took whichever row came first:
+   60,000.00 USD was committed (measured). It now reads up to two, and two are refused with
+   `DELEGATION_REQUIRED`, naming both. Rejected: a start-up check of the index, which an owner can
+   drop after start-up; the check at the decision holds whatever the index.
+4. **A helper function's owner is asked the same questions about the business's tables and the
+   slips as the application.** A SECURITY DEFINER helper owned by a role that may update the slips
+   passed start-up, and the application lifted del_100's limit through it (measured). The payments
+   had the same gap since step 17, and the invoices since step 10. Start-up asked a helper's owner
+   only about the log.
+5. **A payment above the slip's limit is refused with `LIMIT_EXCEEDED`**, the code `DSOR-DEL-06e`
+   names for a command that would exceed a limit; and one in another currency too, because
+   `DSOR-MON-04` says a limit that cannot be compared is treated as exceeded. Decision 127 chose
+   `AUTHORIZATION_DENIED` and gave no reason, and there was none. The specification's table gives
+   `LIMIT_EXCEEDED` the retry class `after_delay`, which fits a daily total; for a limit on one
+   payment, waiting changes nothing. That is a question about the table, recorded here.
+6. **The contracts say a slip is required.** Found while answering the review: the three commands'
+   contracts said `delegation: { required: false }`, while the program refused every agent command
+   without a slip. They say `true`, and the registry refuses a command whose contract says
+   otherwise.
+7. **Tests for what nothing tested**: a malformed scopes claim, an empty list of scopes, a person's
+   scopes, a suspended slip. The code refused each already; each test was broken on purpose by
+   deleting the line it guards.
+8. **Smaller truths.** Decision 127's fifth choice said a signer who lost a permission is refused at
+   §21.3; it is at §21.5, as `AUTHORIZATION_DENIED`. Its fourth said a person's power is unchanged;
+   scopes narrow a person too. `expiresAt` was documented as always a time. Migration 014's comment
+   told half of how del_100 differs from the specification's. `paymentAmountFrom`'s doc comment sat
+   above `centsOf`, the defect decision 126 fixed once. Four comments said what step 18 made false.
+   Each is corrected.
+
+**Written down, and not fixed:**
+
+- The limit finds the money by the argument's name, `amount`. A later command that names its money
+  otherwise would pass the limit. A contract names its input schema and not its fields, so the
+  registry cannot see a money argument by another name; it can once contracts carry their fields.
+- A slip named in the arguments is refused under two names, `delegation` and `delegation_id`;
+  `delegationId` passes, and nothing reads it. Refusing every argument a contract does not declare
+  waits for the same fields.
+- A malformed scopes claim is counted, not recorded. It is refused at §21.1, where every refusal is
+  a login DSoR could not accept, and none of those is written into a company's log (decision 53).
+- PGlite's owner is a superuser, and Neon's skips row-level security, so no test shows that
+  migration 014's first line is needed. It is there for an owner the lock holds.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: the slip
+expiring in the year 10000 committed a payment, and the table took both infinities; the directory
+that did not answer, and the slip that could not be read, were thrown at the tests; the second
+active slip let 60,000.00 USD through; start-up passed with the helper; four tests expected
+`LIMIT_EXCEEDED`; `invoice.issue`'s contract said no slip was needed. The four refusals nothing
+tested had no red to see: the code refused each already, so each test was broken instead. Then the
+unit tests: 645.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's eight, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| an unreadable expiry counts as not expired | 1: the year-10000 slip | 1, that test |
+| a slip that cannot be read throws again | 2: the slip read, the database down | those 2 |
+| a role source that fails throws again | 1: the role source test | 1, that test |
+| the reader takes the first of two slips | 1: the two-slips test | 1, that test |
+| a helper's owner is asked only about the log | 1: the helper test | 1, that test |
+| a payment over the limit is `AUTHORIZATION_DENIED` again | 3: 50,000.01, 100,000.00, the demo | those 3 |
+| the registry takes a command that needs no slip | 1: the contracts test | 1, that test |
+| malformed scopes read as no scopes | 1 | 1, that test |
+| an empty list of scopes read as no scopes | 1 | 1, that test |
+| a person's scopes are ignored | 1 | 1, that test |
+| a suspended slip counts as active | 2: the suspended slip, the revoked one | those 2 |
