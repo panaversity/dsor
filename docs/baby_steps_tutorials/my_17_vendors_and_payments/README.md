@@ -79,6 +79,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `migrations/009_vendors_and_payments.sql` | new — the two tables, each key starting with the company, a payment pointing at its company's vendor and invoice; a sequence for payment numbers, from 902; and what the application may do: read the vendors, make a draft payment, change a payment's status |
 | `migrations/010_payments_running_example.sql` | new — VENDOR-44 in both companies, and PAY-901 in both: org_456's draft for 31,400.00 USD paying INV-1008, and org_789's own, for the cross-tenant suite |
 | `migrations/011_the_lock_on_vendors_and_payments.sql` | new — the second lock on both tables, word for word as 005 wrote it |
+| `migrations/012_invoices_name_their_vendor.sql` | new — an invoice names a vendor its company has, after 010 has put VENDOR-44 there (decision 126) |
 | `src/payment.ts` | new — a payment, making one in one statement with its vendor read from the invoice, taking one back, and the amount a payment may carry |
 | `src/contracts/payment.create.json`, `payment.cancel.json` | new — `compensatable`, undone by `payment.cancel`; and `atomic` |
 | `src/operations.ts` | the two handlers; the address reader takes the entity it needs, because `payment.create` takes an invoice's address; and the door writes each receipt's semantics from the contract. `?? "atomic"` is gone |
@@ -148,8 +149,9 @@ pnpm migrate && pnpm test:db
 ```
 
 The database has to exist first, made with one `CREATE DATABASE dsor_step17` through the owner
-login. `pnpm migrate` applies the eleven migrations; on a server that already had step 16's eight,
-it applies 009, 010 and 011, and the vendors, the payments and their lock arrive together.
+login. `pnpm migrate` applies the twelve migrations; on a server that already had step 16's eight,
+it applies 009 to 012, and the vendors, the payments, their lock and the invoices' key to their
+vendor arrive together.
 
 ## Break it
 
