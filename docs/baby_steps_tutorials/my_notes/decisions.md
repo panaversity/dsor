@@ -3437,3 +3437,189 @@ took all three recommendations.
 The step's database is `dsor_step16` on Neon, made through the owner login in the copied `.env`;
 changing the database name in that file is the learner's.
 
+**Red first.** The four new tests failed with the log still in `public`: `dsor` held no table,
+`public` held `audit`. Then the demo's line still said only where the database is. After the move,
+23 older tests failed too: most named the table bare, `audit`, which worked only because the
+database looked in `public` first; two build a database by hand without `dsor`; and the re-run of
+migration 002 named a table that is gone. Each is in the step note. Then the unit tests: 536. The
+database tier was not run before the review, and decision 123 says what that missed.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| 008 does not move the table | most of the suite: every write to the log | 291 |
+| the application may not look inside `dsor` | most of the suite, and the schema test | 253 |
+| the application may also create things in `dsor` | 1: the schema test | 1, that test |
+| the start-up check still looks for the log in `public` | the start-up tests and the demo | 44 |
+| the demo's line as it was | 1: the demo's new test | 1, that test |
+
+## 123 · What step 16's review found, and what the learner chose (2026-10-11)
+
+**Decided by:** the learner, who took all four recommendations after the findings were shown in
+plain words.
+
+**The review.** One reviewer, read-only, with probes in its own copy, told to assume a careless
+administrator and a careless handler, as decision 119 says. It moved a three-record log and found
+the move complete: every grant, column grant, the row-level security, the one policy, all twenty
+constraints, both indexes; the chain verifies after the move, and `public` keeps only `invoices`.
+Every finding below was measured again before it was put to the learner, by running the reviewer's
+probes a second time, and each one reproduced.
+
+**Corrected without a question**, because each was a mistake in carrying out decision 122, not a
+choice:
+
+- **A database-tier test still looked for the log in `public`.** The test of migrations 006 and 007
+  named `dsor.audit` in its privilege questions and listed the columns with
+  `table_schema = 'public'`, which finds nothing after the move. The rename had been checked against
+  the unit tests only. Run on a local PostgreSQL 17: 1 failed and 38 passed before the fix, 39
+  passed after. The local owner needed `BYPASSRLS` to match Neon, which gives it to every role made
+  in its Console; without it, 29 tests failed on the row-level lock while setting up their rows.
+- **A test's premise had gone false.** Step 09's `editor` test gave `editor` UPDATE on the log and
+  nothing on the new folder, so `SET ROLE editor` then UPDATE failed with "permission denied for
+  schema dsor". The check still refused, so the test still passed, though the route it is about
+  was no longer real. `editor` gets the folder's `USAGE`, and the test now ends by rewriting a
+  record as `editor`.
+- **Seven comments quoting history** had the new name put into old events: an "unqualified
+  `INSERT INTO dsor.audit`", a regclass cast and a GRANT said to resolve through `search_path` though
+  they name the schema. They have step 15's words back.
+- **Two sentences now false.** The README's reason for "create nothing" in `dsor` was a window
+  past the locks; a view the application makes stays under the lock, measured, so the reason is
+  wrong. And decision 122's "the whole suite: 536" counted the unit tests only.
+
+**Chosen:**
+
+1. **Start-up asks who owns the folders.** A schema's owner may drop any table in it, even one it
+   does not own. The reviewer handed `dsor` to `dsor_runtime`: start-up passed, and one
+   `DROP TABLE dsor.audit` erased every record. The same was true of `public` since step 09.
+   Start-up now refuses when the application owns, or is one `SET ROLE` from owning, the folder of
+   either tenant table. Steps 09 to 15 keep the gap; they are finished, and a learner copy is not
+   edited afterwards.
+2. **"Create nothing in `dsor`" is made sure three ways.** Migration 008 takes `CREATE` back from
+   the application by name, as 002 did for `public`. A test starts from a server whose default
+   privileges hand out rights on every new schema, and proves each `REVOKE` line in 008 matters.
+   And start-up refuses if the application may create in either folder, because a later
+   `GRANT CREATE` would pass the migrations by. The harm, measured: the application could make
+   `dsor.proposals` today and own it, before step 22's migration exists. 008 is edited because it
+   has not been applied to any database that is kept: the local ones are thrown away after every
+   run, and `dsor_step16` on Neon is still empty.
+3. **"Do both tables exist?" is asked first, on its own.** It shared a query with questions that
+   name the log, and PostgreSQL stops at the first name it cannot find: on a server that missed
+   008, the program refused with `schema "dsor" does not exist` instead of its own "a tenant table
+   is missing … Apply the migrations". True of a missing log since step 11; step 16 is where a
+   learner meets it.
+4. **The demo test's rule id is dropped.** It checks a sentence the demo prints from a fixed string,
+   and would pass wherever the log lived. The four tests in `control-plane-store.test.ts` are the
+   proof of `DSOR-MOD-01`; this one pins the demo's words, like the list test that already has no
+   id.
+
+Written down, and not fixed:
+
+- **Emptying `public` still takes DSoR down.** The migrations' own record,
+  `public.applied_migrations`, goes with it, so the next `pnpm migrate` runs 001 to 007 again,
+  makes an empty `public.audit`, and stops at 008: `schema "dsor" already exists`. Start-up then
+  refuses, because the application may read a table that is not one of the two. The log in `dsor`
+  is untouched, measured, and the program fails closed, but DSoR does not start until a person
+  repairs the record. It follows from decision 122's "the log only".
+- **The test of evasive answers asks only that something refuses.** Its seven rows each leave one
+  start-up question unanswered, and from step 11 on six of them were refused by the tables check,
+  because none answered it; the seventh, with no `who`, by the `who` question, which came first
+  (decision 124 corrects this sentence, which said all seven). Its fake now answers that question truly, so the rows
+  reach the guards they were written for, and this is recorded because piece 1 moved that check.
+  But each row is still refused by the first guard it does not satisfy, so a single guard that read
+  NULL as "may not" would pass it. A test that answers every other question safely and evades one at
+  a time would close that; it is not built here.
+
+**Red first.** Piece 1: a server with the log in `public` and no `dsor` received
+`schema "dsor" does not exist`. Piece 2: the four schema-owner tests resolved instead of refusing.
+Piece 3: the application held `CREATE` on `dsor` after 008 on a server with default privileges,
+and the three start-up tests resolved. Piece 4 renames a test and has no red. Then the unit
+tests: 545.
+
+**Proved by breaking it**, in a copy, on the whole suite, each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the start-up code as it was before piece 1 | 1: the server that missed 008 | 1, that test |
+| no refusal for a database that answers no row | 1: the silent database | 1, refused as "a tenant table is missing" |
+| the schema-owner refusal turned off | 3: owner of `dsor`, of `public`, one `SET ROLE` away | those 3 |
+| only direct ownership of a schema counted | 1: one `SET ROLE` away | 1, that test |
+| a helper's owner not asked about the schema | 1: the helper | 1, that test |
+| 008 without its `REVOKE` for PUBLIC | 1: the default-privileges test | 1, that test |
+| 008 without its `REVOKE` for the application | 1: the same test | 1, that test |
+| start-up never refusing `CREATE` | 3: `dsor`, `public`, one `SET ROLE` away | those 3 |
+| `CREATE` asked of the application only, not one `SET ROLE` away | 1: the `SET ROLE` test | 1, that test |
+| the schema-owner refusal off, with piece 3 in | 3: still the owner tests | those 3 |
+
+The last row is why piece 3 tightened piece 2's tests. An owner may create in its schema, so with
+the owner refusal off, the `CREATE` refusal refused the same cases. The tests had matched any
+message naming the schema, and would have passed on either refusal. They match the owner's own
+words now.
+
+## 124 · What step 16's second review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date: "complete step 16 to
+20 … you go with your recommended settings". The learner was asleep; every choice below is the
+recommended one, and each is open to reversal.
+
+**The review.** A second reviewer, read-only, probes in its own copy, the careless model of decision
+119, on decision 123's code. It found no answer the checks read as "fine" by mistake: no row, a
+NULL and a missing column are all refused. A Neon-shaped database passes start-up: the owner holds
+BYPASSRLS, belongs to a `neon_superuser`, owns the database, and makes `dsor_runtime` itself, and the
+membership that makes runs from the owner to `dsor_runtime`, never the reverse. Every finding was
+measured again before it was acted on.
+
+**Chosen:**
+
+1. **Start-up asks who owns the database.** One login that owns its own database is the most common
+   careless setup. Decision 123 caught it only because `public` belongs to `pg_database_owner`; the
+   refusal then said to give the schema back, and once that was done the program started, owned
+   database and all (measured). A database's owner may drop it, and create schemas in it. Start-up
+   now refuses an application that owns, or is one `SET ROLE` from owning, its database, in a
+   refusal of its own, asked before the schemas.
+2. **A helper's owner may not create in either schema.** The application could not create in `dsor`,
+   and a SECURITY DEFINER helper whose owner may was not refused: the application made
+   `dsor.proposals` through it, owned by the helper's owner (measured). The helper check refuses
+   that owner too, as it refuses one that owns a schema.
+3. **The `CREATE` refusal names the role and the schema.** It named the schemas only. When the right
+   came through a group, its advice, "revoke CREATE from `dsor_runtime`", changed nothing (measured),
+   and for `public` it pointed at migration 008, when the line is in 002. It now lists each role and
+   schema, the way the BYPASSRLS refusal lists roles, and names both migrations.
+4. **Two tests pinned to their own refusal.** The silent-database test matched "did not say", which
+   two refusals share: had the tables question let no row through, the next question's refusal
+   would have passed it (measured, mutant M1). It names its own words now, and a new test answers
+   the tables question and then nothing, expecting the second question's refusal. And the 008 test's
+   title said "from every role": a default grant to a named group survives 008. It says what 008
+   does: from PUBLIC and from the application. Start-up catches the rest.
+
+**Corrected without a question:** decision 123, the comment in the evasive-answer test, and the
+message of commit 7ede364 said all seven rows were refused by the tables check. Six were. The row
+with no `who` was refused by the `who` question, which ran first in the old code (measured). The
+comment and decision 123 say six now; the commit message stays as it was, and this note corrects
+it.
+
+**Not verifiable tonight:** Neon itself. The reviewer's memory of Neon is that it grants `CREATE`
+on `public` to one role of its own, `web_access`, and that its default privileges cover tables and
+sequences only; neither reaches `dsor_runtime`. The database tier has run on a local PostgreSQL 17
+shaped like Neon, before these fixes: 39 passed, and the demo started. It runs again after them,
+and on Neon once the learner points this step's `.env` at `dsor_step16`.
+
+**Red first.** The database owned by the application with `public` given back: start-up passed.
+A helper whose owner may create in `dsor`: start-up passed, and one call made the table. The three
+`CREATE` tests, changed to expect the role and the schema, failed against the old words. The two
+pinned tests pin behaviour that was already right, so they had no red; their breaks are below.
+Then the unit tests: 548.
+
+**Proved by breaking it**, in a copy, on the whole suite, each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the database-owner refusal off | 1: the database owner | 1, that test |
+| a helper's owner not asked about `CREATE` | 1: the helper | 1, that test |
+| the `CREATE` refusal lists schemas only | 3: the three `CREATE` tests | those 3 |
+| the `who` question without its no-row guard | 1: the half-silent database | 1, that test |
+| the tables question lets no row through | 1: the silent database | 1, that test |
+
+The four pieces were built in one working tree and committed one at a time: each piece's hunks
+staged alone, the staged files copied out and typechecked, and its tests run there before the
+commit.
