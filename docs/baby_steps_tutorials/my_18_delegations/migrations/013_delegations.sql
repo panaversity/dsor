@@ -19,7 +19,9 @@ CREATE TABLE dsor.delegations (
   per_transaction_limit_value    NUMERIC(18, 2) CHECK (per_transaction_limit_value > 0),
   per_transaction_limit_currency TEXT CHECK (per_transaction_limit_currency ~ '^[A-Z]{3}$'),
   status      TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'revoked', 'expired')),
-  expires_at  TIMESTAMPTZ NOT NULL,
+  -- A time, and never 'infinity' or '-infinity', which the program reads as no time at all, and
+  -- whose answer to "is this slip still in force?" a review found wrong (decision 128).
+  expires_at  TIMESTAMPTZ NOT NULL CHECK (isfinite(expires_at)),
   PRIMARY KEY (tenant, id),
   CHECK ((per_transaction_limit_value IS NULL) = (per_transaction_limit_currency IS NULL))
 );

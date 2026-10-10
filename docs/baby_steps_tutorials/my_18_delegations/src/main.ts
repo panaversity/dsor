@@ -333,7 +333,7 @@ if (slip !== undefined) {
     `  ${slip.id}  ${slip.delegator} for ${slip.delegate}: ${slip.permissions.join(", ")}`,
   );
   console.log(
-    `  ${" ".repeat(slip.id.length)}  up to ${limit === undefined ? "any amount" : `${limit.value} ${limit.currency}`} a payment, until ${slip.expiresAt.slice(0, 10)}`,
+    `  ${" ".repeat(slip.id.length)}  up to ${limit === undefined ? "any amount" : `${limit.value} ${limit.currency}`} a payment, until ${slip.expiresAt?.slice(0, 10) ?? "a time this program cannot read"}`,
   );
 }
 

@@ -638,11 +638,18 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
     );
   }
 
-  if (Date.parse(slip.expiresAt) <= Date.now()) {
+  // In force only when its expiry is shown to be later than now. Asked this way round because
+  // `NaN <= now` is false: an expiry JavaScript cannot read, a year after 9999, passed as not
+  // expired, and a review committed a payment under it (decision 128).
+  const until = slip.expiresAt === undefined ? Number.NaN : Date.parse(slip.expiresAt);
+
+  if (!(until > Date.now())) {
     return refuse(
       principal.id,
       "DELEGATION_EXPIRED",
-      `${slip.id} expired at ${slip.expiresAt}`,
+      Number.isNaN(until)
+        ? `${slip.id}'s expiry is not a time this program can read, so it is not known to be in force`
+        : `${slip.id} expired at ${slip.expiresAt}`,
       context.requestId,
     );
   }

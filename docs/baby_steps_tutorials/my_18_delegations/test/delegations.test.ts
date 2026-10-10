@@ -171,6 +171,33 @@ describe("an agent's command runs under its slip", () => {
     expect(refusalOf(await create(AGENT)).code).toBe("DELEGATION_EXPIRED");
   });
 
+  it("DSOR-DEL-01a: an expiry this program cannot read is not in force: a year after 9999 is refused", async () => {
+    // Decision 128: `NaN <= now` is false, so an expiry JavaScript cannot read passed as not
+    // expired, and a review committed a payment under it.
+    await owner(
+      "UPDATE dsor.delegations SET expires_at = '10000-01-01T00:00:00Z' WHERE id = 'del_100'",
+    );
+
+    expect(refusalOf(await create(AGENT)).code).toBe("DELEGATION_EXPIRED");
+  });
+
+  it("DSOR-DEL-01a: the table refuses an expiry that is no time at all", async () => {
+    // Decision 128: `-infinity` came back from the database as no time, and the slip passed.
+    for (const never of ["infinity", "-infinity"]) {
+      const answer = await asTheOwner(async () => {
+        try {
+          await db.exec(`UPDATE dsor.delegations SET expires_at = '${never}' WHERE id = 'del_100'`);
+
+          return "allowed";
+        } catch (error) {
+          return (error as Error).message;
+        }
+      });
+
+      expect(answer, never).toMatch(/check constraint/);
+    }
+  });
+
   it("the agent's reads need no slip: its own role reads", async () => {
     await owner("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'");
 

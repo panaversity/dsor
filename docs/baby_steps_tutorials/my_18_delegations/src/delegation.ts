@@ -28,8 +28,12 @@ export interface Delegation {
   /** Up to how much one payment may be, or `undefined` for no limit. */
   readonly perTransactionLimit: Money | undefined;
   readonly status: DelegationStatus;
-  /** When it stops counting, as an exact ISO time. */
-  readonly expiresAt: string;
+  /**
+   * When it stops counting, as an exact ISO time, or `undefined` when the store's value is no time
+   * this program can write down. Migration 013 refuses `infinity`; `undefined` is for a store that
+   * lets one in anyway, and it is refused as not in force (decision 128).
+   */
+  readonly expiresAt: string | undefined;
 }
 
 interface Row {
@@ -41,7 +45,8 @@ interface Row {
   readonly limit_value: string | null;
   readonly limit_currency: string | null;
   readonly status: DelegationStatus;
-  readonly expires_at: string;
+  /** NULL for `infinity` and `-infinity`, which `to_char` cannot write as a date. */
+  readonly expires_at: string | null;
 }
 
 /**
@@ -80,7 +85,7 @@ export async function activeSlipFor(
         ? undefined
         : money(row.limit_value, row.limit_currency),
     status: row.status,
-    expiresAt: row.expires_at,
+    expiresAt: row.expires_at ?? undefined,
   });
 }
 
