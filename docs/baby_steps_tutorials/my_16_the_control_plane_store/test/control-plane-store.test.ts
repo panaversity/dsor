@@ -92,8 +92,10 @@ describe("creating nothing in dsor, on a server that hands out rights to every n
   // away nothing, and deleting either would fail no test above. A server somebody administered
   // first is another matter: ALTER DEFAULT PRIVILEGES hands rights out on every schema made from
   // then on. A review measured it: with these two defaults, the application held CREATE on `dsor`
-  // after 008, and every role did once the line for PUBLIC was gone (decision 123).
-  it("DSOR-MOD-01: migration 008 takes CREATE on dsor back from every role and from the application", async () => {
+  // after 008, and every role did once the line for PUBLIC was gone (decision 123). A default grant
+  // to a group by name survives 008, which names only PUBLIC and the application; start-up refuses
+  // an application that belongs to such a group (decision 124).
+  it("DSOR-MOD-01: migration 008 takes CREATE on dsor back from PUBLIC and from the application", async () => {
     const server = await PGlite.create();
 
     try {

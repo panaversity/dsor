@@ -225,9 +225,23 @@ describe("refuseIfItCanRewriteHistory", () => {
       query: async <T>() => ({ rows: [] as T[] }),
     };
 
-    // NEW IN STEP 16: "did not say", not "did not say who": whether the tables exist is asked
-    // first now, on its own, so it is the first question a silent database leaves unanswered.
-    await expect(refuseIfItCanRewriteHistory(silent)).rejects.toThrow(/did not say/);
+    // NEW IN STEP 16: whether the tables exist is asked first now, on its own, so it is the first
+    // question a silent database leaves unanswered. Its own words, not "did not say", which the
+    // next question's refusal shares and would pass too (decision 124).
+    await expect(refuseIfItCanRewriteHistory(silent)).rejects.toThrow(
+      /did not say whether the tenant tables exist/,
+    );
+  });
+
+  it("DSOR-AUD-04a: a database that answers the first question and then nothing is refused, not trusted", async () => {
+    // NEW IN STEP 16: the second question's own refusal, which the test above no longer reaches.
+    const halfSilent: Database = {
+      query: async <T>(sql: string) => ({
+        rows: (sql.includes("AS tables_present") ? [{ tables_present: true }] : []) as T[],
+      }),
+    };
+
+    await expect(refuseIfItCanRewriteHistory(halfSilent)).rejects.toThrow(/did not say who/);
   });
 
   it("DSOR-AUD-04a: an answer that is neither true nor false is refused, not read as false", async () => {
@@ -245,10 +259,10 @@ describe("refuseIfItCanRewriteHistory", () => {
       { may: false, may_by_set_role: false, may_by_function: false, has_trigger: false }, // no `who`
     ]) {
       // NEW IN STEP 16: the tables question answered truly, and every other question evasively.
-      // Every row here lacked `tables_present`, so from step 11 on each one was refused by the
-      // tables check, the first guard, and none reached the guards it was written for. Now they
-      // do. Each row is still refused by the first guard it does not satisfy, and this test asks
-      // no more than that (decision 123).
+      // Every row here lacked `tables_present`, so from step 11 on six of the seven were refused by
+      // the tables check, and the one with no `who` by the `who` question, which came first: none
+      // reached the guard it was written for. Now they do. Each row is still refused by the first
+      // guard it does not satisfy, and this test asks no more than that (decisions 123 and 124).
       const db: Database = {
         query: async <T>(sql: string) =>
           ({ rows: [(sql.includes("AS tables_present") ? { tables_present: true } : evasive) as T] }),
