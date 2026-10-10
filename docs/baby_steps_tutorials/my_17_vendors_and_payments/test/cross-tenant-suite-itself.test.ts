@@ -219,7 +219,8 @@ describe("each question, honest and lied to", () => {
 
   it("somethingToTouch: the other company lacks the number", async () => {
     const deps = honest({
-      rowsOf: async (tenant) => (tenant === THEIRS ? [] : [{ entity: "invoice", id: "INV-1009", status: "draft" }]),
+      rowsOf: async (tenant) =>
+        tenant === THEIRS ? [] : [{ entity: "invoice", id: "INV-1009", status: "draft" }],
     });
 
     await expect(questions.somethingToTouch(deps, ISSUE)).rejects.toThrow(/has no INV-1009/);
@@ -260,14 +261,18 @@ describe("each question, honest and lied to", () => {
     });
 
     await questions.somethingToTouch(withPayments, cancel);
-    await expect(questions.somethingToTouch(invoicesOnly, cancel)).rejects.toThrow(/has no PAY-901/);
+    await expect(questions.somethingToTouch(invoicesOnly, cancel)).rejects.toThrow(
+      /has no PAY-901/,
+    );
   });
 
   it("rowsUntouched: a call that changed the other company's row", async () => {
     let calls = 0;
     const deps = honest({
       rowsOf: async (tenant) =>
-        tenant === THEIRS ? [{ entity: "invoice", id: "INV-1009", status: calls > 0 ? "issued" : "draft" }] : [],
+        tenant === THEIRS
+          ? [{ entity: "invoice", id: "INV-1009", status: calls > 0 ? "issued" : "draft" }]
+          : [],
     });
     const base = deps.call;
 

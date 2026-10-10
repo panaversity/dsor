@@ -264,7 +264,14 @@ const handlers: Readonly<Record<string, Handler>> = {
     let after: string | undefined;
 
     if (Object.hasOwn(args, "after")) {
-      const read = idFrom({ invoice: args["after"] }, "invoice", contract, askedBy, tenant, requestId);
+      const read = idFrom(
+        { invoice: args["after"] },
+        "invoice",
+        contract,
+        askedBy,
+        tenant,
+        requestId,
+      );
 
       if ("refused" in read) {
         return { kind: "error", askedBy, envelope: read.refused };

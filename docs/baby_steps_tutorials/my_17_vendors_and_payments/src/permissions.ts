@@ -37,7 +37,12 @@ import type { Principal } from "./people.ts";
 // NEW IN STEP 17: the supervisor and the agent may make a draft payment and take one back. The
 // CFO approves payments, in a later step, and makes none (decision 125).
 export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  ap_supervisor: Object.freeze(["invoice:read", "invoice:issue", "payment:create", "payment:cancel"]),
+  ap_supervisor: Object.freeze([
+    "invoice:read",
+    "invoice:issue",
+    "payment:create",
+    "payment:cancel",
+  ]),
   approver: Object.freeze(["invoice:read", "payment:approve"]),
   ap_worker: Object.freeze(["invoice:read", "invoice:issue", "payment:create", "payment:cancel"]),
 });

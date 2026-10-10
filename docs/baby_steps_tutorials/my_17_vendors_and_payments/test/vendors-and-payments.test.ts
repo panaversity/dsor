@@ -128,7 +128,9 @@ describe("the running example's vendor and payment", () => {
     // A vendor of its own, removed again: the story's reset puts payments and invoices back, not
     // vendors, and the other tests here count the vendors.
     await asTheOwner(() =>
-      db.exec("INSERT INTO public.vendors (tenant_id, id, status) VALUES ('org_456', 'VENDOR-77', 'approved')"),
+      db.exec(
+        "INSERT INTO public.vendors (tenant_id, id, status) VALUES ('org_456', 'VENDOR-77', 'approved')",
+      ),
     );
 
     try {
@@ -205,7 +207,14 @@ describe("what the application may do to the new tables", () => {
       await attempt("UPDATE public.payments SET status = 'cancelled' WHERE id = 'PAY-901'"),
     ).toBe("allowed");
 
-    for (const column of ["tenant_id", "id", "vendor", "invoice", "amount_value", "amount_currency"]) {
+    for (const column of [
+      "tenant_id",
+      "id",
+      "vendor",
+      "invoice",
+      "amount_value",
+      "amount_currency",
+    ]) {
       expect(
         await attempt(`UPDATE public.payments SET ${column} = ${column} WHERE id = 'PAY-901'`),
         column,
@@ -229,17 +238,23 @@ describe("what the application may do to the new tables", () => {
     expect(await attempt("DELETE FROM public.payments WHERE id = 'PAY-901'")).toMatch(
       /permission denied for table payments/,
     );
-    expect(await attempt("TRUNCATE public.payments")).toMatch(/permission denied for table payments/);
+    expect(await attempt("TRUNCATE public.payments")).toMatch(
+      /permission denied for table payments/,
+    );
   });
 
   it("the application may read the vendors, and change nothing about them", async () => {
     expect(await attempt("SELECT 1 FROM public.vendors")).toBe("allowed");
     expect(
-      await attempt("INSERT INTO public.vendors (tenant_id, id, status) VALUES ('org_456', 'V-1', 'approved')"),
+      await attempt(
+        "INSERT INTO public.vendors (tenant_id, id, status) VALUES ('org_456', 'V-1', 'approved')",
+      ),
     ).toMatch(/permission denied for table vendors/);
     expect(await attempt("UPDATE public.vendors SET status = 'suspended'")).toMatch(
       /permission denied for table vendors/,
     );
-    expect(await attempt("DELETE FROM public.vendors")).toMatch(/permission denied for table vendors/);
+    expect(await attempt("DELETE FROM public.vendors")).toMatch(
+      /permission denied for table vendors/,
+    );
   });
 });
