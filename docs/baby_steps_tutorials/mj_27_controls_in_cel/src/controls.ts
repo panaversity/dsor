@@ -98,6 +98,63 @@ export function answerOf(
   return { answer: evaluated.holds ? effectOf(control) : "ALLOW" };
 }
 
+/** One control's answer at line ⑩, as the decision's record names it (DSOR-EXE-02; decision D14). */
+export type ControlOutcome = {
+  id: string;
+  version: number;
+  outcome: ControlAnswer;
+  // The policy it came from. The record keeps it: DSOR-CTL-04, step 28's rule, met early.
+  authority: Record<string, unknown>;
+  // Why the condition could not be evaluated, when it could not (DSOR-CTL-07).
+  evaluation_error?: string;
+};
+
+/** What a payment that waits for an approval requires: one line for each control that asked. */
+export type Requirement = { approval: { role: string; quorum: number }; control: string };
+
+/** Each of these controls that governs the operation, evaluated for one call (decision D15: any caller). */
+export function evaluateControls(
+  controls: readonly Control[],
+  operation: string,
+  facts: Facts,
+  sheet: RateSheet | undefined,
+): ControlOutcome[] {
+  return controls
+    .filter((control) => control.operation === operation)
+    .map((control) => {
+      const { answer, error } = answerOf(control, facts, sheet);
+      const { id, version, authority } = control;
+      const failed = error === undefined ? {} : { evaluation_error: error };
+      return { id, version, outcome: answer, authority: structuredClone(authority), ...failed };
+    });
+}
+
+// DENY over any REQUIRE_*, and any REQUIRE_* over ALLOW (DSOR-AUT-02b). A step 24 limit is a DENY
+// too, and line ⑩ checks it after the controls (decision D9).
+const ORDER: readonly ControlAnswer[] = ["ALLOW", "REQUIRE_APPROVAL", "DENY"];
+
+/** The most restrictive of these answers, or ALLOW when there are none (DSOR-AUT-02b). */
+export function mostRestrictive(answers: readonly ControlAnswer[]): ControlAnswer {
+  let most: ControlAnswer = "ALLOW";
+  for (const answer of answers) {
+    if (ORDER.indexOf(answer) > ORDER.indexOf(most)) most = answer;
+  }
+  return most;
+}
+
+/** The role and quorum of each control that asked for an approval (decision D10). */
+export function requirementsOf(
+  controls: readonly Control[],
+  outcomes: readonly ControlOutcome[],
+): Requirement[] {
+  const asked = new Set(outcomes.filter((o) => o.outcome === "REQUIRE_APPROVAL").map((o) => o.id));
+  return controls.flatMap((control) =>
+    asked.has(control.id) && "require_approval" in control.effect
+      ? [{ approval: { ...control.effect.require_approval }, control: control.id }]
+      : [],
+  );
+}
+
 /** Each failing test of a control, numbered from 1, run with the rates it pins (DSOR-CTL-02c). */
 function failedTests(control: Control, tenant: string, currency: string, risk: string): string[] {
   const failed: string[] = [];

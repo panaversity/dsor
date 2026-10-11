@@ -5,7 +5,17 @@
 // switched on. When one does not, start-up refuses to start.
 import { describe, expect, it } from "vitest";
 import { readRoleSettings } from "../src/authority.ts";
-import { readControls, type ControlsSource } from "../src/controls.ts";
+import type { Facts } from "../src/cel.ts";
+import {
+  evaluateControls,
+  mostRestrictive,
+  readControls,
+  requirementsOf,
+  type Control,
+  type ControlsSource,
+} from "../src/controls.ts";
+import type { RateSheet } from "../src/exchange.ts";
+import { money, type Money } from "../src/money.ts";
 import { memoryInvoices } from "../src/invoice.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -236,5 +246,110 @@ describe("C3: the tests, run before a control is switched on", () => {
     ).toContain("controls.json: org_456's control high-value-payment v8 fails its test 3");
     const stale = startWith(withOne({ status: "stale_authority" }));
     expect(stale.controls.get("org_456")?.map((c) => c.status)).toStrictEqual(["stale_authority"]);
+  });
+});
+
+// Tuesday's sheet of ecb-daily, from step 26: how much of each currency 1 EUR buys.
+const TUESDAY: RateSheet = {
+  source: "ecb-daily",
+  base: "EUR",
+  published_at: "2026-10-06T14:00:00.000Z",
+  rates: { EUR: "1", USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+};
+/** The facts of the agent's draft of a bill with this open amount. */
+function factsFor(open: Money): Facts {
+  return {
+    input: {},
+    state: { invoice: { open_amount: open } },
+    principal: { id: "user_123", type: "human", roles: ["ap_supervisor"] },
+    actor_chain: ["accounts-payable-fte"],
+    delegation: { id: "del_100" },
+    tenant: { id: "org_456" },
+    risk: "medium",
+    now: new Date("2026-10-06T15:05:00.000Z"),
+  };
+}
+// A second control, for these tests only: org_456 refuses any payment above 45,000 USD.
+const DENY_ABOVE_45K = {
+  ...SHIPPED,
+  id: "very-high-value-payment",
+  version: 1,
+  condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("45000", "USD"))',
+  effect: { deny: { reason: "payments above 45,000 USD go to the board" } },
+} as unknown as Control;
+
+describe("C5: line ⑩'s answer from several controls", () => {
+  const cfo = startWith(readControls()).controls.get("org_456")!;
+
+  it("DSOR-AUT-02a: a control answers its effect when its condition holds, and ALLOW when it does not: 31,400.00 USD needs the CFO, 9,000.00 EUR is allowed, and the deny control answers DENY", () => {
+    const answers = (open: Money, controls: readonly Control[]) =>
+      evaluateControls(controls, "payment.create", factsFor(open), TUESDAY).map((o) => o.outcome);
+    expect(answers(money("31400.00", "USD"), cfo)).toStrictEqual(["REQUIRE_APPROVAL"]);
+    expect(answers(money("9000.00", "EUR"), cfo)).toStrictEqual(["ALLOW"]);
+    expect(answers(money("50000.00", "USD"), [DENY_ABOVE_45K])).toStrictEqual(["DENY"]);
+  });
+
+  it("DSOR-AUT-02b: the most restrictive answer wins: DENY over REQUIRE_APPROVAL, and REQUIRE_APPROVAL over ALLOW, in any order; no answer at all is ALLOW", () => {
+    expect(mostRestrictive(["ALLOW", "REQUIRE_APPROVAL", "ALLOW"])).toBe("REQUIRE_APPROVAL");
+    expect(mostRestrictive(["REQUIRE_APPROVAL", "DENY", "ALLOW"])).toBe("DENY");
+    expect(mostRestrictive(["DENY", "REQUIRE_APPROVAL"])).toBe("DENY");
+    expect(mostRestrictive(["ALLOW"])).toBe("ALLOW");
+    expect(mostRestrictive([])).toBe("ALLOW");
+  });
+
+  it("DSOR-AUT-02b: INV-2004's 14,000,000.00 PKR, 50,000.00 USD, meets both controls: the CFO's asks for an approval, the second denies, and DENY wins", () => {
+    const outcomes = evaluateControls(
+      [...cfo, DENY_ABOVE_45K],
+      "payment.create",
+      factsFor(money("14000000.00", "PKR")),
+      TUESDAY,
+    );
+    expect(outcomes.map((o) => [o.id, o.outcome])).toStrictEqual([
+      ["high-value-payment", "REQUIRE_APPROVAL"],
+      ["very-high-value-payment", "DENY"],
+    ]);
+    expect(mostRestrictive(outcomes.map((o) => o.outcome))).toBe("DENY");
+  });
+
+  it("Step 27: only the controls that govern the call's operation answer it", () => {
+    const onCancel = { ...DENY_ABOVE_45K, operation: "payment.cancel" } as Control;
+    expect(
+      evaluateControls([onCancel], "payment.create", factsFor(money("50000.00", "USD")), TUESDAY),
+    ).toStrictEqual([]);
+  });
+
+  it("DSOR-CTL-07: a control whose condition cannot be evaluated answers its effect, and its outcome names the error, the control, and the policy it came from, for the decision's record (step 27's README, decision D14)", () => {
+    const [outcome] = evaluateControls(
+      cfo,
+      "payment.create",
+      factsFor(money("100000", "JPY")),
+      TUESDAY,
+    );
+    expect(outcome).toStrictEqual({
+      id: "high-value-payment",
+      version: 8,
+      outcome: "REQUIRE_APPROVAL",
+      authority: SHIPPED["authority"],
+      evaluation_error: "no usable rate compares JPY with USD",
+    });
+  });
+
+  it("Step 27: what a waiting payment requires: each control that asked for an approval, its role, and its quorum (step 27's README, decision D10)", () => {
+    const outcomes = evaluateControls(
+      cfo,
+      "payment.create",
+      factsFor(money("31400.00", "USD")),
+      TUESDAY,
+    );
+    expect(requirementsOf(cfo, outcomes)).toStrictEqual([
+      { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment" },
+    ]);
+    const allowed = evaluateControls(
+      cfo,
+      "payment.create",
+      factsFor(money("100.00", "USD")),
+      TUESDAY,
+    );
+    expect(requirementsOf(cfo, allowed)).toStrictEqual([]);
   });
 });
