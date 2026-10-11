@@ -20,6 +20,7 @@ import {
   proposalsOf,
   stateOf,
 } from "../src/proposal.ts";
+import { overPGlite, refuseIfItCanRewriteHistory } from "../src/database.ts";
 import { theDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
@@ -492,5 +493,30 @@ describe("no way into EXECUTING forgets the brake", () => {
     );
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
+});
+
+describe("the brake's record, hardened", () => {
+  it("DSOR-OPS-01a: no agent may be named '*', the freeze's sign", async () => {
+    // Decision 143: a brake on '*' made the company's freeze answer "on already", and the agent paid.
+    await expect(
+      pullTheBrake("org_456", "*", "user_123", "a name that means everyone"),
+    ).rejects.toThrow(/check constraint/);
+  });
+
+  it("DSOR-OPS-01a: a column added to the brake later, and granted to the application, is refused at start-up", async () => {
+    const fresh = await aDatabase();
+
+    await fresh.exec("RESET ROLE");
+    await fresh.exec(
+      "ALTER TABLE dsor.agent_controls ADD COLUMN note TEXT; GRANT UPDATE (note) ON dsor.agent_controls TO dsor_runtime",
+    );
+    await fresh.exec("SET ROLE dsor_runtime");
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(fresh))).rejects.toThrow(
+      /may delete a brake/,
+    );
+
+    await fresh.close();
   });
 });

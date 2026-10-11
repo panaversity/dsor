@@ -13,8 +13,10 @@ CREATE SEQUENCE dsor.control_numbers;
 CREATE TABLE dsor.agent_controls (
   tenant     TEXT NOT NULL,
   id         TEXT NOT NULL DEFAULT 'ctl_' || nextval('dsor.control_numbers'),
-  -- The agent it stops, or NULL: every agent in the company, a freeze.
-  agent      TEXT CHECK (agent <> ''),
+  -- The agent it stops, or NULL: every agent in the company, a freeze. Never '*', which stands for
+  -- "every agent" in the index below: an agent of that name was a brake the freeze collided with,
+  -- a review measured (decision 143).
+  agent      TEXT CHECK (agent <> '' AND agent <> '*'),
   imposed_by TEXT NOT NULL CHECK (imposed_by <> ''),
   imposed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   reason     TEXT NOT NULL CHECK (reason <> ''),

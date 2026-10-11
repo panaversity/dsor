@@ -385,8 +385,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    THEN '(status = ''active''::text)' END,
               -- NEW IN STEP 25: what the second policy lets a row become: anything, the program's
               -- to say, except for a slip, which only becomes revoked.
+              -- Decision 143: and with who revoked it.
               CASE WHEN rel = to_regclass('dsor.delegations')
-                   THEN '(status = ''revoked''::text)' ELSE 'true' END
+                   THEN '((status = ''revoked''::text) AND (revoked_by IS NOT NULL))' ELSE 'true' END
          FROM tenant_table
      )
      SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
@@ -724,11 +725,19 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       [
         `has_table_privilege(${role}, 'dsor.agent_controls', 'DELETE')`,
         `has_table_privilege(${role}, 'dsor.agent_controls', 'TRUNCATE')`,
-        ...["tenant", "id", "agent", "imposed_by", "imposed_at", "reason"].map(
-          (column) => `has_column_privilege(${role}, 'dsor.agent_controls', '${column}', 'UPDATE')`,
-        ),
-        ...["id", "imposed_at", "lifted_by", "lifted_at"].map(
-          (column) => `has_column_privilege(${role}, 'dsor.agent_controls', '${column}', 'INSERT')`,
+        // Decision 143: every column but the ones it may write, as for slips, so a column added
+        // later and granted is asked too; named one by one, a review's new column passed.
+        ...(
+          [
+            ["UPDATE", ["lifted_by", "lifted_at"]],
+            ["INSERT", ["tenant", "agent", "imposed_by", "reason"]],
+          ] as const
+        ).map(
+          ([right, allowed]) => `EXISTS (SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = 'dsor.agent_controls'::regclass AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND a.attname NOT IN (${allowed.map((c) => `'${c}'`).join(", ")})
+                    AND has_column_privilege(${role}, a.attrelid, a.attnum, '${right}'))`,
         ),
       ].join(" OR "),
     )} AS may`,
