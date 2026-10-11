@@ -21,8 +21,9 @@ import type { HandlerAnswer } from "./operations.ts";
 export type FreshnessMode = "current" | "bounded_staleness" | "observational" | "connector_defined";
 
 /**
- * What an answer says about its data. There is no `resource_version`: the rule asks for one where
- * one exists, and no invoice has a version until step 21 (decision 120).
+ * What an answer says about its data. There is no `resource_version` here: the rule asks for one
+ * where one exists, and since step 21 an invoice has one, in the row itself, beside its other
+ * fields; the label does not repeat it, so DSOR-FRS-01a is met in part (decisions 120 and 134).
  */
 export interface Freshness {
   readonly mode: FreshnessMode;

@@ -52,7 +52,8 @@ describe("every answer says how old its data is", () => {
 
       expect(observed).toBeGreaterThanOrEqual(before);
       expect(observed).toBeLessThanOrEqual(after);
-      // Decision 120: no invoice has a version until step 21, so the label names none.
+      // Decision 120: the label names no version. NEW IN STEP 21: the row does, `version`, and the
+      // label does not repeat it (decision 134).
       expect("resource_version" in answer.freshness).toBe(false);
     }
   });

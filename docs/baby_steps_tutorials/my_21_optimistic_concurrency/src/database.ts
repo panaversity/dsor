@@ -531,6 +531,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // nothing else — a row's company and number are its identity (DSOR-TEN-01a) — and it may neither
   // add nor remove rows. An administrator who grants more has made the same kind of mistake as
   // pointing DSOR_DB_URL at the owner, and a critic's next attack was exactly that grant.
+  // NEW IN STEP 21: and its version, which every change raises (decision 133).
   //
   // STEP 17: asked of every role this connection can be, itself and one SET ROLE away, as
   // the log's rights have been since step 09. A review passed start-up with DELETE on the payments
@@ -539,6 +540,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_column_privilege(${role}, 'public.invoices', 'tenant_id', 'UPDATE')
          OR has_column_privilege(${role}, 'public.invoices', 'id', 'UPDATE')
+         -- NEW IN STEP 21: whom it is owed to, and how much, which nothing asked (decision 134).
+         OR has_column_privilege(${role}, 'public.invoices', 'vendor', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.invoices', 'amount_value', 'UPDATE')
+         OR has_column_privilege(${role}, 'public.invoices', 'amount_currency', 'UPDATE')
          -- STEP 17: any column, not the table. A grant that names columns is invisible to
          -- has_table_privilege, so a grant of every column passed this check, measured.
          OR has_any_column_privilege(${role}, 'public.invoices', 'INSERT')
@@ -549,9 +554,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (invoices[0]?.may !== false) {
     throw new Error(
-      `this connection is \`${answer.who}\`, and it may move, renumber, add or delete invoices, ` +
-        `itself, one SET ROLE away, or through a helper function. The application may change an invoice's status and nothing ` +
-        `else. See migrations/003_invoices.sql.`,
+      `this connection is \`${answer.who}\`, and it may move, renumber, rewrite, add or delete ` +
+        `invoices, itself, one SET ROLE away, or through a helper function. The application may ` +
+        `change an invoice's status and its version, and nothing else. See ` +
+        `migrations/003_invoices.sql and 019_versions.sql.`,
     );
   }
 
@@ -569,6 +575,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
          OR has_table_privilege(${role}, 'public.vendors', 'TRUNCATE')
          OR has_column_privilege(${role}, 'public.payments', 'id', 'INSERT')
          OR has_column_privilege(${role}, 'public.payments', 'status', 'INSERT')
+         -- NEW IN STEP 21: a new payment's version is the table's to give (decision 134).
+         OR has_column_privilege(${role}, 'public.payments', 'version', 'INSERT')
          OR has_column_privilege(${role}, 'public.payments', 'tenant_id', 'UPDATE')
          OR has_column_privilege(${role}, 'public.payments', 'id', 'UPDATE')
          OR has_column_privilege(${role}, 'public.payments', 'vendor', 'UPDATE')
@@ -586,7 +594,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, and it may change a vendor, more of a payment than ` +
         `its status, or a payment's number, itself, one SET ROLE away, or through a helper function. ` +
         `The application reads the vendors, makes a draft payment and changes a payment's ` +
-        `status, and nothing else. See migrations/009_vendors_and_payments.sql.`,
+        `status and its version, and nothing else. See migrations/009_vendors_and_payments.sql ` +
+        `and 019_versions.sql.`,
     );
   }
 

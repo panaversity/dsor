@@ -386,6 +386,10 @@ describe("refuseIfItCanRewriteHistory", () => {
     for (const grant of [
       "GRANT UPDATE (tenant_id) ON public.invoices TO dsor_runtime",
       "GRANT UPDATE (id) ON public.invoices TO dsor_runtime",
+      // NEW IN STEP 21: and whom it is owed to, or how much, which nothing asked (decision 134).
+      "GRANT UPDATE (vendor) ON public.invoices TO dsor_runtime",
+      "GRANT UPDATE (amount_value) ON public.invoices TO dsor_runtime",
+      "GRANT UPDATE (amount_currency) ON public.invoices TO dsor_runtime",
       "GRANT DELETE ON public.invoices TO dsor_runtime",
       "GRANT INSERT ON public.invoices TO dsor_runtime",
     ]) {
@@ -427,6 +431,8 @@ describe("refuseIfItCanRewriteHistory", () => {
       "GRANT TRUNCATE ON public.vendors TO dsor_runtime",
       "GRANT INSERT (id) ON public.payments TO dsor_runtime",
       "GRANT INSERT (status) ON public.payments TO dsor_runtime",
+      // NEW IN STEP 21: a new payment's version is the table's to give (decision 134).
+      "GRANT INSERT (version) ON public.payments TO dsor_runtime",
       "GRANT UPDATE (tenant_id) ON public.payments TO dsor_runtime",
       "GRANT UPDATE (id) ON public.payments TO dsor_runtime",
       "GRANT UPDATE (vendor) ON public.payments TO dsor_runtime",

@@ -144,18 +144,6 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set<string>();
 const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
 
 /**
- * Reads one argument as a canonical address of one entity, and returns the id, or the refusal that
- * stopped it.
- *
- * STEP 17: the handler names the argument and the entity it needs. Until step 16 every address
- * an operation took was its own kind, an invoice for `invoice.*`, so the entity was read from the
- * operation's name. `payment.create` takes an invoice's address, and that guess would refuse it
- * (decision 125).
- *
- * Every refusal here is `VALIDATION_FAILED` or `TENANT_MISMATCH`, and both are `never`
- * retryable: asking again with the same bad address cannot start working.
- */
-/**
  * NEW IN STEP 21: the version an optimistic command's caller decided on, or why it is not one
  * (DSOR-CON-01b, decision 133). A whole number from 1, and required: an optional one would make the
  * check the caller's to switch off.
@@ -186,6 +174,18 @@ function stale(what: string, askedBy: string, requestId: string): HandlerAnswer 
   };
 }
 
+/**
+ * Reads one argument as a canonical address of one entity, and returns the id, or the refusal that
+ * stopped it.
+ *
+ * STEP 17: the handler names the argument and the entity it needs. Until step 16 every address
+ * an operation took was its own kind, an invoice for `invoice.*`, so the entity was read from the
+ * operation's name. `payment.create` takes an invoice's address, and that guess would refuse it
+ * (decision 125).
+ *
+ * Every refusal here is `VALIDATION_FAILED` or `TENANT_MISMATCH`, and both are `never`
+ * retryable: asking again with the same bad address cannot start working.
+ */
 function idFrom(
   args: Readonly<Record<string, unknown>>,
   entity: string,
