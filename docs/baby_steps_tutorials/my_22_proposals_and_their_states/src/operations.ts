@@ -1784,6 +1784,19 @@ async function recordTheRead(
   return undefined;
 }
 
+/**
+ * NEW IN STEP 22, decision 137: the refusals a handler gives when it did nothing, the only ones that
+ * finish a proposal as FAILED. A careless handler that made the payment and then answered
+ * TRANSACTION_FAILED left its proposal FAILED, a review measured; any code not here is
+ * OUTCOME_UNKNOWN, because the door cannot tell what happened.
+ */
+const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
+  "CONFLICT",
+  "STALE_STATE",
+  "RESOURCE_NOT_FOUND",
+  "VALIDATION_FAILED",
+]);
+
 /** NEW IN STEP 22: where one request's proposal has got to, and whether its handler ran. */
 interface Progress {
   state: ProposalState | undefined;
@@ -2029,7 +2042,7 @@ export function makeDoor(
           ? ["COMMITTED", "the handler answered COMMITTED"]
           : answer.kind === "error"
             ? [
-                answer.envelope.code === "OUTCOME_UNKNOWN" ? "OUTCOME_UNKNOWN" : "FAILED",
+                NOTHING_WAS_DONE.has(answer.envelope.code) ? "FAILED" : "OUTCOME_UNKNOWN",
                 `the handler answered ${String(answer.envelope.code)}`,
               ]
             : [

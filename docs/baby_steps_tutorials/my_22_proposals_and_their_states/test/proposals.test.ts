@@ -600,6 +600,22 @@ describe("the door makes a proposal for every command and moves it", () => {
     expect(await stateOf("org_456", id)).toBe("EXECUTING");
   });
 
+  it("DSOR-UNK-01b: a handler that answers a failure which does not say nothing was done leaves its proposal OUTCOME_UNKNOWN", async () => {
+    // Decision 137: a careless handler that made the payment and then answered TRANSACTION_FAILED
+    // left its proposal FAILED, finished, a review measured.
+    const door = makeDoor(PIPELINE, {
+      "invoice.issue": (_args, _contract, askedBy, _tenant, _hash, requestId) => ({
+        kind: "error",
+        askedBy,
+        envelope: refusal("TRANSACTION_FAILED", "the bank hung up", requestId, askedBy),
+      }),
+    });
+
+    await door(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    expect(await stateOf("org_456", "prop_1")).toBe("OUTCOME_UNKNOWN");
+  });
+
   it("DSOR-IDM-04: a door that finds its proposal already finished does not run the handler", async () => {
     // Decision 137: the branch nothing tested. Here a stage makes the proposal and finishes it, as a
     // second request for the same proposal would find it; the handler must never be called.
