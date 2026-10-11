@@ -344,6 +344,35 @@ describe("fifty at once", () => {
   });
 });
 
+describe("a claim with no answer", () => {
+  it("DSOR-IDM-01c: the same request waits for it, and is then told only what is known", async () => {
+    // Decision 132: a claim whose first request never recorded an answer told every retry the first
+    // request "has not finished", which nobody knew. The two-second wait running out is pinned too.
+    const measured = await pay("to-learn-the-fingerprint");
+
+    if (measured.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(measured)}`);
+    }
+
+    await asTheOwner(() =>
+      db.query(
+        `INSERT INTO dsor.idempotency_keys (tenant, principal, operation, key, payload_hash)
+         VALUES ('org_456', 'accounts-payable-fte', 'payment.create', 'no-answer', $1)`,
+        [measured.envelope.payload_hash],
+      ),
+    );
+
+    const started = Date.now();
+    const refusal = refusalOf(await pay("no-answer"));
+
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1900);
+    expect(refusal.code).toBe("OUTCOME_UNKNOWN");
+    expect(refusal.message).toMatch(/no answer is recorded/);
+    expect(refusal.message).not.toMatch(/has not finished/);
+    expect(await paymentsFor1009()).toBe(1);
+  });
+});
+
 describe("a claim is released only when nothing ran", () => {
   it("DSOR-IDM-01c: a handler that ran and then answered 'safe to send again' is not run again under its key", async () => {
     // Decision 132: the door released a claim on any safe_same_key answer, one a handler gave after

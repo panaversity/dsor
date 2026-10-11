@@ -1091,7 +1091,9 @@ const claimTheKey: Stage["run"] = async (context) => {
       return refuse(
         principal.id,
         "EVIDENCE_STORE_UNAVAILABLE",
-        `the idempotency key ${key} could not be claimed, so nothing was done; it is safe to send again`,
+        // Decision 132: what is known, and no more. The INSERT may have committed with its reply
+        // lost, and then the key is claimed with no answer, which reconciliation, step 37, clears.
+        `the idempotency key ${key} could not be claimed, or the claim could not be confirmed; nothing was done`,
         context.requestId,
       );
     }
@@ -1141,7 +1143,9 @@ const claimTheKey: Stage["run"] = async (context) => {
       return refuse(
         principal.id,
         "OUTCOME_UNKNOWN",
-        `the first ${contract.id} request with the key ${key} has not finished, so its outcome is not known yet; ask again with the same key to be given it`,
+        // Decision 132: "has not finished" was more than DSoR knew. No answer is recorded: the
+        // first request may still be running, or may have ended without writing one.
+        `no answer is recorded for the first ${contract.id} request with the key ${key}: it may still be running, or it may have ended without one`,
         context.requestId,
       );
     }
@@ -1853,7 +1857,9 @@ export function makeDoor(
 
     if (claim !== undefined) {
       try {
-        await settleKey(claim, answer, releases);
+        // Decision 132: tried once more before it is given up, because a claim left with no
+        // answer is a key no retry can use until reconciliation.
+        await settleKey(claim, answer, releases).catch(() => settleKey(claim, answer, releases));
       } catch {
         // If the answer cannot be written, the claim keeps none: a retry with its key waits, and is
         // told nobody knows yet, and reconciliation is step 37's. The caller of this request is
