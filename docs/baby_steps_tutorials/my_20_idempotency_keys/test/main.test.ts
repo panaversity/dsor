@@ -74,7 +74,9 @@ function demo(): { raw: string; report: string } {
       .replace(/sha256:[0-9a-f]+/g, "sha256:HASH")
       .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME")
       // STEP 19: and when the company's directory knew what the signer holds.
-      .replace(/as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "as of TIME"),
+      .replace(/as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "as of TIME")
+      // NEW IN STEP 20: and each run's own prefix on its idempotency keys.
+      .replace(/the key [0-9a-f]{8}-/g, "the key RUN-"),
   };
 }
 
@@ -134,8 +136,9 @@ describe("the program a learner runs", () => {
     // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
     // each payment operation from the generated section, and the agent's three payment decisions.
     // STEP 18: 30, with the two refusals of the slip's section. STEP 19: 32, with the
-    // two of the directory's.
-    expect(rows).toHaveLength(32);
+    // two of the directory's. NEW IN STEP 20: 35, with the three decisions of the keys' section:
+    // two payments and a conflict. The replays leave none.
+    expect(rows).toHaveLength(35);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -143,8 +146,8 @@ describe("the program a learner runs", () => {
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(19);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(13); // STEP 13: three pages read
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(20);
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(15); // STEP 13: three pages read
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
     // STEP 14: the gaps — 1, 5, 23, 25, 27 since step 17 — are the records of reads, which this
@@ -152,10 +155,10 @@ describe("the program a learner runs", () => {
     // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
       0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29,
-      30, 31, 32, 33, 34, 0, 1,
+      30, 31, 32, 33, 34, 35, 36, 37, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 35 records, chain verifies against the head: true"); // STEP 19: 30 decisions, 5 reads
+    expect(out).toContain("org_456: 38 records, chain verifies against the head: true"); // STEP 20: 33 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -201,22 +204,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(35); // STEP 19: 30 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(38); // STEP 20: 33 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 35 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 38 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(70);
+    expect(records(second, "org_456")).toBe(76);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 70 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 76 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      64,
+      70,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -246,8 +249,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(37); // STEP 19: 35 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(37);
+    expect(hashesOf(first.raw)).toHaveLength(40); // STEP 20: 38 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(40);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -421,6 +424,28 @@ describe("the program a learner runs", () => {
         "sha256:HASH...  unattended: by accounts-payable-fte under del_100",
       ].join("  "),
     );
+  });
+
+  it("DSOR-IDM-01c: the demo's payment sent twice with one key, and fifty at once, each make one payment", () => {
+    // NEW IN STEP 20: the same request again, with its key, is given the same receipt, word for
+    // word; the same key with another amount is refused; fifty requests at once make one payment
+    // (decision 131).
+    const out = demo().report;
+    const section = out.slice(
+      out.indexOf(
+        "The answer is lost, and the agent sends the same request again, with the same key:",
+      ),
+      out.indexOf("  the same answer, word for word:"),
+    );
+    const receipt =
+      /accounts-payable-fte {2}COMMITTED {16}dsor:\/\/org_456\/payment\/PAY-\d+ {2}draft {6}compensatable\n {24}withheld: amount \(clearance\)\n/g;
+
+    expect(section.match(receipt)).toHaveLength(2);
+    expect(out).toContain("  the same answer, word for word: true");
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"IDEMPOTENCY_CONFLICT".padEnd(24)} retry: ${"never".padEnd(20)} the key RUN-pay-1009 was used for a different payment.create request`,
+    );
+    expect(out).toContain("  50 answers, 1 different, 1 payment made");
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {

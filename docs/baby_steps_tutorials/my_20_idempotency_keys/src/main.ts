@@ -450,6 +450,55 @@ console.log(
 );
 useDirectory("org_456", undefined);
 
+// NEW IN STEP 20: networks fail and clients retry. The agent's payment for INV-1009 is made and its
+// answer is lost, so the agent sends the same request again, with the same key, and is given the same
+// receipt. Then the same key with a different amount, refused. Then fifty requests at once with one
+// key: one payment (DSOR-IDM-01b to 01d, decision 131).
+console.log();
+console.log("The answer is lost, and the agent sends the same request again, with the same key:");
+console.log();
+
+const once = { invoice: INV_1009, amount: { value: "1250.00", currency: "USD" } };
+const first = await callOperation(AGENT, "payment.create", once, keyFor("pay-1009"));
+const again = await callOperation(AGENT, "payment.create", once, keyFor("pay-1009"));
+
+console.log(show(first));
+console.log(show(again));
+console.log(`  the same answer, word for word: ${JSON.stringify(again) === JSON.stringify(first)}`);
+console.log();
+console.log("The same key, with a different amount:");
+console.log();
+console.log(
+  show(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { ...once, amount: { value: "1300.00", currency: "USD" } },
+      keyFor("pay-1009"),
+    ),
+  ),
+);
+console.log();
+console.log("Fifty requests at once, with one key:");
+console.log();
+
+const paymentsBefore = (await paymentsOf("org_456")).length;
+const fifty = await Promise.all(
+  Array.from({ length: 50 }, () =>
+    callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1009, amount: { value: "750.00", currency: "USD" } },
+      keyFor("fifty-at-once"),
+    ),
+  ),
+);
+const paymentsMade = (await paymentsOf("org_456")).length - paymentsBefore;
+
+console.log(
+  `  ${fifty.length} answers, ${new Set(fifty.map((a) => JSON.stringify(a))).size} different, ${paymentsMade} ${paymentsMade === 1 ? "payment" : "payments"} made`,
+);
+
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
 // have lost, and they are the most interesting lines here.
