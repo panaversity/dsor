@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 18 also have a second learner's
-builds, `my_01` to `my_18`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 19 also have a second learner's
+builds, `my_01` to `my_19`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, nineteen of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, twenty of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -110,6 +110,7 @@ one before it:
 | `my_16_the_control_plane_store` | 548 | DSoR's log moves out of the business's tables into a schema of its own, `dsor`, in the same database: the first piece of paperwork in its control-plane store. The program refuses to start if the application owns that schema or may create things in it |
 | `my_17_vendors_and_payments` | 608 | vendors and payments, two more record types under the same locks; every command says, in its contract and on every receipt, whether its effect can be undone, and `payment.create` is undone by `payment.cancel` |
 | `my_18_delegations` | 645 | the permission slip: every command the agent sends runs under a slip a person signed, found by DSoR itself, and its power is computed at each decision as the slip's permissions cut down to what the signer holds right now and to the login's scopes, up to the slip's limit per payment |
+| `my_19_unattended_mode_and_the_role_source` | 673 | at 2 a.m. nobody is logged in: an agent's command under a slip is `unattended`, its subject the slip's signer and the agent in its actor chain, the slip named on the record; what the signer holds is asked of the company's directory, and no fresh answer is no answer |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -143,7 +144,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 128 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 130 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

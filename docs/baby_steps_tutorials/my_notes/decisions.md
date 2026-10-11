@@ -3947,7 +3947,8 @@ within 24 hours, and `DSOR-DEL-07` that a slip say whether it may be used with n
 1. **An agent's command under a slip is `unattended`.** The agent logs in as itself and no person
    is present. `on_behalf_of`, where the agent exchanges a present person's token, is step 45.
    Everything else stays `direct`: a person, an agent's reads under its own role, and an agent's
-   command refused before its slip was in hand, because no one's authority was used. Rejected:
+   command refused before its slip was in hand, because no one's authority was used. **Corrected
+   by decision 130:** a refusal after DSoR found the slip is recorded under it. Rejected:
    recording such a refusal as `unattended`, which needs a subject only a slip can name.
 2. **A slip says in which modes it may be used**: `modes`, never empty, from `on_behalf_of` and
    `unattended`. An agent's command is accepted only under a slip that allows `unattended`
@@ -3966,7 +3967,8 @@ within 24 hours, and `DSOR-DEL-07` that a slip say whether it may be used with n
 4. **The role source is a company directory, a fake one**: one per company, a table in memory built
    from this program's people, that a test or the demo can change, make stale, or switch off. It
    says what a person holds and when that was true. DSoR asks it about the slip's signer at every
-   decision; a person who is logged in brings their own. Rejected: a table in DSoR's store, which
+   decision; a person who is logged in brings their own. **Corrected by decision 130:** the login
+   carries none, and this program's list of people stands in for it. Rejected: a table in DSoR's store, which
    would make DSoR its own directory; and a real SCIM or identity-provider adapter, which needs a
    service this tutorial does not run.
 5. **No answer within 24 hours is no answer** (`DSOR-IDN-06`, §44's bound for L2). A directory that
@@ -3975,3 +3977,89 @@ within 24 hours, and `DSOR-DEL-07` that a slip say whether it may be used with n
    answer DSoR saw, which is exactly the months-old answer the rule exists for.
 6. **The record keeps the slip.** `dsor.audit` gains a `delegation` column for the schema's field,
    the application may write it, and the chain's hash covers it, like every field.
+
+## 130 · What step 19's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. Each choice is the recommendation, and each is open to
+reversal.
+
+One reviewer, read-only, with probes in its own copy. It found the subject taken only from the
+stored slip, planted fields in the arguments and the login changing nothing, the right company's
+directory asked, nothing cached, and the slip inside the hash. It found three broken guarantees,
+each measured, and these were chosen:
+
+1. **A directory's answer counts only when its time is a time, with its zone, and at most 24 hours
+   old.** An answer dated a year ahead counted as fresh, and so did `9999-12-31`; a time with no
+   zone was read in the host's zone, so on a host west of UTC a 30-hour-old answer passed and was
+   recorded with a time the directory never said; and a year past 9999 broke the record's own schema
+   check, so a healthy store answered `EVIDENCE_STORE_UNAVAILABLE` (measured). Now the time must be
+   RFC 3339 with `Z` or an offset, and its age between zero and 24 hours, allowing five minutes of
+   clock difference, named. Anything else is an answer that says nothing. Such an answer, or a stale
+   one, is refused with `FRESHNESS_UNSATISFIABLE`, retry `after_delay`, because sending it again at
+   once cannot help; a directory that does not answer, or a company with none, keeps
+   `DEPENDENCY_TIMEOUT`. The refusal no longer tells the agent when the directory last knew its
+   signer. And the answer is copied before it is checked, not after.
+2. **A refusal after DSoR found the slip is recorded under the slip.** The slip that does not allow
+   `unattended`, the expired slip, and the three directory refusals were recorded as `direct`, the
+   agent acting for itself, with no slip, and, for the directory, as if the role source had answered
+   at that moment (measured). Decision 129's "before its slip was in hand" was not true of them. A
+   stage may now say what it learned before it refuses, and §21.3 says the slip: from there on the
+   record is `unattended`, subject the signer, the agent in the actor chain, the slip named. The
+   authority's time is the directory's own when it gave one, stale included; when it gave none, or
+   was never asked, the schema still requires a time, and the record has the decision's own. That is
+   a question for the specification, recorded here: `subject_authority.as_of` has no way to say the
+   authority was never established. And an agent's command that reaches §21.5 under a slip with no
+   time for its signer's authority is refused as `INTERNAL_ERROR`, never recorded as `direct`.
+3. **Start-up refuses an UPDATE granted on any column of the log.** It asked `has_table_privilege`
+   for UPDATE, which is false when only a column is granted: with `UPDATE (delegation)` granted, the
+   application changed a record's slip and start-up passed (measured). The same gap step 17 closed
+   for the business's tables.
+4. **No slip allows `unattended` unless it says so.** Migration 015's default was `unattended`, so
+   the database, not the signer, made a slip usable with nobody present. The default is
+   `on_behalf_of`, which nothing can use yet; a new migration, 017, says del_100 may be used
+   unattended, and the story's reset runs it after 014. And a slip must be signed by someone other
+   than its agent: one the agent signed for itself ran (measured; the agent cannot write slips, but
+   the store should not hold one).
+5. **Tests for what nothing tested**: answers that are not a list of permissions and a time, odd
+   times, the records of the five refusals, planted identity fields in the login and the arguments,
+   and every command, not one, refused for a company with no directory.
+6. **Smaller truths.** A test title and decision 129 said a person who is logged in "brings their
+   own" authority; the login carries none, and this program's list of people stands in for what a
+   real login would. Comments in `main.ts`, `permissions.ts`, `directory.ts`, two tests and
+   migration 016 said what step 19 made false. Each is corrected.
+
+**Written down, and not fixed:**
+
+- A person who is logged in is judged by this program's list, the slip's signer by the directory:
+  two sources for one person. With the directory saying `user_123` lost `payment:create`, the agent
+  is refused and `user_123`, logged in, is not. One source waits for a real login, steps 43 and 44.
+- `DSOR-DEL-07` is claimed for commands. An agent's reads run under its own role, with no slip, as
+  decision 127 chose, and are recorded `direct`.
+- Every company the program knows has the fake directory unless a test says otherwise; nothing at
+  start-up checks that one is configured.
+- The 24-hour bound is measured on the decision's clock, a moment before the record's own time.
+- A slip's modes may repeat a mode, which changes nothing.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: the
+stale and unusable answers had the other code, a year ahead and 9999 counted as fresh, a time with
+no zone passed, a year past 9999 broke the record; the five refusals after the slip was found said
+`direct`, and the stale one's time was the decision's; start-up passed with a column of the log
+granted; a slip that named no modes was usable at night, and a self-signed slip was stored. The
+planted-identity test and the three-command test passed on arrival: the code held, and a README
+break proves the first. Then the unit tests: 673.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's six, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| an answer from the future counts | 1: the odd-times test | 1, that test |
+| a time with no zone is read in this host's zone | 1: the odd-times test | 1, that test |
+| a stale or empty answer is `DEPENDENCY_TIMEOUT` again | 8 | those 8 |
+| a refusal under the slip forgets the slip | 2: the five refusals, the stale time | those 2 |
+| authorize forgets to ask for the signer's time | 1: the forgotten-time test | 1, that test |
+| start-up asks the log's table and not its columns | 1: the column test | 1, that test |
+| a slip that names no modes allows unattended | 1 | 1, that test |
+| a slip may be signed by its own agent | 1 | 1, that test |
+| the story forgets del_100's mode | dozens | 32: every agent command refused |

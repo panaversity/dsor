@@ -1,75 +1,89 @@
-# Step 16 · The control-plane store
+# Step 19 · Unattended mode and the role source
 
-**New in this step:** DSoR's log moves out of the business's tables into a schema of its own,
-`dsor`, in the same database: the first piece of paperwork in DSoR's control-plane store.
+**New in this step:** at 2 a.m. nobody is logged in. The agent logs in as itself, DSoR reads whose
+authority it carries from the slip, a company directory says whether that person still holds the
+job, and the record says all of it.
 
 ## In plain words
 
-DSoR keeps paperwork: who may do what, what it approved, what it already carried out, how much of a
-limit is used, and the log of it all. The rule `DSOR-MOD-01` says DSoR must own that paperwork,
-durably, in a store of its own, the *control-plane store*. Every safety promise depends on it:
-without its own store, DSoR would forget what it approved and what it already did.
+There are three ways to call DSoR. A person or an application can act for itself: that is `direct`.
+An agent can act beside a person who is logged in: `on_behalf_of`, which arrives in step 45. And an
+agent can work with nobody present, logged in as itself: `unattended`. The nightly payment run is the
+normal case for a digital employee, and nobody is logged in at night.
 
-A *schema* is a named folder of tables inside one database. Until now there was one folder,
-`public`, and the business's table, `public.invoices`, and DSoR's log, `public.audit`, sat in it
-side by side. This step makes a folder for DSoR, `dsor`, and moves the log into it:
+In `unattended` mode three things are true:
 
-- **The log moves as it is.** One new migration, `008_the_control_plane_store.sql`, moves the table.
-  Every record, the hash chain, the permissions and the row-level security go with it; nothing is
-  copied. A record's hash covers its own fields, not the table's name, so the move cannot break
-  the chain. Every statement in the program that names the log now says `dsor.audit`.
-- **The application may look inside, and create nothing there.** It holds `USAGE` on `dsor` and
-  not `CREATE`. What it may do to the log itself is the log's own permissions, which moved with it:
-  add a record and read it, never change or delete one.
-- **The program checks the database and the schemas before it starts.** It refuses to start if
-  the application owns the database, or owns `dsor` or `public`: an owner may delete what it owns,
-  and a schema's owner may delete any table in it, even one it does not own. It also refuses if the
-  application may create things in either schema, or a helper function's owner may. Only the
-  migrations, run as the owner, put tables there.
-- **The same database, on purpose.** Not a second database: in step 36, a business change and
-  DSoR's record of it can then be saved together, or not at all.
-- **The log only, for now.** It is the only paperwork in the database today. Each other kind,
-  permission slips, approvals, counters and locks, arrives in `dsor` with the step that builds it
-  (decision 122).
+- **The slip must allow it.** A slip says in which modes it may be used. `del_100` allows
+  `unattended`; a slip that does not is no slip for an agent alone at night.
+- **The subject comes from the slip, never from the request.** The decision is `user_123`'s
+  authority, used by the agent under `del_100`. The record says exactly that: the mode `unattended`,
+  the subject `user_123`, the agent in the actor chain, the slip by name, and where `user_123`'s
+  authority came from, and when.
+- **A company directory says what the signer holds right now.** The person whose authority the agent
+  carries is asleep and sends no login. So DSoR asks the company's directory at every decision. If the
+  directory does not answer, the command is refused with `DEPENDENCY_TIMEOUT`, safe to send again
+  once it answers. If its answer is more than 24 hours old, dated in the future, or has no time zone,
+  it is refused with `FRESHNESS_UNSATISFIABLE`: wait for a fresh one.
 
-Migrations 001 to 007 still say `public.audit`. An applied migration is never edited, because its
-checksum covers every byte; migration 008 says where the log went.
+The company directory in this step is a fake: one per company, built from this program's people,
+which the tests and the demo can change, make stale, or switch off. A real one is a directory sync
+or an identity provider; what DSoR asks of it is the same two things: what does this person hold,
+and when was that true?
+
+The record of an agent's command under `del_100` now says, in the fields the audit schema has for
+them:
+
+| Field | Says |
+| --- | --- |
+| `identity.mode` | `unattended` |
+| `identity.subject` | `user_123`, taken from the slip |
+| `identity.actor_chain` | `accounts-payable-fte`, the agent that logged in |
+| `identity.subject_authority` | `role_source`, as of the directory's answer |
+| `delegation` | `del_100`, in a column of its own, inside the hash |
+
+The same holds for a refusal once DSoR has found the slip: a slip that does not allow `unattended`,
+an expired one, or a directory that gave no usable answer. Everything else stays `direct`: a person,
+the agent's own reads, and an agent's command refused before DSoR found an active slip, because no
+one's authority was used.
+
+A slip allows `unattended` only when it says so. `del_100` says so in migration 017; a slip that
+names no modes allows only `on_behalf_of`, which nothing can use until step 45. And a slip is
+signed by someone other than its own agent.
 
 ## Why it matters
 
-The log sat in `public`, the folder the business's own tools treat as theirs. An accounting upgrade
-that resets its tables, or a cleanup that empties `public`, would have taken DSoR's evidence with
-it: the record of every decision, gone with the invoices.
+`user_123` moves to another department on Monday. The company's directory knows by Monday noon.
+Before this step DSoR asked this program's own list of people, which never changes while the program
+runs, so the agent kept paying vendors under `user_123`'s authority for as long as the program kept
+running. And the log said `direct`, subject `accounts-payable-fte`: an auditor reading it would
+think the agent had acted on its own authority, when it had used a person's.
 
-And what DSoR keeps only in memory is forgotten at every restart. Step 15, run twice, named
-Monday's receipt and Tuesday's receipt both `dsor://org_456/proposal/prop_0001`: two actions, one
-address. That one is not fixed here. Proposal numbers move into DSoR's store with proposals
-themselves, in step 22, and the comment that promised them for this step says so now.
+Now DSoR asks the directory at every decision, and the record says whose authority was used. If the
+directory is down, or its answer is a day old, the agent is refused, not waved through: the last
+answer DSoR saw is exactly the out-of-date answer this rule exists to stop.
 
-## What changed since step 15
+## What changed since step 18
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_15_freshness_labels ../my_16_the_control_plane_store
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_18_delegations ../my_19_unattended_mode_and_the_role_source
 ```
 
 | File | What |
 | --- | --- |
-| `migrations/008_the_control_plane_store.sql` | new — the schema `dsor`; every right on it taken back from every role, and `CREATE` from the application by name, before `USAGE` is given to the application; and the log moved into it as it is |
-| `src/audit.ts` | every statement names the log `dsor.audit` |
-| `src/database.ts` | the start-up checks look for the log in `dsor`. "Do both tables exist?" is asked first, on its own, so a server that missed migration 008 gets the program's own words. And start-up refuses an application that owns the database or either schema, or may create things in either schema, itself or one `SET ROLE` away, and names the role and schema that let it. A helper function whose owner owns either schema, or may create in it, is refused too |
-| `src/main.ts` | the demo's second line says where the log lives |
-| `src/envelopes.ts`, `src/operations.ts` | two comments that promised step 16 something now name the steps that will do it: 22 for proposal numbers, 36 for one transaction across two logs |
-| `test/control-plane-store.test.ts` | new — five tests: the log is in `dsor` and not in `public`; `public` holds the business's table and nothing of DSoR's; a decision recorded through the door lands in `dsor.audit`; the application may use `dsor` and create nothing in it; and the same on a server that hands out rights on every new schema, which proves each `REVOKE` line in 008 |
-| `test/the-lock-at-start-up.test.ts` | ten new tests: a server that missed migration 008; the application owning the database, `dsor` or `public`, or one `SET ROLE` from owning `dsor`; a helper whose owner owns `dsor`, or may create in it; the application able to create in `dsor` or `public`, or one `SET ROLE` from it. Most owner and creator cases also do the harm, to show it is real |
-| `test/main.test.ts` | the demo's line about the log, pinned, with no rule id: it would pass wherever the log lived |
-| `test/database.test.ts` | the `editor` test gets `USAGE` on `dsor`, without which its attack had stopped working, and now carries the attack out. A database that answers nothing is refused at the first question, and one that answers that and then nothing at the second, each in its own words. The evasive answers reach the guards they were written for |
-| the tests that name the log | say `dsor.audit`. Tests that named it bare, `audit`, worked only because the database looked in `public` first; they name the schema now. Two tests that build a small database by hand make `dsor` and its grant. The re-run of migration 002 swaps in the log's new address, and is otherwise the file that ran |
-| everything else | a `NEW IN STEP 15` marker becoming `STEP 15` |
-
-531 tests became 548. The 39 in the database tier pass on a local PostgreSQL 17 set up like Neon:
-an owner with `BYPASSRLS`, and `dsor_runtime` made by that owner. On Neon they run in this step's own database, `dsor_step16`,
-once this folder's `.env` names it; the database exists and is empty until then.
+| `migrations/015_slip_modes.sql` | new — a slip's `modes`, never none, from `on_behalf_of` and `unattended`, `on_behalf_of` when a slip names none; and a slip is signed by someone other than its own agent |
+| `migrations/016_the_record_names_the_slip.sql` | new — the log's `delegation` column, granted by name |
+| `migrations/017_del_100_may_be_used_unattended.sql` | new — `del_100` says it may be used with nobody present; the tests run it again after 014 |
+| `src/directory.ts` | new — the fake company directory, one per company, which a test or the demo can change, make stale, or switch off |
+| `src/authority.ts` | what a slip's signer holds now, asked of the company's directory; no directory or no answer is one refusal, and an answer that says nothing, has no time zone, is dated in the future or is more than 24 hours old is another |
+| `src/delegation.ts` | a slip's modes |
+| `src/operations.ts` | §21.3 refuses a slip that does not allow `unattended`, says why the signer's authority could not be established, and refuses under the slip once it has found it; §21.11 records an agent's command under a slip as `unattended` |
+| `src/audit.ts` | the record's identity for an unattended decision, and its slip, inside the hash |
+| `src/pipeline.ts` | the context carries when the directory knew the signer's authority, and a stage may say what it learned before it refuses |
+| `src/database.ts` | start-up refuses an UPDATE granted on any column of the log |
+| `src/main.ts` | the record of the agent's command, the directory switched off and stale, and the printed log saying who acted under which slip |
+| `test/unattended.test.ts` | new — the modes, the directory, and the record |
+| the tests that changed what user_123 holds | through the directory now, not step 18's seam |
 
 ## Run it
 
@@ -78,157 +92,201 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step is the second line:
+The part that is this step comes after the slip's:
 
 ```text
-Hello, accounts-payable-fte.
-The audit log is dsor.audit, in DSoR's own schema, in a PostgreSQL on disk at ./.local-database, as `dsor_runtime`.
+At 2 a.m. nobody is logged in. Whose authority did the agent use?
+
+  invoice.issue@1  unattended: user_123's authority, used by accounts-payable-fte under del_100
+                   what user_123 holds, from the company's directory as of 2026-10-11T00:24:18.090Z
+
+The company's directory is switched off:
+
+accounts-payable-fte  DEPENDENCY_TIMEOUT       retry: safe_same_key        what user_123 holds in org_456 now could not be established: org_456's directory did not answer. Nothing was done; it is safe to send again
+
+It answers again, with what it knew 25 hours ago:
+
+accounts-payable-fte  FRESHNESS_UNSATISFIABLE  retry: after_delay          what user_123 holds in org_456 now could not be established: org_456's directory's answer about user_123 is more than 24 hours old. Nothing was done
 ```
 
-Step 15's said only "The audit log is in a PostgreSQL on disk at …". Everything after the line is
-step 15's demo, unchanged: the log moved, and nothing the program does with it changed. With a
-`.env` that points at Neon, the line names that database instead, with the password left out.
+The first two lines are read from the log: the record of the agent's first command under del_100,
+issuing INV-1009, says whose authority it used and when the directory knew it, in UTC. Then two
+requests, each one decision. The directory is switched off, and the refusal says the same request
+may be sent again once it answers. Then it answers with what it knew 25 hours ago, and the refusal
+asks for a wait instead, without telling the agent how old the answer was.
 
-Before that line, the program has already checked the database. It refuses to start if the log
-or the invoices are missing. It also refuses if the application owns the database or either
-schema, or may create things in either one.
+In the printed log further down, each of the agent's records under the slip ends with who acted,
+the directory's two refusals included:
+
+```text
+28  ALLOW  payment.create@1     user_123               ALLOWED                 sha256:9b380bb...  unattended: by accounts-payable-fte under del_100
+33  DENY   payment.create@1     user_123               DEPENDENCY_TIMEOUT      sha256:b561370...  unattended: by accounts-payable-fte under del_100
+34  DENY   payment.create@1     user_123               FRESHNESS_UNSATISFIABLE  sha256:c63a457...  unattended: by accounts-payable-fte under del_100
+```
 
 ### The database tier
 
-`pnpm check` needs no server. The thirty-nine tests in `pnpm test:db` need two real logins and a
-database of this step's own. Copy step 15's `.env` and change the database name in both URLs:
+`pnpm check` needs no server. The fifty-one tests in `pnpm test:db` need two real logins and a
+database of this step's own:
 
 ```bash
-cp ../my_15_freshness_labels/.env .env     # then dsor_step15 -> dsor_step16 in both lines
+cp ../my_18_delegations/.env .env     # then dsor_step18 -> dsor_step19 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first. This folder's own was made on Neon with the owner login already
-in step 15's `.env`, by one `CREATE DATABASE dsor_step16`. `pnpm migrate` applies the eight
-migrations; on a server that already had the first seven, it applies 008 alone, and the log moves
-with everything in it.
+The database has to exist first, made with one `CREATE DATABASE dsor_step19` through the owner
+login. `pnpm migrate` applies the seventeen migrations; on a server that already had step 18's
+fourteen, it applies 015 to 017.
 
 ## Break it
 
-Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
+Six, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `536` with `1 skipped`; in the repository it is `536 passed`.
+is not beside it, so the total reads `673` with `1 skipped`; in the repository it is `673 passed`.
 
-### Break 1 · the log is not moved
+### Break 1 · a directory that does not answer is taken as the usual answer
 
-In `migrations/008_the_control_plane_store.sql`, delete the line that moves the table.
-
-```text
- Tests  292 failed | 243 passed | 1 skipped (536)
-```
-
-More than half the suite. The program writes every decision to `dsor.audit`, which is not there,
-and a decision that cannot be written down is a request that is not carried out.
-
-### Break 2 · the application may not look inside dsor
-
-In the same migration, delete the `GRANT USAGE ON SCHEMA dsor` line.
+In `src/authority.ts`, where the directory did not answer, assume the signer holds what an
+accounts-payable supervisor usually holds: replace the line that throws with
+`answer = { permissions: ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"], asOf: new Date().toISOString() };`.
 
 ```text
- Tests  254 failed | 281 passed | 1 skipped (536)
+ Tests  6 failed | 666 passed | 1 skipped (673)
 ```
 
-The log is where it should be, and the application cannot reach it: `permission denied for schema
-dsor` on every write. A folder's permission comes before its tables'.
+The map's "break it": switch the directory off, and the agent is waved through. The two tests that
+switch it off, the record of that refusal, and three of the demo's: its section, the log's counts,
+and the one refusal that invites the same request again, which is now a payment. The usual answer is
+exactly the answer this step exists to stop: the one DSoR did not get.
 
-### Break 3 · the application may create things in dsor
+### Break 2 · an answer of any age counts
 
-Grant `USAGE, CREATE` instead of `USAGE`.
+In `src/authority.ts`, change `if (age > STALENESS_BOUND_MS) {` to
+`if (age > STALENESS_BOUND_MS && false) {`.
 
 ```text
- Tests  1 failed | 534 passed | 1 skipped (536)
+ Tests  4 failed | 668 passed | 1 skipped (673)
 ```
 
-Nothing the demo shows changes, which is why a test asks. With `CREATE`, the application could put
-a table, a view or a function of its own beside DSoR's paperwork, which is how a window past the
-locks is made.
+The 25-hour-old answer passes: its test, the record of its refusal, and two of the demo's. The test
+that a stale answer is recorded with the directory's own time still passes, because a payment it
+lets through is recorded with that time too. Nothing about the record changes; only the refusal is
+gone.
 
-### Break 4 · the start-up check still looks in public
+### Break 3 · a slip for use beside a person counts at night
 
-In `src/database.ts`, make the check that both tenant tables exist look for `public.audit`.
+In `src/operations.ts`, change `if (!slip.modes.includes("unattended")) {` to
+`if (!slip.modes.includes("unattended") && false) {`.
 
 ```text
- Tests  45 failed | 490 passed | 1 skipped (536)
+ Tests  3 failed | 669 passed | 1 skipped (673)
 ```
 
-The program refuses to start: "a tenant table is missing". The start-up tests and the demo's tests
-fail, because nothing runs. A check that looks in the wrong place fails closed, and loudly.
+The slip for `on_behalf_of` alone, the slip that names no modes, and the record of that refusal.
+`del_100` allows `unattended`, so nothing else notices: the check is for the slip that does not.
 
-### Break 5 · the demo no longer says where its log is
+### Break 4 · the record says the agent acted for itself
 
-In `src/main.ts`, put the demo's second line back as it was in step 15.
+In `src/operations.ts`, in `recordTheDecision`, change `...(context.delegation === undefined` to
+`...(true`.
 
 ```text
- Tests  1 failed | 534 passed | 1 skipped (536)
+ Tests  8 failed | 664 passed | 1 skipped (673)
 ```
 
-One test, the one that pins the line.
+Every record of an agent's command goes back to `direct`, subject `accounts-payable-fte`, no slip:
+the record tests, the planted-identity tests, the refusals' records, and two of the demo's. The
+payments still run. A wrong record changes nothing a caller sees, which is why it needs tests of
+its own.
 
-Restore each break and confirm `pnpm check` prints `536 passed` again.
+### Break 5 · the subject comes from the request
+
+In `src/operations.ts`, change `delegator: context.delegation.delegator,` to
+`delegator: String(context.given?.["subject"] ?? context.delegation.delegator),`.
+
+```text
+ Tests  2 failed | 670 passed | 1 skipped (673)
+```
+
+The two tests that plant a subject in the arguments: the record now blames `cfo_100` for the agent's
+payment. The payment itself is unchanged, so only the record shows it, which is what `DSOR-DEL-08`
+is about.
+
+### Break 6 · migration 016 forgets its grant
+
+In `migrations/016_the_record_names_the_slip.sql`, delete the `GRANT INSERT (delegation)` line.
+
+```text
+ Tests  284 failed | 388 passed | 1 skipped (673)
+```
+
+Every record names the column, even when it is empty, and step 09's grant on the log names its
+columns one by one. So no decision can be written, a person's included, and the program refuses to
+carry anything out: the evidence rule from step 09, at work.
 
 ## Build it yourself with Claude Code
 
-Copy `my_15_freshness_labels` to a new folder and ask:
+Copy `my_18_delegations` to a new folder and ask:
 
-> Start step 16, the control-plane store. Before any code: show me where DSoR keeps its paperwork
-> today, and what goes wrong because of where it is. Then ask me the step's decisions one at a
-> time. Then build it a piece at a time, red first, and break each piece on purpose.
+> Start step 19, unattended mode and the role source. Before any code: show me what the log says
+> about the agent's payment at 2 a.m., and where DSoR learns what user_123 holds. Then ask me the
+> step's decisions one at a time. Then build it a piece at a time, red first, and break each piece on
+> purpose.
 
 ## Check yourself
 
-1. Where does DSoR's log live now, and what moved with it?
-2. Why move the table as it is, rather than start a new log in `dsor`?
-3. Why the same database, and not a second one?
-4. Migrations 001 to 007 still say `public.audit`. Why are they not changed?
-5. The application may use `dsor`, may create nothing there, and must not own it. Why each?
+1. At 2 a.m. the agent makes a payment under `del_100`. Who is the subject of the decision, and
+   where did DSoR learn it?
+2. The company's directory has been down since midnight. What happens to the agent's next payment,
+   and why not use the last answer DSoR saw?
+3. The directory answers, but its answer is from 25 hours ago. What happens, and what would change
+   if it were from 23 hours ago?
+4. `user_123` is logged in and the directory is down. Can `user_123` cancel a payment? Why is that
+   different from the agent?
+5. An agent's request carries `subject: "cfo_100"` in its arguments. What does the record say?
 
 <details>
 <summary>Answers</summary>
 
-1. In `dsor.audit`, in DSoR's own schema. Every record, the hash chain, the permissions and the
-   row-level security moved with the table, because the table itself moved; nothing was copied.
-2. A new log would leave two logs: the old evidence still among the business's tables, and the
-   chain broken in two. Moving the table keeps one log and one chain, and the chain survives
-   because a record's hash covers its own fields, not the table's name.
-3. So that, in step 36, a business change and DSoR's record of it can be saved together, or not at
-   all. Two databases cannot be saved together in one transaction.
-4. An applied migration is never edited: its checksum covers every byte, and a database that
-   already ran it would refuse the changed file. Migration 008 says where the log went.
-5. `USAGE` lets the application reach the log, which it must, to write the record of every
-   decision. Without `CREATE`, it cannot make a table of its own there. A table named for a later
-   step's paperwork, say `dsor.proposals`, would belong to the application, every row of it, and
-   that step's migration would find the name taken. And a schema's owner may delete any table in
-   it, even one it does not own: an application that owned `dsor` could delete the whole log.
+1. `user_123`, the slip's signer, taken from `del_100` in DSoR's own store. The agent is in the
+   actor chain, and the slip is named on the record.
+2. It is refused with `DEPENDENCY_TIMEOUT`, safe to send again once the directory answers. The last
+   answer could be months old, which is exactly the answer the rule exists to stop: `user_123` may
+   have changed jobs since.
+3. More than 24 hours is no answer: refused with `FRESHNESS_UNSATISFIABLE`, which asks for a wait
+   rather than an immediate retry. At 23 hours the answer counts, and the payment runs.
+4. Yes. The directory is asked only about a person who is not in the request, the slip's signer. A
+   person who is logged in is judged by this program's own list, standing in for what a real login
+   would carry.
+5. `user_123`. The subject comes from the slip, never from the request, and nothing reads the
+   planted one.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-MOD-01 · L1]** A DSoR implementation MUST durably own, in a control-plane store separate
-  from agent context, its delegations, controls, proposals, approvals, idempotency records, intent
-  records, cumulative-limit counters, holds, and audit evidence. Claimed for **audit evidence
-  only**: the log is DSoR's own, in its own schema, in a database the agent never touches. Each
-  other kind arrives in `dsor` with the step that builds it.
-  ([§1](../../../specs/dsor/01-model.md#1-definition))
+- **[DSOR-DEL-07 · L2]** An `unattended` request MUST be accepted only under a delegation whose
+  `modes` include `unattended`.
+  ([§13.2](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire))
+- **[DSOR-DEL-08 · L2]** In `unattended` mode DSoR MUST take the subject from the delegation
+  record, never from the request.
+- **[DSOR-IDN-05 · L2]** Each tenant MUST configure a role source from which DSoR can read the
+  current roles of a principal who is not present in the request.
+  ([§12.1](../../../specs/dsor/02-security.md#121-role-source))
+- **[DSOR-IDN-06 · L2]** When the delegator's current authority cannot be established within the
+  staleness bound, DSoR MUST deny the command.
 
-**What this step leaves, said plainly.** Only the log is in DSoR's store. Proposal numbers still
-live in memory and restart at `prop_0001` with every run, until step 22. The migrations' own
-record, `public.applied_migrations`, stays in `public`: it records the shape of the business's
-tables and DSoR's alike, and the migration tool makes it before any migration runs. So emptying
-`public` still takes DSoR down, though not its evidence: the record goes with it, the next
-`pnpm migrate` runs 001 to 007 again and stops at 008, and the program refuses to start until a
-person repairs the record. The log in `dsor` is untouched, measured. The two schemas
-share one owner, so the store is separated by folder and by permission, not by who owns it: a tool
-that logs in as the owner could still reach `dsor`. And a refusal written into two companies' logs
-is still two writes, not one transaction, until the step that builds transactions; the program
-tells the caller exactly which logs got the record.
+**What this step leaves, said plainly.** The directory is a fake in memory; a real one is a
+directory sync or an identity provider, and connecting one is outside this tutorial. When the
+directory says a signer has left or is suspended, DSoR refuses the agent but does not suspend the
+signer's slips, which `DSOR-IDN-07` asks for and a later step builds. `on_behalf_of`, the agent beside
+a person who is logged in, is step 45's. A person who is logged in is judged by this program's list
+of people and the slip's signer by the directory, two sources for one person, until a real login in
+steps 43 and 44. The record's `subject_authority.as_of` has no way to say an authority was never
+established, so a refusal before the directory gave a time carries the decision's own: a question for
+the specification. And an agent's reads run under its own role, with no slip, recorded `direct`.
 
 Everything earlier steps claimed still holds.
 
-**Next:** step 17, `vendors_and_payments` — a payment is made as a draft, and every command says
-whether it can be undone.
+**Next:** step 20, `idempotency_keys` — networks fail and clients retry, and a retried payment must
+not be a second payment.
