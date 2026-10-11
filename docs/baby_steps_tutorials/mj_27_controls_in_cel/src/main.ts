@@ -99,6 +99,10 @@ const CLASSIFICATIONS: string | undefined = process.argv[5];
 // Start-up checks the map of its store too (step 16's README, decision 4).
 // A map can be named after the labels file, so a test can start with a broken one.
 const STORE: string | undefined = process.argv[6];
+// NEW IN STEP 27: start-up checks each company's controls too, and runs their tests (step 27's
+// README, decision D2). A file of them can be named after the map, so a test can start with a
+// broken one.
+const CONTROLS: string | undefined = process.argv[7];
 // The pool is made before the checks, because the registry holds the store
 // of invoices it reads. It connects only at its first query, after every check.
 // Only DSOR_DB_URL: the owner's key stays in the file (step 09's README, decision 4).
@@ -150,6 +154,28 @@ try {
     undefined,
     undefined,
     NO_CONTROLS,
+  );
+  // NEW IN STEP 27: and each company's controls, with their tests, before any caller can ask. The
+  //   worlds of the stories give no controls, so the earlier steps' stories keep their idea, and
+  //   this check stands on its own: the files, and DSoR's own work, with no store (step 27's
+  //   README, decisions D2 and D16).
+  buildRegistry(
+    readContracts(CONTRACTS),
+    handlersFor(),
+    readRoles(ROLES),
+    readInputs(INPUTS),
+    readClassifications(CLASSIFICATIONS),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    ownWorkFor(),
+    undefined,
+    undefined,
+    undefined,
+    readControls(CONTROLS),
   );
   // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).
@@ -1083,8 +1109,9 @@ const ruleWorld = buildRegistry(
   undefined,
   undefined,
   undefined,
-  // The shipped controls.json, the first world of the program that has the company's rules.
-  readControls(),
+  // The controls.json start-up checked, the first world of the program that has the company's
+  // rules.
+  readControls(CONTROLS),
 );
 const ruleLog = createLog();
 const ruleCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>

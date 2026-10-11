@@ -221,6 +221,38 @@ describe("the program", () => {
     },
   );
 
+  // NEW IN STEP 27: a control is checked at start-up, before any caller can ask. Found by step 27's
+  // own break B1: the program checked controls.json only when its last story built its world, after
+  // every other story had run.
+  it(
+    "DSOR-CTL-02c: refuses to start with a control that fails its tests: the quick rule, over 25000 and in USD, names tests 3 and 5, prints no stack trace, and makes no call (step 27's README, decision D2)",
+    { timeout: 30_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-controls-"));
+      try {
+        const shippedFile = fileURLToPath(new URL("../controls.json", import.meta.url));
+        const controls = JSON.parse(readFileSync(shippedFile, "utf8"));
+        controls.org_456[0].condition =
+          'double(state.invoice.open_amount.value) > 25000.0 && state.invoice.open_amount.currency == "USD"';
+        const broken = join(dir, "controls.json");
+        writeFileSync(broken, JSON.stringify(controls));
+        const run = spawnSync(
+          process.execPath,
+          [MAIN, CONTRACTS, ROLES, INPUTS, CLASSIFICATIONS, STORE, broken],
+          { encoding: "utf8", env: { ...process.env, DSOR_DB_URL: "" } },
+        );
+        expect(run.status).toBe(1);
+        const failing = "controls.json: org_456's control high-value-payment v8 fails its test";
+        expect(run.stderr).toMatch(`${failing} 3: expects REQUIRE_APPROVAL, gives ALLOW`);
+        expect(run.stderr).toMatch(`${failing} 5: expects REQUIRE_APPROVAL, gives ALLOW`);
+        expect(run.stderr).not.toMatch(/^\s+at /m);
+        expect(run.stdout).not.toMatch("operations:");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
   it(
     "step 16's decision 4: refuses to start without its map: it names the file and prints no stack trace",
     { timeout: 30_000 },
