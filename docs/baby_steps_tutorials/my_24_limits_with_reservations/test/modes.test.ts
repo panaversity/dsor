@@ -1,0 +1,445 @@
+// NEW IN STEP 23: three ways to call a command (decision 138).
+//
+// Rule DSOR-OPR-05: every command MUST support the execute, propose_only, and validate_only
+// invocation modes.
+// Rule DSOR-OPR-06: a validate_only invocation MUST NOT create a proposal, take a reservation, place
+// a hold, or cause a side effect.
+
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
+import { getInvoice } from "../src/invoice.ts";
+import { callOperation } from "../src/operations.ts";
+import { paymentsOf } from "../src/payment.ts";
+import { movesOf, proposalsOf, stateOf } from "../src/proposal.ts";
+import { overPGlite } from "../src/database.ts";
+import { useDatabase } from "../src/store.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const ISSUE_1009 = { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 };
+
+let db: PGlite;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+beforeEach(async () => {
+  await resetTheStory();
+  await forgetTheLog("org_456");
+});
+
+/** INV-1009's status now. */
+const statusOf1009 = async (): Promise<string | undefined> =>
+  (await getInvoice("org_456", "INV-1009")).value?.status;
+
+describe("how a command is called travels beside its arguments", () => {
+  it("DSOR-OPR-05: execute is what a request with no mode gets, and saying it changes nothing", async () => {
+    const unsaid = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-unsaid",
+    });
+
+    expect(unsaid.kind === "result" && unsaid.envelope.outcome).toBe("COMMITTED");
+
+    await resetTheStory();
+
+    const said = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-said",
+      mode: "execute",
+    });
+
+    expect(said.kind === "result" && said.envelope.outcome).toBe("COMMITTED");
+  });
+
+  for (const mode of ["EXECUTE", "dry_run", 1, null, ""]) {
+    it(`DSOR-OPR-05: a mode that is not one of the three, ${JSON.stringify(mode)}, is refused and recorded, and nothing runs`, async () => {
+      const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+        idempotencyKey: `issue-mode-${String(mode)}`,
+        mode,
+      });
+
+      expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+      expect(answer.kind === "error" && answer.envelope.message).toMatch(
+        /execute, propose_only or validate_only/,
+      );
+      expect(await statusOf1009()).toBe("draft");
+      expect((await theLog("org_456")).at(-1)?.result).toBe("VALIDATION_FAILED");
+    });
+  }
+
+  it("DSOR-OPR-05: a query has one way to be called, and another mode is refused", async () => {
+    const answer = await callOperation(
+      SUPERVISOR,
+      "invoice.get",
+      { invoice: "dsor://org_456/invoice/INV-1008" },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(/a query/);
+  });
+
+  it("DSOR-IDM-01d: the same key in another mode is another request, and is refused", async () => {
+    const first = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-one-key",
+      mode: "propose_only",
+    });
+
+    expect(first.kind).toBe("result");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-one-key",
+      mode: "execute",
+    });
+
+    expect(again.kind === "error" && again.envelope.code).toBe("IDEMPOTENCY_CONFLICT");
+  });
+});
+
+// NEW IN STEP 23, piece 2: a dry run. The decision stage runs and is recorded; nothing else happens.
+
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+
+/** org_456's proposals and claims, as the owner counts them. */
+const leftBehind = async (): Promise<{ proposals: number; claims: number }> =>
+  asTheOwner(async () => {
+    const { rows } = await db.query<{ proposals: number; claims: number }>(
+      `SELECT (SELECT count(*)::int FROM dsor.proposals WHERE tenant = 'org_456') AS proposals,
+              (SELECT count(*)::int FROM dsor.idempotency_keys WHERE tenant = 'org_456') AS claims`,
+    );
+
+    return rows[0] ?? { proposals: -1, claims: -1 };
+  });
+
+describe("validate_only is a dry run", () => {
+  beforeEach(async () => {
+    await asTheOwner(() =>
+      db.exec("DELETE FROM dsor.idempotency_keys WHERE tenant IN ('org_456', 'org_789')"),
+    );
+  });
+
+  it("DSOR-OPR-06: an allowed command is VALIDATED, ALLOW, and nothing happens: no change, no proposal, no claim", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-dry",
+      mode: "validate_only",
+    });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a result, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(answer.envelope.outcome).toBe("VALIDATED");
+    expect(answer.envelope.decision).toBe("ALLOW");
+    expect(await statusOf1009()).toBe("draft");
+    expect(await leftBehind()).toStrictEqual({ proposals: 0, claims: 0 });
+  });
+
+  it("DSOR-OPR-06: a dry run needs no key, because nothing is claimed", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      mode: "validate_only",
+    });
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+  });
+
+  it("DSOR-OPR-06: a dry run is recorded as VALIDATED, so the log never shows it as something allowed to run", async () => {
+    await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, { mode: "validate_only" });
+
+    const last = (await theLog("org_456")).at(-1);
+
+    expect(last?.authorization).toBe("ALLOW");
+    expect(last?.result).toBe("VALIDATED");
+  });
+
+  it("DSOR-OPR-06: a dry run of a payment makes no payment, and takes no payment number", async () => {
+    const before = await paymentsOf("org_456");
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+    expect(await paymentsOf("org_456")).toStrictEqual(before);
+
+    // The next payment made for real is still PAY-902: the dry run took no number.
+    const made = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { idempotencyKey: "pay-for-real" },
+    );
+
+    expect(made.kind === "result" && made.envelope.data?.["id"]).toBe("PAY-902");
+  });
+
+  it("DSOR-OPR-05: a dry run the rules refuse gets the same refusal execute would, and leaves nothing", async () => {
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "60000.00", currency: "USD" },
+      },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect(await leftBehind()).toStrictEqual({ proposals: 0, claims: 0 });
+    expect((await theLog("org_456")).at(-1)?.result).toBe("LIMIT_EXCEEDED");
+  });
+});
+
+// NEW IN STEP 23, piece 3: prepared, not done. The proposal waits at READY for proposal.execute,
+// which is step 31's.
+
+describe("propose_only prepares a command and stops at READY", () => {
+  it("DSOR-OPR-05: an allowed command is READY: a proposal, its fingerprint, and nothing done", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-prepared",
+      mode: "propose_only",
+    });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a result, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(answer.envelope.outcome).toBe("READY");
+    expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_456\/proposal\/prop_\d+$/);
+    expect(answer.envelope.payload_hash).toMatch(/^sha256:/);
+    expect(answer.envelope.semantics).toBe("atomic");
+    expect(answer.envelope.data).toBeUndefined();
+    expect(await statusOf1009()).toBe("draft");
+
+    const id = String(answer.envelope.proposal).split("/").at(-1) ?? "";
+    const moves = await movesOf("org_456", id);
+
+    expect(moves.map((m) => m.to)).toStrictEqual(["PROPOSED", "READY"]);
+    expect(moves[1]?.cause).toMatch(/waiting to be released/);
+    expect(await stateOf("org_456", id)).toBe("READY");
+
+    const { rows } = await asTheOwner(() =>
+      db.query<{ mode: string }>("SELECT mode FROM dsor.proposals WHERE id = $1", [id]),
+    );
+
+    expect(rows[0]?.mode).toBe("propose_only");
+  });
+
+  it("DSOR-OPR-05: a prepared payment is not made", async () => {
+    const before = await paymentsOf("org_456");
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { idempotencyKey: "pay-prepared", mode: "propose_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("READY");
+    expect(await paymentsOf("org_456")).toStrictEqual(before);
+  });
+
+  it("DSOR-IDM-01c: sent again with its key, a prepared command is the same READY answer and one proposal", async () => {
+    const request = { idempotencyKey: "issue-prepared-twice", mode: "propose_only" };
+    const first = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(first);
+    expect((await proposalsOf("org_456")).filter((p) => p.state === "READY")).toHaveLength(1);
+  });
+
+  it("DSOR-EXE-03b: a move to READY that cannot be written is refused, DENIED, and the key may be sent again", async () => {
+    const request = { idempotencyKey: "issue-prepared-store-down", mode: "propose_only" };
+    const connection = overPGlite(db);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("INSERT INTO dsor.proposal_moves") && params?.includes("READY")) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    try {
+      const refused = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+      expect(refused.kind === "error" && refused.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+      expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+    } finally {
+      useDatabase(connection);
+    }
+
+    const sentAgain = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(sentAgain.kind === "result" && sentAgain.envelope.outcome).toBe("READY");
+  });
+
+  it("DSOR-APR-01a: a prepared command the rules refuse is DENIED, as one executed would be", async () => {
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "60000.00", currency: "USD" },
+      },
+      { idempotencyKey: "pay-too-much-prepared", mode: "propose_only" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+  });
+});
+
+// NEW IN STEP 23, decision 139: what the review measured.
+
+/**
+ * The store, for one write of moves naming `state`: the write happens and its reply is lost; with
+ * `readsFail`, reading a proposal's state back fails too.
+ */
+function aLostReply(state: string, readsFail: boolean): () => void {
+  const connection = overPGlite(db);
+  let lost = false;
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      if (!lost && sql.includes("INSERT INTO dsor.proposal_moves") && params?.includes(state)) {
+        lost = true;
+        await connection.query(sql, params, tenant);
+
+        throw Object.assign(new Error("the reply was lost"), { code: "ECONNRESET" });
+      }
+
+      if (readsFail && lost && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) {
+        throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+      }
+
+      return connection.query<T>(sql, params, tenant);
+    },
+  });
+
+  return () => useDatabase(connection);
+}
+
+describe("a lost reply, read back", () => {
+  it("DSOR-OPR-05: a move to READY whose reply is lost is read back, and the command is prepared", async () => {
+    const putBack = aLostReply("READY", false);
+
+    try {
+      const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+        idempotencyKey: "prepared-reply-lost",
+        mode: "propose_only",
+      });
+
+      expect(answer.kind === "result" && answer.envelope.outcome).toBe("READY");
+    } finally {
+      putBack();
+    }
+
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["READY"]);
+  });
+
+  it("DSOR-IDM-01c: a move to READY whose reply is lost and cannot be read back is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 139: told "safe to send again", the retry made a second READY proposal.
+    const request = { idempotencyKey: "prepared-unknown", mode: "propose_only" };
+    const putBack = aLostReply("READY", true);
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect(await proposalsOf("org_456")).toHaveLength(1);
+  });
+
+  it("DSOR-IDM-04: a move to EXECUTING whose reply is lost and cannot be read back is OUTCOME_UNKNOWN, and nothing runs twice", async () => {
+    const request = { idempotencyKey: "executed-unknown" };
+    const putBack = aLostReply("EXECUTING", true);
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(await statusOf1009()).toBe("draft");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect(await statusOf1009()).toBe("draft");
+    expect(await proposalsOf("org_456")).toHaveLength(1);
+  });
+});
+
+describe("the mode is read once, and only the request's own", () => {
+  it("DSOR-OPR-05: a mode on the request's prototype is refused, never taken as execute", async () => {
+    // Decision 139: the caller asked for a dry run, and got the invoice issued.
+    const request = Object.assign(Object.create({ mode: "validate_only" }) as object, {
+      idempotencyKey: "inherited-mode",
+    });
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+    expect(await statusOf1009()).toBe("draft");
+  });
+
+  it("DSOR-OPR-05: a mode whose getter throws is refused, never taken as execute", async () => {
+    const request = {
+      idempotencyKey: "throwing-mode",
+      get mode(): string {
+        throw new Error("no mode for you");
+      },
+    };
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+    expect(await statusOf1009()).toBe("draft");
+  });
+
+  it("DSOR-OPR-05: a mode read once: a getter that says validate_only, then execute, is a dry run", async () => {
+    let reads = 0;
+    const request = {
+      idempotencyKey: "changing-mode",
+      get mode(): string {
+        reads += 1;
+
+        return reads === 1 ? "validate_only" : "execute";
+      },
+    };
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+    expect(await statusOf1009()).toBe("draft");
+  });
+});
+
+describe("what a dry run does not check yet", () => {
+  it("DSOR-OPR-06: a dry run is decided without the handlers' preconditions, until step 32", async () => {
+    // Decision 139, written down: the version and whether the invoice exists are checked inside the
+    // handlers, which a dry run never reaches. Pinned so that step 32's stage changes it on purpose.
+    const answer = await callOperation(
+      SUPERVISOR,
+      "invoice.issue",
+      { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 99 },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+  });
+});
