@@ -56,7 +56,10 @@ jobs:
   baby-steps:
     name: Baby steps
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # Measured 2026-10-08: steps 09 to 11 run their test files one at a time now (the parallel
+    # runs were flaking), and on the Windows runner each takes three to four minutes; the whole
+    # loop took 7.5 minutes on Ubuntu and was cut off at 10 on Windows, in the middle of step 10.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

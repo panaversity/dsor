@@ -1,8 +1,8 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, type ViteUserConfig } from "vitest/config";
 
 // This step is its own small project, so it says where its own tests live.
 // Without this file, vitest would walk up the folders and use the repository's config.
-export default defineConfig({
+const config: ViteUserConfig = defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
 
@@ -31,7 +31,12 @@ export default defineConfig({
     // and it always gives the same answer, and for a step a learner runs once that is the better
     // trade. A flaky suite teaches nothing except not to trust the suite.
     pool: "forks",
-    singleFork: true,
+    // `singleFork` stood here, with the comment above explaining what it bought. Vitest 4 has no
+    // such option — the word appears nowhere in its code — so the files had been running in
+    // parallel, and every "different failure each run" was that. Step 11 found it, measured it,
+    // and this is the line that does what the comment promised. The configs are typechecked now,
+    // which is how a dead option was caught.
+    fileParallelism: false,
     isolate: true,
 
     // Five seconds is the default and is for tests that do arithmetic. These start real databases,
@@ -41,3 +46,5 @@ export default defineConfig({
     hookTimeout: 30_000,
   },
 });
+
+export default config;

@@ -2284,3 +2284,1829 @@ silently, which left `tenant.ts` sabotaged until the diff showed it — the diff
 intention.
 
 Counts after: 19 · 36 · 72 · 104 · 133 · 157 · 181 · 234 · 327 · 376.
+
+## 94 · Step 11's three decisions, taken by the learner before any code (2026-10-06)
+
+The problem was shown first, measured on step 10's own database as `dsor_runtime`: a query that
+forgets the company — `SELECT … FROM invoices WHERE id = 'INV-1008'` — returned both companies'
+rows, org_456's 31,400.00 and org_789's 18,000.00, and no test noticed, because the tests only
+check the queries that exist today. One lock, held by the program alone. Three questions, one at a
+time, in plain words, with a recommendation each; the learner took all three.
+
+1. **Both tables get the lock**, the invoices and the audit log, because both carry a company and
+   a lock on one of two doors is not a lock. The log's policy also checks writes, so the program
+   cannot put a record into another company's chain by mistake — a guarantee step 10 did not have.
+   The alternative, invoices only, is the spec's own example and the smaller change, and it leaves
+   a forgotten `WHERE` on the log free to leak another company's decisions.
+2. **The company is said before each statement**: every SQL statement runs in its own small
+   transaction that first calls `set_config('dsor.tenant_id', $1, true)`. The stores keep their
+   shape and the audit writer's recovery after a collision keeps working — a failed INSERT inside a
+   bigger transaction would abort the re-query that recovers from it. Once per request, the shape
+   §36 draws, changes the pipeline, the context and the writer at the same time; it is step 36's,
+   where a business change and its record must land in one transaction.
+3. **The demo runs the forgotten query, with the company set**, and prints one row where step 10's
+   database gave two. The step's whole claim, shown by running it rather than told.
+
+Two things taken without asking because the rules leave no choice: `dsor_runtime` must be neither a
+superuser nor `BYPASSRLS` nor an owner of the tables (`DSOR-RP-01a`), so the start-up refusal from
+step 09 grows those checks; and the lock is `FORCE`d (`DSOR-RP-01b`) even though every owner on our
+routes is a superuser, which bypasses it regardless — the tests prove `FORCE` with an owner that is
+not.
+
+## 95 · What step 11's build found, and one divergence from the map (2026-10-07)
+
+1. **The test support runs the stores as the application.** Measured with a store that forgets the
+   company: as `dsor_runtime`, 142 of 394 tests fail; as PGlite's superuser, 27 — and none of the 27
+   is a store's own test, because a superuser skips every policy. So `aDatabase()` ends with
+   `SET ROLE dsor_runtime`, and the two seams that need the owner (`resetInvoices`, the eraser)
+   step up through `asTheOwner` and always step back down, in a `finally`. The cost: sixteen tests
+   that ran raw SQL as the application without a company went red and had to say it. That cost is
+   the step's first lesson and is written up as such.
+2. **The map's third trap, as measured.** The map says a Console-made Neon user belongs to
+   `neon_superuser`, "which ignores row-level security altogether". The role does; its member does
+   not, until it runs `SET ROLE neon_superuser` — `BYPASSRLS` is a role attribute, and PostgreSQL
+   passes privileges through membership and never attributes. The first version of the Neon test
+   expected the member to leak, and the probe said otherwise. The test now asserts both halves:
+   filtered as itself, both companies after `SET ROLE`. The start-up check refuses the membership
+   by name either way. The map is left as written — a step session never edits around its folder —
+   and the README says where it and the measurement disagree.
+3. **The start-up check asks whether the lock is on.** Enabled, forced, with a policy, on both
+   tables; else it refuses with "the second lock is not on". The alternative — trusting that
+   migration 005 was applied — is a program that leaks quietly against a database at 004. Removing
+   `FORCE` from the migration therefore fails 18 tests, not 1: the owner's test, and seventeen that
+   open the program's door.
+4. **`rolsuper` is not checked**, because a superuser may `UPDATE` the log and step 09's privilege
+   check refuses it first; a line no test can kill is not added for the rule's wording (lesson 18).
+   `dsor.principal_id` from §36's example is not set, for the same reason: nothing reads it.
+5. **Why not one transaction per request.** It is the shape §36 draws and step 36 needs. Here it
+   would have changed the pipeline, the context and the audit writer at once, and the writer's
+   recovery after a collision runs a SELECT after a failed INSERT — inside one transaction that is
+   "current transaction is aborted". Per statement keeps every store's shape and every recovery
+   path, and is honest about being the smaller claim.
+
+## 96 · Step 11's hostile review: three windows past the lock, and a comment that over-claimed (2026-10-07)
+
+One reviewer, read-only, with PGlite probes. Seven findings; six changed something, one was
+considered and left. Every fix was red first, and each guard was removed again afterwards to see
+its test fail.
+
+1. **"Is there a policy" asks nothing.** Policies are permissive and OR'd together, so one more
+   that says `true` — for everyone, or `TO dsor_runtime` — opens the table while the first version
+   of the lock question still said "on". Measured: both companies, check passing. The question now
+   asks for exactly one policy per table, for all commands and all roles, whose `USING` and
+   `WITH CHECK` are the migration's expression as PostgreSQL prints it back. A server that printed
+   it differently would refuse to start, which is the right direction.
+2. **A `SECURITY DEFINER` function owned by a `BYPASSRLS` role** reads every company's rows while
+   holding nothing step 09's function question looks for. The question now also refuses a helper
+   whose owner is a superuser, holds `BYPASSRLS`, or owns (or may become the owner of) a tenant
+   table. Step 09's "harmless helper" test still passes: its owner is none of those.
+3. **A view the owner made is a window.** A view runs with its owner's rights, and every owner on
+   our routes skips the lock. Rather than enumerate the shapes, the check asks what the application
+   may `SELECT` at all: the two tenant tables, and nothing else, named in the refusal. The cost,
+   and it is deliberate: every later step that adds a table the application reads must add it here,
+   or the program refuses to start. Fail closed, like the column list of 002.
+4. **The audit policy binds `tenant`, not `chain`.** Migration 005's comment said the policy stops
+   a wrong chain from reaching another company's log; measured, a row with tenant org_456 and chain
+   audit:org_789 went in. No path writes one today — both values come from one variable — and the
+   day one does, org_789's head never sees the stray row and collides on every write after. A
+   `CHECK (chain = 'audit:' || tenant)` in 005 says what the comment claimed; the comment now says
+   what the policy checks. Two of step 09's permission tests wrote org_999's chain with org_456's
+   tenant and were corrected to agree with themselves. The step's own database was dropped and
+   recreated, because 005 had been applied and the checksum would have refused the edit.
+5. **`asTheOwner` restores whoever called it**, not always the application, so a nested call
+   cannot drop its caller silently. Nobody nests them yet.
+6. **A stale comment** in the eraser said step 09 "is where" the log moves; it moved.
+7. **Considered and left: `overPool` on a failed `COMMIT`.** A socket that dies during `COMMIT`
+   leaves the outcome unknown, and the adapter rethrows the driver's error as it is. That error
+   carries no SQLSTATE, which is exactly the shape `audit.ts` already treats as "the store could
+   not be asked" and answers `OUTCOME_UNKNOWN`; a `COMMIT` the server refused carries one and is a
+   definite no. Tagging the phase, as the reviewer suggested, would add a field nothing reads.
+
+The reviewer also measured what the first build claimed and could not have proved: a two-deep
+`INHERIT FALSE` chain to a `BYPASSRLS` role is refused, because `pg_has_role(…, 'MEMBER')` is
+transitive; `SET row_security = off` as the application is an error, not a bypass. 394 became 400.
+
+## 97 · Step 11, tested again: what an independent evaluation and four measurements changed (2026-10-08)
+
+The learner asked whether step 11 had been tested thoroughly, and the honest answer listed five
+things that had not: Neon itself, a second reviewer, two faults reasoned about rather than injected,
+the cost of a transaction per statement, and an evaluation of the kind steps 01 to 10 had. Four of
+the five were done; Neon needs a project the learner has to provide.
+
+**The evaluation** — four reviewers, a mutation pass on a copy, a critic, two verifiers; two agents
+were blocked by the model's cyber safeguards for the word "attacker", and their ground was covered
+by the others — graded the folder C, and every grade was earned:
+
+1. **Three more ways past the helper question.** The first fix refused a `SECURITY DEFINER` helper
+   the application may `EXECUTE`. An aggregate whose transition function is the helper, `EXECUTE`
+   held through an `INHERIT FALSE` membership, and a trigger on the invoices that fires the helper
+   under the application's own `UPDATE` all reached it without `EXECUTE` — the trigger one both
+   leaked every company into a column and could rewrite the log, while the check said the lock was
+   on. The helper is refused for existing now, whoever may call it, and the trigger question asks
+   about both tenant tables. The cost: a harmless `SECURITY DEFINER` helper owned by a role that
+   holds nothing still passes (step 09's test), but one owned by a superuser is refused even if
+   nobody may call it.
+2. **The demo's two lines were pinned by nothing.** Inverting them passed `main.test.ts` 9 of 9.
+   One test pins them now. The header of that file says this is the failure it exists to stop, and
+   step 10 pinned its demo lines; step 11 had not.
+3. **The pool adapter was invisible to `pnpm test`.** Two mutations in `overPool` — skip the
+   `ROLLBACK`, say the company per session — survived the whole unit suite, because the unit tier
+   runs on PGlite and CI never runs the database tier. A stub pool now records every statement and
+   how the connection comes back.
+4. **`singleFork` is not an option Vitest 4 has.** Zero occurrences in its code; the files had been
+   running in parallel since step 09, which is what every differing failure and shrinking total
+   under a sabotage was, and what pull request #4 saw as "13 timeouts" in `my_10`. Measured: as
+   configured, 2 failed of 401 in 29 seconds; with `fileParallelism: false`, all pass in 95
+   seconds, three times; the database tier, with two files writing one table, 3 failed with a
+   different set each run, 16 passed with the line. Nobody noticed because `tsconfig.json` did not
+   include the config files; it does now, and `tsc` refused the dead option the moment it looked.
+   Steps 09 and 10 carry the same two lines; reported to the learner, not edited from a step 11
+   session.
+5. **Two step 09 test files ran the stores as the superuser**, so the company their fakes forwarded
+   was enforced nowhere. They build their database through the support now, as the application.
+6. **The folder contradicted itself about Neon's owner.** Five places said every owner is a
+   superuser; decision 95 said membership passes no `BYPASSRLS`. Neon's `neondb_owner` is a member
+   of `neon_superuser`, not a superuser, so on Neon `FORCE` is exactly what filters it. Reworded.
+7. **The lock's real limit was never said**: it stops a statement that said no company, not one
+   that said the wrong one. Said now, in plain words. And the start-up check is named for what it
+   is, an enumeration of the shapes three reviews found, with step 16 as where a map replaces it.
+8. Smaller: a whitespace-only company was accepted by the store guard; a session that already
+   carries a company would hand it to every plain statement, so the check refuses one; the
+   application's own temp table refused start-up with a confusing message, so `pg_temp` is left out;
+   a missing tenant table is refused in the step's words rather than PostgreSQL's; the pool gets a
+   connection timeout, since a store that awaited one statement inside another would hang forever
+   on a pool of one; a `security_invoker` view is filtered and the README says so; the "What
+   changed" command diffed `node_modules`; one test title claimed `RP-01d` with a company set;
+   `scripts/door.ts` gives the learner the probe behind the Break-it blocks.
+
+**The four measurements.** A connection that dies during `COMMIT` on a real server: the recovery
+finds the row by looking, a connection that then stays dead gets `OUTCOME_UNKNOWN` with the row
+still there, and the connection handed back carries nothing — the first version of that fault hit
+the tail read's `COMMIT` instead of the INSERT's, and the writer threw before its recovery, which
+was correct and measured the wrong moment. PGlite's one connection: a plain statement cannot slip
+inside another company's open transaction. The cost: PGlite 0.103 → 0.275 ms per statement, a local
+PostgreSQL 17 over a socket 0.083 → 0.126 ms. And two things found on the way: a migration's
+checksum covers its comments, so the step's database was recreated twice; and macOS purges `/tmp`,
+where step 09's README keeps the cluster, so it was rebuilt from `initdb`.
+
+## 98 · Neon, measured at last, and what it corrected (2026-10-08)
+
+The learner logged the Neon CLI in; a project `dsor-tutorial` (Singapore, PostgreSQL 18), a
+database `dsor_step11`, and `dsor_runtime` created with `CREATE ROLE` through the owner's
+connection string — the connection strings written into `.env` by redirect, never printed. The five
+migrations applied, the sixteen database-tier tests passed twice, and `pnpm start` through the real
+`dsor_runtime` login printed the step's two lines with both chains verifying.
+
+What Neon's own roles look like, measured:
+
+```text
+console_made     superuser=false  BYPASSRLS=true   CREATEROLE=true   member of neon_superuser=true
+dsor_runtime     superuser=false  BYPASSRLS=false  CREATEROLE=false  member of neon_superuser=false
+neon_superuser   superuser=false  BYPASSRLS=true   CREATEROLE=true   member of neon_superuser=true
+neondb_owner     superuser=false  BYPASSRLS=true   CREATEROLE=true   member of neon_superuser=true
+```
+
+So three corrections to the folder's own story:
+
+1. **The map was right about Neon.** A role made in the Console or through the API — `console_made`
+   above — holds `BYPASSRLS` *itself*, and so does the owner. It skips every policy outright, with
+   or without the membership. Decision 95's finding stands as PostgreSQL's rule — membership passes
+   no attribute, measured on PGlite — but Neon does not rely on the membership; it grants the
+   attribute. And Neon refuses `SET ROLE neon_superuser` to everyone: "It is not allowed to change
+   role to neon_superuser". The "one SET ROLE away" story is true of a plain PostgreSQL and false of
+   Neon, where the owner is not one step away but already there.
+2. **The owner is not filtered by `FORCE` on Neon** either, since it holds `BYPASSRLS`. Decision 97's
+   sixth point and the sentences it changed were wrong about that, and are corrected in the README,
+   the migration's comment, and the step note. All three owners this tutorial met skip the lock;
+   `FORCE` is proven with an owner the test makes.
+3. **The program refuses a Console-made role at step 09's question**, before this step's: the
+   membership of `neon_superuser` carries `UPDATE` on the log. Measured through the door with
+   `console_made`'s connection string: "may UPDATE, DELETE, TRUNCATE the audit table". The
+   `BYPASSRLS` and membership questions stand behind it.
+
+Two more things measured on the way. Neon's owner holds `CREATEROLE` directly, so `CREATE ROLE
+dsor_runtime` works as the owner and the role comes out with nothing. And the cost over a network:
+117 ms for a plain statement, 484 ms through the adapter — four round trips where there was one.
+That is the price of decision 94's "before each statement", and the number step 36's one
+transaction per request is measured against.
+
+Also recorded: the `.env` now names Neon; the local server's lines are kept beside it in
+`.env.local-server`. The Neon database was recreated once, because a comment in migration 005
+changed after it was applied (lesson 40).
+
+## 99 · Step 12's two decisions, taken by the learner before any code (2026-10-08)
+
+The problem was shown first, measured on a copy of step 11: a third operation added the careless
+way — the address nested inside an argument, the store asked for the company the address names —
+and step 11's hand-written cross-tenant suite stayed at `12 passed` while `user_123` of org_456 was
+handed org_789's `INV-1008`, vendor and amount. The second lock did not help, because the careless
+handler *said* org_789 to the store, and the lock trusts whatever company a statement says. Two
+questions, one at a time, in plain words; the learner took both recommendations.
+
+1. **Each contract carries an example request**, under `extensions` with a reverse-DNS key, which
+   the specification's own schema allows and which step 03 taught and tested on a made-up
+   contract; these are the first shipped contracts that carry one. The suite reads the registry, takes each example, rewrites every address in it to
+   another company, and calls. A contract without an example fails the suite rather than being
+   skipped — that is what "grows by itself" has to mean. The alternatives: a table in the test
+   (the knowledge away from the operation, and an edit to the test for every new operation), or
+   building requests from input schemas (no step has request schemas yet; a second idea).
+2. **The suite runs on PGlite under `pnpm check` and again in the database tier** against the
+   database `.env` names, like every other test here. The map says "a fresh Neon branch, so it can
+   create two companies and destroy them without touching your data": a branch per run needs the
+   Neon CLI, credentials and the network inside the tests, which no earlier test has, and PGlite is
+   a fresh database every run already. Recorded as a divergence; the map is left as written.
+
+The step's databases: `dsor_step12` on Neon, which `.env` names, and on the local server, which
+`.env.local-server` names. The database tier ran on Neon on the untouched copy: 16 passed.
+
+## 100 · What step 12's build found: a question that passed for the wrong reason (2026-10-08)
+
+The first careless-command sabotage — an operation that issues whatever draft a nested address names,
+in the address's company — failed three of the suite's questions and passed "the other company's
+rows are untouched". Not because the command was careful: org_789 had no `INV-1009`, the number the
+example names, so there was nothing to issue. A passing test with nothing behind it is the thing
+this tutorial keeps finding (lessons 18 and 34), and this one was in the suite that exists to find
+it.
+
+Two changes, in that order. The suite asks, before the untouched-rows question, that the other
+company holds every invoice number the example names, with the fix in the failure message ("add it
+to 004_running_example.sql"). And the seed gives org_789 an `INV-1009`, as a draft, with a different
+amount. The same sabotage then failed four questions, the untouched-rows one among them: org_789's
+draft had been issued. The cost: step 10's "not found in yours" test had no exclusive number left,
+so org_789 also gained `INV-2001`, which org_456 lacks, and that test asks for it. The databases
+were recreated twice for the changed migration.
+
+Two smaller things. The demo's two lines were pinned from the start, by a test that reads the
+operation ids off them and compares with the registry, because step 11's were not and an evaluation
+found it. And the suite's generator lives in `test/support/` as a function rather than a test file,
+so the same six questions run on PGlite and on the real server without a second copy that could
+drift.
+
+## 101 · Step 12's hostile review and mutation pass: a suite that could be lied to (2026-10-08)
+
+Four reviewers, a mutation pass on a copy, and a critic, run while the step was still being
+written. The done-when held for a careless author — a third operation with a nested address failed
+four questions by name, measured by three of them independently — and then two of them wrote the
+author who is not careless but hostile.
+
+1. **A refusal-shaped envelope with the row inside it.** An operation that reads a nested address,
+   fetches the other company's row, returns `TENANT_MISMATCH`, retry `never`, the same message —
+   and the row tucked into the envelope — and appends a `DENY` of its own after the pipeline's
+   `ALLOW`. The first suite compared the refusal's words and read the log's last record, and passed
+   it. Now question 2 compares the whole envelope with the one for a company that does not exist,
+   which cannot carry that company's row, and question 5 asks for exactly one record for the
+   request and that it is the `DENY`. Measured after: 11 failures for that operation.
+2. **The seed row already issued.** The mutation pass seeded org_789's `INV-1009` as `issued`;
+   a careless `invoice.issue` found nothing it could do, the rows stayed untouched, and question 3
+   — which asked only that the number exists — was content. For a command, it now asks that the
+   other company's row is in the same state as yours, the state the example works in.
+3. **Nothing tested the suite.** Six assertions deleted one at a time, six whole-suite passes. The
+   six questions are plain functions now, `questions` in the support file, and
+   `cross-tenant-suite-itself.test.ts` feeds each one an honest answer and then the lie it exists
+   to catch. Delete an assertion and its lie passes there.
+4. **An example with no address** was asked to be both refused and allowed; it gets one failing
+   test by name instead. Question 3 reads invoice rows only and says so for any other kind of
+   address. The address helpers moved into `src/examples.ts`, one implementation for the suite,
+   the example test and the demo, where a private copy in the test had let the suite's own copy be
+   emptied unnoticed. The example reader refuses an array and a null, both found by mutation. The
+   database-tier runner skips without a server instead of registering nothing, which vitest calls
+   an error. Its `afterAll` puts the invoices back as well as the log.
+5. **Said in the README**, because the reviewers found the sentences missing: exactly what grows by
+   itself and the five things a human still writes; that the pipeline walks top-level strings and
+   the suite rewrites at any depth, which is the gap the suite covers; that the database tier
+   empties the named database's invoices and log; that a second process using the folder can fail
+   the demo test; that these are the first shipped contracts to carry an `extensions` key, which
+   step 03 taught on a made-up one; and that question 5 proves the `DENY` is the one record, while
+   "before the response" is step 08's one proof over the shared pipeline.
+
+Then the critic, after the five: question 6 asked only that the own-company example was not
+refused, so a handler that returned org_456's invoice with org_789's beside it, in a successful
+answer, passed the suite, the self-test and step 10's file — the one leak shape a same-company
+call can have. It reads the answer now and refuses the other company's name and the four things
+org_789 alone holds. And `org_000` could be made a real company with nothing saying so; a guard
+pins what the three companies are. The database-tier runner deletes the story's two companies'
+rows only. 429 became 444; the database tier 29 became 30. Every count on the README was
+re-measured twice after the changes, on a copy outside the repository.
+
+## 102 · Step 13's three decisions, taken by the learner before any code (2026-10-08)
+
+The problem was shown first, measured on a copy of step 12 with a list written the obvious way and
+fifty thousand invoices seeded for org_456: `{ limit: 25 }` gave 25 rows in 23 ms; `{ limit:
+1,000,000 }` gave all 50,002 rows, three megabytes, in 105 ms, and nothing in the program said no.
+§7.1's sentence — an agent in a loop should not be able to download the whole customer table — and
+`DSOR-QRY-01`'s: a server-side maximum page size and maximum result size on every query, whether
+or not the client asks for a limit. Three questions, one at a time, in plain words; the learner
+took all three recommendations.
+
+1. **The next page comes after the last invoice on this one.** The page says which invoice it
+   ended on; the caller sends it back as `after`; the server reads the rows after it, in id order.
+   A page number was the alternative: familiar, but a caller can name page 40,000, the database
+   skips everything before it, and a page shifts when a row is added in front. "No next page this
+   step" would have made one page the whole answer and shown nothing of what a page is.
+2. **The list names its scope through its cursor, which is an address.** `after` is
+   `dsor://org_456/invoice/INV-1008`, so the §21.6 scan refuses a cursor from another company and
+   step 12's suite can move it, with nothing new. The company itself still comes from the login.
+   The alternatives were a collection address with no id, which changes the grammar every step
+   since 02 relies on, or an operation with no address, which the suite would have to be taught —
+   the critic's addressless case from step 12, answered by not building one.
+3. **Two maxima and a default in one file, and the pipeline refuses an oversize answer.** The handler's SQL
+   carries `LIMIT`; after the handler runs, the door checks the answer against both maxima and
+   refuses one that exceeds them as the program's own error, never returned. Two layers, like
+   steps 10 and 11: the query written next year that forgets its `LIMIT` is caught. Per-contract
+   maxima were the alternative; the specification's contract schema has no such field, and a
+   contract that left them out would need a default somewhere anyway. The numbers themselves are
+   this step's, provisional like §44's: 100 rows per page, 64 KiB per answer, 25 rows when the
+   caller says nothing.
+
+The step's databases: `dsor_step13` on Neon and on the local server; the untouched copy ran 444
+and 30.
+
+## 103 · What step 13's build found: a cap no ordinary test can see (2026-10-08)
+
+The list slices the page it hands back — one row more is asked for, to know whether there is a
+next, and the extra is dropped. So every assertion about the page passes whether or not the SQL
+carries its `LIMIT`: a list that fetched the whole table and cut the page afterwards is correct in
+every way a test of the answer can measure, and it is exactly the leak §7.1 describes, one hop
+earlier. The test that sees it is a connection that counts what each statement returned, in front
+of the real one, asserting the database handed back the page plus one and nothing more — the same
+device step 11 used to prove every statement says its company. Breaks 1 and 5 of the README exist
+to show that without it the suite is blind to the thing the step is about.
+
+Two smaller things. `makeDoor` takes a handler table, defaulting to the program's own, because the
+door's measuring can only be tested with a handler that returns too much and the program has none;
+the table bypasses nothing the door checks, since a door is still every stage and the receipt. And
+the demo's "a million" line gets two invoices, because two is all the story has; the README says
+so rather than seed the demo to make a number appear.
+
+## 104 · The review's one design suggestion, declined: the page is not cut by bytes (2026-10-08)
+
+The hostile review of step 13 — five reviewers, one of them a mutation sweep of thirty-two
+one-line changes — found eight holes, every one closed with a test that failed first; the step's
+note lists them. One suggestion was about design and is recorded here because it was declined. A
+reviewer measured that a single row wider than 64 KiB — `vendor` is unbounded text — makes its
+page and its own `invoice.get` refuse with `INTERNAL_ERROR`, retry never, and proposed that
+`listInvoices` take rows while the running JSON size stays under the ceiling, so that the byte
+maximum shapes the page instead of refusing it.
+
+Declined, for three reasons. The learner chose the refusal at the door (decision 102, item 3), and
+a list that trims by bytes moves half of that decision back into the handler. A page whose size
+depends on the data hides the thing a wide row is — a column with no bound, which is a schema
+problem, and the honest fix is a bound on the column in a step that owns the schema. And the
+one-row case is not helped at all: an `invoice.get` of that row refuses whatever the list does. So
+the step refuses, the README says so, and the test that seeds such a row pins that both queries
+refuse rather than shrink. The remedy for a caller is a smaller `limit`; the remedy for the row is
+a later step.
+
+Two smaller declines, for the record. The door does not check that a page's rows belong to the
+request's company: the real handler cannot produce one that does not (the `WHERE` and RLS, and
+now a test of the `WHERE` alone), and a tenancy check at the door would be a second idea in this
+step. And `makeDoor` does not run `assertPaired` on a handler table a test hands it: a test's table
+is partial on purpose, and the resolve stage refuses an operation with no contract before any
+handler is looked up.
+
+A third, from the review's critic: widen the page type now, to rows of any kind, so that the door's
+row layer applies to the next list as well as to this one. Not in this step. There is one list, a
+type for lists that do not exist is a guess, and the README says what the next list must do; the
+widening belongs to the step that builds it.
+
+## 105 · Step 14's three decisions, taken by the learner before any code (2026-10-08)
+
+The problem was shown first, on step 13's running demo. `accounts-payable-fte` reads INV-1008 and
+gets `31400.00 USD`, the same line as `user_123` — and the agent's answers travel to a model
+provider outside the company, so the amount left org_456, and with `invoice.list` a hundred
+amounts leave per page. No field carries a label, nothing between the database and the agent
+asks, and by `DSOR-CLS-01` every unlabelled field is confidential, so all of it left. The rules are
+§19's: CLS-01, CLS-02a, CLS-02b, CLS-03 and CLS-05. Three questions, one at a time, in plain
+words; the learner took all three recommendations.
+
+1. **One file for all labels, in code.** `src/classification.ts` holds a table — entity, field,
+   label — and a field missing from it is confidential, which is the rule itself and is tested by
+   taking a label away. Beside each entity's shape was the alternative: the label next to the type
+   it labels, but every entity file grows its own table and the no-label rule is repeated per
+   file. In the contract's output was the third: the same invoice labelled twice, in `invoice.get`
+   and in `invoice.list`, free to disagree.
+2. **A field above the clearance is left out, and listed.** Nothing of the value leaves; the
+   redaction list says `amount`, `clearance`, `omitted`. A placeholder in the field keeps the
+   shape, but it is a fake value in a typed field — money's value is a decimal string and a mask
+   is not one — and a careless program adds masks up.
+3. **Agents only, as the rule says.** `DSOR-CLS-02a` is written for agent principals, because an
+   agent's answer crosses the model boundary; a human reads on a screen, and the role decides what
+   a human may do. The agent gets the clearance `internal`; the two people are not filtered.
+   Everyone by clearance was the alternative: uniform, asked for by no rule, and needing invented
+   clearances for the humans.
+
+The labels are the specification's own example (§4, `DSOR-ENT-01b`): `id` internal, vendor
+internal, `amount` confidential, `status` internal; `uri` and `tenantId` internal, since they name
+the row. The step's databases: `dsor_step14` on Neon and on the local server.
+
+## 106 · What step 14's build found: the record of a read is a second record, and a grant that does not grow (2026-10-09)
+
+> **Superseded in part by decision 109, the same day.** The row count moved out of `extensions`
+> into the record's own `row_count` field, which the schema had all along. The rest of this entry
+> stands.
+
+Two things the build taught, neither of them a choice the learner had.
+
+**The record of a read is a second record.** `DSOR-CLS-05` wants a read of confidential data
+written down with its row count and the rows it returned. The decision record cannot carry that:
+it is written before the handler runs (`DSOR-EXE-02`), so it cannot know what came back, and the
+log is never amended (`DSOR-AUD-04a`), so it cannot be told afterwards. Step 13's critic measured
+exactly this — the log of a page of a hundred reads the same as the log of one `invoice.get` — and
+said step 14 would need a second record. It does: kind `classified_read`, after the decision, with
+the addresses in `resources` and the row count under the tutorial's namespace in `extensions`,
+both fields the audit schema already had. It is written after the filter and before the answer
+leaves, and triggered by what leaves — the agent's read that leaves as `internal` is not written
+down twice — and if it cannot be written, the rows do not leave, as the decision record's failure
+already stops a command.
+
+**A column-level grant does not grow with the table.** Migration 006's first version added the
+two columns and stopped, and every INSERT into the log was refused — the program could not carry
+out a single request. Step 09's `GRANT INSERT` names its columns one by one so that the
+application can never write `recorded_at`; a new column is granted on purpose or not at all. The
+migration says so in its own comment, and the real-server tests pin INSERT yes and UPDATE no for
+the two columns.
+
+Also recorded: a handler's answer and the door's answer are two types now, `HandlerAnswer` and
+`OperationAnswer`, because a handler returns the whole row and only the door decides what leaves;
+and three tenancy tests that told the two companies' INV-1008 apart by the amount, as the agent,
+now tell them apart by the status, which the agent may see.
+
+## 107 · A label describes a value it can see the whole of, and the one decision step 14 leaves open (2026-10-09)
+
+The hostile review's critic — the sixth agent, which the month's spend limit had stopped and which
+ran afterwards — found what the five reviewers had not, and three verifiers confirmed its top three
+findings on a clean copy. Two of them changed the design, so they are decisions and not fixes.
+
+**A value with parts inside is confidential, whatever its field is called.** `vendor` is
+`internal`, and a reviewer handed the door a `vendor` whose value was an object with the amount
+inside it: it left for the agent, labelled `internal`, with only `amount` in the list. A value with
+its own `toJSON` did the same. The alternative was to write the limit down and make it a rule for
+handlers, which is what the first fix did — a comment saying a handler must not nest. That is a
+rule nothing enforces, and `DSOR-CLS-01` already says what to do with a value nobody labelled: a
+value the label cannot see the whole of is confidential. Three lines in `filterRow`, and the amount
+does not move, because it is confidential already.
+
+**An answer this program cannot filter is an envelope, not an exception.** A handler that returns
+no row, or a row that is not a row, made the door throw a raw `TypeError` — after the decision was
+recorded, and for a command after the side effect, with nothing a caller can read. The door refuses
+it as `INTERNAL_ERROR` with retry `never` now, beside the ceiling's refusal, because the shape of
+the answer is this program's business and not the caller's. The same pass found that a receipt whose
+`data` is absent — legal in the schema, and what step 17's first `PENDING_APPROVAL` receipt will be
+— was being filtered as if it had data: it leaves as it came, with no label and no list, because
+there is nothing to label.
+
+**And the one decision this step leaves open, on purpose.** Five different endings leave exactly
+one `ALLOW` / `ALLOWED` record in the log and nothing else: an agent's answered read, a bad
+`limit`, an answer over step 13's ceiling, a row with no address, and the evidence store failing.
+A verifier reproduced all five. Only a read that handed out confidential data writes a second
+record, so "ALLOWED and nothing after it" means either "the caller got internal data" or "the
+caller got nothing and an error", and the log does not say which. The fix is another record, which
+this step has just proved writable — the decision record cannot be amended, and that is why the
+record of a read exists at all. It is not taken here because recording what happened after the
+decision is a step's whole idea, not a corner of this one, and because it is the learner's
+decision: a `classified_read` with a `REFUSED` result, a `refusal` kind of its own, or an outcome
+record for every request. The README says plainly that the log cannot tell the five apart today.
+
+Also from the critic, smaller: the citation for the labels was wrong — the entity schema with a
+classification on every field is §6 of `01-model.md`, not §4, and the labels are modelled on it
+rather than taken from it, since §6's invoice has `vendor_id` and `open_amount` while `uri` and
+`tenantId` are the tutorial's. And the demo's withheld note measured 135 columns on one line, which
+wraps away from its row on a default Windows console; it is a line of its own under the row now,
+with the amount padded so the status lines up.
+
+## 108 · The log's five endings: decided, and deliberately not built here (2026-10-09)
+
+Decision 107 left one question open for the learner, and the learner asked for it to be taken.
+Taken: step 14 does **not** add a record for a read that was refused after its decision. The
+reasoning, because the answer matters less than why.
+
+`DSOR-AUD-01` says what must leave a durable record: every command decision, every proposal
+transition, and every read covered by `DSOR-CLS-05`. Step 14 writes all three of those that exist
+today — the decision before the handler, and the record of a read that handed out confidential
+data. Measured against the rule, nothing is missing. What is missing is *usefulness*: five endings
+look alike in the log, because four of them are refusals that happen after the decision was
+already written as an ALLOW.
+
+Three reasons not to invent a fourth kind of record here.
+
+1. **The specification already has the slot, and it is not an audit record.** What finally happened
+   to a request is a proposal's final outcome (`DSOR-EXE-04a`, `DSOR-EXE-04b`, L2), and a proposal
+   with states and transitions arrives with the control-plane store in step 16 and the outcome in
+   step 36. A `classified_read` with `result: REFUSED` invented now would be a third shape that no
+   rule names, and step 36 would supersede it.
+2. **No record can cover all five.** One of the endings is the evidence store failing, and a store
+   that cannot take the record of a read cannot take a record of the refusal either. A scheme that
+   closes four of five and calls the log complete is worse than one that says plainly which
+   question the log does not answer.
+3. **One idea per step.** Recording what happened after the decision is a step's whole subject.
+   Folding it into the step about classification would make two ideas and teach neither well.
+
+What step 14 does instead: says it. The README has a paragraph of its own — "the one thing the log
+still cannot tell you" — naming all five endings and where the answer arrives. A learner who reads
+the log of a refused read and wonders why it says ALLOWED finds the answer in the step, not in a
+surprise.
+
+## 109 · The row count goes in the record's own `row_count`, not under `extensions` (2026-10-09)
+
+**Decided by:** the learner, who took the recommendation after the problem was shown in plain
+words, with the record of a read drawn both ways side by side.
+**What:** the record of a read keeps how many rows it returned in `row_count`, the field
+`audit-record.schema.json` has for it, beside `resources`. Until now the count was under
+`extensions["com.panaversity.tutorial"].row_count`. Migration `007_read_row_count.sql` adds the
+column, and grants `INSERT` on it column by column, as 006 does.
+**Why:** decision 106 put the count under `extensions` because the build believed the schema had
+no field for it, and a comment in `audit.ts` said so. The schema has one: `row_count`, a whole
+number of at least 0. `extensions` is for the fields an implementation adds (`DSOR-SCH-02`). So a
+checker that follows the specification looked in `row_count`, found nothing, and could not know
+that the count was there under a name only this tutorial uses. Found by a read of the whole
+repository on 2026-10-09.
+**Cost:** a second migration in one step. 006 cannot be edited: it has been applied on Neon, and a
+migration's checksum covers every byte, comments included (lesson 40). So 006's comment still says
+the count goes under `extensions`, and 007's comment says why that is no longer true. The
+`extensions` column stays, and step 14 writes nothing to it.
+**Rejected:** keeping the count under `extensions` and correcting the two comments. No database
+change, and a count that only this tutorial can find. Also rejected: rewriting 006 and making the
+step's Neon database again. The step would read cleaner, and it needs a database deleted, which is
+the learner's action to take.
+
+**Red first.** The two tests that read the count failed on `expected undefined to be 1` and
+`expected undefined to be 2`, and the typecheck refused `row_count` on `AuditRecord`. The tests
+changed and did not grow: `pnpm check` 504, and `pnpm test:db` 39 on Neon with 007 applied.
+
+**Proved by breaking it**, in a copy outside the repository, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| no `rowCount` written | 3: the two count tests and the demo's `READ, 1 row` | 3, those three |
+| `theLog` does not read `row_count` back | about a dozen | 7: those three, and four tests that verify a chain holding a person's read, because the count is inside the hash |
+| 007 without its `GRANT` | dozens: only the reads | 185 |
+
+The third prediction was wrong, and the reason is the lesson of 006 again. Every `INSERT` into the
+log names `row_count`, and sends a NULL when a record has no count. PostgreSQL asks for the column
+privilege for every column a statement names, whatever the value. So without the grant every
+write to the log was refused, decisions included, as in Break 12. Run twice, 185 both times, and
+the README's Break 12 now says so.
+
+**The README's fifteen breaks, measured again.** All fifteen give the README's counts. The first
+pass did not. It slowed down from break 8 on — seven results in twenty-five minutes, where a run
+takes one — and five runs came back with numbers the README does not have, break 11 with 32 tests
+skipped where the README has 1. A skipped test there means a test file's setup ran out of time, so
+those runs measured the machine and not the code (lesson 11: the total and the skips are the
+tell). Run again one at a time on a quiet machine, the five gave 17, 2, 2, 185 and 65, the
+README's numbers.
+
+## 110 · Money keeps its field's label only in a field declared to hold money (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the gap was shown in plain words,
+with the agent's answer drawn both ways.
+**What:** a money value, `{ value, currency }`, is one value, described whole by its field's label,
+only in a field the table declares as money: today `invoice.amount`. Anywhere else it is a value
+with parts inside, and so at least confidential (decision 107): withheld from this step's agent,
+which is cleared for `internal`, and listed.
+`classification.ts` keeps the list beside the labels, and `holdsMoney` asks it.
+**Why:** decision 107's exception was given by the value's shape, not by its field. Measured on
+2026-10-09: a handler that returned `vendor: { value: "31400.00", currency: "USD" }` sent the amount
+to the agent, labelled `internal`, with nothing in the list of what was withheld. The
+specification's entity schema gives every field a type as well as a label (§6, `DSOR-ENT-01b`):
+`amount: { type: money, classification: confidential }`. A field's declared type decides, not a
+value's shape.
+**Cost:** a second list beside the labels, and the two must agree. When they disagree, the stricter
+answer wins: money in a field not on the list is at least confidential. One new test, and the
+README's fifteen breaks measured again, after decision 111 (below it). Break 13 was measured first,
+and it had been measuring another guard: `isPlain` was also the door's "is this a row?" check, so
+all 65 of its failures were the door refusing every answer as not a row, the three tests about the
+label among them. The two jobs are two functions now, and Break 13 measures the label alone.
+**Rejected:** saying it plainly in the README and leaving the code. Cheap, and a handler's mistake
+stays a leak. An amount written as text in `vendor` still leaves either way, because a label
+describes a field and not the value in it (open question 50).
+
+**Red first.** The new boundary test failed with the amount in the agent's answer, and the
+declaration's lines with `holdsMoney is not a function`. Then `pnpm check`: 505 passed.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| `holdsMoney` says yes for every field: money judged by its shape again | 2: the new test and the declaration's `vendor` line | 2, those two |
+| `holdsMoney` says no for every field | 1: the declaration's `amount` line | 1, that line |
+
+The second break is visible only to the declaration. In the story the amount is confidential either
+way, so the answers the agent and the supervisor get are the same with or without it, and the
+declaration's test is the one place that can say the list is wrong.
+
+## 111 · A field's label is looked up among the table's own names (2026-10-10)
+
+**Decided by:** the learner, who chose to fix it now, in a commit of its own, after the bug was
+shown with a run.
+**What:** `labelOf` answers from the label table's own keys only, for the entity and for the
+field, as `permissionsOf` has since decision 36. A name the table only inherits has no label, so
+it is confidential.
+**Why:** found while building decision 110, and measured. `labelOf("invoice", "toString")` returned
+a function, and `labelOf("constructor", "name")` returned `"Object"`. Neither is one of the four
+labels, so neither was ever above a clearance: a row with fields named `toString` and `valueOf`
+sent both to the agent with `31400.00 USD` in them, while `notes` beside them was withheld. A
+field with no declared classification is confidential (`DSOR-CLS-01`), and these two had none.
+It is decision 36's bug in a file written after it — lesson 13 again: a fix belongs everywhere its
+shape lives.
+**Cost:** one test, and a lookup that reads as a guard rather than one line. Only the program's own
+handlers could name such a field; the agent cannot.
+**Rejected:** recording it for a later session. The fix is a few lines, and until it lands a
+handler's mistake sends that field to the agent.
+
+**Red first.** `expected [Function toString] to be 'confidential'`, and the amount in the agent's
+answer. Then `pnpm check`: 506 passed.
+
+**Proved by breaking it.** The lookup is two guards, one for the entity and one for the field, and
+each was removed alone, as lesson 18 asks: what does this guard catch that no other does?
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| no own-name check for the entity | 1: the `constructor` line of the unit test | 1, that line |
+| no own-name check for the field | 2: the `toString` line and the boundary test | 2, those two |
+
+**The README's fifteen breaks, measured again after both decisions.** Twice, one at a time on a
+quiet machine, and the two runs agreed on all fifteen. The suite is two tests longer, so every
+total moved by two. The failing counts that moved:
+
+- Breaks 1, 2, 3 and 5 fail two more, because both new tests read as the agent. Break 7 fails one
+  more, and Break 12 two more: 187.
+- Break 4 fails five, as before, but not the same five. The inherited-name test joined. The test
+  that refuses a confidential row with no address left: that row's amount is now money outside a
+  money field, so it stays confidential even with the default broken, and the read is still
+  refused. Measured on a copy of the code from before decision 110, with the same break.
+- Break 13 fails four where it failed sixty-five: the nested value, the value with its own
+  `toJSON`, the nearly-money value, and money in `vendor`. The README had explained the sixty-five
+  another way, as an amount read as its own label, "Break 6 in reverse". That explanation was
+  wrong.
+- Break 11 had always failed two tests, both with a connection that drops the record's INSERT,
+  while the README said one. It says two now.
+
+Decision 109's three breaks, twice more: no count written fails 3, the read-back without
+`row_count` 7, and 007 without its `GRANT` 187, the same in both runs. The README's Break 12 says
+187 now.
+
+**The hostile review of 110 and 111.** One reviewer, read-only, with probes in its own copy and no
+test runs while the breaks were being measured. It found no new way past the filter through a row.
+Money in `vendor`, fields named `toString`, `constructor` or `__proto__`, rows built with
+`Object.create`, hidden and symbol keys, a getter that changes its value, and arrays all held. The
+split changed nothing the door accepts: 96 answer shapes through the old and the new row check, and
+no difference. What it did find:
+
+1. **Two parts of an answer the filter never looks at:** `askedBy`, and a page's `next` while the
+   rows' addresses are shown. A handler that put a row in either sent the amount to the agent, with
+   `amount` listed as withheld beside it. This is a gap from the step's first build, not from these
+   two decisions. Decision 112: fix it now.
+2. **Two guards no test pins.** With today's table, the money exception changes no answer, because
+   the one money field is confidential either way. Deleting it fails nothing, and quietly undoes
+   what decision 107 measured. And no test hands the door money where a row should be, so its row
+   check could forget money and stay green. Decision 113: a test for each.
+3. **Two checks that fail open, both unreachable today.** `isMoney` trusts a value's own visible
+   keys, so a hidden `toJSON` passes. That matters only for an agent cleared for `confidential`.
+   And a word that is not one of the four labels ranks below `public`. Decision 111 removed the
+   place such a word came from. Decision 114: write them down, and do not fix them.
+4. **Sentences that said more than was measured.** These are corrected:
+   - All 65 of Break 13's old failures were the door, not 62. The three label tests went through
+     the door too, and were refused before any label was worked out.
+   - Money outside a money field is *at least* confidential. In `bank_account` it is restricted.
+   - Decision 111's fix is a few lines, not one.
+   - The README said the door applies the default "to whatever a handler returns". `askedBy` and
+     `next` make that untrue.
+   - The README's limits did not say that an amount written as text still leaves (open question
+     50).
+
+One consequence of decision 110 that the review found and nothing had recorded: a person's read
+of a row with money in `vendor` is labelled `confidential` now. So it writes a record of a
+classified read, which it did not before. That is `DSOR-CLS-05` doing its job.
+
+## 112 · The door writes who asked, and a page's cursor must be its last row's address (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the finding was shown with a run:
+a page whose `next` held the whole last row left for the agent with `31400.00` in it, labelled
+`internal`, with `amount` listed as withheld beside it.
+**What:** the two parts of an answer that the filter never looked at.
+
+- `askedBy` is written by the door, from the principal the pipeline checked, for every kind of
+  answer. What a handler puts there is not read.
+- A page's `next` must be the address of the page's own last row, which is what step 13 made the
+  cursor, or absent. Anything else is refused before the filter, as the program's own error with
+  retry `never`, like a page with no rows in it.
+
+**Why:** the door filtered every field of every row, and copied `askedBy` and `next` as the handler
+gave them. A handler that put a row in either, behind a cast, sent the amount to the agent, and the
+list beside it said the amount had been withheld. It is decision 107's mistake, the amount inside
+`vendor`, in two places the filter never looked. Found by the review of decisions 110 and 111. It
+dates from the step's first build.
+**Cost:** a handler still writes `askedBy`, because `HandlerAnswer` has the field, and the door
+ignores it. And the check ties the cursor to step 13's design: a later cursor that is not the last
+row's address must change this check too, on purpose.
+**Rejected:** writing it down as a limit, the learner's other option. Also rejected: accepting any
+`next` that is a well-formed address. That stops a row, but a handler could still write text into
+an address, and the agent would read it. The last row's address is the one value `next` can
+honestly hold, and the agent sees that address in the row already.
+
+**Red first.** Through the real door, with a handler that put the row in `askedBy`, the data, page
+and error answers all carried `31400.00` in `askedBy`. A page whose `next` held the last row left
+for the agent with `31400.00` in it, labelled `internal`, with `amount` listed as withheld.
+Another invoice's address, and the text `31400.00 USD`, left as well. Then the whole suite, on a
+copy: 508, all green but the one test that skips outside the repository.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| each of the five ways out copies the handler's `askedBy`, one at a time | 1 each: the new test | 1 each, that test |
+| no cursor check | 1: the new test | 1, that test |
+| any text accepted as a cursor | 1: the new test | 1, that test |
+| the cursor compared with the first row, not the last | the new test, and the tests that page through real invoices | 9: the new test and eight in `bounded-queries.test.ts` |
+
+The cursor test's first version had a page of one row, where the first row is also the last, so
+the fourth break would have passed it. It has two rows now.
+
+**Found while building it.** An error answer, and a receipt with no data, were handed back as the
+handler built them, so anything a handler added beside the envelope left too. Building every answer
+from its known parts stops that. Something added *inside* an error envelope still leaves: the
+error schema is closed except `items` and `extensions`, which take anything. Measured: an error
+with the row beside its envelope, and one with the row inside it, both left for the agent with
+`31400.00`. That is a decision of its own: decision 115.
+
+**The review then found it incomplete.** The cursor was checked on one read and copied on
+another, and a receipt's envelope was still copied whole. So "every answer is built from its
+known parts" was true of the answer and not of the envelope inside it. Decisions 116 and 117.
+
+## 113 · Two guards get a test of their own (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:**
+
+- The money rule becomes a function of its own, `labelOfValue` in `boundary.ts`. It takes the
+  field's declared label, the value, and whether the field is declared to hold money. Its test
+  gives it a field labelled `internal`, which the story's table does not have, so the rule's
+  effect can be seen.
+- The door's test for "no row at all" hands it money where a row should be.
+
+**Why:** with today's table, the money rule changed no answer. The one money field, `amount`, is
+confidential, and without the rule it would be raised to confidential anyway. So deleting the rule
+failed nothing, and it quietly undid what decision 107 measured: the table's label for a money
+field would stop mattering. And the door's row check could forget money and stay green, because no
+test handed the door money as a row.
+**Cost:** one function exported so a test can call it, as `makeDoor` is exported so a test can
+build a door.
+**Rejected:** writing the two gaps down only.
+
+**Red first.** `labelOfValue is not a function`. Then the whole suite, on a copy: 509, all green
+but the one test that skips outside the repository. The second gap needed no new test: one test's
+list grew.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the money rule deleted, on the code before this decision | 0, as the review said | 0 |
+| the money rule deleted | 1: the new test | 1, that test |
+| money judged by its shape, in any field | 2: the new test and decision 110's boundary test | 2, those two |
+| a value the label cannot see whole keeps its field's label | 5: the new test and the four tests of a value with parts | 5, those five |
+| the row check forgets money, on the code before this decision | 0, as the review said | 0 |
+| the row check forgets money, with money added for the supervisor | 1: the extended test | 0 |
+| the row check forgets money, asked as the agent too | 1: the extended test | 1: the agent's money case |
+
+The sixth prediction was wrong, and lesson 18 is why. For the supervisor, a second guard catches
+money taken for a row: the record of the read cannot name a row with no address, so the read is
+refused anyway. For the agent, both parts are withheld, nothing confidential is left to write
+down, and the row check is the only guard. So the test asks as the agent too.
+
+## 114 · Two checks that fail open are written down, and not fixed (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** two checks would let data through, in cases nothing in this step can reach. They stay as
+they are, and are written down here and in the README's limits.
+
+1. `isMoney` trusts a value's own visible keys. A money-shaped value with a hidden `toJSON` passes
+   as money, and the answer then carries whatever `toJSON` returns. It matters only in a money field
+   the agent may read, and the one money field, `amount`, is above this agent's clearance.
+2. `rankOf` ranks a word that is not one of the four labels below `public`, so such a word is never
+   above a clearance. Decision 111 removed the place one came from.
+
+**Why:** neither can happen in this step, and each fix is code and tests in a step that is already
+long.
+**Cost:** a later step must come back here. The specification's own example clears this agent for
+`confidential` and holds the amount back with an egress policy; the step that builds that policy
+raises the clearance, and the first check matters from then on. A fifth label would make the
+second matter.
+**Rejected:** fixing both now: a fresh money value built from its two strings at the door, and an
+unknown word ranked above every label.
+
+## 115 · An error's envelope stays unread, and the rule for handlers names its open parts (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** the door passes an error answer's envelope on as the handler built it, as before. The
+README's rule for handlers, never to put a field's value in an error, now names the two parts of
+the error schema that take anything, `items` and `extensions`, beside the message, which is free
+text.
+**Why:** found while building decision 112, and measured against the door. A row under `items`,
+under `extensions`, or under `data`, a field the error schema does not have, left for the agent
+with `31400.00`. Closing the two open parts would not retire the rule, because the message can
+carry the amount anyway. And nothing in this program fills either part today. A later step that
+answers with one error per failed item may need `items`, and then its rows need the filter.
+**Cost:** a mistake in a handler can still send a row to the agent inside an error, as it can
+through the message.
+**Rejected:** the door rebuilding every error from the parts this program uses and dropping the
+open two, the learner's other option. Not offered, and noted here: checking an error's envelope
+against its schema, as the door checks a receipt. It would stop `data`, and let `items` and
+`extensions` through, so the rule for handlers would stay the same.
+
+**Then the hostile review of 112 and 113.** One reviewer, read-only, with probes in its own copy.
+`askedBy` held on all five ways out, and nothing else in the door builds an answer from a
+handler's parts. It found two ways round what decision 112 claimed, and both were reproduced
+here:
+
+- The cursor was checked on one read and copied on another. A getter on `next`, or a rows list
+  with its own `at`, passed the check and then handed the filter the whole row.
+- A receipt's envelope was copied whole. Its schema lets `requires` and `extensions` hold
+  anything, and a receipt with no data was not checked at all. Five shapes left with `31400.00`.
+
+It also found that the record of a read takes the rows from the handler a second time, and three
+guards with no test. Decisions 116 to 118.
+
+## 116 · The door copies a handler's answer once, and works only from the copy (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the review's probe was shown: a
+page whose `next` was a getter answered the check with the last row's address, and the filter
+with the row.
+**What:** as soon as a handler's answer reaches the door, `copyOnce` reads it once into plain,
+frozen objects: the answer's parts, a page's rows and cursor, each row's fields, and a receipt's or
+an error's envelope. The check, the filter, the ceiling and the record of the read all work from
+that copy. A field's value with parts inside is copied as it is: the copy goes as deep as the door
+decides, which is one level into each row. "Plain" holds for an answer that is data. Code written
+to trick the copy gets past it, as the next review showed (decision 119).
+**Why:** the door read the handler's answer more than once and trusted the reads to agree. The
+record of a read took the rows from the handler a second time, so it could name rows other than
+the ones returned. The program already keeps this rule for a request's arguments: `payloadHash`
+takes text written down once, because two reads can disagree.
+**Cost:** a new function at the door, which every answer goes through. A field's value with parts
+is still read more than once, by the money check and when the answer is written out; that is
+decision 114's first check.
+**Rejected:** fixing the cursor alone, by taking it from the door's own filtered rows. Smaller,
+and the record of a read would still read the rows twice.
+
+**Red first.** A `next` that answered the check with the last row's address and the filter with
+the row got the row out, labelled `internal`. A page whose rows answered differently on a second
+read was handed to the supervisor as INV-1008 and written down as INV-1009: what the review had
+found by reading, measured. A third case, a row whose address names the entity on one read and
+carries the amount on the next, was shown red by the fourth break below. Then the whole suite, on
+a copy: 510, all green but the one test that skips outside the repository.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| `copyOnce` hands the answer back as it came | 2: the two new tests | 2, those two |
+| the door does not use the copy | 2: the same two | 2, those two |
+| a page's rows list is not copied | 1: the read-once test, the list with its own `at` | 1, that test |
+| a row's fields are not copied | 1: the read-once test, the address read twice | 1, that test |
+| the cursor is read again on every look | 1: the read-once test, the getter | 1, that test |
+
+## 117 · A receipt is built from its named parts, and every receipt is checked against its form (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** the door builds a command's receipt from the parts its schema closes: `outcome`,
+`proposal`, `payload_hash`, `decision`, `semantics`, `expires_at` and `correlation`, and its own
+`data`, label and list. It checks every receipt against `result-envelope.schema.json`, with data
+or without. `requires` and `extensions`, which the schema lets hold anything, are left out.
+**Why:** the door copied a receipt's envelope whole, and passed a receipt with no data on
+unchecked. A row under `requires` or `extensions` left for the agent beside a filtered `data`,
+with `amount` listed as withheld. A receipt with no data carried even a field the schema does not
+have. Unlike an error, a receipt has no part that takes anything, so naming its parts closes the
+way a row got out. Its free text is in `correlation`'s string fields, which is open question 50's
+channel. This sentence first said a receipt has no free-text part, which was false (decision 119).
+**Cost:** a later step that needs `requires` — step 17's receipts that wait for an approval — must
+add it back through the filter. And a receipt with a field the schema does not have no longer
+makes the door throw: the field is left out. The test that relied on the throw checks an invalid
+named part now.
+**Rejected:** writing it down, as decision 115 did for errors.
+
+**Red first.** A row under `requires` left for the agent beside a filtered `data`. A receipt with
+no row and a wrong `outcome` was not checked at all. Then the whole suite, on a copy: 511, all
+green but the one test that skips outside the repository.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the receipt copied whole again | 1: the closed-parts test | 1, that test |
+| a receipt with no data not checked | 1: the validation test, its no-data case | 1, that test |
+| `requires` counted among the closed parts | 1: the closed-parts test | 1, that test |
+| `extensions` counted among the closed parts | 1: the closed-parts test | 1, that test |
+| a receipt's data filtered when it has none | 4: every test that hands the door a receipt with no data | 4, those four |
+
+## 118 · Three more guards get a test (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation.
+**What:** three cases, in tests that exist. A cursor that is an object which turns into the last
+row's address when compared loosely. A cursor on an empty page. And a page whose rows are not
+rows, asked as the supervisor and as the agent.
+**Why:** the review of 112 and 113 found each guard removable with no test failing. Loosening `===`
+to `==` would let the object out with the amount in it. Dropping the `?.` would make the empty page
+a raw `TypeError`. And the page half of the row check, from the step's first build, had no test at
+all: without it, the agent gets `[{}]` labelled `public`.
+**Cost:** a few lines.
+**Rejected:** writing them down only.
+**Not testable today:** that the door hands `holdsMoney`'s answer to the money rule. With the table
+as it is, `amount` is confidential either way, so a door that always said "not a money field" gives
+the same answers. `labelOfValue`'s own test pins the rule (decision 113), and nothing outside the
+door can see the call.
+
+**Red first, by breaking.** These guards already worked, so the new cases passed at once. Each
+guard was then removed alone, before the new cases and after them, with the prediction written
+first: 0 before, as the review said, and 1 after.
+
+| Break | Before the new cases | After |
+| --- | --- | --- |
+| the cursor compared with `==` | 0 | 1: the cursor test |
+| the cursor check assuming a last row | 0 | 1: the cursor test |
+| no row check for a page | 0 | 1: the test for an answer that is not a row |
+
+**The README's fifteen breaks, measured again after decision 118.** Twice, one at a time on a
+quiet machine, and the two runs agreed on all fifteen. The suite is six tests longer than after
+decision 111, so every total moved by six. The failing counts that moved: Break 1 by three, Break
+5 by one, Break 6 by four, Break 7 by one, Break 8 by one, Break 9 by one, Break 12 by four, Break
+13 by one, Break 14 by two, and Break 15 by three. Break 15 had to change: the early return it
+deleted is gone (decision 117), so it makes the `if` around the receipt's filter always true, and
+teaches the same thing. Decision 109's 007 without its `GRANT` gave 191, twice. A first
+measurement after decision 113 was stopped halfway, when the review of 112 and 113 meant the code
+would change.
+
+## 119 · The door is built against a careless handler, not one written to trick it (2026-10-10)
+
+**Decided by:** the learner, who took the recommendation after the third review's findings were
+shown, each reproduced here with the review's own probes.
+**What:** the hunt stops here. The door is built against a handler that makes a mistake: a row put
+in the wrong place, a part left over, an object where a value belongs. It is not built against a
+handler written to trick it. The third review, of decisions 116 to 118, found four more ways past
+the door, and each needs code like that:
+
+1. A rows list whose class overrides its own methods and constructor. The copy is built with the
+   handler's class, and its `at` answers the cursor check. The agent got the whole row.
+2. An answer whose `kind` answers one way five times and another way the sixth, with no envelope.
+   `copyOnce` hands back the handler's own object, and the later steps read `kind` again. The
+   agent got the whole row.
+3. A receipt whose `correlation` has a hidden `toJSON`, or is a Proxy. The schema check passes,
+   and writing the answer out calls the hidden function. The agent got the whole row.
+4. A function dressed as a row. It is not copied, and its address is read twice. The agent got
+   `31400.00 USD` as an address. For the supervisor, the record of the read named INV-1009 while
+   INV-1008 was returned.
+
+They are written down, and not fixed.
+**Why:** code written to trick the door does not need any of these. It can write the amount as
+text into a field an agent may read, `vendor: "31400.00 USD"`, and no copy or filter at the door
+can see that (open question 50). So closing these four would not change what the door can
+honestly promise. And a handler is this program's own code: code written to leak can leak through
+a log or a network call without passing the door at all. What stops it is reading the code, not a
+filter.
+**How the reviews got here.** The reviews of decisions 110 to 118 were each told to assume the
+handler is trying to get the amount out. That is a stronger threat than this step is about, and it
+is why each round found more. The fixes it led to still hold for careless code: 112, 113, 117 and
+118. Decision 116 still makes the record of a read name the rows that were returned, for any
+answer that is data.
+**Also from that review, written down and not fixed:**
+
+- A receipt that waits for an approval cannot leave yet. The schema requires `requires` for
+  `PENDING_APPROVAL`, and the door leaves `requires` out (decision 117). Measured: such a receipt,
+  valid as built, makes the door throw. Step 17 must bring `requires` back through the filter.
+  Two comments said such a receipt leaves; they say what is true now.
+- `copyOnce` reads a page's rows and cursor before the check. So three shapes the door used to
+  refuse cleanly now throw a raw error: a rows list holding a throwing getter, a throwing cursor
+  beside rows that are not a list, and a rows list with a throwing `constructor`. And a sparse
+  rows list of four million slots takes the copy 22 ms, so about 24 s at the largest length an
+  array can have. Each needs code written to trick or to break the door.
+- Two test cases, the list with its own `at` and the cursor on an empty page, check that the answer
+  is an error, but not its code and retry class. And no test hands the door a receipt or an error
+  whose parts answer differently on a second read.
+- Decision 116's "plain, frozen objects" and decision 117's "a receipt has no free-text part" said
+  more than the code does. Both are corrected where they stand.
+
+**Rejected:** one more round, with the platform's own deep copy, `structuredClone`, which turns an
+answer into plain data and refuses what is not data. It closes the four with less code. It also
+makes a value with its own `toJSON` refuse the whole answer, and it still lets text through. It
+would have taken about an hour and a half more.
+
+## 120 · Step 15's four decisions, taken by the learner before any code (2026-10-10)
+
+The problem was shown first, on step 14's running demo, run on the local database so step 14's
+Neon database was not touched. The agent's answer for INV-1008 is the whole of it: `issued`, with
+no time and no source. The story: at 09:00 the agent reads INV-1008, `issued`, and writes that into
+its memory; at 09:30 user_123 pays it; at 10:00 the agent plans the day's payments from its memory,
+and nothing tells it, or a person checking its work, that its copy is an hour old. And from the
+inside: a later step adds a cache, and a saved "unpaid" that called itself fresh would let a check
+pass that should stop a second payment. The rules are §27's `DSOR-FRS-01a` and `DSOR-FRS-01b`. §27
+has no "Why it matters" of its own, so the story is the step's. Four questions, one at a time, in
+plain words; the learner took all four recommendations.
+
+1. **`current`, lowercase, as the schemas write it.** The specification writes the mode two ways:
+   `CURRENT` in §27's prose and in `decision-bundle.schema.json`, `current` in the common, contract
+   and connector schemas (open question 51). Our own `invoice.issue.json` already says
+   `"freshness": "current"`, so an answer's delivered mode and a contract's required mode can be
+   compared exactly. The cost: a reader meets both spellings, and the README says which and why.
+2. **The code that reads the database writes the label, and the door insists on one.**
+   `getInvoice` and `listInvoices` hand back the rows with their label, taken right after the read.
+   The handler passes it on, and the door refuses an answer with no label as the program's own
+   error, like a row with no address. Rejected: the door writing it for every answer. The door
+   does not know where the data came from, so it would call everything current, a saved copy
+   included, which is the lie the rule forbids.
+3. **An old value labelled `current` is refused.** §27 defines `current` as read from the system of
+   record within this request, so the door compares the label's `observed_at` with the moment the
+   request began, both on the program's own clock. Earlier means a saved copy calling itself fresh:
+   the program's own error, never to retry. Rejected: relabelling it `observational` and letting it
+   leave. The data would arrive honestly labelled, and the bug that mislabelled it would stay
+   hidden.
+4. **No row version until step 21.** `DSOR-FRS-01a` asks for `resource_version` where one exists,
+   and no invoice has one: nothing counts a row's changes until step 21, optimistic concurrency.
+   Rejected: adding a version column now, which is step 21's whole idea in this step, with a
+   migration, and a version step 21 would then build on without designing.
+
+The connector is named for what is read, the PostgreSQL database that holds the invoices. The
+step's database tier will need its own database, `dsor_step15`; the copied `.env` still names
+step 14's, and changing it is the learner's.
+
+## 121 · What step 15's review found, and what the learner chose (2026-10-10)
+
+**Decided by:** the learner, who took all three recommendations after the findings were shown in
+plain words.
+**The review.** One reviewer, read-only, with probes in its own copy, told this time to assume a
+careless handler, as decision 119 says. It found no way for a careless handler to get data past
+the door, and no wrong label on any of the program's own reads. It found:
+
+1. **A query answered with a receipt leaves unlabelled.** The door insisted on a label only when an
+   answer was a single invoice or a page. A query's code that copied `invoice.issue` and answered
+   with a receipt would leave with no time, no mode and no connector, and its read would not be
+   written down either. **Chosen: fix it.** The door knows which operations are queries, and
+   refuses a query that answers with a receipt, as the program's own error.
+2. **The label's time.** It was taken just after the database replied, a round trip after the
+   data was read, so a label claimed a little more freshness than was true. And the door accepted
+   any text JavaScript reads as a date, `"2026"` among them, and a time in the future. **Chosen:
+   tighten it.** The time is taken just before the query, so the data is at least as fresh as the
+   label says. This changes decision 120's "right after the read" to "right before". And the door
+   accepts only an exact ISO time, like `2026-10-10T21:30:05.123Z`, not in the future.
+3. **Small gaps.** No test of its own for a label with no connector at all, a time that is a date
+   object, the page path of a label with something riding along, or the exact moment the request
+   began. And `leaveTheDoor`, called directly, let a label through whole. **Chosen: add the four
+   cases, and keep only a label's three parts there too.**
+
+Written down, and not fixed:
+
+- **The door checks when a label was stamped, not whether the stamper read the database.** A
+  cache behind the store, or code that saved rows and labelled them again on the next request,
+  would label saved rows `current`, and the door would let them out: the label is as true as the
+  code that writes it. So the README's "the first cache a later step adds cannot pass its saved
+  values off as fresh" said more than the code does, and so did the subject of the piece-3 commit.
+  The README now says what the door does: it refuses a `current` label stamped before the request
+  began. The step that adds a cache must label that cache's answers itself.
+- **A clock moved backwards.** An honest read can then look older than the request, and the door
+  refuses it with retry `never`, though a second try would succeed. Rare, and stated in the README.
+- **Sentences now false**, corrected: `getInvoice`'s comment said it returns `undefined`;
+  `HandlerAnswer`'s said "labelled by nobody yet"; `docs/status.md` said "Steps 01 to 10" beside
+  `my_01` to `my_15`.
+
+**Red first.** `invoice.get` answering with a `success()` receipt left as a `result`. Then four
+more failed: a time that is only a year, a time in the future, a label with a row riding along
+through `leaveTheDoor`, and a label taken after a reply 50 ms late. The year was first refused
+anyway, by the old-`current` check, so it tested nothing of its own until it was labelled
+`observational`: lesson 18, measured. Then the whole suite: 531.
+
+**Proved by breaking it**, in a copy, each guard alone, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| a query may answer with a receipt | 1: the receipt test | 1, that test |
+| the label stamped after the reply | 1: the time taken before the query | 1, that test |
+| any text JavaScript reads as a date | 1: the year | 1, that test |
+| a time in the future accepted | 1: the future | 1, that test |
+| `leaveTheDoor` lets a single invoice's label through whole | 1: the three-parts test | 1, that test |
+| a second of slack before the request began | 1: the line to the millisecond | 1, that test |
+| a label with no connector key accepted | 1: no connector at all | 1, that test |
+
+A label's parts were first trimmed in two places, `copyOnce` and `leaveTheDoor`, so removing either
+alone would have failed nothing. The trimming lives in `leaveTheDoor` only, and `copyOnce` copies
+the label once, like a row. A date object is refused by the exact-time check: it is not the text
+`toISOString` writes.
+
+**The README's ten breaks**, measured twice on the final code, one at a time, and the two runs
+agreed on all ten: 4, 19, 12, 1, 1, 2, 1, 1, 1 and 1. A first measurement, on the code before this
+decision, was stopped halfway when the review meant the code would change. Two counts are larger
+than the piece that built them had measured. Dropping a single invoice's label fails 19, because
+the demo, from piece 4 on, prints every read's label and crashes on the first one without it. And
+a fresh read labelled `observational` fails 4, because one stand-in counts on `readNow` saying
+`current`. The guard then caught a comment that said "copied from a command": it reads any
+"copied from" as a marker for a pattern copied from a schema. The comment is reworded, folded into
+the commit that wrote it, and the guard ran after each commit that followed.
+
+## 122 · Step 16's three decisions, taken by the learner before any code (2026-10-10)
+
+The problem was shown first, on step 15 as copied. `DSOR-MOD-01` asks DSoR to own its paperwork,
+durably, in a store of its own, and two things in step 15 fall short. DSoR's only paperwork in the
+database, the log, is `public.audit`, filed beside the business's `public.invoices` in the schema
+the business's own tools treat as theirs: an accounting upgrade that resets its tables, or a
+cleanup that empties `public`, takes the evidence with it. And what DSoR keeps only in memory is
+forgotten at every restart: run twice, the program named Monday's receipt and Tuesday's receipt
+both `dsor://org_456/proposal/prop_0001`, two actions with one address. The map's answer is a
+second schema, `dsor`, in the same database, so that in step 36 a business change and DSoR's
+record of it can be saved together. Three questions, one at a time, in plain words; the learner
+took all three recommendations.
+
+1. **The log only moves now.** It is the only paperwork in the database today. Every other kind,
+   permission slips, approvals, counters and locks, arrives in `dsor` with the step that builds it.
+   Rejected: a proposal counter in `dsor` as well, so that a restart never reuses a number. It is a
+   second piece in this step, and building a receipt would become a database call in every
+   command. So proposal numbers keep restarting at `prop_0001` until step 22, and the comment in
+   `envelopes.ts` that promised them for step 16 is corrected.
+2. **The table moves as it is.** One new migration moves `public.audit` into `dsor`: every record,
+   the hash chain, the grants and the row-level security go with it, and nothing is copied. A
+   record's hash covers its own fields and not the table's name (`hashOf` in `audit.ts`), so the
+   move cannot break the chain. Migrations 001 to 007 still say `public.audit`, because an applied
+   migration is never edited. Rejected: a new, empty log in `dsor` beside the old one, which would
+   leave two logs, the chain broken in two, and the old evidence still among the business's
+   tables.
+3. **The two-logs gap stays, and its comment is corrected.** A refusal written into both companies'
+   logs, before DSoR knows which company a request is for, is two writes, not one: if the second
+   fails after the first, one log holds it and the other does not. The program already tells the
+   caller exactly which logs got the record. Making both writes one transaction needs one
+   connection held across them, which the database layer does not offer. Rejected: building that
+   transaction now, a second idea in this step. The comment in `operations.ts` that said "step
+   16's" now says it waits for the step that builds transactions, which the map first needs in
+   step 36.
+
+The step's database is `dsor_step16` on Neon, made through the owner login in the copied `.env`;
+changing the database name in that file is the learner's.
+
+**Red first.** The four new tests failed with the log still in `public`: `dsor` held no table,
+`public` held `audit`. Then the demo's line still said only where the database is. After the move,
+23 older tests failed too: most named the table bare, `audit`, which worked only because the
+database looked in `public` first; two build a database by hand without `dsor`; and the re-run of
+migration 002 named a table that is gone. Each is in the step note. Then the unit tests: 536. The
+database tier was not run before the review, and decision 123 says what that missed.
+
+**Proved by breaking it**, in a copy, with each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| 008 does not move the table | most of the suite: every write to the log | 291 |
+| the application may not look inside `dsor` | most of the suite, and the schema test | 253 |
+| the application may also create things in `dsor` | 1: the schema test | 1, that test |
+| the start-up check still looks for the log in `public` | the start-up tests and the demo | 44 |
+| the demo's line as it was | 1: the demo's new test | 1, that test |
+
+## 123 · What step 16's review found, and what the learner chose (2026-10-11)
+
+**Decided by:** the learner, who took all four recommendations after the findings were shown in
+plain words.
+
+**The review.** One reviewer, read-only, with probes in its own copy, told to assume a careless
+administrator and a careless handler, as decision 119 says. It moved a three-record log and found
+the move complete: every grant, column grant, the row-level security, the one policy, all twenty
+constraints, both indexes; the chain verifies after the move, and `public` keeps only `invoices`.
+Every finding below was measured again before it was put to the learner, by running the reviewer's
+probes a second time, and each one reproduced.
+
+**Corrected without a question**, because each was a mistake in carrying out decision 122, not a
+choice:
+
+- **A database-tier test still looked for the log in `public`.** The test of migrations 006 and 007
+  named `dsor.audit` in its privilege questions and listed the columns with
+  `table_schema = 'public'`, which finds nothing after the move. The rename had been checked against
+  the unit tests only. Run on a local PostgreSQL 17: 1 failed and 38 passed before the fix, 39
+  passed after. The local owner needed `BYPASSRLS` to match Neon, which gives it to every role made
+  in its Console; without it, 29 tests failed on the row-level lock while setting up their rows.
+- **A test's premise had gone false.** Step 09's `editor` test gave `editor` UPDATE on the log and
+  nothing on the new folder, so `SET ROLE editor` then UPDATE failed with "permission denied for
+  schema dsor". The check still refused, so the test still passed, though the route it is about
+  was no longer real. `editor` gets the folder's `USAGE`, and the test now ends by rewriting a
+  record as `editor`.
+- **Seven comments quoting history** had the new name put into old events: an "unqualified
+  `INSERT INTO dsor.audit`", a regclass cast and a GRANT said to resolve through `search_path` though
+  they name the schema. They have step 15's words back.
+- **Two sentences now false.** The README's reason for "create nothing" in `dsor` was a window
+  past the locks; a view the application makes stays under the lock, measured, so the reason is
+  wrong. And decision 122's "the whole suite: 536" counted the unit tests only.
+
+**Chosen:**
+
+1. **Start-up asks who owns the folders.** A schema's owner may drop any table in it, even one it
+   does not own. The reviewer handed `dsor` to `dsor_runtime`: start-up passed, and one
+   `DROP TABLE dsor.audit` erased every record. The same was true of `public` since step 09.
+   Start-up now refuses when the application owns, or is one `SET ROLE` from owning, the folder of
+   either tenant table. Steps 09 to 15 keep the gap; they are finished, and a learner copy is not
+   edited afterwards.
+2. **"Create nothing in `dsor`" is made sure three ways.** Migration 008 takes `CREATE` back from
+   the application by name, as 002 did for `public`. A test starts from a server whose default
+   privileges hand out rights on every new schema, and proves each `REVOKE` line in 008 matters.
+   And start-up refuses if the application may create in either folder, because a later
+   `GRANT CREATE` would pass the migrations by. The harm, measured: the application could make
+   `dsor.proposals` today and own it, before step 22's migration exists. 008 is edited because it
+   has not been applied to any database that is kept: the local ones are thrown away after every
+   run, and `dsor_step16` on Neon is still empty.
+3. **"Do both tables exist?" is asked first, on its own.** It shared a query with questions that
+   name the log, and PostgreSQL stops at the first name it cannot find: on a server that missed
+   008, the program refused with `schema "dsor" does not exist` instead of its own "a tenant table
+   is missing … Apply the migrations". True of a missing log since step 11; step 16 is where a
+   learner meets it.
+4. **The demo test's rule id is dropped.** It checks a sentence the demo prints from a fixed string,
+   and would pass wherever the log lived. The four tests in `control-plane-store.test.ts` are the
+   proof of `DSOR-MOD-01`; this one pins the demo's words, like the list test that already has no
+   id.
+
+Written down, and not fixed:
+
+- **Emptying `public` still takes DSoR down.** The migrations' own record,
+  `public.applied_migrations`, goes with it, so the next `pnpm migrate` runs 001 to 007 again,
+  makes an empty `public.audit`, and stops at 008: `schema "dsor" already exists`. Start-up then
+  refuses, because the application may read a table that is not one of the two. The log in `dsor`
+  is untouched, measured, and the program fails closed, but DSoR does not start until a person
+  repairs the record. It follows from decision 122's "the log only".
+- **The test of evasive answers asks only that something refuses.** Its seven rows each leave one
+  start-up question unanswered, and from step 11 on six of them were refused by the tables check,
+  because none answered it; the seventh, with no `who`, by the `who` question, which came first
+  (decision 124 corrects this sentence, which said all seven). Its fake now answers that question truly, so the rows
+  reach the guards they were written for, and this is recorded because piece 1 moved that check.
+  But each row is still refused by the first guard it does not satisfy, so a single guard that read
+  NULL as "may not" would pass it. A test that answers every other question safely and evades one at
+  a time would close that; it is not built here.
+
+**Red first.** Piece 1: a server with the log in `public` and no `dsor` received
+`schema "dsor" does not exist`. Piece 2: the four schema-owner tests resolved instead of refusing.
+Piece 3: the application held `CREATE` on `dsor` after 008 on a server with default privileges,
+and the three start-up tests resolved. Piece 4 renames a test and has no red. Then the unit
+tests: 545.
+
+**Proved by breaking it**, in a copy, on the whole suite, each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the start-up code as it was before piece 1 | 1: the server that missed 008 | 1, that test |
+| no refusal for a database that answers no row | 1: the silent database | 1, refused as "a tenant table is missing" |
+| the schema-owner refusal turned off | 3: owner of `dsor`, of `public`, one `SET ROLE` away | those 3 |
+| only direct ownership of a schema counted | 1: one `SET ROLE` away | 1, that test |
+| a helper's owner not asked about the schema | 1: the helper | 1, that test |
+| 008 without its `REVOKE` for PUBLIC | 1: the default-privileges test | 1, that test |
+| 008 without its `REVOKE` for the application | 1: the same test | 1, that test |
+| start-up never refusing `CREATE` | 3: `dsor`, `public`, one `SET ROLE` away | those 3 |
+| `CREATE` asked of the application only, not one `SET ROLE` away | 1: the `SET ROLE` test | 1, that test |
+| the schema-owner refusal off, with piece 3 in | 3: still the owner tests | those 3 |
+
+The last row is why piece 3 tightened piece 2's tests. An owner may create in its schema, so with
+the owner refusal off, the `CREATE` refusal refused the same cases. The tests had matched any
+message naming the schema, and would have passed on either refusal. They match the owner's own
+words now.
+
+## 124 · What step 16's second review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date: "complete step 16 to
+20 … you go with your recommended settings". The learner was asleep; every choice below is the
+recommended one, and each is open to reversal.
+
+**The review.** A second reviewer, read-only, probes in its own copy, the careless model of decision
+119, on decision 123's code. It found no answer the checks read as "fine" by mistake: no row, a
+NULL and a missing column are all refused. A Neon-shaped database passes start-up: the owner holds
+BYPASSRLS, belongs to a `neon_superuser`, owns the database, and makes `dsor_runtime` itself, and the
+membership that makes runs from the owner to `dsor_runtime`, never the reverse. Every finding was
+measured again before it was acted on.
+
+**Chosen:**
+
+1. **Start-up asks who owns the database.** One login that owns its own database is the most common
+   careless setup. Decision 123 caught it only because `public` belongs to `pg_database_owner`; the
+   refusal then said to give the schema back, and once that was done the program started, owned
+   database and all (measured). A database's owner may drop it, and create schemas in it. Start-up
+   now refuses an application that owns, or is one `SET ROLE` from owning, its database, in a
+   refusal of its own, asked before the schemas.
+2. **A helper's owner may not create in either schema.** The application could not create in `dsor`,
+   and a SECURITY DEFINER helper whose owner may was not refused: the application made
+   `dsor.proposals` through it, owned by the helper's owner (measured). The helper check refuses
+   that owner too, as it refuses one that owns a schema.
+3. **The `CREATE` refusal names the role and the schema.** It named the schemas only. When the right
+   came through a group, its advice, "revoke CREATE from `dsor_runtime`", changed nothing (measured),
+   and for `public` it pointed at migration 008, when the line is in 002. It now lists each role and
+   schema, the way the BYPASSRLS refusal lists roles, and names both migrations.
+4. **Two tests pinned to their own refusal.** The silent-database test matched "did not say", which
+   two refusals share: had the tables question let no row through, the next question's refusal
+   would have passed it (measured, mutant M1). It names its own words now, and a new test answers
+   the tables question and then nothing, expecting the second question's refusal. And the 008 test's
+   title said "from every role": a default grant to a named group survives 008. It says what 008
+   does: from PUBLIC and from the application. Start-up catches the rest.
+
+**Corrected without a question:** decision 123, the comment in the evasive-answer test, and the
+message of commit 7ede364 said all seven rows were refused by the tables check. Six were. The row
+with no `who` was refused by the `who` question, which ran first in the old code (measured). The
+comment and decision 123 say six now; the commit message stays as it was, and this note corrects
+it.
+
+**Not verifiable tonight:** Neon itself. The reviewer's memory of Neon is that it grants `CREATE`
+on `public` to one role of its own, `web_access`, and that its default privileges cover tables and
+sequences only; neither reaches `dsor_runtime`. The database tier has run on a local PostgreSQL 17
+shaped like Neon, before these fixes: 39 passed, and the demo started. It runs again after them,
+and on Neon once the learner points this step's `.env` at `dsor_step16`.
+
+**Red first.** The database owned by the application with `public` given back: start-up passed.
+A helper whose owner may create in `dsor`: start-up passed, and one call made the table. The three
+`CREATE` tests, changed to expect the role and the schema, failed against the old words. The two
+pinned tests pin behaviour that was already right, so they had no red; their breaks are below.
+Then the unit tests: 548.
+
+**Proved by breaking it**, in a copy, on the whole suite, each prediction written first:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| the database-owner refusal off | 1: the database owner | 1, that test |
+| a helper's owner not asked about `CREATE` | 1: the helper | 1, that test |
+| the `CREATE` refusal lists schemas only | 3: the three `CREATE` tests | those 3 |
+| the `who` question without its no-row guard | 1: the half-silent database | 1, that test |
+| the tables question lets no row through | 1: the silent database | 1, that test |
+
+The four pieces were built in one working tree and committed one at a time: each piece's hunks
+staged alone, the staged files copied out and typechecked, and its tests run there before the
+commit.
+
+## 125 · Step 17's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Every command so far changes one thing, an invoice's status, and none says whether
+its effect can be taken back. An agent that acts at night, and the person who supervises it, need
+that answer before the agent acts, not after: a draft payment can be cancelled, and a payment the
+bank has sent cannot. And there is no payment yet. The running example's PAY-901, a 31,400.00 USD
+draft paying INV-1008 to VENDOR-44, has nowhere to live, and VENDOR-44 is only a word in an invoice
+row. `invoice.issue`'s receipt says `semantics: atomic` only because its handler copies the
+contract's value, with `?? "atomic"` behind it: a guess where a contract is silent, which
+`DSOR-OPR-02b` forbids. And two comments promise step 17 a `PENDING_APPROVAL` receipt, which arrives
+with approvals, much later in the map.
+
+1. **Vendors and payments live in `public`**, beside the invoices, under the same lock, with every
+   key starting with the company. Rejected: `dsor`, which holds DSoR's paperwork, not the business's
+   records.
+2. **The database numbers a payment**, from a sequence. PAY-901 is the running example's own draft,
+   and the specification's running example has it at the start of the story, as it has INV-1008: so
+   a migration puts it there, in both companies, and the sequence starts at 902. Rejected: the caller
+   names the number, which lets it pick one that exists, and would make step 20's problem, a retry
+   that creates a second payment, impossible to see. Rejected: PAY-901 made by the demo's first
+   `payment.create`, which leaves the cross-tenant suite nothing to cancel in either company.
+3. **`payment.create` takes an invoice and an amount.** The vendor is the invoice's own, copied in the
+   same statement, so a payment cannot name one vendor and pay another's invoice. Rejected: the
+   vendor as a third input. Rejected: always the invoice's full amount, because later steps compare
+   what a payment pays with what the invoice still owes.
+4. **The semantics.** `payment.create` is `compensatable`, undone by `payment.cancel`.
+   `payment.cancel` is `atomic`: one statement, and a cancelled payment stays cancelled.
+   `invoice.issue` stays `atomic`.
+5. **The door writes a command's semantics from its contract**, on every receipt. A handler's value
+   is not used, and the `?? "atomic"` goes. Rejected: the handler writes it and the door checks,
+   because a command has run by the time its receipt reaches the door, and refusing then would tell
+   the caller "failed" about a change that happened.
+6. **A compensating operation must exist.** The program refuses to start if a contract names one that
+   is not a command it has. It runs under the full pipeline because it is an ordinary operation:
+   its own permission, its own decision in the log.
+7. **Who may.** `payment:create` and `payment:cancel` for the supervisor and the agent. The CFO
+   approves, in a later step, and does not make or cancel payments.
+8. **An amount is checked before anything is written:** above zero, at most two decimal places,
+   because the column holds two and PostgreSQL would round a third away without a word, and at most
+   sixteen digits before the point, all the column holds.
+9. **The cross-tenant suite learns payments.** It reads both kinds of row; org_789's PAY-901 amount,
+   7700.00, becomes a canary; and "the other company's row is in the same state" is asked of a
+   command that changes a row, not of one that only adds rows, where it means nothing: a careless
+   `payment.create` shows as a new row in the other company, which the suite already catches.
+   **Reversed by decision 126**: the setup was step 12's hollow pass, waiting for a precondition.
+10. **The two comments that promise step 17 a `PENDING_APPROVAL` receipt** name the step that builds
+    approvals.
+
+**Red first.** The tables: eleven tests failed before migration 009 existed, and once the tables
+were there, start-up refused every program for reading two tables it did not know. The rights: both
+tests resolved instead of refusing. The commands: with the tests alone staged, sixteen failed, no
+contracts and no handlers. The semantics at the door: three failed, a careless handler's `atomic`
+reaching the caller and both registry refusals. Then the unit tests: 596, and 608 after decision 126; the database tier,
+on a local PostgreSQL 17 set up like Neon: 51, from 39, the cross-tenant suite's six questions for each
+new operation.
+
+**Proved by breaking it**, in a copy, on the whole suite, each run twice and each prediction written
+first:
+
+| Break | Predicted | Measured, twice |
+| --- | --- | --- |
+| `payment.create` declared `atomic`, no undo named | about 7 | 7 |
+| the door passes on the handler's semantics | 1: the careless handler | 1, that test |
+| a cancelled payment can be cancelled again | 2: the double cancel and the demo | those 2 |
+| an amount with three decimals gets through | 1 | 1 |
+| the statement forgets the invoice's company, `$1` kept | 0: the lock holds | 0 |
+| `DELETE` granted on the payments | dozens: start-up refuses | 29 |
+| the tenant tables' list forgets the payments | dozens | 33 |
+
+Measured on the final code, after decision 126, which is why two of the counts differ from the
+first measurement, stopped when the review arrived: 45 and 28 then, 29 and 33 now, because 126
+asks the rights questions after the ownership questions.
+
+The first version of the fifth break deleted the company from the statement's WHERE, and measured
+something else: `$1` was then unused, PostgreSQL could not tell its type, and every payment failed,
+26 tests. A break has to change one thing. The second version keeps `$1` in the statement and
+removes only the company, and shows what the step meant to show.
+
+## 126 · What step 17's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, with the recommended
+option each time; each is open to reversal.
+
+**The review.** One reviewer, read-only, with probes in its own copy and the careless model of
+decision 119. It found company isolation holding everywhere: the WHERE clause, the setting the lock
+reads, the lock's WITH CHECK, and keys that start with the company. It found the door writing the
+contract's semantics on every receipt, the agent's included, and `payment.cancel` an ordinary
+operation in every respect. It found eight problems, each reproduced by a probe.
+
+**Chosen:**
+
+1. **What undoes an operation must be named, once, and not be itself.** The schema lets a
+   `compensatable` contract say `compensated_by: []`, and the registry took it: an undo promised
+   and none named. It took a name listed twice and an operation named as its own undo, too. The
+   registry refuses all three now. The test titled "names nothing that undoes it" had only deleted
+   the key; it sends the empty list as well.
+2. **A payment's vendor is its invoice's, by the database too.** Migration 009's comment said the
+   keys made the database agree; they tied vendor and invoice to the same company, not to each
+   other, and the application could write PAY-902 for VENDOR-77 against INV-1008, whose vendor is
+   VENDOR-44 (measured). The payment's key now points at the invoice and its vendor together. And an
+   invoice must name a vendor the company has, so a payment for an invoice whose vendor does not
+   exist cannot fail halfway with a foreign-key error, which it did, after its ALLOW was recorded.
+3. **Start-up asks about the payment numbers.** A grant of UPDATE on the sequence passed start-up,
+   and `setval` then chose the next payment's number (measured), against the commit that said the
+   application never chooses one. It refuses that grant now.
+4. **Rights one `SET ROLE` away count, on the business's tables too.** A role with DELETE on the
+   payments, which the application could become, passed start-up; so did the same for the invoices
+   since step 10. The rights questions are asked of every role the application can become, as the
+   log's have been since step 09.
+5. **A command answers with a receipt, or the door refuses it.** A careless handler that answered
+   `payment.create` like a query made the payment and left with no semantics at all (measured). The
+   door refuses such an answer as its own error, as it refuses a query that answers with a receipt.
+6. **A payment is in its invoice's currency.** A USD invoice was paid in EUR, and in `ZZZ`, which is
+   no currency (measured). A payment in another currency is refused before anything is written;
+   converting between currencies is step 26's.
+7. **The handler reads what the hash describes.** The arguments were copied once, shallowly, and a
+   nested `amount` was read again from the caller's own object, though a comment said nothing
+   below read it again: a getter could hash one amount and pay another (measured; code written to
+   trick the door is outside decision 119's model, but the comment was false). The handler now
+   gets a copy made from the text that was hashed.
+8. **The cross-tenant suite asks the same-state question of every command again**, and
+   `payment.create`'s example names INV-1009, a draft in both companies. Decision 125's ninth
+   choice is reversed: with INV-1008 issued in one company and a draft in the other, the setup was
+   step 12's hollow pass waiting for the day a precondition arrives.
+9. **Tests for loosening the new tables' lock**: forcing off, a policy dropped or added, an owner
+   one `SET ROLE` away. The code refused each already (measured); no test said so.
+10. **Smaller truths.** A test quoted `DSOR-TEN-01a` wrongly, and a demo test claimed it; a doc
+    comment sat above the wrong function; "the caller's to name" meant the handler; and "a
+    cancelled payment stays cancelled" rests on `cancelPayment`'s WHERE clause, because the
+    application's UPDATE right on `status` could set one back to a draft. Each is corrected or said.
+
+**Written down, and not fixed:** a handler that throws leaves the door as a thrown error, not an
+envelope, and has since step 03. For a command, the honest answer is `OUTCOME_UNKNOWN`, which
+step 37 builds with §25's machinery. Choices 2 and 3 close the two ways step 17 had added; an owner
+who restarts the sequence below numbers already used is the one left.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: the
+registry took the empty list and the operation named as its own undo; the application wrote VENDOR-77
+against INV-1008, and an invoice named VENDOR-99; start-up passed with UPDATE on the sequence and
+with DELETE on the payments one `SET ROLE` away; a careless handler's row left the door; the EUR
+payment was committed; the payment was made for 1.00. One more red came on the way: the copy made
+from the hashed text read `NaN` as `null`, and step 13's test of a refusal that names its value
+failed until such a number is refused at validation, by name. The suite reversal and the smaller
+truths had no red to see. Then the unit tests: 608.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's ten, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| start-up stops asking about the sequence | 2: the grant, and its `SET ROLE` case | those 2 |
+| the business's rights asked of the application alone | 1: the `SET ROLE` test | 1, that test |
+| a command that answers with a row is let out | 1: the careless handler | 1, that test |
+| a payment in another currency gets through | 1: EUR and ZZZ | 1, that test |
+| the handler reads the caller's object again | 1: the getter | 3: that test, and two older ones that count reads of the arguments, because this break also spread the caller's arguments a second time; a break should change one thing, and this one changed two |
+| an invoice may name a vendor its company does not have | 1: VENDOR-99 | 1, that test |
+| an operation may be its own undo | 1: the self-undo test | 1, that test |
+
+## 127 · Step 18's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent holds power of its own. Its role, `ap_worker`, grants it
+`invoice:issue`, `payment:create` and `payment:cancel` outright, so nobody signed for what it does
+and nobody can take it back except by editing the program. Worse, its power does not follow any
+person's: if `user_123` moves to another job and loses `payment:create`, the agent keeps it, and
+keeps making payments in a name that no longer has the right. `DSOR-DEL-01a` asks that every command
+an agent sends be judged under an active permission slip held in DSoR's own store, and
+`DSOR-DEL-02` that the agent's power be computed at each decision as what the slip grants, cut down
+to what the person who signed it holds right then, and to what the agent's login allows.
+
+1. **The slip lives in `dsor.delegations`**, DSoR's own paperwork, the second kind in its store
+   after the log, under the same lock as every tenant table. The application may read it and
+   change nothing: there is no operation to sign a slip yet, so the running example's `del_100` is
+   put there by a migration, as `PAY-901` was. Rejected: `public`, which is the business's.
+2. **What a slip holds now:** who signed it, for which agent, which permissions, up to how much per
+   transaction, its status, and when it expires. Modes (`on_behalf_of`, `unattended`) are step
+   19's; daily totals and time windows are step 24's.
+3. **One active slip per agent per company**, made sure by a unique index. DSoR finds it itself,
+   from the company and the agent; nothing the request says chooses it. Rejected: the request
+   naming its slip, which is a claim, and claims are refused when they disagree (`DSOR-SRC-02b`).
+4. **The agent's own role keeps reading only.** Every command it sends needs a slip, and its power
+   for that command is the slip's permissions, cut down to the signer's current permissions and to
+   the login's scopes. Humans are unchanged: their power is their role's. **Corrected by decision
+   128:** a login's scopes narrow a person too.
+5. **A stage of its own, §21's third**, between finding the operation and authorizing it: "resolve
+   the delegation". A command from an agent with no active slip, an expired one, or one whose
+   signer has lost the permission is refused there, and the refusal is recorded like any other.
+   **Corrected by decision 128:** the third is refused at §21.5, as `AUTHORIZATION_DENIED`, where
+   the power computed at §21.3 is asked.
+6. **The signer's current authority is asked at every decision, in the slip's company**, from the
+   same place the program learns anyone's role, never copied into the slip. In the slip's company,
+   because a person holds nothing where they do not belong: user_123 could otherwise sign a slip in
+   org_789 and lend the agent power user_123 has only in org_456. Tests change it through a seam, as they
+   change the database; step 19 replaces the source with a company directory that can be down.
+7. **A login may carry scopes, which only narrow.** A scope the slip does not grant adds nothing
+   (`DSOR-DEL-01b`); a slip permission the scopes leave out is not held.
+8. **The per-transaction limit is checked against the request's amount** before the command runs:
+   above it, or in another currency, is refused, the second restrictively, as `DSOR-MON-04` says of
+   a comparison that cannot convert. **Decision 128** gives both the code `LIMIT_EXCEEDED`.
+9. **The decision record stays as it is.** Which slip, whose authority and in which mode an agent
+   acted are step 19's, where the subject of an unattended request is taken from the slip
+   (`DSOR-DEL-08`) and the record says so. Rejected: the slip's id alone now, in a record whose
+   mode and subject would still say the agent acted for itself.
+
+## 128 · What step 18's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. Each choice is the recommendation, and each is open to
+reversal.
+
+One reviewer, read-only, with probes in its own copy. It found no way for the agent to hold more than
+its signer holds now: scopes cannot widen anyone, the slip comes only from DSoR's store, a slip in
+another company grants nothing. It found four ways past a slip's expiry or its limit, each
+reproduced, and these were chosen:
+
+1. **A slip is in force only when its expiry is shown to be later than now.** `-infinity` came back
+   from the database as no time at all, `Date.parse` read it as `NaN`, and `NaN <= now` is false:
+   the slip passed, and a payment was committed (measured). A year after 9999 does the same, because
+   JavaScript cannot read it. The question is now asked the other way round, "is the expiry later
+   than now?", and every answer but yes is refused as expired. And the table refuses an infinite
+   expiry: migration 013 says so, edited in place, because no database that is kept has applied it.
+   Rejected: the table's check alone, which a year after 9999 passes.
+2. **A failure while finding the slip, or what its signer holds, is a refusal, and it is recorded.**
+   Both left the door as a thrown error with nothing recorded, and with the database down an agent
+   got a stack trace where a person got `EVIDENCE_STORE_UNAVAILABLE` (measured; in step 17 both got
+   the envelope). §21.3 now refuses with `DEPENDENCY_TIMEOUT`, retry `safe_same_key`, because
+   nothing has run; §21.11 records the refusal or, when the store is down as well, answers
+   `EVIDENCE_STORE_UNAVAILABLE` as it does for everyone. `DSOR-IDN-06` asks exactly this when the
+   signer's authority cannot be established. Rejected: `INTERNAL_ERROR`, retry never, which blames
+   the program for a store that did not answer.
+3. **DSoR never chooses between two slips.** "One active slip per agent" rested on an index, and
+   with the index dropped and a second active slip with no limit, DSoR took whichever row came first:
+   60,000.00 USD was committed (measured). It now reads up to two, and two are refused with
+   `DELEGATION_REQUIRED`, naming both. Rejected: a start-up check of the index, which an owner can
+   drop after start-up; the check at the decision holds whatever the index.
+4. **A helper function's owner is asked the same questions about the business's tables and the
+   slips as the application.** A SECURITY DEFINER helper owned by a role that may update the slips
+   passed start-up, and the application lifted del_100's limit through it (measured). The payments
+   had the same gap since step 17, and the invoices since step 10. Start-up asked a helper's owner
+   only about the log.
+5. **A payment above the slip's limit is refused with `LIMIT_EXCEEDED`**, the code `DSOR-DEL-06e`
+   names for a command that would exceed a limit; and one in another currency too, because
+   `DSOR-MON-04` says a limit that cannot be compared is treated as exceeded. Decision 127 chose
+   `AUTHORIZATION_DENIED` and gave no reason, and there was none. The specification's table gives
+   `LIMIT_EXCEEDED` the retry class `after_delay`, which fits a daily total; for a limit on one
+   payment, waiting changes nothing. That is a question about the table, recorded here.
+6. **The contracts say a slip is required.** Found while answering the review: the three commands'
+   contracts said `delegation: { required: false }`, while the program refused every agent command
+   without a slip. They say `true`, and the registry refuses a command whose contract says
+   otherwise.
+7. **Tests for what nothing tested**: a malformed scopes claim, an empty list of scopes, a person's
+   scopes, a suspended slip. The code refused each already; each test was broken on purpose by
+   deleting the line it guards.
+8. **Smaller truths.** Decision 127's fifth choice said a signer who lost a permission is refused at
+   §21.3; it is at §21.5, as `AUTHORIZATION_DENIED`. Its fourth said a person's power is unchanged;
+   scopes narrow a person too. `expiresAt` was documented as always a time. Migration 014's comment
+   told half of how del_100 differs from the specification's. `paymentAmountFrom`'s doc comment sat
+   above `centsOf`, the defect decision 126 fixed once. Four comments said what step 18 made false.
+   Each is corrected.
+
+**Written down, and not fixed:**
+
+- The limit finds the money by the argument's name, `amount`. A later command that names its money
+  otherwise would pass the limit. A contract names its input schema and not its fields, so the
+  registry cannot see a money argument by another name; it can once contracts carry their fields.
+- A slip named in the arguments is refused under two names, `delegation` and `delegation_id`;
+  `delegationId` passes, and nothing reads it. Refusing every argument a contract does not declare
+  waits for the same fields.
+- A malformed scopes claim is counted, not recorded. It is refused at §21.1, where every refusal is
+  a login DSoR could not accept, and none of those is written into a company's log (decision 53).
+- PGlite's owner is a superuser, and Neon's skips row-level security, so no test shows that
+  migration 014's first line is needed. It is there for an owner the lock holds.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: the slip
+expiring in the year 10000 committed a payment, and the table took both infinities; the directory
+that did not answer, and the slip that could not be read, were thrown at the tests; the second
+active slip let 60,000.00 USD through; start-up passed with the helper; four tests expected
+`LIMIT_EXCEEDED`; `invoice.issue`'s contract said no slip was needed. The four refusals nothing
+tested had no red to see: the code refused each already, so each test was broken instead. Then the
+unit tests: 645.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's eight, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| an unreadable expiry counts as not expired | 1: the year-10000 slip | 1, that test |
+| a slip that cannot be read throws again | 2: the slip read, the database down | those 2 |
+| a role source that fails throws again | 1: the role source test | 1, that test |
+| the reader takes the first of two slips | 1: the two-slips test | 1, that test |
+| a helper's owner is asked only about the log | 1: the helper test | 1, that test |
+| a payment over the limit is `AUTHORIZATION_DENIED` again | 3: 50,000.01, 100,000.00, the demo | those 3 |
+| the registry takes a command that needs no slip | 1: the contracts test | 1, that test |
+| malformed scopes read as no scopes | 1 | 1, that test |
+| an empty list of scopes read as no scopes | 1 | 1, that test |
+| a person's scopes are ignored | 1 | 1, that test |
+| a suspended slip counts as active | 2: the suspended slip, the revoked one | those 2 |
+
+## 129 · Step 19's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** At 2 a.m. the agent makes a payment under del_100, and the log says `direct`:
+subject `accounts-payable-fte`, nobody in the actor chain, no slip. It says the agent acted for
+itself, which is the opposite of what happened: the authority was `user_123`'s. And what `user_123`
+holds comes from this program's own list of people, which never changes while it runs. When
+`user_123` changes jobs on Monday, the company's directory knows and DSoR does not. `DSOR-IDN-05`
+asks that each company configure a role source DSoR can ask about a person who is not in the
+request, `DSOR-IDN-06` that a command be refused when that person's authority cannot be established
+within 24 hours, and `DSOR-DEL-07` that a slip say whether it may be used with nobody present.
+
+1. **An agent's command under a slip is `unattended`.** The agent logs in as itself and no person
+   is present. `on_behalf_of`, where the agent exchanges a present person's token, is step 45.
+   Everything else stays `direct`: a person, an agent's reads under its own role, and an agent's
+   command refused before its slip was in hand, because no one's authority was used. **Corrected
+   by decision 130:** a refusal after DSoR found the slip is recorded under it. Rejected:
+   recording such a refusal as `unattended`, which needs a subject only a slip can name.
+2. **A slip says in which modes it may be used**: `modes`, never empty, from `on_behalf_of` and
+   `unattended`. An agent's command is accepted only under a slip that allows `unattended`
+   (`DSOR-DEL-07`), and refused with `DELEGATION_REQUIRED` otherwise. The specification's del_100
+   allows both; this one allows `unattended` alone, because a slip grants only what exists, as 014
+   said of its permissions, and `on_behalf_of` is step 45's. The column keeps that as its default,
+   because there is no operation to sign a slip yet, and the story's reset runs 014 again, which
+   names no modes; the operation that signs slips will name them. Rejected: no default, under which
+   014 cannot run again.
+3. **The subject is the slip's signer** (`DSOR-DEL-08`). The record of an agent's command under
+   del_100 says `unattended`, subject `user_123`, actor chain `accounts-payable-fte`, slip
+   `del_100`, and where `user_123`'s authority came from and when: the role source, as of the
+   directory's answer (`DSOR-DEL-10`). The correlation still names the agent, who logged in.
+   Nothing in the request is read for any of it. Rejected: the agent as the subject and the signer
+   in an extension, when the schema's `identity` has a place for each.
+4. **The role source is a company directory, a fake one**: one per company, a table in memory built
+   from this program's people, that a test or the demo can change, make stale, or switch off. It
+   says what a person holds and when that was true. DSoR asks it about the slip's signer at every
+   decision; a person who is logged in brings their own. **Corrected by decision 130:** the login
+   carries none, and this program's list of people stands in for it. Rejected: a table in DSoR's store, which
+   would make DSoR its own directory; and a real SCIM or identity-provider adapter, which needs a
+   service this tutorial does not run.
+5. **No answer within 24 hours is no answer** (`DSOR-IDN-06`, §44's bound for L2). A directory that
+   is down, a company with none, or an answer older than 24 hours refuses the command with
+   `DEPENDENCY_TIMEOUT`, safe to send again: the refusal decision 128 built at §21.3. Never the last
+   answer DSoR saw, which is exactly the months-old answer the rule exists for.
+6. **The record keeps the slip.** `dsor.audit` gains a `delegation` column for the schema's field,
+   the application may write it, and the chain's hash covers it, like every field.
+
+## 130 · What step 19's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. Each choice is the recommendation, and each is open to
+reversal.
+
+One reviewer, read-only, with probes in its own copy. It found the subject taken only from the
+stored slip, planted fields in the arguments and the login changing nothing, the right company's
+directory asked, nothing cached, and the slip inside the hash. It found three broken guarantees,
+each measured, and these were chosen:
+
+1. **A directory's answer counts only when its time is a time, with its zone, and at most 24 hours
+   old.** An answer dated a year ahead counted as fresh, and so did `9999-12-31`; a time with no
+   zone was read in the host's zone, so on a host west of UTC a 30-hour-old answer passed and was
+   recorded with a time the directory never said; and a year past 9999 broke the record's own schema
+   check, so a healthy store answered `EVIDENCE_STORE_UNAVAILABLE` (measured). Now the time must be
+   RFC 3339 with `Z` or an offset, and its age between zero and 24 hours, allowing five minutes of
+   clock difference, named. Anything else is an answer that says nothing. Such an answer, or a stale
+   one, is refused with `FRESHNESS_UNSATISFIABLE`, retry `after_delay`, because sending it again at
+   once cannot help; a directory that does not answer, or a company with none, keeps
+   `DEPENDENCY_TIMEOUT`. The refusal no longer tells the agent when the directory last knew its
+   signer. And the answer is copied before it is checked, not after.
+2. **A refusal after DSoR found the slip is recorded under the slip.** The slip that does not allow
+   `unattended`, the expired slip, and the three directory refusals were recorded as `direct`, the
+   agent acting for itself, with no slip, and, for the directory, as if the role source had answered
+   at that moment (measured). Decision 129's "before its slip was in hand" was not true of them. A
+   stage may now say what it learned before it refuses, and §21.3 says the slip: from there on the
+   record is `unattended`, subject the signer, the agent in the actor chain, the slip named. The
+   authority's time is the directory's own when it gave one, stale included; when it gave none, or
+   was never asked, the schema still requires a time, and the record has the decision's own. That is
+   a question for the specification, recorded here: `subject_authority.as_of` has no way to say the
+   authority was never established. And an agent's command that reaches §21.5 under a slip with no
+   time for its signer's authority is refused as `INTERNAL_ERROR`, never recorded as `direct`.
+3. **Start-up refuses an UPDATE granted on any column of the log.** It asked `has_table_privilege`
+   for UPDATE, which is false when only a column is granted: with `UPDATE (delegation)` granted, the
+   application changed a record's slip and start-up passed (measured). The same gap step 17 closed
+   for the business's tables.
+4. **No slip allows `unattended` unless it says so.** Migration 015's default was `unattended`, so
+   the database, not the signer, made a slip usable with nobody present. The default is
+   `on_behalf_of`, which nothing can use yet; a new migration, 017, says del_100 may be used
+   unattended, and the story's reset runs it after 014. And a slip must be signed by someone other
+   than its agent: one the agent signed for itself ran (measured; the agent cannot write slips, but
+   the store should not hold one).
+5. **Tests for what nothing tested**: answers that are not a list of permissions and a time, odd
+   times, the records of the five refusals, planted identity fields in the login and the arguments,
+   and every command, not one, refused for a company with no directory.
+6. **Smaller truths.** A test title and decision 129 said a person who is logged in "brings their
+   own" authority; the login carries none, and this program's list of people stands in for what a
+   real login would. Comments in `main.ts`, `permissions.ts`, `directory.ts`, two tests and
+   migration 016 said what step 19 made false. Each is corrected.
+
+**Written down, and not fixed:**
+
+- A person who is logged in is judged by this program's list, the slip's signer by the directory:
+  two sources for one person. With the directory saying `user_123` lost `payment:create`, the agent
+  is refused and `user_123`, logged in, is not. One source waits for a real login, steps 43 and 44.
+- `DSOR-DEL-07` is claimed for commands. An agent's reads run under its own role, with no slip, as
+  decision 127 chose, and are recorded `direct`.
+- Every company the program knows has the fake directory unless a test says otherwise; nothing at
+  start-up checks that one is configured.
+- The 24-hour bound is measured on the decision's clock, a moment before the record's own time.
+- A slip's modes may repeat a mode, which changes nothing.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: the
+stale and unusable answers had the other code, a year ahead and 9999 counted as fresh, a time with
+no zone passed, a year past 9999 broke the record; the five refusals after the slip was found said
+`direct`, and the stale one's time was the decision's; start-up passed with a column of the log
+granted; a slip that named no modes was usable at night, and a self-signed slip was stored. The
+planted-identity test and the three-command test passed on arrival: the code held, and a README
+break proves the first. Then the unit tests: 673.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's six, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| an answer from the future counts | 1: the odd-times test | 1, that test |
+| a time with no zone is read in this host's zone | 1: the odd-times test | 1, that test |
+| a stale or empty answer is `DEPENDENCY_TIMEOUT` again | 8 | those 8 |
+| a refusal under the slip forgets the slip | 2: the five refusals, the stale time | those 2 |
+| authorize forgets to ask for the signer's time | 1: the forgotten-time test | 1, that test |
+| start-up asks the log's table and not its columns | 1: the column test | 1, that test |
+| a slip that names no modes allows unattended | 1 | 1, that test |
+| a slip may be signed by its own agent | 1 | 1, that test |
+| the story forgets del_100's mode | dozens | 32: every agent command refused |
+
+## 131 · Step 20's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent sends `payment.create` for INV-1009, 2,500.00 USD. DSoR makes PAY-905 and
+the answer is lost on the way back, as answers are on real networks. The agent did what any client
+does: it sent the request again, and DSoR made PAY-906. One payment was asked for and two exist.
+Nothing in a request tells DSoR that it has seen it before. `DSOR-IDM-01a` asks that every command
+carry an idempotency key, a name the caller chooses for one logical request; `DSOR-IDM-01b` that the
+key be claimed by one atomic insert, scoped to the company, the caller, the operation and the key,
+that keeps the request's fingerprint; `DSOR-IDM-01c` that the same key and the same request get the
+recorded answer with nothing run again; and `DSOR-IDM-01d` that the same key with a different request
+be refused with `IDEMPOTENCY_CONFLICT`.
+
+1. **The key travels beside the arguments, never inside them.** The door takes a fourth thing, the
+   request's options, and the key is there. So the payload hash stays the fingerprint of what was
+   asked, and the same request sent twice has the same fingerprint whatever its key. A command
+   without a key, or with one that is not 1 to 128 letters, digits, dots, underscores, colons or
+   dashes, is refused with `VALIDATION_FAILED`. Queries change nothing and need none. Rejected: an
+   argument named `idempotency_key`, which the MCP binding uses, and which would put the key inside
+   the fingerprint it is meant to sit beside.
+2. **Claimed at §21.7, by one INSERT**, into `dsor.idempotency_keys`, DSoR's third kind of
+   paperwork, under the same lock as every tenant table. Its primary key is the company, the caller
+   who logged in, the operation and the key, so of fifty requests that arrive together exactly one
+   gets in: the database picks the winner. Rejected: checking for the key and then inserting it, which
+   is the mistake §22 names, and this step's "break it".
+3. **The answer is kept on the claim.** Every answer to a claimed request, a receipt or a refusal
+   after §21.7, is written there, and the same key with the same request gets it again: nothing runs,
+   and no second decision is recorded, because none was made. A recorded refusal is given again like
+   any other answer (§22).
+4. **The same request still being carried out is waited for**, up to two seconds, and then given its
+   answer. If it has none by then, the caller is told `OUTCOME_UNKNOWN`: the first request has not
+   finished, and nobody knows yet how it will. Rejected: answering at once, which would tell
+   forty-nine of fifty callers something nobody yet knows.
+5. **An answer that invites the same key again releases the claim.** `EVIDENCE_STORE_UNAVAILABLE`
+   says nothing ran and the same request may be sent again; the claim is released, and the next
+   request with that key and that request takes it back, in one UPDATE, so of two retries only one
+   does. Rejected: keeping that answer, which would make "send it again" a lie.
+6. **The contracts say a key is required.** The three commands said `idempotency: { required: false
+   }`; they say `true`, and the registry refuses a command that says otherwise, as decision 128 did
+   for the slip.
+7. **Proved with real parallel requests.** Fifty at once, in the unit tier, where one database
+   connection takes them in turn, and in the database tier, on a real server, over a pool of many
+   connections, where they truly race.
