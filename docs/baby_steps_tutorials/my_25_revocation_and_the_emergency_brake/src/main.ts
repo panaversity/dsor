@@ -671,7 +671,7 @@ console.log(
   `  payments made: ${afterTwoWays - beforeThreeWays} by the first two, ${(await paymentsOf("org_456")).length - afterTwoWays} by the third`,
 );
 
-// NEW IN STEP 24: del_100's day. Ten payments of 25,000.00, one after another: each is within the
+// STEP 24: del_100's day. Ten payments of 25,000.00, one after another: each is within the
 // limit per payment, and together they are not within the day's. Each books its amount against the
 // day's total in one statement, and the one that would pass the limit is refused (decision 140). One
 // after another, because requests at once in one company mostly lose the race for its log, step

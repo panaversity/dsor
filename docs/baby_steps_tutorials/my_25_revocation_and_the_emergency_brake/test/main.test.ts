@@ -140,7 +140,7 @@ describe("the program a learner runs", () => {
     // two payments and a conflict. The replays leave none.
     // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
     // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
-    // NEW IN STEP 24: 51, with del_100's day: six payments made and four refused.
+    // STEP 24: 51, with del_100's day: six payments made and four refused.
     expect(rows).toHaveLength(51);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
@@ -506,7 +506,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-DEL-06e: the demo fills del_100's day, and the payment that would pass it is refused", () => {
-    // NEW IN STEP 24 (decision 140). On a fresh database: 34,500.00 used by the sections before,
+    // STEP 24 (decision 140). On a fresh database: 34,500.00 used by the sections before,
     // six of ten payments of 25,000.00 made, and the day stops at 184,500.00.
     const out = demo().report;
 

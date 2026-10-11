@@ -297,7 +297,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec(
       "CREATE TABLE dsor.proposals (tenant TEXT, id TEXT); CREATE TABLE dsor.proposal_moves (tenant TEXT, proposal TEXT);",
     );
-    // NEW IN STEP 24: ten, with the day totals and the reservations.
+    // STEP 24: ten, with the day totals and the reservations.
     await db.exec(
       "CREATE TABLE dsor.day_totals (tenant TEXT, day DATE); CREATE TABLE dsor.reservations (tenant TEXT, proposal TEXT);",
     );
@@ -584,7 +584,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-DEL-06a: an application that may delete a total or a reservation, or write one settled, is refused at start-up", async () => {
-    // NEW IN STEP 24: room it could make (decision 140). Each right, one of them one SET ROLE away,
+    // STEP 24: room it could make (decision 140). Each right, one of them one SET ROLE away,
     // and one through a helper's owner.
     for (const grant of [
       "GRANT DELETE ON dsor.reservations TO dsor_runtime",
@@ -610,7 +610,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-DEL-06a: the reservations without the policy that keeps a settled one are refused at start-up", async () => {
-    // NEW IN STEP 24: without it, a committed payment's reservation could be released.
+    // STEP 24: without it, a committed payment's reservation could be released.
     const db = await aDatabase();
 
     await db.exec("RESET ROLE");
@@ -696,7 +696,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec(
       "CREATE TABLE dsor.proposals (tenant TEXT, id TEXT); CREATE TABLE dsor.proposal_moves (tenant TEXT, proposal TEXT);",
     );
-    // NEW IN STEP 24: ten, with the day totals and the reservations.
+    // STEP 24: ten, with the day totals and the reservations.
     await db.exec(
       "CREATE TABLE dsor.day_totals (tenant TEXT, day DATE); CREATE TABLE dsor.reservations (tenant TEXT, proposal TEXT);",
     );

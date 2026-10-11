@@ -1,4 +1,4 @@
-// NEW IN STEP 24: fifty payments at once against a daily limit, on a real server (decision 140).
+// STEP 24: fifty payments at once against a daily limit, on a real server (decision 140).
 //
 // PGlite has one connection, so fifty requests sent together reach it one after another. A pool of
 // twenty connections against a real PostgreSQL lets them truly race for the day's total, and the

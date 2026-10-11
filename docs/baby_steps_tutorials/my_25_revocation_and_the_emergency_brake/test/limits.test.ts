@@ -1,4 +1,4 @@
-// NEW IN STEP 24: a daily limit, kept by reservations (decision 140).
+// STEP 24: a daily limit, kept by reservations (decision 140).
 //
 // Rule DSOR-DEL-06a: cumulative limits MUST be enforced with atomic reserve, commit, and release
 // operations in the control-plane store.
@@ -117,7 +117,7 @@ describe("reserving against the day", () => {
 });
 
 /**
- * NEW IN STEP 24, decision 141: a proposal walked to how it ended, as the door would move it, so that
+ * STEP 24, decision 141: a proposal walked to how it ended, as the door would move it, so that
  * its reservation may be settled: a reservation follows its proposal's history.
  */
 async function endedAs(id: string, end: "COMMITTED" | "FAILED"): Promise<void> {
@@ -197,7 +197,7 @@ describe("what the application may not do to a total or a reservation", () => {
   });
 });
 
-// NEW IN STEP 24, piece 2: §21.10 books the day's amount, and the door settles it as the proposal
+// STEP 24, piece 2: §21.10 books the day's amount, and the door settles it as the proposal
 // ends.
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -330,7 +330,7 @@ describe("the agent's payments against del_100's day", () => {
   });
 });
 
-// NEW IN STEP 24, decision 141: what the review measured.
+// STEP 24, decision 141: what the review measured.
 
 /** The store, failing every write of moves into the states named, until it is put back. */
 function failingMovesInto(states: readonly string[]): () => void {

@@ -124,7 +124,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   // STEP 22: the proposals and their moves, DSoR's fourth kind of paperwork (decision 136).
   ["dsor.proposals", "tenant"],
   ["dsor.proposal_moves", "tenant"],
-  // NEW IN STEP 24: the day totals and the reservations against them (decision 140).
+  // STEP 24: the day totals and the reservations against them (decision 140).
   ["dsor.day_totals", "tenant"],
   ["dsor.reservations", "tenant"],
 ]);
@@ -371,7 +371,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               -- as PostgreSQL writes it back, measured (decision 132).
               CASE WHEN rel = to_regclass('dsor.idempotency_keys')
                    THEN '((answer IS NULL) OR (answer = ''{"released": true}''::text))'
-                   -- NEW IN STEP 24: and the reservations', which keep a settled one (decision 140).
+                   -- STEP 24: and the reservations', which keep a settled one (decision 140).
                    WHEN rel = to_regclass('dsor.reservations')
                    THEN '(state = ''held''::text)' END
          FROM tenant_table
@@ -657,7 +657,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 24: the day totals and the reservations. A total or a reservation the application
+  // STEP 24: the day totals and the reservations. A total or a reservation the application
   // could delete is room it could make, a reservation it could write already settled, or rewrite to
   // another amount, is one booked for one thing and settled for another, and a total it could move
   // to another day is a limit it could move (decision 140). Releasing a settled reservation is the

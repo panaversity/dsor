@@ -1,4 +1,4 @@
-// NEW IN STEP 24: reservations against a slip's daily limit (decision 140).
+// STEP 24: reservations against a slip's daily limit (decision 140).
 //
 // A daily limit is a running total, and the common mistake §13.4 names is reading the total,
 // checking it in the code, and then writing it: between the read and the write, another payment
@@ -23,7 +23,7 @@ export type Reserved =
   /** This proposal has a reservation already, still held, and it was not made twice. */
   | { readonly kind: "already" }
   /**
-   * NEW IN STEP 24, decision 141: this proposal's reservation was settled, committed or released,
+   * STEP 24, decision 141: this proposal's reservation was settled, committed or released,
    * and it is not booked again. Only a held one is "already".
    */
   | { readonly kind: "settled" };
@@ -94,7 +94,7 @@ export async function reserve(
  * disagree. A settled reservation is never changed again: the restrictive policy of migration 022
  * hides it from every UPDATE, so this does nothing to it.
  *
- * NEW IN STEP 24, decision 141: and only when the proposal's history holds the move that says so,
+ * STEP 24, decision 141: and only when the proposal's history holds the move that says so,
  * asked in the same statement: committed with a move into COMMITTED, released with one into FAILED
  * or DENIED. A review measured a reservation released for a proposal whose move to FAILED was never
  * written, left EXECUTING, whose end nobody knew. Without the move, the reservation stays held, and

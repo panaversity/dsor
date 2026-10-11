@@ -32,7 +32,7 @@ export interface Delegation {
   readonly modes: readonly IdentityMode[];
   /** Up to how much one payment may be, or `undefined` for no limit. */
   readonly perTransactionLimit: Money | undefined;
-  /** NEW IN STEP 24: up to how much in one day, or `undefined` for no daily limit (decision 140). */
+  /** STEP 24: up to how much in one day, or `undefined` for no daily limit (decision 140). */
   readonly dailyLimit: Money | undefined;
   readonly status: DelegationStatus;
   /**

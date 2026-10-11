@@ -69,7 +69,7 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 import { audit, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
-// NEW IN STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
+// STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
 import { reserve, settleReservation, usedToday } from "./reservation.ts";
 import { money } from "./money.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
@@ -1432,7 +1432,7 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     );
   }
 
-  // NEW IN STEP 24: and the slip's daily limit, a running total, booked in one statement and keyed
+  // STEP 24: and the slip's daily limit, a running total, booked in one statement and keyed
   // by the proposal, so fifty payments at once can never spend past it (DSOR-DEL-06a, 06b, 06e,
   // decision 140). After the proposal, because the reservation is keyed by it.
   const daily = slip.dailyLimit;
@@ -2102,7 +2102,7 @@ function aDryRunsAnswer(context: Context): OperationAnswer {
 }
 
 /**
- * NEW IN STEP 24: settle a proposal's reservation, if it has one, tried twice (decision 140). One
+ * STEP 24: settle a proposal's reservation, if it has one, tried twice (decision 140). One
  * that cannot be settled stays held, which counts its amount against the day: the limit errs toward
  * refusing, never toward paying more.
  */
@@ -2386,7 +2386,7 @@ export function makeDoor(
 
       await finishTheProposal(tenant, proposal, ended, cause);
 
-      // NEW IN STEP 24: and its reservation follows it: kept on the day when it was made, given
+      // STEP 24: and its reservation follows it: kept on the day when it was made, given
       // back when the handler said nothing was done, and held while nobody knows (decision 140);
       // and only once the move is written, which the store asks of the history (decision 141).
       if (ended !== "OUTCOME_UNKNOWN") {
@@ -2582,7 +2582,7 @@ export function makeDoor(
         `refused: ${answer.envelope.code}`,
         "PROPOSED",
       );
-      // NEW IN STEP 24: and any amount it booked is given back to the day (decision 140).
+      // STEP 24: and any amount it booked is given back to the day (decision 140).
       await settleQuietly(tenant, proposal, "released");
     }
 
