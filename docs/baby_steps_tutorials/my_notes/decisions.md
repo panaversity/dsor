@@ -4569,3 +4569,120 @@ it failed the 3 predicted. A reserve that takes any currency failed 1, and a set
 taken as "already" failed 1, as predicted. The race through the door, broken on a real server to
 read the total and then write it, made three payments with room for one. The README's three breaks
 were measured twice and the runs agreed: 1, 4 and 4 failing.
+
+## 142 · Step 25's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
+and choose your recommended options". The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** At 3 a.m. the agent starts paying invoices it should not. There is no switch.
+`user_123` cannot tear up del_100: only an owner editing the database can. Nothing stops one agent,
+or every agent in the company, and nothing between a decision and its execution asks again. Asking
+the agent to stop is asking the thing that misbehaves to behave. `DSOR-DEL-04a` asks that a slip be
+revocable by its signer and by a tenant administrator, and `04c` that its proposals waiting for
+approval or approved be cancelled; `DSOR-OPS-01a` asks for a suspension of one agent and a freeze of
+every agent in a company, `01c` that an affected agent's proposal never enter EXECUTING, and `01d`
+that only a human holding `control:suspend` lift one.
+
+1. **Two commands, for people: `delegation.revoke` and `control.suspend`.** `control.suspend` takes
+   a target, an agent's address, `dsor://org_456/agent/accounts-payable-fte`, or the company's own,
+   `dsor://org_456/tenant/org_456`, for every agent in it, and `suspended: true` or `false`; false
+   lifts it. Rejected: four commands, suspend, lift, freeze and unfreeze, the same thing four times;
+   and a switch outside DSoR, a setting or a file, which the agent's own host could reach and DSoR
+   could not record.
+2. **Who.** Revoking needs `delegation:revoke`, and the caller must be the slip's signer: `user_123`
+   for del_100. A tenant administrator, who could revoke anyone's slip, is nobody in the story's
+   cast; one waits for the identity provider, step 43, so `DSOR-DEL-04a` is met in part. Suspending
+   needs `control:suspend`, held by `user_123` and by `cfo_100`: either can pull the brake. Lifting
+   needs `control:suspend` and a human logged in as themselves (`DSOR-OPS-01d`): an agent whose
+   slip one day grants `control:suspend` may set the brake, never release it.
+3. **§21.4, check the operational status, a stage of its own, for commands.** An agent under a
+   suspension or a freeze is refused `AGENT_SUSPENDED`, retry `never`, and the refusal is recorded
+   like any other. Queries still answer: §18's table says a suspended agent can make no state
+   change, and reading is not one.
+4. **And again in the statement that moves a proposal to EXECUTING**: the move is written only if no
+   suspension or freeze is active for the agent, so one pulled after §21.4 and before the handler
+   still stops it (`DSOR-OPS-01c`).
+5. **A suspension is a record in DSoR's own store**, `dsor.agent_controls`: who imposed it, when and
+   why, and who lifted it and when. A lifted one stays, for the record; a lift is final, by a
+   restrictive policy; nothing is deleted.
+6. **Revoking marks the slip `revoked`**, with who and why, and the application may change a slip
+   only from active to revoked: a restrictive policy, which start-up asks for, and no other right on
+   slips. In the same statement, every proposal under the slip waiting for approval or approved
+   moves to CANCELLED (`04c`), and their reservations are given back after it (`DSOR-DEL-06d`). None
+   exists yet, because approvals are step 29. A prepared proposal, READY, stays READY: §26.2 has no
+   move from READY to CANCELLED, and step 31's `proposal.execute` checks its slip again before it
+   runs anything.
+7. **The stage-order test becomes a proof by its parts.** With eleven stages, all 39,916,800
+   orderings take 65 seconds, measured, and twelve would take thirteen minutes. Now: every stage is
+   required by name, in one order; every list with two stages swapped, and every list with one stage
+   moved elsewhere, is refused; and 100,000 orderings drawn with a fixed seed are all refused but
+   the one. Rejected: the whole walk, at a minute of every check, growing elevenfold a stage.
+8. **The demo pulls the brake and releases it**: `user_123` suspends the agent, its payment is
+   refused and its read still answers; `user_123` lifts it and the payment goes through; then
+   `cfo_100` freezes every agent in org_456 and lifts it. It does not revoke del_100: a slip once
+   revoked stays revoked, and the demo's every later run needs it. Revoking is the tests'.
+
+## 143 · What step 25's review found, and what was chosen (2026-10-12)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-11. Each choice is the
+recommendation, and each is open to reversal.
+
+One reviewer, read-only, with probes in its own copy. It found §21.4 before the idempotency claim, so
+no old answer is replayed to a stopped agent; the brake read from DSoR's store with the logged-in
+agent and the resolved company, never the arguments; freezes kept to their own company; a lift
+final; a slip revoked, suspended or expired beyond the application's reach; and the revocation and
+its cancellations in one statement. It found:
+
+1. **A refusal after the decision was recorded as ALLOW** (measured). Only a slip's signer may
+   revoke it, and only a person may release a brake, and both were checked in the handlers, after
+   §21.11: the log said ALLOW where the answer said AUTHORIZATION_DENIED, as decision 134 had fixed
+   for the version. Now both are a stage of their own at §21.9, "check the target": after §21.6, so
+   it reads the validated arguments once, and before §21.11, so a refusal is recorded as the DENY it
+   is. It also asks the revocation's precondition from its contract, that the slip is active.
+   Rejected: `authorize`, at §21.5, which would read the arguments before §21.6 has copied them, the
+   read-twice hole step 14 closed. AUTHORIZATION_DENIED comes out of the handler codes that say
+   nothing was done.
+2. **The brake on the move to EXECUTING was a parameter a caller could leave out** (measured). Now
+   `moveProposalThrough` must be told the agent, or `null` for a person, and a single `moveProposal`
+   refuses to move anything into EXECUTING. Rejected for now: a restrictive policy on the moves'
+   table, which would need the proposal to say its agent in a column the application writes anyway.
+3. **A brake pulled after §21.4 did not stop a prepared command** (measured: READY, with the brake
+   on). The move to READY now asks the brake too.
+4. **Smaller ones.** An agent named `*` collided with the freeze's sign in the unique index (measured):
+   an agent's name may not be `*`. A revocation could be written with no one's name (measured): the
+   slips' policy now requires `revoked_by`. Start-up named the brake's columns one by one, so a new
+   column granted to the application passed (measured): it now asks every column but the ones the
+   application may write, as it does for slips. §21 says queries pass through §21.4: the stage now
+   runs for both kinds and lets a query through, because a brake stops state changes. The stage-order
+   proof could not see a check that accepted a cycle of three stages (measured): it now refuses every
+   reordering of any three and any four stages too, and says what it trades for speed.
+5. **Tests for what nothing tested**: `user_123` revoking a slip someone else signed, recorded as
+   DENY; a person whose login leaves out `control:suspend`; a stopped agent's `propose_only` and
+   `validate_only`; a brake pulled while a prepared command is on its way.
+
+**Written down, and not fixed:**
+
+- **A question for the specification.** `DSOR-SRC-02b` says a delegation identifier in the
+  arguments that disagrees with the security context must be refused. Read literally, a delegator
+  could never name the slip they revoke, which `DSOR-DEL-04a` asks that they can; read as meaning the
+  authority a request runs under, a slip named as an operation's *target* is not covered. This step
+  calls the argument `target`, so §21.6's check by name does not see it, and that is a reading of the
+  rule, not a change to it. It belongs in `research/open-questions.md`, for the editor.
+- `DSOR-DEL-04c`'s "or expiry" is not built: nothing watches the clock to cancel what waits under a
+  slip that expired. `DSOR-DEL-04a`'s tenant administrator is nobody in the cast.
+- Revocation stops new decisions; a command already decided under the slip runs, as §13.3 says one
+  already EXECUTING does. Unlike the brake, there is no last check.
+- A brake that commits while the move to EXECUTING is running is not seen by it: the move reads the
+  brakes as they were when its statement began. The window is one statement long; no test races it.
+- "A person" is whoever logged in: the login is believed until steps 43 and 44, so an agent that
+  logged in as `user_123` could release its own brake.
+
+**Broken on purpose (measured 2026-10-12, predictions written first).** Each fix was broken once, in
+a copy, on the whole suite, and each failed as predicted: §21.9 not asking who signed the slip, 2;
+one move allowed into EXECUTING, 1; a prepared command forgetting the brake, 1; an agent named `*`,
+1; start-up naming the brake's columns one by one, 1; and, by hand because it needs two edits, the
+slips' policy without `revoked_by` and start-up expecting it so, 1. The README's three breaks were
+measured twice and the runs agreed: §21.4 asking nothing fails 5, the move to EXECUTING forgetting
+the brake 1, and a revocation cancelling nothing 2.

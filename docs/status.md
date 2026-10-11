@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 24 also have a second learner's
-builds, `my_01` to `my_24`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 25 also have a second learner's
+builds, `my_01` to `my_25`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, twenty-five of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, twenty-six of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -116,6 +116,7 @@ one before it:
 | `my_22_proposals_and_their_states` | 753 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2 and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended |
 | `my_23_three_ways_to_call` | 779 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
 | `my_24_limits_with_reservations` | 806 | a slip has a daily limit, 200,000.00 USD for del_100; each payment books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
+| `my_25_revocation_and_the_emergency_brake` | 876 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer revokes it, and what waited under it is cancelled; none of it asks the agent |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -149,7 +150,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 141 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 143 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

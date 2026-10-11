@@ -1,76 +1,76 @@
-# Step 24 · Limits with reservations
+# Step 25 · Revocation and the emergency brake
 
-**New in this step:** del_100 may spend 200,000.00 USD a day as well as 50,000.00 a payment. A
-daily limit is a running total, and a running total has a race; each payment *reserves* its amount
-against the day in one database statement, like booking the last hotel room.
+**New in this step:** a person can tear up a permission slip, stop one agent, or freeze every agent
+in the company, and none of it asks the agent to cooperate.
 
 ## In plain words
 
-Until now del_100 limited each payment to 50,000.00, and nothing else. The agent could make a
-hundred payments of 49,999.00 in a day. Now the slip also says how much it may spend in a day, and
-DSoR keeps a running total for each slip and each day.
+Two switches, both on DSoR's side, both for people.
 
-The obvious way to keep a running total is wrong. "Read the total, check that the new payment fits,
-then write the new total" has a gap between the read and the write, and fifty payments arriving at
-once each read the same total, each find room, and together spend far past the limit. So the total
-is never read and then written. Each payment *books* its amount in one statement that adds it only if
-the total stays within the limit:
+**The brake.** `control.suspend` stops one agent in one company, or, given the company's own
+address, every agent in it:
 
-```sql
-INSERT INTO dsor.day_totals ... VALUES (..., amount, ...)
-ON CONFLICT (tenant, delegation, day) DO UPDATE SET used_value = used_value + amount
- WHERE used_value + amount <= limit
+```ts
+await callOperation(supervisor, "control.suspend", {
+  target: "dsor://org_456/agent/accounts-payable-fte",
+  suspended: true,
+  reason: "paying invoices it should not",
+}, { idempotencyKey });
 ```
 
-Of two payments that arrive together, PostgreSQL makes the second wait for the first, then checks
-again on the total the first left. Only one can have the last room.
+From then on, every command the agent sends is refused `AGENT_SUSPENDED` at §21.4, a stage of its own
+in the checklist, before anything is decided. It can still read: reading changes nothing. Releasing
+the brake is the same command with `suspended: false`, and only a person may send it. The brake is a
+record in DSoR's own store, with who pulled it, when and why, and who released it; the agent never
+reads that table and nothing it sends can change it.
 
-The booking is a *reservation*, keyed by the payment's proposal from step 22, so the same proposal
-never books twice. It follows its proposal:
+**Tearing up a slip.** `delegation.revoke` marks a slip revoked, with who and why. Its signer may: for
+del_100, `user_123`. After that the agent has no slip, and every command it sends is refused. In the
+same statement, every proposal under the slip that was waiting for approval, or approved, is
+cancelled, and any amount it held against the day is given back.
 
-- **held** while the proposal may still run: READY, EXECUTING, or OUTCOME_UNKNOWN, when nobody knows
-  whether it ran;
-- **committed** when the proposal is COMMITTED: the amount stays on the day;
-- **released** when it is FAILED or DENIED: the amount is given back to the day.
+**Two locks, not one.** §21.4 refuses a stopped agent's command before anything is decided. But a
+person can pull the brake while one of the agent's commands is already past §21.4, on its way to its
+handler. So the statement that moves a proposal to EXECUTING asks again, in the same statement: if a
+brake is on the agent now, nothing is written, the proposal is DENIED, and the handler never runs. A
+prepared command's move to READY asks too.
 
-A reservation is settled only when the proposal's history holds the move that says so. One that
-cannot be settled stays held, and counts against the day: the limit errs toward refusing, never
-toward paying more.
-
-A dry run, `validate_only`, books nothing: it reads the room left and answers from it. A prepared
-command, `propose_only`, books and holds, because it may still run. An amount in another currency
-than the limit's is over it, until step 26 brings exchange rates: an amount that cannot be compared
-is refused, never let through.
-
-A day is a calendar day in UTC, on the database's clock, so every server agrees which day a payment
-is booked on.
+**Who may, decided before it is recorded.** Only a slip's signer may revoke it, and only a person may
+release a brake. Both are decided at §21.9, a stage that reads the validated arguments, before §21.11
+records the decision: a refusal is recorded as the DENY it is, never as an ALLOW followed by a
+refusal.
 
 ## Why it matters
 
-A limit per payment says nothing about how many payments there are. The specification's slip has a
-daily limit beside it for exactly that reason, and the daily limit is the one with the race: a check
-that is right when payments arrive one at a time and wrong when fifty arrive at once is a check that
-passes every test you write one at a time.
+At 3 a.m. the agent starts paying invoices it should not. Until this step there was no switch:
+`user_123` could not tear up del_100, only someone editing the database could, and nothing stopped
+one agent or every agent at once. And asking the agent to stop is asking the thing that misbehaves to
+behave. The brake works because it is not the agent's: DSoR reads it on every command, from a table
+the agent cannot touch.
 
-## What changed since step 23
+## What changed since step 24
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_23_three_ways_to_call ../my_24_limits_with_reservations
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24_limits_with_reservations ../my_25_revocation_and_the_emergency_brake
 ```
 
 | File | What |
 | --- | --- |
-| `migrations/022_daily_limits_and_reservations.sql` | new — a slip's daily limit, one running total per slip per day, reservations keyed by proposal, and a second policy that keeps a settled reservation |
-| `migrations/023_del_100_has_a_daily_limit.sql` | new — del_100 may spend 200,000.00 USD a day |
-| `src/reservation.ts` | new — reserve in one statement, settle in one statement when the proposal's history says so, and how much the day has used |
-| `src/delegation.ts` | the slip says its daily limit |
-| `src/operations.ts` | §21.10 books each payment against the day after its limit per payment, and a dry run only reads the room; the door settles the reservation as the proposal ends |
-| `src/database.ts` | start-up knows ten tenant tables, asks for the second policy, and refuses an application that may delete a total or a reservation |
-| `src/main.ts` | ten payments of 25,000.00 against the day, one after another |
-| `test/limits.test.ts` | new — the limit, booking, the race of fifty reservations, settling with the history, the door's payments and their reservations |
-| `test/limits.db.test.ts` | new — fifty reservations at once on a real server, and fifty payments through the door racing for room for one |
-| `test/main.test.ts` | ten more decisions in the demo's log, and what a second run the same day changes |
+| `migrations/024_the_emergency_brake.sql` | new — the brake: one agent, or every agent in a company; who pulled it, when and why, who released it; one at a time per target, a lift final, nothing deleted |
+| `migrations/025_a_slip_can_be_revoked.sql` | new — a slip can be marked revoked with who, when and why, and nothing else; a second policy keeps it so |
+| `migrations/026_org_789_has_a_slip_too.sql` | new — org_789's own del_100, so the cross-tenant suite has a slip of the same number in both companies |
+| `src/controls.ts` | new — pull the brake, release it, and say what stops an agent now |
+| `src/delegation.ts` | read one slip by its id; revoke it and cancel what waited under it, in one statement |
+| `src/operations.ts` | §21.4 asks the brake; §21.9 asks who may act on the target; the door's move to EXECUTING, and a prepared command's to READY, ask the brake again; the handlers of `control.suspend` and `delegation.revoke` |
+| `src/proposal.ts` | the path into EXECUTING must be told the agent, and asks the brake; nothing enters EXECUTING one move at a time |
+| `src/pipeline.ts` | twelve stages, the two new ones required by name |
+| `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` for `user_123` and `cfo_100`, `delegation:revoke` for `user_123`; the two receipts' labels; the two contracts |
+| `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
+| `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on slips and brakes than revoking and braking need |
+| `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze |
+| `test/brake.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it; revoking, what it cancels, who may revoke |
+| the tests that pin the pipeline | twelve stages, and the stage-order proof by its parts |
 
 ## Run it
 
@@ -79,156 +79,163 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step comes after the three ways to call:
+The part that is this step comes after the day's payments:
 
 ```text
-del_100's day: 200000.00 USD. Ten payments of 25,000.00, one after another:
+3 a.m.: the agent is paying what it should not. user_123 pulls the brake on it:
 
-  the day had used 34500.00 USD before them
-  made 6, refused 4
-accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          25000.00 USD would take del_100 past its limit of 200000.00 USD a day
-  the day has used 184500.00 USD of 200000.00
+user_123              COMMITTED                dsor://org_456/control/ctl_1  brake on   atomic
+accounts-payable-fte  AGENT_SUSPENDED          retry: never                accounts-payable-fte is suspended in org_456, by user_123; a person must lift it
+accounts-payable-fte  (internal)               dsor://org_456/invoice/INV-1008  (amount withheld)  issued
+                        withheld: amount (clearance)
+                        current, read at 2026-10-11T19:44:24.135Z from postgres
+
+user_123 lifts it, and the agent's payment goes through:
+
+user_123              COMMITTED                dsor://org_456/control/ctl_1  brake off  atomic
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-913  draft      compensatable
+                        withheld: amount (clearance)
+
+Month-end: cfo_100 freezes every agent in org_456, and lifts the freeze after:
+
+cfo_100               COMMITTED                dsor://org_456/control/ctl_2  brake on   atomic
+accounts-payable-fte  AGENT_SUSPENDED          retry: never                every agent in org_456 is stopped, by cfo_100; a person must lift it
+cfo_100               COMMITTED                dsor://org_456/control/ctl_2  brake off  atomic
 ```
 
-34,500.00 before them: the agent's five payments in the sections above, 34,100.00, two of them
-since cancelled, and the 400.00 prepared in step 23's section, whose reservation is held while it
-waits at READY. Cancelling a payment does not give its amount back to the day. Six of the ten fit,
-and the seventh would pass 200,000.00.
+The agent's payment is refused while the brake is on, and its read still answers: a brake stops state
+changes, and reading is not one. The refusal says who pulled the brake, and never why: the reason is a
+person's words about the agent, for the people who read the record. Nothing in the agent changed, at
+any point; that is the map's "done when".
 
-They go one after another on purpose. Sent at once, almost all of them would be refused for a
-reason that is not the limit: decisions in one company at one moment race for the next place in its
-log, and the log refuses the loser, `EVIDENCE_STORE_UNAVAILABLE`, safe to send again. The race on
-the limit itself is the database tier's.
-
-The day's total is kept between runs. Run the demo a second time on the same day, and the day is
-nearly full from the first run, 184,500.00: the second run's 31,400.00 payment is refused
-`LIMIT_EXCEEDED`, so the two cancels of it never happen; the smaller payments still fit, and all ten
-of 25,000.00 are refused. Tomorrow, in UTC, the day starts again.
+The demo does not revoke del_100. A slip once revoked stays revoked, and every later run of the demo
+needs del_100; revoking is shown in `test/revoke.test.ts` instead.
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-seven tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The sixty-nine tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
-cp ../my_23_three_ways_to_call/.env .env     # then dsor_step23 -> dsor_step24 in both lines
+cp ../my_24_limits_with_reservations/.env .env     # then dsor_step24 -> dsor_step25 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first, made with one `CREATE DATABASE dsor_step24` through the owner
-login. `pnpm migrate` applies the twenty-three migrations; on a server that already had step 23's
-twenty-one, it applies 022 and 023. The two new tests are the step's "done when", where it can fail:
-fifty reservations of 5,000.00 at once over a pool of twenty connections book exactly forty, and the
-day stops at 200,000.00; and with 195,000.00 booked first, fifty payments at once through the door
-race for room for one, and at most one is made. Broken on purpose, reading the total and then
-writing it, the first booked all fifty and the second made three.
+The database has to exist first, made with one `CREATE DATABASE dsor_step25` through the owner
+login. `pnpm migrate` applies the twenty-six migrations; on a server that already had step 24's
+twenty-three, it applies 024, 025 and 026. This step adds no test of its own to the tier; its two
+commands join the cross-tenant suite there, which is why the count rose from fifty-seven. No test
+races a brake against a move to EXECUTING on a real server; see what this step leaves, below.
 
 ## Break it
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `806` with `1 skipped`; in the repository it is `806 passed`.
+is not beside it, so the total reads `876` with `1 skipped`; in the repository it is `876 passed`.
 
-### Break 1 · read the total, check it, then write it
+### Break 1 · §21.4 asks nothing
 
-The map's "break it", the mistake §13.4 names. In `src/reservation.ts`, replace the one booking
-statement with two: a SELECT of the day's total, a check in TypeScript that the amount fits, and
-then the INSERT that adds it, with no condition.
-
-```text
- Tests  1 failed | 804 passed | 1 skipped (806)
-```
-
-One: the fifty reservations at once. Every other test books one payment at a time, and every one of
-them still passes, which is exactly why the mistake is so easy to make. On a real server, in the
-database tier, the same break booked all fifty, 250,000.00, and through the door made three payments
-where there was room for one.
-
-### Break 2 · a release keeps its amount on the day
-
-In `src/reservation.ts`, change `WHERE $3 = 'released' AND` to `WHERE $3 = 'never' AND`.
+The map's "break it" turned round: take the brake out of the checklist. In `src/operations.ts`, in
+`checkTheOperationalStatus`, change
+`if (principal.type !== "agent" || context.contract?.kind !== "command") {` to the same line with
+`|| true` before its `)`.
 
 ```text
- Tests  4 failed | 801 passed | 1 skipped (806)
+ Tests  5 failed | 870 passed | 1 skipped (876)
 ```
 
-A refused payment is marked released, and its amount still counts against the day: each refusal
-takes room from the day for nothing. The tests of a release, of a handler's refusal, of a decision
-that could not be recorded, and of a settled reservation.
+Fewer than you might think, and that is the second lock. A stopped agent's payment is still stopped,
+by the move to EXECUTING, but after an ALLOW is on the record and a proposal made, and in other words:
+the test that reads the log, the one that names who pulled the brake, and the demo's lines. And its
+dry run, which reaches no move at all, is now answered "allowed".
 
-### Break 3 · a dry run books
+### Break 2 · the move to EXECUTING forgets the brake
 
-In `src/operations.ts`, in the daily limit's part of `checkTheSlipsLimit`, change
-`if (context.mode === "validate_only") {` to `if (context.mode === ("never" as string)) {`.
+In `src/operations.ts`, in the door, after the comment
+`// STEP 25: and for an agent, not if a brake is on it now (DSOR-OPS-01c).`, change
+`principal.type === "agent" ? principal.id : null,` to `null,`.
 
 ```text
- Tests  4 failed | 801 passed | 1 skipped (806)
+ Tests  1 failed | 874 passed | 1 skipped (876)
 ```
 
-A dry run has no proposal to book for, so it is refused for that: the agent can no longer ask "would
-this payment be allowed?". The tests of a dry run in this step and in step 23, and the demo's three
-ways, whose dry run is now refused.
+One: the brake pulled between the decision and the handler. Every other test pulls it before the
+request starts, and §21.4 catches those. The handler runs, and the payment a person stopped is made.
+
+### Break 3 · tearing up a slip cancels nothing waiting under it
+
+In `src/delegation.ts`, in `revokeSlip`, change `WHERE EXISTS (SELECT 1 FROM revoked)` to
+`WHERE false AND EXISTS (SELECT 1 FROM revoked)`.
+
+```text
+ Tests  2 failed | 873 passed | 1 skipped (876)
+```
+
+The slip is revoked, and the payments that were waiting for approval under it, or approved, stay
+where they were, ready to run once released, with their amounts still held against the day. The two
+tests of what waited.
 
 ## Build it yourself with Claude Code
 
-Copy `my_23_three_ways_to_call` to a new folder and ask:
+Copy `my_24_limits_with_reservations` to a new folder and ask:
 
-> Start step 24, limits with reservations. Before any code: show me five payments of 50,000.00
-> arriving at the same moment against a daily limit of 200,000.00, and how all five get through. Then
-> ask me the step's decisions one at a time. Then build it a piece at a time, red first, and break
-> each piece on purpose.
+> Start step 25, revocation and the emergency brake. Before any code: show me the agent misbehaving
+> at 3 a.m. and everything I could do today to stop it. Then ask me the step's decisions one at a
+> time. Then build it a piece at a time, red first, and break each piece on purpose.
 
 ## Check yourself
 
-1. del_100 may spend 50,000.00 a payment. Why is that not enough?
-2. Why is the day's total never read before it is written?
-3. The agent's payment is refused because its handler finds no such invoice. What happens to its
-   reservation? And a payment whose handler crashed half way?
-4. A prepared payment, `propose_only`, waits at READY. Does its amount count against the day?
-5. Fifty payments sent at once: why are most of them refused, and is it the limit that refuses them?
+1. The agent is suspended. Can it still read an invoice? Why?
+2. A person pulls the brake after the agent's payment has passed §21.4. What stops the payment?
+3. Why may `user_123` pull or release the brake, but the agent never release it, even if its slip one
+   day granted `control:suspend`?
+4. `user_123` revokes del_100 while a payment under it waits for approval. What happens to that
+   payment, and to the amount it held against the day?
+5. Why is "only the signer may revoke" decided at §21.9 and not in the handler?
 
 <details>
 <summary>Answers</summary>
 
-1. A limit per payment says nothing about how many payments there are: a hundred payments of
-   49,999.00 are each within it.
-2. Between the read and the write, another payment reads the same total and finds the same room.
-   One statement that adds the amount only if the total stays within the limit leaves no gap.
-3. It is released, and its amount given back: FAILED says nothing was done. A crashed one is
-   OUTCOME_UNKNOWN, and its reservation stays held, because nobody knows whether it ran.
-4. Yes. It may still run, so it holds its reservation.
-5. Most lose the race for the company's log and are refused `EVIDENCE_STORE_UNAVAILABLE`, safe to
-   send again. The limit refuses only what would pass it; with room for one, at most one is made.
+1. Yes. A brake stops state changes, and reading is not one: §21.4 lets a query through.
+2. The statement that moves the proposal to EXECUTING asks the brake again, in the same statement.
+   Nothing is written, the proposal is DENIED, the caller is told `AGENT_SUSPENDED`, and the handler
+   never runs.
+3. Releasing a brake is a person's decision (`DSOR-OPS-01d`): §21.9 refuses an agent whatever it holds.
+   Pulling a brake only stops things, so it needs nothing more than `control:suspend`.
+4. It is cancelled, in the same statement that revokes the slip, and its reservation is released,
+   giving its amount back to the day.
+5. Because a refusal in the handler comes after §21.11 has recorded ALLOW: the log would say one thing
+   and the answer another. At §21.9 the refusal is recorded as the DENY it is.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-DEL-06a · L2]** Cumulative limits MUST be enforced with atomic reserve, commit, and release
-  operations in the control-plane store.
-  ([§13.4](../../../specs/dsor/02-security.md#134-cumulative-limits))
-- **[DSOR-DEL-06b · L2]** A reservation MUST be keyed by proposal id, so that re-evaluating the same
-  proposal never reserves twice.
-- **[DSOR-DEL-06c · L2]** A reservation MUST stay held while its proposal is `PENDING_APPROVAL`,
-  `APPROVED`, `EXECUTING`, or `OUTCOME_UNKNOWN`.
-- **[DSOR-DEL-06d · L2]** A reservation MUST be released when its proposal reaches `FAILED`,
-  `REJECTED`, `EXPIRED`, `CANCELLED`, `REVOKED`, or `INVALIDATED`.
-- **[DSOR-DEL-06e · L2]** A command that would exceed a limit MUST be refused with `LIMIT_EXCEEDED`.
+- **[DSOR-DEL-04a · L2]** A delegation MUST be revocable by its delegator and by a tenant
+  administrator. ([§13.3](../../../specs/dsor/02-security.md#133-revocation-and-subdelegation))
+- **[DSOR-DEL-04c · L2]** On revocation or expiry, every proposal created under the delegation that
+  is `PENDING_APPROVAL` or `APPROVED` MUST move to `CANCELLED`.
+- **[DSOR-OPS-01a · L2]** DSoR MUST provide per-agent suspension and a tenant-wide agent freeze.
+  ([§18](../../../specs/dsor/02-security.md#18-operational-controls))
+- **[DSOR-OPS-01c · L2]** While a suspension or freeze is active, a proposal from an affected agent
+  MUST NOT enter `EXECUTING`.
+- **[DSOR-OPS-01d · L2]** A suspension or freeze MUST be lifted only by a human holding
+  `control:suspend`.
 
-**What this step leaves, said plainly.** The application's own code could still make room on a full
-day: it may change a day's total and insert reservations, and a reservation inserted for a proposal
-that booked nothing, then released, gives back what it never took. It could as well write a payment
-past the limit, because a payment is not tied to its reservation; that tie, which would make the
-limit the database's and not only the pipeline's, is a later step's. What the database keeps is the
-race and the settled reservation. Cancelling a payment does not give its amount back to the day.
-Requests at once in one company mostly lose the race for its log, and a request that books and then
-loses it holds its amount for a moment, so another can be refused `LIMIT_EXCEEDED` with room that is
-given back a moment later: the limit errs toward refusing. One window, a day in UTC; the schema's
-other windows, and the company's own time zone, are not built. An amount in another currency is
-refused until step 26. The states of approval, and their holds and releases, come with step 29.
+**What this step leaves, said plainly.** Only a slip's signer may revoke it: a tenant administrator,
+who could revoke anyone's, is nobody in the story's cast, so `DSOR-DEL-04a` is met in part.
+`DSOR-DEL-04c` asks the same cancellation on a slip's expiry, and nothing watches the clock for it.
+Revoking a slip stops new decisions; a command already decided under it runs, and unlike the brake
+there is no last check. A brake that commits while a move to EXECUTING is running is not seen by that
+move, which reads the brakes as they were when its statement began; no test races the two on a real
+server. "A person" is whoever logged in: logins are believed until steps 43 and 44. And a question for
+the specification: `DSOR-SRC-02b` refuses a delegation identifier in the arguments that disagrees with
+the request's own, and read literally that would stop a delegator from naming the slip they revoke,
+which `DSOR-DEL-04a` asks that they can. This step calls the argument `target`, a reading of the rule
+and not a change to it, written down in decision 143 for the editor.
 
 Everything earlier steps claimed still holds.
 
-**Next:** step 25, `revocation_and_the_emergency_brake` — tear up the permission slip and its waiting
-work is cancelled; suspend one agent, or freeze every agent in the company, without the agent's
-cooperation.
+**Stage 3 of the learning path is complete.** **Next:** step 26, `money_done_right` — compare amounts
+exactly, in any currency, with a table of exchange rates; when an amount cannot be converted, the
+strict answer wins.
