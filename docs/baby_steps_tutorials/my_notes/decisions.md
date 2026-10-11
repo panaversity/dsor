@@ -4279,3 +4279,108 @@ the predictions written first. Six of eight held as predicted. Two did not:
    looked for the words "version 2". It now compares the whole message, word for word.
 
 Both new tests were run against their breaks and failed, then against the intact code and passed.
+
+## 136 · Step 22's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
+and choose your recommended options". The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent asks for PAY-904 at 2 a.m. In the morning `user_123` wants to know what
+became of that request: was it allowed, did it run, did it fail half way? Today the answer is in
+three places that were never meant to be read together: a decision in the audit log, an answer on
+an idempotency claim, and a payment row, if there is one. A request refused by the slip's limit
+leaves no row at all, and one whose handler threw leaves a claim with no answer. Nothing says
+"this request, and where it is now". And nothing could keep it there: step 23 will prepare a
+command now and release it later, and approvals will attach to it, and both need a record whose
+state moves only forward, and never out of a finished state. `DSOR-APR-01a` asks for the state
+machine of §26.2, `DSOR-APR-01b` for every move with its actor and its cause, `DSOR-APR-01c` that a
+finished proposal never moves again, and `DSOR-IDM-04` that a proposal runs at most once.
+
+1. **Two tables in DSoR's own store, and the history is the state.** `dsor.proposals`, one row
+   per command that reaches §21.8, with its payload as the text it was hashed from, its payload
+   hash, who asked and its key, never changed once written; and `dsor.proposal_moves`, every move
+   with its actor and its cause. A proposal's state is its last move. Rejected: a state column
+   changed in place, which needs a right to UPDATE and keeps two copies of the truth, the column and
+   the history, that could disagree; and the state on the audit record, which is never amended.
+2. **The whole map of §26.2 lives in the database, once**, as a table of allowed moves, and every
+   move in the history must be one of them (a foreign key). Rejected: a list in TypeScript, a second
+   copy that could drift from what the database allows. The moves into and out of compensation
+   wait for compensation, which this program does not have.
+3. **A move is one INSERT, and the database checks it.** §26.2 has no loops, so a proposal enters
+   each state at most once and leaves it at most once. The history says so in constraints: a move
+   out of a state needs a recorded move into it, and a state can be left only once. So two moves
+   from one state cannot both be written, and that is how a proposal runs at most once: only one
+   request can write the move from `READY` to `EXECUTING`. Constraints are checked as the table's
+   owner, so the application never needs to read the map, and start-up still lets it read only
+   the tenant tables.
+4. **A finished proposal cannot move, by the database.** The map has no move out of a finished
+   state, so a move out of one has nothing to point at and is refused. The application may add to
+   the two tables and nothing else: no UPDATE, no DELETE, and no right to change the map. Start-up
+   refuses one that may. This is the step's "done when". Rejected: a restrictive policy on a state
+   column, as step 20 keeps an answer, because there is no column to guard.
+5. **Created at §21.8, for commands only, after the claim.** A request refused before it, unknown
+   caller, wrong company, no permission, bad input, has nothing to propose and no company to keep
+   it in, and a replay is the earlier request's own answer. The path this step has: `PROPOSED` to
+   `DENIED` when a later stage refuses; `PROPOSED` to `READY` once the decision is recorded;
+   `READY` to `EXECUTING` just before the handler; then `COMMITTED` on a receipt, `FAILED` on a
+   refusal the handler gave, and `OUTCOME_UNKNOWN` when the handler threw, because nobody knows
+   whether it ran. A proposal that cannot be written means nothing runs:
+   `EVIDENCE_STORE_UNAVAILABLE`.
+6. **Actor and cause as the specification's example writes them.** The first move's actor is
+   whoever logged in, the agent's name when the agent asked; every move DSoR makes itself is
+   `dsor`'s. The cause is a short sentence: what was invoked, the decision, or the code the handler
+   answered.
+7. **The receipt names its proposal**, `proposal: dsor://org_456/proposal/prop_1`, as the result
+   envelope's schema has it, and the demo reads the history from the store. Rejected for now:
+   `proposal.get`, because who may read a proposal is "anyone authorized to read the target", a
+   rule of its own; it arrives with approvals, which need it.
+
+## 137 · What step 22's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date. Each choice is the
+recommendation, and each is open to reversal.
+
+One reviewer, read-only, with probes in its own copy. It found the map equal to §26.2's, the history
+one line (entered once, left once, a move out needing the move in), a finished proposal refused even
+to raw SQL with the application's rights, the rights narrow and asked at start-up, the tenants apart,
+the actor never taken from the request, and the payload the exact text that was hashed. It found:
+
+1. **A proposal could be left READY or EXECUTING for good, with the truth known** (measured). When
+   the move to EXECUTING failed, the caller was told "safe to send again", the claim was released,
+   and the proposal stayed READY, which has no way out but EXECUTING; a lost reply did the same, or
+   left EXECUTING a proposal whose handler never ran, and the retry made a second proposal. Now the
+   moves to READY and EXECUTING are one statement, both or neither, so a failure leaves PROPOSED or
+   EXECUTING and never READY. When the reply is lost, the door reads the proposal back: EXECUTING
+   means the move was its own, and the handler runs; PROPOSED means it was not, and the proposal is
+   DENIED and the claim released. Only when even that read fails is the proposal left as it is,
+   with the claim released, for reconciliation (step 37).
+2. **A careless handler's refusal was believed** (measured). A handler that made the payment and
+   then answered `TRANSACTION_FAILED` left its proposal FAILED, finished, though something happened.
+   The door already distrusted that answer for the claim. Now FAILED only for the codes that say
+   nothing was done, `CONFLICT`, `STALE_STATE`, `RESOURCE_NOT_FOUND` and `VALIDATION_FAILED`, the
+   four this program's handlers give; any other is `OUTCOME_UNKNOWN`.
+3. **Nothing tested the door finding its proposal in the wrong state.** A test now hands the door a
+   proposal that is already COMMITTED, and the handler is never called.
+
+**Written down, and not fixed:**
+
+- `DSOR-IDM-04`'s second clause, the proposal id as the key of its execution, is met in part: the
+  door runs a proposal at most once because READY is left once, and the id is not passed on to the
+  system that does the work, which waits for a connector that takes a key (`DSOR-IDM-03`).
+- One key is one proposal, except after a released claim: the retry makes a second, and the first
+  is finished as DENIED.
+- DENIED is the only finished state the map has out of PROPOSED, so a store that failed is recorded
+  as DENIED too; its cause says it was the store, not a rule.
+- The proposal numbers come from one sequence for every company, so a receipt's number tells a
+  company roughly how many commands all of them have made. Payment numbers have done the same since
+  step 17; one fix for both is a later step's.
+- A proposal whose creation committed with its reply lost is left PROPOSED, because the request
+  never learned its id; reconciliation is step 37's.
+
+**Broken on purpose (measured 2026-10-11, predictions written first).** Each of the three fixes was
+broken once, in a copy, on the whole suite: a lost reply never read back as the door's own, a
+`TRANSACTION_FAILED` believed, and a door that runs the handler when its proposal has moved. Each
+failed exactly its one test, as predicted. The README's three breaks were measured twice and the
+runs agreed: a way out of COMMITTED fails 4, a state left twice fails 1, and a handler run without
+the move to EXECUTING fails 9.

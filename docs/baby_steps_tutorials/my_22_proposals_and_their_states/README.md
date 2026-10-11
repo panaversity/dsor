@@ -1,70 +1,85 @@
-# Step 21 · Optimistic concurrency
+# Step 22 · Proposals and their states
 
-**New in this step:** a command says which version of the record it decided on. If the record has
-moved on since, DSoR refuses with `STALE_STATE`: read it again, and decide again.
+**New in this step:** every command becomes a *proposal*, a record with a state you can look up,
+like an order-tracking page. Its state moves only forward, and never out of a finished state.
 
 ## In plain words
 
-Every invoice and payment now has a *version*: a whole number that starts at 1 and goes up by one
-every time the record changes. A read says the version, beside everything else.
+When the agent asks DSoR to cancel a payment, DSoR now writes down a proposal first: what was
+asked, who asked, and the request's fingerprint. Then, as the request goes, it writes down each
+*move*. This is the demo's last cancel, which found the payment had moved on:
 
-A command that changes a record is *optimistic*: it assumes nobody else changed the record since
-the caller read it, and checks. The caller says the version it decided on:
-
-```ts
-await callOperation(agent, "payment.cancel", { payment, expected_version: 1 }, { idempotencyKey });
+```text
+            -> PROPOSED   accounts-payable-fte  payment.cancel@1 invoked
+  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:40
+  READY     -> EXECUTING  dsor                  handed to payment.cancel
+  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE
 ```
 
-DSoR makes the change only if the record is still at that version, and raises the version in the
-same database statement. If somebody else changed the record in between, the version has moved on,
-and the command is refused with `STALE_STATE`, retry `after_state_refresh`: the caller's decision
-was about a record that no longer exists. On the version it has now, the record's own rules answer:
-an invoice already issued is `CONFLICT`, as before.
+A proposal's *state* is its last move. Each move says who made it, the *actor*, and why, the
+*cause*. The first move is made by whoever logged in to ask; the rest are DSoR's own.
 
-`invoice.issue` and `payment.cancel` are optimistic. `payment.create` makes a new record, so nothing
-can have moved on, and its contract says `none`. Every command's contract says which it is.
+The states and the moves between them come from the specification's map, §26.2. This step uses the
+plain path:
 
-Where does the caller get a version? From what it read. `invoice.get` and `invoice.list` return
-it with each invoice. Payments have no read operation yet, so the agent takes a payment's version
-from the receipt that made or changed it: a new payment starts at 1, and each change adds one.
+- **DENIED**: a check after the proposal was written said no, for example the slip's limit.
+- **READY**, then **EXECUTING**: allowed, and handed to the code that carries it out.
+- **COMMITTED**: it was done. **FAILED**: the code refused, for example a stale version.
+- **OUTCOME_UNKNOWN**: the code crashed, or said itself that it does not know. Nobody knows whether
+  it ran, so DSoR does not pretend to.
 
-The version the caller sends is one of the request's arguments, `expected_version`, so it is part of
-the request's fingerprint from step 20. The same key with another version is another request, and
-gets `IDEMPOTENCY_CONFLICT`. A version is a whole number from 1 to 2147483647, the largest number the
-column holds. Anything else, or none, is refused `VALIDATION_FAILED` at §21.6, and that refusal is
-recorded as a DENY like any other.
+DENIED, COMMITTED and FAILED are *finished*: there is no move out of them on the map. The other
+states on the map, waiting for approval, approved, rejected, expired and the rest, arrive with
+approvals.
 
-`STALE_STATE` does not say what the version is now. If it did, an agent could retry with that number
-without reading the record again, and decide about a record it has never seen.
+The receipt names the proposal, `dsor://org_456/proposal/prop_1`. A request refused before the
+proposal is written, because nobody is logged in, the company is wrong, the caller lacks the
+permission or the arguments are bad, has none: there was nothing to propose. A query has none
+either: it changes nothing.
+
+Two rules make "never out of a finished state" true, and both live in the database, not in the
+code, so no handler, careless or not, can get round them:
+
+- **The map is a table.** Every move written must be one of its moves, and a finished state has
+  none out of it, so a move out of COMMITTED has nothing to point at and is refused.
+- **The history is one line.** The map has no loops, so a proposal enters each state once and
+  leaves it once, and a move out of a state needs the move into it. Two requests that both try to
+  move a proposal out of READY cannot both be written: a proposal runs at most once.
+
+The application, `dsor_runtime`, may add proposals and moves and read them, and do nothing else: no
+changing, no deleting, and no touching the map. Start-up refuses an application that may.
 
 ## Why it matters
 
-The agent reads PAY-902, a draft, and decides to cancel it. Before its request arrives, `user_123`
-cancels the same payment by hand. Without a version, the agent's command runs against a record that is
-no longer the one it read. Often the status saves it, because a cancelled payment is no longer a
-draft. But a record can change and still look the same: an invoice put back to draft looks like the
-draft the agent read, and without a version the agent would act on something nobody had looked at.
-With the version, the agent is told the record moved on, and reads it again.
+The agent asks for a payment at 2 a.m. In the morning `user_123` asks what became of it. Without
+proposals the answer is spread over three places that were never meant to be read together: a
+decision in the audit log, an answer on an idempotency claim, and a payment, if there is one. A
+request refused by the slip's limit leaves no payment. One whose code crashed leaves a claim with
+no answer. Nothing says "this request, and where it is now".
 
-## What changed since step 20
+And nothing would keep it there. Step 23 prepares a command now and releases it later, and approvals
+attach to a waiting command. Both need a record whose state moves only forward. A payment that is
+COMMITTED and could be moved back to EXECUTING is a payment that can run twice.
+
+## What changed since step 21
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_20_idempotency_keys ../my_21_optimistic_concurrency
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21_optimistic_concurrency ../my_22_proposals_and_their_states
 ```
 
 | File | What |
 | --- | --- |
-| `migrations/019_versions.sql` | new — a `version` column on invoices and payments, a whole number from 1, and the application may change it |
-| `src/invoice.ts`, `src/payment.ts` | every invoice and payment says its version; issuing and cancelling check the version in the same UPDATE that makes the change, raise it by one, and say `stale` when it has moved on |
-| `src/operations.ts` | §21.6 asks every optimistic command for `expected_version`; a stale record is `STALE_STATE`, retry `after_state_refresh`, and the message holds no number |
-| `src/registry.ts`, `src/contracts/*.json` | each command's contract says its strategy, `optimistic` or `none`, and the registry refuses one this program does not carry out |
-| `src/classification.ts` | the version is `internal`, like the status |
-| `src/database.ts` | start-up refuses an application that may set a new payment's version, or change an invoice's vendor or amount |
-| `src/main.ts` | the agent issues INV-1009 on the version it read, cancels on the version from its receipt, and two decide on the same payment |
-| `test/versions.test.ts` | new — the column, the strategies, the version checked and refused, and a change that raises it |
-| `test/versions.db.test.ts` | new — twenty cancels of one payment on one version, at once, over a pool |
-| the tests that send a command | each says the version it decided on |
+| `migrations/020_proposals.sql` | new — the map of moves, the proposals, written once, and their moves; the constraints that keep the map, and a history that is one line; the application may add and read, and nothing else |
+| `src/proposal.ts` | new — make a proposal with its first move, move it, move it through several states in one statement, read its moves, its state, and a company's list |
+| `src/operations.ts` | a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after; DENIED when a later stage refuses |
+| `src/pipeline.ts` | the stage is required by name, after the claim; the context carries the proposal and the payload's text |
+| `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
+| `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
+| `src/main.ts` | where each command of this run went, the stale cancel move by move, and a COMMITTED proposal refusing to move back |
+| `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, the race, the rights, and the door's moves on every path |
+| `test/proposals.db.test.ts` | new — twenty moves out of READY at once on a real server, and twenty out of COMMITTED |
+| the tests that pin the pipeline | ten stages now, and all 3,628,800 orderings walked one at a time |
 
 ## Run it
 
@@ -73,143 +88,162 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step comes after the fifty requests:
+The part that is this step comes after the two decisions on one payment:
 
 ```text
-Two decide on the same payment, on the same version:
+Where each command went: org_456's proposals from this run
 
-user_123              COMMITTED                dsor://org_456/payment/PAY-905  cancelled  atomic
-accounts-payable-fte  STALE_STATE              retry: after_state_refresh  PAY-905 has changed since the version the decision was made on; read it again and decide again
+  prop_1    invoice.issue@1   COMMITTED
+  prop_2    payment.create@1  COMMITTED
+  prop_3    payment.cancel@1  COMMITTED
+  prop_4    payment.cancel@1  FAILED
+  prop_5    payment.create@1  DENIED
+  prop_6    payment.create@1  COMMITTED
+  prop_7    payment.create@1  COMMITTED
+  prop_8    payment.create@1  COMMITTED
+  prop_9    payment.cancel@1  COMMITTED
+  prop_10   payment.cancel@1  FAILED
+
+prop_10, move by move:
+
+            -> PROPOSED   accounts-payable-fte  payment.cancel@1 invoked
+  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:40
+  READY     -> EXECUTING  dsor                  handed to payment.cancel
+  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE
+
+  prop_1 is COMMITTED. Moved back to EXECUTING: refused
 ```
 
-The agent makes PAY-905, a draft at version 1, and decides to cancel it. Before its request arrives,
-`user_123` cancels it by hand, on version 1, and the payment moves to version 2. The agent's cancel
-says version 1 and is refused. The retry says what to do: read again, then decide again.
+Ten proposals, though the demo sends more commands than that. The ones refused before §21.8 have
+none: cfo_100's issue, the agent after `user_123` lost the permission, the directory switched off
+and the stale directory, the key used for another amount, and every request with another company's
+address. prop_4 is the cancel of a payment already cancelled, `CONFLICT`; prop_5 is the payment over
+the slip's limit; PAY-903 is prop_6, sent twice with one key and one proposal; the fifty requests
+with one key are one proposal, prop_7. The numbers count up
+across runs, because the store keeps every run's.
 
-Earlier in the demo, the agent issues INV-1009 on the version it read, and cancels a payment on
-the version its receipt gave. In the printed log, the stale cancel is record 40, and it says
-`ALLOW`: the log records the decision, and the decision was to let the agent try. The record had
-moved on when the command ran.
+The last line asks, with the application's own rights, to move a finished proposal back. The
+database refuses.
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-three tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The fifty-five tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
-cp ../my_20_idempotency_keys/.env .env     # then dsor_step20 -> dsor_step21 in both lines
+cp ../my_21_optimistic_concurrency/.env .env     # then dsor_step21 -> dsor_step22 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first, made with one `CREATE DATABASE dsor_step21` through the owner
-login. `pnpm migrate` applies the nineteen migrations; on a server that already had step 20's
-eighteen, it applies 019. The new test sends twenty cancels of one payment, all on version 1, at
-once over a pool of twenty connections: one is made, nineteen are told the payment is stale. That
-proves one change and not two. It does not prove the version check on its own, because a cancel
-also asks for a draft. The unit tier proves that, with a draft decided on as the wrong version.
+The database has to exist first, made with one `CREATE DATABASE dsor_step22` through the owner
+login. `pnpm migrate` applies the twenty migrations; on a server that already had step 21's
+nineteen, it applies 020. The two new tests race on a real pool: twenty requests try to move one
+proposal out of READY at the same moment, and exactly one is written; twenty try to move a COMMITTED
+proposal anywhere, and none is.
 
 ## Break it
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `718` with `1 skipped`; in the repository it is `718 passed`.
+is not beside it, so the total reads `753` with `1 skipped`; in the repository it is `753 passed`.
 
-### Break 1 · the version is not in the UPDATE
+### Break 1 · the map gets a way out of COMMITTED
 
-The map's "break it". In `src/invoice.ts`, change `AND status = 'draft' AND version = $3` to
-`AND status = 'draft' AND $3::int > 0`, which still uses the number and no longer compares it.
-
-```text
- Tests  2 failed | 715 passed | 1 skipped (718)
-```
-
-Only two, and that is the lesson. In almost every stale case the record also left the draft state,
-so the status refuses it with or without the version. The two that fail are the cases where only
-the version can tell: a draft decided on as version 7, and a draft an owner put back to draft at
-version 3, decided on as version 1. Both are issued without the version, by a caller who never saw
-them as they are.
-
-### Break 2 · an issue does not raise the version
-
-In `src/invoice.ts`, change `SET status = 'issued', version = version + 1` to
-`SET status = 'issued'`.
+The map's "break it". In `migrations/020_proposals.sql`, add one more move to the map:
+`('COMMITTED', 'FAILED')`.
 
 ```text
- Tests  6 failed | 711 passed | 1 skipped (718)
+ Tests  4 failed | 748 passed | 1 skipped (753)
 ```
 
-The record changes and its version stays at 1, so a caller who decided on version 1 finds the
-version it expects and is told `CONFLICT`, "already issued", instead of `STALE_STATE`, "you decided
-on something that has changed". The tests of the version going up, of the stale invoice, of the
-race, and two older tests that issue an invoice twice and expect the second attempt, on the old
-version, to be stale.
+The map test, the two tests that try every move out of a COMMITTED proposal, and the one that writes
+the SQL itself: a payment that was made can now be recorded as one that failed. Notice what a way
+out of COMMITTED back to EXECUTING would have done: almost nothing, because a proposal enters each
+state once, and it has already been EXECUTING. The two rules guard each other.
 
-### Break 3 · §21.6 does not ask for the version
+### Break 2 · a state may be left twice
 
-In `src/operations.ts`, change `strategy === "optimistic") {` to `strategy === "pessimistic") {`.
+In `migrations/020_proposals.sql`, delete `UNIQUE (tenant, proposal, from_state),`.
 
 ```text
- Tests  1 failed | 716 passed | 1 skipped (718)
+ Tests  1 failed | 751 passed | 1 skipped (753)
 ```
 
-A command with no version is still refused, because the handler asks again. But it is refused after
-§21.11 has recorded `ALLOW`, so the log says a request was allowed that was never valid. The one test
-that reads the log after a missing version.
+Only one, and it is the test of two different moves out of one state at once: approved and rejected
+together, and both written. Two moves into the same state, the race out of READY, are still caught,
+by "entered once". No command waits for approval yet, which is why only one test reaches this.
+
+### Break 3 · the handler runs without the move to EXECUTING
+
+In `src/operations.ts`, delete the line ``["READY", "EXECUTING", `handed to ${contract.id}`],``.
+
+```text
+ Tests  9 failed | 743 passed | 1 skipped (753)
+```
+
+The handler runs on a proposal that is only READY, and its last move, out of EXECUTING, has nothing
+to point at, so every proposal the door carries out is left READY: the demo's list, and eight tests
+of the door's moves. The handler still ran, and the payment was still made. Nothing in the history
+says so.
 
 ## Build it yourself with Claude Code
 
-Copy `my_20_idempotency_keys` to a new folder and ask:
+Copy `my_21_optimistic_concurrency` to a new folder and ask:
 
-> Start step 21, optimistic concurrency. Before any code: show me two people deciding on the same
-> payment at once, and what happens to the second. Then ask me the step's decisions one at a time.
-> Then build it a piece at a time, red first, and break each piece on purpose.
+> Start step 22, proposals and their states. Before any code: show me a request at 2 a.m. and the
+> three places I would have to look in the morning to know what became of it. Then ask me the
+> step's decisions one at a time. Then build it a piece at a time, red first, and break each piece
+> on purpose.
 
 ## Check yourself
 
-1. The agent read INV-1009 at version 1. Before it issues it, `user_123` issues it by hand. What
-   does the agent's `invoice.issue` with `expected_version: 1` get, and what should it do next?
-2. Why is the version checked in the UPDATE itself, and not by reading the record first and
-   comparing?
-3. Why does `STALE_STATE` not say what the version is now?
-4. Why is `payment.create` `none` and not `optimistic`?
-5. A cancel with the version taken out of its UPDATE still passed the race of twenty. Why, and what
-   test catches it?
+1. The agent's payment is refused because it is over the slip's limit. Is there a proposal, and
+   what state is it in? And cfo_100's attempt to issue an invoice?
+2. Why is a proposal's state its last move, and not a column of its own?
+3. What stops a COMMITTED proposal from being moved back to EXECUTING, if a careless handler next
+   year writes the SQL itself?
+4. Two requests try to move one proposal out of READY at the same moment. What happens?
+5. A handler answers `TRANSACTION_FAILED`. Why is its proposal `OUTCOME_UNKNOWN` and not `FAILED`?
 
 <details>
 <summary>Answers</summary>
 
-1. `STALE_STATE`, retry `after_state_refresh`. It reads the invoice again, sees it is issued, and
-   decides again on what it sees now. Here there is nothing left to do.
-2. A read and then a write are two steps, and another change can land between them. In one UPDATE,
-   the check and the change happen together, and the database lets one of two changes through.
-3. With the number, an agent could send it straight back without reading the record, and decide
-   about a record it has never seen. Without it, the only way to a current version is a read.
-4. It makes a new record, so there is no earlier version anyone could have decided on.
-5. A cancel also asks for a draft, and only one of the twenty finds a draft. The status refuses the
-   other nineteen, with or without the version. A draft decided on as version 7, which the status
-   would let through, catches it.
+1. Yes, DENIED, with the cause `refused: LIMIT_EXCEEDED`: the limit is checked after §21.8. cfo_100
+   has none: the permission is checked before it, and there was nothing to propose.
+2. A column would be a second copy of the truth beside the history, and the two could disagree. It
+   would also need the right to change rows, which is the right to change a finished one.
+3. The database. The map has no move out of COMMITTED, so the move has nothing to point at; and the
+   application may not change or delete a move, so it cannot rewrite the history either.
+4. Exactly one is written. A state is left only once, and the database checks it. That is how a
+   proposal runs at most once.
+5. FAILED is finished, and says nothing happened. Only a refusal that proves it, such as `CONFLICT`
+   or `STALE_STATE`, is believed. A handler that made the payment and then answered
+   `TRANSACTION_FAILED` would otherwise leave a payment nobody looks for.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-CON-01a · L2]** Every command MUST declare its concurrency strategy.
-  ([§23](../../../specs/dsor/03-execution.md#23-concurrency))
-- **[DSOR-CON-01b · L2]** An optimistic command MUST return `STALE_STATE` when the resource version
-  differs from the version the decision was made on.
+- **[DSOR-APR-01a · L2]** Proposals MUST follow this state machine.
+  ([§26.2](../../../specs/dsor/03-execution.md#262-lifecycle))
+- **[DSOR-APR-01b · L2]** Every proposal transition MUST be recorded with its actor and its cause.
+- **[DSOR-APR-01c · L2]** A proposal MUST NOT leave a terminal state.
+- **[DSOR-IDM-04 · L2]** A proposal MUST be executed at most once; the proposal id is the
+  idempotency key of its execution. ([§22](../../../specs/dsor/03-execution.md#22-idempotency))
 
-**What this step leaves, said plainly.** Only the application raises the version. An owner who edits
-a row by hand leaves its version where it was, and a decision on the old version still matches. A
-row deleted and written again starts at 1, so an old decision on version 1 matches a different
-record. Every new record starts at 1, so `expected_version: 1` does not prove the caller read
-anything. The read label still has no `resource_version` beside its time, so `DSOR-FRS-01a` is met
-in part. Payments have no read operation, so the agent knows a payment's version only from a
-receipt. The strategies `pessimistic` and `connector_managed` are refused at load rather than
-carried out. The log records the decision and not what happened after, so a stale command shows as
-`ALLOW`. Two decisions in one company at the same moment race for the next place in its log, and
-the database tier races the change itself, not the log.
+**What this step leaves, said plainly.** The proposal id is not passed on to the system that does
+the work as its key: a proposal runs at most once because READY is left once, and passing a key on
+waits for a connector that takes one (`DSOR-IDM-03`), so `DSOR-IDM-04` is met in part. One key is
+one proposal, except after a released claim: the retry makes a second, and the first is DENIED.
+DENIED is the only finished state the map has out of PROPOSED, so a store that failed is DENIED too,
+with a cause that says it was the store. Proposal numbers, like payment numbers since step 17, come
+from one sequence for every company, so a number hints at how busy the others are. A proposal whose
+creation committed with its reply lost stays PROPOSED, and one whose last move could not be written
+stays EXECUTING: both wait for reconciliation, step 37. There is no `proposal.get` yet, because who
+may read a proposal is a rule of its own; the demo reads the store. Only one mode, `execute`, is
+built; `propose_only` and `validate_only` are step 23's, and the approval states step 26's.
 
 Everything earlier steps claimed still holds.
 
-**Next:** step 22, `proposals_and_their_states` — every attempt to run a command becomes a record
-with a state you can look up, like an order-tracking page.
+**Next:** step 23, `three_ways_to_call` — `execute` does it, `propose_only` prepares it for
+someone else to release, and `validate_only` is a dry run with no side effects at all.
