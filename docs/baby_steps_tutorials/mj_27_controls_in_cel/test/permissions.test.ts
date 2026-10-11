@@ -580,6 +580,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         lifetimes: registry.lifetimes,
         // And the shared registry's money policies.
         moneyPolicies: registry.moneyPolicies,
+        // NEW IN STEP 27: and the shared registry's controls.
+        controls: registry.controls,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

@@ -22,6 +22,7 @@ import {
 } from "./labels.ts";
 import type { Company } from "./company.ts";
 import { NO_DIRECTORIES, type Directories } from "./directory.ts";
+import { checkControls, readControls, type ControlBook, type ControlsSource } from "./controls.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
@@ -96,6 +97,9 @@ export type Registry = {
   // Each company's money policy, checked at start-up. Line ⑩ reads its rate source
   // and its max_rate_age when it converts (step 26's README, decision L3).
   moneyPolicies: MoneyPolicies;
+  // NEW IN STEP 27: each company's controls that line ⑩ evaluates, checked and tested at
+  // start-up (DSOR-CTL-01a, DSOR-CTL-02c; step 27's README, decisions D1 to D3).
+  controls: ControlBook;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -176,6 +180,10 @@ export function buildRegistry(
   // Each company's money policy. This step's own file, unless the caller gives
   // another (step 26's README, decision L3).
   policySource: PoliciesSource = readMoneyPolicies(),
+  // NEW IN STEP 27: each company's controls. This step's own file, unless the caller gives another,
+  // such as NO_CONTROLS for a test of an earlier step's idea (step 27's README, decisions D1 and
+  // D16).
+  controlSource: ControlsSource = readControls(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -274,6 +282,26 @@ export function buildRegistry(
     logins.values(),
   );
   problems.push(...policyProblems);
+  // NEW IN STEP 27: and each control, against control.schema.json, with a condition in CEL, on a
+  // command with the company's own code, and with every test passing before line ⑩ may evaluate
+  // it (DSOR-CTL-01a, DSOR-CTL-05, DSOR-CTL-02c; step 27's README, decisions D2 and D18).
+  const governable = (operation: string): string | undefined => {
+    const contract = contracts.get(operation);
+    // A contract that a file wrote and start-up refused is named once, with its own problem.
+    if (contract === undefined) return fileOf.has(operation) ? undefined : "which no contract has";
+    if (contract["kind"] !== "command") return "which is a query: a query waits for nobody";
+    if (ownWork.has(operation)) return "which is DSoR's own: it must answer at once";
+    if (!code.has(operation)) return "which has no code of the company's";
+    return undefined;
+  };
+  const riskOf = (operation: string): string => String(contracts.get(operation)?.["risk"] ?? "");
+  const { controls, problems: controlProblems } = checkControls(
+    controlSource,
+    governable,
+    riskOf,
+    moneyPolicies,
+  );
+  problems.push(...controlProblems);
 
   // Every contract's input schema must have a file, and compile. A contract
   // with no check for its input would let anything through line ⑥.
@@ -312,6 +340,7 @@ export function buildRegistry(
     brakes,
     lifetimes,
     moneyPolicies,
+    controls,
   };
 }
 

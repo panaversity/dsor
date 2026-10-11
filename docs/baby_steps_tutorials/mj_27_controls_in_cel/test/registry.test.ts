@@ -16,6 +16,7 @@ import {
   GOOD_ISSUE,
   SUPERVISOR,
   contract,
+  contractsOnly,
   handlers,
   log,
   refusal,
@@ -138,6 +139,8 @@ describe("C1: nothing can be called without a contract", () => {
       lifetimes: new Map(),
       // And no money policy, since this registry converts nothing.
       moneyPolicies: new Map(),
+      // NEW IN STEP 27: and no control, since this registry evaluates none.
+      controls: new Map(),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
@@ -297,9 +300,7 @@ describe("C7: a loaded contract is exactly what was written", () => {
     const inputs = [
       { file: "schema.schema.json", text: '{ "type": "object", "additionalProperties": false }' },
     ];
-    expect(
-      refusal(() => buildRegistry([{ file: "invoice.get.json", text }], {}, shippedRoles, inputs)),
-    ).toBe("");
+    expect(refusal(() => contractsOnly([{ file: "invoice.get.json", text }], {}, inputs))).toBe("");
   });
 });
 

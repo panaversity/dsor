@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildRegistry } from "../src/registry.ts";
 import {
   contract,
+  contractsOnly,
   handlers,
   refusal,
   shipped,
@@ -88,9 +89,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     // Only the input schema this one contract names, or start-up refuses
     // the others as unused. invoice.list's is one of them.
     const inputs = shippedInputs.filter((s) => s.file === "InvoiceGetRequest.schema.json");
-    expect(
-      buildRegistry([source(query)], {}, shippedRoles, inputs).contracts.has("invoice.get"),
-    ).toBe(true);
+    expect(contractsOnly([source(query)], {}, inputs).contracts.has("invoice.get")).toBe(true);
   });
 
   it("DSOR-OPR-02a: a query whose effect is not read is refused", async () => {
@@ -157,7 +156,7 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     // others as unused. invoice.list's is one of them.
     const inputs = shippedInputs.filter((s) => s.file === "InvoiceIssueRequest.schema.json");
     for (const good of [neverUndone, undoable]) {
-      const built = buildRegistry([source(good), ...withCancel], cancelCode, shippedRoles, inputs);
+      const built = contractsOnly([source(good), ...withCancel], cancelCode, inputs);
       expect(built.contracts.has("invoice.issue")).toBe(true);
     }
   });

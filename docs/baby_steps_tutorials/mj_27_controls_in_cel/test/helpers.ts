@@ -23,6 +23,7 @@ import {
   type Person,
 } from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
+import { NO_CONTROLS } from "../src/controls.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
 import {
@@ -153,6 +154,36 @@ export function source(data: unknown, file = "test.json"): ContractSource {
 export function shippedWith(changed: Record<string, unknown>): ContractSource[] {
   return shipped.map((s) =>
     (JSON.parse(s.text) as { id: string }).id === changed["id"] ? source(changed, s.file) : s,
+  );
+}
+
+// NEW IN STEP 27: a registry of only some contracts has no payment.create for the shipped control
+// to govern, and start-up refuses a control on an operation that no contract has. So a test of
+// contracts alone gives no controls (step 27's README, decisions D16 and D18).
+/** A registry of only these contracts, their code, and these input schemas, with no controls. */
+export function contractsOnly(
+  sources: ContractSource[],
+  code: Record<string, Handler>,
+  inputs?: Parameters<typeof buildRegistry>[3],
+): Registry {
+  const none = undefined;
+  return buildRegistry(
+    sources,
+    code,
+    shippedRoles,
+    inputs,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    NO_CONTROLS,
   );
 }
 

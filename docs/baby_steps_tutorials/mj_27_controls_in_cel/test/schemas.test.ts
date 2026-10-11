@@ -58,6 +58,16 @@ describe("the schema copies", () => {
     },
   );
 
+  // NEW IN STEP 27: the control's schema is a copy too. Start-up checks each control in
+  // controls.json against it (step 27's README, decision D1).
+  it.skipIf(!existsSync(ORIGINALS))(
+    "DSOR-CTL-01a: schemas/control.schema.json equals the specification's own",
+    () => {
+      const file = "control.schema.json";
+      expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
+    },
+  );
+
   // The proposal's schema, and the security context it names for its requester.
   // The tests check every proposal DSoR keeps against them (step 22's README, decision 11).
   it
