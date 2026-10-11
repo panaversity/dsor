@@ -34,6 +34,8 @@ export type Claimed =
   | { readonly kind: "in_flight" };
 
 /** A key: 1 to 128 letters, digits, dots, underscores, colons or dashes. */
+// not copied: the specification's idempotency_key is any string; this tutorial keeps keys to text
+// that can be written in a log line and a message without escaping (decision 131).
 export const KEY: RegExp = /^[A-Za-z0-9._:-]{1,128}$/;
 
 /** What a released claim holds: nothing ran, and the same request may take the key back. */
