@@ -542,6 +542,46 @@ console.log(
   `  ${fifty.length} answers, ${new Set(fifty.map((a) => JSON.stringify(a))).size} different, ${paymentsMade} ${paymentsMade === 1 ? "payment" : "payments"} made`,
 );
 
+// NEW IN STEP 21: two decide on one payment, on the same version. The agent makes a payment;
+// user_123 cancels it on the version it was made at; the agent, deciding on that same version, is
+// told it is stale: the payment it decided about no longer exists as it read it (decisions 133, 134).
+console.log();
+console.log("Two decide on the same payment, on the same version:");
+console.log();
+
+const contested = await callOperation(
+  AGENT,
+  "payment.create",
+  { invoice: INV_1009, amount: { value: "300.00", currency: "USD" } },
+  keyFor("contested"),
+);
+
+if (contested.kind === "result") {
+  const payment = String(contested.envelope.data["uri"]);
+  const readAt = Number(contested.envelope.data["version"]);
+
+  console.log(
+    show(
+      await callOperation(
+        SUPERVISOR,
+        "payment.cancel",
+        { payment, expected_version: readAt },
+        keyFor("contested-by-user_123"),
+      ),
+    ),
+  );
+  console.log(
+    show(
+      await callOperation(
+        AGENT,
+        "payment.cancel",
+        { payment, expected_version: readAt },
+        keyFor("contested-by-the-agent"),
+      ),
+    ),
+  );
+}
+
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
 // have lost, and they are the most interesting lines here.
