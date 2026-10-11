@@ -460,6 +460,34 @@ describe("the program a learner runs", () => {
     );
   });
 
+  it("DSOR-APR-01a: the demo lists where each command went, move by move, and a finished one refuses to move", () => {
+    // NEW IN STEP 22: every command past its key's claim is a proposal, and its state is its last
+    // move (decision 136). The numbers change from run to run; the operations and states do not.
+    const out = demo().report;
+    const listed = [...out.matchAll(/^ {2}prop_\d+ +(\S+) +(\S+)$/gm)].map(
+      (m) => `${m[1]} ${m[2]}`,
+    );
+
+    expect(out).toContain("Where each command went: org_456's proposals from this run");
+    expect(listed).toStrictEqual([
+      "invoice.issue@1 COMMITTED",
+      "payment.create@1 COMMITTED",
+      "payment.cancel@1 COMMITTED",
+      "payment.cancel@1 FAILED",
+      "payment.create@1 DENIED",
+      "payment.create@1 COMMITTED",
+      "payment.create@1 COMMITTED",
+      "payment.create@1 COMMITTED",
+      "payment.cancel@1 COMMITTED",
+      "payment.cancel@1 FAILED",
+    ]);
+    expect(out).toMatch(/ {12}-> PROPOSED {3}accounts-payable-fte {2}payment\.cancel@1 invoked\n/);
+    expect(out).toContain(
+      "  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE",
+    );
+    expect(out).toMatch(/ {2}prop_\d+ is COMMITTED\. Moved back to EXECUTING: refused\n/);
+  });
+
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
     // STEP 15: under each read, a line of its own: the mode, when, and from where. The time
     // changes every run, so the test pins its shape, not its value.

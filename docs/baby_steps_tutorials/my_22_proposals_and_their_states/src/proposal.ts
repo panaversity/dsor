@@ -183,3 +183,43 @@ export async function stateOf(tenant: string, id: string): Promise<ProposalState
 
   return rows[0]?.to_state;
 }
+
+/** One proposal, as a list of them shows it. */
+export interface ProposalSummary {
+  readonly id: string;
+  readonly operation: string;
+  readonly idempotencyKey: string;
+  readonly state: ProposalState;
+}
+
+/** A company's proposals, oldest first, each with where it is now. */
+export async function proposalsOf(tenant: string): Promise<readonly ProposalSummary[]> {
+  const { rows } = await theDatabase(tenant).query<{
+    id: string;
+    operation: string;
+    idempotency_key: string;
+    state: ProposalState;
+  }>(
+    `SELECT p.id, p.operation, p.idempotency_key, m.to_state AS state
+       FROM dsor.proposals p
+       JOIN dsor.proposal_moves m ON m.tenant = p.tenant AND m.proposal = p.id
+      WHERE p.tenant = $1
+        AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
+                         WHERE n.tenant = m.tenant AND n.proposal = m.proposal
+                           AND n.from_state = m.to_state)
+      -- In the order they were numbered: prop_9 before prop_10.
+      ORDER BY length(p.id), p.id`,
+    [tenant],
+  );
+
+  return Object.freeze(
+    rows.map((row) =>
+      Object.freeze({
+        id: row.id,
+        operation: row.operation,
+        idempotencyKey: row.idempotency_key,
+        state: row.state,
+      }),
+    ),
+  );
+}

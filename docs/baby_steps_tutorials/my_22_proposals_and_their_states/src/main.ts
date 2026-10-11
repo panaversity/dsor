@@ -14,6 +14,7 @@ import { paymentsOf } from "./payment.ts";
 import { getInvoice } from "./invoice.ts";
 import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
+import { moveProposal, movesOf, proposalsOf } from "./proposal.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -580,6 +581,53 @@ if (contested.kind === "result") {
       ),
     ),
   );
+}
+
+// NEW IN STEP 22: where each command went. Every command that got past its key's claim became a
+// proposal, and its state is its last move (decision 136). This run's, found by their keys, because
+// the store keeps every run's. A command refused before §21.8, by who asked or what it asked for,
+// has none: there was nothing to propose.
+console.log();
+console.log("Where each command went: org_456's proposals from this run");
+console.log();
+
+const ours = (await proposalsOf("org_456")).filter((p) => p.idempotencyKey.startsWith(`${run}-`));
+
+for (const proposal of ours) {
+  console.log(`  ${proposal.id.padEnd(9)} ${proposal.operation.padEnd(17)} ${proposal.state}`);
+}
+
+// The agent's stale cancel, the last command above, move by move: who made each move, and why.
+const last = ours.at(-1);
+
+if (last !== undefined) {
+  console.log();
+  console.log(`${last.id}, move by move:`);
+  console.log();
+
+  for (const move of await movesOf("org_456", last.id)) {
+    console.log(
+      `  ${(move.from ?? "").padEnd(9)} -> ${move.to.padEnd(10)} ${move.actor.padEnd(21)} ${move.cause}`,
+    );
+  }
+}
+
+// And a finished proposal refuses to move, whoever asks: the map has no move out of COMMITTED, and
+// the database refuses one (DSOR-APR-01c). This asks with the application's own rights.
+const finished = ours.find((p) => p.state === "COMMITTED");
+
+if (finished !== undefined) {
+  const tried = await moveProposal(
+    "org_456",
+    finished.id,
+    "COMMITTED",
+    "EXECUTING",
+    "dsor",
+    "run it again",
+  );
+
+  console.log();
+  console.log(`  ${finished.id} is COMMITTED. Moved back to EXECUTING: ${tried.kind}`);
 }
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
