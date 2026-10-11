@@ -119,6 +119,8 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.audit", "tenant"],
   // STEP 18: the permission slips, DSoR's second kind of paperwork (decision 127).
   ["dsor.delegations", "tenant"],
+  // NEW IN STEP 20: the idempotency keys, DSoR's third kind of paperwork (decision 131).
+  ["dsor.idempotency_keys", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -591,6 +593,33 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, and it may write a permission slip, itself, one ` +
         `SET ROLE away, or through a helper function. An agent's power comes from slips a person signed; the application reads ` +
         `them and writes none. See migrations/013_delegations.sql.`,
+    );
+  }
+
+  // NEW IN STEP 20: the idempotency keys. The application claims a key and writes its answer, and
+  // nothing else: a claim it could delete is a request it could run twice, one whose key or
+  // fingerprint it could change is a claim on another request, and one it could insert with its
+  // answer already written is an answer nobody gave (decision 131).
+  const { rows: keys } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs(
+      (role) => `has_column_privilege(${role}, 'dsor.idempotency_keys', 'answer', 'INSERT')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'claimed_at', 'INSERT')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'tenant', 'UPDATE')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'principal', 'UPDATE')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'operation', 'UPDATE')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'key', 'UPDATE')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'payload_hash', 'UPDATE')
+         OR has_table_privilege(${role}, 'dsor.idempotency_keys', 'DELETE')
+         OR has_table_privilege(${role}, 'dsor.idempotency_keys', 'TRUNCATE')`,
+    )} AS may`,
+  );
+
+  if (keys[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may delete an idempotency key, change whose it is ` +
+        `or which request it fingerprints, or claim one with its answer already written, itself, ` +
+        `one SET ROLE away, or through a helper function. The application claims a key and writes ` +
+        `its answer, and nothing else. See migrations/018_idempotency_keys.sql.`,
     );
   }
 }

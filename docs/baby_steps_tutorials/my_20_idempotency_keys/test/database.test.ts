@@ -286,12 +286,13 @@ describe("refuseIfItCanRewriteHistory", () => {
       "CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');",
     );
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now. STEP 18: five, with the slips.
+    // STEP 17: four of them now. STEP 18: five, with the slips. NEW IN STEP 20: six, with the keys.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
     );
     await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
+    await db.exec("CREATE TABLE dsor.idempotency_keys (tenant TEXT, key TEXT);");
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
     // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
@@ -526,6 +527,30 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.close();
   });
 
+  it("DSOR-IDM-01b: an application that may delete a claim, rewrite one, or write its answer in advance is refused at start-up", async () => {
+    // NEW IN STEP 20: a claim the application could delete is a request it could run twice (decision
+    // 131). Each right, one of them one SET ROLE away, and one through a helper's owner.
+    for (const grant of [
+      "GRANT DELETE ON dsor.idempotency_keys TO dsor_runtime",
+      "GRANT UPDATE (payload_hash) ON dsor.idempotency_keys TO dsor_runtime",
+      "GRANT INSERT (answer) ON dsor.idempotency_keys TO dsor_runtime",
+      "CREATE ROLE forgetter; GRANT TRUNCATE ON dsor.idempotency_keys TO forgetter; GRANT forgetter TO dsor_runtime WITH INHERIT FALSE",
+      "CREATE ROLE helper; GRANT DELETE ON dsor.idempotency_keys TO helper; CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'; ALTER FUNCTION public.a_helper() OWNER TO helper",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(
+        /idempotency key/,
+      );
+
+      await db.close();
+    }
+  });
+
   it("DSOR-DEL-01a: an application that may write a permission slip is refused at start-up", async () => {
     // STEP 18: a slip the application could write is a slip it could sign for itself
     // (decision 127). Each right, and one of them one SET ROLE away.
@@ -559,12 +584,13 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now. STEP 18: five, with the slips.
+    // STEP 17: four of them now. STEP 18: five, with the slips. NEW IN STEP 20: six, with the keys.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
     );
     await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
+    await db.exec("CREATE TABLE dsor.idempotency_keys (tenant TEXT, key TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");
