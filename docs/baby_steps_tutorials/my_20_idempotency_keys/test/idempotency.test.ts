@@ -30,6 +30,8 @@ import {
   PIPELINE,
 } from "../src/operations.ts";
 import { createPayment, paymentsOf } from "../src/payment.ts";
+import { aDirectory, useDirectory } from "../src/directory.ts";
+import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -58,6 +60,8 @@ beforeEach(async () => {
 
 afterEach(() => {
   resetClock();
+  useDirectory("org_456", undefined);
+  useDirectory("org_789", undefined);
 });
 
 function refusalOf(answer: OperationAnswer): ErrorEnvelope {
@@ -435,5 +439,126 @@ describe("a claim on a request that never ran", () => {
 
     expect((await pay("store-was-down")).kind).toBe("result");
     expect(await paymentsFor1009()).toBe(1);
+  });
+
+  it("DSOR-IDM-01d: after a release, a different request with the key is refused, not handed the claim", async () => {
+    // Decision 132: the retake asks for the same fingerprint. Without it, a 9,999.00 request took the
+    // released claim and ran, and the first request was then handed its receipt.
+    setClock(() => "not a time");
+    await pay("released");
+    resetClock();
+
+    const other = { ...PAYMENT, amount: { value: "9999.00", currency: "USD" } };
+
+    expect(refusalOf(await pay("released", other)).code).toBe("IDEMPOTENCY_CONFLICT");
+    expect((await pay("released")).kind).toBe("result");
+    expect(await paymentsFor1009()).toBe(1);
+  });
+
+  it("DSOR-IDM-01b: fifty retries after a release take the claim back once, and make one payment", async () => {
+    // Decision 131's "of two retries only one does", which no test said.
+    setClock(() => "not a time");
+    await pay("fifty-retries");
+    resetClock();
+
+    const answers = await Promise.all(Array.from({ length: 50 }, () => pay("fifty-retries")));
+
+    expect(await paymentsFor1009()).toBe(1);
+    expect(new Set(answers.map((a) => JSON.stringify(a))).size).toBe(1);
+  });
+});
+
+describe("a replay is a request like any other", () => {
+  it("DSOR-IDM-01c: a replay after the slip expired, was revoked, or its signer lost the permission is refused like any request (§22)", async () => {
+    // Decision 132: the key is claimed at §21.7, after §21.3 to §21.5, so a replay meets the
+    // authority as it is now. A door that looked the key up first would pass every other test.
+    const first = await pay("before-the-change");
+
+    expect(first.kind).toBe("result");
+
+    const changes: readonly (readonly [string, () => Promise<unknown>, string])[] = [
+      [
+        "expired",
+        () =>
+          asTheOwner(() =>
+            db.exec(
+              "UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'",
+            ),
+          ),
+        "DELEGATION_EXPIRED",
+      ],
+      [
+        "revoked",
+        () =>
+          asTheOwner(() =>
+            db.exec("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'"),
+          ),
+        "DELEGATION_REQUIRED",
+      ],
+      [
+        "the signer lost payment:create",
+        async () =>
+          useDirectory(
+            "org_456",
+            aDirectory("org_456", { holds: { user_123: ["invoice:read", "payment:cancel"] } }),
+          ),
+        "AUTHORIZATION_DENIED",
+      ],
+    ];
+
+    for (const [what, change, code] of changes) {
+      await resetTheStory();
+      useDirectory("org_456", undefined);
+      await change();
+
+      expect(refusalOf(await pay("before-the-change")).code, what).toBe(code);
+    }
+
+    await resetTheStory();
+    useDirectory("org_456", undefined);
+
+    expect(JSON.stringify(await pay("before-the-change"))).toBe(JSON.stringify(first));
+  });
+});
+
+describe("the same key in two companies", () => {
+  it("DSOR-TEN-02a: is two claims, and two payments", async () => {
+    // The agent works for both companies. In org_789 nobody in the story can sign, so the test
+    // makes a signer there, as the cross-tenant suite does.
+    await asTheOwner(() =>
+      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
+               VALUES ('org_789', 'del_789', 'user_789', 'accounts-payable-fte', ARRAY['payment:create'],
+                       ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`),
+    );
+    useDirectory("org_789", aDirectory("org_789", { holds: { user_789: ["payment:create"] } }));
+
+    const before789 = (await paymentsOf("org_789")).length;
+
+    expect((await pay("same-in-both")).kind).toBe("result");
+    expect(
+      (
+        await pay(
+          "same-in-both",
+          { invoice: "dsor://org_789/invoice/INV-1009", amount: PAYMENT.amount },
+          { loggedInAs: "accounts-payable-fte", tenant: "org_789" },
+        )
+      ).kind,
+    ).toBe("result");
+    expect(await paymentsFor1009()).toBe(1);
+    expect((await paymentsOf("org_789")).length).toBe(before789 + 1);
+  });
+});
+
+describe("the registry", () => {
+  it("DSOR-IDM-01a: refuses a command whose contract says it needs no key", () => {
+    const saysNo = contractsFromDisk().map((c) =>
+      c.expectedId === "payment.create"
+        ? { ...c, document: { ...(c.document as object), idempotency: { required: false } } }
+        : c,
+    );
+
+    expect(() => loadRegistry(saysNo)).toThrow(
+      /payment\.create is a command, and its contract says it needs no idempotency key/,
+    );
   });
 });
