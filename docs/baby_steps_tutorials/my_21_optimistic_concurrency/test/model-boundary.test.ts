@@ -56,6 +56,7 @@ describe("one invoice", () => {
         "tenantId",
         "uri",
         "vendor",
+        "version", // NEW IN STEP 21
       ]);
       // The supervisor's, whole: a review found a human silently losing `vendor` was caught by
       // nothing in this file.
@@ -66,6 +67,7 @@ describe("one invoice", () => {
         vendor: "VENDOR-44",
         amount: { value: "31400.00", currency: "USD" },
         status: "issued",
+        version: 1, // NEW IN STEP 21
       });
     }
   });
@@ -108,7 +110,8 @@ describe("a page", () => {
       expect(theirs.page.invoices.every((i) => !("amount" in i))).toBe(true);
       expect(theirs.redactions).toStrictEqual([AMOUNT_WITHHELD]);
       expect(theirs.classification).toBe("internal");
-      expect(ours.page.invoices.every((i) => Object.keys(i).length === 6)).toBe(true);
+      // NEW IN STEP 21: seven, with the version.
+      expect(ours.page.invoices.every((i) => Object.keys(i).length === 7)).toBe(true);
       expect(ours.redactions).toStrictEqual([]);
       expect(ours.classification).toBe("confidential");
     }

@@ -39,6 +39,11 @@ export interface Invoice {
   readonly vendor: string;
   readonly amount: Money;
   readonly status: InvoiceStatus;
+  /**
+   * NEW IN STEP 21: raised by one with every change. A caller says the version it decided on, and
+   * a record that has moved on refuses the command (DSOR-CON-01b, decision 133).
+   */
+  readonly version: number;
 }
 
 /** A row of `public.invoices`, as the driver hands it back. */
@@ -49,6 +54,7 @@ interface Row {
   readonly amount_value: string;
   readonly amount_currency: string;
   readonly status: InvoiceStatus;
+  readonly version: number;
 }
 
 // `amount_value::text`. The column is NUMERIC, and a number is exactly what an amount must never be
@@ -58,7 +64,7 @@ interface Row {
 // against a driver's type parser changing under us, and because money() is the only thing that ever
 // builds an amount and it wants text.
 const COLUMNS =
-  "tenant_id, id, vendor, amount_value::text AS amount_value, amount_currency, status";
+  "tenant_id, id, vendor, amount_value::text AS amount_value, amount_currency, status, version";
 
 function fromRow(row: Row): Invoice {
   return Object.freeze({
@@ -68,6 +74,7 @@ function fromRow(row: Row): Invoice {
     vendor: row.vendor,
     amount: money(row.amount_value, row.amount_currency),
     status: row.status,
+    version: row.version,
   });
 }
 
@@ -121,7 +128,7 @@ export type IssueOutcome =
  */
 export async function issueInvoice(tenantId: string, id: string): Promise<IssueOutcome> {
   const { rows } = await theDatabase(tenantId).query<Row>(
-    `UPDATE public.invoices SET status = 'issued'
+    `UPDATE public.invoices SET status = 'issued', version = version + 1
      WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
      RETURNING ${COLUMNS}`,
     [tenantId, id],
@@ -142,7 +149,7 @@ export async function issueInvoice(tenantId: string, id: string): Promise<IssueO
   // application cannot insert — would make "not a draft" a lie. One more try settles it either way.
   if (current.status === "draft") {
     const { rows: again } = await theDatabase(tenantId).query<Row>(
-      `UPDATE public.invoices SET status = 'issued'
+      `UPDATE public.invoices SET status = 'issued', version = version + 1
        WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
        RETURNING ${COLUMNS}`,
       [tenantId, id],

@@ -25,6 +25,8 @@ export interface Payment {
   readonly invoice: string;
   readonly amount: Money;
   readonly status: PaymentStatus;
+  /** NEW IN STEP 21: raised by one with every change (decision 133). */
+  readonly version: number;
 }
 
 interface Row {
@@ -35,10 +37,11 @@ interface Row {
   readonly amount_value: string;
   readonly amount_currency: string;
   readonly status: PaymentStatus;
+  readonly version: number;
 }
 
 const COLUMNS =
-  "tenant_id, id, vendor, invoice, amount_value::text AS amount_value, amount_currency, status";
+  "tenant_id, id, vendor, invoice, amount_value::text AS amount_value, amount_currency, status, version";
 
 function fromRow(row: Row): Payment {
   return Object.freeze({
@@ -49,6 +52,7 @@ function fromRow(row: Row): Payment {
     invoice: formatUri({ tenant: row.tenant_id, entity: "invoice", id: row.invoice }),
     amount: money(row.amount_value, row.amount_currency),
     status: row.status,
+    version: row.version,
   });
 }
 
@@ -110,7 +114,7 @@ export type CancelOutcome =
  */
 export async function cancelPayment(tenantId: string, id: string): Promise<CancelOutcome> {
   const { rows } = await theDatabase(tenantId).query<Row>(
-    `UPDATE public.payments SET status = 'cancelled'
+    `UPDATE public.payments SET status = 'cancelled', version = version + 1
      WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
      RETURNING ${COLUMNS}`,
     [tenantId, id],

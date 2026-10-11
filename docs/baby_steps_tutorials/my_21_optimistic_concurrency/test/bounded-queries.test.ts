@@ -154,6 +154,7 @@ describe("the second layer: the door", () => {
       vendor,
       amount: Object.freeze({ value: "1.00", currency: "USD" }),
       status: "issued" as const,
+      version: 1,
     });
 
   it("DSOR-QRY-01: a handler that returns more rows than a page is refused by the door, as the program's own error", async () => {
