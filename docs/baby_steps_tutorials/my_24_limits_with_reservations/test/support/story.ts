@@ -26,6 +26,9 @@ export function storyStatements(): readonly string[] {
   return [
     // STEP 22: the proposals and their moves, moves first because they point at them.
     "DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')",
+    // NEW IN STEP 24: and the reservations and the day totals, which point at proposals and slips.
+    "DELETE FROM dsor.reservations WHERE tenant IN ('org_456', 'org_789')",
+    "DELETE FROM dsor.day_totals WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.proposals WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM public.payments WHERE tenant_id IN ('org_456', 'org_789')",
     // STEP 18: and the slips, which a test may revoke or expire.
@@ -36,6 +39,8 @@ export function storyStatements(): readonly string[] {
     rowsFrom("014_delegations_running_example.sql"),
     // STEP 19: and del_100's mode, which 015's default does not give it (decision 130).
     rowsFrom("017_del_100_may_be_used_unattended.sql"),
+    // NEW IN STEP 24: and its daily limit.
+    rowsFrom("023_del_100_has_a_daily_limit.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",
     // STEP 22: and so a test's first proposal is prop_1.

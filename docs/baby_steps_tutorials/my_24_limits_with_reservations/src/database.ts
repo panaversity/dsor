@@ -124,6 +124,9 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   // STEP 22: the proposals and their moves, DSoR's fourth kind of paperwork (decision 136).
   ["dsor.proposals", "tenant"],
   ["dsor.proposal_moves", "tenant"],
+  // NEW IN STEP 24: the day totals and the reservations against them (decision 140).
+  ["dsor.day_totals", "tenant"],
+  ["dsor.reservations", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -367,7 +370,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               -- STEP 20: and the claims' second policy, which keeps an answer once written,
               -- as PostgreSQL writes it back, measured (decision 132).
               CASE WHEN rel = to_regclass('dsor.idempotency_keys')
-                   THEN '((answer IS NULL) OR (answer = ''{"released": true}''::text))' END
+                   THEN '((answer IS NULL) OR (answer = ''{"released": true}''::text))'
+                   -- NEW IN STEP 24: and the reservations', which keep a settled one (decision 140).
+                   WHEN rel = to_regclass('dsor.reservations')
+                   THEN '(state = ''held''::text)' END
          FROM tenant_table
      )
      SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
@@ -648,6 +654,38 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `or which request it fingerprints, or claim one with its answer already written, itself, ` +
         `one SET ROLE away, or through a helper function. The application claims a key and writes ` +
         `its answer, and nothing else. See migrations/018_idempotency_keys.sql.`,
+    );
+  }
+
+  // NEW IN STEP 24: the day totals and the reservations. The application books and settles, and
+  // nothing else: a total or a reservation it could delete is room it could make, a reservation it
+  // could write already settled, or for another amount than it booked, is a total that no longer
+  // adds up, and a day it could choose is a limit it could move (decision 140). Releasing a settled
+  // reservation is the second policy's to refuse, and the lock check above asks for it.
+  const { rows: booked } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        ...["dsor.day_totals", "dsor.reservations"].flatMap((table) => [
+          `has_table_privilege(${role}, '${table}', 'DELETE')`,
+          `has_table_privilege(${role}, '${table}', 'TRUNCATE')`,
+        ]),
+        ...["tenant", "delegation", "day", "currency"].map(
+          (column) => `has_column_privilege(${role}, 'dsor.day_totals', '${column}', 'UPDATE')`,
+        ),
+        ...["tenant", "proposal", "delegation", "day", "amount_value", "amount_currency"].map(
+          (column) => `has_column_privilege(${role}, 'dsor.reservations', '${column}', 'UPDATE')`,
+        ),
+        `has_column_privilege(${role}, 'dsor.reservations', 'state', 'INSERT')`,
+      ].join(" OR "),
+    )} AS may`,
+  );
+
+  if (booked[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may delete a day's total or a reservation, ` +
+        `change what a reservation is for, write one already settled, or move a total to another ` +
+        `day, itself, one SET ROLE away, or through a helper function. The application books and ` +
+        `settles, and nothing else. See migrations/022_daily_limits_and_reservations.sql.`,
     );
   }
 

@@ -32,6 +32,8 @@ export interface Delegation {
   readonly modes: readonly IdentityMode[];
   /** Up to how much one payment may be, or `undefined` for no limit. */
   readonly perTransactionLimit: Money | undefined;
+  /** NEW IN STEP 24: up to how much in one day, or `undefined` for no daily limit (decision 140). */
+  readonly dailyLimit: Money | undefined;
   readonly status: DelegationStatus;
   /**
    * When it stops counting, as an exact ISO time, or `undefined` when the store's value is no time
@@ -50,6 +52,8 @@ interface Row {
   readonly modes: readonly IdentityMode[];
   readonly limit_value: string | null;
   readonly limit_currency: string | null;
+  readonly daily_value: string | null;
+  readonly daily_currency: string | null;
   readonly status: DelegationStatus;
   /** NULL for `infinity` and `-infinity`, which `to_char` cannot write as a date. */
   readonly expires_at: string | null;
@@ -76,6 +80,7 @@ export async function activeSlipFor(tenant: string, delegate: string): Promise<S
     `SELECT tenant, id, delegator, delegate, permissions, modes,
             per_transaction_limit_value::text AS limit_value,
             per_transaction_limit_currency AS limit_currency,
+            daily_limit_value::text AS daily_value, daily_limit_currency AS daily_currency,
             status, to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at
        FROM dsor.delegations
       WHERE tenant = $1 AND delegate = $2 AND status = 'active'
@@ -108,6 +113,10 @@ export async function activeSlipFor(tenant: string, delegate: string): Promise<S
       row.limit_value === null || row.limit_currency === null
         ? undefined
         : money(row.limit_value, row.limit_currency),
+    dailyLimit:
+      row.daily_value === null || row.daily_currency === null
+        ? undefined
+        : money(row.daily_value, row.daily_currency),
     status: row.status,
     expiresAt: row.expires_at ?? undefined,
   });

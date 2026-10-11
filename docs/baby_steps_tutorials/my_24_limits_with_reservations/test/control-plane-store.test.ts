@@ -52,11 +52,14 @@ describe("DSoR's own store", () => {
     // their moves and the map of moves, its fourth (decision 136).
     expect(await tablesIn("dsor")).toStrictEqual([
       "audit",
+      // NEW IN STEP 24: the day totals and the reservations (decision 140).
+      "day_totals",
       "delegations",
       "idempotency_keys",
       "proposal_map",
       "proposal_moves",
       "proposals",
+      "reservations",
     ]);
     expect(await tablesIn("public")).not.toContain("audit");
   });
