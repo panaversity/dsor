@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@marcbachmann/cel-js':
+        specifier: 8.0.0
+        version: 8.0.0
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -32,6 +35,11 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
+
+  '@marcbachmann/cel-js@8.0.0':
+    resolution: {integrity: sha512-oaTrAziGr3zDLFiMt/yLU3nZuRMawyWQB5X1a0I7s9eGy3JYzX9l8ZXXHyMd64nzbeVFZTewuUShwsZQdK6UCA==}
+    engines: {node: '>=20.19.0'}
+    hasBin: true
 
   '@oxc-project/types@0.150.0':
     resolution: {integrity: sha512-rDS5/31E9HfPl/CIzGrn0DOlvBbXFseQ5URJ9sYMfstbKLD/c6Gm9vmRzRGDdAXyOIL4zmO37lc9RIwYqVruZw==}
@@ -648,6 +656,8 @@ packages:
 snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
+
+  '@marcbachmann/cel-js@8.0.0': {}
 
   '@oxc-project/types@0.150.0': {}
 
