@@ -81,6 +81,12 @@ export async function reserve(
  * on the day; released gives it back. One statement, so the reservation and the total never
  * disagree. A settled reservation is never changed again: the restrictive policy of migration 022
  * hides it from every UPDATE, so this does nothing to it.
+ *
+ * NEW IN STEP 24, decision 141: and only when the proposal's history holds the move that says so,
+ * asked in the same statement: committed with a move into COMMITTED, released with one into FAILED
+ * or DENIED. A review measured a reservation released for a proposal whose move to FAILED was never
+ * written, left EXECUTING, whose end nobody knew. Without the move, the reservation stays held, and
+ * its amount counts against the day: the limit errs toward refusing.
  */
 export async function settleReservation(
   tenant: string,
@@ -91,12 +97,14 @@ export async function settleReservation(
     `WITH settled AS (
        UPDATE dsor.reservations SET state = $3
         WHERE tenant = $1 AND proposal = $2 AND state = 'held'
+          AND EXISTS (SELECT 1 FROM dsor.proposal_moves m
+                       WHERE m.tenant = $1 AND m.proposal = $2 AND m.to_state = ANY ($4::text[]))
         RETURNING delegation, day, amount_value
      )
      UPDATE dsor.day_totals t SET used_value = t.used_value - s.amount_value
        FROM settled s
       WHERE $3 = 'released' AND t.tenant = $1 AND t.delegation = s.delegation AND t.day = s.day`,
-    [tenant, proposal, to],
+    [tenant, proposal, to, to === "committed" ? ["COMMITTED"] : ["FAILED", "DENIED"]],
   );
 }
 

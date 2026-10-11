@@ -2373,7 +2373,8 @@ export function makeDoor(
       await finishTheProposal(tenant, proposal, ended, cause);
 
       // NEW IN STEP 24: and its reservation follows it: kept on the day when it was made, given
-      // back when the handler said nothing was done, and held while nobody knows (decision 140).
+      // back when the handler said nothing was done, and held while nobody knows (decision 140);
+      // and only once the move is written, which the store asks of the history (decision 141).
       if (ended !== "OUTCOME_UNKNOWN") {
         await settleQuietly(tenant, proposal, ended === "COMMITTED" ? "committed" : "released");
       }

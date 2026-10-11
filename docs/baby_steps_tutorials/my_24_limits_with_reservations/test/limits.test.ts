@@ -14,9 +14,10 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { overPGlite } from "../src/database.ts";
 import { activeSlipFor } from "../src/delegation.ts";
+import { refusal } from "../src/envelopes.ts";
 import { money } from "../src/money.ts";
 import { callOperation, PIPELINE } from "../src/operations.ts";
-import { propose, proposalsOf } from "../src/proposal.ts";
+import { moveProposalThrough, propose, proposalsOf } from "../src/proposal.ts";
 import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, resetTheStory } from "./support/database.ts";
@@ -115,13 +116,36 @@ describe("reserving against the day", () => {
   });
 });
 
+/**
+ * NEW IN STEP 24, decision 141: a proposal walked to how it ended, as the door would move it, so that
+ * its reservation may be settled: a reservation follows its proposal's history.
+ */
+async function endedAs(id: string, end: "COMMITTED" | "FAILED"): Promise<void> {
+  const moved = await moveProposalThrough(
+    "org_456",
+    id,
+    [
+      ["PROPOSED", "READY", "allowed"],
+      ["READY", "EXECUTING", "handed over"],
+      ["EXECUTING", end, `ended ${end}`],
+    ],
+    "dsor",
+  );
+
+  if (moved.kind !== "moved") {
+    throw new Error(`could not walk ${id} to ${end}`);
+  }
+}
+
 describe("settling a reservation", () => {
   it("DSOR-DEL-06d: a released reservation gives its amount back to the day", async () => {
     const id = await aProposal();
 
     await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await endedAs(id, "FAILED");
     await settleReservation("org_456", id, "released");
 
+    expect(await reservationStates()).toStrictEqual(["released"]);
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
 
@@ -129,8 +153,10 @@ describe("settling a reservation", () => {
     const id = await aProposal();
 
     await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await endedAs(id, "COMMITTED");
     await settleReservation("org_456", id, "committed");
 
+    expect(await reservationStates()).toStrictEqual(["committed"]);
     expect(await usedToday("org_456", "del_100")).toBe("40000.00");
   });
 
@@ -138,6 +164,7 @@ describe("settling a reservation", () => {
     const id = await aProposal();
 
     await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await endedAs(id, "COMMITTED");
     await settleReservation("org_456", id, "committed");
     await settleReservation("org_456", id, "released");
 
@@ -300,5 +327,101 @@ describe("the agent's payments against del_100's day", () => {
 
     expect(await reservationStates()).toStrictEqual(["released"]);
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+});
+
+// NEW IN STEP 24, decision 141: what the review measured.
+
+/** The store, failing every write of moves into the states named, until it is put back. */
+function failingMovesInto(states: readonly string[]): () => void {
+  const connection = overPGlite(db);
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      if (
+        sql.includes("INSERT INTO dsor.proposal_moves") &&
+        states.some((state) => params?.includes(state))
+      ) {
+        throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+      }
+
+      return connection.query<T>(sql, params, tenant);
+    },
+  });
+
+  return () => useDatabase(connection);
+}
+
+describe("a reservation follows its proposal's history, as written", () => {
+  it("DSOR-DEL-06c: a refusal whose move to FAILED is not written leaves the proposal EXECUTING, and its reservation held", async () => {
+    // Decision 141: it was released anyway, and the day showed 0.00 for a proposal nobody knew the
+    // end of.
+    const putBack = failingMovesInto(["FAILED"]);
+
+    try {
+      await callOperation(
+        AGENT,
+        "payment.create",
+        {
+          invoice: "dsor://org_456/invoice/INV-9999",
+          amount: { value: "40000.00", currency: "USD" },
+        },
+        { idempotencyKey: "pay-failed-unwritten" },
+      );
+    } finally {
+      putBack();
+    }
+
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["EXECUTING"]);
+    expect(await reservationStates()).toStrictEqual(["held"]);
+    expect(await usedToday("org_456", "del_100")).toBe("40000.00");
+  });
+
+  it("DSOR-DEL-06c: a payment whose move to COMMITTED is not written keeps its reservation held, not committed", async () => {
+    const putBack = failingMovesInto(["COMMITTED"]);
+
+    try {
+      await pay("40000.00");
+    } finally {
+      putBack();
+    }
+
+    expect(await reservationStates()).toStrictEqual(["held"]);
+  });
+
+  it("DSOR-DEL-06c: a handler that answers a failure which does not say nothing was done keeps its reservation held", async () => {
+    // Decision 141: the guard was reached only by a handler that threw.
+    const door = makeDoor(PIPELINE, {
+      "payment.create": (_args, _contract, askedBy, _tenant, _hash, requestId) => ({
+        kind: "error",
+        askedBy,
+        envelope: refusal("TRANSACTION_FAILED", "the bank hung up", requestId, askedBy),
+      }),
+    });
+
+    await door(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "40000.00", currency: "USD" },
+      },
+      { idempotencyKey: "pay-transaction-failed" },
+    );
+
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["OUTCOME_UNKNOWN"]);
+    expect(await reservationStates()).toStrictEqual(["held"]);
+  });
+
+  it("DSOR-DEL-06d: a reservation is released only when its proposal's history says FAILED or DENIED", async () => {
+    // At the store: a proposal still PROPOSED has its reservation released by nobody.
+    const id = await aProposal();
+
+    await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await settleReservation("org_456", id, "released");
+    await settleReservation("org_456", id, "committed");
+
+    expect(await usedToday("org_456", "del_100")).toBe("40000.00");
+    expect(await reservationStates()).toStrictEqual(["held"]);
   });
 });
