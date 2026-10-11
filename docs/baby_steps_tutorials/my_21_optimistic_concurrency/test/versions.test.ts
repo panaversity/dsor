@@ -12,6 +12,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { paymentsOf } from "../src/payment.ts";
@@ -99,7 +100,8 @@ describe("a command says the version it decided on", () => {
       ["invoice.issue", { invoice: INV_1009 }],
       ["payment.cancel", { payment: PAY_901 }],
     ] as const) {
-      for (const given of [undefined, 0, -1, 1.5, "1", null]) {
+      // Decision 134: and nothing past PostgreSQL's largest INTEGER, which made the door throw.
+      for (const given of [undefined, 0, -1, 1.5, "1", null, 2 ** 31, 1e300]) {
         const answer = await callOperation(SUPERVISOR, id, { ...args, expected_version: given });
 
         expect(answer.kind === "error" && answer.envelope.code, `${id} ${String(given)}`).toBe(
@@ -109,6 +111,29 @@ describe("a command says the version it decided on", () => {
     }
 
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+  });
+
+  it("DSOR-CON-01b: a missing version is refused at §21.6, and recorded as the DENY it is", async () => {
+    // Decision 134: the handlers asked by hand, after §21.11 had recorded ALLOW.
+    await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+
+    const decisions = (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+    expect(decisions.map((r) => `${r.authorization} ${r.result}`)).toStrictEqual([
+      "DENY VALIDATION_FAILED",
+    ]);
+  });
+
+  it("DSOR-CON-01a: a strategy this program does not carry out stops it at load", () => {
+    for (const strategy of ["pessimistic", "connector_managed"]) {
+      const declared = contractsFromDisk().map((c) =>
+        c.expectedId === "payment.cancel"
+          ? { ...c, document: { ...(c.document as object), concurrency: { strategy } } }
+          : c,
+      );
+
+      expect(() => loadRegistry(declared), strategy).toThrow(/payment\.cancel/);
+    }
   });
 
   it("DSOR-CON-01b: an invoice that moved on since the version read is STALE_STATE, and is not touched", async () => {

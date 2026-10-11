@@ -34,6 +34,8 @@ export interface OperationContract {
   readonly risk: { readonly level: "low" | "medium" | "high" | "critical" };
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
+  /** NEW IN STEP 21: how a command handles a record that moved on (DSOR-CON-01a, decision 133). */
+  readonly concurrency?: { readonly strategy: string };
   /**
    * STEP 18: whether an agent needs a permission slip to call it. The schema requires it of a
    * command, and the registry refuses a command that says no (decision 128).
@@ -223,6 +225,17 @@ export function loadRegistry(
     if (contract.kind === "command" && contract.idempotency?.required !== true) {
       throw new TypeError(
         `${contract.id} is a command, and its contract says it needs no idempotency key; every command needs one`,
+      );
+    }
+
+    // NEW IN STEP 21: a strategy this program carries out. `optimistic` is checked at §21.6 and in
+    // the change itself, `none` needs nothing; `pessimistic` and `connector_managed` are carried out
+    // by nothing here, so a contract that declared one would promise what no code does (decision 134).
+    const strategy = contract.concurrency?.strategy;
+
+    if (contract.kind === "command" && strategy !== "optimistic" && strategy !== "none") {
+      throw new TypeError(
+        `${contract.id} declares the concurrency strategy ${String(strategy)}, which this program does not carry out`,
       );
     }
 

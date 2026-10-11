@@ -163,7 +163,9 @@ const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : 
 function expectedVersionFrom(args: Readonly<Record<string, unknown>>): number | string {
   const given = Object.hasOwn(args, "expected_version") ? args["expected_version"] : undefined;
 
-  return typeof given === "number" && Number.isInteger(given) && given >= 1
+  // Decision 134: and no larger than PostgreSQL's largest INTEGER, the column's type. A larger one
+  // failed inside the statement, and the door threw.
+  return typeof given === "number" && Number.isInteger(given) && given >= 1 && given <= 2147483647
     ? given
     : "expected_version, the version the decision was made on, must be a whole number from 1";
 }
@@ -1071,6 +1073,17 @@ const validateTheInput: Stage["run"] = (context) => {
           `${value} is not an address in your company`,
           context.requestId,
         );
+      }
+    }
+
+    // NEW IN STEP 21: an optimistic command's version, asked here, at §21.6, of every command whose
+    // contract says optimistic: a fact about the arguments, decided before §21.11 records anything.
+    // The handlers asked by hand, after ALLOW was recorded (decision 134).
+    if (context.contract?.concurrency?.strategy === "optimistic") {
+      const expected = expectedVersionFrom(given);
+
+      if (typeof expected === "string") {
+        return refuse(askedBy, "VALIDATION_FAILED", expected, context.requestId);
       }
     }
 
