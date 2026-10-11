@@ -220,6 +220,9 @@ const REQUIRED: readonly string[] = Object.freeze([
   // before authorize, which asks the power it computes. Required by name, so a pipeline without it
   // is refused at load, not discovered on an agent's first command (decision 127).
   "resolve the delegation",
+  // NEW IN STEP 25: after the delegation, as §21 numbers it, and before anything is authorized, so
+  // a stopped agent's command goes no further (DSOR-OPS-01a, decision 142).
+  "check the operational status",
   "authorize",
   "validate the input",
   // STEP 20: after the input is validated, because the claim keeps the payload hash, and

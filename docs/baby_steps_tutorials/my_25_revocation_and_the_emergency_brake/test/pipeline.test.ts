@@ -56,6 +56,8 @@ describe("the pipeline", () => {
       "resolve the operation",
       // STEP 18: §21 step 3, after the operation, because it asks whether that is a command.
       "resolve the delegation",
+      // NEW IN STEP 25: §21 step 4, the brake, for commands only.
+      "check the operational status",
       "authorize",
       "validate the input",
       // STEP 20: §21 step 7, the idempotency claim, for commands only.
@@ -72,7 +74,8 @@ describe("the pipeline", () => {
   // 4, the operational status, is still missing; after the claim at 7 come the proposal, the
   // preconditions and the rest of the controls. STEP 22: the proposal is 8.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 7, 8, 10, 11]);
+    // NEW IN STEP 25: and 4, the operational status, no longer missing.
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 4, 5, 6, 7, 8, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -104,7 +107,9 @@ describe("the pipeline", () => {
       const commandOnly =
         stage.name === "check the slip's limit" ||
         stage.name === "claim the idempotency key" ||
-        stage.name === "create the proposal";
+        stage.name === "create the proposal" ||
+        // NEW IN STEP 25: and the brake, which stops an agent's state changes, never its reads.
+        stage.name === "check the operational status";
 
       expect(applies(stage, "query"), stage.name).toBe(!commandOnly);
       expect(applies(stage, "command"), stage.name).toBe(true);
@@ -134,6 +139,7 @@ describe("the pipeline", () => {
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"), // STEP 18
+      fake(4, "check the operational status", "command"), // NEW IN STEP 25
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"), // STEP 20
@@ -143,7 +149,7 @@ describe("the pipeline", () => {
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(10);
+    expect(assertPipeline(whole)).toBe(11);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -506,6 +512,7 @@ describe("the pipeline", () => {
       fake(3, "claim the idempotency key", "command"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"), // STEP 18: required, so present
+      fake(4, "check the operational status", "command"), // NEW IN STEP 25: required, so present
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(8, "create the proposal", "command"), // STEP 22: required, so present
@@ -521,6 +528,7 @@ describe("the pipeline", () => {
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"),
+      fake(4, "check the operational status", "command"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
@@ -529,7 +537,7 @@ describe("the pipeline", () => {
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(10);
+    expect(assertPipeline(inOrder)).toBe(11);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -687,6 +695,9 @@ describe("the pipeline", () => {
         // STEP 22: and the proposal, which fills something only for a command. Its own
         // test is below the claim's.
         "create the proposal",
+        // NEW IN STEP 25: and the brake, which only refuses, and only an agent's commands: a no-op
+        // one lets a stopped agent through, which brake.test.ts catches.
+        "check the operational status",
       ]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
@@ -908,45 +919,98 @@ describe("the pipeline", () => {
   //
   // Step 08 made the list five long, so this now walks 120 orderings instead of 24, and still
   // exactly one is accepted. The test cost nothing to strengthen: the number came from the list.
-  it("DSOR-EXE-01a: of every ordering of the real stages, exactly one is accepted", () => {
-    // STEP 22: one ordering at a time, from a generator, counted and not kept. Ten stages
-    // have 3,628,800 orderings, and holding them all as arrays, as this test did up to nine, would
-    // take ten times the memory for no more proof (decision 136).
-    function* orderings<T>(xs: readonly T[]): Generator<T[]> {
-      if (xs.length <= 1) {
-        yield [...xs];
+  // NEW IN STEP 25: a proof by its parts, where the whole walk was. All 39,916,800 orderings of eleven
+  // stages took 65 seconds, measured, and twelve would take thirteen minutes (decision 142). Every
+  // ordering but the real one differs from it in some pair of stages, and the check refuses a list
+  // by the order of its required names; so these are what a wrong ordering looks like, every one
+  // that differs by one swap or by one stage moved, and a hundred thousand drawn at random.
+  const refusedOrNot = (list: readonly Stage[]): boolean => {
+    try {
+      assertPipeline(list);
 
-        return;
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
+  it("DSOR-EXE-01a: every real stage is required by name, in the list's own order", () => {
+    // What makes the parts below a proof: no stage can sit anywhere it likes.
+    const required = PIPELINE.map((stage) => stage.name);
+
+    for (const name of required) {
+      expect(() => assertPipeline(PIPELINE.filter((stage) => stage.name !== name)), name).toThrow(
+        name,
+      );
+    }
+  });
+
+  it("DSOR-EXE-01a: every ordering with two stages swapped is refused", () => {
+    let swaps = 0;
+
+    for (let i = 0; i < PIPELINE.length; i += 1) {
+      for (let j = i + 1; j < PIPELINE.length; j += 1) {
+        const list = [...PIPELINE];
+
+        [list[i], list[j]] = [list[j] as Stage, list[i] as Stage];
+        swaps += 1;
+
+        expect(refusedOrNot(list), `${PIPELINE[i]?.name} <-> ${PIPELINE[j]?.name}`).toBe(true);
       }
+    }
 
-      for (const [i, x] of xs.entries()) {
-        for (const rest of orderings([...xs.slice(0, i), ...xs.slice(i + 1)])) {
-          yield [x, ...rest];
+    expect(swaps).toBe((PIPELINE.length * (PIPELINE.length - 1)) / 2);
+  });
+
+  it("DSOR-EXE-01a: every ordering with one stage moved elsewhere is refused", () => {
+    for (let from = 0; from < PIPELINE.length; from += 1) {
+      for (let to = 0; to < PIPELINE.length; to += 1) {
+        if (from === to) {
+          continue;
         }
+
+        const list = PIPELINE.filter((_, i) => i !== from);
+
+        list.splice(to, 0, PIPELINE[from] as Stage);
+
+        // Moving a stage one place along is a swap of two neighbours, already above, and the same
+        // list; every other move is new here.
+        const same = list.every((stage, i) => stage === PIPELINE[i]);
+
+        expect(same || refusedOrNot(list), `${PIPELINE[from]?.name} to place ${to}`).toBe(true);
+      }
+    }
+  });
+
+  it("DSOR-EXE-01a: of a hundred thousand orderings drawn at random, only the real one is accepted", () => {
+    // A fixed seed, so a failure names an ordering that comes back the next run.
+    let seed = 20261011;
+    const next = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+
+      return seed / 2147483648;
+    };
+    let accepted = 0;
+
+    for (let n = 0; n < 100000; n += 1) {
+      const list = [...PIPELINE];
+
+      for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(next() * (i + 1));
+
+        [list[i], list[j]] = [list[j] as Stage, list[i] as Stage];
+      }
+
+      const real = list.every((stage, i) => stage === PIPELINE[i]);
+
+      if (!refusedOrNot(list)) {
+        accepted += 1;
+        expect(real, list.map((stage) => stage.name).join(" then ")).toBe(true);
       }
     }
 
-    let all = 0;
-    const accepted: Stage[][] = [];
-
-    for (const list of orderings(PIPELINE)) {
-      all += 1;
-
-      try {
-        assertPipeline(list);
-        accepted.push(list);
-      } catch {
-        // Refused, as all but one must be.
-      }
-    }
-
-    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. STEP 20: nine,
-    // so 362880. STEP 22: ten, so 3628800. Still exactly one is accepted: the delegation
-    // stage is required after the operation, the claim after the input, the proposal after the
-    // claim, and the limit after the proposal.
-    expect(all).toBe(3628800);
-    expect(accepted).toHaveLength(1);
-    expect(accepted[0]?.map((stage) => stage.name)).toEqual(PIPELINE.map((stage) => stage.name));
+    expect(accepted).toBeLessThanOrEqual(1);
+    expect(refusedOrNot(PIPELINE)).toBe(false);
   });
 
   // The two swaps that matter most, named, so a failure says which guarantee went — and which guard

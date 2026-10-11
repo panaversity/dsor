@@ -71,6 +71,8 @@ import { audit, OutcomeUnknown } from "./audit.ts";
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
 // STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
 import { reserve, settleReservation, usedToday } from "./reservation.ts";
+// NEW IN STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
+import { whatStops } from "./controls.ts";
 import { money } from "./money.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
@@ -903,6 +905,61 @@ const resolveTheOperation: Stage["run"] = (context) => {
   }
 
   return carryOn({ ...context, contract });
+};
+
+/**
+ * NEW IN STEP 25: §21.4 — is a brake on? (DSOR-OPS-01a, decision 142).
+ *
+ * For a command from an agent: a suspension of that agent in this company, or a freeze of every
+ * agent in it, refuses it `AGENT_SUSPENDED`, retry `never`, because only a person lifts it. A
+ * person's commands, and every query, go on: §18 stops an agent's state changes, and reading is not
+ * one. The brake is read from DSoR's own store, which the agent cannot reach, so stopping it does not
+ * depend on it agreeing to stop. A brake that cannot be read is no answer, and nothing runs.
+ *
+ * The refusal says who pulled the brake, and never why: the reason is a person's words about the
+ * agent, for people.
+ */
+const checkTheOperationalStatus: Stage["run"] = async (context) => {
+  const { principal, tenant } = context;
+
+  if (principal === undefined || tenant === undefined) {
+    return refuse(
+      principal?.id ?? "(nobody)",
+      "INTERNAL_ERROR",
+      "the pipeline reached §21.4 without a principal and a tenant",
+      context.requestId,
+    );
+  }
+
+  if (principal.type !== "agent") {
+    return carryOn(context);
+  }
+
+  let brake;
+
+  try {
+    brake = await whatStops(tenant, principal.id);
+  } catch {
+    return refuse(
+      principal.id,
+      "EVIDENCE_STORE_UNAVAILABLE",
+      `whether ${principal.id} may act in ${tenant} could not be read; nothing was done`,
+      context.requestId,
+    );
+  }
+
+  if (brake === undefined) {
+    return carryOn(context);
+  }
+
+  return refuse(
+    principal.id,
+    "AGENT_SUSPENDED",
+    brake.agent === undefined
+      ? `every agent in ${tenant} is stopped, by ${brake.imposedBy}; a person must lift it`
+      : `${principal.id} is suspended in ${tenant}, by ${brake.imposedBy}; a person must lift it`,
+    context.requestId,
+  );
 };
 
 /** §21.5 — may you? Deny by default: the permission comes from the operation's own contract. */
@@ -1766,6 +1823,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(null, "resolve the operation", "both", resolveTheOperation),
   // STEP 18. §21.3: whose slip an agent's command runs under, and what it may do there.
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
+  // NEW IN STEP 25. §21.4: a brake on the agent stops its commands (decision 142).
+  stage(4, "check the operational status", "command", checkTheOperationalStatus),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
   // STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.

@@ -7,9 +7,13 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
 import { liftTheBrake, pullTheBrake, whatStops } from "../src/controls.ts";
+import { paymentsOf } from "../src/payment.ts";
+import { proposalsOf } from "../src/proposal.ts";
 import { theDatabase } from "../src/store.ts";
 import { aDatabase, resetTheStory } from "./support/database.ts";
+import { callOperation } from "./support/door.ts";
 
 const AGENT = "accounts-payable-fte";
 
@@ -102,5 +106,67 @@ describe("the brake, in DSoR's own store", () => {
     );
 
     expect(rows).toStrictEqual([]);
+  });
+});
+
+// NEW IN STEP 25, piece 2: §21.4 asks the brake, for every command.
+
+const AGENT_LOGIN = { loggedInAs: AGENT, tenant: "org_456" };
+const SUPERVISOR = { loggedInAs: "user_123" };
+const PAY = {
+  invoice: "dsor://org_456/invoice/INV-1009",
+  amount: { value: "2500.00", currency: "USD" },
+};
+
+describe("§21.4: a stopped agent changes nothing", () => {
+  it("DSOR-OPS-01a: a suspended agent's command is AGENT_SUSPENDED, recorded, and nothing is made", async () => {
+    await pullTheBrake("org_456", AGENT, "user_123", "paying the wrong invoices");
+
+    const before = await paymentsOf("org_456");
+    const answer = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("never");
+    expect(await paymentsOf("org_456")).toStrictEqual(before);
+    expect((await theLog("org_456")).at(-1)?.result).toBe("AGENT_SUSPENDED");
+    // Before §21.8: there was nothing to propose.
+    expect(await proposalsOf("org_456")).toStrictEqual([]);
+  });
+
+  it("DSOR-OPS-01a: a suspended agent can still read: reading changes nothing", async () => {
+    await pullTheBrake("org_456", AGENT, "user_123", "paying the wrong invoices");
+
+    const answer = await callOperation(AGENT_LOGIN, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
+
+    expect(answer.kind).toBe("data");
+  });
+
+  it("DSOR-OPS-01a: a freeze stops every agent's command, and no person's", async () => {
+    await pullTheBrake("org_456", undefined, "cfo_100", "month-end close");
+
+    const agents = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+    const supervisors = await callOperation(SUPERVISOR, "payment.create", PAY);
+
+    expect(agents.kind === "error" && agents.envelope.code).toBe("AGENT_SUSPENDED");
+    expect(supervisors.kind).toBe("result");
+  });
+
+  it("DSOR-OPS-01a: once the brake is lifted, the agent's command goes through", async () => {
+    await pullTheBrake("org_456", AGENT, "user_123", "checking");
+    await liftTheBrake("org_456", AGENT, "user_123");
+
+    expect((await callOperation(AGENT_LOGIN, "payment.create", PAY)).kind).toBe("result");
+  });
+
+  it("DSOR-OPS-01a: the refusal says who pulled the brake, and never why", async () => {
+    // The reason is a person's words about the agent, for people; the agent is told it is stopped.
+    await pullTheBrake("org_456", AGENT, "user_123", "a secret about the agent");
+
+    const answer = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(/user_123/);
+    expect(answer.kind === "error" && answer.envelope.message).not.toMatch(/secret/);
   });
 });
