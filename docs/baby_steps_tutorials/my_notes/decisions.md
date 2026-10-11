@@ -4063,3 +4063,50 @@ beside the README's six, which were measured twice:
 | a slip that names no modes allows unattended | 1 | 1, that test |
 | a slip may be signed by its own agent | 1 | 1, that test |
 | the story forgets del_100's mode | dozens | 32: every agent command refused |
+
+## 131 · Step 20's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent sends `payment.create` for INV-1009, 2,500.00 USD. DSoR makes PAY-905 and
+the answer is lost on the way back, as answers are on real networks. The agent did what any client
+does: it sent the request again, and DSoR made PAY-906. One payment was asked for and two exist.
+Nothing in a request tells DSoR that it has seen it before. `DSOR-IDM-01a` asks that every command
+carry an idempotency key, a name the caller chooses for one logical request; `DSOR-IDM-01b` that the
+key be claimed by one atomic insert, scoped to the company, the caller, the operation and the key,
+that keeps the request's fingerprint; `DSOR-IDM-01c` that the same key and the same request get the
+recorded answer with nothing run again; and `DSOR-IDM-01d` that the same key with a different request
+be refused with `IDEMPOTENCY_CONFLICT`.
+
+1. **The key travels beside the arguments, never inside them.** The door takes a fourth thing, the
+   request's options, and the key is there. So the payload hash stays the fingerprint of what was
+   asked, and the same request sent twice has the same fingerprint whatever its key. A command
+   without a key, or with one that is not 1 to 128 letters, digits, dots, underscores, colons or
+   dashes, is refused with `VALIDATION_FAILED`. Queries change nothing and need none. Rejected: an
+   argument named `idempotency_key`, which the MCP binding uses, and which would put the key inside
+   the fingerprint it is meant to sit beside.
+2. **Claimed at §21.7, by one INSERT**, into `dsor.idempotency_keys`, DSoR's third kind of
+   paperwork, under the same lock as every tenant table. Its primary key is the company, the caller
+   who logged in, the operation and the key, so of fifty requests that arrive together exactly one
+   gets in: the database picks the winner. Rejected: checking for the key and then inserting it, which
+   is the mistake §22 names, and this step's "break it".
+3. **The answer is kept on the claim.** Every answer to a claimed request, a receipt or a refusal
+   after §21.7, is written there, and the same key with the same request gets it again: nothing runs,
+   and no second decision is recorded, because none was made. A recorded refusal is given again like
+   any other answer (§22).
+4. **The same request still being carried out is waited for**, up to two seconds, and then given its
+   answer. If it has none by then, the caller is told `OUTCOME_UNKNOWN`: the first request has not
+   finished, and nobody knows yet how it will. Rejected: answering at once, which would tell
+   forty-nine of fifty callers something nobody yet knows.
+5. **An answer that invites the same key again releases the claim.** `EVIDENCE_STORE_UNAVAILABLE`
+   says nothing ran and the same request may be sent again; the claim is released, and the next
+   request with that key and that request takes it back, in one UPDATE, so of two retries only one
+   does. Rejected: keeping that answer, which would make "send it again" a lie.
+6. **The contracts say a key is required.** The three commands said `idempotency: { required: false
+   }`; they say `true`, and the registry refuses a command that says otherwise, as decision 128 did
+   for the slip.
+7. **Proved with real parallel requests.** Fifty at once, in the unit tier, where one database
+   connection takes them in turn, and in the database tier, on a real server, over a pool of many
+   connections, where they truly race.
