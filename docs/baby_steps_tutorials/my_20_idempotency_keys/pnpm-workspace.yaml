@@ -1,0 +1,13 @@
+# This file makes the step a project of its own. With it, `pnpm install` inside this
+# folder installs only this step, even though the folder sits inside the dsor repository.
+packages:
+  - .
+
+# Do not install a package version published in the last 48 hours. If a bad release
+# slips out, this gives the world two days to notice before it reaches your computer.
+minimumReleaseAge: 2880
+
+# Packages may not run install scripts unless listed here. esbuild (used by vitest) does
+# not need its script, so the answer is an explicit "no".
+allowBuilds:
+  esbuild: false
