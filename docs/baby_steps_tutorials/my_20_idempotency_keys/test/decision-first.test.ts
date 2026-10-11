@@ -485,7 +485,9 @@ describe("the decision is written down first", () => {
       // STEP 18: the delegation stage, §21.3, now runs first after the operation, and is the one
       // that finds no contract.
       ["resolve the operation", /reached the delegation without/],
-      ["validate the input", /reached §21.11 without/],
+      // NEW IN STEP 20: and the claim, §21.7, now runs next after the input, and is the one that
+      // finds no payload hash.
+      ["validate the input", /reached the idempotency claim without/],
     ] as const) {
       await fresh();
 

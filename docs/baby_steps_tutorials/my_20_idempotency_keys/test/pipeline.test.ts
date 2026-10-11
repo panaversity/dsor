@@ -58,6 +58,8 @@ describe("the pipeline", () => {
       "resolve the delegation",
       "authorize",
       "validate the input",
+      // NEW IN STEP 20: §21 step 7, the idempotency claim, for commands only.
+      "claim the idempotency key",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
       "record the decision",
@@ -68,7 +70,7 @@ describe("the pipeline", () => {
   // roadmap: 1 to 5 is missing the tenant, the delegation and the operational status; after 6 come
   // the idempotency claim, the proposal, the preconditions and the controls.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 10, 11]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 7, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -92,10 +94,12 @@ describe("the pipeline", () => {
     expect(applies(only, "command")).toBe(true);
   });
 
-  it("DSOR-EXE-01b: every stage in the real list applies to both kinds, but the slip's limit", () => {
+  it("DSOR-EXE-01b: every stage in the real list applies to both kinds, but the slip's limit and the key's claim", () => {
     // STEP 18: the first command-only stage. A query carries no payment to compare with a limit.
+    // NEW IN STEP 20: and the claim, because a query changes nothing, so asking it twice is harmless.
     for (const stage of PIPELINE) {
-      const commandOnly = stage.name === "check the slip's limit";
+      const commandOnly =
+        stage.name === "check the slip's limit" || stage.name === "claim the idempotency key";
 
       expect(applies(stage, "query"), stage.name).toBe(!commandOnly);
       expect(applies(stage, "command"), stage.name).toBe(true);
@@ -127,12 +131,13 @@ describe("the pipeline", () => {
       fake(3, "resolve the delegation"), // STEP 18
       fake(5, "authorize"),
       fake(6, "validate the input"),
+      fake(7, "claim the idempotency key", "command"), // NEW IN STEP 20
       fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(8);
+    expect(assertPipeline(whole)).toBe(9);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -560,6 +565,29 @@ describe("the pipeline", () => {
     );
   });
 
+  it("DSOR-IDM-01b: with the claim stage doing nothing, a command is INTERNAL_ERROR, never run unclaimed", async () => {
+    // NEW IN STEP 20: a command that reaches §21.11 with no claim could run twice for one retried
+    // request, so the recording stage refuses it, as it refuses one with no payload hash.
+    const list = PIPELINE.map((stage) =>
+      stage.name === "claim the idempotency key"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+    const answer = await makeDoor(list)({ loggedInAs: "user_123" }, "payment.cancel", {
+      payment: "dsor://org_456/payment/PAY-901",
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.envelope.message).toMatch(/without a claimed idempotency key/);
+  });
+
   it("DSOR-DEL-10: with the delegation stage forgetting the signer's time, an agent's command is INTERNAL_ERROR, never recorded as direct", async () => {
     // STEP 19: a review replaced §21.3 with one that found the slip and the power and left
     // out the time, and the command ran, recorded as the agent acting for itself (decision 130).
@@ -610,12 +638,14 @@ describe("the pipeline", () => {
       // STEP 18: and `resolve the delegation`, for these two callers: it fills something only for an
       // agent's command, and these are people reading. Its own test is below.
       //
-      // And `check the slip's limit`, which only refuses, and only commands.
+      // And `check the slip's limit`, which only refuses, and only commands. NEW IN STEP 20: and
+      // `claim the idempotency key`, which fills something only for a command. Its own test is below.
       const fillsNothing = new Set([
         "authorize",
         "record the decision",
         "resolve the delegation",
         "check the slip's limit",
+        "claim the idempotency key",
       ]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
@@ -835,9 +865,10 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. Still exactly one is
-    // accepted: the delegation stage is required after the operation, and the limit after the input.
-    expect(all).toHaveLength(40320);
+    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. NEW IN STEP 20: nine,
+    // so 362880. Still exactly one is accepted: the delegation stage is required after the
+    // operation, the claim after the input, and the limit after the claim.
+    expect(all).toHaveLength(362880);
 
     const accepted = all.filter((list) => {
       try {

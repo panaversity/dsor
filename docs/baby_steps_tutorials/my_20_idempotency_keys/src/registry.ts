@@ -218,6 +218,14 @@ export function loadRegistry(
       );
     }
 
+    // NEW IN STEP 20: and every command needs an idempotency key (DSOR-IDM-01a). The three said
+    // `required: false` while step 20 refuses a command without one (decision 131).
+    if (contract.kind === "command" && contract.idempotency?.required !== true) {
+      throw new TypeError(
+        `${contract.id} is a command, and its contract says it needs no idempotency key; every command needs one`,
+      );
+    }
+
     const undos = contract.execution?.compensated_by ?? [];
 
     // And it names something, once, and not itself. The schema takes an empty list, so a

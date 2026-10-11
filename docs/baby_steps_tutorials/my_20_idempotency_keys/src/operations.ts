@@ -64,6 +64,8 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
 import { audit, OutcomeUnknown } from "./audit.ts";
+// NEW IN STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
+import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
 // the program here, before any caller gets a turn. That is DSOR-OPR-02a.
@@ -1028,6 +1030,107 @@ const validateTheInput: Stage["run"] = (context) => {
   }
 };
 
+/** NEW IN STEP 20: how long a request waits for the same request, still being carried out, to finish. */
+const IN_FLIGHT_WAIT_MS = 2000;
+
+/** NEW IN STEP 20: and how often it looks while it waits. */
+const IN_FLIGHT_LOOK_MS = 25;
+
+/**
+ * NEW IN STEP 20: §21.7 — claim the idempotency key (DSOR-IDM-01a to 01d, decision 131).
+ *
+ * For a command only: a query changes nothing, so asking it twice is harmless. After the input is
+ * validated, because the claim keeps the payload hash, the fingerprint of what was asked; before
+ * anything is decided that a retry must not decide twice. One INSERT claims the key
+ * (`idempotency.ts`). The same request answered before is given that answer, and the walk ends:
+ * nothing runs, and no second decision is recorded, because none is made. The same request still
+ * being carried out is waited for. The same key with a different request is refused.
+ */
+const claimTheKey: Stage["run"] = async (context) => {
+  const { principal, tenant, contract, payloadHash } = context;
+
+  if (
+    principal === undefined ||
+    tenant === undefined ||
+    contract === undefined ||
+    payloadHash === undefined
+  ) {
+    return refuse(
+      principal?.id ?? "(nobody)",
+      "INTERNAL_ERROR",
+      "the pipeline reached the idempotency claim without a principal, a tenant, a contract and a payload hash",
+      context.requestId,
+    );
+  }
+
+  const key = context.idempotencyKey;
+
+  if (typeof key !== "string" || !KEY.test(key)) {
+    return refuse(
+      principal.id,
+      "VALIDATION_FAILED",
+      `${contract.id} is a command, and a command needs an idempotency key, new for each new request: 1 to 128 letters, digits, dots, underscores, colons or dashes`,
+      context.requestId,
+    );
+  }
+
+  const claim: Claim = Object.freeze({
+    tenant,
+    principal: principal.id,
+    operation: contract.id,
+    key,
+  });
+  const until = Date.now() + IN_FLIGHT_WAIT_MS;
+
+  for (;;) {
+    let found;
+
+    try {
+      found = await claimKey(claim, payloadHash);
+    } catch {
+      return refuse(
+        principal.id,
+        "EVIDENCE_STORE_UNAVAILABLE",
+        `the idempotency key ${key} could not be claimed, so nothing was done; it is safe to send again`,
+        context.requestId,
+      );
+    }
+
+    if (found.kind === "claimed") {
+      return carryOn({ ...context, claim });
+    }
+
+    if (found.kind === "another_request") {
+      return refuse(
+        principal.id,
+        "IDEMPOTENCY_CONFLICT",
+        `the key ${key} was used for a different ${contract.id} request; a new request needs a new key`,
+        context.requestId,
+      );
+    }
+
+    if (found.kind === "answered") {
+      return Object.freeze({
+        kind: "replayed" as const,
+        answer: frozenAllTheWay(found.answer) as OperationAnswer,
+      });
+    }
+
+    // Still being carried out: waited for, a little at a time, and then given its answer. Told at
+    // once, forty-nine of fifty callers would be told something nobody knows yet.
+    if (Date.now() >= until) {
+      return refuse(
+        principal.id,
+        "OUTCOME_UNKNOWN",
+        `the first ${contract.id} request with the key ${key} has not finished, so its outcome is not known yet; ask again with the same key to be given it`,
+        context.requestId,
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_LOOK_MS));
+  }
+};
+
 /**
  * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
  *
@@ -1142,9 +1245,13 @@ const recordTheDecision: Stage["run"] = async (context) => {
             ? "its arguments"
             : context.payloadHash === undefined
               ? "a payload hash"
-              : Object.hasOwn(handlers, contract.id)
-                ? undefined
-                : "any code to carry it out";
+              : // NEW IN STEP 20: a command reaches here only with its key claimed, or a
+                // retry of it could run twice (decision 131).
+                contract.kind === "command" && context.claim === undefined
+                ? "a claimed idempotency key"
+                : Object.hasOwn(handlers, contract.id)
+                  ? undefined
+                  : "any code to carry it out";
 
   const shortfall =
     missing === undefined
@@ -1318,6 +1425,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
+  // NEW IN STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.
+  stage(7, "claim the idempotency key", "command", claimTheKey),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
@@ -1503,23 +1612,12 @@ export function makeDoor(
 
   assertPipeline(checked);
 
-  return async (login, id, args) => {
-    // STEP 15: when this request began, on this program's clock. A read labelled `current`
-    // must have happened after it (DSOR-FRS-01b), and this is the clock its label's time comes from.
-    const startedAt = Date.now();
-    // STEP 08: one id for this request, minted here — before the first stage, because the
-    // request exists before any answer does. Every refusal and every success below is handed this
-    // same id, so the record step 08 writes and the answer the caller reads name the same request.
-    // It used to be minted inside whichever envelope was built first, which made it the name of an
-    // answer rather than of a request.
-    const requestId = nextRequestId();
-    const walked = await runPipeline(checked, { login, id, args, requestId });
-
-    if (walked.kind === "refused") {
-      return walked.answer;
-    }
-
-    // `walked.context.requestId`, not the closure's `requestId`. They are the same value today, and a
+  // NEW IN STEP 20: what happens after the walk lets a request through: execute, filter, label,
+  // record the read. It was the door's own body, line for line; it is a function now so that the
+  // door can write the answer on the request's claim, whichever way it ends (decision 131).
+  const carryOut = async (context: Context, startedAt: number): Promise<OperationAnswer> => {
+    const id = context.id;
+    // `context.requestId`, not the door's `requestId`. They are the same value today, and a
     // review pointed out that there were two *sources* — every stage's refusal reads the context,
     // every handler's envelope read the closure — so the day a stage legitimately rewrites the id
     // (DSOR-COR-01b implies a caller may one day supply one) they would drift apart silently.
@@ -1531,7 +1629,7 @@ export function makeDoor(
       payloadHash: hash,
       requestId: id_,
       recorded,
-    } = walked.context;
+    } = context;
     const handler =
       contract !== undefined && Object.hasOwn(handlerTable, contract.id)
         ? handlerTable[contract.id]
@@ -1690,6 +1788,57 @@ export function makeDoor(
     }
 
     return leaving;
+  };
+
+  return async (login, id, args, request) => {
+    // STEP 15: when this request began, on this program's clock. A read labelled `current`
+    // must have happened after it (DSOR-FRS-01b), and this is the clock its label's time comes from.
+    const startedAt = Date.now();
+    // STEP 08: one id for this request, minted here — before the first stage, because the
+    // request exists before any answer does. Every refusal and every success below is handed this
+    // same id, so the record step 08 writes and the answer the caller reads name the same request.
+    // It used to be minted inside whichever envelope was built first, which made it the name of an
+    // answer rather than of a request.
+    const requestId = nextRequestId();
+    // NEW IN STEP 20: the idempotency key, read once, beside the arguments. A getter that throws is
+    // a request with no key, which §21.7 refuses for a command.
+    let idempotencyKey: unknown;
+
+    try {
+      idempotencyKey = request?.idempotencyKey;
+    } catch {
+      idempotencyKey = undefined;
+    }
+
+    const walked = await runPipeline(checked, { login, id, args, requestId, idempotencyKey });
+
+    // NEW IN STEP 20: answered before, under its key: that answer, and nothing runs.
+    if (walked.kind === "replayed") {
+      return walked.answer;
+    }
+
+    const answer =
+      walked.kind === "refused" ? walked.answer : await carryOut(walked.context, startedAt);
+    const claim = walked.context.claim;
+
+    // NEW IN STEP 20: the answer goes on the claim, to be given again to the same request
+    // (DSOR-IDM-01c). One that invites the same key again, because nothing ran, releases the claim
+    // instead, or "send it again" would be a lie. If the answer cannot be written, the claim keeps
+    // none: a retry with its key waits, and is told OUTCOME_UNKNOWN, and reconciliation is step
+    // 37's. The caller of this request is still told what happened to it.
+    if (claim !== undefined) {
+      try {
+        await settleKey(
+          claim,
+          answer,
+          answer.kind === "error" && answer.envelope.retry === "safe_same_key",
+        );
+      } catch {
+        // Said above: the claim stays without an answer.
+      }
+    }
+
+    return answer;
   };
 }
 

@@ -21,6 +21,7 @@
 // applies to it.
 
 import type { Delegation } from "./delegation.ts";
+import type { Claim } from "./idempotency.ts";
 import type { Login } from "./login.ts";
 import type { Principal } from "./people.ts";
 import type { OperationContract } from "./registry.ts";
@@ -75,6 +76,14 @@ export interface Context {
    * record keeps it as `subject_authority.as_of` (DSOR-DEL-10, decision 129).
    */
   readonly authorityAsOf?: string;
+  /**
+   * NEW IN STEP 20: the idempotency key the request came with, read once by the door. It travels
+   * beside the arguments and never inside them, so the payload hash stays the fingerprint of what
+   * was asked (DSOR-IDM-01a, decision 131).
+   */
+  readonly idempotencyKey?: unknown;
+  /** NEW IN STEP 20: the claim this request holds on its key, from §21.7. Its answer goes there. */
+  readonly claim?: Claim;
   readonly given?: Readonly<Record<string, unknown>>;
   /**
    * The fingerprint of the arguments, from the text the validate stage wrote down.
@@ -131,7 +140,12 @@ export type StageResult =
    * STEP 19: and, when the stage learned something the record should say before it
    * refused, what it learned. §21.3 found the slip and then refused under it (decision 130).
    */
-  | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context?: Context };
+  | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context?: Context }
+  /**
+   * NEW IN STEP 20: this request was answered before, under its key, and this is that answer.
+   * The walk stops: nothing runs, and no decision is recorded, because none is made (DSOR-IDM-01c).
+   */
+  | { readonly kind: "replayed"; readonly answer: OperationAnswer };
 
 /** One line of the checklist. */
 export interface Stage {
@@ -187,6 +201,9 @@ const REQUIRED: readonly string[] = Object.freeze([
   "resolve the delegation",
   "authorize",
   "validate the input",
+  // NEW IN STEP 20: after the input is validated, because the claim keeps the payload hash, and
+  // before anything is decided that a retry must not decide twice (DSOR-IDM-01b, decision 131).
+  "claim the idempotency key",
   // STEP 18: required too, because without it a payment above the slip's limit goes
   // through with nothing to say it was ever checked.
   "check the slip's limit",
@@ -393,7 +410,9 @@ export function applies(stage: Stage, kind: OperationKind): boolean {
 /** What has been walked, and what it found. */
 export type PipelineResult =
   | { readonly kind: "ready"; readonly context: Context }
-  | { readonly kind: "refused"; readonly answer: OperationAnswer };
+  /** NEW IN STEP 20: with what was walked, so the door can write the answer on the request's claim. */
+  | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context: Context }
+  | { readonly kind: "replayed"; readonly answer: OperationAnswer };
 
 /**
  * Walks the checklist and stops at the first no.
@@ -445,6 +464,11 @@ export async function runPipeline(
     // the value, so the stages that do not touch a database are unchanged by this.
     const result = await stage.run(context);
 
+    // NEW IN STEP 20: an answer given before ends the walk here, §21.11 included.
+    if (result.kind === "replayed") {
+      return { kind: "replayed", answer: result.answer };
+    }
+
     if (result.kind === "refused") {
       // The *last* refusal wins, and only an `evenAfterARefusal` stage can ever overwrite an
       // earlier one. That is deliberate: the only stages that run after a refusal are the ones
@@ -461,7 +485,7 @@ export async function runPipeline(
   }
 
   if (refused !== undefined) {
-    return { kind: "refused", answer: refused };
+    return { kind: "refused", answer: refused, context };
   }
 
   return { kind: "ready", context };

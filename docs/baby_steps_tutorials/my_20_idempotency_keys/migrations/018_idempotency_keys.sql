@@ -17,7 +17,9 @@ CREATE TABLE dsor.idempotency_keys (
   key          TEXT NOT NULL,
   payload_hash TEXT NOT NULL,
   claimed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  answer       JSONB,
+  -- The answer as the text it was written, so that the same request is given it again word for
+  -- word. JSONB would put its keys in an order of its own (found building this step).
+  answer       TEXT,
   PRIMARY KEY (tenant, principal, operation, key)
 );
 
