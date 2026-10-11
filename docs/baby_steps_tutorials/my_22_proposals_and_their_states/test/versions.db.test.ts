@@ -1,4 +1,4 @@
-// NEW IN STEP 21: two changes on one version, racing on a real server (decision 134).
+// STEP 21: two changes on one version, racing on a real server (decision 134).
 //
 // PGlite has one connection, so two changes sent together reach it one after the other. A pool
 // against a real PostgreSQL lets them truly race, and the version is checked in the same UPDATE that

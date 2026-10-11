@@ -105,7 +105,7 @@ describe("the caller's arguments", () => {
 
         return reads === 1 ? INV_1009 : "dsor://org_456/invoice/INV-0000";
       },
-      // NEW IN STEP 21: the version the decision was made on.
+      // STEP 21: the version the decision was made on.
       expected_version: 1,
       trap: {
         toJSON(): number {

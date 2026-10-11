@@ -138,7 +138,7 @@ describe("the program a learner runs", () => {
     // STEP 18: 30, with the two refusals of the slip's section. STEP 19: 32, with the
     // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
     // two payments and a conflict. The replays leave none.
-    // NEW IN STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
+    // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
     expect(rows).toHaveLength(38);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
@@ -450,7 +450,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-CON-01b: the demo shows two decisions on one payment, and the second is told it is stale", () => {
-    // NEW IN STEP 21: the agent makes a payment, user_123 cancels it on the version it was made at,
+    // STEP 21: the agent makes a payment, user_123 cancels it on the version it was made at,
     // and the agent, deciding on that same version, is refused (decisions 133 and 134).
     const out = demo().report;
 

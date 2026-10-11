@@ -25,7 +25,7 @@ export interface Payment {
   readonly invoice: string;
   readonly amount: Money;
   readonly status: PaymentStatus;
-  /** NEW IN STEP 21: raised by one with every change (decision 133). */
+  /** STEP 21: raised by one with every change (decision 133). */
   readonly version: number;
 }
 
@@ -104,7 +104,7 @@ export async function createPayment(
 export type CancelOutcome =
   | { readonly kind: "cancelled"; readonly payment: Payment }
   | { readonly kind: "not_found" }
-  /** NEW IN STEP 21: the payment moved on from the version the caller decided on (decision 133). */
+  /** STEP 21: the payment moved on from the version the caller decided on (decision 133). */
   | { readonly kind: "stale"; readonly version: number }
   | { readonly kind: "not_draft"; readonly status: Exclude<PaymentStatus, "draft"> };
 
@@ -119,7 +119,7 @@ export async function cancelPayment(
   id: string,
   expectedVersion: number,
 ): Promise<CancelOutcome> {
-  // NEW IN STEP 21: and only the version the caller decided on, in the same statement, which raises
+  // STEP 21: and only the version the caller decided on, in the same statement, which raises
   // it (DSOR-CON-01b, decision 133).
   const { rows } = await theDatabase(tenantId).query<Row>(
     `UPDATE public.payments SET status = 'cancelled', version = version + 1

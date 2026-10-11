@@ -34,7 +34,7 @@ export interface OperationContract {
   readonly risk: { readonly level: "low" | "medium" | "high" | "critical" };
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
-  /** NEW IN STEP 21: how a command handles a record that moved on (DSOR-CON-01a, decision 133). */
+  /** STEP 21: how a command handles a record that moved on (DSOR-CON-01a, decision 133). */
   readonly concurrency?: { readonly strategy: string };
   /**
    * STEP 18: whether an agent needs a permission slip to call it. The schema requires it of a
@@ -228,7 +228,7 @@ export function loadRegistry(
       );
     }
 
-    // NEW IN STEP 21: a strategy this program carries out. `optimistic` is checked at §21.6 and in
+    // STEP 21: a strategy this program carries out. `optimistic` is checked at §21.6 and in
     // the change itself, `none` needs nothing; `pessimistic` and `connector_managed` are carried out
     // by nothing here, so a contract that declared one would promise what no code does (decision 134).
     const strategy = contract.concurrency?.strategy;

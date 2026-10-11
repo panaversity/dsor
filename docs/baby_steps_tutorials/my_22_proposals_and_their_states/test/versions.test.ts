@@ -1,4 +1,4 @@
-// NEW IN STEP 21: optimistic concurrency.
+// STEP 21: optimistic concurrency.
 //
 // A caller decides on a record as it read it. If the record has moved on before the command runs,
 // the decision was about something that no longer exists, and DSoR refuses it: "re-read and decide

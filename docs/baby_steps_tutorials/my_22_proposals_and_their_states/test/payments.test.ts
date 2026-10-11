@@ -112,7 +112,7 @@ describe("payment.create", () => {
       invoice: INV_1008,
       amount: { value: "31400.00", currency: "USD" },
       status: "draft",
-      version: 1, // NEW IN STEP 21
+      version: 1, // STEP 21
     });
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft", "PAY-902 draft"]);
   });

@@ -129,7 +129,7 @@ console.log(
     await callOperation(
       AGENT,
       "invoice.issue",
-      // NEW IN STEP 21: on the version the agent read. The demo reads it from the store, standing
+      // STEP 21: on the version the agent read. The demo reads it from the store, standing
       // in for the agent's own earlier read, so that a second run, where INV-1009 is issued
       // already, decides on what is there now and is told CONFLICT, not STALE_STATE.
       {
@@ -344,7 +344,7 @@ console.log(show(twice));
 
 if (twice.kind === "result") {
   const mistake = String(twice.envelope.data?.["uri"]);
-  // NEW IN STEP 21: the receipt says the version the payment was made at, which is the one the
+  // STEP 21: the receipt says the version the payment was made at, which is the one the
   // agent decides on; the cancel's own receipt says the next.
   const madeAt = Number(twice.envelope.data?.["version"]);
   const cancelled = await callOperation(
@@ -542,7 +542,7 @@ console.log(
   `  ${fifty.length} answers, ${new Set(fifty.map((a) => JSON.stringify(a))).size} different, ${paymentsMade} ${paymentsMade === 1 ? "payment" : "payments"} made`,
 );
 
-// NEW IN STEP 21: two decide on one payment, on the same version. The agent makes a payment;
+// STEP 21: two decide on one payment, on the same version. The agent makes a payment;
 // user_123 cancels it on the version it was made at; the agent, deciding on that same version, is
 // told it is stale: the payment it decided about no longer exists as it read it (decisions 133, 134).
 console.log();

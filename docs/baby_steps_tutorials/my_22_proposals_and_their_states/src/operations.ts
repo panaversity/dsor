@@ -144,7 +144,7 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<string> = new Set<string>();
 const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
 
 /**
- * NEW IN STEP 21: the version an optimistic command's caller decided on, or why it is not one
+ * STEP 21: the version an optimistic command's caller decided on, or why it is not one
  * (DSOR-CON-01b, decision 133). A whole number from 1, and required: an optional one would make the
  * check the caller's to switch off.
  */
@@ -158,7 +158,7 @@ function expectedVersionFrom(args: Readonly<Record<string, unknown>>): number | 
     : "expected_version, the version the decision was made on, must be a whole number from 1 to 2147483647";
 }
 
-/** NEW IN STEP 21: the refusal for a record that moved on since the caller read it. */
+/** STEP 21: the refusal for a record that moved on since the caller read it. */
 function stale(what: string, askedBy: string, requestId: string): HandlerAnswer {
   return {
     kind: "error",
@@ -344,7 +344,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     const outcome = await issueInvoice(tenant, read.id, expected);
 
-    // NEW IN STEP 21: moved on since the caller read it, whatever its state now (decision 133).
+    // STEP 21: moved on since the caller read it, whatever its state now (decision 133).
     if (outcome.kind === "stale") {
       return stale(read.id, askedBy, requestId);
     }
@@ -482,7 +482,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     const outcome = await cancelPayment(tenant, read.id, expected);
 
-    // NEW IN STEP 21: moved on since the caller read it, whatever its state now (decision 133).
+    // STEP 21: moved on since the caller read it, whatever its state now (decision 133).
     if (outcome.kind === "stale") {
       return stale(read.id, askedBy, requestId);
     }
@@ -1078,7 +1078,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    // NEW IN STEP 21: an optimistic command's version, asked here, at §21.6, of every command whose
+    // STEP 21: an optimistic command's version, asked here, at §21.6, of every command whose
     // contract says optimistic: a fact about the arguments, decided before §21.11 records anything.
     // The handlers asked by hand, after ALLOW was recorded (decision 134).
     if (context.contract?.concurrency?.strategy === "optimistic") {

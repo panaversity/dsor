@@ -40,7 +40,7 @@ export interface Invoice {
   readonly amount: Money;
   readonly status: InvoiceStatus;
   /**
-   * NEW IN STEP 21: raised by one with every change. A caller says the version it decided on, and
+   * STEP 21: raised by one with every change. A caller says the version it decided on, and
    * a record that has moved on refuses the command (DSOR-CON-01b, decision 133).
    */
   readonly version: number;
@@ -112,14 +112,14 @@ export async function getInvoice(
 export type IssueOutcome =
   | { readonly kind: "issued"; readonly invoice: Invoice }
   | { readonly kind: "not_found" }
-  /** NEW IN STEP 21: the invoice moved on from the version the caller decided on (decision 133). */
+  /** STEP 21: the invoice moved on from the version the caller decided on (decision 133). */
   | { readonly kind: "stale"; readonly version: number }
   | { readonly kind: "not_draft"; readonly status: Exclude<InvoiceStatus, "draft"> };
 
 /**
  * Issues a draft invoice, in one company, if it is still the version the caller decided on.
  *
- * One UPDATE with the status and, NEW IN STEP 21, the version in its WHERE, so "is it the draft I
+ * One UPDATE with the status and, STEP 21, the version in its WHERE, so "is it the draft I
  * read?" and "make it issued" are one statement and not two: two decisions on one version cannot
  * both run (DSOR-CON-01b, decision 133). The version is raised in the same statement.
  *

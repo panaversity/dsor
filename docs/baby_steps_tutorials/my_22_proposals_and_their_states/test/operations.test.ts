@@ -323,7 +323,7 @@ describe("callOperation", () => {
       expect((first.envelope.data as { status: string }).status).toBe("issued");
 
       // Again. Nothing is thrown; the refusal is an envelope a caller can act on, and
-      // its retry class says plainly that trying again cannot help. NEW IN STEP 21: on version 2, the one
+      // its retry class says plainly that trying again cannot help. STEP 21: on version 2, the one
       // a caller reads now; on version 1 the answer would be STALE_STATE, which versions.test.ts pins.
       const second = refusalFrom(
         await callOperation(SUPERVISOR, "invoice.issue", {

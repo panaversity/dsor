@@ -146,7 +146,7 @@ describe("issueInvoice", () => {
     expect(outcome.invoice.id).toBe("INV-1009");
     // The copy from before is a copy: frozen, and still a draft.
     expect(before.status).toBe("draft");
-    // The store moved on, and a second issue is refused because of that. NEW IN STEP 21: on the version
+    // The store moved on, and a second issue is refused because of that. STEP 21: on the version
     // it is at now, 2, the reason is the status; on the version read before, it is stale.
     expect((await ours("INV-1009")).status).toBe("issued");
     expect(await issueInvoice("org_456", "INV-1009", 1)).toEqual({ kind: "stale", version: 2 });

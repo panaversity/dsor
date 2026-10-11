@@ -43,7 +43,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     vendor: "internal",
     amount: "confidential",
     status: "internal",
-    // NEW IN STEP 21: the version a caller decides on, which it must be able to read.
+    // STEP 21: the version a caller decides on, which it must be able to read.
     version: "internal",
     // Labelled before any column exists: the label comes with the design, so that the day a bank
     // account is stored it is already restricted. The fourth label reaches the door through it.
@@ -59,7 +59,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     invoice: "internal",
     amount: "confidential",
     status: "internal",
-    // NEW IN STEP 21.
+    // STEP 21.
     version: "internal",
   }),
 });
