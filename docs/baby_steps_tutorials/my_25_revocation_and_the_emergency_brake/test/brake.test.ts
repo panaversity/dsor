@@ -12,7 +12,14 @@ import { liftTheBrake, pullTheBrake, whatStops } from "../src/controls.ts";
 import { paymentsOf } from "../src/payment.ts";
 import { mayReleaseABrake, PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
-import { movesOf, proposalsOf } from "../src/proposal.ts";
+import {
+  moveProposal,
+  moveProposalThrough,
+  movesOf,
+  propose,
+  proposalsOf,
+  stateOf,
+} from "../src/proposal.ts";
 import { theDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
@@ -373,4 +380,117 @@ describe("control.suspend: people pull the brake and release it", () => {
       expect(await whatStops("org_456", AGENT)).toBeUndefined();
     });
   }
+});
+
+// NEW IN STEP 25, decision 143: the brake on every way into EXECUTING, and on a prepared command.
+
+describe("no way into EXECUTING forgets the brake", () => {
+  /** A proposal of the agent's, at READY. */
+  async function aReadyProposal(): Promise<string> {
+    const id = await propose({
+      tenant: "org_456",
+      operation: "payment.create@1",
+      mode: "execute",
+      payload: "{}",
+      payloadHash: "sha256:0",
+      requester:
+        '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
+      idempotencyKey: `ready-${Math.random()}`,
+      actor: AGENT,
+      cause: "payment.create@1 invoked",
+    });
+
+    await moveProposalThrough("org_456", id, [["PROPOSED", "READY", "allowed"]], "dsor", null);
+
+    return id;
+  }
+
+  it("DSOR-OPS-01c: a single move into EXECUTING is refused: entering it asks the brake, and only the path that asks may", async () => {
+    const id = await aReadyProposal();
+
+    expect(
+      await moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "around the brake"),
+    ).toStrictEqual({
+      kind: "refused",
+    });
+    expect(await stateOf("org_456", id)).toBe("READY");
+  });
+
+  it("DSOR-OPS-01c: the path into EXECUTING is stopped by a brake on the agent it names, and moves for a person's", async () => {
+    const stopped = await aReadyProposal();
+    const persons = await aReadyProposal();
+
+    await pullTheBrake("org_456", AGENT, "user_123", "checking");
+
+    expect(
+      await moveProposalThrough(
+        "org_456",
+        stopped,
+        [["READY", "EXECUTING", "handed over"]],
+        "dsor",
+        AGENT,
+      ),
+    ).toStrictEqual({ kind: "stopped" });
+    expect(
+      await moveProposalThrough(
+        "org_456",
+        persons,
+        [["READY", "EXECUTING", "handed over"]],
+        "dsor",
+        null,
+      ),
+    ).toStrictEqual({ kind: "moved" });
+  });
+
+  it("DSOR-OPS-01a: a brake pulled while a prepared command is on its way stops it before READY", async () => {
+    // Decision 143: the agent was told READY, and a proposal of a stopped agent waited to be released.
+    const list = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              await pullTheBrake("org_456", AGENT, "user_123", "pulled mid-flight");
+
+              return done;
+            },
+          })
+        : stage,
+    );
+    const answer = await makeDoor(list)(AGENT_LOGIN, "payment.create", PAY, {
+      idempotencyKey: "prepared-mid-flight",
+      mode: "propose_only",
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+  });
+
+  for (const mode of ["propose_only", "validate_only"]) {
+    it(`DSOR-OPS-01a: a stopped agent's ${mode} is refused as its execute is`, async () => {
+      await pullTheBrake("org_456", AGENT, "user_123", "checking");
+
+      const answer = await callOperation(AGENT_LOGIN, "payment.create", PAY, {
+        idempotencyKey: `stopped-${mode}`,
+        mode,
+      });
+
+      expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+    });
+  }
+
+  it("DSOR-OPS-01d: a person whose login leaves out control:suspend may not pull or release the brake", async () => {
+    const answer = await callOperation(
+      { loggedInAs: "user_123", scopes: ["invoice:read"] },
+      "control.suspend",
+      {
+        target: THE_AGENT,
+        suspended: true,
+        reason: "with a narrow login",
+      },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
 });

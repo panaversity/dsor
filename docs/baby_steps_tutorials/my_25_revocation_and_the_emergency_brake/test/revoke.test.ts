@@ -61,7 +61,7 @@ async function underDel100(path: readonly ProposalState[]): Promise<string> {
   const steps = path.slice(1).map((to, i) => [path[i] as ProposalState, to, `to ${to}`] as const);
 
   if (steps.length > 0) {
-    await moveProposalThrough("org_456", id, steps, "dsor");
+    await moveProposalThrough("org_456", id, steps, "dsor", null);
   }
 
   return id;

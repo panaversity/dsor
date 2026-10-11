@@ -126,6 +126,13 @@ export async function moveProposal(
   actor: string,
   cause: string,
 ): Promise<MoveOutcome> {
+  // NEW IN STEP 25, decision 143: nothing enters EXECUTING one move at a time. That way in asks the
+  // brake, and only moveProposalThrough, told the agent, asks it; a caller that came this way would
+  // run a stopped agent's command, as a review measured.
+  if (to === "EXECUTING") {
+    return Object.freeze({ kind: "refused" });
+  }
+
   try {
     await theDatabase(tenant).query(
       `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
@@ -158,9 +165,11 @@ export async function moveProposalThrough(
   id: string,
   path: ReadonlyArray<readonly [from: ProposalState, to: ProposalState, cause: string]>,
   actor: string,
-  // NEW IN STEP 25: an agent on whose behalf the moves are made: none is written if a brake is on
-  // it, in the same statement, so a brake pulled a moment ago is seen (DSOR-OPS-01c, decision 142).
-  unlessStopped?: string,
+  // NEW IN STEP 25: the agent on whose behalf the moves are made, or null for a person. Required, so
+  // no caller can forget it: for an agent, none is written if a brake is on it, in the same statement,
+  // so a brake pulled a moment ago is seen (DSOR-OPS-01c, decisions 142 and 143). A brake stops
+  // agents, never people, so a person's moves ask nothing.
+  agent: string | null,
 ): Promise<MoveOutcome> {
   const params: unknown[] = [tenant, id, actor];
   const rows = path.map(([from, to, cause]) => {
@@ -172,14 +181,14 @@ export async function moveProposalThrough(
   });
 
   try {
-    if (unlessStopped === undefined) {
+    if (agent === null) {
       await theDatabase(tenant).query(
         `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
          VALUES ${rows.join(", ")}`,
         params,
       );
     } else {
-      params.push(unlessStopped);
+      params.push(agent);
 
       const { rows: written } = await theDatabase(tenant).query(
         `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)

@@ -130,6 +130,7 @@ async function endedAs(id: string, end: "COMMITTED" | "FAILED"): Promise<void> {
       ["EXECUTING", end, `ended ${end}`],
     ],
     "dsor",
+    null,
   );
 
   if (moved.kind !== "moved") {

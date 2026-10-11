@@ -2379,13 +2379,20 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
   let moved: MoveOutcome | undefined;
 
   try {
-    moved = await moveProposal(
+    // STEP 25, decision 143: and, for an agent, not if a brake was pulled since §21.4: a stopped
+    // agent's command must not wait at READY to be released.
+    moved = await moveProposalThrough(
       tenant,
       proposal,
-      "PROPOSED",
-      "READY",
+      [
+        [
+          "PROPOSED",
+          "READY",
+          `allowed: the decision is recorded as ${recorded}; waiting to be released`,
+        ],
+      ],
       "dsor",
-      `allowed: the decision is recorded as ${recorded}; waiting to be released`,
+      principal.type === "agent" ? principal.id : null,
     );
   } catch {
     let now: ProposalState | undefined;
@@ -2416,6 +2423,21 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
 
     moved = now === "READY" ? Object.freeze({ kind: "moved" }) : undefined;
     progress.state = now;
+  }
+
+  // STEP 25, decision 143: a brake pulled since §21.4: nothing was written, and the proposal, still
+  // PROPOSED, is DENIED.
+  if (moved?.kind === "stopped") {
+    return Object.freeze({
+      kind: "error",
+      askedBy: principal.id,
+      envelope: refusal(
+        "AGENT_SUSPENDED",
+        `${principal.id} was stopped in ${tenant} before ${proposal} was prepared; a person must lift it`,
+        requestId,
+        principal.id,
+      ),
+    });
   }
 
   if (moved?.kind !== "moved") {
@@ -2670,7 +2692,7 @@ export function makeDoor(
           ],
           "dsor",
           // STEP 25: and for an agent, not if a brake is on it now (DSOR-OPS-01c).
-          principal.type === "agent" ? principal.id : undefined,
+          principal.type === "agent" ? principal.id : null,
         );
       } catch {
         // The write failed, or only its reply was lost. Read the proposal back to know which: at

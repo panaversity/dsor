@@ -88,7 +88,14 @@ async function walk(id: string, path: readonly ProposalState[]): Promise<void> {
   for (let i = 1; i < path.length; i += 1) {
     const from = path[i - 1] as ProposalState;
     const to = path[i] as ProposalState;
-    const outcome = await moveProposal("org_456", id, from, to, "dsor", `test walks to ${to}`);
+    // STEP 25: through the path, which is the only way into EXECUTING (decision 143).
+    const outcome = await moveProposalThrough(
+      "org_456",
+      id,
+      [[from, to, `test walks to ${to}`]],
+      "dsor",
+      null,
+    );
 
     if (outcome.kind !== "moved") {
       throw new Error(`the walk could not move from ${from} to ${to}`);
@@ -182,7 +189,9 @@ describe("a proposal and its moves", () => {
   it("DSOR-APR-01a: a move out of a state the proposal is not in is refused", async () => {
     const id = await aProposal();
 
-    expect(await moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "jump")).toStrictEqual({
+    expect(
+      await moveProposalThrough("org_456", id, [["READY", "EXECUTING", "jump"]], "dsor", null),
+    ).toStrictEqual({
       kind: "refused",
     });
     expect(await stateOf("org_456", id)).toBe("PROPOSED");
@@ -268,8 +277,8 @@ describe("a proposal runs at most once", () => {
     await walk(id, ["PROPOSED", "READY"]);
 
     const outcomes = await Promise.all([
-      moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "the first"),
-      moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "the second"),
+      moveProposalThrough("org_456", id, [["READY", "EXECUTING", "the first"]], "dsor", null),
+      moveProposalThrough("org_456", id, [["READY", "EXECUTING", "the second"]], "dsor", null),
     ]);
 
     expect(outcomes.map((o) => o.kind).sort()).toStrictEqual(["moved", "refused"]);
@@ -582,6 +591,7 @@ describe("the door makes a proposal for every command and moves it", () => {
           ["READY", "COMMITTED", "skipping EXECUTING"],
         ],
         "dsor",
+        null,
       ),
     ).toStrictEqual({ kind: "refused" });
     expect(await stateOf("org_456", id)).toBe("PROPOSED");
@@ -595,6 +605,7 @@ describe("the door makes a proposal for every command and moves it", () => {
           ["READY", "EXECUTING", "handed over"],
         ],
         "dsor",
+        null,
       ),
     ).toStrictEqual({ kind: "moved" });
     expect(await stateOf("org_456", id)).toBe("EXECUTING");

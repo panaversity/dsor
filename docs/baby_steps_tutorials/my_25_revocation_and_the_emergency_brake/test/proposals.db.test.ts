@@ -16,7 +16,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
-import { moveProposal, movesOf, propose, stateOf } from "../src/proposal.ts";
+import { moveProposal, moveProposalThrough, movesOf, propose, stateOf } from "../src/proposal.ts";
 import { useDatabase } from "../src/store.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
@@ -69,7 +69,7 @@ describe.skipIf(!haveAServer)("one proposal, twenty requests at once, on a real 
     const id = await aReadyProposal();
     const outcomes = await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
-        moveProposal("org_456", id, "READY", "EXECUTING", "dsor", `request ${i}`),
+        moveProposalThrough("org_456", id, [["READY", "EXECUTING", `request ${i}`]], "dsor", null),
       ),
     );
 
@@ -81,7 +81,7 @@ describe.skipIf(!haveAServer)("one proposal, twenty requests at once, on a real 
   it("DSOR-APR-01c: twenty moves out of a COMMITTED proposal at once: none is written", async () => {
     const id = await aReadyProposal();
 
-    await moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "carried out");
+    await moveProposalThrough("org_456", id, [["READY", "EXECUTING", "carried out"]], "dsor", null);
     await moveProposal("org_456", id, "EXECUTING", "COMMITTED", "dsor", "done");
 
     const outcomes = await Promise.all(
