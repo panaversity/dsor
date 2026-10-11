@@ -386,3 +386,60 @@ describe("a lost reply, read back", () => {
     expect(await proposalsOf("org_456")).toHaveLength(1);
   });
 });
+
+describe("the mode is read once, and only the request's own", () => {
+  it("DSOR-OPR-05: a mode on the request's prototype is refused, never taken as execute", async () => {
+    // Decision 139: the caller asked for a dry run, and got the invoice issued.
+    const request = Object.assign(Object.create({ mode: "validate_only" }) as object, {
+      idempotencyKey: "inherited-mode",
+    });
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+    expect(await statusOf1009()).toBe("draft");
+  });
+
+  it("DSOR-OPR-05: a mode whose getter throws is refused, never taken as execute", async () => {
+    const request = {
+      idempotencyKey: "throwing-mode",
+      get mode(): string {
+        throw new Error("no mode for you");
+      },
+    };
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+    expect(await statusOf1009()).toBe("draft");
+  });
+
+  it("DSOR-OPR-05: a mode read once: a getter that says validate_only, then execute, is a dry run", async () => {
+    let reads = 0;
+    const request = {
+      idempotencyKey: "changing-mode",
+      get mode(): string {
+        reads += 1;
+
+        return reads === 1 ? "validate_only" : "execute";
+      },
+    };
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+    expect(await statusOf1009()).toBe("draft");
+  });
+});
+
+describe("what a dry run does not check yet", () => {
+  it("DSOR-OPR-06: a dry run is decided without the handlers' preconditions, until step 32", async () => {
+    // Decision 139, written down: the version and whether the invoice exists are checked inside the
+    // handlers, which a dry run never reaches. Pinned so that step 32's stage changes it on purpose.
+    const answer = await callOperation(
+      SUPERVISOR,
+      "invoice.issue",
+      { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 99 },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+  });
+});

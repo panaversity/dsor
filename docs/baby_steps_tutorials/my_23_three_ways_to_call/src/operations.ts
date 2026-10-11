@@ -2416,10 +2416,14 @@ export function makeDoor(
     let requestedMode: unknown;
 
     try {
+      // Decision 139: and a mode that is there but not the request's own is one nobody can read,
+      // refused, never the default. Taken as absent, a dry run asked for on a prototype executed.
       requestedMode =
-        request !== null && typeof request === "object" && Object.hasOwn(request, "mode")
-          ? request.mode
-          : undefined;
+        request === null || typeof request !== "object" || !("mode" in request)
+          ? undefined
+          : Object.hasOwn(request, "mode")
+            ? request.mode
+            : Symbol("a mode that is not the request's own");
     } catch {
       requestedMode = Symbol("a mode that could not be read");
     }
