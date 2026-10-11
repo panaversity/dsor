@@ -67,7 +67,14 @@ import { audit, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
 // NEW IN STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
-import { moveProposal, propose, type ProposalState } from "./proposal.ts";
+import {
+  moveProposal,
+  moveProposalThrough,
+  type MoveOutcome,
+  propose,
+  type ProposalState,
+  stateOf,
+} from "./proposal.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
 // the program here, before any caller gets a turn. That is DSOR-OPR-02a.
@@ -1926,42 +1933,67 @@ export function makeDoor(
     const address = proposal === undefined ? "" : `dsor://${tenant}/proposal/${proposal}`;
 
     if (proposal !== undefined) {
-      for (const [to, cause] of [
-        ["READY", `allowed: the decision is recorded as ${recorded}`],
-        ["EXECUTING", `handed to ${contract.id}`],
-      ] as const) {
-        const from = progress.state ?? "PROPOSED";
-        let moved;
+      // Decision 137: both moves in one statement. One at a time, a failure between them left the
+      // proposal READY for good, with nothing ever to carry it out.
+      let started: MoveOutcome | undefined;
+
+      try {
+        started = await moveProposalThrough(
+          tenant,
+          proposal,
+          [
+            ["PROPOSED", "READY", `allowed: the decision is recorded as ${recorded}`],
+            ["READY", "EXECUTING", `handed to ${contract.id}`],
+          ],
+          "dsor",
+        );
+      } catch {
+        // The write failed, or only its reply was lost. Read the proposal back to know which: at
+        // EXECUTING, the move was this request's own, since no other request has this proposal; at
+        // PROPOSED, nothing was written. A read that fails too leaves it unknown.
+        let now: ProposalState | undefined;
 
         try {
-          moved = await moveProposal(tenant, proposal, from, to, "dsor", cause);
+          now = await stateOf(tenant, proposal);
         } catch {
-          moved = undefined;
+          now = undefined;
         }
 
-        if (moved?.kind !== "moved") {
+        if (now === "EXECUTING") {
+          started = Object.freeze({ kind: "moved" });
+        } else {
+          progress.state = now;
+
           return Object.freeze({
             kind: "error",
             askedBy: principal.id,
-            envelope:
-              moved === undefined
-                ? refusal(
-                    "EVIDENCE_STORE_UNAVAILABLE",
-                    `${proposal} could not be moved to ${to}, so it was not carried out; nothing was done`,
-                    id_,
-                    principal.id,
-                  )
-                : refusal(
-                    "INTERNAL_ERROR",
-                    `${proposal} was not ${from}, so it was not carried out`,
-                    id_,
-                    principal.id,
-                  ),
+            envelope: refusal(
+              "EVIDENCE_STORE_UNAVAILABLE",
+              `${proposal} could not be moved to EXECUTING, so it was not carried out; nothing was done`,
+              id_,
+              principal.id,
+            ),
           });
         }
-
-        progress.state = to;
       }
+
+      if (started.kind !== "moved") {
+        // Not PROPOSED, so not this request's to deny either.
+        progress.state = undefined;
+
+        return Object.freeze({
+          kind: "error",
+          askedBy: principal.id,
+          envelope: refusal(
+            "INTERNAL_ERROR",
+            `${proposal} was not PROPOSED, so it was not carried out`,
+            id_,
+            principal.id,
+          ),
+        });
+      }
+
+      progress.state = "EXECUTING";
     }
 
     // NEW IN STEP 22: from here on, something may have happened. A handler that throws leaves its

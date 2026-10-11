@@ -139,6 +139,48 @@ export async function moveProposal(
   return Object.freeze({ kind: "moved" });
 }
 
+/**
+ * NEW IN STEP 22, decision 137: several moves, one after the other, in one INSERT: all of them are
+ * written, or none.
+ *
+ * The door moves a proposal to READY and to EXECUTING together. Written one at a time, a failure
+ * between the two left a proposal READY for good, with nothing ever to carry it out, a review
+ * measured. One statement leaves it where it was, or at the end of the path.
+ */
+export async function moveProposalThrough(
+  tenant: string,
+  id: string,
+  path: ReadonlyArray<readonly [from: ProposalState, to: ProposalState, cause: string]>,
+  actor: string,
+): Promise<MoveOutcome> {
+  const params: unknown[] = [tenant, id, actor];
+  const rows = path.map(([from, to, cause]) => {
+    params.push(from, to, cause);
+
+    const at = params.length;
+
+    return `($1, $2, $${at - 2}, $${at - 1}, $3, $${at})`;
+  });
+
+  try {
+    await theDatabase(tenant).query(
+      `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
+       VALUES ${rows.join(", ")}`,
+      params,
+    );
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+
+    if (typeof code === "string" && REFUSED_MOVE.has(code)) {
+      return Object.freeze({ kind: "refused" });
+    }
+
+    throw error;
+  }
+
+  return Object.freeze({ kind: "moved" });
+}
+
 /** A proposal's moves, oldest first. Empty when there is no such proposal in that company. */
 export async function movesOf(tenant: string, id: string): Promise<readonly Move[]> {
   const { rows } = await theDatabase(tenant).query<{

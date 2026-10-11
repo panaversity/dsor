@@ -12,7 +12,15 @@ import { overPGlite } from "../src/database.ts";
 import { refusal } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { PIPELINE } from "../src/operations.ts";
-import { moveProposal, movesOf, propose, type ProposalState, stateOf } from "../src/proposal.ts";
+import type { Context } from "../src/pipeline.ts";
+import {
+  moveProposal,
+  moveProposalThrough,
+  movesOf,
+  propose,
+  type ProposalState,
+  stateOf,
+} from "../src/proposal.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
@@ -360,16 +368,31 @@ const proposalsOf456 = async (): Promise<
 const historyOf = async (id: string): Promise<unknown[][]> =>
   (await movesOf("org_456", id)).map((m) => [m.from, m.to, m.actor, m.cause]);
 
-/** The program's store, failing on the moves into the states named, until it is put back. */
-function failingMovesInto(states: readonly ProposalState[]): void {
+/**
+ * The program's store, failing every write of moves that names one of the states, until it is put
+ * back, or only the first `times` of them. With `replyLost`, the write happens and only its reply
+ * is lost (decision 137).
+ */
+function failingMovesInto(
+  states: readonly ProposalState[],
+  { replyLost = false, times = Number.POSITIVE_INFINITY } = {},
+): void {
   const connection = overPGlite(db);
+  let left = times;
 
   useDatabase({
     async query<T>(sql: string, params?: unknown[], tenant?: string) {
       if (
+        left > 0 &&
         sql.includes("INSERT INTO dsor.proposal_moves") &&
-        states.includes(params?.[3] as ProposalState)
+        states.some((state) => params?.includes(state))
       ) {
+        left -= 1;
+
+        if (replyLost) {
+          await connection.query(sql, params, tenant);
+        }
+
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
 
@@ -531,6 +554,84 @@ describe("the door makes a proposal for every command and moves it", () => {
       "dsor://org_456/proposal/prop_2",
     );
     expect(await stateOf("org_456", "prop_2")).toBe("COMMITTED");
+  });
+
+  it("DSOR-APR-01a: a move to EXECUTING whose reply is lost is read back, found to be the door's own, and carried out", async () => {
+    // Decision 137: written one at a time, a lost reply here left a proposal EXECUTING whose handler
+    // never ran, and the retry made a second proposal.
+    failingMovesInto(["EXECUTING"], { replyLost: true, times: 1 });
+
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    expect(answer.kind).toBe("result");
+    expect(await stateOf("org_456", "prop_1")).toBe("COMMITTED");
+    expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
+  });
+
+  it("DSOR-APR-01a: READY and EXECUTING are written together or not at all, so no proposal is left READY", async () => {
+    // Decision 137: a review failed the move to EXECUTING alone and measured a proposal READY for
+    // good. A move off the map in the second place leaves the first unwritten too.
+    const id = await aProposal();
+
+    expect(
+      await moveProposalThrough(
+        "org_456",
+        id,
+        [
+          ["PROPOSED", "READY", "allowed"],
+          ["READY", "COMMITTED", "skipping EXECUTING"],
+        ],
+        "dsor",
+      ),
+    ).toStrictEqual({ kind: "refused" });
+    expect(await stateOf("org_456", id)).toBe("PROPOSED");
+
+    expect(
+      await moveProposalThrough(
+        "org_456",
+        id,
+        [
+          ["PROPOSED", "READY", "allowed"],
+          ["READY", "EXECUTING", "handed over"],
+        ],
+        "dsor",
+      ),
+    ).toStrictEqual({ kind: "moved" });
+    expect(await stateOf("org_456", id)).toBe("EXECUTING");
+  });
+
+  it("DSOR-IDM-04: a door that finds its proposal already finished does not run the handler", async () => {
+    // Decision 137: the branch nothing tested. Here a stage makes the proposal and finishes it, as a
+    // second request for the same proposal would find it; the handler must never be called.
+    let called = 0;
+    const list = PIPELINE.map((stage) =>
+      stage.name === "create the proposal"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              if (done.kind === "carry_on" && done.context.proposal !== undefined) {
+                await walk(done.context.proposal, ["PROPOSED", "READY", "EXECUTING", "COMMITTED"]);
+              }
+
+              return done;
+            },
+          })
+        : stage,
+    );
+    const door = makeDoor(list, {
+      "invoice.issue": () => {
+        called += 1;
+
+        throw new Error("the handler ran");
+      },
+    });
+    const answer = await door(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(called).toBe(0);
+    expect(await stateOf("org_456", "prop_1")).toBe("COMMITTED");
   });
 
   it("DSOR-EXE-04b: a last move that cannot be written leaves the proposal EXECUTING, and the caller is still told", async () => {
