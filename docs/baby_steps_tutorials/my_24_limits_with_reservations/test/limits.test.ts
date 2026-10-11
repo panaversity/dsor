@@ -20,7 +20,7 @@ import { callOperation, PIPELINE } from "../src/operations.ts";
 import { moveProposalThrough, propose, proposalsOf } from "../src/proposal.ts";
 import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { makeDoor } from "./support/door.ts";
 
 const DAILY = money("200000.00", "USD");
@@ -423,5 +423,60 @@ describe("a reservation follows its proposal's history, as written", () => {
 
     expect(await usedToday("org_456", "del_100")).toBe("40000.00");
     expect(await reservationStates()).toStrictEqual(["held"]);
+  });
+});
+
+describe("what reserve() keeps to itself", () => {
+  it("DSOR-MON-04: an amount in another currency than the limit's is over it, and the day is not touched", async () => {
+    // Decision 141: booked directly, EUR 150,000 went against the USD limit and stamped the day EUR,
+    // and USD 1.00 came back over for the rest of the day.
+    const euros = await aProposal();
+    const dollars = await aProposal();
+
+    expect(
+      await reserve("org_456", euros, "del_100", money("150000.00", "EUR"), DAILY),
+    ).toStrictEqual({ kind: "over" });
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+    expect(await reserve("org_456", dollars, "del_100", money("1.00", "USD"), DAILY)).toStrictEqual(
+      {
+        kind: "reserved",
+      },
+    );
+  });
+
+  it("DSOR-DEL-06b: a proposal whose reservation was settled is not 'already reserved', and is not booked again", async () => {
+    // Decision 141: latent until step 31 re-checks a proposal.
+    const id = await aProposal();
+
+    await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await endedAs(id, "FAILED");
+    await settleReservation("org_456", id, "released");
+
+    expect(await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY)).toStrictEqual({
+      kind: "settled",
+    });
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
+  it("DSOR-MON-04: a slip with only a daily limit refuses a payment in another currency, a day's limit", async () => {
+    // Decision 141: never reached, because del_100's limit per payment refuses another currency
+    // first. Here del_100 has only its daily limit.
+    await asTheOwner(() =>
+      db.exec(`UPDATE dsor.delegations
+                  SET per_transaction_limit_value = NULL, per_transaction_limit_currency = NULL
+                WHERE tenant = 'org_456' AND id = 'del_100'`),
+    );
+
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "100.00", currency: "EUR" } },
+      { idempotencyKey: "pay-in-euros" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(
+      /cannot be compared with del_100's limit of 200000\.00 USD a day/,
+    );
   });
 });

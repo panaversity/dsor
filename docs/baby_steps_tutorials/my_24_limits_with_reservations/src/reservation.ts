@@ -20,8 +20,13 @@ export type Reserved =
   | { readonly kind: "reserved" }
   /** The day's total would pass the limit: nothing was reserved, and the total did not move. */
   | { readonly kind: "over" }
-  /** This proposal has a reservation already, and it was not made twice. */
-  | { readonly kind: "already" };
+  /** This proposal has a reservation already, still held, and it was not made twice. */
+  | { readonly kind: "already" }
+  /**
+   * NEW IN STEP 24, decision 141: this proposal's reservation was settled, committed or released,
+   * and it is not booked again. Only a held one is "already".
+   */
+  | { readonly kind: "settled" };
 
 // "Today", on the database's clock, in UTC: one clock for every server, and the day a total is for
 // is the day PostgreSQL says it is, not whichever server's clock asked.
@@ -30,8 +35,9 @@ const TODAY = "(now() AT TIME ZONE 'UTC')::date";
 /**
  * Reserve an amount for a proposal against its slip's daily limit, in one statement.
  *
- * The amount and the limit are in the same currency; the caller has refused one that is not
- * (DSOR-MON-04, restrictively), because this compares numbers.
+ * The amount and the limit are in the same currency, or the amount is over: this compares
+ * numbers, so one in another currency is refused here too, restrictively (DSOR-MON-04), and the
+ * day's total is always in the limit's currency (decision 141).
  *
  * The day's first reservation inserts the total, if the amount alone is within the limit; any later
  * one adds to it, if the sum stays within. PostgreSQL locks the total's row for the second of two
@@ -51,8 +57,8 @@ export async function reserve(
     const { rows } = await theDatabase(tenant).query(
       `WITH booked AS (
          INSERT INTO dsor.day_totals AS t (tenant, delegation, day, used_value, currency)
-         SELECT $1, $3, ${TODAY}, $4::numeric, $5
-          WHERE $4::numeric <= $6::numeric
+         SELECT $1, $3, ${TODAY}, $4::numeric, $7
+          WHERE $4::numeric <= $6::numeric AND $5::text = $7::text
          ON CONFLICT (tenant, delegation, day) DO UPDATE
             SET used_value = t.used_value + EXCLUDED.used_value
           WHERE t.used_value + EXCLUDED.used_value <= $6::numeric AND t.currency = EXCLUDED.currency
@@ -61,19 +67,25 @@ export async function reserve(
        INSERT INTO dsor.reservations (tenant, proposal, delegation, day, amount_value, amount_currency)
        SELECT tenant, $2, delegation, day, $4::numeric, $5 FROM booked
        RETURNING proposal`,
-      [tenant, proposal, delegation, amount.value, amount.currency, limit.value],
+      [tenant, proposal, delegation, amount.value, amount.currency, limit.value, limit.currency],
     );
 
     return Object.freeze({ kind: rows.length === 1 ? "reserved" : "over" });
   } catch (error) {
-    // A reservation for this proposal is there already: its primary key refused the second, and
-    // the statement, the total's addition with it, was undone (DSOR-DEL-06b).
-    if ((error as { code?: unknown } | null)?.code === "23505") {
-      return Object.freeze({ kind: "already" });
+    if ((error as { code?: unknown } | null)?.code !== "23505") {
+      throw error;
     }
-
-    throw error;
   }
+
+  // A reservation for this proposal is there already: its primary key refused the second, and the
+  // statement, the total's addition with it, was undone (DSOR-DEL-06b). Decision 141: "already" only
+  // if it is still held; a settled one is said, so that nothing carries on as if it were booked.
+  const { rows: found } = await theDatabase(tenant).query<{ state: string }>(
+    "SELECT state FROM dsor.reservations WHERE tenant = $1 AND proposal = $2",
+    [tenant, proposal],
+  );
+
+  return Object.freeze({ kind: found[0]?.state === "held" ? "already" : "settled" });
 }
 
 /**

@@ -1486,9 +1486,23 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
 
     const booked = await reserve(tenant, context.proposal, slip.id, amount, daily);
 
-    return booked.kind === "over"
-      ? refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId)
-      : carryOn(context);
+    if (booked.kind === "over") {
+      return refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId);
+    }
+
+    // Decision 141: a proposal whose reservation was settled is not booked again, and does not
+    // carry on as if it were. Unreachable today, where every request is a new proposal; step 31's
+    // proposal.execute checks a proposal again.
+    if (booked.kind === "settled") {
+      return refuse(
+        askedBy,
+        "INTERNAL_ERROR",
+        `${context.proposal}'s reservation against ${slip.id}'s day was settled already, so it is not booked again`,
+        context.requestId,
+      );
+    }
+
+    return carryOn(context);
   } catch {
     return refuse(
       askedBy,
