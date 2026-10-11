@@ -269,6 +269,24 @@ describe("a proposal runs at most once", () => {
   });
 });
 
+describe("a state is left once, whatever the move", () => {
+  it("DSOR-APR-01a: approved and rejected at once: one is written, and the other refused", async () => {
+    // Two different moves out of one state. "Entered once" cannot catch this, because the two go
+    // to different states; "left once" does. Today no command waits for approval; step 26's will.
+    const id = await aProposal();
+
+    await walk(id, ["PROPOSED", "PENDING_APPROVAL"]);
+
+    const outcomes = await Promise.all([
+      moveProposal("org_456", id, "PENDING_APPROVAL", "APPROVED", "cfo_100", "approved"),
+      moveProposal("org_456", id, "PENDING_APPROVAL", "REJECTED", "cfo_100", "rejected"),
+    ]);
+
+    expect(outcomes.map((o) => o.kind).sort()).toStrictEqual(["moved", "refused"]);
+    expect(await movesOf("org_456", id)).toHaveLength(3);
+  });
+});
+
 describe("the application adds, and changes nothing", () => {
   it("DSOR-APR-01c: it may not change or delete a proposal or a move, nor touch the map", async () => {
     const { rows } = await db.query<{ right: string }>(
