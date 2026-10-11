@@ -211,6 +211,16 @@ describe("the version, and nothing else, decides staleness", () => {
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
   });
 
+  it("DSOR-CON-01b: a draft payment at version 1, decided on as version 7, is STALE_STATE and not cancelled", async () => {
+    const answer = await callOperation(SUPERVISOR, "payment.cancel", {
+      payment: "dsor://org_456/payment/PAY-901",
+      expected_version: 7,
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("STALE_STATE");
+    expect((await paymentsOf("org_456")).find((p) => p.id === "PAY-901")?.status).toBe("draft");
+  });
+
   it("DSOR-CON-01b: cancelling a payment raises its version, and a new payment starts at 1", async () => {
     const made = await callOperation(SUPERVISOR, "payment.create", {
       invoice: "dsor://org_456/invoice/INV-1009",
@@ -236,6 +246,10 @@ describe("the version, and nothing else, decides staleness", () => {
     });
 
     expect(stale.kind === "error" && stale.envelope.code).toBe("STALE_STATE");
-    expect(stale.kind === "error" && stale.envelope.message).not.toMatch(/version 2/);
+    // The whole message, word for word: a number anywhere in it, in any wording, is a version the
+    // agent could retry on without reading (decision 135).
+    expect(stale.kind === "error" && stale.envelope.message).toBe(
+      "INV-1009 has changed since the version the decision was made on; read it again and decide again",
+    );
   });
 });

@@ -4,6 +4,11 @@
 // against a real PostgreSQL lets them truly race, and the version is checked in the same UPDATE that
 // makes the change: of twenty, exactly one finds the version it decided on.
 //
+// What this does not prove: a cancel also asks for a draft, so with the version taken out of the
+// UPDATE, the status alone still lets one through, and this test still passes (measured 2026-10-11,
+// decision 135). That the version itself refuses is proven in versions.test.ts, by a draft decided
+// on as the wrong version. This test proves the race: one change, not two.
+//
 // Runs only under `pnpm test:db`, with DSOR_DB_URL and DSOR_DB_OWNER_URL set, like pool.db.test.ts.
 //
 // Rule DSOR-CON-01b: an optimistic command MUST return STALE_STATE when the resource version differs
