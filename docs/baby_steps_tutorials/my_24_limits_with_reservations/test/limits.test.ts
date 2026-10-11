@@ -12,12 +12,15 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { overPGlite } from "../src/database.ts";
 import { activeSlipFor } from "../src/delegation.ts";
 import { money } from "../src/money.ts";
-import { propose } from "../src/proposal.ts";
+import { callOperation, PIPELINE } from "../src/operations.ts";
+import { propose, proposalsOf } from "../src/proposal.ts";
 import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
-import { theDatabase } from "../src/store.ts";
+import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, resetTheStory } from "./support/database.ts";
+import { makeDoor } from "./support/door.ts";
 
 const DAILY = money("200000.00", "USD");
 
@@ -164,5 +167,153 @@ describe("the application books and settles, and nothing else", () => {
     );
 
     expect(rows).toStrictEqual([]);
+  });
+});
+
+// NEW IN STEP 24, piece 2: §21.10 books the day's amount, and the door settles it as the proposal
+// ends.
+
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+
+/** The agent pays INV-1009 this much, with a fresh key, as the program's door would be asked. */
+const pay = (value: string, mode?: string): ReturnType<typeof callOperation> =>
+  callOperation(
+    AGENT,
+    "payment.create",
+    { invoice: "dsor://org_456/invoice/INV-1009", amount: { value, currency: "USD" } },
+    { idempotencyKey: `pay-${Math.random()}`, ...(mode === undefined ? {} : { mode }) },
+  );
+
+/** org_456's reservations' states, in the order their proposals were numbered. */
+const reservationStates = async (): Promise<string[]> => {
+  const { rows } = await theDatabase("org_456").query<{ state: string }>(
+    "SELECT state FROM dsor.reservations WHERE tenant = 'org_456' ORDER BY length(proposal), proposal",
+  );
+
+  return rows.map((r) => r.state);
+};
+
+describe("the agent's payments against del_100's day", () => {
+  it("DSOR-DEL-06e: four payments of 50,000.00 fill the day, and the fifth is LIMIT_EXCEEDED", async () => {
+    for (let i = 0; i < 4; i += 1) {
+      expect((await pay("50000.00")).kind).toBe("result");
+    }
+
+    const fifth = await pay("50000.00");
+
+    expect(fifth.kind === "error" && fifth.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect(fifth.kind === "error" && fifth.envelope.message).toMatch(/200000\.00 USD a day/);
+    expect(await usedToday("org_456", "del_100")).toBe("200000.00");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual([
+      "COMMITTED",
+      "COMMITTED",
+      "COMMITTED",
+      "COMMITTED",
+      "DENIED",
+    ]);
+  });
+
+  it("DSOR-DEL-06a: a payment made commits its reservation, and keeps its amount on the day", async () => {
+    await pay("31400.00");
+
+    expect(await reservationStates()).toStrictEqual(["committed"]);
+    expect(await usedToday("org_456", "del_100")).toBe("31400.00");
+  });
+
+  it("DSOR-DEL-06d: a payment its handler refuses is FAILED, and its reservation is released", async () => {
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-9999",
+        amount: { value: "40000.00", currency: "USD" },
+      },
+      { idempotencyKey: "pay-no-such-invoice" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("RESOURCE_NOT_FOUND");
+    expect(await reservationStates()).toStrictEqual(["released"]);
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
+  it("DSOR-DEL-06c: a payment whose handler throws is OUTCOME_UNKNOWN, and its reservation stays held", async () => {
+    const door = makeDoor(PIPELINE, {
+      "payment.create": () => {
+        throw new Error("the bank hung up half way");
+      },
+    });
+
+    await expect(
+      door(
+        AGENT,
+        "payment.create",
+        {
+          invoice: "dsor://org_456/invoice/INV-1009",
+          amount: { value: "40000.00", currency: "USD" },
+        },
+        { idempotencyKey: "pay-unknown" },
+      ),
+    ).rejects.toThrow(/half way/);
+    expect(await reservationStates()).toStrictEqual(["held"]);
+    expect(await usedToday("org_456", "del_100")).toBe("40000.00");
+  });
+
+  it("DSOR-DEL-06c: a prepared payment, READY, holds its reservation, because it may still run", async () => {
+    expect((await pay("40000.00", "propose_only")).kind).toBe("result");
+    expect(await reservationStates()).toStrictEqual(["held"]);
+  });
+
+  it("DSOR-OPR-06: a dry run reserves nothing, and is refused when the day has no room for it", async () => {
+    expect((await pay("40000.00", "validate_only")).kind).toBe("result");
+    expect(await reservationStates()).toStrictEqual([]);
+
+    for (let i = 0; i < 4; i += 1) {
+      await pay("50000.00");
+    }
+
+    const dry = await pay("0.01", "validate_only");
+
+    expect(dry.kind === "error" && dry.envelope.code).toBe("LIMIT_EXCEEDED");
+  });
+
+  it("DSOR-DEL-06d: a decision that cannot be recorded after the amount was booked gives it back", async () => {
+    const connection = overPGlite(db);
+    let failed = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (!failed && sql.includes("INSERT INTO dsor.audit")) {
+          failed = true;
+
+          throw Object.assign(new Error("the log is full"), { code: "53100" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    try {
+      expect((await pay("40000.00")).kind).toBe("error");
+    } finally {
+      useDatabase(connection);
+    }
+
+    expect(await reservationStates()).toStrictEqual(["released"]);
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
+  it("DSOR-DEL-06a: fifty payments of 5,000.00 sent at once never take the day past its limit", async () => {
+    const answers = await Promise.all(Array.from({ length: 50 }, () => pay("5000.00")));
+    const made = answers.filter((a) => a.kind === "result").length;
+    const overTheLimit = answers.filter(
+      (a) => a.kind === "error" && a.envelope.code === "LIMIT_EXCEEDED",
+    ).length;
+
+    // Some may be refused because two decisions raced for the same place in the log (step 21's
+    // limit); none may be made past the limit.
+    expect(made).toBeLessThanOrEqual(40);
+    expect(made * 5000).toBeLessThanOrEqual(200000);
+    expect(await usedToday("org_456", "del_100")).toBe(`${made * 5000}.00`);
+    expect(made + overTheLimit).toBeGreaterThan(0);
   });
 });

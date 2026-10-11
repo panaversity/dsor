@@ -69,6 +69,9 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 import { audit, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
+// NEW IN STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
+import { reserve, settleReservation, usedToday } from "./reservation.ts";
+import { money } from "./money.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
   moveProposal,
@@ -1387,14 +1390,16 @@ const createTheProposal: Stage["run"] = async (context) => {
  * a command that would exceed a limit; it was AUTHORIZATION_DENIED, for no reason (decision 128).
  * The rest of §21.10, controls and limits over time, is steps 24 and 27's.
  */
-const checkTheSlipsLimit: Stage["run"] = (context) => {
+const checkTheSlipsLimit: Stage["run"] = async (context) => {
   const slip = context.delegation;
   const limit = slip?.perTransactionLimit;
   const given = context.given;
 
+  // STEP 24: a slip with a daily limit and none per payment is checked too, so the one-payment
+  // limit no longer decides whether this stage looks at all.
   if (
     slip === undefined ||
-    limit === undefined ||
+    (limit === undefined && slip.dailyLimit === undefined) ||
     given === undefined ||
     !Object.hasOwn(given, "amount")
   ) {
@@ -1409,7 +1414,7 @@ const checkTheSlipsLimit: Stage["run"] = (context) => {
 
   const askedBy = context.principal?.id ?? "(nobody)";
 
-  if (amount.currency !== limit.currency) {
+  if (limit !== undefined && amount.currency !== limit.currency) {
     return refuse(
       askedBy,
       "LIMIT_EXCEEDED",
@@ -1418,7 +1423,7 @@ const checkTheSlipsLimit: Stage["run"] = (context) => {
     );
   }
 
-  if (centsOf(amount) > centsOf(limit)) {
+  if (limit !== undefined && centsOf(amount) > centsOf(limit)) {
     return refuse(
       askedBy,
       "LIMIT_EXCEEDED",
@@ -1427,7 +1432,71 @@ const checkTheSlipsLimit: Stage["run"] = (context) => {
     );
   }
 
-  return carryOn(context);
+  // NEW IN STEP 24: and the slip's daily limit, a running total, booked in one statement and keyed
+  // by the proposal, so fifty payments at once can never spend past it (DSOR-DEL-06a, 06b, 06e,
+  // decision 140). After the proposal, because the reservation is keyed by it.
+  const daily = slip.dailyLimit;
+
+  if (daily === undefined) {
+    return carryOn(context);
+  }
+
+  const overTheDay = `${amount.value} ${amount.currency} would take ${slip.id} past its limit of ${daily.value} ${daily.currency} a day`;
+
+  // Restrictively, as for one payment: an amount that cannot be compared is over (DSOR-MON-04).
+  if (amount.currency !== daily.currency) {
+    return refuse(
+      askedBy,
+      "LIMIT_EXCEEDED",
+      `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${daily.value} ${daily.currency} a day, so it is refused`,
+      context.requestId,
+    );
+  }
+
+  const tenant = context.tenant;
+
+  if (tenant === undefined) {
+    return refuse(
+      askedBy,
+      "INTERNAL_ERROR",
+      "the slip's limit was checked without a tenant",
+      context.requestId,
+    );
+  }
+
+  try {
+    // A dry run reserves nothing (DSOR-OPR-06): it reads the room left and answers from it. The
+    // room may be gone by the time a real request comes; that is what a dry run is.
+    if (context.mode === "validate_only") {
+      const used = money(await usedToday(tenant, slip.id), daily.currency);
+
+      return centsOf(used) + centsOf(amount) > centsOf(daily)
+        ? refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId)
+        : carryOn(context);
+    }
+
+    if (context.proposal === undefined) {
+      return refuse(
+        askedBy,
+        "INTERNAL_ERROR",
+        "the daily limit was reached without a proposal to reserve for",
+        context.requestId,
+      );
+    }
+
+    const booked = await reserve(tenant, context.proposal, slip.id, amount, daily);
+
+    return booked.kind === "over"
+      ? refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId)
+      : carryOn(context);
+  } catch {
+    return refuse(
+      askedBy,
+      "EVIDENCE_STORE_UNAVAILABLE",
+      `the day's total for ${slip.id} could not be booked; nothing was done`,
+      context.requestId,
+    );
+  }
 };
 
 /**
@@ -2018,6 +2087,25 @@ function aDryRunsAnswer(context: Context): OperationAnswer {
   });
 }
 
+/**
+ * NEW IN STEP 24: settle a proposal's reservation, if it has one, tried twice (decision 140). One
+ * that cannot be settled stays held, which counts its amount against the day: the limit errs toward
+ * refusing, never toward paying more.
+ */
+async function settleQuietly(
+  tenant: string,
+  proposal: string,
+  to: "committed" | "released",
+): Promise<void> {
+  const settle = (): Promise<void> => settleReservation(tenant, proposal, to);
+
+  try {
+    await settle().catch(settle);
+  } catch {
+    // Held; see above.
+  }
+}
+
 /** STEP 22: where one request's proposal has got to, and whether its handler ran. */
 interface Progress {
   state: ProposalState | undefined;
@@ -2283,6 +2371,12 @@ export function makeDoor(
               ];
 
       await finishTheProposal(tenant, proposal, ended, cause);
+
+      // NEW IN STEP 24: and its reservation follows it: kept on the day when it was made, given
+      // back when the handler said nothing was done, and held while nobody knows (decision 140).
+      if (ended !== "OUTCOME_UNKNOWN") {
+        await settleQuietly(tenant, proposal, ended === "COMMITTED" ? "committed" : "released");
+      }
     }
 
     // STEP 14: and an answer this program cannot filter is this program's bug, said in an
@@ -2473,6 +2567,8 @@ export function makeDoor(
         `refused: ${answer.envelope.code}`,
         "PROPOSED",
       );
+      // NEW IN STEP 24: and any amount it booked is given back to the day (decision 140).
+      await settleQuietly(tenant, proposal, "released");
     }
 
     // STEP 20: the answer goes on the claim, to be given again to the same request
