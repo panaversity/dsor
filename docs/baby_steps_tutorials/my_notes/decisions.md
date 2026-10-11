@@ -4460,3 +4460,112 @@ broken once, in a copy, on the whole suite, and each failed exactly its one test
 README's three breaks were measured twice and the runs agreed: a dry run that claims its key fails
 8, where 5 were predicted, because a dry run without a key is then refused for want of one; a dry
 run recorded as ALLOWED fails 1; a prepared command carried out fails 6.
+
+## 140 · Step 24's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
+and choose your recommended options". The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** del_100 lets the agent pay up to 50,000.00 USD a payment, and nothing more is
+asked. The agent can make a hundred payments of 49,999.00 in a day, nearly five million, and every
+one is inside its slip. The specification's slip has a second limit, 200,000.00 USD a day, and a
+daily limit is a running total, which has a race: fifty payments arrive at once, each reads the
+total, each finds room, and together they spend far past the limit. `DSOR-DEL-06a` asks for atomic
+reserve, commit and release in DSoR's own store; `06b` that a reservation be keyed by its proposal;
+`06c` and `06d` when it stays held and when it is released; `06e` that a command over a limit be
+`LIMIT_EXCEEDED`.
+
+1. **The slip gets a daily limit**, beside its limit per payment: two columns, both or neither, and
+   del_100's is 200,000.00 USD, as the specification's running example has it (migrations 022 and
+   023). Rejected for now: a table of windows, as the schema's `cumulative_limits` array allows,
+   because only one window, a day, is built; it comes with a second.
+2. **A day is a calendar day in UTC, on the database's clock**, and each slip has one running total
+   per day. Rejected: the last 24 hours, rolling, which has no single row to book against, and so
+   would need a lock or a serializable transaction to be safe; and the company's own time zone,
+   which nothing in the store says yet.
+3. **Reserving is one statement**: the day's total goes up by the amount only if it stays within
+   the limit, `INSERT ... ON CONFLICT DO UPDATE ... WHERE used + amount <= limit`, and the
+   reservation is written in the same statement. Like booking the last hotel room, only one of two
+   requests can have it. Rejected: reading the total, checking it in the code, then writing it,
+   which is the mistake §13.4 names.
+4. **Keyed by the proposal**, so the same proposal never reserves twice (`06b`), and so it is made at
+   §21.10, after the proposal exists. A dry run reserves nothing (`DSOR-OPR-06`): it reads the room
+   left and answers from it, which may be stale by the time a real request comes, and is only a dry
+   run. A prepared command, READY, holds its reservation, because it may still run.
+5. **The reservation follows its proposal**: committed when it is COMMITTED; released when it is
+   FAILED, or DENIED after it was reserved, giving the amount back to the day; held while it is
+   READY, EXECUTING or OUTCOME_UNKNOWN. Written after the move; one that cannot be written stays
+   held, so the limit errs toward refusing, never toward paying more. *(Corrected by decision 141:
+   it was settled even when the move was not written; now only when the history holds it.)*
+6. **A settled reservation is never changed**: a second, restrictive policy lets an UPDATE touch
+   only a held one, as step 20 keeps an answer, so a committed payment cannot be released to make
+   room. The application adds reservations and day totals and changes only a held reservation's
+   state and a total's amount; start-up refuses more. *(Corrected by decision 141: the policy keeps
+   a settled reservation, and does not keep the total; the application can still change the total,
+   or insert a reservation that booked nothing, and make room. Written down there, with why.)*
+7. **A payment in another currency than the limit's is over it**, as step 18's per-payment limit
+   treats it, until step 26 brings exchange rates (`DSOR-MON-04`, restrictively).
+8. **The demo sends ten payments of 25,000.00 USD, one after another**: some are made, the rest
+   are `LIMIT_EXCEEDED`, and the day's total stops at the limit. Not at once, for the reason found
+   below. The total survives between runs, so a second run the same day finds less room, and the
+   README says what that does.
+
+**What the build found (measured 2026-10-11).** Requests at once in one company mostly lose the race
+for the company's log: of fifty payments at once, PGlite made one and refused forty-nine with
+`EVIDENCE_STORE_UNAVAILABLE`, retry `safe_same_key`; a real server over a pool of twenty made two or
+three. That is step 09's log, which refuses a lost race rather than absorbing it, and step 21 wrote
+it down. It made a unit test of fifty payments through the door pass with one payment made, proving
+nothing about the limit, so that test was removed; the race on the limit is proven where it can
+fail, fifty reservations at once, forty booked. And it showed a second thing: an amount is booked at
+§21.10 before the decision is recorded, so for a moment the reservations of requests about to lose
+the log race count against the day, and one payment in each real-server run was refused
+`LIMIT_EXCEEDED` with room left once they were given back. The limit erred toward refusing, which is
+the direction decision 140 chose, and the day's total ended exactly what was made.
+
+## 141 · What step 24's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date. Each choice is the
+recommendation, and each is open to reversal.
+
+One reviewer, read-only, with probes in its own copy. It found the booking atomic (a read-then-write
+version, measured, booked all fifty, 250,000.00), the same proposal never booked twice, a settled
+reservation settled once, bad amounts refused before they reach the limit, the day the database's in
+UTC, a dry run booking nothing, and the tenants apart. It found no way for the agent alone to push
+the day past the limit. It found:
+
+1. **The application's own role could make room on a full day** (measured): `UPDATE dsor.day_totals
+   SET used_value = 0`, or a reservation inserted for a proposal that booked nothing, and released.
+   Written down, not fixed, and the claims that said otherwise corrected: migration 022's comments,
+   start-up's, and decision 140's sixth choice. The reason: the payments table is not tied to
+   reservations, so the application's own code could pay past the limit by writing a payment
+   directly, as it could pay past the limit per payment since step 18. Making the total itself
+   unchangeable by the application, with functions only the database's own role may run, would close
+   one door of several. What the database does guarantee is what §13.4 is about: requests racing each
+   other never book past the limit, a proposal never books twice, and a settled reservation is kept.
+   A later step that ties a payment to its reservation is where the limit becomes the database's.
+2. **A reservation was settled even when its proposal's last move was not written** (measured): the
+   proposal stayed EXECUTING, unknown, and its amount was given back to the day. Now a reservation is
+   settled only when the proposal's history holds the move: committed with a move into COMMITTED,
+   released with a move into FAILED or DENIED, in the same statement.
+3. **The race test through the door could not fail** (measured): fifty payments of 5,000.00 cross
+   200,000.00 only after forty are made, and the log lets two or three through. It now books
+   195,000.00 first, so the fifty race for room for one, and at most one may be made.
+4. **An answered failure that does not say nothing was done was untested**: a handler answering
+   `TRANSACTION_FAILED` now has a test that its reservation stays held.
+5. **`reserve()` did not guard the currency itself** (measured: EUR 150,000 booked against the USD
+   limit, and the day's row stamped EUR). It now takes the limit's currency, writes it, and books
+   only an amount in it. And the stage's refusal of another currency, never reached because del_100's
+   limit per payment refuses first, has a test with a slip that has only a daily limit.
+6. **"Already reserved" was accepted whatever the reservation's state**: a proposal whose
+   reservation was released or committed came back as booked. Latent until step 31 re-checks a
+   proposal; now only a held one is "already", and a settled one is refused.
+
+**Broken on purpose (measured 2026-10-11, predictions written first).** Each fix was broken once, in
+a copy, on the whole suite. Settling without asking the history first failed 8 where 3 were
+predicted, because the break left the statement's fourth parameter unused and PostgreSQL refused
+every settle: a break that changed two things. With the parameter kept and the condition always true,
+it failed the 3 predicted. A reserve that takes any currency failed 1, and a settled reservation
+taken as "already" failed 1, as predicted. The race through the door, broken on a real server to
+read the total and then write it, made three payments with room for one. The README's three breaks
+were measured twice and the runs agreed: 1, 4 and 4 failing.
