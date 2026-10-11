@@ -59,7 +59,10 @@ jobs:
     # Measured 2026-10-08: steps 09 to 11 run their test files one at a time now (the parallel
     # runs were flaking), and on the Windows runner each takes three to four minutes; the whole
     # loop took 7.5 minutes on Ubuntu and was cut off at 10 on Windows, in the middle of step 10.
-    timeout-minutes: 30
+    # Measured 2026-10-11: with 36 step folders the loop was cut off at 30 minutes on Ubuntu, in
+    # the middle of my_17, so steps 18 to 20 were never checked. About three minutes a step; 60
+    # leaves room for ten more, and then the job wants splitting by track.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
