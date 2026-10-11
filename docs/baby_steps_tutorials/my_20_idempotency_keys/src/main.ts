@@ -286,8 +286,9 @@ console.log(
 // STEP 17, and this is the step. Every command says, in its contract and on every receipt,
 // whether its effect can be undone. A payment is made as a draft, and a draft can be taken back:
 // payment.create names payment.cancel as what undoes it. The agent makes a second payment for
-// INV-1008 by mistake, though INV-1008 has PAY-901 already, and takes it back. Step 20 stops the
-// duplicate before it is made; until then, a mistake that can be undone is one that can be put right.
+// INV-1008 by mistake, though INV-1008 has PAY-901 already, and takes it back. A mistake that can
+// be undone is one that can be put right. STEP 20 does not stop this one: it is a new request, with
+// a new key. What would stop it is in-flight exclusivity, §25.1, a later step (decision 132).
 console.log();
 console.log("Can it be undone? Every command says so in its contract:");
 console.log();

@@ -612,7 +612,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // NEW IN STEP 20: the idempotency keys. The application claims a key and writes its answer, and
   // nothing else: a claim it could delete is a request it could run twice, one whose key or
   // fingerprint it could change is a claim on another request, and one it could insert with its
-  // answer already written is an answer nobody gave (decision 131).
+  // answer already written is an answer nobody gave (decision 131). Rewriting a written answer is
+  // the claims' second policy's to refuse, and the lock check above asks for it (decision 132).
   const { rows: keys } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_column_privilege(${role}, 'dsor.idempotency_keys', 'answer', 'INSERT')

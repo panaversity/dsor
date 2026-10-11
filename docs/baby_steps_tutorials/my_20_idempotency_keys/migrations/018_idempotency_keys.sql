@@ -6,9 +6,10 @@
 -- request, so the same key with a different request is refused, and, once the request is answered,
 -- the answer, so the same request again gets the same answer and nothing runs twice.
 --
--- answer is NULL while the first request is still being carried out. A request whose answer invites
--- the same key again, because nothing ran, leaves {"released": true}, and the next one with that key
--- and that request takes the claim back, in one UPDATE.
+-- answer is NULL while the first request is still being carried out. A request refused before
+-- anything ran, with an answer that invites the same key again, leaves {"released": true}, and the
+-- next one with that key and that request takes the claim back, in one UPDATE. Only such a refusal:
+-- an answer given after a handler ran is kept, whatever it says (decision 132).
 
 CREATE TABLE dsor.idempotency_keys (
   tenant       TEXT NOT NULL,
@@ -25,7 +26,8 @@ CREATE TABLE dsor.idempotency_keys (
 
 -- The application claims a key and writes its answer, and nothing else. It never deletes a claim,
 -- which would let the same request run again, and never changes whose claim it is, or which request
--- it fingerprints.
+-- it fingerprints. The right to write an answer would be the right to rewrite one; the second
+-- policy below takes that back (decision 132).
 REVOKE ALL ON dsor.idempotency_keys FROM PUBLIC;
 GRANT SELECT ON dsor.idempotency_keys TO dsor_runtime;
 GRANT INSERT (tenant, principal, operation, key, payload_hash) ON dsor.idempotency_keys TO dsor_runtime;
