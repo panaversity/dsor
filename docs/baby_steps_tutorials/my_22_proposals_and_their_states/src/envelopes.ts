@@ -167,8 +167,6 @@ export function resetRequestIds(): void {
   requestCount = 0;
 }
 
-let proposalCount = 0;
-
 /**
  * Builds a refusal.
  *
@@ -262,11 +260,12 @@ export function refusal(
  * Builds the answer to a command that succeeded.
  *
  * `outcome: "COMMITTED"` is the only honest value for "the change happened", and the
- * schema then requires three companions. Two of them are placeholders this step is open
+ * schema then requires three companions. One of them is a placeholder this step is open
  * about:
  *
- * - `proposal` is an address, nothing more. The proposal *record*, with states and
- *   approvals, arrives in step 22.
+ * - NEW IN STEP 22: `proposal` is no longer one. It is the address of the proposal this command
+ *   became at §21.8, a record in DSoR's own store, handed to the handler by the door (decision
+ *   136). It was a counter here, which started again with every run.
  * - `payload_hash` is a fingerprint of the arguments, so the same request hashes the
  *   same. It is sha256 over `JSON.stringify`, which depends on key order; *canonical*
  *   JSON, where key order is settled, arrives in step 29.
@@ -277,23 +276,25 @@ export function success(answer: {
   data: Readonly<Record<string, unknown>>;
   semantics: string;
   payloadHash: string;
-  /** STEP 10: the company the command ran in. The proposal address is inside it. */
+  /** STEP 10: the company the command ran in. */
   tenant: string;
+  /** NEW IN STEP 22: the address of the proposal this command became, in that company. */
+  proposal: string;
   requestId?: string;
   principalId?: string;
 }): ResultEnvelope {
-  proposalCount += 1;
+  // STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names its
+  // company: a review once got a receipt for org_789's command in org_456's proposal space. NEW IN
+  // STEP 22: the address comes from the store now, and is still checked against the company.
+  if (!answer.proposal.startsWith(`dsor://${answer.tenant}/proposal/`)) {
+    throw new TypeError(
+      `a receipt for a command in ${answer.tenant} named ${answer.proposal}, which is not one of its proposals`,
+    );
+  }
 
-  // STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names
-  // its company. This was `dsor://org_456/proposal/...` for every tenant — a hostile review ran a
-  // command as org_789 and got a receipt in org_456's proposal space. The counter is still
-  // process-wide, and it starts again with every run: two runs name two different proposals
-  // `prop_0001`, measured on step 15. Step 16 gave DSoR a store of its own and moved the log into
-  // it; the proposal store that makes this number real arrives in step 22 (decision 122).
-  const id = String(proposalCount).padStart(4, "0");
   const envelope: ResultEnvelope = Object.freeze({
     outcome: "COMMITTED" as const,
-    proposal: `dsor://${answer.tenant}/proposal/prop_${id}`,
+    proposal: answer.proposal,
     payload_hash: answer.payloadHash,
     semantics: answer.semantics,
     data: answer.data,
@@ -319,9 +320,4 @@ export function success(answer: {
  */
 export function payloadHash(text: string): string {
   return `sha256:${createHash("sha256").update(text).digest("hex")}`;
-}
-
-/** Starts the proposal counter again. For tests. */
-export function resetProposalIds(): void {
-  proposalCount = 0;
 }

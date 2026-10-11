@@ -19,7 +19,7 @@ import {
   validateAuditRecord,
   verifyChain,
 } from "../src/audit.ts";
-import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
+import { resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { PIPELINE } from "../src/operations.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
@@ -35,7 +35,6 @@ const INV_1009 = "dsor://org_456/invoice/INV-1009";
 async function fresh(): Promise<void> {
   await forgetTheLog("org_456");
   resetRequestIds();
-  resetProposalIds();
   resetClock();
   await resetTheStory();
 }

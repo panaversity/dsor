@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callOperation } from "./support/door.ts";
 import type { Login } from "../src/login.ts";
-import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
+import { resetRequestIds } from "../src/envelopes.ts";
 import { aDatabase } from "./support/database.ts";
 
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -89,7 +89,6 @@ describe("the caller's arguments", () => {
   // read after the first, and the fingerprint must still be of INV-1009.
   it("DSOR-SCH-01: the arguments are read once, so the receipt describes what was done", async () => {
     resetRequestIds();
-    resetProposalIds();
 
     let reads = 0;
 

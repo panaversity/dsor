@@ -19,7 +19,7 @@
 // `01a` is the exact rule for "the record and the answer name the same request".
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
+import { resetRequestIds } from "../src/envelopes.ts";
 import { callOperation } from "./support/door.ts";
 import { aDatabase } from "./support/database.ts";
 
@@ -58,7 +58,6 @@ describe("the request id", () => {
   // builds two envelopes.
   it("DSOR-COR-01b: each request mints exactly one id, and refusals are not exempt", async () => {
     resetRequestIds();
-    resetProposalIds();
 
     // Three requests, refused at three different stages, so the id is not an accident of one path.
     const noLogin = await callOperation(undefined, "invoice.get", { invoice: INV_1008 });
@@ -82,7 +81,6 @@ describe("the request id", () => {
 
   it("DSOR-COR-01a: a command that succeeds carries the id its request was given", async () => {
     resetRequestIds();
-    resetProposalIds();
 
     // Refuse once, so the counter has moved and the success below cannot pass by starting at one.
     expect(idOf(await callOperation(undefined, "invoice.get", {}))).toBe("req_1");
@@ -107,7 +105,6 @@ describe("the request id", () => {
 
   it("DSOR-COR-01b: two requests never share an id", async () => {
     resetRequestIds();
-    resetProposalIds();
 
     const seen = new Set<string>();
 

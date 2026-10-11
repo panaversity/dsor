@@ -60,6 +60,8 @@ describe("the pipeline", () => {
       "validate the input",
       // STEP 20: §21 step 7, the idempotency claim, for commands only.
       "claim the idempotency key",
+      // NEW IN STEP 22: §21 step 8, the command becomes a proposal, for commands only.
+      "create the proposal",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
       "record the decision",
@@ -68,9 +70,9 @@ describe("the pipeline", () => {
 
   // §21 numbers its seventeen steps, and the gaps in the numbering are the roadmap. STEP 20:
   // 4, the operational status, is still missing; after the claim at 7 come the proposal, the
-  // preconditions and the rest of the controls.
+  // preconditions and the rest of the controls. NEW IN STEP 22: the proposal is 8.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 7, 10, 11]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 7, 8, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -94,12 +96,15 @@ describe("the pipeline", () => {
     expect(applies(only, "command")).toBe(true);
   });
 
-  it("DSOR-EXE-01b: every stage in the real list applies to both kinds, but the slip's limit and the key's claim", () => {
+  it("DSOR-EXE-01b: every stage in the real list applies to both kinds, but the slip's limit, the key's claim and the proposal", () => {
     // STEP 18: the first command-only stage. A query carries no payment to compare with a limit.
     // STEP 20: and the claim, because a query changes nothing, so asking it twice is harmless.
+    // NEW IN STEP 22: and the proposal, because a query proposes nothing.
     for (const stage of PIPELINE) {
       const commandOnly =
-        stage.name === "check the slip's limit" || stage.name === "claim the idempotency key";
+        stage.name === "check the slip's limit" ||
+        stage.name === "claim the idempotency key" ||
+        stage.name === "create the proposal";
 
       expect(applies(stage, "query"), stage.name).toBe(!commandOnly);
       expect(applies(stage, "command"), stage.name).toBe(true);
@@ -132,12 +137,13 @@ describe("the pipeline", () => {
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"), // STEP 20
+      fake(8, "create the proposal", "command"), // NEW IN STEP 22
       fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(9);
+    expect(assertPipeline(whole)).toBe(10);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -502,6 +508,7 @@ describe("the pipeline", () => {
       fake(3, "resolve the delegation"), // STEP 18: required, so present
       fake(5, "authorize"),
       fake(6, "validate the input"),
+      fake(8, "create the proposal", "command"), // NEW IN STEP 22: required, so present
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
@@ -517,11 +524,12 @@ describe("the pipeline", () => {
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
+      fake(8, "create the proposal", "command"),
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(9);
+    expect(assertPipeline(inOrder)).toBe(10);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -589,7 +597,33 @@ describe("the pipeline", () => {
     }
 
     expect(answer.envelope.code).toBe("INTERNAL_ERROR");
-    expect(answer.envelope.message).toMatch(/without a claimed idempotency key/);
+    // NEW IN STEP 22: the proposal's stage, the next one, is the first to notice now, and refuses
+    // as §21.11 would have: a proposal is made only for a claimed key.
+    expect(answer.envelope.message).toMatch(/reached §21\.8 without .*a claimed key/);
+  });
+
+  it("DSOR-APR-01a: with the proposal stage doing nothing, a command is INTERNAL_ERROR, never run without a proposal", async () => {
+    // NEW IN STEP 22: a command that reaches §21.11 with no proposal has no record of where it is,
+    // so the recording stage refuses it, as it refuses one with no claim (decision 136).
+    const list = PIPELINE.map((stage) =>
+      stage.name === "create the proposal"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+    const answer = await makeDoor(list)({ loggedInAs: "user_123" }, "payment.cancel", {
+      payment: "dsor://org_456/payment/PAY-901",
+      expected_version: 1,
+    });
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected a refusal, got ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+    expect(answer.envelope.message).toMatch(/reached §21\.11 without a proposal/);
   });
 
   it("DSOR-DEL-10: with the delegation stage forgetting the signer's time, an agent's command is INTERNAL_ERROR, never recorded as direct", async () => {
@@ -650,6 +684,9 @@ describe("the pipeline", () => {
         "resolve the delegation",
         "check the slip's limit",
         "claim the idempotency key",
+        // NEW IN STEP 22: and the proposal, which fills something only for a command. Its own
+        // test is below the claim's.
+        "create the proposal",
       ]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
@@ -872,30 +909,42 @@ describe("the pipeline", () => {
   // Step 08 made the list five long, so this now walks 120 orderings instead of 24, and still
   // exactly one is accepted. The test cost nothing to strengthen: the number came from the list.
   it("DSOR-EXE-01a: of every ordering of the real stages, exactly one is accepted", () => {
-    const orderings = <T>(xs: readonly T[]): T[][] =>
-      xs.length <= 1
-        ? [[...xs]]
-        : xs.flatMap((x, i) =>
-            orderings([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]),
-          );
+    // NEW IN STEP 22: one ordering at a time, from a generator, counted and not kept. Ten stages
+    // have 3,628,800 orderings, and holding them all as arrays, as this test did up to nine, would
+    // take ten times the memory for no more proof (decision 136).
+    function* orderings<T>(xs: readonly T[]): Generator<T[]> {
+      if (xs.length <= 1) {
+        yield [...xs];
 
-    const all = orderings(PIPELINE);
+        return;
+      }
 
-    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. STEP 20: nine,
-    // so 362880. Still exactly one is accepted: the delegation stage is required after the
-    // operation, the claim after the input, and the limit after the claim.
-    expect(all).toHaveLength(362880);
+      for (const [i, x] of xs.entries()) {
+        for (const rest of orderings([...xs.slice(0, i), ...xs.slice(i + 1)])) {
+          yield [x, ...rest];
+        }
+      }
+    }
 
-    const accepted = all.filter((list) => {
+    let all = 0;
+    const accepted: Stage[][] = [];
+
+    for (const list of orderings(PIPELINE)) {
+      all += 1;
+
       try {
         assertPipeline(list);
-
-        return true;
+        accepted.push(list);
       } catch {
-        return false;
+        // Refused, as all but one must be.
       }
-    });
+    }
 
+    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. STEP 20: nine,
+    // so 362880. NEW IN STEP 22: ten, so 3628800. Still exactly one is accepted: the delegation
+    // stage is required after the operation, the claim after the input, the proposal after the
+    // claim, and the limit after the proposal.
+    expect(all).toBe(3628800);
     expect(accepted).toHaveLength(1);
     expect(accepted[0]?.map((stage) => stage.name)).toEqual(PIPELINE.map((stage) => stage.name));
   });

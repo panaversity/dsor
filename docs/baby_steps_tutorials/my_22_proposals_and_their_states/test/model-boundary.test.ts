@@ -487,6 +487,7 @@ describe("the ceiling measures what leaves", () => {
       semantics: "atomic",
       payloadHash: "sha256:0",
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       requestId: "req_0",
       principalId: "user_123",
     });
@@ -516,6 +517,7 @@ describe("the ceiling measures what leaves", () => {
       semantics: "atomic",
       payloadHash: "sha256:0",
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       requestId: "req_0",
       principalId: "accounts-payable-fte",
     });
@@ -660,6 +662,7 @@ describe("the parts of an answer that are not rows", () => {
       semantics: "atomic",
       payloadHash: "sha256:0",
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       requestId: "req_0",
       principalId: "accounts-payable-fte",
     });

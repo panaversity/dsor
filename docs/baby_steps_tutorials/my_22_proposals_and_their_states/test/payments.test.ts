@@ -321,7 +321,15 @@ describe("the door says the semantics, from the contract", () => {
     // A careless handler, begun as a copy of one whose effect commits once: it makes the payment,
     // and says `atomic` on the receipt. The contract says the payment can be undone, and the door
     // says so.
-    const careless: Handler = async (_args, _contract, askedBy, tenant, hash, requestId) => {
+    const careless: Handler = async (
+      _args,
+      _contract,
+      askedBy,
+      tenant,
+      hash,
+      requestId,
+      proposal,
+    ) => {
       const made = await createPayment(tenant, "INV-1008", AMOUNT);
 
       if (made.kind !== "created") {
@@ -336,6 +344,7 @@ describe("the door says the semantics, from the contract", () => {
           semantics: "atomic",
           payloadHash: hash,
           tenant,
+          proposal,
           principalId: askedBy,
           requestId,
         }),

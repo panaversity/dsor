@@ -218,6 +218,7 @@ describe("the result envelope", () => {
   it("DSOR-SCH-01: a committed command validates against result-envelope.schema.json", () => {
     const envelope = success({
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       data: { id: "INV-1009" },
       semantics: "atomic",
       payloadHash: payloadHash(JSON.stringify({ invoice: "dsor://org_456/invoice/INV-1009" })),
@@ -232,6 +233,7 @@ describe("the result envelope", () => {
   it("DSOR-SCH-01: COMMITTED carries a proposal address, a payload hash, and semantics", () => {
     const envelope = success({
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       data: { id: "INV-1009" },
       semantics: "atomic",
       payloadHash: payloadHash(JSON.stringify({ invoice: "dsor://org_456/invoice/INV-1009" })),
@@ -245,18 +247,21 @@ describe("the result envelope", () => {
   it("DSOR-SCH-01: the same payload hashes the same, a different one does not", () => {
     const a = success({
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       data: {},
       semantics: "atomic",
       payloadHash: payloadHash('{"invoice":"a"}'),
     });
     const b = success({
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       data: {},
       semantics: "atomic",
       payloadHash: payloadHash('{"invoice":"a"}'),
     });
     const c = success({
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       data: {},
       semantics: "atomic",
       payloadHash: payloadHash('{"invoice":"b"}'),
@@ -266,12 +271,27 @@ describe("the result envelope", () => {
     expect(a.payload_hash).not.toBe(c.payload_hash);
   });
 
+  it("DSOR-TEN-01a: a receipt for one company that names another company's proposal is never built", () => {
+    // NEW IN STEP 22: the address comes from the store now, and is still checked against the
+    // company the command ran in, as step 10's review asked of the counter it replaced.
+    expect(() =>
+      success({
+        tenant: "org_789",
+        proposal: "dsor://org_456/proposal/prop_1",
+        data: {},
+        semantics: "atomic",
+        payloadHash: payloadHash("{}"),
+      }),
+    ).toThrow(/not one of its proposals/);
+  });
+
   it("DSOR-SCH-01: a result that would not validate never leaves the builder", () => {
     // The same self-check refusal() has. Without it, an envelope whose semantics is not
     // one of the five allowed words would be handed to a caller.
     expect(() =>
       success({
         tenant: "org_456",
+        proposal: "dsor://org_456/proposal/prop_1",
         data: {},
         semantics: "instantly",
         payloadHash: payloadHash("{}"),
@@ -285,6 +305,7 @@ describe("the result envelope", () => {
   it("DSOR-SCH-01: a result envelope cannot be edited either", () => {
     const envelope = success({
       tenant: "org_456",
+      proposal: "dsor://org_456/proposal/prop_1",
       data: {},
       semantics: "atomic",
       payloadHash: payloadHash("{}"),
@@ -324,6 +345,7 @@ describe("request ids", () => {
     expect(
       success({
         tenant: "org_456",
+        proposal: "dsor://org_456/proposal/prop_1",
         data: {},
         semantics: "atomic",
         payloadHash: payloadHash("{}"),

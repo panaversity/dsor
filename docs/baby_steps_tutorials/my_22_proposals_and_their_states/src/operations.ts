@@ -66,6 +66,8 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 import { audit, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
+// NEW IN STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
+import { moveProposal, propose, type ProposalState } from "./proposal.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
 // the program here, before any caller gets a turn. That is DSOR-OPR-02a.
@@ -135,6 +137,11 @@ export type Handler = (
   tenant: string,
   hash: string,
   requestId: string,
+  /**
+   * NEW IN STEP 22: the address of the proposal this command became, for its receipt. A query has
+   * none, and is handed an empty string (decision 136).
+   */
+  proposal: string,
 ) => HandlerAnswer | Promise<HandlerAnswer>;
 
 /** Contracts that describe an operation this step does not carry out yet. */
@@ -321,7 +328,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     return { kind: "page", askedBy, page, freshness };
   },
 
-  "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId) => {
+  "invoice.issue": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
     // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
     const semantics = semanticsOf(contract);
@@ -385,6 +392,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         semantics,
         payloadHash: hash,
         tenant,
+        proposal,
         principalId: askedBy,
         requestId,
       }),
@@ -392,7 +400,7 @@ const handlers: Readonly<Record<string, Handler>> = {
   },
 
   // STEP 17: a draft payment for one of the company's invoices, to its vendor (decision 125).
-  "payment.create": async (args, contract, askedBy, tenant, hash, requestId) => {
+  "payment.create": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
     // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
     const semantics = semanticsOf(contract);
@@ -451,6 +459,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         semantics,
         payloadHash: hash,
         tenant,
+        proposal,
         principalId: askedBy,
         requestId,
       }),
@@ -459,7 +468,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
   // STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
   // own permission, its own decision in the log (DSOR-EXE-05c).
-  "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId) => {
+  "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
     // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
     const semantics = semanticsOf(contract);
@@ -523,6 +532,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         semantics,
         payloadHash: hash,
         tenant,
+        proposal,
         principalId: askedBy,
         requestId,
       }),
@@ -1089,7 +1099,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    return carryOn({ ...context, given, payloadHash: payloadHash(written) });
+    return carryOn({ ...context, given, payload: written, payloadHash: payloadHash(written) });
   } catch (error) {
     return refuse(
       askedBy,
@@ -1234,6 +1244,73 @@ const claimTheKey: Stage["run"] = async (context) => {
 };
 
 /**
+ * NEW IN STEP 22: §21.8 — create the proposal (DSOR-APR-01a, decision 136).
+ *
+ * For a command only, after its key is claimed: a retry of the same request was answered at §21.7
+ * and never gets here, so one request is one proposal. Before anything is decided, so every
+ * decision about a command has a proposal to move. The payload is the text §21.6 wrote down, so it
+ * and its hash always agree; who asked is written as the decision record writes it.
+ *
+ * If it cannot be written, nothing is decided and nothing runs: a command with no proposal has no
+ * record of where it is.
+ */
+const createTheProposal: Stage["run"] = async (context) => {
+  const { principal, tenant, contract, payload, payloadHash, claim } = context;
+
+  if (
+    principal === undefined ||
+    tenant === undefined ||
+    contract === undefined ||
+    payload === undefined ||
+    payloadHash === undefined ||
+    claim === undefined
+  ) {
+    return refuse(
+      principal?.id ?? "(nobody)",
+      "INTERNAL_ERROR",
+      "the pipeline reached §21.8 without a principal, a tenant, a contract, a payload and a claimed key",
+      context.requestId,
+    );
+  }
+
+  // As the decision record says it (audit.ts): under a slip, the signer's authority used by the
+  // agent; otherwise the caller's own.
+  const requester =
+    context.delegation === undefined
+      ? { mode: "direct", subject: principal.id, actor_chain: [] }
+      : {
+          mode: "unattended",
+          subject: context.delegation.delegator,
+          actor_chain: [principal.id],
+          delegation: context.delegation.id,
+        };
+  const operation = `${contract.id}@${contract.version}`;
+
+  try {
+    const proposal = await propose({
+      tenant,
+      operation,
+      mode: "execute",
+      payload,
+      payloadHash,
+      requester: JSON.stringify(requester),
+      idempotencyKey: claim.key,
+      actor: principal.id,
+      cause: `${operation} invoked`,
+    });
+
+    return carryOn({ ...context, proposal });
+  } catch {
+    return refuse(
+      principal.id,
+      "EVIDENCE_STORE_UNAVAILABLE",
+      `the proposal for this ${contract.id} request could not be written; nothing was done`,
+      context.requestId,
+    );
+  }
+};
+
+/**
  * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
  *
  * After the input is validated, because the amount is the validated copy's: the one the payload hash
@@ -1351,9 +1428,12 @@ const recordTheDecision: Stage["run"] = async (context) => {
                 // retry of it could run twice (decision 131).
                 contract.kind === "command" && context.claim === undefined
                 ? "a claimed idempotency key"
-                : Object.hasOwn(handlers, contract.id)
-                  ? undefined
-                  : "any code to carry it out";
+                : // NEW IN STEP 22: and a proposal to move (decision 136).
+                  contract.kind === "command" && context.proposal === undefined
+                  ? "a proposal"
+                  : Object.hasOwn(handlers, contract.id)
+                    ? undefined
+                    : "any code to carry it out";
 
   const shortfall =
     missing === undefined
@@ -1529,6 +1609,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(6, "validate the input", "both", validateTheInput),
   // STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.
   stage(7, "claim the idempotency key", "command", claimTheKey),
+  // NEW IN STEP 22. §21.8: the command becomes a proposal, with a state (decision 136).
+  stage(8, "create the proposal", "command", createTheProposal),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
@@ -1695,6 +1777,35 @@ async function recordTheRead(
   return undefined;
 }
 
+/** NEW IN STEP 22: where one request's proposal has got to, and whether its handler ran. */
+interface Progress {
+  state: ProposalState | undefined;
+  handlerRan: boolean;
+}
+
+/**
+ * NEW IN STEP 22: the proposal's last move, from EXECUTING unless said otherwise, tried twice.
+ *
+ * If it cannot be written, the proposal stays where it was, and the caller is still told what
+ * happened: a proposal left EXECUTING is one whose outcome nobody recorded, which is
+ * OUTCOME_UNKNOWN by DSOR-EXE-04b, and reconciliation is step 37's.
+ */
+async function finishTheProposal(
+  tenant: string,
+  proposal: string,
+  to: ProposalState,
+  cause: string,
+  from: ProposalState = "EXECUTING",
+): Promise<void> {
+  const move = (): Promise<unknown> => moveProposal(tenant, proposal, from, to, "dsor", cause);
+
+  try {
+    await move().catch(move);
+  } catch {
+    // Left where it was; see above.
+  }
+}
+
 /**
  * `handlerTable` is the program's own handlers unless a test says otherwise. Exported for the
  * same reason `makeDoor` is: a test that wants to watch the door refuse an oversize answer needs
@@ -1717,7 +1828,11 @@ export function makeDoor(
   // STEP 20: what happens after the walk lets a request through: execute, filter, label,
   // record the read. It was the door's own body, line for line; it is a function now so that the
   // door can write the answer on the request's claim, whichever way it ends (decision 131).
-  const carryOut = async (context: Context, startedAt: number): Promise<OperationAnswer> => {
+  const carryOut = async (
+    context: Context,
+    startedAt: number,
+    progress: Progress,
+  ): Promise<OperationAnswer> => {
     const id = context.id;
     // `context.requestId`, not the door's `requestId`. They are the same value today, and a
     // review pointed out that there were two *sources* — every stage's refusal reads the context,
@@ -1759,7 +1874,9 @@ export function makeDoor(
       given === undefined ||
       hash === undefined ||
       handler === undefined ||
-      recorded === undefined
+      recorded === undefined ||
+      // NEW IN STEP 22: and a command with no proposal has no record of where it is (decision 136).
+      (contract.kind === "command" && context.proposal === undefined)
     ) {
       // Named inside the block, not computed above it. Both existed for a while — a ternary chain
       // that picked the name, *and* these clauses for the narrowing — and a mutation sweep found the
@@ -1778,7 +1895,9 @@ export function makeDoor(
                   ? "a payload hash"
                   : handler === undefined
                     ? "any code to carry it out"
-                    : "a record of the decision";
+                    : recorded === undefined
+                      ? "a record of the decision"
+                      : "a proposal";
       const askedBy = principal?.id ?? "(nobody)";
 
       return Object.freeze({
@@ -1798,7 +1917,96 @@ export function makeDoor(
     // filter, the ceiling and the record of the read below all work from this copy, so for an
     // answer that is data, a part that would answer differently on a second read never gets one.
     // Code written to trick the copy is decision 119's.
-    const answer = copyOnce(await handler(given, contract, principal.id, tenant, hash, id_));
+    //
+    // NEW IN STEP 22: and a command's proposal moves first: to READY, because the decision is
+    // recorded, then to EXECUTING, the last thing before its handler runs (decision 136). Only one
+    // request can write the move out of READY, so a proposal runs at most once (DSOR-IDM-04). A move
+    // that cannot be written means the handler does not run.
+    const proposal = context.proposal;
+    const address = proposal === undefined ? "" : `dsor://${tenant}/proposal/${proposal}`;
+
+    if (proposal !== undefined) {
+      for (const [to, cause] of [
+        ["READY", `allowed: the decision is recorded as ${recorded}`],
+        ["EXECUTING", `handed to ${contract.id}`],
+      ] as const) {
+        const from = progress.state ?? "PROPOSED";
+        let moved;
+
+        try {
+          moved = await moveProposal(tenant, proposal, from, to, "dsor", cause);
+        } catch {
+          moved = undefined;
+        }
+
+        if (moved?.kind !== "moved") {
+          return Object.freeze({
+            kind: "error",
+            askedBy: principal.id,
+            envelope:
+              moved === undefined
+                ? refusal(
+                    "EVIDENCE_STORE_UNAVAILABLE",
+                    `${proposal} could not be moved to ${to}, so it was not carried out; nothing was done`,
+                    id_,
+                    principal.id,
+                  )
+                : refusal(
+                    "INTERNAL_ERROR",
+                    `${proposal} was not ${from}, so it was not carried out`,
+                    id_,
+                    principal.id,
+                  ),
+          });
+        }
+
+        progress.state = to;
+      }
+    }
+
+    // NEW IN STEP 22: from here on, something may have happened. A handler that throws leaves its
+    // proposal OUTCOME_UNKNOWN, because nobody knows whether it ran, and the throw goes on to the
+    // caller as before.
+    progress.handlerRan = true;
+
+    let handed;
+
+    try {
+      handed = await handler(given, contract, principal.id, tenant, hash, id_, address);
+    } catch (error) {
+      if (proposal !== undefined) {
+        await finishTheProposal(
+          tenant,
+          proposal,
+          "OUTCOME_UNKNOWN",
+          "the handler threw, so nobody knows whether it ran",
+        );
+      }
+
+      throw error;
+    }
+
+    const answer = copyOnce(handed);
+
+    // NEW IN STEP 22: and how it ended, from what the handler answered: a receipt is COMMITTED, a
+    // refusal is FAILED, and anything else is OUTCOME_UNKNOWN, because a command that answered with
+    // a row, or said itself that it does not know, may or may not have done its work.
+    if (proposal !== undefined) {
+      const [ended, cause]: readonly [ProposalState, string] =
+        answer.kind === "result"
+          ? ["COMMITTED", "the handler answered COMMITTED"]
+          : answer.kind === "error"
+            ? [
+                answer.envelope.code === "OUTCOME_UNKNOWN" ? "OUTCOME_UNKNOWN" : "FAILED",
+                `the handler answered ${String(answer.envelope.code)}`,
+              ]
+            : [
+                "OUTCOME_UNKNOWN",
+                `the handler answered with ${answer.kind === "data" ? "a row" : "a page"}, not a receipt`,
+              ];
+
+      await finishTheProposal(tenant, proposal, ended, cause);
+    }
 
     // STEP 14: and an answer this program cannot filter is this program's bug, said in an
     // envelope rather than thrown. Before the filter, because the filter is what would crash.
@@ -1861,9 +2069,18 @@ export function makeDoor(
     // here, from the contract, whatever the handler wrote (DSOR-EXE-05b, decision 125). A query has
     // none, and a query that answered with a receipt was refused above.
     const semantics = contract.execution?.semantics;
+    // NEW IN STEP 22: and the proposal it names is the one the door made, whatever the handler
+    // wrote, as for its semantics (decision 136).
+    const named =
+      proposal === undefined || answer.kind !== "result"
+        ? answer
+        : (Object.freeze({
+            ...answer,
+            envelope: Object.freeze({ ...answer.envelope, proposal: address }),
+          }) as HandlerAnswer);
     const leaving = leaveTheDoor(
       principal,
-      semantics === undefined ? answer : withTheContractsSemantics(answer, semantics),
+      semantics === undefined ? named : withTheContractsSemantics(named, semantics),
     );
 
     // STEP 13: and nothing oversize leaves. The decision was recorded as the ALLOW it was;
@@ -1924,9 +2141,33 @@ export function makeDoor(
       return walked.answer;
     }
 
+    // NEW IN STEP 22: where this request's proposal has got to, and whether its handler ran.
+    const progress: Progress = {
+      state: walked.context.proposal === undefined ? undefined : "PROPOSED",
+      handlerRan: false,
+    };
     const answer =
-      walked.kind === "refused" ? walked.answer : await carryOut(walked.context, startedAt);
+      walked.kind === "refused"
+        ? walked.answer
+        : await carryOut(walked.context, startedAt, progress);
     const claim = walked.context.claim;
+    const { proposal, tenant } = walked.context;
+
+    // NEW IN STEP 22: refused before anything moved it: DENIED, with the code that refused it.
+    if (
+      proposal !== undefined &&
+      tenant !== undefined &&
+      progress.state === "PROPOSED" &&
+      answer.kind === "error"
+    ) {
+      await finishTheProposal(
+        tenant,
+        proposal,
+        "DENIED",
+        `refused: ${answer.envelope.code}`,
+        "PROPOSED",
+      );
+    }
 
     // STEP 20: the answer goes on the claim, to be given again to the same request
     // (DSOR-IDM-01c). A refusal from the walk that invites the same key again releases the claim
@@ -1934,8 +2175,11 @@ export function makeDoor(
     // nothing ran. Only the walk's. An answer given after a handler ran is kept, whatever retry
     // class it carries: a handler that made a payment and then answered TRANSACTION_FAILED had
     // its claim released, and three attempts made three payments (decision 132).
+    //
+    // NEW IN STEP 22: or a refusal from the door before the handler ran, when a proposal's move
+    // could not be written: nothing ran then either (decision 136).
     const releases =
-      walked.kind === "refused" &&
+      (walked.kind === "refused" || !progress.handlerRan) &&
       answer.kind === "error" &&
       answer.envelope.retry === "safe_same_key";
 

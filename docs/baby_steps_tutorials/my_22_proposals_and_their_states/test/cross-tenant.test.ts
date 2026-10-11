@@ -203,7 +203,8 @@ describe("an address for another company", () => {
         throw new Error(`expected a result, got ${JSON.stringify(answer)}`);
       }
 
-      expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_789\/proposal\/prop_\d{4}$/);
+      // NEW IN STEP 22: a real proposal now, numbered by the store, not four digits from a counter.
+      expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_789\/proposal\/prop_\d+$/);
     } finally {
       useDirectory("org_789", undefined);
     }

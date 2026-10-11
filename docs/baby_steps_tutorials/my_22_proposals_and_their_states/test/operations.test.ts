@@ -10,7 +10,6 @@ import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import {
   payloadHash,
   refusal,
-  resetProposalIds,
   resetRequestIds,
   success,
   validateEnvelope,
@@ -298,7 +297,6 @@ describe("callOperation", () => {
     // covers the map's "done when": issuing twice returns an error envelope, not a throw.
     it("DSOR-SCH-01: issuing a draft returns COMMITTED, and the second attempt is CONFLICT", async () => {
       resetRequestIds();
-      resetProposalIds();
 
       const first = await callOperation(SUPERVISOR, "invoice.issue", {
         invoice: INV_1009,
@@ -312,7 +310,9 @@ describe("callOperation", () => {
       expect(validateEnvelope("result", first.envelope)).toBe(true);
       expect(first.envelope.outcome).toBe("COMMITTED");
       expect(first.envelope.semantics).toBe("atomic");
-      expect(first.envelope.proposal).toBe("dsor://org_456/proposal/prop_0001");
+      // NEW IN STEP 22: the address of a proposal in the store, numbered by the store, which
+      // proposals.test.ts pins; it was a counter here that started again with every run.
+      expect(first.envelope.proposal).toMatch(/^dsor:\/\/org_456\/proposal\/prop_\d+$/);
 
       // The semantics on the envelope is the one the contract declares. It lives here because
       // there is one draft invoice, so this is the only place a result envelope exists to read.
@@ -390,11 +390,11 @@ describe("callOperation", () => {
     // separate them. Until then, `success()` at least provably carries whatever it is handed:
     it("DSOR-SCH-01: the result envelope carries the semantics it is given, whatever it is", () => {
       resetRequestIds();
-      resetProposalIds();
 
       for (const semantics of ["atomic", "best_effort"]) {
         const envelope = success({
           tenant: "org_456",
+          proposal: "dsor://org_456/proposal/prop_1",
           data: { ok: true },
           semantics,
           payloadHash: payloadHash("{}"),

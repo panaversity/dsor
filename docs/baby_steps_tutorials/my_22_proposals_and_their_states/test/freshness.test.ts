@@ -161,6 +161,7 @@ describe("the door insists on a label", () => {
           semantics: "atomic",
           payloadHash: "sha256:0",
           tenant: "org_456",
+          proposal: "dsor://org_456/proposal/prop_1",
           requestId: "req_0",
           principalId: askedBy,
         }),

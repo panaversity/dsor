@@ -84,7 +84,18 @@ export interface Context {
   readonly idempotencyKey?: unknown;
   /** STEP 20: the claim this request holds on its key, from §21.7. Its answer goes there. */
   readonly claim?: Claim;
+  /**
+   * NEW IN STEP 22: the proposal this command became at §21.8, by its id, `prop_1`. Its moves are
+   * written as the request goes: DENIED if a later stage refuses, then READY, EXECUTING and how it
+   * ended (decision 136).
+   */
+  readonly proposal?: string;
   readonly given?: Readonly<Record<string, unknown>>;
+  /**
+   * NEW IN STEP 22: the arguments as the text §21.6 wrote them down, the text the payload hash is
+   * computed from. The proposal keeps it, so its payload and its hash always agree.
+   */
+  readonly payload?: string;
   /**
    * The fingerprint of the arguments, from the text the validate stage wrote down.
    *
@@ -204,6 +215,10 @@ const REQUIRED: readonly string[] = Object.freeze([
   // STEP 20: after the input is validated, because the claim keeps the payload hash, and
   // before anything is decided that a retry must not decide twice (DSOR-IDM-01b, decision 131).
   "claim the idempotency key",
+  // NEW IN STEP 22: after the claim, so a retry of the same request is the earlier request's
+  // answer and never a second proposal; before anything is decided, so every decision about a
+  // command has a proposal to move (DSOR-APR-01a, decision 136).
+  "create the proposal",
   // STEP 18: required too, because without it a payment above the slip's limit goes
   // through with nothing to say it was ever checked.
   "check the slip's limit",

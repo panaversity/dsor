@@ -7,10 +7,15 @@
 // of its execution.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { overPGlite } from "../src/database.ts";
+import { refusal } from "../src/envelopes.ts";
+import { getInvoice } from "../src/invoice.ts";
+import { PIPELINE } from "../src/operations.ts";
 import { moveProposal, movesOf, propose, type ProposalState, stateOf } from "../src/proposal.ts";
-import { theDatabase } from "../src/store.ts";
+import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 
 // §26.2's diagram, written out by hand from the specification, without the moves into and out of
 // compensation. The migration holds the map; this is the second reading that checks it.
@@ -306,5 +311,216 @@ describe("the application adds, and changes nothing", () => {
       kind: "refused",
     });
     expect(await stateOf("org_456", id)).toBe("PROPOSED");
+  });
+});
+
+// NEW IN STEP 22, piece 2: the door makes the proposal at §21.8 and moves it as the request goes.
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const CFO = { loggedInAs: "cfo_100" };
+const ISSUE_1009 = { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 };
+
+/** org_456's proposals, as the owner sees them. */
+const proposalsOf456 = async (): Promise<
+  ReadonlyArray<{ id: string; payload: string; payload_hash: string; requester: string }>
+> =>
+  asTheOwner(async () => {
+    const { rows } = await db.query<{
+      id: string;
+      payload: string;
+      payload_hash: string;
+      requester: string;
+    }>(
+      "SELECT id, payload, payload_hash, requester FROM dsor.proposals WHERE tenant = 'org_456' ORDER BY created_at",
+    );
+
+    return rows;
+  });
+
+/** The moves of one proposal, as [from, to, actor, cause]. */
+const historyOf = async (id: string): Promise<unknown[][]> =>
+  (await movesOf("org_456", id)).map((m) => [m.from, m.to, m.actor, m.cause]);
+
+/** The program's store, failing on the moves into the states named, until it is put back. */
+function failingMovesInto(states: readonly ProposalState[]): void {
+  const connection = overPGlite(db);
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      if (
+        sql.includes("INSERT INTO dsor.proposal_moves") &&
+        states.includes(params?.[3] as ProposalState)
+      ) {
+        throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+      }
+
+      return connection.query<T>(sql, params, tenant);
+    },
+  });
+}
+
+describe("the door makes a proposal for every command and moves it", () => {
+  afterEach(() => {
+    useDatabase(overPGlite(db));
+  });
+
+  it("DSOR-APR-01a: a command carried out moves PROPOSED, READY, EXECUTING, COMMITTED, and its receipt names it", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(answer.envelope.proposal).toBe("dsor://org_456/proposal/prop_1");
+
+    const history = await historyOf("prop_1");
+
+    expect(history).toHaveLength(4);
+    expect(history[0]).toStrictEqual([null, "PROPOSED", "user_123", "invoice.issue@1 invoked"]);
+    expect(history[1]?.slice(0, 3)).toStrictEqual(["PROPOSED", "READY", "dsor"]);
+    expect(history[1]?.[3]).toMatch(/^allowed: the decision is recorded as /);
+    expect(history.slice(2)).toStrictEqual([
+      ["READY", "EXECUTING", "dsor", "handed to invoice.issue"],
+      ["EXECUTING", "COMMITTED", "dsor", "the handler answered COMMITTED"],
+    ]);
+  });
+
+  it("DSOR-APR-01a: the proposal keeps the payload the receipt's hash describes, and who asked", async () => {
+    const answer = await callOperation(AGENT, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      amount: { value: "2500.00", currency: "USD" },
+    });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(answer)}`);
+    }
+
+    const [kept] = await proposalsOf456();
+
+    expect(kept?.payload_hash).toBe(answer.envelope.payload_hash);
+    expect(JSON.parse(kept?.payload ?? "null")).toStrictEqual({
+      invoice: "dsor://org_456/invoice/INV-1009",
+      amount: { value: "2500.00", currency: "USD" },
+    });
+    expect(JSON.parse(kept?.requester ?? "null")).toStrictEqual({
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+      delegation: "del_100",
+    });
+    expect((await historyOf("prop_1"))[0]?.[2]).toBe("accounts-payable-fte");
+  });
+
+  it("DSOR-APR-01a: a command a later stage refuses is DENIED, with the code that refused it", async () => {
+    const answer = await callOperation(AGENT, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      amount: { value: "60000.00", currency: "USD" },
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect(await historyOf("prop_1")).toStrictEqual([
+      [null, "PROPOSED", "accounts-payable-fte", "payment.create@1 invoked"],
+      ["PROPOSED", "DENIED", "dsor", "refused: LIMIT_EXCEEDED"],
+    ]);
+  });
+
+  it("DSOR-APR-01a: a command its handler refuses is FAILED, with the handler's code", async () => {
+    // INV-1008 is already issued, at version 1: the handler answers CONFLICT.
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      expected_version: 1,
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("CONFLICT");
+    expect(await stateOf("org_456", "prop_1")).toBe("FAILED");
+    expect((await historyOf("prop_1")).at(-1)).toStrictEqual([
+      "EXECUTING",
+      "FAILED",
+      "dsor",
+      "the handler answered CONFLICT",
+    ]);
+  });
+
+  it("DSOR-UNK-01b: a handler that throws leaves its proposal OUTCOME_UNKNOWN, never FAILED", async () => {
+    const door = makeDoor(PIPELINE, {
+      "invoice.issue": () => {
+        throw new Error("the connector hung up half way");
+      },
+    });
+
+    await expect(door(SUPERVISOR, "invoice.issue", ISSUE_1009)).rejects.toThrow(/half way/);
+    expect(await historyOf("prop_1")).toContainEqual([
+      "EXECUTING",
+      "OUTCOME_UNKNOWN",
+      "dsor",
+      "the handler threw, so nobody knows whether it ran",
+    ]);
+  });
+
+  it("DSOR-UNK-01b: a handler that answers OUTCOME_UNKNOWN leaves its proposal OUTCOME_UNKNOWN", async () => {
+    const door = makeDoor(PIPELINE, {
+      "invoice.issue": (_args, _contract, askedBy, _tenant, _hash, requestId) => ({
+        kind: "error",
+        askedBy,
+        envelope: refusal("OUTCOME_UNKNOWN", "the bank did not say", requestId, askedBy),
+      }),
+    });
+
+    await door(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    expect(await stateOf("org_456", "prop_1")).toBe("OUTCOME_UNKNOWN");
+  });
+
+  it("DSOR-APR-01a: a request refused before §21.8, and a query, make no proposal", async () => {
+    // cfo_100 may not issue an invoice: refused at §21.5, before there is anything to propose.
+    await callOperation(CFO, "invoice.issue", ISSUE_1009);
+    await callOperation(SUPERVISOR, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" });
+
+    expect(await proposalsOf456()).toStrictEqual([]);
+  });
+
+  it("DSOR-IDM-04: the same request sent again with its key is the same proposal, not a second one", async () => {
+    const request = { idempotencyKey: "issue-1009-once" };
+    const first = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(first.kind === "result" && first.envelope.proposal).toBe(
+      "dsor://org_456/proposal/prop_1",
+    );
+    expect(again).toStrictEqual(first);
+    expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
+  });
+
+  it("DSOR-EXE-03b: a move to READY that cannot be written means nothing runs, and the key may be sent again", async () => {
+    const request = { idempotencyKey: "issue-1009-store-down" };
+
+    failingMovesInto(["READY"]);
+
+    const refused = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(refused.kind === "error" && refused.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(refused.kind === "error" && refused.envelope.retry).toBe("safe_same_key");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+    expect(await stateOf("org_456", "prop_1")).toBe("DENIED");
+
+    useDatabase(overPGlite(db));
+
+    // The claim was released, because nothing ran: the same key now carries the request out.
+    const sentAgain = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(sentAgain.kind === "result" && sentAgain.envelope.proposal).toBe(
+      "dsor://org_456/proposal/prop_2",
+    );
+    expect(await stateOf("org_456", "prop_2")).toBe("COMMITTED");
+  });
+
+  it("DSOR-EXE-04b: a last move that cannot be written leaves the proposal EXECUTING, and the caller is still told", async () => {
+    failingMovesInto(["COMMITTED"]);
+
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    expect(answer.kind).toBe("result");
+    expect(await stateOf("org_456", "prop_1")).toBe("EXECUTING");
   });
 });
