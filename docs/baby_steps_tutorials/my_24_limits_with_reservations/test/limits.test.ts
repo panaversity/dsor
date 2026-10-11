@@ -178,7 +178,7 @@ describe("settling a reservation", () => {
   });
 });
 
-describe("the application books and settles, and nothing else", () => {
+describe("what the application may not do to a total or a reservation", () => {
   it("DSOR-DEL-06a: it may not delete a total or a reservation, nor write a reservation already settled", async () => {
     const { rows } = await db.query<{ right: string }>(
       `SELECT t || ' ' || r AS right

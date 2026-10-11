@@ -657,11 +657,14 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 24: the day totals and the reservations. The application books and settles, and
-  // nothing else: a total or a reservation it could delete is room it could make, a reservation it
-  // could write already settled, or for another amount than it booked, is a total that no longer
-  // adds up, and a day it could choose is a limit it could move (decision 140). Releasing a settled
-  // reservation is the second policy's to refuse, and the lock check above asks for it.
+  // NEW IN STEP 24: the day totals and the reservations. A total or a reservation the application
+  // could delete is room it could make, a reservation it could write already settled, or rewrite to
+  // another amount, is one booked for one thing and settled for another, and a total it could move
+  // to another day is a limit it could move (decision 140). Releasing a settled reservation is the
+  // second policy's to refuse, and the lock check above asks for it. What these questions do not
+  // keep is said in decision 141: with the rights it needs to book, the application's own code could
+  // still change a total's amount, or insert a reservation that booked nothing, and make room, as it
+  // could write a payment past the limit.
   const { rows: booked } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs((role) =>
       [

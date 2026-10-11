@@ -39,9 +39,13 @@ CREATE TABLE dsor.reservations (
   FOREIGN KEY (tenant, delegation, day) REFERENCES dsor.day_totals (tenant, delegation, day)
 );
 
--- The application books and settles, and nothing else: it adds totals and reservations, changes a
--- total's amount and a reservation's state, and deletes nothing. A reservation is always written
--- held; the column's default says so, and the application may not say otherwise.
+-- The application adds totals and reservations, changes a total's amount and a reservation's state,
+-- and deletes nothing. A reservation is always written held; the column's default says so, and the
+-- application may not say otherwise. What these rights do not keep (decision 141): with them, the
+-- application's own code could change a total's amount, or insert a reservation that booked nothing
+-- and release it, and so make room on a full day, as it could write a payment past the limit, since
+-- a payment is not tied to its reservation. What the database keeps is the race: requests racing
+-- each other never book past the limit, and a proposal never books twice.
 REVOKE ALL ON dsor.day_totals, dsor.reservations FROM PUBLIC;
 GRANT SELECT ON dsor.day_totals, dsor.reservations TO dsor_runtime;
 GRANT INSERT (tenant, delegation, day, used_value, currency) ON dsor.day_totals TO dsor_runtime;
@@ -67,8 +71,8 @@ CREATE POLICY tenant_isolation ON dsor.reservations
 
 -- And a settled reservation is never changed (decision 140), as step 20 keeps an answer: restrictive,
 -- so AND'ed with the first, an UPDATE may touch only a held one. Without it, a committed payment's
--- reservation could be released, and its amount given back to the day after it was paid. Start-up
--- refuses the table without it.
+-- reservation could be released, and its amount given back to the day after it was paid. It keeps
+-- the reservation, not the total (decision 141). Start-up refuses the table without it.
 CREATE POLICY a_settled_reservation_is_kept ON dsor.reservations AS RESTRICTIVE FOR UPDATE
   USING      (state = 'held')
   WITH CHECK (true);
