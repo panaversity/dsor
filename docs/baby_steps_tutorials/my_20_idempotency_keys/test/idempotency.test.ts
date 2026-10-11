@@ -222,6 +222,29 @@ describe("a command carries a key", () => {
     expect(await paymentsFor1009()).toBe(0);
   });
 
+  it("DSOR-IDM-01a: a key is the request's own: one inherited, one in the arguments, or one that cannot be read is no key", async () => {
+    // Decision 132: a key inherited through a prototype was taken as the key.
+    const inherited = Object.create({ idempotencyKey: "from-a-prototype" }) as object;
+    const throwing = {
+      get idempotencyKey(): string {
+        throw new Error("no");
+      },
+    };
+
+    for (const [what, answer] of [
+      ["inherited", await callOperation(AGENT, "payment.create", PAYMENT, inherited as never)],
+      ["a getter that throws", await callOperation(AGENT, "payment.create", PAYMENT, throwing)],
+      [
+        "inside the arguments",
+        await callOperation(AGENT, "payment.create", { ...PAYMENT, idempotencyKey: "in-the-args" }),
+      ],
+    ] as const) {
+      expect(refusalOf(answer).code, what).toBe("VALIDATION_FAILED");
+    }
+
+    expect(await paymentsFor1009()).toBe(0);
+  });
+
   it("a query changes nothing and needs no key", async () => {
     expect((await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 })).kind).toBe(
       "data",

@@ -1033,8 +1033,13 @@ const validateTheInput: Stage["run"] = (context) => {
 /** NEW IN STEP 20: how long a request waits for the same request, still being carried out, to finish. */
 const IN_FLIGHT_WAIT_MS = 2000;
 
-/** NEW IN STEP 20: and how often it looks while it waits. */
+/**
+ * NEW IN STEP 20: and how often it looks while it waits: at first soon, then half as often each
+ * time, up to the second figure. Each look is three statements, and fifty waiters looking every
+ * 25 ms could slow the very request they wait for (decision 132).
+ */
 const IN_FLIGHT_LOOK_MS = 25;
+const IN_FLIGHT_LOOK_AT_MOST_MS = 200;
 
 /**
  * NEW IN STEP 20: §21.7 — claim the idempotency key (DSOR-IDM-01a to 01d, decision 131).
@@ -1081,6 +1086,7 @@ const claimTheKey: Stage["run"] = async (context) => {
     key,
   });
   const until = Date.now() + IN_FLIGHT_WAIT_MS;
+  let look = IN_FLIGHT_LOOK_MS;
 
   for (;;) {
     let found;
@@ -1150,7 +1156,8 @@ const claimTheKey: Stage["run"] = async (context) => {
       );
     }
 
-    await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_LOOK_MS));
+    await new Promise((resolve) => setTimeout(resolve, look));
+    look = Math.min(look * 2, IN_FLIGHT_LOOK_AT_MOST_MS);
   }
 };
 
@@ -1828,7 +1835,12 @@ export function makeDoor(
     let idempotencyKey: unknown;
 
     try {
-      idempotencyKey = request?.idempotencyKey;
+      // Decision 132: the request's own field only, as a login's are read. One inherited through a
+      // prototype was taken as the key.
+      idempotencyKey =
+        request !== null && typeof request === "object" && Object.hasOwn(request, "idempotencyKey")
+          ? request.idempotencyKey
+          : undefined;
     } catch {
       idempotencyKey = undefined;
     }
