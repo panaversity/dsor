@@ -43,6 +43,8 @@ export function storyStatements(): readonly string[] {
     rowsFrom("017_del_100_may_be_used_unattended.sql"),
     // STEP 24: and its daily limit.
     rowsFrom("023_del_100_has_a_daily_limit.sql"),
+    // NEW IN STEP 25: and org_789's slip, of the same number.
+    rowsFrom("026_org_789_has_a_slip_too.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",
     // STEP 22: and so a test's first proposal is prop_1.

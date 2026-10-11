@@ -1,0 +1,49 @@
+{
+  "id": "delegation.revoke",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "DelegationRevokeRequest"
+  },
+  "output": {
+    "schema": "Delegation"
+  },
+  "authorization": {
+    "permission": "delegation:revoke"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": true
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": ["state.delegation.status == \"active\""]
+  },
+  "controls": [],
+  "risk": {
+    "level": "high"
+  },
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "com.panaversity.tutorial": {
+      "example_request": {
+        "target": "dsor://org_456/delegation/del_100",
+        "reason": "the agent is paying the wrong invoices"
+      }
+    }
+  }
+}

@@ -116,7 +116,16 @@ export async function settleReservation(
      UPDATE dsor.day_totals t SET used_value = t.used_value - s.amount_value
        FROM settled s
       WHERE $3 = 'released' AND t.tenant = $1 AND t.delegation = s.delegation AND t.day = s.day`,
-    [tenant, proposal, to, to === "committed" ? ["COMMITTED"] : ["FAILED", "DENIED"]],
+    // STEP 25: and released for a proposal CANCELLED, as for every other way §13.4 lists that a
+    // proposal ends without running (DSOR-DEL-06d, decision 142).
+    [
+      tenant,
+      proposal,
+      to,
+      to === "committed"
+        ? ["COMMITTED"]
+        : ["FAILED", "DENIED", "CANCELLED", "REJECTED", "EXPIRED", "REVOKED", "INVALIDATED"],
+    ],
   );
 }
 

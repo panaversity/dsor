@@ -83,7 +83,9 @@ describe("the slip, in DSoR's own store", () => {
           await db.query(
             `SELECT tenant, id, delegator, delegate, permissions,
                     per_transaction_limit_value::text AS limit, per_transaction_limit_currency AS currency,
-                    status FROM dsor.delegations`,
+                    status FROM dsor.delegations
+              -- STEP 25: org_789 holds a del_100 of its own, for the cross-tenant suite.
+              WHERE tenant = 'org_456'`,
           )
         ).rows,
     );

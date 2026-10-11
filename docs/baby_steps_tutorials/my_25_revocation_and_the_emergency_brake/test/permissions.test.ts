@@ -108,6 +108,7 @@ describe("permissions", () => {
     // STEP 17: and the two payment permissions, for the supervisor and the agent, not the CFO.
     expect([...permissionsOf(person("user_123"))].sort()).toEqual([
       "control:suspend", // NEW IN STEP 25
+      "delegation:revoke",
       "invoice:issue",
       "invoice:read",
       "payment:cancel",

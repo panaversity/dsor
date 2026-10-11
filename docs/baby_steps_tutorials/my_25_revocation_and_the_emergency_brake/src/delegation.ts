@@ -144,3 +144,77 @@ export function effectiveAuthority(
     ),
   );
 }
+
+/** NEW IN STEP 25: one slip by its id, whatever its status: who signed it, and where it stands. */
+export async function slipNamed(
+  tenant: string,
+  id: string,
+): Promise<{ readonly delegator: string; readonly status: DelegationStatus } | undefined> {
+  const { rows } = await theDatabase(tenant).query<{ delegator: string; status: DelegationStatus }>(
+    "SELECT delegator, status FROM dsor.delegations WHERE tenant = $1 AND id = $2",
+    [tenant, id],
+  );
+  const row = rows[0];
+
+  return row === undefined
+    ? undefined
+    : Object.freeze({ delegator: row.delegator, status: row.status });
+}
+
+/** NEW IN STEP 25: what revoking a slip did. */
+export type Revoked =
+  | { readonly kind: "revoked"; readonly cancelled: readonly string[] }
+  /** It was not active when the statement ran: revoked, suspended or expired already. */
+  | { readonly kind: "not_active" };
+
+/**
+ * NEW IN STEP 25: revoke an active slip, and cancel what was waiting under it (DSOR-DEL-04a,
+ * DSOR-DEL-04c, decision 142).
+ *
+ * One statement: the slip becomes revoked, with who, when and why, and every proposal under it that
+ * is waiting for approval or approved moves to CANCELLED, its cause naming the slip and who revoked
+ * it. Both happen, or neither: there is no moment at which the slip is revoked and its approved
+ * proposals are still waiting to run. A prepared proposal, READY, is left: §26.2 has no move from
+ * READY to CANCELLED, and step 31's proposal.execute checks the slip again before anything runs.
+ */
+export async function revokeSlip(
+  tenant: string,
+  id: string,
+  by: string,
+  reason: string,
+): Promise<Revoked> {
+  const { rows } = await theDatabase(tenant).query<{ revoked: number; cancelled: string[] }>(
+    `WITH revoked AS (
+       UPDATE dsor.delegations
+          SET status = 'revoked', revoked_by = $3, revoked_at = clock_timestamp(), revoked_reason = $4
+        WHERE tenant = $1 AND id = $2 AND status = 'active'
+        RETURNING id
+     ),
+     waiting AS (
+       SELECT m.proposal, m.to_state
+         FROM dsor.proposals p
+         JOIN dsor.proposal_moves m ON m.tenant = p.tenant AND m.proposal = p.id
+        WHERE p.tenant = $1
+          AND (p.requester::jsonb ->> 'delegation') = $2
+          AND m.to_state IN ('PENDING_APPROVAL', 'APPROVED')
+          AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
+                           WHERE n.tenant = m.tenant AND n.proposal = m.proposal
+                             AND n.from_state = m.to_state)
+     ),
+     cancelled AS (
+       INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
+       SELECT $1, w.proposal, w.to_state, 'CANCELLED', 'dsor', $2 || ' was revoked by ' || $3
+         FROM waiting w
+        WHERE EXISTS (SELECT 1 FROM revoked)
+       RETURNING proposal
+     )
+     SELECT (SELECT count(*) FROM revoked)::int AS revoked,
+            COALESCE((SELECT array_agg(proposal ORDER BY proposal) FROM cancelled), '{}') AS cancelled`,
+    [tenant, id, by, reason],
+  );
+  const row = rows[0];
+
+  return row === undefined || row.revoked !== 1
+    ? Object.freeze({ kind: "not_active" })
+    : Object.freeze({ kind: "revoked", cancelled: Object.freeze([...row.cancelled]) });
+}

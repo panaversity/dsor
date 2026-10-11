@@ -304,9 +304,10 @@ export function contractsFromDisk(): readonly ContractDocument[] {
   // visible edit here. A step that scanned a directory could pick up a stray file.
   //
   // STEP 17: payment.cancel and payment.create (decision 125). NEW IN STEP 25: and the
-  // emergency brake, control.suspend (decision 142).
+  // emergency brake, control.suspend, and tearing up a slip, delegation.revoke (decision 142).
   return [
     "control.suspend",
+    "delegation.revoke",
     "invoice.get",
     "invoice.issue",
     "invoice.list",

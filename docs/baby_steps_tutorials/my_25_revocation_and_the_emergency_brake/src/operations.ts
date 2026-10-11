@@ -24,7 +24,7 @@ import {
 // caller may do.
 import { type Login, principalFrom, scopesClaimed, tenantClaimed } from "./login.ts";
 import { AuthorityNotEstablished, authorityNow } from "./authority.ts";
-import { activeSlipFor, effectiveAuthority } from "./delegation.ts";
+import { activeSlipFor, effectiveAuthority, revokeSlip, slipNamed } from "./delegation.ts";
 import {
   getInvoice,
   issueInvoice,
@@ -216,11 +216,15 @@ function idFrom(
   askedBy: string,
   tenant: string,
   requestId: string,
+  // NEW IN STEP 25: the argument the address is in, when it is not named after its entity.
+  // delegation.revoke's is `target`: an argument named `delegation` is refused at §21.6, so no
+  // request can name the slip it runs under (decision 142).
+  argument: string = entity,
 ): { readonly id: string } | { readonly refused: ErrorEnvelope } {
   // The caller's **own** argument, not one inherited from a prototype. A name an object merely
   // inherits is a name nobody in this program chose — the same reason the login reads its field
   // this way, and the same reason step 06 looks a role up with Object.hasOwn.
-  const given = Object.hasOwn(args, entity) ? args[entity] : undefined;
+  const given = Object.hasOwn(args, argument) ? args[argument] : undefined;
 
   if (typeof given !== "string") {
     return {
@@ -635,6 +639,79 @@ const handlers: Readonly<Record<string, Handler>> = {
           id,
           target: read.target,
           suspended,
+        },
+        semantics,
+        payloadHash: hash,
+        tenant,
+        proposal,
+        principalId: askedBy,
+        requestId,
+      }),
+    };
+  },
+
+  // NEW IN STEP 25: tearing up a slip (DSOR-DEL-04a, decision 142). Its signer may; a tenant
+  // administrator, who could revoke anyone's, is nobody in this story's cast, and waits for the
+  // identity provider, step 43. In one statement, what was waiting under the slip is cancelled
+  // (DSOR-DEL-04c); then those proposals' reservations are given back to the day.
+  "delegation.revoke": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
+    const semantics = semanticsOf(contract);
+    const refused = (code: string, message: string): HandlerAnswer => ({
+      kind: "error",
+      askedBy,
+      envelope: refusal(code, message, requestId, askedBy),
+    });
+    const read = idFrom(args, "delegation", contract, askedBy, tenant, requestId, "target");
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const reason = Object.hasOwn(args, "reason") ? args["reason"] : undefined;
+
+    if (typeof reason !== "string" || reason.trim() === "" || reason.length > 200) {
+      return refused(
+        "VALIDATION_FAILED",
+        "a slip is revoked with a reason, for the people who read the record: 1 to 200 characters",
+      );
+    }
+
+    const slip = await slipNamed(tenant, read.id);
+
+    if (slip === undefined) {
+      return refused("RESOURCE_NOT_FOUND", `${read.id} is not a slip we hold`);
+    }
+
+    if (slip.delegator !== askedBy) {
+      return refused(
+        "AUTHORIZATION_DENIED",
+        `only the person who signed ${read.id} may revoke it here, and ${askedBy} did not`,
+      );
+    }
+
+    const revoked =
+      slip.status === "active" ? await revokeSlip(tenant, read.id, askedBy, reason) : undefined;
+
+    if (revoked === undefined || revoked.kind === "not_active") {
+      return refused("CONFLICT", `${read.id} is not active; nothing was changed`);
+    }
+
+    for (const cancelled of revoked.cancelled) {
+      // As the door settles its own: one that cannot be released stays held, which errs toward
+      // refusing (decision 141).
+      await settleReservation(tenant, cancelled, "released").catch(() => undefined);
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: {
+          uri: formatUri({ tenant, entity: "delegation", id: read.id }),
+          tenantId: tenant,
+          id: read.id,
+          status: "revoked",
+          cancelled: revoked.cancelled.length,
         },
         semantics,
         payloadHash: hash,

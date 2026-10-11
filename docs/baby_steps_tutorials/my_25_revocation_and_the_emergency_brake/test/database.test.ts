@@ -610,6 +610,43 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-DEL-04a: the slips without the policy that lets one only become revoked are refused at start-up", async () => {
+    // NEW IN STEP 25: without it, the right to revoke a slip would be the right to bring one back,
+    // or to change one to anything (decision 142).
+    const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
+    await db.exec("DROP POLICY only_an_active_slip_is_revoked ON dsor.delegations");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /second lock is not on/,
+    );
+
+    await db.close();
+  });
+
+  it("DSOR-DEL-04a: an application that may change what a slip grants is still refused at start-up, though it may revoke one", async () => {
+    // NEW IN STEP 25: the four columns of a revocation, and none other.
+    for (const grant of [
+      "GRANT UPDATE (permissions) ON dsor.delegations TO dsor_runtime",
+      "GRANT UPDATE (daily_limit_value) ON dsor.delegations TO dsor_runtime",
+      "GRANT UPDATE (delegator) ON dsor.delegations TO dsor_runtime",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(
+        /may write a permission slip/,
+      );
+
+      await db.close();
+    }
+  });
+
   it("DSOR-OPS-01a: the brake's table without the policy that keeps a lift final is refused at start-up", async () => {
     // NEW IN STEP 25: without it, a lifted brake could be put back with a lift nobody gave.
     const db = await aDatabase();

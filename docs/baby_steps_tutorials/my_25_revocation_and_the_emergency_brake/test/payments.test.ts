@@ -84,6 +84,7 @@ describe("every command says whether it can be undone", () => {
     expect(commands).toStrictEqual([
       // NEW IN STEP 25: a brake pulled or released is done whole, and undone by the other.
       "control.suspend atomic",
+      "delegation.revoke atomic",
       "invoice.issue atomic",
       "payment.cancel atomic",
       "payment.create compensatable",

@@ -23,6 +23,7 @@ describe("the operation registry", () => {
 
     expect([...registry.keys()].sort()).toEqual([
       "control.suspend", // NEW IN STEP 25
+      "delegation.revoke",
       "invoice.get",
       "invoice.issue",
       "invoice.list",

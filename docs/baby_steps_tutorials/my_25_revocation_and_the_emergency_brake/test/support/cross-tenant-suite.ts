@@ -91,6 +91,11 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                                                     AND c.agent = 'accounts-payable-fte')
                                     THEN 'stopped' ELSE 'working' END
                         UNION ALL
+                        -- NEW IN STEP 25: and the slips, which a careless delegation.revoke could
+                        -- tear up.
+                        SELECT 'delegation', id, NULL, NULL, NULL, NULL, status
+                          FROM dsor.delegations WHERE tenant = $1
+                        UNION ALL
                         SELECT 'tenant', $1, NULL, NULL, NULL, NULL,
                                CASE WHEN EXISTS (SELECT 1 FROM dsor.agent_controls c
                                                   WHERE c.tenant = $1 AND c.lifted_at IS NULL
@@ -206,7 +211,7 @@ export const questions = {
       const row = key(parsed);
 
       expect(
-        ["agent", "invoice", "payment", "tenant"],
+        ["agent", "delegation", "invoice", "payment", "tenant"],
         `${c.id}: ${address} is none of the rows rowsOf reads; teach rowsOf about ${parsed.entity}`,
       ).toContain(parsed.entity);
       expect(

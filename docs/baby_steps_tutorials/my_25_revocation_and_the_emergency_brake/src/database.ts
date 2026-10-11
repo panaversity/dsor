@@ -367,7 +367,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     `WITH tenant_table (rel, col) AS (
        VALUES ${TENANT_TABLES.map(([table, column]) => `(to_regclass('${table}'), '${column}')`).join(", ")}
      ),
-     policy_text (rel, qual, kept) AS (
+     policy_text (rel, qual, kept, kept_check) AS (
        SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))',
               -- STEP 20: and the claims' second policy, which keeps an answer once written,
               -- as PostgreSQL writes it back, measured (decision 132).
@@ -378,7 +378,15 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    THEN '(state = ''held''::text)'
                    -- NEW IN STEP 25: and the brake's, which keeps a lift final (decision 142).
                    WHEN rel = to_regclass('dsor.agent_controls')
-                   THEN '(lifted_at IS NULL)' END
+                   THEN '(lifted_at IS NULL)'
+                   -- NEW IN STEP 25: and the slips', which lets an active slip become revoked
+                   -- and nothing else.
+                   WHEN rel = to_regclass('dsor.delegations')
+                   THEN '(status = ''active''::text)' END,
+              -- NEW IN STEP 25: what the second policy lets a row become: anything, the program's
+              -- to say, except for a slip, which only becomes revoked.
+              CASE WHEN rel = to_regclass('dsor.delegations')
+                   THEN '(status = ''revoked''::text)' ELSE 'true' END
          FROM tenant_table
      )
      SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
@@ -418,7 +426,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                   WHERE p.polrelid = c.oid
                     AND p.polcmd = 'w' AND NOT p.polpermissive AND p.polroles = '{0}'::oid[]
                     AND pg_get_expr(p.polqual, p.polrelid) = pt.kept
-                    AND pg_get_expr(p.polwithcheck, p.polrelid) = 'true'
+                    AND pg_get_expr(p.polwithcheck, p.polrelid) = pt.kept_check
                 ))
                 AND EXISTS (
                   SELECT 1 FROM pg_policy p
@@ -614,13 +622,22 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   }
 
   // STEP 18: the permission slips. The application reads them and writes none: a slip it
-  // could write is a slip it could sign for itself (decision 127).
+  // could write is a slip it could sign for itself (decision 127). NEW IN STEP 25: none but its
+  // status and who revoked it, when and why, which is how a slip is torn up; that it can only become
+  // revoked is the slips' second policy's to keep, and the lock check above asks for it (decision
+  // 142).
   const { rows: slips } = await db.query<{ may: boolean }>(
-    `SELECT ${forAnyRoleItCanActAs(
-      (role) => `has_any_column_privilege(${role}, 'dsor.delegations', 'INSERT')
-         OR has_any_column_privilege(${role}, 'dsor.delegations', 'UPDATE')
-         OR has_table_privilege(${role}, 'dsor.delegations', 'DELETE')
-         OR has_table_privilege(${role}, 'dsor.delegations', 'TRUNCATE')`,
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        `has_any_column_privilege(${role}, 'dsor.delegations', 'INSERT')`,
+        `has_table_privilege(${role}, 'dsor.delegations', 'DELETE')`,
+        `has_table_privilege(${role}, 'dsor.delegations', 'TRUNCATE')`,
+        `EXISTS (SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = 'dsor.delegations'::regclass AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND a.attname NOT IN ('status', 'revoked_by', 'revoked_at', 'revoked_reason')
+                    AND has_column_privilege(${role}, a.attrelid, a.attnum, 'UPDATE'))`,
+      ].join(" OR "),
     )} AS may`,
   );
 
@@ -628,7 +645,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     throw new Error(
       `this connection is \`${answer.who}\`, and it may write a permission slip, itself, one ` +
         `SET ROLE away, or through a helper function. An agent's power comes from slips a person signed; the application reads ` +
-        `them and writes none. See migrations/013_delegations.sql.`,
+        `them, and may only mark one revoked. See migrations/013_delegations.sql and ` +
+        `025_a_slip_can_be_revoked.sql.`,
     );
   }
 
