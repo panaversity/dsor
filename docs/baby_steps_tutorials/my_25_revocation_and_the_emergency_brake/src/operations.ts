@@ -2341,6 +2341,8 @@ export function makeDoor(
             ["READY", "EXECUTING", `handed to ${contract.id}`],
           ],
           "dsor",
+          // STEP 25: and for an agent, not if a brake is on it now (DSOR-OPS-01c).
+          principal.type === "agent" ? principal.id : undefined,
         );
       } catch {
         // The write failed, or only its reply was lost. Read the proposal back to know which: at
@@ -2381,6 +2383,22 @@ export function makeDoor(
                   ),
           });
         }
+      }
+
+      // NEW IN STEP 25: a brake pulled after §21.4 asked, seen in the statement that would have moved
+      // the proposal to EXECUTING: nothing was written, the proposal is still PROPOSED and is DENIED,
+      // and the handler never runs (DSOR-OPS-01c, decision 142).
+      if (started.kind === "stopped") {
+        return Object.freeze({
+          kind: "error",
+          askedBy: principal.id,
+          envelope: refusal(
+            "AGENT_SUSPENDED",
+            `${principal.id} was stopped in ${tenant} before ${proposal} was carried out; a person must lift it`,
+            id_,
+            principal.id,
+          ),
+        });
       }
 
       if (started.kind !== "moved") {

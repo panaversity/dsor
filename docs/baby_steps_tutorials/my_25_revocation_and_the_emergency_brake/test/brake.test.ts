@@ -10,10 +10,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { liftTheBrake, pullTheBrake, whatStops } from "../src/controls.ts";
 import { paymentsOf } from "../src/payment.ts";
-import { proposalsOf } from "../src/proposal.ts";
+import { PIPELINE } from "../src/operations.ts";
+import type { Context } from "../src/pipeline.ts";
+import { movesOf, proposalsOf } from "../src/proposal.ts";
 import { theDatabase } from "../src/store.ts";
 import { aDatabase, resetTheStory } from "./support/database.ts";
-import { callOperation } from "./support/door.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 
 const AGENT = "accounts-payable-fte";
 
@@ -168,5 +170,60 @@ describe("§21.4: a stopped agent changes nothing", () => {
 
     expect(answer.kind === "error" && answer.envelope.message).toMatch(/user_123/);
     expect(answer.kind === "error" && answer.envelope.message).not.toMatch(/secret/);
+  });
+});
+
+// NEW IN STEP 25, piece 3: and again as the proposal moves to EXECUTING.
+
+describe("a brake pulled after §21.4 still stops the handler", () => {
+  it("DSOR-OPS-01c: pulled between the decision and the handler, the handler never runs and the proposal never enters EXECUTING", async () => {
+    // The brake is pulled by a stage after §21.4, as a person would pull it while the request is on
+    // its way: §21.4 found nothing, and the move to EXECUTING must find it.
+    const list = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              await pullTheBrake("org_456", AGENT, "user_123", "pulled mid-flight");
+
+              return done;
+            },
+          })
+        : stage,
+    );
+    let ran = 0;
+    const door = makeDoor(list, {
+      "payment.create": () => {
+        ran += 1;
+
+        throw new Error("the handler ran");
+      },
+    });
+    const answer = await door(AGENT_LOGIN, "payment.create", PAY);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+    expect(ran).toBe(0);
+
+    const [proposal] = await proposalsOf("org_456");
+
+    expect(proposal?.state).toBe("DENIED");
+    expect((await movesOf("org_456", proposal?.id ?? "")).map((m) => m.to)).not.toContain(
+      "EXECUTING",
+    );
+  });
+
+  it("DSOR-OPS-01c: a person's command is not stopped by a brake on the agent", async () => {
+    await pullTheBrake("org_456", undefined, "cfo_100", "month-end close");
+
+    expect(
+      (
+        await callOperation(SUPERVISOR, "invoice.issue", {
+          invoice: "dsor://org_456/invoice/INV-1009",
+          expected_version: 1,
+        })
+      ).kind,
+    ).toBe("result");
   });
 });

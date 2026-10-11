@@ -11,6 +11,7 @@
 // Rule DSOR-IDM-04: a proposal MUST be executed at most once; the proposal id is the idempotency key
 // of its execution.
 
+import { noBrakeOn } from "./controls.ts";
 import { theDatabase } from "./store.ts";
 
 /** The states of §26.2, as `proposalState` in the schemas lists them. */
@@ -99,7 +100,12 @@ export async function propose(proposal: NewProposal): Promise<string> {
 export type MoveOutcome =
   | { readonly kind: "moved" }
   /** The proposal is not in that state, or the map has no such move: nothing was written. */
-  | { readonly kind: "refused" };
+  | { readonly kind: "refused" }
+  /**
+   * NEW IN STEP 25: a brake was on the agent the moves were for, so nothing was written
+   * (DSOR-OPS-01c, decision 142).
+   */
+  | { readonly kind: "stopped" };
 
 // PostgreSQL's codes for the constraints a refused move breaks: a move out of a state the proposal
 // is not in, or not on the map, has nothing to point at (23503); a state already entered or left
@@ -152,6 +158,9 @@ export async function moveProposalThrough(
   id: string,
   path: ReadonlyArray<readonly [from: ProposalState, to: ProposalState, cause: string]>,
   actor: string,
+  // NEW IN STEP 25: an agent on whose behalf the moves are made: none is written if a brake is on
+  // it, in the same statement, so a brake pulled a moment ago is seen (DSOR-OPS-01c, decision 142).
+  unlessStopped?: string,
 ): Promise<MoveOutcome> {
   const params: unknown[] = [tenant, id, actor];
   const rows = path.map(([from, to, cause]) => {
@@ -163,11 +172,28 @@ export async function moveProposalThrough(
   });
 
   try {
-    await theDatabase(tenant).query(
-      `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
-       VALUES ${rows.join(", ")}`,
-      params,
-    );
+    if (unlessStopped === undefined) {
+      await theDatabase(tenant).query(
+        `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
+         VALUES ${rows.join(", ")}`,
+        params,
+      );
+    } else {
+      params.push(unlessStopped);
+
+      const { rows: written } = await theDatabase(tenant).query(
+        `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
+         SELECT v.tenant, v.proposal, v.from_state, v.to_state, v.actor, v.cause
+           FROM (VALUES ${rows.join(", ")}) AS v (tenant, proposal, from_state, to_state, actor, cause)
+          WHERE ${noBrakeOn("$1", `$${params.length}`)}
+         RETURNING proposal`,
+        params,
+      );
+
+      if (written.length === 0) {
+        return Object.freeze({ kind: "stopped" });
+      }
+    }
   } catch (error) {
     const code = (error as { code?: unknown } | null)?.code;
 
