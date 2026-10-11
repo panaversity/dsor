@@ -23,7 +23,10 @@ const OWNER = process.env.DSOR_DB_OWNER_URL;
 const haveAServer = (APPLICATION ?? "").trim() !== "" && (OWNER ?? "").trim() !== "";
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
-const PAYMENT = { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } };
+const PAYMENT = {
+  invoice: "dsor://org_456/invoice/INV-1009",
+  amount: { value: "2500.00", currency: "USD" },
+};
 
 let owner: Pool;
 let application: Pool;
