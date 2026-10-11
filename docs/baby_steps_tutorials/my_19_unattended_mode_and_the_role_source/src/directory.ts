@@ -41,8 +41,8 @@ export interface FakeDirectory {
 }
 
 /**
- * A fake directory for one company: each of this program's people who belongs to it holds their
- * role's permissions, unless `holds` says otherwise, and anyone else holds nothing.
+ * A fake directory for one company. Whoever `holds` names holds what it says, member or not; anyone
+ * else who belongs to the company holds their role's permissions, and anyone else holds nothing.
  */
 export function aDirectory(tenant: string, fake: FakeDirectory = {}): Directory {
   return Object.freeze({

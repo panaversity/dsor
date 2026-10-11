@@ -2,7 +2,8 @@
 --
 -- An unattended decision is user_123's authority, used by the agent under del_100. The record's
 -- identity says the mode and the subject, and this column says which slip: the audit record's
--- schema has had a place for it all along. Empty for a person, who acts under none.
+-- schema has had a place for it all along. Empty where DSoR found no slip: a person, the agent's
+-- reads, and an agent's command refused before an active slip was found (decision 130).
 --
 -- Step 09's grant on the log names its columns one by one, so this one is granted by name, as 007
 -- did for row_count. The application may write it and, like every column of the log, never change

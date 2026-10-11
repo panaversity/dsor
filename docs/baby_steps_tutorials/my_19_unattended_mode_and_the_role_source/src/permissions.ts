@@ -33,9 +33,10 @@ import type { Principal } from "./people.ts";
  * A real deployment reads these from a role source — a directory or an identity provider —
  * which DSOR-IDN-04a requires. Here they sit in the source, like the people beside them.
  *
- * STEP 18: and the program asks for a person's permissions through a role source,
+ * STEP 18: and the program asks for a slip's signer's permissions through a role source,
  * `authority.ts`. NEW IN STEP 19: that source is the company's directory, and the fake one in
- * `directory.ts` builds its answers from this list.
+ * `directory.ts` builds its answers from this list. A person who is logged in is still judged by
+ * this list directly, standing in for what a real login would carry (decision 130).
  */
 // STEP 17: the supervisor and the agent may make a draft payment and take one back. The
 // CFO approves payments, in a later step, and makes none (decision 125).

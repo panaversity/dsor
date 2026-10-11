@@ -629,9 +629,10 @@ describe("the audit log", () => {
     expect(written.kind).toBe("decision");
     expect(written.correlation.tenant_id).toBe("org_456");
 
-    // `direct` with an empty actor chain, because nothing acts on anyone's behalf yet, and
-    // `role_source` because step 06's roles come from a table rather than a signed token. Step 42
-    // is where `on_behalf_of` and a chain with an agent in it become true.
+    // `direct` with an empty actor chain, because this decision is made with no slip, and
+    // `role_source` because step 06's roles come from a table rather than a signed token. STEP 19:
+    // an agent's command under a slip is `unattended`, with the agent in the chain, which
+    // unattended.test.ts pins; `on_behalf_of` is step 45.
     expect(written.identity.mode).toBe("direct");
     expect(written.identity.actor_chain).toEqual([]);
     expect(written.identity.subject_authority.source).toBe("role_source");

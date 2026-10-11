@@ -318,8 +318,8 @@ for (const payment of await paymentsOf("org_456")) {
 // slip, del_100, which user_123 signed: DSoR found it, and worked out what the agent may do from it
 // at each decision. Two more requests show the two halves of that: above the slip's limit is
 // refused, and when user_123 loses a permission, the agent loses it on the very next request,
-// with nothing in the slip changed. The demo plays the company directory's part here, through the
-// role source a test may replace; step 19 gives the program a directory of its own.
+// with nothing in the slip changed. NEW IN STEP 19: the company's directory says so, the fake one
+// in `directory.ts`, which the demo may change as a test may.
 console.log();
 console.log("Under whose authority? The agent's commands run under a permission slip:");
 console.log();
