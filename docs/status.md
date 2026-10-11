@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-09.
+2026-10-11.
 
 ## Specification
 
@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 20 also have a second learner's
-builds, `my_01` to `my_20`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 21 also have a second learner's
+builds, `my_01` to `my_21`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, twenty-one of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, twenty-two of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -112,6 +112,7 @@ one before it:
 | `my_18_delegations` | 645 | the permission slip: every command the agent sends runs under a slip a person signed, found by DSoR itself, and its power is computed at each decision as the slip's permissions cut down to what the signer holds right now and to the login's scopes, up to the slip's limit per payment |
 | `my_19_unattended_mode_and_the_role_source` | 673 | at 2 a.m. nobody is logged in: an agent's command under a slip is `unattended`, its subject the slip's signer and the agent in its actor chain, the slip named on the record; what the signer holds is asked of the company's directory, and no fresh answer is no answer |
 | `my_20_idempotency_keys` | 702 | every command carries an idempotency key beside its arguments, claimed with one INSERT at §21.7; the same key and request get the recorded answer and nothing runs twice, a different request under the key is refused, and fifty at once make one payment |
+| `my_21_optimistic_concurrency` | 718 | invoices and payments carry a version raised in the same UPDATE as every change; every command declares its concurrency strategy, an optimistic command says the version it decided on, and a record that moved on is refused `STALE_STATE` before any business rule, with no new version handed over |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -145,7 +146,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 132 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 135 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

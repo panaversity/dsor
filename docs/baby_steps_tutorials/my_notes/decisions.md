@@ -4185,3 +4185,97 @@ beside the README's five, which were measured twice:
 | the wait says the first request has not finished | 1: the no-answer test | 1, that test |
 | an inherited key is a key | 1: the own-key test | 1, that test |
 | a released claim is taken back by any request | 1: released, then different | 1, that test |
+
+## 133 · Step 21's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
+and choose your recommended options". The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent reads PAY-902, a draft, and decides to cancel it. Between the read and
+the cancel, `user_123` cancels it and a later step reopens it, or, today, `user_123` issues the
+invoice the agent was about to issue. The agent's command runs anyway, on a record that is no longer
+the one it decided about, and nothing in the request says which one that was. `DSOR-CON-01a` asks
+that every command declare how it handles this, and `DSOR-CON-01b` that an optimistic command be
+refused with `STALE_STATE` when the record's version differs from the version the decision was made
+on.
+
+1. **Invoices and payments carry a version**, a whole number from 1, raised by one in the same
+   UPDATE as every change. Migration 019 adds it, and the application may raise it and nothing else.
+   Rejected: the time of the last change, which two changes in one millisecond share; and a trigger,
+   which start-up refuses on a tenant table.
+2. **A read says the version**: an invoice's and a payment's data include it, the `resource_version`
+   `DSOR-FRS-01a` names.
+3. **`invoice.issue` and `payment.cancel` are optimistic; `payment.create` is not.** A command that
+   changes a record decides on a version of it. One that makes a new record has nothing that could
+   have moved on, and says `none`.
+4. **The caller says the version it decided on, as `expected_version`**, an ordinary argument, as
+   the MCP binding has it (§33), and so inside the payload hash: the same request on another version
+   is another request. An optimistic command without one, or with one that is not a whole number
+   from 1, is refused with `VALIDATION_FAILED`. Rejected: an optional one, which would make the
+   check the caller's to switch off.
+5. **The check is part of the change**: one UPDATE, `... AND version = $expected`, so nothing can
+   slip between the check and the write. When it changes nothing, DSoR looks: a record whose version
+   moved on is `STALE_STATE`, retry `after_state_refresh`, before any business rule; one on the same
+   version in the wrong state is `CONFLICT`, as before.
+6. **The demo reads before it decides.** The agent reads INV-1009 and issues it on the version it
+   read, so the demo's second run, where INV-1009 is already issued, is `CONFLICT` on the version it
+   read, and a stale version is shown on purpose.
+
+## 134 · What step 21's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date. Each choice is the
+recommendation, and each is open to reversal.
+
+One reviewer, read-only, with probes in its own copy. It found the check and the raise in one
+statement, the version checked before any business rule, another company's record refused before any
+lookup, and `expected_version` read once and inside the payload hash. It found:
+
+1. **A version too large for the column made the door throw.** `expected_version` above 2147483647,
+   PostgreSQL's largest `INTEGER`, failed inside the statement: a raw driver error, a log saying
+   ALLOWED for something that never ran, and an idempotency claim left with no answer (measured).
+   A version is now a whole number from 1 to 2147483647.
+2. **The declared strategy was decoration, and a missing version was recorded as ALLOW.** Nothing
+   read `concurrency.strategy`; the two handlers asked for a version by hand, after §21.11 had
+   recorded ALLOW (measured). Now §21.6 asks for `expected_version` of every command whose contract
+   says `optimistic`, so a refusal is recorded as the DENY it is, and the registry refuses a
+   strategy this program does not carry out, `pessimistic` and `connector_managed`.
+3. **Tests for what nothing tested.** With the version taken out of the UPDATE, every step-21 test
+   still passed, because the status alone refused each case (measured on a mutant). Now: a draft at
+   version 1 decided on as version 7, and a draft an owner reopened at version 3 decided on as 1,
+   are both `STALE_STATE` and left untouched; `payment.cancel` raises the version; a new payment
+   starts at 1; and two changes on one version race on a real server, over a pool.
+4. **`STALE_STATE` no longer says the new version**, so an agent cannot retry on the number it was
+   handed instead of reading again. Payments have no read operation yet, which the README says.
+5. **Start-up asks about the new rights**: INSERT on a payment's version, and, from step 10, UPDATE on
+   an invoice's vendor or amount, which it never asked. Its messages say status and version.
+6. **Smaller truths.** Migration 019 said the application may only raise the version; the grant
+   allows any value, and only the code raises it by one. Comments in `freshness.ts` and a step-15
+   test said no invoice has a version until step 21; the version is in the row, and the freshness
+   label still has no `resource_version`, so `DSOR-FRS-01a` is met in part. Decision 133's sixth
+   choice said the demo shows a stale version; it does now. The new helper's doc comment sat under
+   `idFrom`'s.
+
+**Written down, and not fixed:** only the application raises the version, so an owner who edits a
+row leaves it where it was; a row deleted and written again starts at 1, so an old decision on 1
+matches a different record; and every new record is at 1, so `expected_version: 1` proves nothing
+was read. Two decisions in one company at one moment race for the next place in its log, the log's
+to settle; the database tier races the change itself.
+
+## 135 · What breaking step 21 on purpose found (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date. Open to reversal.
+
+Decision 134's fixes were each broken once, and the README's three breaks twice, in a copy, with
+the predictions written first. Six of eight held as predicted. Two did not:
+
+1. **A cancel that ignored the version passed every test**, on both tiers. The 20-way race on a
+   real server still made one cancel and nineteen stale ones, because a cancel also asks for a
+   draft, and the status alone lets one through. Decision 134 had found this for invoices and
+   added the version-7-on-version-1 test there, and not for payments. Now a draft payment at
+   version 1, decided on as version 7, is `STALE_STATE` and stays a draft. The race test's comment
+   says what it proves, one change and not two, and what it does not, the version.
+2. **`STALE_STATE` could say "(now 2)" and pass the test meant to stop that**, because the test
+   looked for the words "version 2". It now compares the whole message, word for word.
+
+Both new tests were run against their breaks and failed, then against the intact code and passed.
