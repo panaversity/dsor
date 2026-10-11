@@ -147,7 +147,8 @@ try {
         );
       }
       const listed = await createDbProposals(other).due("org_456");
-      result = { ours: listed.includes(ours), theirs: listed.includes(theirs) };
+      const ids = listed.map((due) => due.id);
+      result = { ours: ids.includes(ours), theirs: ids.includes(theirs) };
     } finally {
       await other.query("DELETE FROM dsor.proposals WHERE id = ANY($1)", [[ours, theirs]]);
       await other.end();

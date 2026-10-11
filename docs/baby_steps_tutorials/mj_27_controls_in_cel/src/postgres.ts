@@ -36,6 +36,7 @@ import {
   isProposalOf,
   proposalUri,
   transitionFrom,
+  type Due,
   type MoveBy,
   type Pending,
   type Proposal,
@@ -1551,19 +1552,20 @@ function proposalsThrough(run: Runner): ProposalStore {
       }),
     // This company's READY proposals whose time has come, by the database's
     // clock. DSoR's own WHERE, the company first, with row-level security behind it (DSOR-TEN-01b;
-    // step 25c's README, claim C4).
-    due: async (tenant: string): Promise<string[]> =>
+    // step 25c's README, claim C4). NEW IN STEP 27: and its PENDING_APPROVAL ones, with their
+    // states (step 27's README, decision D11).
+    due: async (tenant: string): Promise<Due[]> =>
       run(tenant, async (client) => {
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
           endingKey(tenant),
         ]);
-        const { rows } = await client.query<{ id: string }>(
-          `SELECT id FROM dsor.proposals
-            WHERE tenant_id = $1 AND state = 'READY' AND expires_at <= now()
+        const { rows } = await client.query<Due>(
+          `SELECT id, state FROM dsor.proposals
+            WHERE tenant_id = $1 AND state IN ('READY', 'PENDING_APPROVAL') AND expires_at <= now()
             ORDER BY id`,
           [tenant],
         );
-        return rows.map((row) => row.id);
+        return rows;
       }),
   });
 }

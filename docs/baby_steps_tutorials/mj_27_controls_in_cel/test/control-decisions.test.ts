@@ -310,6 +310,53 @@ describe("C7: the decision's record names each control evaluated", () => {
   });
 });
 
+describe("D11: a payment that waits too long expires", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  // dsor-scheduler, the system login that may call DSoR's own sweep (step 25c's README, decision
+  // D11).
+  const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
+  const sweep = (w: World): Promise<Answer> =>
+    w.ask(keyed(SCHEDULER), "proposal.expire_due", { company: "dsor://org_456/tenant/org_456" });
+
+  it("DSOR-DEL-06d: the agent's payment of INV-1008 waits for the CFO past org_456's seven days: dsor-scheduler's sweep expires it, and its 31,400.00 USD goes back to the day (step 27's README, decision D11)", async () => {
+    const w = await withTuesday();
+    const id = idOf(await draft(w, "INV-1008"));
+    expect((await w.proposals.get("org_456", id))?.state).toBe("PENDING_APPROVAL");
+    w.clock.now = T0 + 7 * DAY_MS;
+    expect(await sweep(w)).toMatchObject({
+      outcome: "COMMITTED",
+      data: { tenant_id: "org_456", expired: 1 },
+    });
+    const ended = await w.proposals.get("org_456", id);
+    expect(ended?.state).toBe("EXPIRED");
+    expect(ended?.transitions.at(-1)).toMatchObject({
+      from: "PENDING_APPROVAL",
+      to: "EXPIRED",
+      actor: "dsor-scheduler",
+      cause: "waited past its lifetime",
+    });
+    expect((await w.reservations.get("org_456", id))?.state).toBe("released");
+  });
+
+  it("Step 27: one millisecond before its expires_at, the sweep leaves the waiting payment waiting, and its booking held (step 27's README, decision D11)", async () => {
+    const w = await withTuesday();
+    const id = idOf(await draft(w, "INV-1008"));
+    w.clock.now = T0 + 7 * DAY_MS - 1;
+    expect(await sweep(w)).toMatchObject({ data: { expired: 0 } });
+    expect((await w.proposals.get("org_456", id))?.state).toBe("PENDING_APPROVAL");
+    expect((await w.reservations.get("org_456", id))?.state).toBe("held");
+  });
+
+  it("Step 27: user_123's own waiting payment, which booked nothing, expires too, and the sweep counts it (step 27's README, decisions D11 and D15)", async () => {
+    const w = await withTuesday();
+    const id = idOf(await draft(w, "INV-1008", SUPERVISOR));
+    expect(await w.reservations.get("org_456", id)).toBeUndefined();
+    w.clock.now = T0 + 7 * DAY_MS;
+    expect(await sweep(w)).toMatchObject({ data: { expired: 1 } });
+    expect((await w.proposals.get("org_456", id))?.state).toBe("EXPIRED");
+  });
+});
+
 describe("the earlier steps' worlds, with no controls", () => {
   it("Step 27: a world that gives no controls pays INV-1008 as step 26 did, and its record names none (step 27's README, decision D16)", async () => {
     const w = await withTuesday(NO_CONTROLS);

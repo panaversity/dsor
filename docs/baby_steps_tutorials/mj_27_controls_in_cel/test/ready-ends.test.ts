@@ -351,8 +351,8 @@ describe("C4: the sweep", () => {
     const ours = idOf(await prepare(w));
     const theirs = idOf(await prepare(w, USER_700, DRAFT_789));
     w.clock.now = T0 + 8 * DAY_MS;
-    expect(await w.proposals.due("org_456")).toStrictEqual([ours]);
-    expect(await w.proposals.due("org_789")).toStrictEqual([theirs]);
+    expect(await w.proposals.due("org_456")).toStrictEqual([{ id: ours, state: "READY" }]);
+    expect(await w.proposals.due("org_789")).toStrictEqual([{ id: theirs, state: "READY" }]);
   });
 
   // Found by the sweep of small breaks: K10, a sweep that counted and released a move that did not
@@ -361,7 +361,10 @@ describe("C4: the sweep", () => {
   it("Step 25c: a due proposal that a tear-up ended a moment before is not counted, and its booking is not given back again (step 25c's README, decision D9)", async () => {
     const released: string[] = [];
     const stores = {
-      proposals: { due: async () => ["prop_ended_a_moment_ago"], move: async () => false },
+      proposals: {
+        due: async () => [{ id: "prop_ended_a_moment_ago", state: "READY" }],
+        move: async () => false,
+      },
       reservations: {
         release: async (_tenant: string, id: string): Promise<void> => {
           released.push(id);
@@ -713,7 +716,7 @@ describe("from step 25c's review", () => {
     const waiting = await store.waiting("org_456", "del_100");
     expect(waiting.map((kept) => kept.id)).toStrictEqual(inOrder);
     clock.now = T0 + 1000;
-    expect(await store.due("org_456")).toStrictEqual(inOrder);
+    expect(await store.due("org_456")).toStrictEqual(inOrder.map((id) => ({ id, state: "READY" })));
   });
 
   // R9. With "company" left out of the schema's required list, a sweep with no company failed

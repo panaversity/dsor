@@ -1,7 +1,8 @@
 // The sweep, DSoR's own command proposal.expire_due (step 25c's README, decisions
 // L3, D1, D4, D8, and D9). It moves each of the company's READY proposals whose expires_at has come
-// to EXPIRED, with a record that names the sweep's caller, and gives each one's booking back to the
-// day (DSOR-DEL-06d in specs/dsor/02-security.md, section 13.4). All of it happens inside the claim's
+// to EXPIRED, NEW IN STEP 27: and each PENDING_APPROVAL one (step 27's README, decision D11), with
+// a record that names the sweep's caller, and gives each one's booking back to the day
+// (DSOR-DEL-06d in specs/dsor/02-security.md, section 13.4). All of it happens inside the claim's
 // transaction, so every due proposal expires, or none does. Only a system login holding the
 // permission proposal:expire may call it, which line ⑤ checks: dsor-scheduler. A deployment's timer
 // would call it each night. This step builds no timer (step 25c's README, decision D14).
@@ -25,8 +26,9 @@ async function maySweep(input: unknown, look: OwnLook): Promise<void> {
 }
 
 /**
- * The sweep's work, after line ⑩: each due READY proposal moves to EXPIRED, with its record, and
- * its booking goes back to the day. It answers with the company, and how many proposals it expired.
+ * The sweep's work, after line ⑩: each due proposal moves from the state it waited in to EXPIRED,
+ * with its record, and its booking goes back to the day. It answers with the company, and how many
+ * proposals it expired.
  */
 async function expireDue(_input: unknown, work: OwnStores): Promise<unknown> {
   const { tenant, caller, stores, correlation, now } = work;
@@ -40,10 +42,12 @@ async function expireDue(_input: unknown, work: OwnStores): Promise<unknown> {
   };
   const by = { mover, cause: "waited past its lifetime", correlation };
   let expired = 0;
-  for (const id of await stores.proposals.due(tenant)) {
+  for (const { id, state } of await stores.proposals.due(tenant)) {
     // A move that finds the proposal moved on already, by a tear-up a moment before, changes
     // nothing, so its booking is not given back twice, and it is not counted.
-    if (await stores.proposals.move(tenant, id, "READY", "EXPIRED", by)) {
+    // NEW IN STEP 27: from the state it waited in, READY or PENDING_APPROVAL (step 27's README,
+    // decision D11).
+    if (await stores.proposals.move(tenant, id, state, "EXPIRED", by)) {
       await stores.reservations.release(tenant, id);
       expired += 1;
     }

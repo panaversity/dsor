@@ -148,11 +148,17 @@ export type ProposalStore = {
   // APPROVED, and, since step 25c, for its release, in READY. A tear-up cancels these (DSOR-DEL-04c
   // as the learner proposed it; step 25c's README, claim C2).
   waiting: (tenant: string, delegation: string) => Promise<Waiting[]>;
-  // The ids of this company's READY proposals whose expires_at has come, by the
-  // store's clock, in the order of their ids. The sweep expires these (step 25c's README, claim
-  // C4).
-  due: (tenant: string) => Promise<string[]>;
+  // This company's READY proposals whose expires_at has come, by the store's clock, in the order
+  // of their ids. The sweep expires these (step 25c's README, claim C4). NEW IN STEP 27: and its
+  // PENDING_APPROVAL ones, each with its state, which the sweep's move starts from (step 27's
+  // README, decision D11).
+  due: (tenant: string) => Promise<Due[]>;
 };
+
+// NEW IN STEP 27: a proposal whose time has come, and the state it waited in (step 27's README,
+// decision D11). An APPROVED one waits for step 29, which builds the approval.
+/** A proposal the sweep expires: its id, and the state it waited in. */
+export type Due = { id: string; state: "PENDING_APPROVAL" | "READY" };
 
 // The three states the learner's DSOR-DEL-04c names, each of which the picture now
 // lets move to CANCELLED. Step 25 left a READY proposal waiting, because the picture drew no move
@@ -356,14 +362,18 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       // step 25c's review: memory gave them in the order they were made.
       return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },
-    // As the database's SELECT does it: this company, READY, and its time come.
-    due: async (tenant: string): Promise<string[]> => {
+    // As the database's SELECT does it: this company, READY or, since step 27, PENDING_APPROVAL,
+    // and its time come.
+    due: async (tenant: string): Promise<Due[]> => {
       const at = now();
-      return [...rows.values()]
-        .filter((row) => row.tenant === tenant && row.state === "READY")
-        .filter((row) => Date.parse(row.expires_at) <= at)
-        .map((row) => row.id)
-        .sort();
+      const found: Due[] = [];
+      for (const row of rows.values()) {
+        if (row.tenant !== tenant || Date.parse(row.expires_at) > at) continue;
+        if (row.state === "READY" || row.state === "PENDING_APPROVAL") {
+          found.push({ id: row.id, state: row.state });
+        }
+      }
+      return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),

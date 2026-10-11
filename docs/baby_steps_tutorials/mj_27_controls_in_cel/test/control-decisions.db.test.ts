@@ -244,3 +244,42 @@ describe("C5: DENY wins, on the database", () => {
     ]);
   });
 });
+
+describe("D11: the sweep, on the database", () => {
+  // The shipped controls, and a lifetime of one second, so a test can see a waiting payment
+  // expire (step 25c's README, decision D2).
+  const quick = dbRegistry(
+    pool,
+    storyDirectories(),
+    handlersFor(),
+    ownWorkFor(),
+    { file: "ready-lifetimes.json", text: '{ "org_456": "PT1S", "org_789": "PT1S" }' },
+    readControls(),
+  );
+  const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
+  const pause = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
+
+  it("DSOR-DEL-06d: on the database, intake-fte's payment of INV-9001 waits for the CFO past its lifetime: dsor-scheduler's sweep moves it from PENDING_APPROVAL to EXPIRED, and its 31,400.00 USD goes back to the day (step 27's README, decision D11)", async () => {
+    ownerLimits("reset");
+    const answer = await drafted(keyed(INTAKE), quick);
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const id = proposalOf(answer);
+    const usedBy190 = "SELECT used::text AS used FROM dsor.limit_counters WHERE delegation = 'del_190'";
+    expect(await rowsOf(usedBy190)).toStrictEqual([{ used: "31400.00" }]);
+    await pause(1200);
+    const swept = await call(quick, log, keyed(SCHEDULER), "proposal.expire_due", {
+      company: "dsor://org_456/tenant/org_456",
+    });
+    expect(swept).toMatchObject({ outcome: "COMMITTED", data: { tenant_id: "org_456" } });
+    const ended = await proposals.get("org_456", id);
+    expect(ended?.state).toBe("EXPIRED");
+    expect(ended?.transitions.at(-1)).toMatchObject({
+      from: "PENDING_APPROVAL",
+      to: "EXPIRED",
+      actor: "dsor-scheduler",
+      cause: "waited past its lifetime",
+    });
+    expect((await reservations.get("org_456", id))?.state).toBe("released");
+    expect(await rowsOf(usedBy190)).toStrictEqual([{ used: "0.00" }]);
+  });
+});
