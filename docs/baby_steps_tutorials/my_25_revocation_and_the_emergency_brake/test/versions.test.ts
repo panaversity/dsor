@@ -89,6 +89,9 @@ describe("a command says the version it decided on", () => {
     );
 
     expect(strategies).toStrictEqual({
+      // NEW IN STEP 25: a brake has no version to decide on; pulling one that is on, or
+      // releasing one that is not, is refused for what it is (decision 142).
+      "control.suspend": "none",
       "invoice.issue": "optimistic",
       "payment.cancel": "optimistic",
       "payment.create": "none",

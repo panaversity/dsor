@@ -21,8 +21,9 @@ function handlersForBoth() {
   const stub = () =>
     ({ kind: "error", askedBy: "user_123", envelope: refusal("CONFLICT", "x") }) as const;
 
-  // STEP 17: and the two payment operations.
+  // STEP 17: and the two payment operations. NEW IN STEP 25: and the brake.
   return {
+    "control.suspend": stub,
     "invoice.get": stub,
     "invoice.issue": stub,
     "invoice.list": stub,
@@ -66,6 +67,7 @@ describe("callOperation", () => {
     // imports getInvoice behind the registry's back: there is no door to close until
     // step 42. It does prove the two lists cannot drift apart.
     expect(operationIds().sort()).toEqual([
+      "control.suspend", // NEW IN STEP 25
       "invoice.get",
       "invoice.issue",
       "invoice.list",
@@ -147,8 +149,9 @@ describe("callOperation", () => {
   it("DSOR-OPR-01: on load, every contract is accounted for", async () => {
     const ids = operationIds();
 
-    // STEP 13: three. STEP 17: five, with the payments.
+    // STEP 13: three. STEP 17: five, with the payments. NEW IN STEP 25: six, with the brake.
     expect(ids).toEqual([
+      "control.suspend",
       "invoice.get",
       "invoice.issue",
       "invoice.list",
@@ -422,6 +425,8 @@ describe("callOperation", () => {
       expect(operationIds()).toContain("invoice.issue");
       expect(() =>
         assertPaired(loadRegistry(contractsFromDisk()), {
+          // STEP 25: the brake's handler too, so the first one missing is still invoice.issue's.
+          "control.suspend": handlersForBoth()["control.suspend"],
           "invoice.get": () => ({
             kind: "error",
             askedBy: "user_123",
@@ -447,7 +452,13 @@ describe("callOperation", () => {
 
     // A legitimate queue: every operation but invoice.get has a contract and, here, no handler yet.
     const onlyGet = { "invoice.get": handlersForBoth()["invoice.get"]! };
-    const waiting = new Set(["invoice.issue", "invoice.list", "payment.cancel", "payment.create"]);
+    const waiting = new Set([
+      "control.suspend", // STEP 25
+      "invoice.issue",
+      "invoice.list",
+      "payment.cancel",
+      "payment.create",
+    ]);
 
     expect(assertPaired(registry, onlyGet, waiting)).toBe(contracts + waiting.size);
 

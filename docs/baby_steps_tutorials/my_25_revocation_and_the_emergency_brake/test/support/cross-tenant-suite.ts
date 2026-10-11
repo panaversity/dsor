@@ -82,6 +82,20 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                         UNION ALL
                         SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status
                           FROM public.payments WHERE tenant_id = $1
+                        -- NEW IN STEP 25: the story's agent, stopped or working, and the company,
+                        -- frozen or working: what a careless control.suspend could change.
+                        UNION ALL
+                        SELECT 'agent', 'accounts-payable-fte', NULL, NULL, NULL, NULL,
+                               CASE WHEN EXISTS (SELECT 1 FROM dsor.agent_controls c
+                                                  WHERE c.tenant = $1 AND c.lifted_at IS NULL
+                                                    AND c.agent = 'accounts-payable-fte')
+                                    THEN 'stopped' ELSE 'working' END
+                        UNION ALL
+                        SELECT 'tenant', $1, NULL, NULL, NULL, NULL,
+                               CASE WHEN EXISTS (SELECT 1 FROM dsor.agent_controls c
+                                                  WHERE c.tenant = $1 AND c.lifted_at IS NULL
+                                                    AND c.agent IS NULL)
+                                    THEN 'frozen' ELSE 'working' END
                         ORDER BY entity, id`;
 
 export interface SuiteHooks {
@@ -192,8 +206,8 @@ export const questions = {
       const row = key(parsed);
 
       expect(
-        ["invoice", "payment"],
-        `${c.id}: ${address} is neither an invoice nor a payment; teach rowsOf about ${parsed.entity}`,
+        ["agent", "invoice", "payment", "tenant"],
+        `${c.id}: ${address} is none of the rows rowsOf reads; teach rowsOf about ${parsed.entity}`,
       ).toContain(parsed.entity);
       expect(
         theirs.has(row),

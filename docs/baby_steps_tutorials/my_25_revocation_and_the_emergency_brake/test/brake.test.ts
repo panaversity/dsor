@@ -10,11 +10,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { liftTheBrake, pullTheBrake, whatStops } from "../src/controls.ts";
 import { paymentsOf } from "../src/payment.ts";
-import { PIPELINE } from "../src/operations.ts";
+import { mayReleaseABrake, PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
 import { movesOf, proposalsOf } from "../src/proposal.ts";
 import { theDatabase } from "../src/store.ts";
-import { aDatabase, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 
 const AGENT = "accounts-payable-fte";
@@ -226,4 +226,148 @@ describe("a brake pulled after §21.4 still stops the handler", () => {
       ).kind,
     ).toBe("result");
   });
+});
+
+// NEW IN STEP 25, piece 4: control.suspend, the brake as a command for people.
+
+const CFO = { loggedInAs: "cfo_100" };
+const THE_AGENT = "dsor://org_456/agent/accounts-payable-fte";
+const THE_COMPANY = "dsor://org_456/tenant/org_456";
+
+describe("control.suspend: people pull the brake and release it", () => {
+  it("DSOR-OPS-01a: user_123 suspends the agent, and the agent's next command is refused", async () => {
+    const pulled = await callOperation(SUPERVISOR, "control.suspend", {
+      target: THE_AGENT,
+      suspended: true,
+      reason: "paying the wrong invoices",
+    });
+
+    expect(pulled.kind === "result" && pulled.envelope.data?.["suspended"]).toBe(true);
+
+    const refused = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+
+    expect(refused.kind === "error" && refused.envelope.code).toBe("AGENT_SUSPENDED");
+  });
+
+  it("DSOR-OPS-01a: cfo_100 freezes every agent in org_456 with the company's own address", async () => {
+    await callOperation(CFO, "control.suspend", {
+      target: THE_COMPANY,
+      suspended: true,
+      reason: "month-end close",
+    });
+
+    expect((await whatStops("org_456", AGENT))?.agent).toBeUndefined();
+    expect((await whatStops("org_456", AGENT))?.imposedBy).toBe("cfo_100");
+  });
+
+  it("DSOR-OPS-01d: a person holding control:suspend lifts it, and the agent goes on", async () => {
+    await pullTheBrake("org_456", AGENT, "cfo_100", "checking");
+
+    const lifted = await callOperation(SUPERVISOR, "control.suspend", {
+      target: THE_AGENT,
+      suspended: false,
+    });
+
+    expect(lifted.kind === "result" && lifted.envelope.data?.["suspended"]).toBe(false);
+    expect((await callOperation(AGENT_LOGIN, "payment.create", PAY)).kind).toBe("result");
+  });
+
+  it("DSOR-OPS-01d: the agent cannot pull or release the brake: its slip grants no control:suspend", async () => {
+    const answer = await callOperation(AGENT_LOGIN, "control.suspend", {
+      target: THE_AGENT,
+      suspended: false,
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  it("DSOR-OPS-01d: an agent whose slip grants control:suspend still cannot release its own brake, even with §21.4 gone", async () => {
+    // The slip is changed by its owner to grant the brake, and §21.4 is taken out of the door: the
+    // move to EXECUTING sees the brake, and the handler never runs.
+    await asTheOwner(() =>
+      db.exec(`UPDATE dsor.delegations SET permissions = permissions || ARRAY['control:suspend']
+                WHERE tenant = 'org_456' AND id = 'del_100'`),
+    );
+    await pullTheBrake("org_456", AGENT, "user_123", "checking");
+
+    const withoutTheStage = PIPELINE.map((stage) =>
+      stage.name === "check the operational status"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+    const answer = await makeDoor(withoutTheStage)(AGENT_LOGIN, "control.suspend", {
+      target: THE_AGENT,
+      suspended: false,
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+    expect(await whatStops("org_456", AGENT)).toBeDefined();
+  });
+
+  it("DSOR-OPS-01d: only a person may release a brake: never an agent, never a name nobody knows", () => {
+    expect(mayReleaseABrake("user_123")).toBe(true);
+    expect(mayReleaseABrake("cfo_100")).toBe(true);
+    expect(mayReleaseABrake(AGENT)).toBe(false);
+    expect(mayReleaseABrake("nobody")).toBe(false);
+  });
+
+  it("DSOR-OPS-01a: pulling a brake that is on, or releasing one that is not, changes nothing and says so", async () => {
+    await pullTheBrake("org_456", AGENT, "user_123", "checking");
+
+    const again = await callOperation(SUPERVISOR, "control.suspend", {
+      target: THE_AGENT,
+      suspended: true,
+      reason: "again",
+    });
+
+    expect(again.kind === "error" && again.envelope.code).toBe("CONFLICT");
+
+    await liftTheBrake("org_456", AGENT, "user_123");
+
+    const none = await callOperation(SUPERVISOR, "control.suspend", {
+      target: THE_AGENT,
+      suspended: false,
+    });
+
+    expect(none.kind === "error" && none.envelope.code).toBe("CONFLICT");
+  });
+
+  for (const [what, args, code] of [
+    [
+      "an invoice as the target",
+      { target: "dsor://org_456/invoice/INV-1008", suspended: true, reason: "x" },
+      "VALIDATION_FAILED",
+    ],
+    [
+      "an agent nobody knows",
+      { target: "dsor://org_456/agent/nobody", suspended: true, reason: "x" },
+      "RESOURCE_NOT_FOUND",
+    ],
+    [
+      "a person as the target",
+      { target: "dsor://org_456/agent/user_123", suspended: true, reason: "x" },
+      "RESOURCE_NOT_FOUND",
+    ],
+    [
+      "another company's address inside its own",
+      { target: "dsor://org_456/tenant/org_789", suspended: true, reason: "x" },
+      "VALIDATION_FAILED",
+    ],
+    [
+      "suspended that is not true or false",
+      { target: THE_AGENT, suspended: "yes", reason: "x" },
+      "VALIDATION_FAILED",
+    ],
+    ["no reason for pulling it", { target: THE_AGENT, suspended: true }, "VALIDATION_FAILED"],
+  ] as const) {
+    it(`DSOR-OPS-01a: ${what} is refused ${code}, and no brake is pulled`, async () => {
+      const answer = await callOperation(SUPERVISOR, "control.suspend", args);
+
+      expect(answer.kind === "error" && answer.envelope.code).toBe(code);
+      expect(await whatStops("org_456", AGENT)).toBeUndefined();
+    });
+  }
 });

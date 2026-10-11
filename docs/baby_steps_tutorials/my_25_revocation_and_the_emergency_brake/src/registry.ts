@@ -303,12 +303,18 @@ export function contractsFromDisk(): readonly ContractDocument[] {
   // Named one by one rather than by listing the folder, so that adding a contract is a
   // visible edit here. A step that scanned a directory could pick up a stray file.
   //
-  // STEP 17: payment.cancel and payment.create (decision 125).
-  return ["invoice.get", "invoice.issue", "invoice.list", "payment.cancel", "payment.create"].map(
-    (id) => ({
-      where: `src/contracts/${id}.json`,
-      expectedId: id,
-      document: read(`./contracts/${id}.json`),
-    }),
-  );
+  // STEP 17: payment.cancel and payment.create (decision 125). NEW IN STEP 25: and the
+  // emergency brake, control.suspend (decision 142).
+  return [
+    "control.suspend",
+    "invoice.get",
+    "invoice.issue",
+    "invoice.list",
+    "payment.cancel",
+    "payment.create",
+  ].map((id) => ({
+    where: `src/contracts/${id}.json`,
+    expectedId: id,
+    document: read(`./contracts/${id}.json`),
+  }));
 }

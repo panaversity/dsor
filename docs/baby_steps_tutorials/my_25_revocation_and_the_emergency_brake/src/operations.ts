@@ -62,7 +62,7 @@ import {
 import type { Classification } from "./classification.ts";
 // STEP 15: how old an answer's data is, and the door's check that a read says so.
 import { cannotBeLabelled, type Freshness } from "./freshness.ts";
-import { parseUri } from "./uri.ts";
+import { formatUri, parseUri } from "./uri.ts";
 import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./payment.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
@@ -72,7 +72,8 @@ import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
 // STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
 import { reserve, settleReservation, usedToday } from "./reservation.ts";
 // NEW IN STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
-import { whatStops } from "./controls.ts";
+import { liftTheBrake, pullTheBrake, whatStops } from "./controls.ts";
+import { findPerson } from "./people.ts";
 import { money } from "./money.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
@@ -270,6 +271,84 @@ function idFrom(
   }
 
   return { id: parsed.id };
+}
+
+/**
+ * NEW IN STEP 25: what a brake is pulled on: one agent of this company, or the company itself for
+ * every agent in it (decision 142). An agent is a principal this program knows, of the kind agent,
+ * working for this company; a person is never a brake's target.
+ */
+function brakeTargetFrom(
+  args: Readonly<Record<string, unknown>>,
+  askedBy: string,
+  tenant: string,
+  requestId: string,
+):
+  | { readonly agent: string | undefined; readonly target: string }
+  | { readonly refused: ErrorEnvelope } {
+  const given = Object.hasOwn(args, "target") ? args["target"] : undefined;
+  const refused = (code: string, message: string): { readonly refused: ErrorEnvelope } => ({
+    refused: refusal(code, message, requestId, askedBy),
+  });
+
+  if (typeof given !== "string") {
+    return refused(
+      "VALIDATION_FAILED",
+      `control.suspend needs a target address, and got ${typeof given}`,
+    );
+  }
+
+  let parsed;
+
+  try {
+    parsed = parseUri(given);
+  } catch (error) {
+    return refused("VALIDATION_FAILED", (error as Error).message);
+  }
+
+  // As idFrom says: §21.6 refused another company's address already, so this is unreachable
+  // through the real pipeline, and here for a door built without that check.
+  if (parsed.tenant !== tenant) {
+    return refused(
+      "INTERNAL_ERROR",
+      "validate the input let through an address for another company",
+    );
+  }
+
+  if (parsed.entity === "tenant") {
+    return parsed.id === tenant
+      ? { agent: undefined, target: given }
+      : refused("VALIDATION_FAILED", `${given} is not this company's own address`);
+  }
+
+  if (parsed.entity !== "agent") {
+    return refused(
+      "VALIDATION_FAILED",
+      `a brake is pulled on an agent or on the company, and ${given} names ${withArticle(parsed.entity)}`,
+    );
+  }
+
+  const agent = findPerson(parsed.id);
+
+  if (
+    agent === undefined ||
+    agent.type !== "agent" ||
+    !agent.memberships.some((m) => m.tenantId === tenant)
+  ) {
+    return refused("RESOURCE_NOT_FOUND", `${parsed.id} is not an agent working for ${tenant}`);
+  }
+
+  return { agent: agent.id, target: given };
+}
+
+/**
+ * NEW IN STEP 25: whether a principal may release a brake: a person, never an agent, whatever its
+ * slip grants (DSOR-OPS-01d, decision 142). With one agent in the story, an agent reaching the
+ * handler to release a brake is already stopped twice, at §21.4 and at the move to EXECUTING; this is
+ * the rule for the day a second agent asks to release the first one's brake.
+ */
+export function mayReleaseABrake(principal: string): boolean {
+  return findPerson(principal)?.type === "human";
 }
 
 const handlers: Readonly<Record<string, Handler>> = {
@@ -483,6 +562,90 @@ const handlers: Readonly<Record<string, Handler>> = {
 
   // STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
   // own permission, its own decision in the log (DSOR-EXE-05c).
+  // NEW IN STEP 25: the emergency brake, pulled or released by a person (DSOR-OPS-01a, decision
+  // 142). Pulling needs control:suspend, which authorize asked; releasing needs it too, and a person:
+  // an agent whose slip one day grants control:suspend may set the brake, never release it
+  // (DSOR-OPS-01d).
+  "control.suspend": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
+    const semantics = semanticsOf(contract);
+    const refused = (code: string, message: string): HandlerAnswer => ({
+      kind: "error",
+      askedBy,
+      envelope: refusal(code, message, requestId, askedBy),
+    });
+    const read = brakeTargetFrom(args, askedBy, tenant, requestId);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const suspended = Object.hasOwn(args, "suspended") ? args["suspended"] : undefined;
+
+    if (typeof suspended !== "boolean") {
+      return refused(
+        "VALIDATION_FAILED",
+        "suspended is true, to pull the brake, or false, to release it",
+      );
+    }
+
+    const what = read.agent === undefined ? `every agent in ${tenant}` : read.agent;
+    let id: string;
+
+    if (suspended) {
+      const reason = Object.hasOwn(args, "reason") ? args["reason"] : undefined;
+
+      if (typeof reason !== "string" || reason.trim() === "" || reason.length > 200) {
+        return refused(
+          "VALIDATION_FAILED",
+          "a brake is pulled with a reason, for the people who read the record: 1 to 200 characters",
+        );
+      }
+
+      const pulled = await pullTheBrake(tenant, read.agent, askedBy, reason);
+
+      if (pulled.kind === "already") {
+        return refused("CONFLICT", `a brake is on ${what} already; nothing was changed`);
+      }
+
+      id = pulled.id;
+    } else {
+      if (!mayReleaseABrake(askedBy)) {
+        return refused(
+          "AUTHORIZATION_DENIED",
+          `only a person, logged in as themselves, may release a brake; ${askedBy} may not`,
+        );
+      }
+
+      const lifted = await liftTheBrake(tenant, read.agent, askedBy);
+
+      if (lifted.kind === "none") {
+        return refused("CONFLICT", `no brake is on ${what}; nothing was changed`);
+      }
+
+      id = lifted.id;
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: {
+          uri: formatUri({ tenant, entity: "control", id }),
+          tenantId: tenant,
+          id,
+          target: read.target,
+          suspended,
+        },
+        semantics,
+        payloadHash: hash,
+        tenant,
+        proposal,
+        principalId: askedBy,
+        requestId,
+      }),
+    };
+  },
+
   "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
     // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
@@ -2009,6 +2172,8 @@ async function recordTheRead(
  * OUTCOME_UNKNOWN, because the door cannot tell what happened.
  */
 const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
+  // STEP 25: a handler's own check of who may, before it does anything (decision 142).
+  "AUTHORIZATION_DENIED",
   "CONFLICT",
   "STALE_STATE",
   "RESOURCE_NOT_FOUND",

@@ -62,6 +62,14 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     // STEP 21.
     version: "internal",
   }),
+  // NEW IN STEP 25: a brake, as its receipt shows it: what it stops, and whether it is on.
+  control: Object.freeze({
+    uri: "internal",
+    tenantId: "internal",
+    id: "internal",
+    target: "internal",
+    suspended: "internal",
+  }),
 });
 
 /**

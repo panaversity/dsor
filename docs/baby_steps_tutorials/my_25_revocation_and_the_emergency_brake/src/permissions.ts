@@ -46,8 +46,12 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
     "invoice:issue",
     "payment:create",
     "payment:cancel",
+    // NEW IN STEP 25: the supervisor may pull the emergency brake on the agent, and release it
+    // (decision 142).
+    "control:suspend",
   ]),
-  approver: Object.freeze(["invoice:read", "payment:approve"]),
+  // NEW IN STEP 25: and so may the CFO. Either person can stop the agents at 3 a.m.
+  approver: Object.freeze(["invoice:read", "payment:approve", "control:suspend"]),
   // STEP 18: the agent's own role reads. Every command it sends runs under a permission
   // slip a person signed, and its power there is computed from the slip (decision 127).
   ap_worker: Object.freeze(["invoice:read"]),
