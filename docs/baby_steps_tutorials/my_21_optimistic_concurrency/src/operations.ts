@@ -167,17 +167,19 @@ function expectedVersionFrom(args: Readonly<Record<string, unknown>>): number | 
   // failed inside the statement, and the door threw.
   return typeof given === "number" && Number.isInteger(given) && given >= 1 && given <= 2147483647
     ? given
-    : "expected_version, the version the decision was made on, must be a whole number from 1";
+    : "expected_version, the version the decision was made on, must be a whole number from 1 to 2147483647";
 }
 
 /** NEW IN STEP 21: the refusal for a record that moved on since the caller read it. */
-function stale(what: string, version: number, askedBy: string, requestId: string): HandlerAnswer {
+function stale(what: string, askedBy: string, requestId: string): HandlerAnswer {
   return {
     kind: "error",
     askedBy,
     envelope: refusal(
       "STALE_STATE",
-      `${what} is at version ${version} now, not the version the decision was made on; read it again and decide again`,
+      // Decision 134: without the new version, so that the caller reads the record again rather than
+      // retrying on a number it was handed.
+      `${what} has changed since the version the decision was made on; read it again and decide again`,
       requestId,
       askedBy,
     ),
@@ -344,7 +346,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     // NEW IN STEP 21: moved on since the caller read it, whatever its state now (decision 133).
     if (outcome.kind === "stale") {
-      return stale(read.id, outcome.version, askedBy, requestId);
+      return stale(read.id, askedBy, requestId);
     }
 
     if (outcome.kind === "not_found") {
@@ -482,7 +484,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     // NEW IN STEP 21: moved on since the caller read it, whatever its state now (decision 133).
     if (outcome.kind === "stale") {
-      return stale(read.id, outcome.version, askedBy, requestId);
+      return stale(read.id, askedBy, requestId);
     }
 
     if (outcome.kind === "not_found") {

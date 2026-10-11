@@ -17,7 +17,7 @@ import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { paymentsOf } from "../src/payment.ts";
 import { callOperation } from "./support/door.ts";
-import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -181,5 +181,61 @@ describe("a command says the version it decided on", () => {
 
     expect(both.map((o) => o.kind).sort()).toStrictEqual(["issued", "stale"]);
     expect((await getInvoice("org_456", "INV-1009")).value?.version).toBe(2);
+  });
+});
+
+describe("the version, and nothing else, decides staleness", () => {
+  // Decision 134: with the version taken out of the UPDATE, every test above still passed, because
+  // the status alone refused each case. These two pass only if the version is asked.
+  it("DSOR-CON-01b: a draft at version 1, decided on as version 7, is STALE_STATE and untouched", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 7,
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("STALE_STATE");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+  });
+
+  it("DSOR-CON-01b: a draft reopened at version 3, decided on as version 1, is STALE_STATE and untouched", async () => {
+    await asTheOwner(() =>
+      db.exec(
+        "UPDATE public.invoices SET version = 3 WHERE tenant_id = 'org_456' AND id = 'INV-1009'",
+      ),
+    );
+
+    expect(await issueInvoice("org_456", "INV-1009", 1)).toStrictEqual({
+      kind: "stale",
+      version: 3,
+    });
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+  });
+
+  it("DSOR-CON-01b: cancelling a payment raises its version, and a new payment starts at 1", async () => {
+    const made = await callOperation(SUPERVISOR, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      amount: { value: "10.00", currency: "USD" },
+    });
+
+    expect(made.kind === "result" && made.envelope.data["version"]).toBe(1);
+
+    const cancelled = await callOperation(SUPERVISOR, "payment.cancel", {
+      payment: "dsor://org_456/payment/PAY-901",
+      expected_version: 1,
+    });
+
+    expect(cancelled.kind === "result" && cancelled.envelope.data["version"]).toBe(2);
+  });
+
+  it("DSOR-CON-01b: STALE_STATE does not hand over the new version: read again, and decide again", async () => {
+    await issueInvoice("org_456", "INV-1009", 1);
+
+    const stale = await callOperation(AGENT, "invoice.issue", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
+    });
+
+    expect(stale.kind === "error" && stale.envelope.code).toBe("STALE_STATE");
+    expect(stale.kind === "error" && stale.envelope.message).not.toMatch(/version 2/);
   });
 });
