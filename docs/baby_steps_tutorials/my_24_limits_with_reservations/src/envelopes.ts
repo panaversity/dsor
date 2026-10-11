@@ -99,7 +99,7 @@ export interface ErrorEnvelope {
 /**
  * What a caller is told when a command succeeded.
  *
- * NEW IN STEP 23: or was prepared, READY, or was only asked about, VALIDATED (decision 138). The
+ * STEP 23: or was prepared, READY, or was only asked about, VALIDATED (decision 138). The
  * schema says which parts each one needs: COMMITTED and READY name their proposal, its hash and its
  * semantics; VALIDATED names the decision, and has no proposal, because none was made.
  */
@@ -108,7 +108,7 @@ export interface ResultEnvelope {
   readonly proposal?: string;
   readonly payload_hash?: string;
   readonly semantics?: string;
-  /** NEW IN STEP 23: what a dry run would have been told: ALLOW. */
+  /** STEP 23: what a dry run would have been told: ALLOW. */
   readonly decision?: "ALLOW";
   /** The row the command changed. A READY or VALIDATED answer changed nothing, and has none. */
   readonly data?: Readonly<Record<string, unknown>>;
@@ -318,7 +318,7 @@ export function success(answer: {
 }
 
 /**
- * NEW IN STEP 23: the answer to a command prepared and not done, propose_only (DSOR-OPR-05,
+ * STEP 23: the answer to a command prepared and not done, propose_only (DSOR-OPR-05,
  * decision 138).
  *
  * Its proposal, waiting at READY for someone to release it, the fingerprint of what was asked, and
@@ -354,7 +354,7 @@ export function ready(answer: {
 }
 
 /**
- * NEW IN STEP 23: the answer to a dry run the rules would allow (DSOR-OPR-06, decision 138).
+ * STEP 23: the answer to a dry run the rules would allow (DSOR-OPR-06, decision 138).
  *
  * The decision, and the fingerprint of what was asked; no proposal, because none was made, and no
  * data, because nothing changed.

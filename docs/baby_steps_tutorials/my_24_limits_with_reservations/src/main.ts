@@ -62,7 +62,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
   if (answer.kind === "result") {
     const r = answer.envelope;
 
-    // NEW IN STEP 23: a command prepared or only asked about changed nothing, so its answer has no
+    // STEP 23: a command prepared or only asked about changed nothing, so its answer has no
     // row: a READY one says its proposal, a VALIDATED one its decision (decision 138).
     if (r.data === undefined) {
       return r.outcome === "READY"
@@ -639,7 +639,7 @@ if (finished !== undefined) {
   console.log(`  ${finished.id} is COMMITTED. Moved back to EXECUTING: ${tried.kind}`);
 }
 
-// NEW IN STEP 23: one payment, called three ways (decision 138). A dry run is decided and
+// STEP 23: one payment, called three ways (decision 138). A dry run is decided and
 // recorded, and nothing else; a prepared one becomes a proposal that waits at READY for someone to
 // release it, which is step 31's; only the third makes a payment.
 console.log();

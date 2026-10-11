@@ -1,4 +1,4 @@
-// NEW IN STEP 23: three ways to call a command (decision 138).
+// STEP 23: three ways to call a command (decision 138).
 //
 // Rule DSOR-OPR-05: every command MUST support the execute, propose_only, and validate_only
 // invocation modes.
@@ -101,7 +101,7 @@ describe("how a command is called travels beside its arguments", () => {
   });
 });
 
-// NEW IN STEP 23, piece 2: a dry run. The decision stage runs and is recorded; nothing else happens.
+// STEP 23, piece 2: a dry run. The decision stage runs and is recorded; nothing else happens.
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 
@@ -196,7 +196,7 @@ describe("validate_only is a dry run", () => {
   });
 });
 
-// NEW IN STEP 23, piece 3: prepared, not done. The proposal waits at READY for proposal.execute,
+// STEP 23, piece 3: prepared, not done. The proposal waits at READY for proposal.execute,
 // which is step 31's.
 
 describe("propose_only prepares a command and stops at READY", () => {
@@ -297,7 +297,7 @@ describe("propose_only prepares a command and stops at READY", () => {
   });
 });
 
-// NEW IN STEP 23, decision 139: what the review measured.
+// STEP 23, decision 139: what the review measured.
 
 /**
  * The store, for one write of moves naming `state`: the write happens and its reply is lost; with

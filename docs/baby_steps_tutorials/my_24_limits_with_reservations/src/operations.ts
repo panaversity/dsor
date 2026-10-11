@@ -1109,7 +1109,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    // NEW IN STEP 23: and how to call it, asked here too: a fact about the request, decided before
+    // STEP 23: and how to call it, asked here too: a fact about the request, decided before
     // anything is claimed, and recorded like any other refusal (decision 138).
     const mode = modeFrom(context.requestedMode, context.contract?.kind);
 
@@ -1137,7 +1137,7 @@ const validateTheInput: Stage["run"] = (context) => {
 };
 
 /**
- * NEW IN STEP 23: the mode a request asked for, or why it cannot have it. None is `execute`. A query
+ * STEP 23: the mode a request asked for, or why it cannot have it. None is `execute`. A query
  * is only ever read, so it has no other (decision 138).
  */
 function modeFrom(
@@ -1183,7 +1183,7 @@ const IN_FLIGHT_LOOK_AT_MOST_MS = 200;
  * being carried out is waited for. The same key with a different request is refused.
  */
 const claimTheKey: Stage["run"] = async (context) => {
-  // NEW IN STEP 23: a dry run claims nothing. It changes nothing, so asking it twice is harmless,
+  // STEP 23: a dry run claims nothing. It changes nothing, so asking it twice is harmless,
   // as for a query, and §21 skips this step for it (DSOR-OPR-06, decision 138).
   if (context.mode === "validate_only") {
     return carryOn(context);
@@ -1315,7 +1315,7 @@ const claimTheKey: Stage["run"] = async (context) => {
  * record of where it is.
  */
 const createTheProposal: Stage["run"] = async (context) => {
-  // NEW IN STEP 23: and proposes nothing: a dry run makes no proposal (DSOR-OPR-06, decision 138).
+  // STEP 23: and proposes nothing: a dry run makes no proposal (DSOR-OPR-06, decision 138).
   if (context.mode === "validate_only") {
     return carryOn(context);
   }
@@ -1549,7 +1549,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
         // The decision, not the outcome. Whether the invoice was actually issued is §21.15's business,
         // and it has not happened yet — it cannot have, because this line runs first.
         authorization: outcome === undefined ? "ALLOW" : "DENY",
-        // NEW IN STEP 23: a dry run the rules allow is VALIDATED, not ALLOWED, so the log never shows
+        // STEP 23: a dry run the rules allow is VALIDATED, not ALLOWED, so the log never shows
         // it as something that was allowed to run (decision 138).
         result:
           outcome !== undefined
@@ -1736,7 +1736,7 @@ export interface RequestOptions {
   /** The caller's name for one logical request, new for each new one. A command needs it (DSOR-IDM-01a). */
   readonly idempotencyKey?: unknown;
   /**
-   * NEW IN STEP 23: how to carry a command out: `execute`, the default, `propose_only` or
+   * STEP 23: how to carry a command out: `execute`, the default, `propose_only` or
    * `validate_only` (DSOR-OPR-05, decision 138).
    */
   readonly mode?: unknown;
@@ -1874,7 +1874,7 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * NEW IN STEP 23: a command called propose_only, which the rules allow: its proposal moves to READY
+ * STEP 23: a command called propose_only, which the rules allow: its proposal moves to READY
  * and waits there, and nothing is carried out (DSOR-OPR-05, decision 138). Releasing it is
  * proposal.execute's, which checks everything again on live data, and is step 31's.
  *
@@ -1991,7 +1991,7 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
 }
 
 /**
- * NEW IN STEP 23: what a dry run the rules allow is told: VALIDATED, ALLOW, and the fingerprint of
+ * STEP 23: what a dry run the rules allow is told: VALIDATED, ALLOW, and the fingerprint of
  * what was asked. Only with the decision on record, as for anything else (DSOR-OPR-06, decision
  * 138).
  */
@@ -2411,7 +2411,7 @@ export function makeDoor(
       idempotencyKey = undefined;
     }
 
-    // NEW IN STEP 23: and how to call it, read the same way, once. A getter that throws is a mode
+    // STEP 23: and how to call it, read the same way, once. A getter that throws is a mode
     // nobody can read, which §21.6 refuses, rather than the default (decision 138).
     let requestedMode: unknown;
 
@@ -2447,7 +2447,7 @@ export function makeDoor(
       state: walked.context.proposal === undefined ? undefined : "PROPOSED",
       handlerRan: false,
     };
-    // NEW IN STEP 23: a dry run the rules allow is answered here, and nothing is carried out.
+    // STEP 23: a dry run the rules allow is answered here, and nothing is carried out.
     const answer =
       walked.kind === "refused"
         ? walked.answer

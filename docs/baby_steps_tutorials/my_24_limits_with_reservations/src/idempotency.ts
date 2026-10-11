@@ -53,7 +53,7 @@ const WHERE = "tenant = $1 AND principal = $2 AND operation = $3 AND key = $4";
 export async function claimKey(
   claim: Claim,
   payloadHash: string,
-  // NEW IN STEP 23: how the request was called, kept beside its fingerprint: the same key in another
+  // STEP 23: how the request was called, kept beside its fingerprint: the same key in another
   // mode is another request (decision 138).
   mode: "execute" | "propose_only" = "execute",
 ): Promise<Claimed> {

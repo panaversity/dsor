@@ -139,7 +139,7 @@ describe("the program a learner runs", () => {
     // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
     // two payments and a conflict. The replays leave none.
     // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
-    // NEW IN STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
+    // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
     expect(rows).toHaveLength(41);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
@@ -490,7 +490,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-OPR-05: the demo calls one payment three ways, and only the third makes it", () => {
-    // NEW IN STEP 23 (decision 138).
+    // STEP 23 (decision 138).
     const out = demo().report;
 
     expect(out).toContain("Three ways to call one payment of 400.00 USD for INV-1009:");
