@@ -318,6 +318,42 @@ export function success(answer: {
 }
 
 /**
+ * NEW IN STEP 23: the answer to a command prepared and not done, propose_only (DSOR-OPR-05,
+ * decision 138).
+ *
+ * Its proposal, waiting at READY for someone to release it, the fingerprint of what was asked, and
+ * the semantics it will have; no data, because nothing changed.
+ */
+export function ready(answer: {
+  tenant: string;
+  proposal: string;
+  payloadHash: string;
+  semantics: string;
+  requestId?: string;
+  principalId?: string;
+}): ResultEnvelope {
+  if (!answer.proposal.startsWith(`dsor://${answer.tenant}/proposal/`)) {
+    throw new TypeError(
+      `a READY answer for a command in ${answer.tenant} named ${answer.proposal}, which is not one of its proposals`,
+    );
+  }
+
+  const envelope: ResultEnvelope = Object.freeze({
+    outcome: "READY" as const,
+    proposal: answer.proposal,
+    payload_hash: answer.payloadHash,
+    semantics: answer.semantics,
+    correlation: correlationFor(answer.requestId, answer.principalId),
+  });
+
+  if (!validateEnvelope("result", envelope)) {
+    throw new TypeError("built a READY envelope that does not validate");
+  }
+
+  return envelope;
+}
+
+/**
  * NEW IN STEP 23: the answer to a dry run the rules would allow (DSOR-OPR-06, decision 138).
  *
  * The decision, and the fingerprint of what was asked; no proposal, because none was made, and no

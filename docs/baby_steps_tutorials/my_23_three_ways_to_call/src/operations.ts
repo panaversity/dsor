@@ -14,6 +14,7 @@ import {
   nextRequestId,
   payloadHash,
   refusal,
+  ready,
   success,
   validated,
   type ErrorEnvelope,
@@ -1354,7 +1355,8 @@ const createTheProposal: Stage["run"] = async (context) => {
     const proposal = await propose({
       tenant,
       operation,
-      mode: "execute",
+      // STEP 23: as it was called; a dry run never gets here.
+      mode: context.mode === "propose_only" ? "propose_only" : "execute",
       payload,
       payloadHash,
       requester: JSON.stringify(requester),
@@ -1872,6 +1874,100 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * NEW IN STEP 23: a command called propose_only, which the rules allow: its proposal moves to READY
+ * and waits there, and nothing is carried out (DSOR-OPR-05, decision 138). Releasing it is
+ * proposal.execute's, which checks everything again on live data, and is step 31's.
+ *
+ * A move that cannot be written is read back, as the door's moves before a handler are (decision
+ * 137): at READY, it was this request's own; at PROPOSED, nothing was written, and the request is
+ * refused, the proposal DENIED and the claim released.
+ */
+async function prepare(context: Context, progress: Progress): Promise<OperationAnswer> {
+  const { principal, tenant, contract, proposal, payloadHash: hash, recorded, requestId } = context;
+  const semantics = contract?.execution?.semantics;
+
+  if (
+    principal === undefined ||
+    tenant === undefined ||
+    proposal === undefined ||
+    hash === undefined ||
+    recorded === undefined ||
+    semantics === undefined
+  ) {
+    return Object.freeze({
+      kind: "error",
+      askedBy: principal?.id ?? "(nobody)",
+      envelope: refusal(
+        "INTERNAL_ERROR",
+        `${nameOf(context.id)} was prepared without a principal, a tenant, a proposal, a payload hash, a record of the decision and its semantics`,
+        requestId,
+        principal?.id,
+      ),
+    });
+  }
+
+  let moved: MoveOutcome | undefined;
+
+  try {
+    moved = await moveProposal(
+      tenant,
+      proposal,
+      "PROPOSED",
+      "READY",
+      "dsor",
+      `allowed: the decision is recorded as ${recorded}; waiting to be released`,
+    );
+  } catch {
+    let now: ProposalState | undefined;
+
+    try {
+      now = await stateOf(tenant, proposal);
+    } catch {
+      now = undefined;
+    }
+
+    moved = now === "READY" ? Object.freeze({ kind: "moved" }) : undefined;
+    progress.state = now === "READY" ? "READY" : now;
+  }
+
+  if (moved?.kind !== "moved") {
+    return Object.freeze({
+      kind: "error",
+      askedBy: principal.id,
+      envelope:
+        moved === undefined
+          ? refusal(
+              "EVIDENCE_STORE_UNAVAILABLE",
+              `${proposal} could not be moved to READY, so it was not prepared; nothing was done`,
+              requestId,
+              principal.id,
+            )
+          : refusal(
+              "INTERNAL_ERROR",
+              `${proposal} was not PROPOSED, so it was not prepared`,
+              requestId,
+              principal.id,
+            ),
+    });
+  }
+
+  progress.state = "READY";
+
+  return Object.freeze({
+    kind: "result",
+    askedBy: principal.id,
+    envelope: ready({
+      tenant,
+      proposal: `dsor://${tenant}/proposal/${proposal}`,
+      payloadHash: hash,
+      semantics,
+      requestId,
+      principalId: principal.id,
+    }),
+  });
+}
+
+/**
  * NEW IN STEP 23: what a dry run the rules allow is told: VALIDATED, ALLOW, and the fingerprint of
  * what was asked. Only with the decision on record, as for anything else (DSOR-OPR-06, decision
  * 138).
@@ -2319,7 +2415,9 @@ export function makeDoor(
         ? walked.answer
         : walked.context.mode === "validate_only"
           ? aDryRunsAnswer(walked.context)
-          : await carryOut(walked.context, startedAt, progress);
+          : walked.context.mode === "propose_only"
+            ? await prepare(walked.context, progress)
+            : await carryOut(walked.context, startedAt, progress);
     const claim = walked.context.claim;
     const { proposal, tenant } = walked.context;
 

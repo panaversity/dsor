@@ -11,6 +11,9 @@ import { theLog } from "../src/audit.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { callOperation } from "../src/operations.ts";
 import { paymentsOf } from "../src/payment.ts";
+import { movesOf, proposalsOf, stateOf } from "../src/proposal.ts";
+import { overPGlite } from "../src/database.ts";
+import { useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -190,5 +193,106 @@ describe("validate_only is a dry run", () => {
     expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
     expect(await leftBehind()).toStrictEqual({ proposals: 0, claims: 0 });
     expect((await theLog("org_456")).at(-1)?.result).toBe("LIMIT_EXCEEDED");
+  });
+});
+
+// NEW IN STEP 23, piece 3: prepared, not done. The proposal waits at READY for proposal.execute,
+// which is step 31's.
+
+describe("propose_only prepares a command and stops at READY", () => {
+  it("DSOR-OPR-05: an allowed command is READY: a proposal, its fingerprint, and nothing done", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-prepared",
+      mode: "propose_only",
+    });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a result, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(answer.envelope.outcome).toBe("READY");
+    expect(answer.envelope.proposal).toMatch(/^dsor:\/\/org_456\/proposal\/prop_\d+$/);
+    expect(answer.envelope.payload_hash).toMatch(/^sha256:/);
+    expect(answer.envelope.semantics).toBe("atomic");
+    expect(answer.envelope.data).toBeUndefined();
+    expect(await statusOf1009()).toBe("draft");
+
+    const id = String(answer.envelope.proposal).split("/").at(-1) ?? "";
+    const moves = await movesOf("org_456", id);
+
+    expect(moves.map((m) => m.to)).toStrictEqual(["PROPOSED", "READY"]);
+    expect(moves[1]?.cause).toMatch(/waiting to be released/);
+    expect(await stateOf("org_456", id)).toBe("READY");
+
+    const { rows } = await asTheOwner(() =>
+      db.query<{ mode: string }>("SELECT mode FROM dsor.proposals WHERE id = $1", [id]),
+    );
+
+    expect(rows[0]?.mode).toBe("propose_only");
+  });
+
+  it("DSOR-OPR-05: a prepared payment is not made", async () => {
+    const before = await paymentsOf("org_456");
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { idempotencyKey: "pay-prepared", mode: "propose_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("READY");
+    expect(await paymentsOf("org_456")).toStrictEqual(before);
+  });
+
+  it("DSOR-IDM-01c: sent again with its key, a prepared command is the same READY answer and one proposal", async () => {
+    const request = { idempotencyKey: "issue-prepared-twice", mode: "propose_only" };
+    const first = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(first);
+    expect((await proposalsOf("org_456")).filter((p) => p.state === "READY")).toHaveLength(1);
+  });
+
+  it("DSOR-EXE-03b: a move to READY that cannot be written is refused, DENIED, and the key may be sent again", async () => {
+    const request = { idempotencyKey: "issue-prepared-store-down", mode: "propose_only" };
+    const connection = overPGlite(db);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("INSERT INTO dsor.proposal_moves") && params?.includes("READY")) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    try {
+      const refused = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+      expect(refused.kind === "error" && refused.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+      expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+    } finally {
+      useDatabase(connection);
+    }
+
+    const sentAgain = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(sentAgain.kind === "result" && sentAgain.envelope.outcome).toBe("READY");
+  });
+
+  it("DSOR-APR-01a: a prepared command the rules refuse is DENIED, as one executed would be", async () => {
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "60000.00", currency: "USD" },
+      },
+      { idempotencyKey: "pay-too-much-prepared", mode: "propose_only" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
   });
 });
