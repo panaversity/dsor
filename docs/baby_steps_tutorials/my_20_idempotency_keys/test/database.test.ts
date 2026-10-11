@@ -527,6 +527,22 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.close();
   });
 
+  it("DSOR-IDM-01c: the claims' table without the policy that keeps an answer is refused at start-up", async () => {
+    // NEW IN STEP 20, decision 132: the right to write an answer is the right to rewrite one, unless
+    // a restrictive policy lets an UPDATE touch only a claim with no answer or a released one.
+    const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
+    await db.exec("DROP POLICY an_answer_is_kept ON dsor.idempotency_keys");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /second lock is not on/,
+    );
+
+    await db.close();
+  });
+
   it("DSOR-IDM-01b: an application that may delete a claim, rewrite one, or write its answer in advance is refused at start-up", async () => {
     // NEW IN STEP 20: a claim the application could delete is a request it could run twice (decision
     // 131). Each right, one of them one SET ROLE away, and one through a helper's owner.

@@ -38,3 +38,13 @@ ALTER TABLE dsor.idempotency_keys FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON dsor.idempotency_keys
   USING      (tenant = current_setting('dsor.tenant_id', true))
   WITH CHECK (tenant = current_setting('dsor.tenant_id', true));
+
+-- And an answer once kept is never rewritten (decision 132). The right to write an answer is the
+-- right to rewrite one: a review wrote {"released": true} over a kept receipt as the application,
+-- and the same request then made a second payment. This second policy is restrictive, so it is
+-- AND'ed with the first: an UPDATE may touch only a claim with no answer yet, or a released one.
+-- WITH CHECK (true): what an answer becomes is the program's to say; that a kept one is never
+-- touched is the database's. Start-up refuses the table without it.
+CREATE POLICY an_answer_is_kept ON dsor.idempotency_keys AS RESTRICTIVE FOR UPDATE
+  USING      (answer IS NULL OR answer = '{"released": true}')
+  WITH CHECK (true);

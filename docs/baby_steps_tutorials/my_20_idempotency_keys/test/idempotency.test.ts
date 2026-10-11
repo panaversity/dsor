@@ -143,6 +143,68 @@ describe("the claims, in DSoR's own store", () => {
   });
 });
 
+describe("an answer once kept", () => {
+  /** How many rows a statement as the application changed, with org_456 said. */
+  async function changedAsTheApplication(sql: string): Promise<number> {
+    return db.transaction(async (tx) => {
+      await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+
+      return (await tx.query(sql)).affectedRows ?? 0;
+    });
+  }
+
+  it("DSOR-IDM-01c: is never rewritten by the application, nor released; a released one may be taken back", async () => {
+    // Decision 132: with the right to write an answer and nothing else, DSoR's own role wrote
+    // {"released": true} over a kept receipt, and the same request then made a second payment.
+    await asTheApplication(A_CLAIM.replace("'k1'", "'k6'"));
+
+    expect(
+      await changedAsTheApplication(
+        `UPDATE dsor.idempotency_keys SET answer = '{"kind": "result"}' WHERE key = 'k6'`,
+      ),
+    ).toBe(1);
+
+    for (const answer of [`'{"released": true}'`, "NULL", `'{"kind": "error"}'`]) {
+      expect(
+        await changedAsTheApplication(
+          `UPDATE dsor.idempotency_keys SET answer = ${answer} WHERE key = 'k6'`,
+        ),
+        answer,
+      ).toBe(0);
+    }
+
+    await asTheApplication(A_CLAIM.replace("'k1'", "'k7'"));
+
+    expect(
+      await changedAsTheApplication(
+        `UPDATE dsor.idempotency_keys SET answer = '{"released": true}' WHERE key = 'k7'`,
+      ),
+    ).toBe(1);
+    expect(
+      await changedAsTheApplication(
+        `UPDATE dsor.idempotency_keys SET answer = NULL WHERE key = 'k7'`,
+      ),
+    ).toBe(1);
+  });
+
+  it("DSOR-IDM-01c: a replayed answer that is not this caller's, or not an answer, is refused as the program's own error", async () => {
+    // Decision 132: an answer written with `askedBy: "cfo_100"` was handed out by the replay.
+    const first = await pay("forged");
+
+    expect(first.kind).toBe("result");
+
+    for (const forged of [{ ...first, askedBy: "cfo_100" }, { kind: "nonsense" }]) {
+      await asTheOwner(() =>
+        db.query("UPDATE dsor.idempotency_keys SET answer = $1 WHERE key = 'forged'", [
+          JSON.stringify(forged),
+        ]),
+      );
+
+      expect(refusalOf(await pay("forged")).code, JSON.stringify(forged)).toBe("INTERNAL_ERROR");
+    }
+  });
+});
+
 describe("a command carries a key", () => {
   it("DSOR-IDM-01a: a command without an idempotency key is refused, and nothing is made", async () => {
     const refusal = refusalOf(await callOperation(AGENT, "payment.create", PAYMENT));

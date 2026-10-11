@@ -359,8 +359,13 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     `WITH tenant_table (rel, col) AS (
        VALUES ${TENANT_TABLES.map(([table, column]) => `(to_regclass('${table}'), '${column}')`).join(", ")}
      ),
-     policy_text (rel, qual) AS (
-       SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))' FROM tenant_table
+     policy_text (rel, qual, kept) AS (
+       SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))',
+              -- NEW IN STEP 20: and the claims' second policy, which keeps an answer once written,
+              -- as PostgreSQL writes it back, measured (decision 132).
+              CASE WHEN rel = to_regclass('dsor.idempotency_keys')
+                   THEN '((answer IS NULL) OR (answer = ''{"released": true}''::text))' END
+         FROM tenant_table
      )
      SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
             (SELECT string_agg(r.rolname, ', ' ORDER BY r.rolname) FROM pg_roles r
@@ -392,7 +397,15 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                 AND has_schema_privilege(r.oid, ns.oid, 'CREATE')) AS creates_in,
             (SELECT bool_and(
                 c.relrowsecurity AND c.relforcerowsecurity
-                AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 1
+                AND (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid)
+                    = CASE WHEN pt.kept IS NULL THEN 1 ELSE 2 END
+                AND (pt.kept IS NULL OR EXISTS (
+                  SELECT 1 FROM pg_policy p
+                  WHERE p.polrelid = c.oid
+                    AND p.polcmd = 'w' AND NOT p.polpermissive AND p.polroles = '{0}'::oid[]
+                    AND pg_get_expr(p.polqual, p.polrelid) = pt.kept
+                    AND pg_get_expr(p.polwithcheck, p.polrelid) = 'true'
+                ))
                 AND EXISTS (
                   SELECT 1 FROM pg_policy p
                   WHERE p.polrelid = c.oid

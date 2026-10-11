@@ -1110,6 +1110,25 @@ const claimTheKey: Stage["run"] = async (context) => {
     }
 
     if (found.kind === "answered") {
+      // Decision 132: and only an answer to this caller, and an answer at all. One written with
+      // `askedBy: "cfo_100"` was handed out by the replay; the store is DSoR's own, and a wrong
+      // answer in it is the program's error, never the caller's.
+      const given = found.answer as { readonly kind?: unknown; readonly askedBy?: unknown };
+
+      if (
+        given === null ||
+        typeof given !== "object" ||
+        (given.kind !== "result" && given.kind !== "error") ||
+        given.askedBy !== principal.id
+      ) {
+        return refuse(
+          principal.id,
+          "INTERNAL_ERROR",
+          `the answer recorded under the key ${key} is not an answer to ${principal.id}`,
+          context.requestId,
+        );
+      }
+
       return Object.freeze({
         kind: "replayed" as const,
         answer: frozenAllTheWay(found.answer) as OperationAnswer,
