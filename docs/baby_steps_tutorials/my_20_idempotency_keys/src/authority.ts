@@ -4,7 +4,7 @@
 // DSoR asks where a person's permissions come from every time, and copies them nowhere: not into the
 // slip, not into a cache. Ask at 09:00 and at 09:01, and a permission taken away in between is gone.
 //
-// NEW IN STEP 19: asked of the company's directory, which can be out of date, or down, or missing
+// STEP 19: asked of the company's directory, which can be out of date, or down, or missing
 // (decision 129). DSoR does not guess then. It does not use the last answer it saw, which is exactly
 // the months-old answer the rule exists for, and it does not fall back to a list of its own. It says
 // the authority could not be established, and the command is refused.

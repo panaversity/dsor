@@ -19,7 +19,7 @@ import { theDatabase } from "./store.ts";
 
 export type DelegationStatus = "active" | "suspended" | "revoked" | "expired";
 
-/** NEW IN STEP 19: how a slip may be used: with a person present, or with nobody (decision 129). */
+/** STEP 19: how a slip may be used: with a person present, or with nobody (decision 129). */
 export type IdentityMode = "on_behalf_of" | "unattended";
 
 export interface Delegation {
@@ -28,7 +28,7 @@ export interface Delegation {
   readonly delegator: string;
   readonly delegate: string;
   readonly permissions: readonly string[];
-  /** NEW IN STEP 19: the modes it may be used in, never none (DSOR-DEL-07, migration 015). */
+  /** STEP 19: the modes it may be used in, never none (DSOR-DEL-07, migration 015). */
   readonly modes: readonly IdentityMode[];
   /** Up to how much one payment may be, or `undefined` for no limit. */
   readonly perTransactionLimit: Money | undefined;

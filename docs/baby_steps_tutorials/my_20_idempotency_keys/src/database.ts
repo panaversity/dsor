@@ -191,7 +191,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 19: and UPDATE on any one column, which `has_table_privilege` does not see. A
+  // STEP 19: and UPDATE on any one column, which `has_table_privilege` does not see. A
   // review granted UPDATE on the log's `delegation` column and changed a record's slip with start-up
   // passing; step 17 closed the same gap for the business's tables (decision 130).
   const held = (role: string): string =>

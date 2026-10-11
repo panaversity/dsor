@@ -512,7 +512,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-AUD-04a: an UPDATE granted on one column of the log is refused at start-up too", async () => {
-    // NEW IN STEP 19, decision 130: `has_table_privilege` says no to a grant that names columns.
+    // STEP 19, decision 130: `has_table_privilege` says no to a grant that names columns.
     // A review granted UPDATE on the log's new `delegation` column, start-up passed, and the
     // application changed a record's slip; only the chain noticed.
     const db = await aDatabase();

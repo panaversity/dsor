@@ -71,7 +71,7 @@ export interface Context {
    */
   readonly authority?: readonly string[];
   /**
-   * NEW IN STEP 19: when the company's directory knew what the slip's signer holds. The decision
+   * STEP 19: when the company's directory knew what the slip's signer holds. The decision
    * record keeps it as `subject_authority.as_of` (DSOR-DEL-10, decision 129).
    */
   readonly authorityAsOf?: string;
@@ -128,7 +128,7 @@ export interface Context {
 export type StageResult =
   | { readonly kind: "carry_on"; readonly context: Context }
   /**
-   * NEW IN STEP 19: and, when the stage learned something the record should say before it
+   * STEP 19: and, when the stage learned something the record should say before it
    * refused, what it learned. §21.3 found the slip and then refused under it (decision 130).
    */
   | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context?: Context };

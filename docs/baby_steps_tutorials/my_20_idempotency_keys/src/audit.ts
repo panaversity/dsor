@@ -125,7 +125,7 @@ export interface AuditRecord {
    * `extensions` until decision 109, because a comment here said the schema had no such field.
    */
   readonly row_count?: number;
-  /** NEW IN STEP 19: the slip an agent acted under, for an `unattended` record. */
+  /** STEP 19: the slip an agent acted under, for an `unattended` record. */
   readonly delegation?: string;
   readonly correlation: {
     readonly request_id: string;
@@ -165,7 +165,7 @@ export interface DecisionToRecord {
   /** STEP 14: for a `classified_read`, how many rows left — the record's `row_count`. */
   readonly rowCount?: number;
   /**
-   * NEW IN STEP 19: for an agent's command under a slip, whose authority it used: the slip, the
+   * STEP 19: for an agent's command under a slip, whose authority it used: the slip, the
    * person who signed it, and when the company's directory knew what they hold. The record is then
    * `unattended`, its subject the signer, and the agent, `subject` above, its actor chain
    * (DSOR-DEL-08, DSOR-DEL-10, decision 129).
@@ -462,7 +462,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   const reason = decision.reason === undefined ? undefined : clip(decision.reason);
   const resources = decision.resources === undefined ? undefined : [...decision.resources];
   const rowCount = decision.rowCount;
-  // NEW IN STEP 19: copied once, like everything above.
+  // STEP 19: copied once, like everything above.
   const underSlip = decision.underSlip === undefined ? undefined : { ...decision.underSlip };
 
   // No subject, or no company: counted, not recorded. The second is new in step 10, and it is rare
@@ -581,7 +581,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     at,
     tenant,
     kind,
-    // NEW IN STEP 19: an agent's command under a slip is the signer's authority, used by the agent:
+    // STEP 19: an agent's command under a slip is the signer's authority, used by the agent:
     // `unattended`, the signer its subject, the agent its actor chain, and the directory's time
     // for the signer's authority (DSOR-DEL-08, DSOR-DEL-10, decision 129). Everything else is
     // `direct`, with an empty actor chain; `on_behalf_of` is step 45. `role_source` and not
@@ -645,7 +645,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     body.row_count = rowCount;
   }
 
-  // NEW IN STEP 19: inside the hash, so a record whose slip is changed afterwards does not verify.
+  // STEP 19: inside the hash, so a record whose slip is changed afterwards does not verify.
   if (underSlip !== undefined) {
     body.delegation = underSlip.delegation;
   }
@@ -845,7 +845,7 @@ async function insert(db: Statements, written: AuditRecord): Promise<void> {
       // the whole number it is (migration 007, decision 109).
       written.resources === undefined ? null : JSON.stringify(written.resources),
       written.row_count ?? null,
-      // NEW IN STEP 19: migration 016's column, for the schema's field.
+      // STEP 19: migration 016's column, for the schema's field.
       written.delegation ?? null,
     ],
   );

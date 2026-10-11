@@ -1,4 +1,4 @@
-// NEW IN STEP 19: the company directory, which says what a person holds right now (decision 129).
+// STEP 19: the company directory, which says what a person holds right now (decision 129).
 //
 // At 2 a.m. the person whose authority the agent carries is asleep and sends no login. DSoR still
 // has to know whether that person holds the job the slip depends on, so it asks the company's

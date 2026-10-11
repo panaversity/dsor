@@ -318,7 +318,7 @@ for (const payment of await paymentsOf("org_456")) {
 // slip, del_100, which user_123 signed: DSoR found it, and worked out what the agent may do from it
 // at each decision. Two more requests show the two halves of that: above the slip's limit is
 // refused, and when user_123 loses a permission, the agent loses it on the very next request,
-// with nothing in the slip changed. NEW IN STEP 19: the company's directory says so, the fake one
+// with nothing in the slip changed. STEP 19: the company's directory says so, the fake one
 // in `directory.ts`, which the demo may change as a test may.
 console.log();
 console.log("Under whose authority? The agent's commands run under a permission slip:");
@@ -351,7 +351,7 @@ console.log();
 console.log("user_123 moves to another team, and no longer holds payment:create:");
 console.log();
 
-// NEW IN STEP 19: the company's directory says so; step 18 played its part through a seam.
+// STEP 19: the company's directory says so; step 18 played its part through a seam.
 useDirectory(
   "org_456",
   aDirectory("org_456", {
@@ -370,7 +370,7 @@ console.log(
 
 useDirectory("org_456", undefined);
 
-// NEW IN STEP 19: at 2 a.m. nobody is logged in. The agent's first command under del_100 was
+// STEP 19: at 2 a.m. nobody is logged in. The agent's first command under del_100 was
 // user_123's authority, used by the agent, and the log says exactly that. Then two requests, each
 // one decision: the company's directory switched off, and then answering with what it knew 25 hours
 // ago. Both refused, not waved through (DSOR-DEL-08, DSOR-IDN-06, decision 129).
@@ -444,7 +444,7 @@ for (const company of ["org_456", "org_789"]) {
           : record.result
         ).padEnd(22),
         `${record.record_hash.slice(0, 14)}...`,
-        // NEW IN STEP 19: an unattended record's subject is the slip's signer, so the line says who
+        // STEP 19: an unattended record's subject is the slip's signer, so the line says who
         // acted, and under which slip (decision 129).
         ...(record.identity.mode === "unattended"
           ? [

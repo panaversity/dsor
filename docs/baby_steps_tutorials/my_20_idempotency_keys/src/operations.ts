@@ -669,7 +669,7 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   const slip = found.slip;
 
-  // NEW IN STEP 19: from here on DSoR has found the slip, and a refusal is a refusal under it. The
+  // STEP 19: from here on DSoR has found the slip, and a refusal is a refusal under it. The
   // record says so: `unattended`, the signer its subject, the agent in its actor chain, the slip
   // named, and the directory's time for the signer's authority when it gave one. These refusals
   // were recorded as the agent acting for itself (decision 130).
@@ -688,7 +688,7 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
       }),
     });
 
-  // NEW IN STEP 19: in a mode the slip allows. An agent's command is unattended: the agent logged
+  // STEP 19: in a mode the slip allows. An agent's command is unattended: the agent logged
   // in as itself, and nobody is present. A slip for use beside a person is no slip for the agent
   // alone at night (DSOR-DEL-07, decision 129).
   if (!slip.modes.includes("unattended")) {
@@ -713,7 +713,7 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
   }
 
   // A signer the directory does not know in this company holds nothing there, and the agent holds
-  // nothing under them. NEW IN STEP 19: asked of the company's directory, which may have no answer
+  // nothing under them. STEP 19: asked of the company's directory, which may have no answer
   // DSoR can use: none configured, no reply, or one more than 24 hours old. Each is refused, and the
   // refusal says which (DSOR-IDN-05, DSOR-IDN-06, decision 129).
   let signer;
@@ -843,7 +843,7 @@ const authorize: Stage["run"] = (context) => {
   if (
     principal.type === "agent" &&
     contract.kind === "command" &&
-    // NEW IN STEP 19: and a time for its signer's authority, or the record would say `direct`
+    // STEP 19: and a time for its signer's authority, or the record would say `direct`
     // of a command that ran under a slip (decision 130).
     (context.authority === undefined || context.authorityAsOf === undefined)
   ) {
@@ -1193,7 +1193,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
         reason: outcome === undefined ? undefined : outcome.message,
         ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
         ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
-        // NEW IN STEP 19: an agent's command under a slip is recorded as the signer's authority,
+        // STEP 19: an agent's command under a slip is recorded as the signer's authority,
         // used by the agent: `unattended`, from what §21.3 established and never from the request
         // (DSOR-DEL-08, DSOR-DEL-10, decision 129).
         //

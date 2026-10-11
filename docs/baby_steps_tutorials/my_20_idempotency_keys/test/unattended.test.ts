@@ -1,4 +1,4 @@
-// NEW IN STEP 19: unattended mode, and the role source.
+// STEP 19: unattended mode, and the role source.
 //
 // At 2 a.m. nobody is logged in. The agent logs in as itself, and DSoR reads whose authority it
 // carries from the slip, never from the request; a company directory says whether that person still

@@ -560,7 +560,7 @@ describe("the pipeline", () => {
   });
 
   it("DSOR-DEL-10: with the delegation stage forgetting the signer's time, an agent's command is INTERNAL_ERROR, never recorded as direct", async () => {
-    // NEW IN STEP 19: a review replaced §21.3 with one that found the slip and the power and left
+    // STEP 19: a review replaced §21.3 with one that found the slip and the power and left
     // out the time, and the command ran, recorded as the agent acting for itself (decision 130).
     const list = PIPELINE.map((stage) =>
       stage.name === "resolve the delegation"

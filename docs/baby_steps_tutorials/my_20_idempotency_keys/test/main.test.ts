@@ -73,7 +73,7 @@ function demo(): { raw: string; report: string } {
     report: raw
       .replace(/sha256:[0-9a-f]+/g, "sha256:HASH")
       .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME")
-      // NEW IN STEP 19: and when the company's directory knew what the signer holds.
+      // STEP 19: and when the company's directory knew what the signer holds.
       .replace(/as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "as of TIME"),
   };
 }
@@ -115,7 +115,7 @@ describe("the program a learner runs", () => {
 
     expect(refusals.length).toBeGreaterThanOrEqual(6);
 
-    // And no refusal in the demo invites a retry that could not help. NEW IN STEP 19: the one that
+    // And no refusal in the demo invites a retry that could not help. STEP 19: the one that
     // invites the same request again is the directory's that did not answer, which goes through
     // once it does. Its stale answer asks for a wait instead (decision 130).
     const retryable = refusals.filter((line) => line.includes("retry: safe_same_key"));
@@ -133,7 +133,7 @@ describe("the program a learner runs", () => {
     // one request per operation, and a refusal is a decision.
     // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
     // each payment operation from the generated section, and the agent's three payment decisions.
-    // STEP 18: 30, with the two refusals of the slip's section. NEW IN STEP 19: 32, with the
+    // STEP 18: 30, with the two refusals of the slip's section. STEP 19: 32, with the
     // two of the directory's.
     expect(rows).toHaveLength(32);
 
@@ -385,7 +385,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-DEL-08: the demo shows an agent's command as user_123's authority, and the directory off or stale refusing the next", () => {
-    // NEW IN STEP 19: the record of the agent's first command under del_100, then two requests, each
+    // STEP 19: the record of the agent's first command under del_100, then two requests, each
     // one decision: the company's directory switched off, and then answering with what it knew
     // 25 hours ago. Both refused, not waved through (decision 129).
     const out = demo().raw;
@@ -402,7 +402,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-IDN-02b: the printed log tells the agent's records under a slip from user_123's own", () => {
-    // NEW IN STEP 19: the subject of an unattended record is user_123, so the line says who acted,
+    // STEP 19: the subject of an unattended record is user_123, so the line says who acted,
     // and under which slip. user_123's own records say nothing more.
     const lines = demo().report.split("\n");
     const theAgents = lines.filter((line) =>
