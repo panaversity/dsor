@@ -1152,7 +1152,9 @@ const checkTheOperationalStatus: Stage["run"] = async (context) => {
     );
   }
 
-  if (principal.type !== "agent") {
+  // Decision 143: §21 says queries pass through §21.4 too, and a brake stops state changes, so a
+  // query, and a person, go on without asking.
+  if (principal.type !== "agent" || context.contract?.kind !== "command") {
     return carryOn(context);
   }
 
@@ -2150,7 +2152,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   // STEP 18. §21.3: whose slip an agent's command runs under, and what it may do there.
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
   // NEW IN STEP 25. §21.4: a brake on the agent stops its commands (decision 142).
-  stage(4, "check the operational status", "command", checkTheOperationalStatus),
+  stage(4, "check the operational status", "both", checkTheOperationalStatus),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
   // STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.

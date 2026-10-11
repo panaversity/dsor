@@ -110,9 +110,8 @@ describe("the pipeline", () => {
         stage.name === "check the slip's limit" ||
         stage.name === "claim the idempotency key" ||
         stage.name === "create the proposal" ||
-        // NEW IN STEP 25: and the brake, which stops an agent's state changes, never its reads.
-        stage.name === "check the operational status" ||
-        // NEW IN STEP 25: and the target's rules, which only commands have (decision 143).
+        // NEW IN STEP 25: and the target's rules, which only commands have (decision 143). The
+        // brake, §21.4, runs for both, as §21 says, and lets a query through.
         stage.name === "check the target";
 
       expect(applies(stage, "query"), stage.name).toBe(!commandOnly);
@@ -143,7 +142,7 @@ describe("the pipeline", () => {
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"), // STEP 18
-      fake(4, "check the operational status", "command"), // NEW IN STEP 25
+      fake(4, "check the operational status"), // NEW IN STEP 25
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"), // STEP 20
@@ -517,7 +516,7 @@ describe("the pipeline", () => {
       fake(3, "claim the idempotency key", "command"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"), // STEP 18: required, so present
-      fake(4, "check the operational status", "command"), // NEW IN STEP 25: required, so present
+      fake(4, "check the operational status"), // NEW IN STEP 25: required, so present
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(8, "create the proposal", "command"), // STEP 22: required, so present
@@ -534,7 +533,7 @@ describe("the pipeline", () => {
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"),
-      fake(4, "check the operational status", "command"),
+      fake(4, "check the operational status"),
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
@@ -933,7 +932,11 @@ describe("the pipeline", () => {
   // stages took 65 seconds, measured, and twelve would take thirteen minutes (decision 142). Every
   // ordering but the real one differs from it in some pair of stages, and the check refuses a list
   // by the order of its required names; so these are what a wrong ordering looks like, every one
-  // that differs by one swap or by one stage moved, and a hundred thousand drawn at random.
+  // that differs by one swap or by one stage moved, every reordering of any three or four stages,
+  // and a hundred thousand drawn at random. What this trades for speed, said plainly: a check broken
+  // only for orderings that move five or more stages at once, and that the random draw misses, would
+  // pass these where the whole walk would have caught it. A review measured that the first version
+  // of this proof missed a check that accepted one cycle of three (decision 143).
   const refusedOrNot = (list: readonly Stage[]): boolean => {
     try {
       assertPipeline(list);
@@ -944,7 +947,7 @@ describe("the pipeline", () => {
     }
   };
 
-  it("DSOR-EXE-01a: every real stage is required by name, in the list's own order", () => {
+  it("DSOR-EXE-01a: every real stage is required by name", () => {
     // What makes the parts below a proof: no stage can sit anywhere it likes.
     const required = PIPELINE.map((stage) => stage.name);
 
@@ -990,6 +993,46 @@ describe("the pipeline", () => {
         expect(same || refusedOrNot(list), `${PIPELINE[from]?.name} to place ${to}`).toBe(true);
       }
     }
+  });
+
+  it("DSOR-EXE-01a: every reordering of any three stages, and of any four, is refused", () => {
+    // NEW IN STEP 25, decision 143: a cycle of three is no swap and no single move, and the first
+    // version of this proof let a check that accepted one through, a review measured.
+    const reorderingsOf = <T>(xs: readonly T[]): T[][] =>
+      xs.length <= 1
+        ? [[...xs]]
+        : xs.flatMap((x, i) =>
+            reorderingsOf([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]),
+          );
+    const placesOf = (size: number, from = 0): number[][] =>
+      size === 0
+        ? [[]]
+        : Array.from({ length: PIPELINE.length - from }, (_, i) => from + i).flatMap((first) =>
+            placesOf(size - 1, first + 1).map((rest) => [first, ...rest]),
+          );
+    let tried = 0;
+
+    for (const size of [3, 4]) {
+      for (const places of placesOf(size)) {
+        for (const order of reorderingsOf(places)) {
+          if (order.every((place, i) => place === places[i])) {
+            continue;
+          }
+
+          const list = [...PIPELINE];
+
+          places.forEach((place, i) => {
+            list[place] = PIPELINE[order[i] as number] as Stage;
+          });
+          tried += 1;
+
+          expect(refusedOrNot(list), list.map((stage) => stage.name).join(" then ")).toBe(true);
+        }
+      }
+    }
+
+    // Twelve stages: 220 threes with 5 reorderings each, and 495 fours with 23.
+    expect(tried).toBe(220 * 5 + 495 * 23);
   });
 
   it("DSOR-EXE-01a: of a hundred thousand orderings drawn at random, only the real one is accepted", () => {
