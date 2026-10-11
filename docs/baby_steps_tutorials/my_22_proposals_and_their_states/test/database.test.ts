@@ -287,12 +287,16 @@ describe("refuseIfItCanRewriteHistory", () => {
     );
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
     // STEP 17: four of them now. STEP 18: five, with the slips. STEP 20: six, with the keys.
+    // NEW IN STEP 22: eight, with the proposals and their moves.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
     );
     await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
     await db.exec("CREATE TABLE dsor.idempotency_keys (tenant TEXT, key TEXT);");
+    await db.exec(
+      "CREATE TABLE dsor.proposals (tenant TEXT, id TEXT); CREATE TABLE dsor.proposal_moves (tenant TEXT, proposal TEXT);",
+    );
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
     // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
@@ -573,6 +577,34 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-APR-01c: an application that may change a proposal, its moves or the map is refused at start-up", async () => {
+    // NEW IN STEP 22: a move it could change or delete is a finished proposal it could start
+    // again, and a move it could add to the map is a way out of COMMITTED (decision 136). Each
+    // right, one of them one SET ROLE away, and one through a helper's owner.
+    for (const grant of [
+      "GRANT UPDATE (to_state) ON dsor.proposal_moves TO dsor_runtime",
+      "GRANT DELETE ON dsor.proposal_moves TO dsor_runtime",
+      "GRANT UPDATE (payload) ON dsor.proposals TO dsor_runtime",
+      "GRANT INSERT ON dsor.proposal_map TO dsor_runtime",
+      "GRANT INSERT (at) ON dsor.proposal_moves TO dsor_runtime",
+      "GRANT INSERT (id) ON dsor.proposals TO dsor_runtime",
+      "CREATE ROLE mover; GRANT TRUNCATE ON dsor.proposal_moves TO mover; GRANT mover TO dsor_runtime WITH INHERIT FALSE",
+      "CREATE ROLE helper; GRANT DELETE ON dsor.proposal_map TO helper; CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'; ALTER FUNCTION public.a_helper() OWNER TO helper",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(
+        /may change or delete a proposal/,
+      );
+
+      await db.close();
+    }
+  });
+
   it("DSOR-DEL-01a: an application that may write a permission slip is refused at start-up", async () => {
     // STEP 18: a slip the application could write is a slip it could sign for itself
     // (decision 127). Each right, and one of them one SET ROLE away.
@@ -607,12 +639,16 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
     // STEP 17: four of them now. STEP 18: five, with the slips. STEP 20: six, with the keys.
+    // NEW IN STEP 22: eight, with the proposals and their moves.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
     );
     await db.exec("CREATE TABLE dsor.delegations (tenant TEXT, id TEXT);");
     await db.exec("CREATE TABLE dsor.idempotency_keys (tenant TEXT, key TEXT);");
+    await db.exec(
+      "CREATE TABLE dsor.proposals (tenant TEXT, id TEXT); CREATE TABLE dsor.proposal_moves (tenant TEXT, proposal TEXT);",
+    );
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");

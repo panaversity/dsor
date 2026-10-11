@@ -47,9 +47,17 @@ const tablesIn = async (schema: string): Promise<string[]> =>
 
 describe("DSoR's own store", () => {
   it("DSOR-MOD-01: the log lives in dsor, DSoR's own schema, and not among the business's tables", async () => {
-    // STEP 18: and the permission slips, DSoR's second kind of paperwork (decision 127). NEW IN
-    // STEP 20: and the idempotency keys, its third (decision 131).
-    expect(await tablesIn("dsor")).toStrictEqual(["audit", "delegations", "idempotency_keys"]);
+    // STEP 18: and the permission slips, DSoR's second kind of paperwork (decision 127). STEP
+    // 20: and the idempotency keys, its third (decision 131). NEW IN STEP 22: and the proposals,
+    // their moves and the map of moves, its fourth (decision 136).
+    expect(await tablesIn("dsor")).toStrictEqual([
+      "audit",
+      "delegations",
+      "idempotency_keys",
+      "proposal_map",
+      "proposal_moves",
+      "proposals",
+    ]);
     expect(await tablesIn("public")).not.toContain("audit");
   });
 

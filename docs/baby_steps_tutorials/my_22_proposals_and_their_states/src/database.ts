@@ -121,6 +121,9 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.delegations", "tenant"],
   // STEP 20: the idempotency keys, DSoR's third kind of paperwork (decision 131).
   ["dsor.idempotency_keys", "tenant"],
+  // NEW IN STEP 22: the proposals and their moves, DSoR's fourth kind of paperwork (decision 136).
+  ["dsor.proposals", "tenant"],
+  ["dsor.proposal_moves", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -643,6 +646,37 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `or which request it fingerprints, or claim one with its answer already written, itself, ` +
         `one SET ROLE away, or through a helper function. The application claims a key and writes ` +
         `its answer, and nothing else. See migrations/018_idempotency_keys.sql.`,
+    );
+  }
+
+  // NEW IN STEP 22: the proposals. The application adds a proposal and its moves, and changes
+  // nothing: a move it could change or delete is a finished proposal it could start again, a
+  // proposal it could change is a payload approved as one thing and run as another, and a time it
+  // could write is a history it could reorder. And it may not touch the map, where a move out of
+  // COMMITTED, added, would undo the rule the map exists for (decision 136).
+  const { rows: proposals } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        ...["dsor.proposals", "dsor.proposal_moves", "dsor.proposal_map"].flatMap((table) => [
+          `has_any_column_privilege(${role}, '${table}', 'UPDATE')`,
+          `has_table_privilege(${role}, '${table}', 'DELETE')`,
+          `has_table_privilege(${role}, '${table}', 'TRUNCATE')`,
+        ]),
+        `has_any_column_privilege(${role}, 'dsor.proposal_map', 'INSERT')`,
+        `has_column_privilege(${role}, 'dsor.proposals', 'id', 'INSERT')`,
+        `has_column_privilege(${role}, 'dsor.proposals', 'created_at', 'INSERT')`,
+        `has_column_privilege(${role}, 'dsor.proposal_moves', 'seq', 'INSERT')`,
+        `has_column_privilege(${role}, 'dsor.proposal_moves', 'at', 'INSERT')`,
+      ].join(" OR "),
+    )} AS may`,
+  );
+
+  if (proposals[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may change or delete a proposal or one of its ` +
+        `moves, choose a proposal's number or a move's time or place, or change the map of moves, ` +
+        `itself, one SET ROLE away, or through a helper function. The application adds a proposal ` +
+        `and its moves, and nothing else. See migrations/020_proposals.sql.`,
     );
   }
 }
