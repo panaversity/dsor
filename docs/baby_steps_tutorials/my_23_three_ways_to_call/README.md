@@ -1,85 +1,67 @@
-# Step 22 · Proposals and their states
+# Step 23 · Three ways to call
 
-**New in this step:** every command becomes a *proposal*, a record with a state you can look up,
-like an order-tracking page. Its state moves only forward, and never out of a finished state.
+**New in this step:** every command can be called three ways. `execute` does it. `propose_only`
+prepares it for someone else to release. `validate_only` is a dry run with no side effects at all.
 
 ## In plain words
 
-When the agent asks DSoR to cancel a payment, DSoR now writes down a proposal first: what was
-asked, who asked, and the request's fingerprint. Then, as the request goes, it writes down each
-*move*. This is the demo's last cancel, which found the payment had moved on:
+Until now, sending a command meant doing it. Now the caller says how, beside its arguments and its
+key:
 
-```text
-            -> PROPOSED   accounts-payable-fte  payment.cancel@1 invoked
-  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:40
-  READY     -> EXECUTING  dsor                  handed to payment.cancel
-  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE
+```ts
+await callOperation(agent, "payment.create", payment, { mode: "validate_only" });
+await callOperation(agent, "payment.create", payment, { idempotencyKey, mode: "propose_only" });
+await callOperation(agent, "payment.create", payment, { idempotencyKey }); // execute
 ```
 
-A proposal's *state* is its last move. Each move says who made it, the *actor*, and why, the
-*cause*. The first move is made by whoever logged in to ask; the rest are DSoR's own.
+- **`validate_only`** asks "would this be allowed?". Every check runs and the decision is written
+  in the log, as `VALIDATED`, so the log never shows a dry run as something that ran. Nothing else
+  happens: no proposal, no claimed key, no payment, not even a payment number taken. The answer is
+  `VALIDATED`, with the decision, `ALLOW`. A dry run the rules refuse gets the same refusal a real
+  one would. A dry run needs no key, because there is nothing to send twice.
+- **`propose_only`** prepares the command and stops. The key is claimed, the proposal is made, every
+  check runs, and the proposal moves to READY, "waiting to be released", and stays there. The answer
+  is `READY` with the proposal's address. Releasing it is `proposal.execute`, which checks
+  everything again on live data; that is step 31.
+- **`execute`**, the default, is what every command did before.
 
-The states and the moves between them come from the specification's map, §26.2. This step uses the
-plain path:
+A query is only ever read, so it has one way to be called.
 
-- **DENIED**: a check after the proposal was written said no, for example the slip's limit.
-- **READY**, then **EXECUTING**: allowed, and handed to the code that carries it out.
-- **COMMITTED**: it was done. **FAILED**: the code refused, for example a stale version.
-- **OUTCOME_UNKNOWN**: the code crashed, or said itself that it does not know. Nobody knows whether
-  it ran, so DSoR does not pretend to.
+How it is called is part of the request. The idempotency claim keeps the mode beside the
+fingerprint, so the same key sent in another mode is `IDEMPOTENCY_CONFLICT`. Without that, a key
+used to prepare a payment, sent again to execute it, would be handed the prepared answer, and the
+caller would believe it had executed.
 
-DENIED, COMMITTED and FAILED are *finished*: there is no move out of them on the map. The other
-states on the map, waiting for approval, approved, rejected, expired and the rest, arrive with
-approvals.
-
-The receipt names the proposal, `dsor://org_456/proposal/prop_1`. A request refused before the
-proposal is written, because nobody is logged in, the company is wrong, the caller lacks the
-permission or the arguments are bad, has none: there was nothing to propose. A query has none
-either: it changes nothing.
-
-Two rules make "never out of a finished state" true, and both live in the database, not in the
-code, so no handler, careless or not, can get round them:
-
-- **The map is a table.** Every move written must be one of its moves, and a finished state has
-  none out of it, so a move out of COMMITTED has nothing to point at and is refused.
-- **The history is one line.** The map has no loops, so a proposal enters each state once and
-  leaves it once, and a move out of a state needs the move into it. Two requests that both try to
-  move a proposal out of READY cannot both be written: a proposal runs at most once.
-
-The application, `dsor_runtime`, may add proposals and moves and read them, and do nothing else: no
-changing, no deleting, and no touching the map. Start-up refuses an application that may.
+The mode is read once, and only the request's own. One that cannot be read, a getter that throws or
+a mode on the request's prototype, is refused with `VALIDATION_FAILED`, never taken as `execute`:
+the caller who asked for a dry run must never get a payment.
 
 ## Why it matters
 
-The agent asks for a payment at 2 a.m. In the morning `user_123` asks what became of it. Without
-proposals the answer is spread over three places that were never meant to be read together: a
-decision in the audit log, an answer on an idempotency claim, and a payment, if there is one. A
-request refused by the slip's limit leaves no payment. One whose code crashed leaves a claim with
-no answer. Nothing says "this request, and where it is now".
+The agent is planning tomorrow's payment run and wants to know which payments the rules would
+refuse. Without a dry run, the only way to ask is to send them, and every one that is allowed is
+made at once. And there is no way for the agent to do the preparing, the part it is good at, while a
+person does the releasing. `validate_only` lets the agent plan without risk; `propose_only` lets it
+prepare work that waits.
 
-And nothing would keep it there. Step 23 prepares a command now and releases it later, and approvals
-attach to a waiting command. Both need a record whose state moves only forward. A payment that is
-COMMITTED and could be moved back to EXECUTING is a payment that can run twice.
-
-## What changed since step 21
+## What changed since step 22
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21_optimistic_concurrency ../my_22_proposals_and_their_states
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_22_proposals_and_their_states ../my_23_three_ways_to_call
 ```
 
 | File | What |
 | --- | --- |
-| `migrations/020_proposals.sql` | new — the map of moves, the proposals, written once, and their moves; the constraints that keep the map, and a history that is one line; the application may add and read, and nothing else |
-| `src/proposal.ts` | new — make a proposal with its first move, move it, move it through several states in one statement, read its moves, its state, and a company's list |
-| `src/operations.ts` | a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after; DENIED when a later stage refuses |
-| `src/pipeline.ts` | the stage is required by name, after the claim; the context carries the proposal and the payload's text |
-| `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
-| `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
-| `src/main.ts` | where each command of this run went, the stale cancel move by move, and a COMMITTED proposal refusing to move back |
-| `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, the race, the rights, and the door's moves on every path |
-| `test/proposals.db.test.ts` | new — twenty moves out of READY at once on a real server, and twenty out of COMMITTED |
-| the tests that pin the pipeline | ten stages now, and all 3,628,800 orderings walked one at a time |
+| `migrations/021_the_claim_keeps_its_mode.sql` | new — the claim keeps the mode it was made in, written with the claim and never changed |
+| `src/operations.ts` | the door reads the mode beside the key; §21.6 checks it; the claim and the proposal step aside for a dry run; §21.11 records a dry run as `VALIDATED`; the door answers a dry run, prepares a `propose_only` command to READY, and reads a lost reply back before it says nothing was done |
+| `src/pipeline.ts` | the three modes, and the mode in the context |
+| `src/envelopes.ts` | the result envelope has room for `READY` and `VALIDATED`, which carry no data, and their builders |
+| `src/idempotency.ts` | the claim compares the mode as it compares the fingerprint |
+| `src/database.ts` | start-up refuses an application that may change a claim's mode |
+| `src/main.ts` | one payment called three ways, and the payments each made |
+| `test/modes.test.ts` | new — the modes, the dry run, the prepared command, a lost reply read back, and how the mode is read |
+| `test/main.test.ts` | three more decisions in the demo's log |
 
 ## Run it
 
@@ -88,42 +70,25 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step comes after the two decisions on one payment:
+The part that is this step comes after the proposals:
 
 ```text
-Where each command went: org_456's proposals from this run
+Three ways to call one payment of 400.00 USD for INV-1009:
 
-  prop_1    invoice.issue@1   COMMITTED
-  prop_2    payment.create@1  COMMITTED
-  prop_3    payment.cancel@1  COMMITTED
-  prop_4    payment.cancel@1  FAILED
-  prop_5    payment.create@1  DENIED
-  prop_6    payment.create@1  COMMITTED
-  prop_7    payment.create@1  COMMITTED
-  prop_8    payment.create@1  COMMITTED
-  prop_9    payment.cancel@1  COMMITTED
-  prop_10   payment.cancel@1  FAILED
-
-prop_10, move by move:
-
-            -> PROPOSED   accounts-payable-fte  payment.cancel@1 invoked
-  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:40
-  READY     -> EXECUTING  dsor                  handed to payment.cancel
-  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE
-
-  prop_1 is COMMITTED. Moved back to EXECUTING: refused
+accounts-payable-fte  VALIDATED                the decision would be ALLOW; nothing was done
+accounts-payable-fte  READY                    dsor://org_456/proposal/prop_11  waiting to be released  compensatable
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-906  draft      compensatable
+                        withheld: amount (clearance)
+  payments made: 0 by the first two, 1 by the third
 ```
 
-Ten proposals, though the demo sends more commands than that. The ones refused before §21.8 have
-none: cfo_100's issue, the agent after `user_123` lost the permission, the directory switched off
-and the stale directory, the key used for another amount, and every request with another company's
-address. prop_4 is the cancel of a payment already cancelled, `CONFLICT`; prop_5 is the payment over
-the slip's limit; PAY-903 is prop_6, sent twice with one key and one proposal; the fifty requests
-with one key are one proposal, prop_7. The numbers count up
-across runs, because the store keeps every run's.
+The same request three times. The dry run is decided and answered; the prepared one becomes
+prop_11, waiting at READY; only the third makes a payment. All three are in the log printed below
+them, and the dry run says so:
 
-The last line asks, with the application's own rights, to move a finished proposal back. The
-database refuses.
+```text
+41  ALLOW  payment.create@1     user_123               VALIDATED               sha256:161c18a...  unattended: by accounts-payable-fte under del_100
+```
 
 ### The database tier
 
@@ -131,119 +96,113 @@ database refuses.
 database of this step's own:
 
 ```bash
-cp ../my_21_optimistic_concurrency/.env .env     # then dsor_step21 -> dsor_step22 in both lines
+cp ../my_22_proposals_and_their_states/.env .env     # then dsor_step22 -> dsor_step23 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first, made with one `CREATE DATABASE dsor_step22` through the owner
-login. `pnpm migrate` applies the twenty migrations; on a server that already had step 21's
-nineteen, it applies 020. The two new tests race on a real pool: twenty requests try to move one
-proposal out of READY at the same moment, and exactly one is written; twenty try to move a COMMITTED
-proposal anywhere, and none is.
+The database has to exist first, made with one `CREATE DATABASE dsor_step23` through the owner
+login. `pnpm migrate` applies the twenty-one migrations; on a server that already had step 22's
+twenty, it applies 021. This step adds no test of its own to this tier: nothing in it races.
 
 ## Break it
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `753` with `1 skipped`; in the repository it is `753 passed`.
+is not beside it, so the total reads `779` with `1 skipped`; in the repository it is `779 passed`.
 
-### Break 1 · the map gets a way out of COMMITTED
+### Break 1 · a dry run claims its key
 
-The map's "break it". In `migrations/020_proposals.sql`, add one more move to the map:
-`('COMMITTED', 'FAILED')`.
-
-```text
- Tests  4 failed | 748 passed | 1 skipped (753)
-```
-
-The map test, the two tests that try every move out of a COMMITTED proposal, and the one that writes
-the SQL itself: a payment that was made can now be recorded as one that failed. Notice what a way
-out of COMMITTED back to EXECUTING would have done: almost nothing, because a proposal enters each
-state once, and it has already been EXECUTING. The two rules guard each other.
-
-### Break 2 · a state may be left twice
-
-In `migrations/020_proposals.sql`, delete `UNIQUE (tenant, proposal, from_state),`.
+The map's "break it" in spirit: a dry run that leaves something behind. In `src/operations.ts`, in
+`claimTheKey`, change `if (context.mode === "validate_only") {` to
+`if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  1 failed | 751 passed | 1 skipped (753)
+ Tests  8 failed | 770 passed | 1 skipped (779)
 ```
 
-Only one, and it is the test of two different moves out of one state at once: approved and rejected
-together, and both written. Two moves into the same state, the race out of READY, are still caught,
-by "entered once". No command waits for approval yet, which is why only one test reaches this.
+More than the five predicted, and for one reason: a dry run sent without a key, as most of them are,
+is now refused for not having one, because the claim wants a key to claim. So every dry run in the
+tests and the demo fails, the one with a key leaves a claim behind, and the log's count changes.
 
-### Break 3 · the handler runs without the move to EXECUTING
+### Break 2 · a dry run is recorded as ALLOWED
 
-In `src/operations.ts`, delete the line ``["READY", "EXECUTING", `handed to ${contract.id}`],``.
+In `src/operations.ts`, change `? "VALIDATED"` to `? "ALLOWED"`.
 
 ```text
- Tests  9 failed | 743 passed | 1 skipped (753)
+ Tests  1 failed | 777 passed | 1 skipped (779)
 ```
 
-The handler runs on a proposal that is only READY, and its last move, out of EXECUTING, has nothing
-to point at, so every proposal the door carries out is left READY: the demo's list, and eight tests
-of the door's moves. The handler still ran, and the payment was still made. Nothing in the history
-says so.
+The one test that reads the log after a dry run. Nothing else notices, which is the point of the
+test: a log that says ALLOWED for a payment that was never made reads like a payment that went
+missing, and only someone reading the log would find out.
+
+### Break 3 · a prepared command is carried out
+
+In `src/operations.ts`, change `? await prepare(walked.context, progress)` to
+`? await carryOut(walked.context, startedAt, progress)`.
+
+```text
+ Tests  6 failed | 772 passed | 1 skipped (779)
+```
+
+The caller asked to prepare a payment, and it was made. The tests of a READY answer, of the payment
+not made, of the replay, of the two moves to READY that fail, and the demo's count of payments.
 
 ## Build it yourself with Claude Code
 
-Copy `my_21_optimistic_concurrency` to a new folder and ask:
+Copy `my_22_proposals_and_their_states` to a new folder and ask:
 
-> Start step 22, proposals and their states. Before any code: show me a request at 2 a.m. and the
-> three places I would have to look in the morning to know what became of it. Then ask me the
-> step's decisions one at a time. Then build it a piece at a time, red first, and break each piece
-> on purpose.
+> Start step 23, three ways to call. Before any code: show me the agent planning a payment run and
+> what it costs it today to find out which payments would be refused. Then ask me the step's
+> decisions one at a time. Then build it a piece at a time, red first, and break each piece on
+> purpose.
 
 ## Check yourself
 
-1. The agent's payment is refused because it is over the slip's limit. Is there a proposal, and
-   what state is it in? And cfo_100's attempt to issue an invoice?
-2. Why is a proposal's state its last move, and not a column of its own?
-3. What stops a COMMITTED proposal from being moved back to EXECUTING, if a careless handler next
-   year writes the SQL itself?
-4. Two requests try to move one proposal out of READY at the same moment. What happens?
-5. A handler answers `TRANSACTION_FAILED`. Why is its proposal `OUTCOME_UNKNOWN` and not `FAILED`?
+1. The agent sends `payment.create` with `mode: "validate_only"`. What is written down, and what is
+   not?
+2. Why is a dry run recorded as `VALIDATED` and not `ALLOWED`?
+3. A prepared payment is READY. How does it get made?
+4. The agent prepares a payment with the key `pay-77`, then sends the same request with the same key
+   to execute it. What happens, and why?
+5. A request's mode is set on its prototype, not on the request itself. Why is it refused, when a key
+   set the same way is simply missing?
 
 <details>
 <summary>Answers</summary>
 
-1. Yes, DENIED, with the cause `refused: LIMIT_EXCEEDED`: the limit is checked after §21.8. cfo_100
-   has none: the permission is checked before it, and there was nothing to propose.
-2. A column would be a second copy of the truth beside the history, and the two could disagree. It
-   would also need the right to change rows, which is the right to change a finished one.
-3. The database. The map has no move out of COMMITTED, so the move has nothing to point at; and the
-   application may not change or delete a move, so it cannot rewrite the history either.
-4. Exactly one is written. A state is left only once, and the database checks it. That is how a
-   proposal runs at most once.
-5. FAILED is finished, and says nothing happened. Only a refusal that proves it, such as `CONFLICT`
-   or `STALE_STATE`, is believed. A handler that made the payment and then answered
-   `TRANSACTION_FAILED` would otherwise leave a payment nobody looks for.
+1. The decision, in the log, as VALIDATED. No proposal, no claimed key, no payment, and no payment
+   number taken.
+2. The log is evidence. A line saying ALLOWED for a payment that was never made reads like a payment
+   that went missing.
+3. Not yet: `proposal.execute`, which checks everything again on live data, is step 31. Until then
+   it waits at READY.
+4. `IDEMPOTENCY_CONFLICT`. The claim kept the mode, and another mode is another request. Otherwise
+   the caller would be handed the READY answer and believe it had executed.
+5. A missing key is refused, so treating an unreadable key as missing is safe. A missing mode is
+   `execute`, so treating an unreadable mode as missing turns a dry run into a payment.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-APR-01a · L2]** Proposals MUST follow this state machine.
-  ([§26.2](../../../specs/dsor/03-execution.md#262-lifecycle))
-- **[DSOR-APR-01b · L2]** Every proposal transition MUST be recorded with its actor and its cause.
-- **[DSOR-APR-01c · L2]** A proposal MUST NOT leave a terminal state.
-- **[DSOR-IDM-04 · L2]** A proposal MUST be executed at most once; the proposal id is the
-  idempotency key of its execution. ([§22](../../../specs/dsor/03-execution.md#22-idempotency))
+- **[DSOR-OPR-05 · L2]** Every command MUST support the `execute`, `propose_only`, and
+  `validate_only` invocation modes. ([§7.3](../../../specs/dsor/01-model.md#73-invocation-modes))
+- **[DSOR-OPR-06 · L2]** A `validate_only` invocation MUST NOT create a proposal, take a
+  reservation, place a hold, or cause a side effect.
 
-**What this step leaves, said plainly.** The proposal id is not passed on to the system that does
-the work as its key: a proposal runs at most once because READY is left once, and passing a key on
-waits for a connector that takes one (`DSOR-IDM-03`), so `DSOR-IDM-04` is met in part. One key is
-one proposal, except after a released claim: the retry makes a second, and the first is DENIED.
-DENIED is the only finished state the map has out of PROPOSED, so a store that failed is DENIED too,
-with a cause that says it was the store. Proposal numbers, like payment numbers since step 17, come
-from one sequence for every company, so a number hints at how busy the others are. A proposal whose
-creation committed with its reply lost stays PROPOSED, and one whose last move could not be written
-stays EXECUTING: both wait for reconciliation, step 37. There is no `proposal.get` yet, because who
-may read a proposal is a rule of its own; the demo reads the store. Only one mode, `execute`, is
-built; `propose_only` and `validate_only` are step 23's, and the approval states step 26's.
+**What this step leaves, said plainly.** A dry run, and a prepared command, are decided without the
+preconditions the handlers check: whether the version is current, whether the invoice exists. Those
+run inside the handlers, which a dry run never reaches, so `expected_version: 99` is `VALIDATED`, and
+a payment for an invoice that does not exist is READY. §21.9's preconditions become a stage of their
+own in step 32, and a test pins today's behaviour until then. A prepared proposal waits at READY
+with nothing to release it until `proposal.execute`, step 31, and nothing to cancel it either. The
+`.propose` permission of §7.3, an agent allowed to prepare and not to execute, is not built. There
+are no reservations or holds yet for a dry run to leave alone; step 24 brings the first. When a
+move's reply is lost and the proposal cannot be read back, the answer is `OUTCOME_UNKNOWN` and the
+key stays taken until reconciliation, step 37.
 
 Everything earlier steps claimed still holds.
 
-**Next:** step 23, `three_ways_to_call` — `execute` does it, `propose_only` prepares it for
-someone else to release, and `validate_only` is a dry run with no side effects at all.
+**Next:** step 24, `limits_with_reservations` — a daily limit, and the race two payments run
+against it, closed by reserving the amount in one database step.

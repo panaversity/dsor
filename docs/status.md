@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 22 also have a second learner's
-builds, `my_01` to `my_22`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 23 also have a second learner's
+builds, `my_01` to `my_23`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -86,7 +86,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, twenty-three of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, twenty-four of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -114,6 +114,7 @@ one before it:
 | `my_20_idempotency_keys` | 702 | every command carries an idempotency key beside its arguments, claimed with one INSERT at §21.7; the same key and request get the recorded answer and nothing runs twice, a different request under the key is refused, and fifty at once make one payment |
 | `my_21_optimistic_concurrency` | 718 | invoices and payments carry a version raised in the same UPDATE as every change; every command declares its concurrency strategy, an optimistic command says the version it decided on, and a record that moved on is refused `STALE_STATE` before any business rule, with no new version handed over |
 | `my_22_proposals_and_their_states` | 753 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2 and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended |
+| `my_23_three_ways_to_call` | 779 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -147,7 +148,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 137 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 139 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

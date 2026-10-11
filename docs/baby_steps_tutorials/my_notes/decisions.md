@@ -4384,3 +4384,79 @@ broken once, in a copy, on the whole suite: a lost reply never read back as the 
 failed exactly its one test, as predicted. The README's three breaks were measured twice and the
 runs agreed: a way out of COMMITTED fails 4, a state left twice fails 1, and a handler run without
 the move to EXECUTING fails 9.
+
+## 138 · Step 23's decisions, taken on the learner's instruction before any code (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
+and choose your recommended options". The problem is stated first, as it would have been shown;
+each choice is the recommendation, and each is open to reversal.
+
+**The problem.** The agent is planning tomorrow's payment run and wants to know which of its
+payments the rules would refuse. Today the only way to ask is to send them, and every one that is
+allowed is made at once. There is no way to ask "would this be allowed?" without doing it, and no
+way to prepare a payment now for someone to release later. `DSOR-OPR-05` asks that every command
+support three ways to be called, `execute`, `propose_only` and `validate_only`, and `DSOR-OPR-06`
+that `validate_only` create no proposal, take no reservation, place no hold and cause no side
+effect.
+
+1. **The mode travels beside the arguments, like the key**, as the bindings write it (§33): the
+   request's options, `{ idempotencyKey, mode }`, read once by the door. Absent is `execute`;
+   anything else is refused `VALIDATION_FAILED`. Rejected: a field inside the arguments, which
+   would put "how to call" inside "what is asked" and its payload hash.
+2. **`execute` is unchanged.**
+3. **`propose_only` walks the same checklist**, its key claimed, its proposal made, the limit asked,
+   the decision recorded, **and stops at READY**: the receipt says `READY` with the proposal, and
+   nothing runs. Releasing it is `proposal.execute`, which re-checks everything on live data and
+   is step 31's; until then a prepared proposal waits at READY.
+4. **`validate_only` skips §21.7 and §21.8, as §21 says**: no key needed, a key given is not
+   claimed, no proposal. The limit is still asked and the decision still recorded, so a dry run
+   is evidence too, recorded with the result `VALIDATED` rather than `ALLOWED`, so the log never
+   shows a dry run as something that was allowed to run. The answer is `VALIDATED` with the
+   decision, `ALLOW`; a refusal is the same refusal `execute` would get.
+5. **The same key in another mode is another request.** The claim keeps the mode beside the
+   fingerprint (migration 021), and the same key with another mode is `IDEMPOTENCY_CONFLICT`.
+   Without it, a key used to prepare a payment, sent again to execute it, would be handed the
+   prepared answer, and the caller would believe it had executed.
+6. **Every command supports all three**, as `DSOR-OPR-05` says; nothing in a contract turns one
+   off. Rejected for now: the `.propose` permission of §7.3, an agent allowed to prepare and not to
+   execute, because what it prepares can only be released from step 31.
+
+## 139 · What step 23's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date. Each choice is the
+recommendation, and each is open to reversal.
+
+One reviewer, read-only, with probes in its own copy. It found a dry run claiming nothing and
+proposing nothing, recorded before it is answered as VALIDATED, the mode read once and checked once,
+the claim keeping the mode with no right to change it, and no path from a prepared command to a
+handler. It found:
+
+1. **One request could leave two READY proposals** (measured). Under `propose_only`, the move to
+   READY committed with its reply lost, the read-back failed too, and the caller was told "nothing
+   was done, safe to send again", with the claim released: the retry made a second READY proposal,
+   and once step 31 releases proposals, that is two payments. The same shape before a handler left
+   a proposal EXECUTING that never ran beside a second that did, which decision 137 had written
+   down. Now, when even the read-back fails, the answer is `OUTCOME_UNKNOWN`, the claim keeps it,
+   and the proposal waits for reconciliation; only a read-back that finds the proposal where it was
+   says nothing was done.
+2. **A mode on the request's prototype was ignored, and the call executed** (measured). The caller
+   asked for a dry run and got a payment. The key's rule, its own field only, is right for a key,
+   whose absence is refused; for a mode, absence means execute. Now a mode that is there but not
+   the request's own is a mode nobody can read, and §21.6 refuses it.
+3. **No test covered how the mode is read**, and nothing tested a READY reply lost. Tests now send a
+   getter that throws, an inherited mode, and a move to READY committed with its reply lost.
+4. **`prepare` and the door before a handler disagreed** about a proposal that was not PROPOSED; both
+   now leave it alone.
+
+**Written down, and not fixed:** a dry run, and a prepared command, are decided without the
+preconditions the handlers check, the version and whether the invoice exists, because those run
+inside the handlers and a dry run reaches none (measured: `expected_version: 99` is VALIDATED, and a
+payment for INV-9999 is READY). §21.9's preconditions become a stage of their own in step 32, and a
+test pins today's behaviour until then. Decision 138's "a refusal is the same refusal execute would
+get" holds for every check before the handler, and only for those.
+
+**Broken on purpose (measured 2026-10-11, predictions written first).** Each of the three fixes was
+broken once, in a copy, on the whole suite, and each failed exactly its one test, as predicted. The
+README's three breaks were measured twice and the runs agreed: a dry run that claims its key fails
+8, where 5 were predicted, because a dry run without a key is then refused for want of one; a dry
+run recorded as ALLOWED fails 1; a prepared command carried out fails 6.
