@@ -49,6 +49,8 @@ const AUDIT_COLUMNS = [
   // decision 8).
   "identity",
   "delegation",
+  // Migration 022 adds each control evaluated (step 27's README, decision D14).
+  "controls",
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
 

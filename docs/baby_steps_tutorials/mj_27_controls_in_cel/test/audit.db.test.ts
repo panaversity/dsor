@@ -84,12 +84,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         // and how many (step 14's README, decision 7). And which connector
         // served it (step 15's README, decision 7).
         // And step 18's identity and delegation, for an agent's call (step 18's README,
-        // decision 8).
-        held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation",
+        // decision 8). And each control line ⑩ evaluated (step 27's README, decision D14).
+        held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls",
       },
       {
         object: "dsor.audit SELECT",
-        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation",
+        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls",
       },
       // The brakes. Read every column, add a brake through five named columns,
       // and write its lift through three. Nothing on pulled_at, which the database fills, and no
@@ -528,9 +528,9 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
     // failed on its 14 values, so it kept no row for the wrong reason.
     const keepsNothing = `INSERT INTO dsor.audit
         (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-         extensions, resources, row_count, connector, identity, delegation)
+         extensions, resources, row_count, connector, identity, delegation, controls)
       SELECT $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::jsonb, $8::text,
-             $9::jsonb, $10::text[], $11::integer, $12::text, $13::jsonb, $14::text
+             $9::jsonb, $10::text[], $11::integer, $12::text, $13::jsonb, $14::text, $15::jsonb
        WHERE false`;
     // How many rows each swapped INSERT kept, so the test knows the fault fired once, and
     // that the statement ran. An INSERT that failed would pass for the wrong reason.

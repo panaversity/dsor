@@ -65,7 +65,8 @@
             "row_count",
             "connector",
             "identity",
-            "delegation"
+            "delegation",
+            "controls"
           ]
         }
       }
