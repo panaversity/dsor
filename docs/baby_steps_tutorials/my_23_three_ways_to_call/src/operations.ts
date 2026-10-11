@@ -15,6 +15,7 @@ import {
   payloadHash,
   refusal,
   success,
+  validated,
   type ErrorEnvelope,
   type ResultEnvelope,
 } from "./envelopes.ts";
@@ -1181,6 +1182,12 @@ const IN_FLIGHT_LOOK_AT_MOST_MS = 200;
  * being carried out is waited for. The same key with a different request is refused.
  */
 const claimTheKey: Stage["run"] = async (context) => {
+  // NEW IN STEP 23: a dry run claims nothing. It changes nothing, so asking it twice is harmless,
+  // as for a query, and §21 skips this step for it (DSOR-OPR-06, decision 138).
+  if (context.mode === "validate_only") {
+    return carryOn(context);
+  }
+
   const { principal, tenant, contract, payloadHash } = context;
 
   if (
@@ -1307,6 +1314,11 @@ const claimTheKey: Stage["run"] = async (context) => {
  * record of where it is.
  */
 const createTheProposal: Stage["run"] = async (context) => {
+  // NEW IN STEP 23: and proposes nothing: a dry run makes no proposal (DSOR-OPR-06, decision 138).
+  if (context.mode === "validate_only") {
+    return carryOn(context);
+  }
+
   const { principal, tenant, contract, payload, payloadHash, claim } = context;
 
   if (
@@ -1478,10 +1490,15 @@ const recordTheDecision: Stage["run"] = async (context) => {
               ? "a payload hash"
               : // STEP 20: a command reaches here only with its key claimed, or a
                 // retry of it could run twice (decision 131).
-                contract.kind === "command" && context.claim === undefined
+                // STEP 23: a dry run excepted, which claims and proposes nothing (decision 138).
+                contract.kind === "command" &&
+                  context.mode !== "validate_only" &&
+                  context.claim === undefined
                 ? "a claimed idempotency key"
                 : // STEP 22: and a proposal to move (decision 136).
-                  contract.kind === "command" && context.proposal === undefined
+                  contract.kind === "command" &&
+                    context.mode !== "validate_only" &&
+                    context.proposal === undefined
                   ? "a proposal"
                   : Object.hasOwn(handlers, contract.id)
                     ? undefined
@@ -1530,7 +1547,14 @@ const recordTheDecision: Stage["run"] = async (context) => {
         // The decision, not the outcome. Whether the invoice was actually issued is §21.15's business,
         // and it has not happened yet — it cannot have, because this line runs first.
         authorization: outcome === undefined ? "ALLOW" : "DENY",
-        result: outcome === undefined ? "ALLOWED" : outcome.code,
+        // NEW IN STEP 23: a dry run the rules allow is VALIDATED, not ALLOWED, so the log never shows
+        // it as something that was allowed to run (decision 138).
+        result:
+          outcome !== undefined
+            ? outcome.code
+            : context.mode === "validate_only"
+              ? "VALIDATED"
+              : "ALLOWED",
         reason: outcome === undefined ? undefined : outcome.message,
         ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
         ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
@@ -1846,6 +1870,34 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
   "RESOURCE_NOT_FOUND",
   "VALIDATION_FAILED",
 ]);
+
+/**
+ * NEW IN STEP 23: what a dry run the rules allow is told: VALIDATED, ALLOW, and the fingerprint of
+ * what was asked. Only with the decision on record, as for anything else (DSOR-OPR-06, decision
+ * 138).
+ */
+function aDryRunsAnswer(context: Context): OperationAnswer {
+  const { principal, payloadHash: hash, recorded, requestId } = context;
+
+  if (principal === undefined || hash === undefined || recorded === undefined) {
+    return Object.freeze({
+      kind: "error",
+      askedBy: principal?.id ?? "(nobody)",
+      envelope: refusal(
+        "INTERNAL_ERROR",
+        `${nameOf(context.id)} finished a dry run without a principal, a payload hash and a record of the decision`,
+        requestId,
+        principal?.id,
+      ),
+    });
+  }
+
+  return Object.freeze({
+    kind: "result",
+    askedBy: principal.id,
+    envelope: validated({ payloadHash: hash, requestId, principalId: principal.id }),
+  });
+}
 
 /** STEP 22: where one request's proposal has got to, and whether its handler ran. */
 interface Progress {
@@ -2261,10 +2313,13 @@ export function makeDoor(
       state: walked.context.proposal === undefined ? undefined : "PROPOSED",
       handlerRan: false,
     };
+    // NEW IN STEP 23: a dry run the rules allow is answered here, and nothing is carried out.
     const answer =
       walked.kind === "refused"
         ? walked.answer
-        : await carryOut(walked.context, startedAt, progress);
+        : walked.context.mode === "validate_only"
+          ? aDryRunsAnswer(walked.context)
+          : await carryOut(walked.context, startedAt, progress);
     const claim = walked.context.claim;
     const { proposal, tenant } = walked.context;
 

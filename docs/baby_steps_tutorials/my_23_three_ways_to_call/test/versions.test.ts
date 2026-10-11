@@ -227,14 +227,14 @@ describe("the version, and nothing else, decides staleness", () => {
       amount: { value: "10.00", currency: "USD" },
     });
 
-    expect(made.kind === "result" && made.envelope.data["version"]).toBe(1);
+    expect(made.kind === "result" && made.envelope.data?.["version"]).toBe(1);
 
     const cancelled = await callOperation(SUPERVISOR, "payment.cancel", {
       payment: "dsor://org_456/payment/PAY-901",
       expected_version: 1,
     });
 
-    expect(cancelled.kind === "result" && cancelled.envelope.data["version"]).toBe(2);
+    expect(cancelled.kind === "result" && cancelled.envelope.data?.["version"]).toBe(2);
   });
 
   it("DSOR-CON-01b: STALE_STATE does not hand over the new version: read again, and decide again", async () => {

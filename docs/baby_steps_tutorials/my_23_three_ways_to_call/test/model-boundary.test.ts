@@ -129,7 +129,7 @@ describe("a command's receipt", () => {
 
     if (receipt.kind === "result") {
       expect(receipt.envelope.outcome).toBe("COMMITTED");
-      expect("amount" in receipt.envelope.data).toBe(false);
+      expect("amount" in (receipt.envelope.data ?? {})).toBe(false);
       expect(receipt.envelope.redactions).toStrictEqual([AMOUNT_WITHHELD]);
       expect(receipt.envelope.classification).toBe("internal");
     }

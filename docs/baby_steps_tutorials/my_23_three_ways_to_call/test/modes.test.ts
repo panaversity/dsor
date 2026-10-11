@@ -10,7 +10,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { callOperation } from "../src/operations.ts";
-import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
+import { paymentsOf } from "../src/payment.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const ISSUE_1009 = { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 };
@@ -94,5 +95,100 @@ describe("how a command is called travels beside its arguments", () => {
     });
 
     expect(again.kind === "error" && again.envelope.code).toBe("IDEMPOTENCY_CONFLICT");
+  });
+});
+
+// NEW IN STEP 23, piece 2: a dry run. The decision stage runs and is recorded; nothing else happens.
+
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+
+/** org_456's proposals and claims, as the owner counts them. */
+const leftBehind = async (): Promise<{ proposals: number; claims: number }> =>
+  asTheOwner(async () => {
+    const { rows } = await db.query<{ proposals: number; claims: number }>(
+      `SELECT (SELECT count(*)::int FROM dsor.proposals WHERE tenant = 'org_456') AS proposals,
+              (SELECT count(*)::int FROM dsor.idempotency_keys WHERE tenant = 'org_456') AS claims`,
+    );
+
+    return rows[0] ?? { proposals: -1, claims: -1 };
+  });
+
+describe("validate_only is a dry run", () => {
+  beforeEach(async () => {
+    await asTheOwner(() =>
+      db.exec("DELETE FROM dsor.idempotency_keys WHERE tenant IN ('org_456', 'org_789')"),
+    );
+  });
+
+  it("DSOR-OPR-06: an allowed command is VALIDATED, ALLOW, and nothing happens: no change, no proposal, no claim", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-dry",
+      mode: "validate_only",
+    });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a result, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(answer.envelope.outcome).toBe("VALIDATED");
+    expect(answer.envelope.decision).toBe("ALLOW");
+    expect(await statusOf1009()).toBe("draft");
+    expect(await leftBehind()).toStrictEqual({ proposals: 0, claims: 0 });
+  });
+
+  it("DSOR-OPR-06: a dry run needs no key, because nothing is claimed", async () => {
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      mode: "validate_only",
+    });
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+  });
+
+  it("DSOR-OPR-06: a dry run is recorded as VALIDATED, so the log never shows it as something allowed to run", async () => {
+    await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, { mode: "validate_only" });
+
+    const last = (await theLog("org_456")).at(-1);
+
+    expect(last?.authorization).toBe("ALLOW");
+    expect(last?.result).toBe("VALIDATED");
+  });
+
+  it("DSOR-OPR-06: a dry run of a payment makes no payment, and takes no payment number", async () => {
+    const before = await paymentsOf("org_456");
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+    expect(await paymentsOf("org_456")).toStrictEqual(before);
+
+    // The next payment made for real is still PAY-902: the dry run took no number.
+    const made = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { idempotencyKey: "pay-for-real" },
+    );
+
+    expect(made.kind === "result" && made.envelope.data?.["id"]).toBe("PAY-902");
+  });
+
+  it("DSOR-OPR-05: a dry run the rules refuse gets the same refusal execute would, and leaves nothing", async () => {
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "60000.00", currency: "USD" },
+      },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect(await leftBehind()).toStrictEqual({ proposals: 0, claims: 0 });
+    expect((await theLog("org_456")).at(-1)?.result).toBe("LIMIT_EXCEEDED");
   });
 });

@@ -558,8 +558,8 @@ const contested = await callOperation(
 );
 
 if (contested.kind === "result") {
-  const payment = String(contested.envelope.data["uri"]);
-  const readAt = Number(contested.envelope.data["version"]);
+  const payment = String(contested.envelope.data?.["uri"]);
+  const readAt = Number(contested.envelope.data?.["version"]);
 
   console.log(
     show(

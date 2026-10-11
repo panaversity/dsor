@@ -96,13 +96,22 @@ export interface ErrorEnvelope {
   readonly correlation: Correlation;
 }
 
-/** What a caller is told when a command succeeded. */
+/**
+ * What a caller is told when a command succeeded.
+ *
+ * NEW IN STEP 23: or was prepared, READY, or was only asked about, VALIDATED (decision 138). The
+ * schema says which parts each one needs: COMMITTED and READY name their proposal, its hash and its
+ * semantics; VALIDATED names the decision, and has no proposal, because none was made.
+ */
 export interface ResultEnvelope {
-  readonly outcome: "COMMITTED";
-  readonly proposal: string;
-  readonly payload_hash: string;
-  readonly semantics: string;
-  readonly data: Readonly<Record<string, unknown>>;
+  readonly outcome: "COMMITTED" | "READY" | "VALIDATED";
+  readonly proposal?: string;
+  readonly payload_hash?: string;
+  readonly semantics?: string;
+  /** NEW IN STEP 23: what a dry run would have been told: ALLOW. */
+  readonly decision?: "ALLOW";
+  /** The row the command changed. A READY or VALIDATED answer changed nothing, and has none. */
+  readonly data?: Readonly<Record<string, unknown>>;
   readonly correlation: Correlation;
   /** STEP 14: the label of what `data` still holds, set by the door on its way out. */
   readonly classification?: Classification;
@@ -303,6 +312,31 @@ export function success(answer: {
 
   if (!validateEnvelope("result", envelope)) {
     throw new TypeError("built a result envelope that does not validate");
+  }
+
+  return envelope;
+}
+
+/**
+ * NEW IN STEP 23: the answer to a dry run the rules would allow (DSOR-OPR-06, decision 138).
+ *
+ * The decision, and the fingerprint of what was asked; no proposal, because none was made, and no
+ * data, because nothing changed.
+ */
+export function validated(answer: {
+  payloadHash: string;
+  requestId?: string;
+  principalId?: string;
+}): ResultEnvelope {
+  const envelope: ResultEnvelope = Object.freeze({
+    outcome: "VALIDATED" as const,
+    decision: "ALLOW" as const,
+    payload_hash: answer.payloadHash,
+    correlation: correlationFor(answer.requestId, answer.principalId),
+  });
+
+  if (!validateEnvelope("result", envelope)) {
+    throw new TypeError("built a VALIDATED envelope that does not validate");
   }
 
   return envelope;
