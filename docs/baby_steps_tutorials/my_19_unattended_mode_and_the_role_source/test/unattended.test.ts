@@ -206,9 +206,22 @@ describe("the company directory", () => {
   });
 
   it("DSOR-IDN-05: a company with no directory is refused every agent command", async () => {
+    // Decision 130: every one, not one. The title said so before the test did.
     useDirectory("org_456", null);
 
-    expect(refusalOf(await cancel(AGENT)).code).toBe("DEPENDENCY_TIMEOUT");
+    for (const [id, args] of [
+      ["invoice.issue", { invoice: "dsor://org_456/invoice/INV-1009" }],
+      [
+        "payment.create",
+        {
+          invoice: "dsor://org_456/invoice/INV-1009",
+          amount: { value: "2500.00", currency: "USD" },
+        },
+      ],
+      ["payment.cancel", { payment: PAY_901 }],
+    ] as const) {
+      expect(refusalOf(await callOperation(AGENT, id, args)).code, id).toBe("DEPENDENCY_TIMEOUT");
+    }
   });
 
   it("DSOR-IDN-06: what the directory says now is what counts: user_123 moved, and the agent is refused", async () => {
@@ -268,6 +281,33 @@ describe("whose authority the record says", () => {
     await cancel(AGENT, { subject: "cfo_100" });
 
     expect((await decisions())[0]?.identity.subject).toBe("user_123");
+  });
+
+  it("DSOR-DEL-08: never from the request: identity planted in the login and the arguments changes nothing", async () => {
+    // Decision 130: a review planted more than `subject`, in both places, and the code held; now a
+    // test says so.
+    const planted = {
+      subject: "cfo_100",
+      delegator: "cfo_100",
+      on_behalf_of: "cfo_100",
+      mode: "direct",
+    };
+
+    const answer = await callOperation({ ...AGENT, ...planted } as never, "payment.cancel", {
+      payment: PAY_901,
+      ...planted,
+    });
+
+    expect(answer.kind).toBe("result");
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity).toMatchObject({
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+    });
+    expect(decision?.delegation).toBe("del_100");
   });
 
   it("a person's decision stays direct, with nobody in the chain and no slip", async () => {
