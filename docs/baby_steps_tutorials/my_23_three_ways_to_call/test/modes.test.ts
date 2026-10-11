@@ -296,3 +296,93 @@ describe("propose_only prepares a command and stops at READY", () => {
     expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
   });
 });
+
+// NEW IN STEP 23, decision 139: what the review measured.
+
+/**
+ * The store, for one write of moves naming `state`: the write happens and its reply is lost; with
+ * `readsFail`, reading a proposal's state back fails too.
+ */
+function aLostReply(state: string, readsFail: boolean): () => void {
+  const connection = overPGlite(db);
+  let lost = false;
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      if (!lost && sql.includes("INSERT INTO dsor.proposal_moves") && params?.includes(state)) {
+        lost = true;
+        await connection.query(sql, params, tenant);
+
+        throw Object.assign(new Error("the reply was lost"), { code: "ECONNRESET" });
+      }
+
+      if (readsFail && lost && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) {
+        throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+      }
+
+      return connection.query<T>(sql, params, tenant);
+    },
+  });
+
+  return () => useDatabase(connection);
+}
+
+describe("a lost reply, read back", () => {
+  it("DSOR-OPR-05: a move to READY whose reply is lost is read back, and the command is prepared", async () => {
+    const putBack = aLostReply("READY", false);
+
+    try {
+      const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+        idempotencyKey: "prepared-reply-lost",
+        mode: "propose_only",
+      });
+
+      expect(answer.kind === "result" && answer.envelope.outcome).toBe("READY");
+    } finally {
+      putBack();
+    }
+
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["READY"]);
+  });
+
+  it("DSOR-IDM-01c: a move to READY whose reply is lost and cannot be read back is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 139: told "safe to send again", the retry made a second READY proposal.
+    const request = { idempotencyKey: "prepared-unknown", mode: "propose_only" };
+    const putBack = aLostReply("READY", true);
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect(await proposalsOf("org_456")).toHaveLength(1);
+  });
+
+  it("DSOR-IDM-04: a move to EXECUTING whose reply is lost and cannot be read back is OUTCOME_UNKNOWN, and nothing runs twice", async () => {
+    const request = { idempotencyKey: "executed-unknown" };
+    const putBack = aLostReply("EXECUTING", true);
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(await statusOf1009()).toBe("draft");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect(await statusOf1009()).toBe("draft");
+    expect(await proposalsOf("org_456")).toHaveLength(1);
+  });
+});

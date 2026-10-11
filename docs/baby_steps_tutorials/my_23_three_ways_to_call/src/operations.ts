@@ -1926,11 +1926,34 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
       now = undefined;
     }
 
+    if (now === undefined) {
+      // Decision 139: the move may have been written and the read-back failed too. Told "safe to
+      // send again", the retry made a second READY proposal, a review measured: two to release, in
+      // step 31. Unknown, with the claim kept for reconciliation.
+      progress.state = undefined;
+
+      return Object.freeze({
+        kind: "error",
+        askedBy: principal.id,
+        envelope: refusal(
+          "OUTCOME_UNKNOWN",
+          `${proposal} may or may not have been moved to READY, and could not be read back; it is left for reconciliation`,
+          requestId,
+          principal.id,
+        ),
+      });
+    }
+
     moved = now === "READY" ? Object.freeze({ kind: "moved" }) : undefined;
-    progress.state = now === "READY" ? "READY" : now;
+    progress.state = now;
   }
 
   if (moved?.kind !== "moved") {
+    // Decision 139: not PROPOSED, so not this request's to deny, as the door before a handler says.
+    if (moved !== undefined) {
+      progress.state = undefined;
+    }
+
     return Object.freeze({
       kind: "error",
       askedBy: principal.id,
@@ -2178,12 +2201,23 @@ export function makeDoor(
           return Object.freeze({
             kind: "error",
             askedBy: principal.id,
-            envelope: refusal(
-              "EVIDENCE_STORE_UNAVAILABLE",
-              `${proposal} could not be moved to EXECUTING, so it was not carried out; nothing was done`,
-              id_,
-              principal.id,
-            ),
+            // STEP 23, decision 139: "nothing was done" only when the read-back says so. When it
+            // fails too, the move may have been written, and a retry told "safe to send again"
+            // made a second proposal: unknown, then, with the claim kept for reconciliation.
+            envelope:
+              now === undefined
+                ? refusal(
+                    "OUTCOME_UNKNOWN",
+                    `${proposal} may or may not have been moved to EXECUTING, and could not be read back; it was not carried out, and is left for reconciliation`,
+                    id_,
+                    principal.id,
+                  )
+                : refusal(
+                    "EVIDENCE_STORE_UNAVAILABLE",
+                    `${proposal} could not be moved to EXECUTING, so it was not carried out; nothing was done`,
+                    id_,
+                    principal.id,
+                  ),
           });
         }
       }
