@@ -127,6 +127,8 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   // STEP 24: the day totals and the reservations against them (decision 140).
   ["dsor.day_totals", "tenant"],
   ["dsor.reservations", "tenant"],
+  // NEW IN STEP 25: the emergency brake (decision 142).
+  ["dsor.agent_controls", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -373,7 +375,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    THEN '((answer IS NULL) OR (answer = ''{"released": true}''::text))'
                    -- STEP 24: and the reservations', which keep a settled one (decision 140).
                    WHEN rel = to_regclass('dsor.reservations')
-                   THEN '(state = ''held''::text)' END
+                   THEN '(state = ''held''::text)'
+                   -- NEW IN STEP 25: and the brake's, which keeps a lift final (decision 142).
+                   WHEN rel = to_regclass('dsor.agent_controls')
+                   THEN '(lifted_at IS NULL)' END
          FROM tenant_table
      )
      SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,
@@ -689,6 +694,34 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `change what a reservation is for, write one already settled, or move a total to another ` +
         `day, itself, one SET ROLE away, or through a helper function. The application books and ` +
         `settles, and nothing else. See migrations/022_daily_limits_and_reservations.sql.`,
+    );
+  }
+
+  // NEW IN STEP 25: the brake. The application pulls it and releases it, and nothing else: a brake
+  // it could delete is one it could release with no lift on the record, one whose target or reason
+  // it could rewrite is a different brake, and one it could write already lifted is a lift nobody
+  // gave (decision 142). A lift rewritten or undone is the second policy's to refuse.
+  const { rows: brakes } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        `has_table_privilege(${role}, 'dsor.agent_controls', 'DELETE')`,
+        `has_table_privilege(${role}, 'dsor.agent_controls', 'TRUNCATE')`,
+        ...["tenant", "id", "agent", "imposed_by", "imposed_at", "reason"].map(
+          (column) => `has_column_privilege(${role}, 'dsor.agent_controls', '${column}', 'UPDATE')`,
+        ),
+        ...["id", "imposed_at", "lifted_by", "lifted_at"].map(
+          (column) => `has_column_privilege(${role}, 'dsor.agent_controls', '${column}', 'INSERT')`,
+        ),
+      ].join(" OR "),
+    )} AS may`,
+  );
+
+  if (brakes[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may delete a brake, rewrite who pulled it or ` +
+        `what it stops, or write one already lifted, itself, one SET ROLE away, or through a helper ` +
+        `function. The application pulls the brake and releases it, and nothing else. See ` +
+        `migrations/024_the_emergency_brake.sql.`,
     );
   }
 

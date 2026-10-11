@@ -301,6 +301,8 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec(
       "CREATE TABLE dsor.day_totals (tenant TEXT, day DATE); CREATE TABLE dsor.reservations (tenant TEXT, proposal TEXT);",
     );
+    // NEW IN STEP 25: eleven, with the brake.
+    await db.exec("CREATE TABLE dsor.agent_controls (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
     // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
@@ -583,6 +585,46 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-OPS-01a: an application that may delete a brake, rewrite it, or write one already lifted is refused at start-up", async () => {
+    // NEW IN STEP 25 (decision 142). Each right, one of them one SET ROLE away, and one through a
+    // helper's owner.
+    for (const grant of [
+      "GRANT DELETE ON dsor.agent_controls TO dsor_runtime",
+      "GRANT UPDATE (agent) ON dsor.agent_controls TO dsor_runtime",
+      "GRANT UPDATE (reason) ON dsor.agent_controls TO dsor_runtime",
+      "GRANT INSERT (lifted_at) ON dsor.agent_controls TO dsor_runtime",
+      "CREATE ROLE releaser; GRANT TRUNCATE ON dsor.agent_controls TO releaser; GRANT releaser TO dsor_runtime WITH INHERIT FALSE",
+      "CREATE ROLE helper; GRANT DELETE ON dsor.agent_controls TO helper; CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'; ALTER FUNCTION public.a_helper() OWNER TO helper",
+    ]) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(grant);
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(
+        /may delete a brake/,
+      );
+
+      await db.close();
+    }
+  });
+
+  it("DSOR-OPS-01a: the brake's table without the policy that keeps a lift final is refused at start-up", async () => {
+    // NEW IN STEP 25: without it, a lifted brake could be put back with a lift nobody gave.
+    const db = await aDatabase();
+
+    await db.exec("RESET ROLE");
+    await db.exec("DROP POLICY a_lift_is_final ON dsor.agent_controls");
+    await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /second lock is not on/,
+    );
+
+    await db.close();
+  });
+
   it("DSOR-DEL-06a: an application that may delete a total or a reservation, or write one settled, is refused at start-up", async () => {
     // STEP 24: room it could make (decision 140). Each right, one of them one SET ROLE away,
     // and one through a helper's owner.
@@ -700,6 +742,8 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec(
       "CREATE TABLE dsor.day_totals (tenant TEXT, day DATE); CREATE TABLE dsor.reservations (tenant TEXT, proposal TEXT);",
     );
+    // NEW IN STEP 25: eleven, with the brake.
+    await db.exec("CREATE TABLE dsor.agent_controls (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");

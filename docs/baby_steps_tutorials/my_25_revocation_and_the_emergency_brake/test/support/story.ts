@@ -25,6 +25,8 @@ export function storyStatements(): readonly string[] {
 
   return [
     // STEP 22: the proposals and their moves, moves first because they point at them.
+    // NEW IN STEP 25: and the brakes, so each test starts with none on.
+    "DELETE FROM dsor.agent_controls WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')",
     // STEP 24: and the reservations and the day totals, which point at proposals and slips.
     "DELETE FROM dsor.reservations WHERE tenant IN ('org_456', 'org_789')",
