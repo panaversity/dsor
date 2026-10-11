@@ -560,6 +560,8 @@ describe("refuseIfItCanRewriteHistory", () => {
       "GRANT DELETE ON dsor.idempotency_keys TO dsor_runtime",
       "GRANT UPDATE (payload_hash) ON dsor.idempotency_keys TO dsor_runtime",
       "GRANT INSERT (answer) ON dsor.idempotency_keys TO dsor_runtime",
+      // NEW IN STEP 23: a claim whose mode could be changed is a claim on another request.
+      "GRANT UPDATE (mode) ON dsor.idempotency_keys TO dsor_runtime",
       "CREATE ROLE forgetter; GRANT TRUNCATE ON dsor.idempotency_keys TO forgetter; GRANT forgetter TO dsor_runtime WITH INHERIT FALSE",
       "CREATE ROLE helper; GRANT DELETE ON dsor.idempotency_keys TO helper; CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1'; ALTER FUNCTION public.a_helper() OWNER TO helper",
     ]) {

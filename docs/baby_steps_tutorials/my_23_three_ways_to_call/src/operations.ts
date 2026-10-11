@@ -42,6 +42,7 @@ import {
   assertPipeline,
   runPipeline,
   type Context,
+  type Mode,
   type Stage,
   type StageResult,
 } from "./pipeline.ts";
@@ -1106,7 +1107,21 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    return carryOn({ ...context, given, payload: written, payloadHash: payloadHash(written) });
+    // NEW IN STEP 23: and how to call it, asked here too: a fact about the request, decided before
+    // anything is claimed, and recorded like any other refusal (decision 138).
+    const mode = modeFrom(context.requestedMode, context.contract?.kind);
+
+    if (mode.refused !== undefined) {
+      return refuse(askedBy, "VALIDATION_FAILED", mode.refused, context.requestId);
+    }
+
+    return carryOn({
+      ...context,
+      given,
+      payload: written,
+      payloadHash: payloadHash(written),
+      mode: mode.mode,
+    });
   } catch (error) {
     return refuse(
       askedBy,
@@ -1118,6 +1133,31 @@ const validateTheInput: Stage["run"] = (context) => {
     );
   }
 };
+
+/**
+ * NEW IN STEP 23: the mode a request asked for, or why it cannot have it. None is `execute`. A query
+ * is only ever read, so it has no other (decision 138).
+ */
+function modeFrom(
+  requested: unknown,
+  kind: "query" | "command" | undefined,
+): { readonly mode: Mode; readonly refused?: undefined } | { readonly refused: string } {
+  if (requested === undefined) {
+    return { mode: "execute" };
+  }
+
+  if (requested !== "execute" && requested !== "propose_only" && requested !== "validate_only") {
+    return {
+      refused: "a request is called one of three ways: execute, propose_only or validate_only",
+    };
+  }
+
+  if (kind !== "command" && requested !== "execute") {
+    return { refused: `a query is only ever read, so it cannot be called ${requested}` };
+  }
+
+  return { mode: requested };
+}
 
 /** STEP 20: how long a request waits for the same request, still being carried out, to finish. */
 const IN_FLIGHT_WAIT_MS = 2000;
@@ -1181,7 +1221,12 @@ const claimTheKey: Stage["run"] = async (context) => {
     let found;
 
     try {
-      found = await claimKey(claim, payloadHash);
+      // STEP 23: and the mode, so the same key in another mode is another request.
+      found = await claimKey(
+        claim,
+        payloadHash,
+        context.mode === "propose_only" ? "propose_only" : "execute",
+      );
     } catch {
       return refuse(
         principal.id,
@@ -1664,6 +1709,11 @@ export type Door = (
 export interface RequestOptions {
   /** The caller's name for one logical request, new for each new one. A command needs it (DSOR-IDM-01a). */
   readonly idempotencyKey?: unknown;
+  /**
+   * NEW IN STEP 23: how to carry a command out: `execute`, the default, `propose_only` or
+   * `validate_only` (DSOR-OPR-05, decision 138).
+   */
+  readonly mode?: unknown;
 }
 
 /**
@@ -2179,7 +2229,27 @@ export function makeDoor(
       idempotencyKey = undefined;
     }
 
-    const walked = await runPipeline(checked, { login, id, args, requestId, idempotencyKey });
+    // NEW IN STEP 23: and how to call it, read the same way, once. A getter that throws is a mode
+    // nobody can read, which §21.6 refuses, rather than the default (decision 138).
+    let requestedMode: unknown;
+
+    try {
+      requestedMode =
+        request !== null && typeof request === "object" && Object.hasOwn(request, "mode")
+          ? request.mode
+          : undefined;
+    } catch {
+      requestedMode = Symbol("a mode that could not be read");
+    }
+
+    const walked = await runPipeline(checked, {
+      login,
+      id,
+      args,
+      requestId,
+      idempotencyKey,
+      requestedMode,
+    });
 
     // STEP 20: answered before, under its key: that answer, and nothing runs.
     if (walked.kind === "replayed") {

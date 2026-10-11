@@ -50,13 +50,19 @@ const WHERE = "tenant = $1 AND principal = $2 AND operation = $3 AND key = $4";
  * primary key lets exactly one in; the other's INSERT does nothing and returns no row. Checking for
  * the key first and inserting it after is the mistake §22 names: both checks pass, and both run.
  */
-export async function claimKey(claim: Claim, payloadHash: string): Promise<Claimed> {
+export async function claimKey(
+  claim: Claim,
+  payloadHash: string,
+  // NEW IN STEP 23: how the request was called, kept beside its fingerprint: the same key in another
+  // mode is another request (decision 138).
+  mode: "execute" | "propose_only" = "execute",
+): Promise<Claimed> {
   const db = theDatabase(claim.tenant);
-  const by = [claim.tenant, claim.principal, claim.operation, claim.key, payloadHash];
+  const by = [claim.tenant, claim.principal, claim.operation, claim.key, payloadHash, mode];
 
   const { rows: inserted } = await db.query(
-    `INSERT INTO dsor.idempotency_keys (tenant, principal, operation, key, payload_hash)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO dsor.idempotency_keys (tenant, principal, operation, key, payload_hash, mode)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (tenant, principal, operation, key) DO NOTHING
      RETURNING key`,
     by,
@@ -70,7 +76,7 @@ export async function claimKey(claim: Claim, payloadHash: string): Promise<Claim
   // UPDATE, so that of two retries only one gets it.
   const { rows: retaken } = await db.query(
     `UPDATE dsor.idempotency_keys SET answer = NULL, claimed_at = now()
-      WHERE ${WHERE} AND payload_hash = $5 AND answer = '${RELEASED}'
+      WHERE ${WHERE} AND payload_hash = $5 AND mode = $6 AND answer = '${RELEASED}'
       RETURNING key`,
     by,
   );
@@ -79,8 +85,8 @@ export async function claimKey(claim: Claim, payloadHash: string): Promise<Claim
     return Object.freeze({ kind: "claimed" });
   }
 
-  const { rows } = await db.query<{ payload_hash: string; answer: string | null }>(
-    `SELECT payload_hash, answer FROM dsor.idempotency_keys WHERE ${WHERE}`,
+  const { rows } = await db.query<{ payload_hash: string; mode: string; answer: string | null }>(
+    `SELECT payload_hash, mode, answer FROM dsor.idempotency_keys WHERE ${WHERE}`,
     by.slice(0, 4),
   );
   const found = rows[0];
@@ -91,7 +97,7 @@ export async function claimKey(claim: Claim, payloadHash: string): Promise<Claim
     throw new Error(`the claim on ${claim.key} was there, and then it was not`);
   }
 
-  if (found.payload_hash !== payloadHash) {
+  if (found.payload_hash !== payloadHash || found.mode !== mode) {
     return Object.freeze({ kind: "another_request" });
   }
 

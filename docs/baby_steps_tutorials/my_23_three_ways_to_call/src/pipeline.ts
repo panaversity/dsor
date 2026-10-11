@@ -44,6 +44,9 @@ export type OperationKind = "query" | "command";
  * the top of the list none of them is known yet — and the load-time check below is what makes sure
  * the stage that fills each one is actually in the list.
  */
+/** NEW IN STEP 23: the three ways to call a command (§7.3, decision 138). */
+export type Mode = "execute" | "propose_only" | "validate_only";
+
 export interface Context {
   readonly login: Login | undefined;
   readonly id: string;
@@ -82,6 +85,13 @@ export interface Context {
    * was asked (DSOR-IDM-01a, decision 131).
    */
   readonly idempotencyKey?: unknown;
+  /**
+   * NEW IN STEP 23: how the caller asked for the command to be carried out, as it came, read once by
+   * the door beside the arguments. §21.6 checks it and writes `mode` (decision 138).
+   */
+  readonly requestedMode?: unknown;
+  /** NEW IN STEP 23: execute, propose_only or validate_only, as §21.6 found it. */
+  readonly mode?: Mode;
   /** STEP 20: the claim this request holds on its key, from §21.7. Its answer goes there. */
   readonly claim?: Claim;
   /**

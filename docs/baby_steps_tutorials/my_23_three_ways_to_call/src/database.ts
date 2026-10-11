@@ -626,6 +626,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // fingerprint it could change is a claim on another request, and one it could insert with its
   // answer already written is an answer nobody gave (decision 131). Rewriting a written answer is
   // the claims' second policy's to refuse, and the lock check above asks for it (decision 132).
+  // NEW IN STEP 23: and one whose mode it could change is a claim on another request (decision 138).
   const { rows: keys } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_column_privilege(${role}, 'dsor.idempotency_keys', 'answer', 'INSERT')
@@ -635,6 +636,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
          OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'operation', 'UPDATE')
          OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'key', 'UPDATE')
          OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'payload_hash', 'UPDATE')
+         OR has_column_privilege(${role}, 'dsor.idempotency_keys', 'mode', 'UPDATE')
          OR has_table_privilege(${role}, 'dsor.idempotency_keys', 'DELETE')
          OR has_table_privilege(${role}, 'dsor.idempotency_keys', 'TRUNCATE')`,
     )} AS may`,
