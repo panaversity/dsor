@@ -64,12 +64,16 @@ function loadSchema(file: string): object {
   return JSON.parse(readFileSync(new URL(file, SCHEMAS), "utf8")) as object;
 }
 // As registry.ts builds its checker: name every problem, and never change what is checked.
+// validateFormats is off, as in slips.ts, because ajv knows no formats without a package of its
+// own, and warns at start-up. So effective_from's "date-time" is not checked here. Nothing in this
+// step reads it: step 28's lifecycle does.
 const ajv = new Ajv2020({
   allErrors: true,
   useDefaults: false,
   coerceTypes: false,
   removeAdditional: false,
   strict: false,
+  validateFormats: false,
 });
 ajv.addSchema(loadSchema("common.schema.json"));
 ajv.addSchema(loadSchema("control.schema.json"));
