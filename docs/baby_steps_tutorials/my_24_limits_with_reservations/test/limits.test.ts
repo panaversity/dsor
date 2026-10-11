@@ -301,19 +301,4 @@ describe("the agent's payments against del_100's day", () => {
     expect(await reservationStates()).toStrictEqual(["released"]);
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
-
-  it("DSOR-DEL-06a: fifty payments of 5,000.00 sent at once never take the day past its limit", async () => {
-    const answers = await Promise.all(Array.from({ length: 50 }, () => pay("5000.00")));
-    const made = answers.filter((a) => a.kind === "result").length;
-    const overTheLimit = answers.filter(
-      (a) => a.kind === "error" && a.envelope.code === "LIMIT_EXCEEDED",
-    ).length;
-
-    // Some may be refused because two decisions raced for the same place in the log (step 21's
-    // limit); none may be made past the limit.
-    expect(made).toBeLessThanOrEqual(40);
-    expect(made * 5000).toBeLessThanOrEqual(200000);
-    expect(await usedToday("org_456", "del_100")).toBe(`${made * 5000}.00`);
-    expect(made + overTheLimit).toBeGreaterThan(0);
-  });
 });

@@ -140,7 +140,8 @@ describe("the program a learner runs", () => {
     // two payments and a conflict. The replays leave none.
     // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
     // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
-    expect(rows).toHaveLength(41);
+    // NEW IN STEP 24: 51, with del_100's day: six payments made and four refused.
+    expect(rows).toHaveLength(51);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -148,8 +149,8 @@ describe("the program a learner runs", () => {
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(20);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(21); // STEP 13: three pages read; STEP 23: three ways
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(24); // STEP 24: four over the day
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(27); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
     // STEP 14: the gaps — 1, 5, 23, 25, 27 since step 17 — are the records of reads, which this
@@ -157,10 +158,11 @@ describe("the program a learner runs", () => {
     // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
       0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29,
-      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 0, 1,
+      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
+      53, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 44 records, chain verifies against the head: true"); // STEP 23: 39 decisions, 5 reads
+    expect(out).toContain("org_456: 54 records, chain verifies against the head: true"); // STEP 24: 49 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -206,22 +208,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(44); // STEP 23: 39 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(54); // STEP 24: 49 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 44 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 54 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(88);
+    expect(records(second, "org_456")).toBe(106); // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it never happen
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 88 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 106 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      82,
+      100,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -251,8 +253,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(46); // STEP 23: 44 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(46);
+    expect(hashesOf(first.raw)).toHaveLength(56); // STEP 24: 54 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(56);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -501,6 +503,22 @@ describe("the program a learner runs", () => {
       /accounts-payable-fte {2}READY {20}dsor:\/\/org_456\/proposal\/prop_\d+ {2}waiting to be released {2}compensatable\n/,
     );
     expect(out).toContain("  payments made: 0 by the first two, 1 by the third");
+  });
+
+  it("DSOR-DEL-06e: the demo fills del_100's day, and the payment that would pass it is refused", () => {
+    // NEW IN STEP 24 (decision 140). On a fresh database: 34,500.00 used by the sections before,
+    // six of ten payments of 25,000.00 made, and the day stops at 184,500.00.
+    const out = demo().report;
+
+    expect(out).toContain(
+      "del_100's day: 200000.00 USD. Ten payments of 25,000.00, one after another:",
+    );
+    expect(out).toContain("  the day had used 34500.00 USD before them");
+    expect(out).toContain("  made 6, refused 4");
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"LIMIT_EXCEEDED".padEnd(24)} retry: ${"after_delay".padEnd(20)} 25000.00 USD would take del_100 past its limit of 200000.00 USD a day`,
+    );
+    expect(out).toContain("  the day has used 184500.00 USD of 200000.00");
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {

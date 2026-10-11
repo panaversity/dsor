@@ -15,6 +15,7 @@ import { getInvoice } from "./invoice.ts";
 import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
 import { moveProposal, movesOf, proposalsOf } from "./proposal.ts";
+import { usedToday } from "./reservation.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -669,6 +670,42 @@ console.log(
 console.log(
   `  payments made: ${afterTwoWays - beforeThreeWays} by the first two, ${(await paymentsOf("org_456")).length - afterTwoWays} by the third`,
 );
+
+// NEW IN STEP 24: del_100's day. Ten payments of 25,000.00, one after another: each is within the
+// limit per payment, and together they are not within the day's. Each books its amount against the
+// day's total in one statement, and the one that would pass the limit is refused (decision 140). One
+// after another, because requests at once in one company mostly lose the race for its log, step
+// 09's, and the limit would not be what refused them; the race on the limit is the database tier's.
+console.log();
+console.log("del_100's day: 200000.00 USD. Ten payments of 25,000.00, one after another:");
+console.log();
+
+const dayBefore = await usedToday("org_456", "del_100");
+const tenPayments: Awaited<ReturnType<typeof callOperation>>[] = [];
+
+for (let i = 0; i < 10; i += 1) {
+  tenPayments.push(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1009, amount: { value: "25000.00", currency: "USD" } },
+      keyFor(`the-day-${i}`),
+    ),
+  );
+}
+
+const firstOver = tenPayments.find((a) => a.kind === "error");
+
+console.log(`  the day had used ${dayBefore} USD before them`);
+console.log(
+  `  made ${tenPayments.filter((a) => a.kind === "result").length}, refused ${tenPayments.filter((a) => a.kind === "error").length}`,
+);
+
+if (firstOver !== undefined) {
+  console.log(show(firstOver));
+}
+
+console.log(`  the day has used ${await usedToday("org_456", "del_100")} USD of 200000.00`);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

@@ -109,8 +109,10 @@ describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real
     );
     const made = answers.filter((a) => a.kind === "result").length;
 
-    // Some may be refused because two decisions raced for one place in the company's log, step 21's
-    // limit; none may be made past the day's.
+    // Most are refused because they raced for one place in the company's log, step 09's log, which
+    // refuses a lost race: two or three are made, measured (decision 140). What this proves is the
+    // limit's side: none made past the day, and every refused request's amount given back, so the
+    // day's total is exactly what was made.
     expect(made).toBeGreaterThan(0);
     expect(made).toBeLessThanOrEqual(40);
     expect(await usedToday("org_456", "del_100")).toBe(`${made * 5000}.00`);
