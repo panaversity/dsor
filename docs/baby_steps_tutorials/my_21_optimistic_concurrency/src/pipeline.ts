@@ -77,12 +77,12 @@ export interface Context {
    */
   readonly authorityAsOf?: string;
   /**
-   * NEW IN STEP 20: the idempotency key the request came with, read once by the door. It travels
+   * STEP 20: the idempotency key the request came with, read once by the door. It travels
    * beside the arguments and never inside them, so the payload hash stays the fingerprint of what
    * was asked (DSOR-IDM-01a, decision 131).
    */
   readonly idempotencyKey?: unknown;
-  /** NEW IN STEP 20: the claim this request holds on its key, from §21.7. Its answer goes there. */
+  /** STEP 20: the claim this request holds on its key, from §21.7. Its answer goes there. */
   readonly claim?: Claim;
   readonly given?: Readonly<Record<string, unknown>>;
   /**
@@ -142,7 +142,7 @@ export type StageResult =
    */
   | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context?: Context }
   /**
-   * NEW IN STEP 20: this request was answered before, under its key, and this is that answer.
+   * STEP 20: this request was answered before, under its key, and this is that answer.
    * The walk stops: nothing runs, and no decision is recorded, because none is made (DSOR-IDM-01c).
    */
   | { readonly kind: "replayed"; readonly answer: OperationAnswer };
@@ -201,7 +201,7 @@ const REQUIRED: readonly string[] = Object.freeze([
   "resolve the delegation",
   "authorize",
   "validate the input",
-  // NEW IN STEP 20: after the input is validated, because the claim keeps the payload hash, and
+  // STEP 20: after the input is validated, because the claim keeps the payload hash, and
   // before anything is decided that a retry must not decide twice (DSOR-IDM-01b, decision 131).
   "claim the idempotency key",
   // STEP 18: required too, because without it a payment above the slip's limit goes
@@ -410,7 +410,7 @@ export function applies(stage: Stage, kind: OperationKind): boolean {
 /** What has been walked, and what it found. */
 export type PipelineResult =
   | { readonly kind: "ready"; readonly context: Context }
-  /** NEW IN STEP 20: with what was walked, so the door can write the answer on the request's claim. */
+  /** STEP 20: with what was walked, so the door can write the answer on the request's claim. */
   | { readonly kind: "refused"; readonly answer: OperationAnswer; readonly context: Context }
   | { readonly kind: "replayed"; readonly answer: OperationAnswer };
 
@@ -464,7 +464,7 @@ export async function runPipeline(
     // the value, so the stages that do not touch a database are unchanged by this.
     const result = await stage.run(context);
 
-    // NEW IN STEP 20: an answer given before ends the walk here, §21.11 included.
+    // STEP 20: an answer given before ends the walk here, §21.11 included.
     if (result.kind === "replayed") {
       return { kind: "replayed", answer: result.answer };
     }

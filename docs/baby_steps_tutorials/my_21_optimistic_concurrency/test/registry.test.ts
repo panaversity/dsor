@@ -99,7 +99,7 @@ describe("the operation registry", () => {
     expect(loaded).toEqual(onDisk);
 
     // And the declared values are the honest ones. This said nothing read delegation or
-    // idempotency, so both said false; since step 18 a command needs a slip, and NEW IN STEP 20 a
+    // idempotency, so both said false; since step 18 a command needs a slip, and STEP 20 a
     // key, and the registry refuses a command that says otherwise (decisions 128 and 131).
     expect(loaded.idempotency).toEqual({ required: true });
     expect(loaded.execution).toEqual({ semantics: "atomic" });

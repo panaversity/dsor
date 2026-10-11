@@ -286,7 +286,7 @@ describe("refuseIfItCanRewriteHistory", () => {
       "CREATE TABLE dsor.audit (result TEXT); INSERT INTO dsor.audit VALUES ('ALLOWED');",
     );
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now. STEP 18: five, with the slips. NEW IN STEP 20: six, with the keys.
+    // STEP 17: four of them now. STEP 18: five, with the slips. STEP 20: six, with the keys.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
@@ -528,7 +528,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-IDM-01c: the claims' table without the policy that keeps an answer is refused at start-up", async () => {
-    // NEW IN STEP 20, decision 132: the right to write an answer is the right to rewrite one, unless
+    // STEP 20, decision 132: the right to write an answer is the right to rewrite one, unless
     // a restrictive policy lets an UPDATE touch only a claim with no answer or a released one.
     const db = await aDatabase();
 
@@ -544,7 +544,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-IDM-01b: an application that may delete a claim, rewrite one, or write its answer in advance is refused at start-up", async () => {
-    // NEW IN STEP 20: a claim the application could delete is a request it could run twice (decision
+    // STEP 20: a claim the application could delete is a request it could run twice (decision
     // 131). Each right, one of them one SET ROLE away, and one through a helper's owner.
     for (const grant of [
       "GRANT DELETE ON dsor.idempotency_keys TO dsor_runtime",
@@ -600,7 +600,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE SCHEMA dsor; GRANT USAGE ON SCHEMA dsor TO dsor_runtime;");
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
-    // STEP 17: four of them now. STEP 18: five, with the slips. NEW IN STEP 20: six, with the keys.
+    // STEP 17: four of them now. STEP 18: five, with the slips. STEP 20: six, with the keys.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",

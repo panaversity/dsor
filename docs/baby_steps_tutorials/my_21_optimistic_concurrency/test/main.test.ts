@@ -75,7 +75,7 @@ function demo(): { raw: string; report: string } {
       .replace(/read at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "read at TIME")
       // STEP 19: and when the company's directory knew what the signer holds.
       .replace(/as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "as of TIME")
-      // NEW IN STEP 20: and each run's own prefix on its idempotency keys.
+      // STEP 20: and each run's own prefix on its idempotency keys.
       .replace(/the key [0-9a-f]{8}-/g, "the key RUN-"),
   };
 }
@@ -136,7 +136,7 @@ describe("the program a learner runs", () => {
     // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
     // each payment operation from the generated section, and the agent's three payment decisions.
     // STEP 18: 30, with the two refusals of the slip's section. STEP 19: 32, with the
-    // two of the directory's. NEW IN STEP 20: 35, with the three decisions of the keys' section:
+    // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
     // two payments and a conflict. The replays leave none.
     expect(rows).toHaveLength(35);
 
@@ -427,7 +427,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-IDM-01c: the demo's payment sent twice with one key, and fifty at once, each make one payment", () => {
-    // NEW IN STEP 20: the same request again, with its key, is given the same receipt, word for
+    // STEP 20: the same request again, with its key, is given the same receipt, word for
     // word; the same key with another amount is refused; fifty requests at once make one payment
     // (decision 131).
     const out = demo().report;

@@ -1,4 +1,4 @@
-// NEW IN STEP 20: the idempotency key.
+// STEP 20: the idempotency key.
 //
 // Networks fail and clients retry. The caller names each logical request with a key; DSoR claims the
 // key with one INSERT and keeps the request's fingerprint and its answer beside it. The same key and

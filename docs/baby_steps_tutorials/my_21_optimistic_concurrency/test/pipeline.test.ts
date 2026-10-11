@@ -58,7 +58,7 @@ describe("the pipeline", () => {
       "resolve the delegation",
       "authorize",
       "validate the input",
-      // NEW IN STEP 20: §21 step 7, the idempotency claim, for commands only.
+      // STEP 20: §21 step 7, the idempotency claim, for commands only.
       "claim the idempotency key",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
@@ -66,7 +66,7 @@ describe("the pipeline", () => {
     ]);
   });
 
-  // §21 numbers its seventeen steps, and the gaps in the numbering are the roadmap. NEW IN STEP 20:
+  // §21 numbers its seventeen steps, and the gaps in the numbering are the roadmap. STEP 20:
   // 4, the operational status, is still missing; after the claim at 7 come the proposal, the
   // preconditions and the rest of the controls.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
@@ -96,7 +96,7 @@ describe("the pipeline", () => {
 
   it("DSOR-EXE-01b: every stage in the real list applies to both kinds, but the slip's limit and the key's claim", () => {
     // STEP 18: the first command-only stage. A query carries no payment to compare with a limit.
-    // NEW IN STEP 20: and the claim, because a query changes nothing, so asking it twice is harmless.
+    // STEP 20: and the claim, because a query changes nothing, so asking it twice is harmless.
     for (const stage of PIPELINE) {
       const commandOnly =
         stage.name === "check the slip's limit" || stage.name === "claim the idempotency key";
@@ -131,7 +131,7 @@ describe("the pipeline", () => {
       fake(3, "resolve the delegation"), // STEP 18
       fake(5, "authorize"),
       fake(6, "validate the input"),
-      fake(7, "claim the idempotency key", "command"), // NEW IN STEP 20
+      fake(7, "claim the idempotency key", "command"), // STEP 20
       fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
@@ -566,7 +566,7 @@ describe("the pipeline", () => {
   });
 
   it("DSOR-IDM-01b: with the claim stage doing nothing, a command is INTERNAL_ERROR, never run unclaimed", async () => {
-    // NEW IN STEP 20: a command that reaches §21.11 with no claim could run twice for one retried
+    // STEP 20: a command that reaches §21.11 with no claim could run twice for one retried
     // request, so the recording stage refuses it, as it refuses one with no payload hash.
     const list = PIPELINE.map((stage) =>
       stage.name === "claim the idempotency key"
@@ -638,7 +638,7 @@ describe("the pipeline", () => {
       // STEP 18: and `resolve the delegation`, for these two callers: it fills something only for an
       // agent's command, and these are people reading. Its own test is below.
       //
-      // And `check the slip's limit`, which only refuses, and only commands. NEW IN STEP 20: and
+      // And `check the slip's limit`, which only refuses, and only commands. STEP 20: and
       // `claim the idempotency key`, which fills something only for a command. Its own test is below.
       const fillsNothing = new Set([
         "authorize",
@@ -865,7 +865,7 @@ describe("the pipeline", () => {
 
     const all = orderings(PIPELINE);
 
-    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. NEW IN STEP 20: nine,
+    // STEP 10: six stages now, so 720 orderings. STEP 18: eight, so 40320. STEP 20: nine,
     // so 362880. Still exactly one is accepted: the delegation stage is required after the
     // operation, the claim after the input, and the limit after the claim.
     expect(all).toHaveLength(362880);

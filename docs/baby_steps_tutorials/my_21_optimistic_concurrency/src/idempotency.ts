@@ -1,4 +1,4 @@
-// NEW IN STEP 20: the idempotency key, claimed with one INSERT (decision 131).
+// STEP 20: the idempotency key, claimed with one INSERT (decision 131).
 //
 // Networks fail and clients retry. Without this, a retried "pay 2,500.00" is a second payment. The
 // caller names each logical request with a key, and DSoR claims the key the first time it sees it,

@@ -218,7 +218,7 @@ export function loadRegistry(
       );
     }
 
-    // NEW IN STEP 20: and every command needs an idempotency key (DSOR-IDM-01a). The three said
+    // STEP 20: and every command needs an idempotency key (DSOR-IDM-01a). The three said
     // `required: false` while step 20 refuses a command without one (decision 131).
     if (contract.kind === "command" && contract.idempotency?.required !== true) {
       throw new TypeError(

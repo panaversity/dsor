@@ -119,7 +119,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.audit", "tenant"],
   // STEP 18: the permission slips, DSoR's second kind of paperwork (decision 127).
   ["dsor.delegations", "tenant"],
-  // NEW IN STEP 20: the idempotency keys, DSoR's third kind of paperwork (decision 131).
+  // STEP 20: the idempotency keys, DSoR's third kind of paperwork (decision 131).
   ["dsor.idempotency_keys", "tenant"],
 ]);
 
@@ -361,7 +361,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
      ),
      policy_text (rel, qual, kept) AS (
        SELECT rel, '(' || col || ' = current_setting(''dsor.tenant_id''::text, true))',
-              -- NEW IN STEP 20: and the claims' second policy, which keeps an answer once written,
+              -- STEP 20: and the claims' second policy, which keeps an answer once written,
               -- as PostgreSQL writes it back, measured (decision 132).
               CASE WHEN rel = to_regclass('dsor.idempotency_keys')
                    THEN '((answer IS NULL) OR (answer = ''{"released": true}''::text))' END
@@ -609,7 +609,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 20: the idempotency keys. The application claims a key and writes its answer, and
+  // STEP 20: the idempotency keys. The application claims a key and writes its answer, and
   // nothing else: a claim it could delete is a request it could run twice, one whose key or
   // fingerprint it could change is a claim on another request, and one it could insert with its
   // answer already written is an answer nobody gave (decision 131). Rewriting a written answer is

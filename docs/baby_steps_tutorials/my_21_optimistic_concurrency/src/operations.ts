@@ -64,7 +64,7 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
 import { audit, OutcomeUnknown } from "./audit.ts";
-// NEW IN STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
+// STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
 
 // Built once, when this module is first loaded. A contract that does not validate stops
@@ -1030,11 +1030,11 @@ const validateTheInput: Stage["run"] = (context) => {
   }
 };
 
-/** NEW IN STEP 20: how long a request waits for the same request, still being carried out, to finish. */
+/** STEP 20: how long a request waits for the same request, still being carried out, to finish. */
 const IN_FLIGHT_WAIT_MS = 2000;
 
 /**
- * NEW IN STEP 20: and how often it looks while it waits: at first soon, then half as often each
+ * STEP 20: and how often it looks while it waits: at first soon, then half as often each
  * time, up to the second figure. Each look is three statements, and fifty waiters looking every
  * 25 ms could slow the very request they wait for (decision 132).
  */
@@ -1042,7 +1042,7 @@ const IN_FLIGHT_LOOK_MS = 25;
 const IN_FLIGHT_LOOK_AT_MOST_MS = 200;
 
 /**
- * NEW IN STEP 20: §21.7 — claim the idempotency key (DSOR-IDM-01a to 01d, decision 131).
+ * STEP 20: §21.7 — claim the idempotency key (DSOR-IDM-01a to 01d, decision 131).
  *
  * For a command only: a query changes nothing, so asking it twice is harmless. After the input is
  * validated, because the claim keeps the payload hash, the fingerprint of what was asked; before
@@ -1275,7 +1275,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
             ? "its arguments"
             : context.payloadHash === undefined
               ? "a payload hash"
-              : // NEW IN STEP 20: a command reaches here only with its key claimed, or a
+              : // STEP 20: a command reaches here only with its key claimed, or a
                 // retry of it could run twice (decision 131).
                 contract.kind === "command" && context.claim === undefined
                 ? "a claimed idempotency key"
@@ -1455,7 +1455,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
-  // NEW IN STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.
+  // STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.
   stage(7, "claim the idempotency key", "command", claimTheKey),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
@@ -1495,11 +1495,11 @@ export type Door = (
   login: Login | undefined,
   id: string,
   args: Readonly<Record<string, unknown>>,
-  // NEW IN STEP 20: what travels beside the arguments (decision 131).
+  // STEP 20: what travels beside the arguments (decision 131).
   request?: RequestOptions,
 ) => Promise<OperationAnswer>;
 
-/** NEW IN STEP 20: what a request carries beside its arguments. */
+/** STEP 20: what a request carries beside its arguments. */
 export interface RequestOptions {
   /** The caller's name for one logical request, new for each new one. A command needs it (DSOR-IDM-01a). */
   readonly idempotencyKey?: unknown;
@@ -1642,7 +1642,7 @@ export function makeDoor(
 
   assertPipeline(checked);
 
-  // NEW IN STEP 20: what happens after the walk lets a request through: execute, filter, label,
+  // STEP 20: what happens after the walk lets a request through: execute, filter, label,
   // record the read. It was the door's own body, line for line; it is a function now so that the
   // door can write the answer on the request's claim, whichever way it ends (decision 131).
   const carryOut = async (context: Context, startedAt: number): Promise<OperationAnswer> => {
@@ -1830,7 +1830,7 @@ export function makeDoor(
     // It used to be minted inside whichever envelope was built first, which made it the name of an
     // answer rather than of a request.
     const requestId = nextRequestId();
-    // NEW IN STEP 20: the idempotency key, read once, beside the arguments. A getter that throws is
+    // STEP 20: the idempotency key, read once, beside the arguments. A getter that throws is
     // a request with no key, which §21.7 refuses for a command.
     let idempotencyKey: unknown;
 
@@ -1847,7 +1847,7 @@ export function makeDoor(
 
     const walked = await runPipeline(checked, { login, id, args, requestId, idempotencyKey });
 
-    // NEW IN STEP 20: answered before, under its key: that answer, and nothing runs.
+    // STEP 20: answered before, under its key: that answer, and nothing runs.
     if (walked.kind === "replayed") {
       return walked.answer;
     }
@@ -1856,7 +1856,7 @@ export function makeDoor(
       walked.kind === "refused" ? walked.answer : await carryOut(walked.context, startedAt);
     const claim = walked.context.claim;
 
-    // NEW IN STEP 20: the answer goes on the claim, to be given again to the same request
+    // STEP 20: the answer goes on the claim, to be given again to the same request
     // (DSOR-IDM-01c). A refusal from the walk that invites the same key again releases the claim
     // instead, or "send it again" would be a lie: the walk ends before §21.14, so DSoR itself knows
     // nothing ran. Only the walk's. An answer given after a handler ran is kept, whatever retry

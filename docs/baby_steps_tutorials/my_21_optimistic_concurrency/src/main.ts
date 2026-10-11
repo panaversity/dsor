@@ -26,7 +26,7 @@ const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_
 const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
 
-// NEW IN STEP 20: every command carries an idempotency key, a name for one logical request. A
+// STEP 20: every command carries an idempotency key, a name for one logical request. A
 // careful client makes a new one for each new request; this demo makes them from this run's own
 // prefix, so that a second run is a second set of requests and not a replay of the first.
 const run = randomUUID().slice(0, 8);
@@ -322,7 +322,7 @@ if (twice.kind === "result") {
   console.log(
     show(await callOperation(AGENT, "payment.cancel", { payment: mistake }, keyFor("cancel"))),
   );
-  // And a second cancel is refused: payment.cancel changes only a draft. NEW IN STEP 20: with a
+  // And a second cancel is refused: payment.cancel changes only a draft. STEP 20: with a
   // new key, because it is a new request; the same key would be given the first answer again.
   console.log(
     show(
@@ -451,7 +451,7 @@ console.log(
 );
 useDirectory("org_456", undefined);
 
-// NEW IN STEP 20: networks fail and clients retry. The agent's payment for INV-1009 is made and its
+// STEP 20: networks fail and clients retry. The agent's payment for INV-1009 is made and its
 // answer is lost, so the agent sends the same request again, with the same key, and is given the same
 // receipt. Then the same key with a different amount, refused. Then fifty requests at once with one
 // key: one payment (DSOR-IDM-01b to 01d, decision 131).

@@ -1,4 +1,4 @@
-// NEW IN STEP 20: fifty requests with one key, racing on a real server (decision 131).
+// STEP 20: fifty requests with one key, racing on a real server (decision 131).
 //
 // PGlite has one connection, so fifty requests sent together reach it one after another. A pool of
 // twenty connections against a real PostgreSQL lets them truly race, and the claim is one INSERT:

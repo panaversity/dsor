@@ -1,4 +1,4 @@
-// NEW IN STEP 20: the door the tests knock on, with a fresh idempotency key each time (decision 131).
+// STEP 20: the door the tests knock on, with a fresh idempotency key each time (decision 131).
 //
 // Every command needs a key now (DSOR-IDM-01a), and most tests are about something else. A careful
 // client sends a new key with every new request, and so does this door, unless the test gives one.
