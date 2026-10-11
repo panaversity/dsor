@@ -36,6 +36,8 @@ export const CLOCK_SKEW_MS: number = 5 * 60 * 1000;
  * A time as RFC 3339 writes one, with its zone: `Z`, or an offset. Without a zone, JavaScript reads
  * a time in this host's zone, which is not the directory's (decision 130).
  */
+// not copied: the specification's timestamp is the JSON Schema format date-time, which has no pattern
+// to copy; this one asks for the zone that format requires.
 const WITH_ITS_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
 /**
