@@ -1822,19 +1822,23 @@ export function makeDoor(
     const claim = walked.context.claim;
 
     // NEW IN STEP 20: the answer goes on the claim, to be given again to the same request
-    // (DSOR-IDM-01c). One that invites the same key again, because nothing ran, releases the claim
-    // instead, or "send it again" would be a lie. If the answer cannot be written, the claim keeps
-    // none: a retry with its key waits, and is told OUTCOME_UNKNOWN, and reconciliation is step
-    // 37's. The caller of this request is still told what happened to it.
+    // (DSOR-IDM-01c). A refusal from the walk that invites the same key again releases the claim
+    // instead, or "send it again" would be a lie: the walk ends before §21.14, so DSoR itself knows
+    // nothing ran. Only the walk's. An answer given after a handler ran is kept, whatever retry
+    // class it carries: a handler that made a payment and then answered TRANSACTION_FAILED had
+    // its claim released, and three attempts made three payments (decision 132).
+    const releases =
+      walked.kind === "refused" &&
+      answer.kind === "error" &&
+      answer.envelope.retry === "safe_same_key";
+
     if (claim !== undefined) {
       try {
-        await settleKey(
-          claim,
-          answer,
-          answer.kind === "error" && answer.envelope.retry === "safe_same_key",
-        );
+        await settleKey(claim, answer, releases);
       } catch {
-        // Said above: the claim stays without an answer.
+        // If the answer cannot be written, the claim keeps none: a retry with its key waits, and is
+        // told nobody knows yet, and reconciliation is step 37's. The caller of this request is
+        // still told what happened to it.
       }
     }
 

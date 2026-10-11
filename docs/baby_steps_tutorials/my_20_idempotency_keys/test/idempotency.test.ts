@@ -21,9 +21,15 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { resetClock, setClock, theLog } from "../src/audit.ts";
-import type { ErrorEnvelope } from "../src/envelopes.ts";
-import { callOperation, type OperationAnswer } from "../src/operations.ts";
-import { paymentsOf } from "../src/payment.ts";
+import { type ErrorEnvelope, refusal } from "../src/envelopes.ts";
+import {
+  callOperation,
+  type Handler,
+  makeDoor,
+  type OperationAnswer,
+  PIPELINE,
+} from "../src/operations.ts";
+import { createPayment, paymentsOf } from "../src/payment.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -273,6 +279,30 @@ describe("fifty at once", () => {
     expect(await paymentsFor1009()).toBe(1);
     expect(answers.every((a) => a.kind === "result")).toBe(true);
     expect(new Set(answers.map((a) => JSON.stringify(a))).size).toBe(1);
+  });
+});
+
+describe("a claim is released only when nothing ran", () => {
+  it("DSOR-IDM-01c: a handler that ran and then answered 'safe to send again' is not run again under its key", async () => {
+    // Decision 132: the door released a claim on any safe_same_key answer, one a handler gave after
+    // it had run included. This handler makes the payment and then says the bank did not confirm
+    // it, the common mistake §25.2 names; three attempts under one key made three payments.
+    const careless: Handler = async (_args, _contract, askedBy, tenant, _hash, requestId) => {
+      await createPayment(tenant, "INV-1009", { value: "2500.00", currency: "USD" });
+
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal("TRANSACTION_FAILED", "the bank did not confirm it", requestId, askedBy),
+      };
+    };
+    const door = makeDoor(PIPELINE, { "payment.create": careless });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await door(AGENT, "payment.create", PAYMENT, { idempotencyKey: "careless" });
+    }
+
+    expect(await paymentsFor1009()).toBe(1);
   });
 });
 
