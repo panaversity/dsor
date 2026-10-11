@@ -1,75 +1,89 @@
-# Step 16 · The control-plane store
+# Step 20 · Idempotency keys
 
-**New in this step:** DSoR's log moves out of the business's tables into a schema of its own,
-`dsor`, in the same database: the first piece of paperwork in DSoR's control-plane store.
+**New in this step:** every command carries a key, a name for one logical request. DSoR claims the
+key with one INSERT, keeps the request's fingerprint and its answer beside it, and a request sent
+twice runs once.
 
 ## In plain words
 
-DSoR keeps paperwork: who may do what, what it approved, what it already carried out, how much of a
-limit is used, and the log of it all. The rule `DSOR-MOD-01` says DSoR must own that paperwork,
-durably, in a store of its own, the *control-plane store*. Every safety promise depends on it:
-without its own store, DSoR would forget what it approved and what it already did.
+Networks fail and clients retry. The agent sends `payment.create` for INV-1009, 2,500.00 USD. DSoR
+makes the payment, and the answer is lost on the way back. The agent does what every careful client
+does: it sends the request again. Before this step, DSoR made a second payment.
 
-A *schema* is a named folder of tables inside one database. Until now there was one folder,
-`public`, and the business's table, `public.invoices`, and DSoR's log, `public.audit`, sat in it
-side by side. This step makes a folder for DSoR, `dsor`, and moves the log into it:
+Now every command carries an *idempotency key*: a name the caller chooses for one logical request,
+new for each new request, the same for a retry of the same one. DSoR claims the key the first time
+it sees it, in DSoR's own store, `dsor.idempotency_keys`, with the request's fingerprint, its payload
+hash, beside it:
 
-- **The log moves as it is.** One new migration, `008_the_control_plane_store.sql`, moves the table.
-  Every record, the hash chain, the permissions and the row-level security go with it; nothing is
-  copied. A record's hash covers its own fields, not the table's name, so the move cannot break
-  the chain. Every statement in the program that names the log now says `dsor.audit`.
-- **The application may look inside, and create nothing there.** It holds `USAGE` on `dsor` and
-  not `CREATE`. What it may do to the log itself is the log's own permissions, which moved with it:
-  add a record and read it, never change or delete one.
-- **The program checks the database and the schemas before it starts.** It refuses to start if
-  the application owns the database, or owns `dsor` or `public`: an owner may delete what it owns,
-  and a schema's owner may delete any table in it, even one it does not own. It also refuses if the
-  application may create things in either schema, or a helper function's owner may. Only the
-  migrations, run as the owner, put tables there.
-- **The same database, on purpose.** Not a second database: in step 36, a business change and
-  DSoR's record of it can then be saved together, or not at all.
-- **The log only, for now.** It is the only paperwork in the database today. Each other kind,
-  permission slips, approvals, counters and locks, arrives in `dsor` with the step that builds it
-  (decision 122).
+- **The same key and the same request:** DSoR gives the answer it gave the first time, word for
+  word. Nothing runs again, and no second decision is recorded, because none is made.
+- **The same key and a different request:** refused, `IDEMPOTENCY_CONFLICT`. A new request needs a
+  new key.
+- **The same request still being carried out:** DSoR waits for it, up to two seconds, and then gives
+  its answer. If it has none by then, the caller is told `OUTCOME_UNKNOWN`: nobody knows yet.
+- **A command with no key:** refused, `VALIDATION_FAILED`. Queries change nothing and need none.
 
-Migrations 001 to 007 still say `public.audit`. An applied migration is never edited, because its
-checksum covers every byte; migration 008 says where the log went.
+The key is claimed by **one** INSERT, protected by a primary key on the company, the caller who
+logged in, the operation and the key. Two requests with the same key that arrive at the same moment
+both reach that INSERT, and the database lets exactly one in. Checking "does this key exist?" and
+then inserting it, as two steps, is the mistake §22 names: both checks pass, and both requests run.
+
+The key travels beside the arguments, never inside them. A door now takes a fourth thing, the
+request's options:
+
+```ts
+await callOperation(agent, "payment.create", { invoice, amount }, { idempotencyKey: "pay-1009" });
+```
+
+So the payload hash stays the fingerprint of what was asked, and the same request sent twice has the
+same fingerprint whatever its key. The claim is the new stage at §21.7, after the input is validated,
+because the claim keeps that fingerprint, and before anything is decided that a retry must not decide
+twice. Every answer to a claimed request, a receipt or a refusal, is written on the claim, as the text
+it was written, so the same request is given it again word for word.
+
+One answer is not kept: a refusal before anything ran that invites the same key again, such as
+`EVIDENCE_STORE_UNAVAILABLE`. It releases the claim, and the next request with the same key and the
+same request takes it back, in one UPDATE, so that of fifty retries only one does. Only a refusal
+from the checks: an answer given after a payment was made is kept whatever it says, or a careless
+handler's "safe to send again" would make a second payment.
+
+An answer once kept is never rewritten. The application may write a claim's answer, which would let
+it rewrite one too, so a second policy on the table, restrictive, lets an UPDATE touch only a claim
+with no answer or a released one, and start-up refuses the table without it. And a replayed answer
+must be an answer to the same caller, or it is refused as the program's own error.
 
 ## Why it matters
 
-The log sat in `public`, the folder the business's own tools treat as theirs. An accounting upgrade
-that resets its tables, or a cleanup that empties `public`, would have taken DSoR's evidence with
-it: the record of every decision, gone with the invoices.
+The agent pays VENDOR-44 for INV-1009: `payment.create`, 2,500.00 USD. DSoR makes the payment, a
+draft, and the network drops the answer. The agent cannot know whether the payment was made, so it
+does what it was built to do and sends the request again. Before this step DSoR made a second draft,
+and the company owed VENDOR-44 one payment and held two for it. Once payments execute, in a later
+step, that is money sent twice.
 
-And what DSoR keeps only in memory is forgotten at every restart. Step 15, run twice, named
-Monday's receipt and Tuesday's receipt both `dsor://org_456/proposal/prop_0001`: two actions, one
-address. That one is not fixed here. Proposal numbers move into DSoR's store with proposals
-themselves, in step 22, and the comment that promised them for this step says so now.
+Now the retry carries the same key, and DSoR answers with the first payment's receipt and makes
+nothing. And if the agent sends fifty at once, because a loop went wrong, the database lets exactly
+one claim the key: the other forty-nine wait for its answer and are given it.
 
-## What changed since step 15
+## What changed since step 19
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_15_freshness_labels ../my_16_the_control_plane_store
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_19_unattended_mode_and_the_role_source ../my_20_idempotency_keys
 ```
 
 | File | What |
 | --- | --- |
-| `migrations/008_the_control_plane_store.sql` | new — the schema `dsor`; every right on it taken back from every role, and `CREATE` from the application by name, before `USAGE` is given to the application; and the log moved into it as it is |
-| `src/audit.ts` | every statement names the log `dsor.audit` |
-| `src/database.ts` | the start-up checks look for the log in `dsor`. "Do both tables exist?" is asked first, on its own, so a server that missed migration 008 gets the program's own words. And start-up refuses an application that owns the database or either schema, or may create things in either schema, itself or one `SET ROLE` away, and names the role and schema that let it. A helper function whose owner owns either schema, or may create in it, is refused too |
-| `src/main.ts` | the demo's second line says where the log lives |
-| `src/envelopes.ts`, `src/operations.ts` | two comments that promised step 16 something now name the steps that will do it: 22 for proposal numbers, 36 for one transaction across two logs |
-| `test/control-plane-store.test.ts` | new — five tests: the log is in `dsor` and not in `public`; `public` holds the business's table and nothing of DSoR's; a decision recorded through the door lands in `dsor.audit`; the application may use `dsor` and create nothing in it; and the same on a server that hands out rights on every new schema, which proves each `REVOKE` line in 008 |
-| `test/the-lock-at-start-up.test.ts` | ten new tests: a server that missed migration 008; the application owning the database, `dsor` or `public`, or one `SET ROLE` from owning `dsor`; a helper whose owner owns `dsor`, or may create in it; the application able to create in `dsor` or `public`, or one `SET ROLE` from it. Most owner and creator cases also do the harm, to show it is real |
-| `test/main.test.ts` | the demo's line about the log, pinned, with no rule id: it would pass wherever the log lived |
-| `test/database.test.ts` | the `editor` test gets `USAGE` on `dsor`, without which its attack had stopped working, and now carries the attack out. A database that answers nothing is refused at the first question, and one that answers that and then nothing at the second, each in its own words. The evasive answers reach the guards they were written for |
-| the tests that name the log | say `dsor.audit`. Tests that named it bare, `audit`, worked only because the database looked in `public` first; they name the schema now. Two tests that build a small database by hand make `dsor` and its grant. The re-run of migration 002 swaps in the log's new address, and is otherwise the file that ran |
-| everything else | a `NEW IN STEP 15` marker becoming `STEP 15` |
-
-531 tests became 548. The 39 in the database tier pass on a local PostgreSQL 17 set up like Neon:
-an owner with `BYPASSRLS`, and `dsor_runtime` made by that owner. On Neon they run in this step's own database, `dsor_step16`,
-once this folder's `.env` names it; the database exists and is empty until then.
+| `migrations/018_idempotency_keys.sql` | new — `dsor.idempotency_keys`: the company, the caller, the operation and the key as one primary key, the request's fingerprint, and its answer as text; the application claims and answers, and deletes and rewrites nothing; the second lock, and a second policy that keeps an answer once written |
+| `src/idempotency.ts` | new — the claim, in one INSERT, and what a request finds when it is not the first; the answer written on the claim, or the claim released |
+| `src/operations.ts` | the stage at §21.7; the door takes the request's options, and writes the answer on the claim whichever way it ends; §21.11 refuses a command with no claim |
+| `src/pipeline.ts` | a walk may end with an answer given before, `replayed`; the context carries the key and the claim |
+| `src/registry.ts`, `src/contracts/*.json` | every command's contract says it needs a key, and the registry refuses one that says not |
+| `src/database.ts` | start-up knows six tenant tables, refuses an application that may delete or rewrite a claim, and refuses the claims' table without the policy that keeps an answer |
+| `src/main.ts` | every command with a key; a payment sent twice, a different one under the same key, and fifty at once |
+| `test/support/door.ts` | new — the door the tests knock on, which gives each request a fresh key unless the test gives one |
+| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, and fifty at once |
+| `test/idempotency.db.test.ts` | new — fifty at once on a real server, over a pool of twenty connections |
+| the tests that pin the pipeline | nine stages now, and the claim among the command-only ones |
 
 ## Run it
 
@@ -78,157 +92,178 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step is the second line:
+The part that is this step comes after the directory's:
 
 ```text
-Hello, accounts-payable-fte.
-The audit log is dsor.audit, in DSoR's own schema, in a PostgreSQL on disk at ./.local-database, as `dsor_runtime`.
+The answer is lost, and the agent sends the same request again, with the same key:
+
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-903  draft      compensatable
+                        withheld: amount (clearance)
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-903  draft      compensatable
+                        withheld: amount (clearance)
+  the same answer, word for word: true
+
+The same key, with a different amount:
+
+accounts-payable-fte  IDEMPOTENCY_CONFLICT     retry: never                the key 3cb123a6-pay-1009 was used for a different payment.create request; a new request needs a new key
+
+Fifty requests at once, with one key:
+
+  50 answers, 1 different, 1 payment made
 ```
 
-Step 15's said only "The audit log is in a PostgreSQL on disk at …". Everything after the line is
-step 15's demo, unchanged: the log moved, and nothing the program does with it changed. With a
-`.env` that points at Neon, the line names that database instead, with the password left out.
+The first receipt is the payment made. The second is the same request sent again with the same key:
+the same receipt, PAY-903 again, and no second payment. The key in the conflict line starts with
+the run's own prefix, so it differs every time the demo runs. Fifty requests at once with one key:
+one claims it, the other forty-nine wait for its answer and are given it.
 
-Before that line, the program has already checked the database. It refuses to start if the log
-or the invoices are missing. It also refuses if the application owns the database or either
-schema, or may create things in either one.
+Every command in the demo now passes a key as its fourth argument. In the printed log further down,
+this section adds three decisions: the payment, the conflict, and the fifty's one payment. The
+replays add none.
 
 ### The database tier
 
-`pnpm check` needs no server. The thirty-nine tests in `pnpm test:db` need two real logins and a
-database of this step's own. Copy step 15's `.env` and change the database name in both URLs:
+`pnpm check` needs no server. The fifty-two tests in `pnpm test:db` need two real logins and a
+database of this step's own:
 
 ```bash
-cp ../my_15_freshness_labels/.env .env     # then dsor_step15 -> dsor_step16 in both lines
+cp ../my_19_unattended_mode_and_the_role_source/.env .env     # then dsor_step19 -> dsor_step20 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first. This folder's own was made on Neon with the owner login already
-in step 15's `.env`, by one `CREATE DATABASE dsor_step16`. `pnpm migrate` applies the eight
-migrations; on a server that already had the first seven, it applies 008 alone, and the log moves
-with everything in it.
+The database has to exist first, made with one `CREATE DATABASE dsor_step20` through the owner
+login. `pnpm migrate` applies the eighteen migrations; on a server that already had step 19's
+seventeen, it applies 018. One of the fifty-two is the step's "done when" where it can truly fail:
+fifty requests with one key, sent at once over a pool of twenty connections, make one payment.
 
 ## Break it
 
 Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `536` with `1 skipped`; in the repository it is `536 passed`.
+is not beside it, so the total reads `702` with `1 skipped`; in the repository it is `702 passed`.
 
-### Break 1 · the log is not moved
+### Break 1 · check for the key, then insert it, as two steps
 
-In `migrations/008_the_control_plane_store.sql`, delete the line that moves the table.
-
-```text
- Tests  292 failed | 243 passed | 1 skipped (536)
-```
-
-More than half the suite. The program writes every decision to `dsor.audit`, which is not there,
-and a decision that cannot be written down is a request that is not carried out.
-
-### Break 2 · the application may not look inside dsor
-
-In the same migration, delete the `GRANT USAGE ON SCHEMA dsor` line.
+The map's "break it". In `src/idempotency.ts`, replace the claim's one INSERT with a SELECT that
+asks whether the key exists, and, when it does not, an INSERT whose result is not looked at.
 
 ```text
- Tests  254 failed | 281 passed | 1 skipped (536)
+ Tests  2 failed | 699 passed | 1 skipped (702)
 ```
 
-The log is where it should be, and the application cannot reach it: `permission denied for schema
-dsor` on every write. A folder's permission comes before its tables'.
+The fifty requests at once, in the tests and in the demo: several of them each find no key before
+any of them inserts one, and each makes a payment. Every test that sends one request at a time still
+passes, which is why the mistake is so easy to make: it is wrong only when two requests arrive
+together.
 
-### Break 3 · the application may create things in dsor
+### Break 2 · the fingerprint is not compared
 
-Grant `USAGE, CREATE` instead of `USAGE`.
+In `src/idempotency.ts`, change `if (found.payload_hash !== payloadHash) {` to
+`if (found.payload_hash !== payloadHash && false) {`.
 
 ```text
- Tests  1 failed | 534 passed | 1 skipped (536)
+ Tests  6 failed | 695 passed | 1 skipped (702)
 ```
 
-Nothing the demo shows changes, which is why a test asks. With `CREATE`, the application could put
-a table, a view or a function of its own beside DSoR's paperwork, which is how a window past the
-locks is made.
+The same key with another amount is given the first payment's receipt, and the caller believes a
+payment of 2,600.00 was made when one of 2,500.00 was. The conflict tests, and four of the demo's,
+whose conflict line and log both change.
 
-### Break 4 · the start-up check still looks in public
+### Break 3 · one key for every caller
 
-In `src/database.ts`, make the check that both tenant tables exist look for `public.audit`.
+In `src/idempotency.ts`, put `"anyone"` where the claim names its caller.
 
 ```text
- Tests  45 failed | 490 passed | 1 skipped (536)
+ Tests  15 failed | 686 passed | 1 skipped (702)
 ```
 
-The program refuses to start: "a tenant table is missing". The start-up tests and the demo's tests
-fail, because nothing runs. A check that looks in the wrong place fails closed, and loudly.
+More than predicted, and honestly so: this break changed two things. Keys are shared between
+callers, which two tests are about; and the door writes each answer under the real caller, so no
+answer is ever found again, and every replay waits out its two seconds. A break should change one
+thing; this one shows how much rests on the claim and its answer naming the same caller.
 
-### Break 5 · the demo no longer says where its log is
+### Break 4 · the answer is not kept
 
-In `src/main.ts`, put the demo's second line back as it was in step 15.
+In `src/operations.ts`, replace the line that writes the answer on the claim with `void settleKey;`.
 
 ```text
- Tests  1 failed | 534 passed | 1 skipped (536)
+ Tests  13 failed | 688 passed | 1 skipped (702)
 ```
 
-One test, the one that pins the line.
+Nothing runs twice: the claim still holds the key. But every retry waits two seconds and is told
+nobody knows, where it should have been given its answer. Nine tests of the key, and four of the
+demo's.
 
-Restore each break and confirm `pnpm check` prints `536 passed` again.
+### Break 5 · a refusal from the walk is kept
+
+In `src/operations.ts`, change `answer.envelope.retry === "safe_same_key";` to `false;`.
+
+```text
+ Tests  3 failed | 698 passed | 1 skipped (702)
+```
+
+A request refused because the decision could not be written down is answered "safe to send again",
+and the retry is given that same refusal for ever. The three tests that send it again.
 
 ## Build it yourself with Claude Code
 
-Copy `my_15_freshness_labels` to a new folder and ask:
+Copy `my_19_unattended_mode_and_the_role_source` to a new folder and ask:
 
-> Start step 16, the control-plane store. Before any code: show me where DSoR keeps its paperwork
-> today, and what goes wrong because of where it is. Then ask me the step's decisions one at a
-> time. Then build it a piece at a time, red first, and break each piece on purpose.
+> Start step 20, idempotency keys. Before any code: show me a payment made twice because its answer
+> was lost, and fifty requests with one key racing each other. Then ask me the step's decisions one
+> at a time. Then build it a piece at a time, red first, and break each piece on purpose.
 
 ## Check yourself
 
-1. Where does DSoR's log live now, and what moved with it?
-2. Why move the table as it is, rather than start a new log in `dsor`?
-3. Why the same database, and not a second one?
-4. Migrations 001 to 007 still say `public.audit`. Why are they not changed?
-5. The application may use `dsor`, may create nothing there, and must not own it. Why each?
+1. The agent's payment request times out, and it sends the same request again with the same key.
+   What does it get, and how many payments exist?
+2. It sends the same key with a different amount. What happens, and why not just make the new
+   payment?
+3. Why is the key claimed with one INSERT, and not by checking for it first and inserting it after?
+4. Fifty requests with one key arrive together. Forty-nine are not first. What do they get?
+5. The first request was refused `EVIDENCE_STORE_UNAVAILABLE`. Why is that answer not kept on the
+   claim, when a refusal for being over the limit is?
 
 <details>
 <summary>Answers</summary>
 
-1. In `dsor.audit`, in DSoR's own schema. Every record, the hash chain, the permissions and the
-   row-level security moved with the table, because the table itself moved; nothing was copied.
-2. A new log would leave two logs: the old evidence still among the business's tables, and the
-   chain broken in two. Moving the table keeps one log and one chain, and the chain survives
-   because a record's hash covers its own fields, not the table's name.
-3. So that, in step 36, a business change and DSoR's record of it can be saved together, or not at
-   all. Two databases cannot be saved together in one transaction.
-4. An applied migration is never edited: its checksum covers every byte, and a database that
-   already ran it would refuse the changed file. Migration 008 says where the log went.
-5. `USAGE` lets the application reach the log, which it must, to write the record of every
-   decision. Without `CREATE`, it cannot make a table of its own there. A table named for a later
-   step's paperwork, say `dsor.proposals`, would belong to the application, every row of it, and
-   that step's migration would find the name taken. And a schema's owner may delete any table in
-   it, even one it does not own: an application that owned `dsor` could delete the whole log.
+1. The first request's receipt, word for word, and one payment. Nothing runs again, and no second
+   decision is recorded.
+2. `IDEMPOTENCY_CONFLICT`. A key names one request; the same key with another amount is either a
+   mistake or a second request, and DSoR cannot tell which. A new request needs a new key.
+3. Two requests that arrive together both check, both find no key, and both run. One INSERT under a
+   primary key lets the database pick exactly one winner.
+4. They wait for the first one to finish, up to two seconds, and are given its answer. If it has not
+   finished by then, they are told `OUTCOME_UNKNOWN`.
+5. That answer says nothing ran and the same request may be sent again. Kept, it would be given to
+   the retry, and "send it again" would be a lie. Over the limit is a decision, and the retry is
+   given the same decision.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-MOD-01 · L1]** A DSoR implementation MUST durably own, in a control-plane store separate
-  from agent context, its delegations, controls, proposals, approvals, idempotency records, intent
-  records, cumulative-limit counters, holds, and audit evidence. Claimed for **audit evidence
-  only**: the log is DSoR's own, in its own schema, in a database the agent never touches. Each
-  other kind arrives in `dsor` with the step that builds it.
-  ([§1](../../../specs/dsor/01-model.md#1-definition))
+- **[DSOR-IDM-01a · L2]** Every state-changing command in `execute` or `propose_only` mode MUST
+  carry an idempotency key. ([§22](../../../specs/dsor/03-execution.md#22-idempotency))
+- **[DSOR-IDM-01b · L2]** The key MUST be claimed by an atomic insert scoped to (tenant, calling
+  principal, operation, key) that stores the payload hash.
+- **[DSOR-IDM-01c · L2]** A request whose key is already claimed with the same payload hash MUST
+  return the recorded status or result without re-execution.
+- **[DSOR-IDM-01d · L2]** A request whose key is already claimed with a different payload hash MUST
+  be refused with `IDEMPOTENCY_CONFLICT`.
 
-**What this step leaves, said plainly.** Only the log is in DSoR's store. Proposal numbers still
-live in memory and restart at `prop_0001` with every run, until step 22. The migrations' own
-record, `public.applied_migrations`, stays in `public`: it records the shape of the business's
-tables and DSoR's alike, and the migration tool makes it before any migration runs. So emptying
-`public` still takes DSoR down, though not its evidence: the record goes with it, the next
-`pnpm migrate` runs 001 to 007 again and stops at 008, and the program refuses to start until a
-person repairs the record. The log in `dsor` is untouched, measured. The two schemas
-share one owner, so the store is separated by folder and by permission, not by who owns it: a tool
-that logs in as the owner could still reach `dsor`. And a refusal written into two companies' logs
-is still two writes, not one transaction, until the step that builds transactions; the program
-tells the caller exactly which logs got the record.
+**What this step leaves, said plainly.** Claims are never deleted, so they are kept longer than the
+24 hours `DSOR-IDM-02` asks, for ever, and the table only grows; clearing old ones is a later step's.
+A claim whose answer could not be written, because the store failed after the request ran, because
+a handler threw, or because the claim's own reply was lost, keeps no answer: a retry with its key
+waits and is told `OUTCOME_UNKNOWN` until someone reconciles it, which is step 37's. A replay
+records nothing, and the fingerprint depends on the order of the request's fields until canonical
+JSON, step 29. There is one mode, execute; `propose_only` and the
+proposal whose id is the key of its execution (`DSOR-IDM-04`) are steps 22 and 23. Passing a key on
+to the bank's system (`DSOR-IDM-03`) waits for a connector that takes one. And the key's characters
+are this tutorial's choice: the specification takes any text.
 
 Everything earlier steps claimed still holds.
 
-**Next:** step 17, `vendors_and_payments` — a payment is made as a draft, and every command says
-whether it can be undone.
+**Next:** step 21, `optimistic_concurrency` — "I decided based on version 18. If the record has moved
+on, refuse."

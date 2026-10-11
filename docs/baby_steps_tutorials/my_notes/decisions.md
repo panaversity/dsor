@@ -4110,3 +4110,78 @@ be refused with `IDEMPOTENCY_CONFLICT`.
 7. **Proved with real parallel requests.** Fifty at once, in the unit tier, where one database
    connection takes them in turn, and in the database tier, on a real server, over a pool of many
    connections, where they truly race.
+
+## 132 · What step 20's review found, and what was chosen (2026-10-11)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "go with your
+recommended settings", while they slept. Each choice is the recommendation, and each is open to
+reversal.
+
+One reviewer, read-only, with probes in its own copy. It found `DSOR-IDM-01a` to `01d` met for the
+answers that are kept: one INSERT on the primary key, the caller who logged in as the principal, a
+different request refused before any waiting, and a replay that cannot skip §21.3 to §21.5. It found
+three broken guarantees, each measured, and these were chosen:
+
+1. **Only a refusal from the walk releases a claim.** The door released a claim on any answer whose
+   retry class is `safe_same_key`, including one a handler gave after it had run: a handler that made
+   the payment and answered `TRANSACTION_FAILED`, the common mistake §25.2 names, made three payments
+   under one key (measured). None of the three handlers does that, and decision 119 says the door
+   must hold against one that does. Now only a refusal from the walk, before §21.14, where DSoR itself
+   knows nothing ran, releases the claim; every answer given after a handler ran is kept. Releasing at
+   all departs from the letter of `DSOR-IDM-01c`, "without re-execution": what is released never ran,
+   so nothing is executed again, and the question is recorded here.
+2. **An answer once kept is never rewritten, and a replay is checked against its caller.** The
+   application may write a claim's answer, and with that right one UPDATE wrote `{"released": true}`
+   over a kept receipt, and the same request then made a second payment; another wrote a receipt
+   with `askedBy: "cfo_100"`, and the replay handed it out (measured, as DSoR's own role, start-up
+   passing). A second policy on the table, restrictive, lets an UPDATE touch only a claim with no
+   answer or a released one, and start-up refuses the table without it. And a replayed answer that
+   is not this caller's, or not an answer at all, is refused as the program's own error.
+3. **Messages that say only what is true, and the claim's other failures written down.** A claim
+   whose INSERT committed and whose reply was lost was answered "could not be claimed, so nothing was
+   done; it is safe to send again", and every retry then waited two seconds and was told the first
+   request "has not finished" (measured). Both messages now say what is known: the claim may have
+   been made, and no answer is recorded, which may mean the first request is still running or ended
+   without one. A release that fails is tried once more. The dead key itself, a claim with no answer
+   for ever, is written down: reading the claim back, as the log does since step 09, is the fix, and
+   reconciliation, step 37, is where it belongs.
+4. **The key is the request's own.** An `idempotencyKey` inherited through a prototype was taken as
+   the key (measured); the door reads only the request's own field, as it reads a login's. And a
+   request waiting for the same request looks less often the longer it waits.
+5. **Tests for what nothing tested**: a replay after the slip expired, was revoked or lost the
+   permission, which is refused like any request (§22); the same key in two companies, two claims; a
+   different request after a release, refused, not handed the claim; fifty retries after a release,
+   one payment; the two-second wait running out; a key inside the arguments, a getter that throws,
+   and an inherited key, none of them a key; and the registry refusing a command that needs no key.
+6. **Smaller truths.** The demo said step 20 stops the duplicate INV-1008 payment; it uses a new key,
+   and in-flight exclusivity, §25.1, is what would stop it. A pipeline test's comment, migration 018's
+   comments and start-up's said what the grants did not hold. Each is corrected.
+
+**Written down, and not fixed:**
+
+- A replay records nothing, and its own request id appears nowhere: the answer carries the first
+  request's. §21 stops at step 7 for a replay; §29 says every decision from step 3 onward is recorded
+  individually, and a replay refused at steps 3 to 5 is recorded while one allowed there is not. A
+  question for the specification.
+- The two-second wait running out is recorded `DENY OUTCOME_UNKNOWN`, though DSoR denied nothing.
+- The fingerprint depends on the order of the request's fields: canonical JSON is step 29's.
+- `LIMIT_EXCEEDED` says `after_delay`, and the refusal is kept on the claim: after a wait, the same
+  request needs a new key, as §22 says of every recorded refusal.
+
+**Red first.** Each fix began with a test that failed for the reason the review measured: three
+payments under one key; a kept answer rewritten, start-up passing without the policy, a forged
+answer replayed; "has not finished" after the wait ran out; an inherited key making a payment. The
+eleven missing tests passed on arrival, because the code held; the breaks below and the README's
+prove them. Then the unit tests: 702.
+
+**Proved by breaking it**, in a copy, on the whole suite, once each, each prediction written first,
+beside the README's five, which were measured twice:
+
+| Break | Predicted | Measured |
+| --- | --- | --- |
+| a handler's "safe to send again" releases the claim | 1: the careless handler | 1, that test |
+| migration 018 forgets the policy that keeps an answer | dozens: start-up refuses | 42 |
+| a replay is not checked against its caller | 1: the forged answer | 1, that test |
+| the wait says the first request has not finished | 1: the no-answer test | 1, that test |
+| an inherited key is a key | 1: the own-key test | 1, that test |
+| a released claim is taken back by any request | 1: released, then different | 1, that test |
