@@ -1569,6 +1569,29 @@ Step 26 copies step 25c, as decision L8 asked, with database `dsor_step26`.
 - **For the learner's session:** D9 to D17, D7 as the review changed it, the habit behind B2, and
   open questions 106 and 107.
 
+### Steps 25c and 26, understanding after the build (2026-10-11), stopped at part 5
+
+Six parts were planned, to hand back about twenty "(Claude Code)" decisions, four missed breaks,
+and open questions 104 to 107. Parts 1 to 4 ran, each with real runs in a scratch copy of step 26
+and a scratch database: a sweep sent twice with one key, a rate of zero written past `rate.load`,
+a change to `expires_at`, a tear-up racing a prepared draft, and an agent that holds `rate:load`.
+
+- **The habit, again: "the role decides" (a form of Habit 1).** Four answers stopped at the first
+  check that said yes: "rate.load is the only way in", "it moves proposals, so it may change any
+  column", "it holds rate:load", and "right login, right role". Each time another guard said no:
+  the database's CHECK, a right on one column only, line ⑤'s `system_only`, and line ⑨'s source
+  rule, decision D8, which the learner chose. The answers that followed a timeline were right.
+- **The learner, in their words:** "feels like i am not thinking before answer anymore", then "I
+  don't want to answer, why are we studying this, you have lost me". The parts were long, the
+  options were written to tempt, and the session drifted into the database's internals, far from
+  the two steps' ideas. Its purpose was never agreed.
+- **What changed (2026-10-11):** each step from 27 on goes understand, discuss, look at it
+  visually, document the decisions, build in steps, test, review, then test the understanding.
+  Questions that test understanding come at the end, not in every part. Every piece is its own
+  commit.
+- **Left for the learner to read, not to be quizzed on:** 25c's D5 to D15 and 26's D9 to D17,
+  in each step's README under "(Claude Code)", and open questions 104 to 107.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
