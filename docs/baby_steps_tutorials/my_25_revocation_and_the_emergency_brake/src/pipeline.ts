@@ -232,6 +232,9 @@ const REQUIRED: readonly string[] = Object.freeze([
   // answer and never a second proposal; before anything is decided, so every decision about a
   // command has a proposal to move (DSOR-APR-01a, decision 136).
   "create the proposal",
+  // NEW IN STEP 25: after the arguments are validated and the proposal made, before the limit and the
+  // decision, so who may act on a target is recorded as the DENY it is (decision 143).
+  "check the target",
   // STEP 18: required too, because without it a payment above the slip's limit goes
   // through with nothing to say it was ever checked.
   "check the slip's limit",

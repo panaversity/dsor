@@ -282,8 +282,9 @@ describe("control.suspend: people pull the brake and release it", () => {
   });
 
   it("DSOR-OPS-01d: an agent whose slip grants control:suspend still cannot release its own brake, even with §21.4 gone", async () => {
-    // The slip is changed by its owner to grant the brake, and §21.4 is taken out of the door: the
-    // move to EXECUTING sees the brake, and the handler never runs.
+    // The slip is changed by its owner to grant the brake, and §21.4 is taken out of the door.
+    // STEP 25, decision 143: §21.9 refuses it, a person's to release, and the refusal is on the
+    // record as the DENY it is.
     await asTheOwner(() =>
       db.exec(`UPDATE dsor.delegations SET permissions = permissions || ARRAY['control:suspend']
                 WHERE tenant = 'org_456' AND id = 'del_100'`),
@@ -303,7 +304,9 @@ describe("control.suspend: people pull the brake and release it", () => {
       suspended: false,
     });
 
-    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(/only a person/);
+    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
     expect(await whatStops("org_456", AGENT)).toBeDefined();
   });
 

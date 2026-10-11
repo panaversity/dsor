@@ -347,9 +347,8 @@ function brakeTargetFrom(
 
 /**
  * NEW IN STEP 25: whether a principal may release a brake: a person, never an agent, whatever its
- * slip grants (DSOR-OPS-01d, decision 142). With one agent in the story, an agent reaching the
- * handler to release a brake is already stopped twice, at §21.4 and at the move to EXECUTING; this is
- * the rule for the day a second agent asks to release the first one's brake.
+ * slip grants (DSOR-OPS-01d, decision 142). Asked at §21.9, before the decision is recorded
+ * (decision 143).
  */
 export function mayReleaseABrake(principal: string): boolean {
   return findPerson(principal)?.type === "human";
@@ -613,13 +612,7 @@ const handlers: Readonly<Record<string, Handler>> = {
 
       id = pulled.id;
     } else {
-      if (!mayReleaseABrake(askedBy)) {
-        return refused(
-          "AUTHORIZATION_DENIED",
-          `only a person, logged in as themselves, may release a brake; ${askedBy} may not`,
-        );
-      }
-
+      // Only a person may: §21.9 decided it, before the decision was recorded (decision 143).
       const lifted = await liftTheBrake(tenant, read.agent, askedBy);
 
       if (lifted.kind === "none") {
@@ -676,23 +669,11 @@ const handlers: Readonly<Record<string, Handler>> = {
       );
     }
 
-    const slip = await slipNamed(tenant, read.id);
+    // Who may, and whether the slip is active, were decided at §21.9 and recorded (decision 143).
+    // The slip can still have been revoked by someone else since, which the statement sees.
+    const revoked = await revokeSlip(tenant, read.id, askedBy, reason);
 
-    if (slip === undefined) {
-      return refused("RESOURCE_NOT_FOUND", `${read.id} is not a slip we hold`);
-    }
-
-    if (slip.delegator !== askedBy) {
-      return refused(
-        "AUTHORIZATION_DENIED",
-        `only the person who signed ${read.id} may revoke it here, and ${askedBy} did not`,
-      );
-    }
-
-    const revoked =
-      slip.status === "active" ? await revokeSlip(tenant, read.id, askedBy, reason) : undefined;
-
-    if (revoked === undefined || revoked.kind === "not_active") {
+    if (revoked.kind === "not_active") {
       return refused("CONFLICT", `${read.id} is not active; nothing was changed`);
     }
 
@@ -1677,6 +1658,111 @@ const createTheProposal: Stage["run"] = async (context) => {
 };
 
 /**
+ * NEW IN STEP 25, decision 143: §21.9, in part — check the target.
+ *
+ * Who may act on what a command names, and the state it must be in, decided before §21.11 records
+ * the decision, so a refusal is recorded as the DENY it is. They were in the handlers, after an ALLOW
+ * was on the record, which a review measured. After §21.6, because they read the validated
+ * arguments, once; not in authorize, at §21.5, which would read the caller's arguments before §21.6
+ * has copied them.
+ *
+ * - delegation.revoke: the slip must exist, be active, as its contract's precondition says, and have
+ *   been signed by the caller (DSOR-DEL-04a). A tenant administrator, who could revoke anyone's, is
+ *   nobody in the cast.
+ * - control.suspend, releasing: only a person (DSOR-OPS-01d).
+ *
+ * An argument that is not an address is left for the handler, which refuses it as it always has.
+ * Step 32 makes this stage the home of every contract's preconditions.
+ */
+const checkTheTarget: Stage["run"] = async (context) => {
+  const { principal, tenant, contract, given } = context;
+
+  if (
+    principal === undefined ||
+    tenant === undefined ||
+    contract === undefined ||
+    given === undefined
+  ) {
+    return refuse(
+      principal?.id ?? "(nobody)",
+      "INTERNAL_ERROR",
+      "the pipeline reached §21.9 without a principal, a tenant, a contract and its arguments",
+      context.requestId,
+    );
+  }
+
+  if (contract.id === "control.suspend") {
+    const releasing = Object.hasOwn(given, "suspended") && given["suspended"] === false;
+
+    return releasing && !mayReleaseABrake(principal.id)
+      ? refuse(
+          principal.id,
+          "AUTHORIZATION_DENIED",
+          `only a person, logged in as themselves, may release a brake; ${principal.id} may not`,
+          context.requestId,
+        )
+      : carryOn(context);
+  }
+
+  if (contract.id !== "delegation.revoke") {
+    return carryOn(context);
+  }
+
+  const target = Object.hasOwn(given, "target") ? given["target"] : undefined;
+  let parsed;
+
+  try {
+    parsed = typeof target === "string" ? parseUri(target) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+
+  if (parsed === undefined || parsed.entity !== "delegation" || parsed.tenant !== tenant) {
+    return carryOn(context);
+  }
+
+  let slip;
+
+  try {
+    slip = await slipNamed(tenant, parsed.id);
+  } catch {
+    return refuse(
+      principal.id,
+      "EVIDENCE_STORE_UNAVAILABLE",
+      `${parsed.id} could not be read; nothing was done`,
+      context.requestId,
+    );
+  }
+
+  if (slip === undefined) {
+    return refuse(
+      principal.id,
+      "RESOURCE_NOT_FOUND",
+      `${parsed.id} is not a slip we hold`,
+      context.requestId,
+    );
+  }
+
+  if (slip.delegator !== principal.id) {
+    return refuse(
+      principal.id,
+      "AUTHORIZATION_DENIED",
+      `only the person who signed ${parsed.id} may revoke it here, and ${principal.id} did not`,
+      context.requestId,
+    );
+  }
+
+  return slip.status === "active"
+    ? carryOn(context)
+    : refuse(
+        principal.id,
+        "CONFLICT",
+        `${parsed.id} is not active; nothing was changed`,
+        context.requestId,
+      );
+};
+
+/**
  * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
  *
  * After the input is validated, because the amount is the validated copy's: the one the payload hash
@@ -2071,6 +2157,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(7, "claim the idempotency key", "command", claimTheKey),
   // STEP 22. §21.8: the command becomes a proposal, with a state (decision 136).
   stage(8, "create the proposal", "command", createTheProposal),
+  // NEW IN STEP 25. Part of §21.9: who may act on the target, and the state it is in (decision 143).
+  stage(9, "check the target", "command", checkTheTarget),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
@@ -2249,8 +2337,6 @@ async function recordTheRead(
  * OUTCOME_UNKNOWN, because the door cannot tell what happened.
  */
 const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
-  // STEP 25: a handler's own check of who may, before it does anything (decision 142).
-  "AUTHORIZATION_DENIED",
   "CONFLICT",
   "STALE_STATE",
   "RESOURCE_NOT_FOUND",

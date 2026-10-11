@@ -8,6 +8,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
 import { money } from "../src/money.ts";
 import {
   moveProposalThrough,
@@ -18,7 +19,7 @@ import {
 } from "../src/proposal.ts";
 import { reserve, usedToday } from "../src/reservation.ts";
 import { theDatabase } from "../src/store.ts";
-import { aDatabase, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { callOperation } from "./support/door.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -222,5 +223,66 @@ describe("what the application may do to a slip", () => {
         "UPDATE dsor.delegations SET permissions = ARRAY['payment:create'] WHERE tenant = 'org_456' AND id = 'del_100'",
       ),
     ).rejects.toThrow(/permission denied/);
+  });
+});
+
+// NEW IN STEP 25, decision 143: who may revoke is decided at §21.9, before the decision is recorded.
+
+describe("§21.9: the target's own rules, decided and recorded", () => {
+  /** A slip in org_456 that cfo_100 signed, for an agent of no one's, as an owner would add one. */
+  async function aSlipSignedByCfo(): Promise<void> {
+    await asTheOwner(() =>
+      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+               VALUES ('org_456', 'del_200', 'cfo_100', 'another-agent', ARRAY['invoice:read'],
+                       'active', '2099-12-31T23:59:59Z')`),
+    );
+  }
+
+  it("DSOR-DEL-04a: user_123, who may revoke slips, may not revoke one cfo_100 signed, and the log says DENY", async () => {
+    // Decision 143: this was refused in the handler, after §21.11 had recorded ALLOW.
+    await aSlipSignedByCfo();
+
+    const answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+      target: "dsor://org_456/delegation/del_200",
+      reason: "not mine",
+    });
+    const last = (await theLog("org_456")).at(-1);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+    expect(last?.authorization).toBe("DENY");
+    expect(last?.result).toBe("AUTHORIZATION_DENIED");
+
+    const { rows } = await theDatabase("org_456").query<{ status: string }>(
+      "SELECT status FROM dsor.delegations WHERE tenant = 'org_456' AND id = 'del_200'",
+    );
+
+    expect(rows).toStrictEqual([{ status: "active" }]);
+  });
+
+  it("DSOR-DEL-04a: a slip revoked already, or none, is refused and recorded as the DENY it is", async () => {
+    await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "once" });
+    await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "twice" });
+
+    expect((await theLog("org_456")).at(-1)?.result).toBe("CONFLICT");
+
+    await callOperation(SUPERVISOR, "delegation.revoke", {
+      target: "dsor://org_456/delegation/del_999",
+      reason: "no such slip",
+    });
+
+    expect((await theLog("org_456")).at(-1)?.result).toBe("RESOURCE_NOT_FOUND");
+  });
+
+  it("DSOR-DEL-04a: a dry run of a revocation by someone who did not sign the slip is refused too", async () => {
+    await aSlipSignedByCfo();
+
+    const answer = await callOperation(
+      SUPERVISOR,
+      "delegation.revoke",
+      { target: "dsor://org_456/delegation/del_200", reason: "would I be allowed?" },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
   });
 });

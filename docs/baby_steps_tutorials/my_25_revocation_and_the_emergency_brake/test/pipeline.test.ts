@@ -64,6 +64,8 @@ describe("the pipeline", () => {
       "claim the idempotency key",
       // STEP 22: §21 step 8, the command becomes a proposal, for commands only.
       "create the proposal",
+      // NEW IN STEP 25: part of §21 step 9, who may act on the target (decision 143).
+      "check the target",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
       "record the decision",
@@ -75,7 +77,7 @@ describe("the pipeline", () => {
   // preconditions and the rest of the controls. STEP 22: the proposal is 8.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
     // NEW IN STEP 25: and 4, the operational status, no longer missing.
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 4, 5, 6, 7, 8, 10, 11]);
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -109,7 +111,9 @@ describe("the pipeline", () => {
         stage.name === "claim the idempotency key" ||
         stage.name === "create the proposal" ||
         // NEW IN STEP 25: and the brake, which stops an agent's state changes, never its reads.
-        stage.name === "check the operational status";
+        stage.name === "check the operational status" ||
+        // NEW IN STEP 25: and the target's rules, which only commands have (decision 143).
+        stage.name === "check the target";
 
       expect(applies(stage, "query"), stage.name).toBe(!commandOnly);
       expect(applies(stage, "command"), stage.name).toBe(true);
@@ -144,12 +148,13 @@ describe("the pipeline", () => {
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"), // STEP 20
       fake(8, "create the proposal", "command"), // STEP 22
+      fake(9, "check the target", "command"), // NEW IN STEP 25
       fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(11);
+    expect(assertPipeline(whole)).toBe(12);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -516,6 +521,7 @@ describe("the pipeline", () => {
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(8, "create the proposal", "command"), // STEP 22: required, so present
+      fake(9, "check the target", "command"), // NEW IN STEP 25: required, so present
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
@@ -533,11 +539,12 @@ describe("the pipeline", () => {
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"),
       fake(8, "create the proposal", "command"),
+      fake(9, "check the target", "command"),
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(11);
+    expect(assertPipeline(inOrder)).toBe(12);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -696,8 +703,11 @@ describe("the pipeline", () => {
         // test is below the claim's.
         "create the proposal",
         // NEW IN STEP 25: and the brake, which only refuses, and only an agent's commands: a no-op
-        // one lets a stopped agent through, which brake.test.ts catches.
+        // one lets a stopped agent through, which brake.test.ts catches. And the target's rules,
+        // which only refuse: a no-op one lets user_123 revoke a slip they did not sign, which
+        // revoke.test.ts catches.
         "check the operational status",
+        "check the target",
       ]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
