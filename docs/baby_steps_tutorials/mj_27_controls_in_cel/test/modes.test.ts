@@ -16,7 +16,6 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import type { RoleTableSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { memoryProposals } from "../src/proposals.ts";
-import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { memorySlips } from "../src/slips.ts";
 import { crossTenantSuite, readExamples, type Send } from "./cross-tenant.ts";
@@ -47,6 +46,7 @@ import {
   THE_CFO,
   THE_SUPERVISOR,
   type StorySlip,
+  withoutControls,
 } from "./helpers.ts";
 
 // The story's call: a draft of a payment for INV-1008, decided on version 1.
@@ -69,7 +69,7 @@ function story(options: { roles?: RoleTableSource; slips?: readonly StorySlip[] 
   const payments = memoryPayments(rows);
   const directories = storyDirectories();
   const slips = memorySlips(options.slips ?? [...STORY_SLIPS, INTAKE_SLIP]);
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     handlersFor(),
     options.roles ?? shippedRoles,
@@ -455,7 +455,7 @@ describe("C7: the .propose form of a permission", () => {
       ...contract("payment.create"),
       authorization: { permission: "payment:create.propose" },
     };
-    expect(() => buildRegistry(shippedWith(proposeOnly), handlersFor(), shippedRoles)).toThrow(
+    expect(() => withoutControls(shippedWith(proposeOnly), handlersFor(), shippedRoles)).toThrow(
       "payment.create: a contract names the permission its operation needs, never its .propose form (step 23's README, decision 14)",
     );
   });

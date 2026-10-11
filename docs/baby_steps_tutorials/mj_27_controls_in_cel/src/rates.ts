@@ -9,6 +9,7 @@
 import { Refusal } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { isCurrency } from "./money.ts";
+import type { MoneyPolicy } from "./policies.ts";
 import { preview } from "./registry.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { parseUri } from "./uri.ts";
@@ -85,6 +86,20 @@ export function memoryRates(now: () => number = Date.now): MemoryRates {
     },
     all: async (): Promise<RateSheet[]> => kept.map((k) => structuredClone(k.sheet)),
   });
+}
+
+// NEW IN STEP 27: the sheet a control's money functions convert with: the newest of the company's
+// source, and only while it is fresh by the store's clock. None otherwise, so a conversion between
+// two currencies fails, and the control applies (DSOR-CTL-07; step 27's README, decision D6).
+/** The newest sheet of the company's source, when it is fresh, or none. */
+export async function freshSheet(
+  rates: RateStore,
+  tenant: string,
+  policy: MoneyPolicy | undefined,
+): Promise<RateSheet | undefined> {
+  if (policy === undefined) return undefined;
+  const newest = await rates.newest(tenant, policy.rate_source, policy.maxAgeMs);
+  return newest?.fresh === true ? newest.sheet : undefined;
 }
 
 /** The input of rate.load, once line ⑥ has checked it against its schema. */

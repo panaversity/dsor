@@ -10,7 +10,7 @@ import { createLog } from "../src/log.ts";
 import { money } from "../src/money.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
-import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
+import { type Handler, type Registry } from "../src/registry.ts";
 import {
   AGENT,
   PAY_901_DRAFT,
@@ -30,6 +30,7 @@ import {
   storyDirectories,
   testSlips,
   withPlanted,
+  withoutControls,
 } from "./helpers.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -63,7 +64,7 @@ function story(code: Record<string, Handler> = handlers): {
 } {
   const list = structuredClone(invoices);
   const rows: Payment[] = [];
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     code,
     shippedRoles,
@@ -89,7 +90,9 @@ describe("C1: every command declares a strategy that DSoR keeps", () => {
     "DSOR-CON-01a: start-up refuses a command whose strategy is %s, which this step does not build",
     (strategy) => {
       const changed = { ...contract("payment.cancel"), concurrency: { strategy } };
-      expect(refusal(() => buildRegistry(shippedWith(changed), handlers, shippedRoles))).toContain(
+      expect(
+        refusal(() => withoutControls(shippedWith(changed), handlers, shippedRoles)),
+      ).toContain(
         `payment.cancel: the concurrency strategy "${strategy}" is not built yet (DSOR-CON-01a)`,
       );
     },
@@ -97,7 +100,7 @@ describe("C1: every command declares a strategy that DSoR keeps", () => {
 
   it("DSOR-CON-01a: the strategy none is a strategy, and start-up accepts it", () => {
     const changed = { ...contract("payment.cancel"), concurrency: { strategy: "none" } };
-    expect(refusal(() => buildRegistry(shippedWith(changed), handlers, shippedRoles))).toBe("");
+    expect(refusal(() => withoutControls(shippedWith(changed), handlers, shippedRoles))).toBe("");
   });
 
   // The contract's promise needs a version to compare. An input with no place for one cannot
@@ -110,7 +113,7 @@ describe("C1: every command declares a strategy that DSoR keeps", () => {
       additionalProperties: false,
     };
     const inputs = inputsWith("PaymentCancelRequest.schema.json", JSON.stringify(loose));
-    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, inputs))).toContain(
+    expect(refusal(() => withoutControls(shipped, handlers, shippedRoles, inputs))).toContain(
       NEEDS_VERSION,
     );
   });
@@ -137,7 +140,7 @@ describe("C1: every command declares a strategy that DSoR keeps", () => {
       },
     };
     const inputs = inputsWith("PaymentCancelRequest.schema.json", JSON.stringify(changed));
-    expect(refusal(() => buildRegistry(shipped, handlers, shippedRoles, inputs))).toContain(
+    expect(refusal(() => withoutControls(shipped, handlers, shippedRoles, inputs))).toContain(
       NEEDS_VERSION,
     );
   });
@@ -226,7 +229,7 @@ describe("C4 and C6: a cancel decided on another version of the payment", () => 
   // version says that the cancel was decided on old facts. Found while planning break B4.
   it("DSOR-CON-01b: a cancel decided on version 1 of a draft that is version 2 now gets STALE_STATE, and the draft stays", async () => {
     const rows: Payment[] = [{ ...structuredClone(PAY_901_DRAFT), version: 2 } as Payment];
-    const registry = buildRegistry(
+    const registry = withoutControls(
       shipped,
       handlers,
       shippedRoles,

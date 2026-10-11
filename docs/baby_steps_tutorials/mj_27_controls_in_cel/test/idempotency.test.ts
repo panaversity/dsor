@@ -12,7 +12,7 @@ import { memoryInvoices } from "../src/invoice.ts";
 import { createLog, type Decision, type DecisionLog } from "../src/log.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
-import { buildRegistry, type Handler } from "../src/registry.ts";
+import { type Handler } from "../src/registry.ts";
 import {
   AGENT,
   FIRM_IN_456,
@@ -31,6 +31,7 @@ import {
   shippedWith,
   storyDirectories,
   testSlips,
+  withoutControls,
 } from "./helpers.ts";
 
 const INV_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
@@ -106,16 +107,16 @@ describe("C1: a command must carry a key", () => {
   // The contract's flag is a promise, and DSOR-IDM-01a makes it one that every command keeps.
   it("DSOR-IDM-01a: start-up refuses a command whose contract does not require a key", () => {
     const loose = { ...contract("payment.create"), idempotency: { required: false } };
-    expect(refusal(() => buildRegistry(shippedWith(loose), handlers, shippedRoles))).toContain(
+    expect(refusal(() => withoutControls(shippedWith(loose), handlers, shippedRoles))).toContain(
       "payment.create: a command must require an idempotency key (DSOR-IDM-01a)",
     );
   });
 
   it("step 20's decision 3: start-up refuses a query whose contract requires a key", () => {
     const keyedQuery = { ...contract("invoice.get"), idempotency: { required: true } };
-    expect(refusal(() => buildRegistry(shippedWith(keyedQuery), handlers, shippedRoles))).toContain(
-      "invoice.get: a query takes no idempotency key (step 20's README, decision 3)",
-    );
+    expect(
+      refusal(() => withoutControls(shippedWith(keyedQuery), handlers, shippedRoles)),
+    ).toContain("invoice.get: a query takes no idempotency key (step 20's README, decision 3)");
   });
 });
 
@@ -242,7 +243,7 @@ describe("C3: the same key and the same request get the recorded answer", () => 
     const slips = testSlips();
     const claims = memoryClaims(invoices, payments, undefined, undefined, slips);
     const on = (sources: typeof shipped) =>
-      buildRegistry(
+      withoutControls(
         sources,
         handlers,
         shippedRoles,

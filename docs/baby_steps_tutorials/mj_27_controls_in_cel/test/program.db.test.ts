@@ -192,7 +192,7 @@ describe("the program", () => {
       );
       expect(output).toMatch(/the agent prepares a draft: \{\n {2}outcome: 'READY',/);
       expect(output).toMatch(
-        /its proposal, READY: dsor:\/\/org_456\/proposal\/prop_[0-9a-f-]{36}\n {2}\(new\) → PROPOSED, by accounts-payable-fte: payment\.create called\n {2}PROPOSED → READY, by dsor: no control asks for an approval: controls are not built yet\nthe same key, to execute: IDEMPOTENCY_CONFLICT/,
+        /its proposal, READY: dsor:\/\/org_456\/proposal\/prop_[0-9a-f-]{36}\n {2}\(new\) → PROPOSED, by accounts-payable-fte: payment\.create called\n {2}PROPOSED → READY, by dsor: no control asks for an approval\nthe same key, to execute: IDEMPOTENCY_CONFLICT/,
       );
       expect(output).toMatch("ap_clerk, the agent prepares: READY");
       // The day's limit, told in memory (step 24's README, outcomes 1 and 4).

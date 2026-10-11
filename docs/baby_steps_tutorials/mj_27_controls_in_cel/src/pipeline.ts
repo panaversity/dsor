@@ -3,12 +3,26 @@
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
-import { NO_RATES, type RateStore } from "./rates.ts";
+import { freshSheet, NO_RATES, type RateStore } from "./rates.ts";
 import { payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { checkDelegation, checkNamedSlips, holdSlip } from "./delegation.ts";
-import { Refusal, toEnvelope, type Answer, type Correlation } from "./envelope.ts";
+import type { Facts } from "./cel.ts";
+import {
+  evaluateControls,
+  mostRestrictive,
+  requirementsOf,
+  type ControlAnswer,
+  type ControlOutcome,
+} from "./controls.ts";
+import {
+  Refusal,
+  toEnvelope,
+  type Answer,
+  type Correlation,
+  type Requirement,
+} from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
 import { newReads, stalest, type Freshness } from "./freshness.ts";
 import type { InvoiceStore } from "./invoice.ts";
@@ -113,6 +127,9 @@ export async function call(
   // And, when no rate was usable, which currency and why. Only the record names
   // them (step 26's review, finding H1).
   let unconvertibleOfRecord: Unconvertible | undefined;
+  // NEW IN STEP 27: and each control line ⑩ evaluated. The record names them, a refusal's too
+  // (DSOR-EXE-02; step 27's README, decision D14).
+  let controlsOfRecord: ControlOutcome[] | undefined;
   // The proposal a refusal from the code ended FAILED, which its envelope names.
   // Set only from the claim, so no code can name a proposal of its own (step 22's README,
   // decision 5). Found by the review.
@@ -307,6 +324,27 @@ export async function call(
     // What line ⑨ read, which the work's writes are pinned to (step 24's README,
     // decision 16).
     let boundState: Bound["state"] = {};
+    // NEW IN STEP 27: what a control's condition may read: Appendix B's eight variables, from DSoR's
+    //   own reads and line ⑥'s checked input. The subject is the person: the slip's signer for an
+    //   agent's call, with what the directory says she holds now (DSOR-CTL-06; step 27's README,
+    //   decision D5).
+    const factsOf = (state: Bound["state"]): Facts => {
+      const requester = requesterOf(caller, under, tenant, new Date().toISOString());
+      const own = caller.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [];
+      const roles = found?.authority.roles ?? own;
+      const level = (contract["risk"] as { level?: unknown } | undefined)?.level;
+      return {
+        input: structuredClone(copy) as Record<string, unknown>,
+        state: structuredClone(state) as Record<string, unknown>,
+        principal: { id: requester.subject, type: requester.subject_type, roles: [...roles] },
+        actor_chain: [...requester.actor_chain],
+        delegation:
+          found === undefined ? null : (structuredClone(found.slip) as Record<string, unknown>),
+        tenant: { id: tenant },
+        risk: String(level ?? ""),
+        now: new Date(),
+      };
+    };
     // And DSoR's own check, at line ⑨, for an operation of DSoR's own. It reads
     //   the slips, inside the claim or, in a dry run, outside it, and changes nothing. Its refusal
     //   is a "no" before any work, as line ⑩'s is: the proposal ends DENIED, the record says DENY,
@@ -321,7 +359,8 @@ export async function call(
       // And the sheets of rates, which line ⑩ converts with.
       rates: RateStore,
       reserveFor?: string,
-    ): Promise<void> => {
+      // NEW IN STEP 27: it answers the approvals a control asks for, when one does.
+    ): Promise<Requirement[] | undefined> => {
       const { state, spends } = await line(9, async () => {
         const bound = await readBound(contract, copy, invoices, tenant);
         if (own !== undefined)
@@ -332,8 +371,28 @@ export async function call(
         return bound;
       });
       boundState = state;
-      await line(10, () =>
-        checkLimits({
+      return await line(10, async () => {
+        // NEW IN STEP 27: the company's controls on this operation come first, for every caller. A
+        //   condition converts with the newest fresh sheet of the company's source. The most
+        //   restrictive answer wins: a control's DENY refuses here, before anything is booked, and a
+        //   limit's refusal below is a DENY too. Its words name the operation only (DSOR-AUT-02a,
+        //   DSOR-AUT-02b, DSOR-CTL-07; step 27's README, decisions D6, D9, D13, and D15).
+        const book = (registry.controls.get(tenant) ?? []).filter(
+          (control) => control.operation === contract.id,
+        );
+        let outcomes: ControlOutcome[] = [];
+        let answer: ControlAnswer = "ALLOW";
+        if (book.length > 0) {
+          const sheet = await freshSheet(rates, tenant, registry.moneyPolicies.get(tenant));
+          outcomes = evaluateControls(book, contract.id, factsOf(state), sheet);
+          controlsOfRecord = outcomes;
+          answer = mostRestrictive(outcomes.map((outcome) => outcome.outcome));
+          if (answer === "DENY") {
+            const why = `${JSON.stringify(contract.id)} is refused by a control of ${tenant}`;
+            throw new Refusal("POLICY_DENIED", why, "public");
+          }
+        }
+        await checkLimits({
           operation: contract.id,
           tenant,
           slip: found?.slip.id,
@@ -351,8 +410,11 @@ export async function call(
           unconvertible: (cause) => {
             unconvertibleOfRecord = cause;
           },
-        }),
-      );
+        });
+        // NEW IN STEP 27: a control that asks for an approval stops the call at PENDING_APPROVAL,
+        //   with its booking (step 27's README, decisions D9 and D10).
+        return answer === "REQUIRE_APPROVAL" ? requirementsOf(book, outcomes) : undefined;
+      });
     };
 
     // A dry run stops here, after line ⑩. It skips line ⑦'s claim and line ⑧'s
@@ -363,8 +425,9 @@ export async function call(
     // After lines ⑨ and ⑩, which are DSoR's own and write nothing. The code still
     //   never runs (step 24's README, decision 8).
     if (mode === "validate_only") {
+      let requires: Requirement[] | undefined;
       try {
-        await decideBeforeWork(
+        requires = await decideBeforeWork(
           registry.invoices,
           registry.claims.reservations,
           registry.delegations,
@@ -378,7 +441,9 @@ export async function call(
         throw maskRefusal(thrown, clearanceOf(caller));
       }
       allowed = true;
-      return { outcome: "VALIDATED", decision: "ALLOW", correlation };
+      // NEW IN STEP 27: with the decision the real call would get (step 27's README, decision D12).
+      const decision = requires === undefined ? "ALLOW" : "REQUIRE_APPROVAL";
+      return { outcome: "VALIDATED", decision, correlation };
     }
 
     // ⑨ Read bound state at the required freshness; evaluate preconditions. A query's code
@@ -518,7 +583,7 @@ export async function call(
                     //   So the tear-up cancels a prepared draft, never leaves it READY (step 25c's
                     //   README, decision D12).
                     await holdSlip(caller, contract, under?.delegation, slips, tenant);
-                    await decideBeforeWork(
+                    const requires = await decideBeforeWork(
                       invoices,
                       reservations,
                       slips,
@@ -526,7 +591,8 @@ export async function call(
                       rates,
                       reserveFor,
                     );
-                    return undefined;
+                    // NEW IN STEP 27: a control's approval stops the proposal at PENDING_APPROVAL.
+                    return requires === undefined ? undefined : { requires };
                   } catch (thrown) {
                     if (isOutcome(thrown)) return thrown;
                     throw thrown;
@@ -579,6 +645,21 @@ export async function call(
         //   answer names the proposal, the request's fingerprint, and the contract's semantics, as
         //   result-envelope.schema.json asks of READY (DSOR-OPR-05; step 23's README, decisions 1,
         //   8, and 9).
+        // NEW IN STEP 27: a call that a control stopped waits for its approval, in every mode, and
+        //   the code never ran. The answer names what it requires and when it expires, as
+        //   result-envelope.schema.json asks of PENDING_APPROVAL (step 27's README, decision D10).
+        if ("pending" in claimed) {
+          allowed = true;
+          return {
+            outcome: "PENDING_APPROVAL",
+            proposal: claimed.proposal,
+            payload_hash: hash,
+            requires: claimed.pending.requires,
+            semantics: semanticsOf(contract),
+            expires_at: claimed.pending.expires_at,
+            correlation,
+          };
+        }
         if ("ready" in claimed) {
           allowed = true;
           return {
@@ -698,6 +779,7 @@ export async function call(
           modeOfRecord,
           conversionOfRecord,
           unconvertibleOfRecord,
+          controlsOfRecord,
         ),
       ),
     );

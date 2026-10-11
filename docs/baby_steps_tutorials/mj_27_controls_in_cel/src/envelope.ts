@@ -109,14 +109,39 @@ export type Prepared = {
   correlation: Correlation;
 };
 
-// A dry run that every check allowed. A dry run that a check refuses gets the error
-// envelope the real call would get, so this answer always says ALLOW (step 23's README, decisions 3
-// and 9).
+// NEW IN STEP 27: what a waiting payment requires: one line for each control that asked for an
+// approval, with the role and the number of approvers it needs (step 27's README, decision D10).
+/** One approval a waiting command requires, and the control that asks for it. */
+export type Requirement = { approval: { role: string; quorum: number }; control: string };
+
+// NEW IN STEP 27: a command that a control asks an approval for. Its proposal waits
+// PENDING_APPROVAL with its booking, and no code ran. The answer names what it requires and when
+// it expires, as result-envelope.schema.json asks of PENDING_APPROVAL (step 27's README, decision
+// D10).
+/** A command call that waits for an approval. */
+export type Waiting = {
+  outcome: "PENDING_APPROVAL";
+  proposal: string;
+  payload_hash: string;
+  requires: Requirement[];
+  semantics: Semantics;
+  expires_at: string;
+  correlation: Correlation;
+};
+
+// A dry run that no check refused. A dry run that a check refuses gets the error
+// envelope the real call would get. Since step 27 it says the decision the real call would get:
+// ALLOW, or REQUIRE_APPROVAL when a control asks for one (step 23's README, decisions 3 and 9;
+// step 27's README, decision D12).
 /** A validate_only call's answer. */
-export type Validated = { outcome: "VALIDATED"; decision: "ALLOW"; correlation: Correlation };
+export type Validated = {
+  outcome: "VALIDATED";
+  decision: "ALLOW" | "REQUIRE_APPROVAL";
+  correlation: Correlation;
+};
 
 /** Everything call can return. */
-export type Answer = Success | CommandSuccess | Prepared | Validated | ErrorEnvelope;
+export type Answer = Success | CommandSuccess | Prepared | Waiting | Validated | ErrorEnvelope;
 
 // The §28 table, typed out from the prose: every code, and the retry class the table
 // gives it. The guard cannot watch prose, so a test types the table out again (step 04's

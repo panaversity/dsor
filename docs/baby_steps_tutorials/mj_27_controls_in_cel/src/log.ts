@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { BrakeBy } from "./brakes.ts";
 import type { Freshness, FreshnessMode } from "./freshness.ts";
 import type { Label } from "./labels.ts";
+import type { ControlOutcome } from "./controls.ts";
 import type { Conversion, Unconvertible } from "./limits.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
@@ -67,6 +68,10 @@ export type Decision = {
     // README, decision 7).
     subject_authority: { source: "role_source"; as_of: string };
   };
+  // NEW IN STEP 27: each control line ⑩ evaluated, in the audit record's own field: its id, version,
+  // outcome, the policy it came from, and the error when it could not be evaluated (DSOR-EXE-02;
+  // step 27's README, decision D14).
+  controls?: ControlOutcome[];
 };
 
 // And where DSoR learned what the signer holds, and as of when: her
@@ -349,6 +354,8 @@ export function decisionOf(
   conversion?: Conversion,
   // And which currency had no usable rate, and why, when none was.
   unconvertible?: Unconvertible,
+  // NEW IN STEP 27: and each control line ⑩ evaluated, when one governs the operation.
+  controls?: ControlOutcome[],
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -385,8 +392,13 @@ export function decisionOf(
       ? {}
       : { operation: `${contract.id}@${String(contract["version"])}` }),
     authorization: allowed ? "ALLOW" : "DENY",
-    // What the caller heard: "ok", or the code, and its message as the reason.
-    result: refused ? answer.code : "ok",
+    // What the caller heard: "ok", or the code, and its message as the reason. NEW IN STEP 27: or
+    // PENDING_APPROVAL, for a call that waits for an approval (step 27's README, decision D14).
+    result: refused
+      ? answer.code
+      : "outcome" in answer && answer.outcome === "PENDING_APPROVAL"
+        ? "PENDING_APPROVAL"
+        : "ok",
     ...(refused ? { reason: answer.message } : {}),
     correlation: answer.correlation,
     ...(tenant === undefined ? {} : { tenant }),
@@ -418,5 +430,6 @@ export function decisionOf(
           ...(read.freshness === undefined ? {} : { connector: read.freshness.connector }),
         }),
     ...(Object.keys(ours).length === 0 ? {} : { extensions: { [OURS]: ours } }),
+    ...(controls === undefined ? {} : { controls: structuredClone(controls) }),
   };
 }

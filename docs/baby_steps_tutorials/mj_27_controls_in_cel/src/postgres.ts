@@ -37,6 +37,7 @@ import {
   proposalUri,
   transitionFrom,
   type MoveBy,
+  type Pending,
   type Proposal,
   type ProposalDraft,
   type ProposalMode,
@@ -967,6 +968,18 @@ export function createDbClaims(pool: pg.Pool): ClaimStore {
           );
           return { refused: opened.refused, proposal: opened.proposal, denied: true as const };
         }
+        // NEW IN STEP 27: a proposal that a control stopped waits for its approval, in every mode,
+        // and the work never runs. The claim keeps what it waits for, so a replay gives the same
+        // answer (step 27's README, decision D10).
+        if (opened?.pending !== undefined) {
+          const pending = keptText(opened.pending);
+          await keepAnswer(
+            client,
+            ids,
+            `{"pending":${pending},"proposal":${keptText(opened.proposal)}}`,
+          );
+          return { pending: opened.pending, proposal: opened.proposal };
+        }
         // In propose_only mode the proposal waits READY, and the work never runs.
         // The claim keeps that as its answer, so a replay names the same waiting proposal (step
         // 23's README, decision 12).
@@ -1301,6 +1314,7 @@ async function replay(
     value?: unknown;
     refused?: unknown;
     ready?: unknown;
+    pending?: unknown;
     proposal?: unknown;
     denied?: unknown;
   } | null;
@@ -1328,6 +1342,25 @@ async function replay(
       throw new Error("a claim holds a waiting proposal that is not one");
     }
     return { ready: true, ...named, replay_of: found.request_id };
+  }
+  // NEW IN STEP 27: a proposal that waits for an approval, in either mode: what it requires, and
+  // when it expires, as the first call kept them. Anything else gives no answer.
+  if ("pending" in kept) {
+    const pending = kept.pending as { requires?: unknown; expires_at?: unknown } | null;
+    if (
+      typeof pending !== "object" ||
+      pending === null ||
+      !Array.isArray(pending.requires) ||
+      typeof pending.expires_at !== "string" ||
+      kept.proposal === undefined
+    ) {
+      throw new Error("a claim holds a waiting proposal that is not one");
+    }
+    const waits: Pending = {
+      requires: pending.requires as Pending["requires"],
+      expires_at: pending.expires_at,
+    };
+    return { pending: waits, ...named, replay_of: found.request_id };
   }
   if ("value" in kept) return { value: kept.value, ...named, replay_of: found.request_id };
   // A refusal that lines ⑨ and ⑩ gave stays a denial in its replay's record.

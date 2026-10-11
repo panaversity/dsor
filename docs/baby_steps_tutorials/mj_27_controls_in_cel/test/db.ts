@@ -14,6 +14,7 @@ import {
   requireEnv,
 } from "../src/postgres.ts";
 import { readRoleSettings } from "../src/authority.ts";
+import { NO_CONTROLS, type ControlsSource } from "../src/controls.ts";
 import { readLifetimes, type LifetimesSource } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
@@ -50,6 +51,10 @@ export function dbRegistry(
   // And each company's READY lifetime, the shipped file unless the test gives
   // another, such as one second, to see an expiry (step 25c's README, decision D2).
   lifetimes: LifetimesSource = readLifetimes(),
+  // NEW IN STEP 27: and the controls: none, unless the test gives them, so the earlier steps'
+  // database tests keep their idea. Step 27's own give the shipped file (step 27's README, decision
+  // D16).
+  controls: ControlsSource = NO_CONTROLS,
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
@@ -73,6 +78,9 @@ export function dbRegistry(
     // And the brakes, in dsor.brakes (step 25b's README, decision D5).
     createDbBrakes(pool),
     lifetimes,
+    // The shipped money policies.
+    undefined,
+    controls,
   );
 }
 

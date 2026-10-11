@@ -21,7 +21,6 @@ import { checkMoneyPolicies, readMoneyPolicies, type PoliciesSource } from "../s
 import { logins } from "../src/principals.ts";
 import { memoryProposals } from "../src/proposals.ts";
 import { memoryRates } from "../src/rates.ts";
-import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
 import { memorySlips } from "../src/slips.ts";
@@ -39,6 +38,7 @@ import {
   shippedRoles,
   storyDirectories,
   SUPERVISOR,
+  withoutControls,
 } from "./helpers.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -104,7 +104,7 @@ function world({ policies = readMoneyPolicies(), limits = BOTH_LIMITS }: Setting
     { ...DEL_102, constraints: IN_EUR },
   ]);
   const brakes = memoryBrakes();
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     handlersFor(),
     shippedRoles,

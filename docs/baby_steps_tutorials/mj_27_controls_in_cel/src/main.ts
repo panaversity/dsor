@@ -68,6 +68,10 @@ import { memoryProposals } from "./proposals.ts";
 import { memoryRates } from "./rates.ts";
 import { ownWorkFor } from "./revocation.ts";
 import { buildRegistry, readContracts, type Registry } from "./registry.ts";
+// NEW IN STEP 27: the stories of the earlier steps keep their idea, with no rule of the company in
+// their way: each of their worlds gives no controls. Step 27's own story gives the shipped file
+// (step 27's README, decision D16).
+import { NO_CONTROLS } from "./controls.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { memorySlips } from "./slips.ts";
@@ -139,6 +143,9 @@ try {
     // And the brakes, in dsor.brakes, which line ④ reads (step 25b's README,
     // decision D5).
     createDbBrakes(pool),
+    undefined,
+    undefined,
+    NO_CONTROLS,
   );
   // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).
@@ -478,6 +485,9 @@ const restarted = buildRegistry(
   ownWorkFor(),
   // And the same brakes, in the database.
   createDbBrakes(pool),
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const agentAfter = await call(restarted, log, AGENT, "invoice.get", INV_1008);
 const herOwn = await call(
@@ -534,6 +544,13 @@ const inMemory = buildRegistry(
     ["org_456", tuesday456],
     ["org_789", directory789],
   ]),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const memoryLog = createLog();
 // Tuesday, 02:00: the directory says she is suspended. Line ③ suspends both her slips, with a
@@ -573,6 +590,13 @@ const accounts = buildRegistry(
   memoryPayments(notePayments),
   memorySlips(copies.filter((slip) => slip !== undefined)),
   directories,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const noteLog = createLog();
 /** INV-1008 as the agent reads it in the ledger: its version and its vendor. */
@@ -627,6 +651,11 @@ const dayLimits = buildRegistry(
   directories,
   readRoleSettings(),
   memoryClaims(limitInvoices, limitPayments, undefined, undefined, limitSlips),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const dayLog = createLog();
 const DRAFT_IN_MEMORY = { invoice: "dsor://org_456/invoice/INV-1008", expected_version: 1 };
@@ -674,6 +703,10 @@ const tearWorld = buildRegistry(
   readRoleSettings(),
   memoryClaims(tearInvoices, tearPayments, tearProposals, tearReservations, tearSlips),
   ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const tearLog = createLog();
 const DEL_100_URI = "dsor://org_456/delegation/del_100";
@@ -754,6 +787,9 @@ const brakeWorld = buildRegistry(
   ),
   ownWorkFor(),
   brakes,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const brakeLog = createLog();
 const brakeCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -853,6 +889,10 @@ const expiryWorld = buildRegistry(
   readRoleSettings(),
   memoryClaims(expiryInvoices, expiryPayments, expiryProposals, expiryReservations, expirySlips),
   ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const expiryLog = createLog();
 const expiryCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -941,6 +981,10 @@ const moneyWorld = buildRegistry(
     moneyRates,
   ),
   ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  NO_CONTROLS,
 );
 const moneyLog = createLog();
 const moneyCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>

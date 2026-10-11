@@ -9,7 +9,7 @@ import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
-import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
+import { type Handler, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { NO_SLIPS } from "../src/slips.ts";
 import {
@@ -39,6 +39,7 @@ import {
   type Caller,
   A_PROPOSAL,
   COMMITTED,
+  withoutControls,
 } from "./helpers.ts";
 
 const PAY_901 = "dsor://org_456/payment/PAY-901";
@@ -501,7 +502,7 @@ describe("the review: what a broken step could have done with every test green",
       },
     };
     const rows: Payment[] = [];
-    const on = buildRegistry(
+    const on = withoutControls(
       shipped,
       handlers,
       shippedRoles,
@@ -563,7 +564,7 @@ describe("the review: what a broken step could have done with every test green",
   ])(
     "step 17's outcome 1: with no store of payments, %s fails with INTERNAL_ERROR",
     async (name, input) => {
-      const noPayments = buildRegistry(
+      const noPayments = withoutControls(
         shipped,
         handlers,
         shippedRoles,

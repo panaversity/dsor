@@ -157,6 +157,33 @@ export function shippedWith(changed: Record<string, unknown>): ContractSource[] 
   );
 }
 
+// NEW IN STEP 27: a world of an earlier step keeps its idea, with no rule of the company in its way,
+// and says so in one word: withoutControls in place of buildRegistry. Every setting it is given
+// passes on as it is, and the controls are none (step 27's README, decision D16).
+/** buildRegistry with these settings, and no controls. */
+export function withoutControls(...given: Parameters<typeof buildRegistry>): Registry {
+  const [sources, code, roles, inputs, labels, invoices, payments, slips, directories] = given;
+  const [, , , , , , , , , roleSettings, claims, own, brakes, lifetimes, policies] = given;
+  return buildRegistry(
+    sources,
+    code,
+    roles,
+    inputs,
+    labels,
+    invoices,
+    payments,
+    slips,
+    directories,
+    roleSettings,
+    claims,
+    own,
+    brakes,
+    lifetimes,
+    policies,
+    NO_CONTROLS,
+  );
+}
+
 // NEW IN STEP 27: a registry of only some contracts has no payment.create for the shipped control
 // to govern, and start-up refuses a control on an operation that no contract has. So a test of
 // contracts alone gives no controls (step 27's README, decisions D16 and D18).
@@ -166,25 +193,7 @@ export function contractsOnly(
   code: Record<string, Handler>,
   inputs?: Parameters<typeof buildRegistry>[3],
 ): Registry {
-  const none = undefined;
-  return buildRegistry(
-    sources,
-    code,
-    shippedRoles,
-    inputs,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    none,
-    NO_CONTROLS,
-  );
+  return withoutControls(sources, code, shippedRoles, inputs);
 }
 
 /** The message a refusal carried, or "" when nothing was refused. */
@@ -403,7 +412,7 @@ export function registryRunning(
   store: InvoiceStore = memoryInvoices(),
 ): Registry {
   const testRun = { ...contract("invoice.get"), id: "test.run", output: { schema: output } };
-  return buildRegistry(
+  return withoutControls(
     [...shipped, source(testRun, "test.run.json")],
     { ...handlers, "test.run": handler },
     // test.run needs invoice:read, as invoice.get does. The agent holds it.
@@ -527,7 +536,7 @@ export const handlers: Record<string, Handler> = handlersFor();
  * The shipped operations, their code, and the role table, as start-up builds them, reading
  * the invoices in memory, so the unit tests need no database (step 09's README, decision 12).
  */
-export const registry: Registry = buildRegistry(
+export const registry: Registry = withoutControls(
   shipped,
   handlers,
   shippedRoles,
@@ -557,7 +566,7 @@ export function paymentRegistry(
   // And the directories, unless the test gives others.
   directories: Directories = storyDirectories(),
 ): Registry {
-  return buildRegistry(
+  return withoutControls(
     sources,
     code,
     shippedRoles,
@@ -583,7 +592,7 @@ export function proposalRegistry(
   const payments = memoryPayments(rows);
   // The claim reads the slip again, so it gets the slips that line ③ reads (step 25c's README, decision D12).
   const slips = testSlips();
-  return buildRegistry(
+  return withoutControls(
     shipped,
     code,
     shippedRoles,
@@ -606,7 +615,7 @@ export function slipRegistry(
   // The story's directories, unless the test gives others.
   directories: Directories = storyDirectories(),
 ): Registry {
-  return buildRegistry(
+  return withoutControls(
     shipped,
     handlers,
     roles,

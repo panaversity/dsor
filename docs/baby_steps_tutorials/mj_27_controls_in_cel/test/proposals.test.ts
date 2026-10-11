@@ -390,7 +390,7 @@ describe("a command's proposal, through the checklist", () => {
       records.map(({ result, reason, identity }) => [result, reason, identity.subject]),
     ).toStrictEqual([
       ["PROPOSED", "payment.create called", "user_123"],
-      ["READY", "no control asks for an approval: controls are not built yet", "dsor"],
+      ["READY", "no control asks for an approval", "dsor"],
       ["EXECUTING", "execute mode: the work starts", "dsor"],
       ["COMMITTED", "the work ended", "dsor"],
     ]);

@@ -17,7 +17,6 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import type { Principal } from "../src/principals.ts";
 import { call } from "../src/pipeline.ts";
 import { memoryProposals } from "../src/proposals.ts";
-import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
 import { memorySlips } from "../src/slips.ts";
@@ -40,6 +39,7 @@ import {
   USER_700,
   withPlanted,
   type StorySlip,
+  withoutControls,
 } from "./helpers.ts";
 
 const AGENT_URI = "dsor://org_456/agent/accounts-payable-fte";
@@ -64,7 +64,7 @@ function story(
   const proposals = memoryProposals();
   const reservations = memoryReservations();
   const kept = memorySlips(slips);
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     handlersFor(),
     shippedRoles,

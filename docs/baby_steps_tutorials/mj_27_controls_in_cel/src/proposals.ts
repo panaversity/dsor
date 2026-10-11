@@ -8,7 +8,7 @@
 // (memoryProposals below).
 import { randomUUID } from "node:crypto";
 import { millisecondsOf } from "./authority.ts";
-import type { Correlation, Refusal } from "./envelope.ts";
+import type { Correlation, Refusal, Requirement } from "./envelope.ts";
 import { transitionOf, type Authority, type Mover, type ProposalTransition } from "./log.ts";
 import type { Principal } from "./principals.ts";
 
@@ -448,10 +448,15 @@ export type Opening = {
   lifetime: string;
 };
 
+// NEW IN STEP 27: what a proposal that waits for an approval answers: what it requires, and when it
+// expires, its own expires_at (step 27's README, decision D10).
+/** A proposal waiting at PENDING_APPROVAL: the approvals it requires, and when it expires. */
+export type Pending = { requires: Requirement[]; expires_at: string };
+
 // What opening a proposal gave: its URI, and the refusal that ended it DENIED,
-// when lines ⑨ and ⑩ refused it (step 24's README, decision 6).
-/** What line ⑧ opened: the proposal's URI, and the refusal that ended it DENIED, if one did. */
-export type Opened = { proposal: string; refused?: Refusal };
+// when lines ⑨ and ⑩ refused it (step 24's README, decision 6). Since step 27, or what it waits for.
+/** What line ⑧ opened: the proposal's URI, and the refusal that ended it DENIED, or what it waits for. */
+export type Opened = { proposal: string; refused?: Refusal; pending?: Pending };
 
 /**
  * Line ⑧: makes the proposal, PROPOSED. Then `decide` runs lines ⑨ and ⑩. When it answers with a
@@ -465,7 +470,9 @@ export type Opened = { proposal: string; refused?: Refusal };
 export async function openProposal(
   store: ProposalStore,
   opening: Opening,
-  decide: (proposal: string) => Promise<Refusal | undefined>,
+  // NEW IN STEP 27: and the approvals a control asks for, which stop the proposal at
+  // PENDING_APPROVAL (step 27's README, decision D10).
+  decide: (proposal: string) => Promise<Refusal | { requires: Requirement[] } | undefined>,
 ): Promise<Opened> {
   const { tenant, draft, correlation } = opening;
   const id = `prop_${randomUUID()}`;
@@ -478,18 +485,32 @@ export async function openProposal(
     { mover: callerMover(draft.requester), cause: `${operation} called`, correlation },
     opening.lifetime,
   );
-  const refused = await decide(proposalUri(tenant, id));
-  if (refused !== undefined) {
+  const decided = await decide(proposalUri(tenant, id));
+  if (decided !== undefined && !("requires" in decided)) {
     await moveOrFail(store, tenant, id, "PROPOSED", "DENIED", {
       mover: dsor,
-      cause: `the checks refused it: ${refused.code}`,
+      cause: `the checks refused it: ${decided.code}`,
       correlation,
     });
-    return { proposal: proposalUri(tenant, id), refused };
+    return { proposal: proposalUri(tenant, id), refused: decided };
+  }
+  // NEW IN STEP 27: a control asks for an approval, so the proposal waits for it, in every mode, and
+  // the work does not run. Nothing approves until step 29 (step 27's README, decision D10).
+  if (decided !== undefined) {
+    const controls = decided.requires.map((r) => r.control).join(", ");
+    await moveOrFail(store, tenant, id, "PROPOSED", "PENDING_APPROVAL", {
+      mover: dsor,
+      cause: `the control ${controls} asks for an approval`,
+      correlation,
+    });
+    const waiting = await store.get(tenant, id);
+    if (waiting === undefined) throw new Error("a waiting proposal is gone from its store");
+    const pending = { requires: decided.requires, expires_at: waiting.expires_at };
+    return { proposal: proposalUri(tenant, id), pending };
   }
   await moveOrFail(store, tenant, id, "PROPOSED", "READY", {
     mover: dsor,
-    cause: "no control asks for an approval: controls are not built yet",
+    cause: "no control asks for an approval",
     correlation,
   });
   // A proposal made in propose_only mode waits here. Nothing moves it on until

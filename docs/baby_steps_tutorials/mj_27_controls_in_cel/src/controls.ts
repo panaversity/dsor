@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { checkCondition, evaluateCondition, type Facts } from "./cel.ts";
+import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
 import type { MoneyPolicies } from "./policies.ts";
@@ -112,9 +113,6 @@ export type ControlOutcome = {
   // Why the condition could not be evaluated, when it could not (DSOR-CTL-07).
   evaluation_error?: string;
 };
-
-/** What a payment that waits for an approval requires: one line for each control that asked. */
-export type Requirement = { approval: { role: string; quorum: number }; control: string };
 
 /** Each of these controls that governs the operation, evaluated for one call (decision D15: any caller). */
 export function evaluateControls(

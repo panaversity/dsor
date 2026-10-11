@@ -13,6 +13,7 @@ import { memoryReservations, type ReservationStore } from "./limits.ts";
 import {
   memoryProposals,
   type Opened,
+  type Pending,
   type ProposalMode,
   type ProposalStore,
 } from "./proposals.ts";
@@ -53,8 +54,9 @@ export type Ended = { value: unknown } | { refused: Refusal };
 
 /** How the first call ended: its work's end, or a proposal that waits. */
 // A proposal that waits, in propose_only mode, where no code runs (step 23's
-// README, decision 12).
-export type Outcome = Ended | { ready: true };
+// README, decision 12). NEW IN STEP 27: or one that waits for an approval, in any mode, where no
+// code runs either (step 27's README, decision D10).
+export type Outcome = Ended | { ready: true } | { pending: Pending };
 
 // And the URI of the call's proposal, which the claim keeps beside the outcome, so
 // a replay names the proposal the first call made (DSOR-IDM-04; step 22's README, decision 5).
@@ -271,6 +273,11 @@ export function memoryClaims(
         if (opened?.refused !== undefined) {
           return { refused: opened.refused, proposal, denied: true };
         }
+        // NEW IN STEP 27: a proposal that a control stopped waits for its approval, in every mode,
+        // and the work never runs.
+        if (opened?.pending !== undefined) {
+          return { pending: structuredClone(opened.pending), proposal };
+        }
         // In propose_only mode the proposal waits READY, and the work never runs.
         if (mode === "propose_only") {
           if (proposal === undefined) throw new Error("a propose_only claim made no proposal");
@@ -320,6 +327,8 @@ function fresh(outcome: Kept): Kept {
   const proposal = outcome.proposal === undefined ? {} : { proposal: outcome.proposal };
   // A proposal that waits has no value to copy.
   if ("ready" in outcome) return { ready: true, ...proposal };
+  // NEW IN STEP 27: and one that waits for an approval, a copy of what it waits for.
+  if ("pending" in outcome) return { pending: structuredClone(outcome.pending), ...proposal };
   // And a denied refusal stays denied.
   const denied = outcome.denied === true ? { denied: true as const } : {};
   return "value" in outcome

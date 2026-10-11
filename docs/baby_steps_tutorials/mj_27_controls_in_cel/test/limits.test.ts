@@ -14,7 +14,7 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import type { Principal } from "../src/principals.ts";
 import { call } from "../src/pipeline.ts";
 import { memoryProposals } from "../src/proposals.ts";
-import { buildRegistry, type Handler } from "../src/registry.ts";
+import { type Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { memorySlips } from "../src/slips.ts";
 import {
@@ -37,6 +37,7 @@ import {
   THE_AGENT,
   withPlanted,
   type StorySlip,
+  withoutControls,
 } from "./helpers.ts";
 
 // The story's draft: INV-1008's open amount, 31,400.00 USD, decided on version 1.
@@ -72,7 +73,7 @@ function story(
   const reservations = memoryReservations(options.now);
   // The claim reads the slip again, so it gets the slips that line ③ reads (step 25c's README, decision D12).
   const slips = memorySlips(options.slips ?? [LIMITED, DEL_101, DEL_102, INTAKE_SLIP]);
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     options.code ?? handlersFor(),
     shippedRoles,
@@ -342,14 +343,14 @@ describe("C8: line ⑨ reads what a command spends, itself", () => {
 
   it("Step 24: start-up refuses a bind that is not input.<field>, and a spends of no bound alias", () => {
     const celBind = { ...contract("payment.create"), bind: { invoice: "input.invoice.id" } };
-    expect(() => buildRegistry(shippedWith(celBind), handlersFor(), shippedRoles)).toThrow(
+    expect(() => withoutControls(shippedWith(celBind), handlersFor(), shippedRoles)).toThrow(
       'payment.create: the bind "invoice" is not input.<field>',
     );
     const unbound = {
       ...contract("payment.create"),
       extensions: { "org.panaversity.steps": { spends: "state.vendor.amount" } },
     };
-    expect(() => buildRegistry(shippedWith(unbound), handlersFor(), shippedRoles)).toThrow(
+    expect(() => withoutControls(shippedWith(unbound), handlersFor(), shippedRoles)).toThrow(
       "payment.create: what the command spends must be state.<alias>.open_amount or .amount, of an alias its bind names",
     );
   });
@@ -562,7 +563,7 @@ describe("C13 to C15, from the review, and the tests it asked for", () => {
       bind: { invoice: "input.invoice" },
       extensions: { "org.panaversity.steps": { spends: "state.invoice.open_amount" } },
     };
-    expect(() => buildRegistry(shippedWith(spending), handlersFor(), shippedRoles)).toThrow(
+    expect(() => withoutControls(shippedWith(spending), handlersFor(), shippedRoles)).toThrow(
       "invoice.get: only a command spends",
     );
   });

@@ -22,7 +22,6 @@ import {
   type ProposalDraft,
   type ProposalStore,
 } from "../src/proposals.ts";
-import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
 import { memorySlips, type MemorySlips, type SlipStore } from "../src/slips.ts";
@@ -49,6 +48,7 @@ import {
   USER_700,
   withPlanted,
   type StorySlip,
+  withoutControls,
 } from "./helpers.ts";
 
 const DEL_100_URI = "dsor://org_456/delegation/del_100";
@@ -80,7 +80,7 @@ function story(
   const proposals = memoryProposals();
   const reservations = memoryReservations();
   const kept = memorySlips(slips);
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     handlersFor(),
     shippedRoles,
@@ -456,7 +456,7 @@ describe("start-up, and line ⑤'s people only", () => {
   it("Step 25: start-up refuses DSoR's own work that has no contract", () => {
     expect(
       refusal(() =>
-        buildRegistry(
+        withoutControls(
           withoutRevoke,
           {},
           shippedRoles,
@@ -478,7 +478,7 @@ describe("start-up, and line ⑤'s people only", () => {
     const both = { ...handlersFor(), "delegation.revoke": () => ({}) };
     expect(
       refusal(() =>
-        buildRegistry(
+        withoutControls(
           shipped,
           both,
           shippedRoles,
@@ -501,7 +501,7 @@ describe("start-up, and line ⑤'s people only", () => {
     const sources = [...withoutRevoke, source(asQuery, "delegation.revoke.json")];
     expect(
       refusal(() =>
-        buildRegistry(
+        withoutControls(
           sources,
           {},
           shippedRoles,
@@ -616,7 +616,7 @@ describe("from step 25's sweep", () => {
     const ledger = structuredClone(invoices);
     const store = memoryInvoices(ledger);
     const payments = memoryPayments([]);
-    const registry = buildRegistry(
+    const registry = withoutControls(
       shipped,
       handlersFor(),
       shippedRoles,

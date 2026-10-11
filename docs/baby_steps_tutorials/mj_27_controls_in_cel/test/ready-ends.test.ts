@@ -20,7 +20,6 @@ import { memoryPayments } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import { canMove, memoryProposals, STATES, type ProposalDraft } from "../src/proposals.ts";
-import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import type { RoleTableSource } from "../src/permissions.ts";
 import { ownWorkFor } from "../src/revocation.ts";
@@ -42,6 +41,7 @@ import {
   storyDirectories,
   SUPERVISOR,
   USER_700,
+  withoutControls,
 } from "./helpers.ts";
 
 // dsor-scheduler: a login of the specification's subject type "system", in both companies, whose
@@ -82,7 +82,7 @@ function world(lifetimes: LifetimesSource = readLifetimes(), changes: Changes = 
   const kept = memorySlips([{ ...DEL_100, permissions, constraints: limits }, DEL_101, DEL_102]);
   const slips = changes.slipsAs?.(kept) ?? kept;
   const brakes = memoryBrakes();
-  const registry = buildRegistry(
+  const registry = withoutControls(
     shipped,
     handlersFor(),
     changes.roles ?? shippedRoles,
