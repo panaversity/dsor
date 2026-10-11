@@ -43,18 +43,11 @@ beforeAll(async () => {
   useDatabase(overPool(application));
 });
 
-afterAll(async () => {
-  await application?.end();
-  await owner?.end();
-});
-
 // The database is kept between runs, and so is today's total: each test starts the day again, as
-// the owner, saying the company as the lock asks.
-beforeEach(async () => {
-  if (!haveAServer) {
-    return;
-  }
-
+// the owner, saying the company as the lock asks. And the file leaves the day as it found it empty,
+// because the other files of this tier pay too, in an order that changes: with 195,000.00 left
+// booked, step 20's payment of 2,500.00 was refused on two runs of three, measured.
+async function startTheDayAgain(): Promise<void> {
   const client = await owner.connect();
 
   try {
@@ -66,6 +59,21 @@ beforeEach(async () => {
   } finally {
     client.release();
   }
+}
+
+beforeEach(async () => {
+  if (haveAServer) {
+    await startTheDayAgain();
+  }
+});
+
+afterAll(async () => {
+  if (haveAServer) {
+    await startTheDayAgain();
+  }
+
+  await application?.end();
+  await owner?.end();
 });
 
 describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real pool", () => {
@@ -93,7 +101,28 @@ describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real
     expect(await usedToday("org_456", "del_100")).toBe("200000.00");
   });
 
-  it("DSOR-DEL-06a: fifty payments of 5,000.00 at once, through the door: never past the limit", async () => {
+  it("DSOR-DEL-06a: with room for one more payment, fifty at once through the door make at most one", async () => {
+    // Decision 141: without this, the test could not fail. Fifty payments of 5,000.00 cross
+    // 200,000.00 only after forty are made, and the company's log lets two or three through, so a
+    // limit a thousand times higher passed it too, a review measured. With 195,000.00 booked first,
+    // the fifty race for room for exactly one: every one of them books at §21.10, before the log,
+    // so the booking is where they race, and any two made would pass the limit.
+    const first = await propose({
+      tenant: "org_456",
+      operation: "payment.create@1",
+      mode: "execute",
+      payload: "{}",
+      payloadHash: "sha256:0",
+      requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
+      idempotencyKey: `booked-first-${randomUUID()}`,
+      actor: "user_123",
+      cause: "payment.create@1 invoked",
+    });
+
+    expect(
+      await reserve("org_456", first, "del_100", money("195000.00", "USD"), DAILY),
+    ).toStrictEqual({ kind: "reserved" });
+
     const answers = await Promise.all(
       Array.from({ length: 50 }, () =>
         callOperation(
@@ -109,12 +138,7 @@ describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real
     );
     const made = answers.filter((a) => a.kind === "result").length;
 
-    // Most are refused because they raced for one place in the company's log, step 09's log, which
-    // refuses a lost race: two or three are made, measured (decision 140). What this proves is the
-    // limit's side: none made past the day, and every refused request's amount given back, so the
-    // day's total is exactly what was made.
-    expect(made).toBeGreaterThan(0);
-    expect(made).toBeLessThanOrEqual(40);
-    expect(await usedToday("org_456", "del_100")).toBe(`${made * 5000}.00`);
+    expect(made).toBeLessThanOrEqual(1);
+    expect(await usedToday("org_456", "del_100")).toBe(`${195000 + made * 5000}.00`);
   });
 });
