@@ -27,7 +27,7 @@ import {
 } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { aDatabase, forgetTheLog } from "./support/database.ts";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const SUPERVISOR = { loggedInAs: "user_123" };

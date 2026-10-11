@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { tenantClaimed, type Login } from "../src/login.ts";
 import { findPerson } from "../src/people.ts";
 import { tenantFor } from "../src/tenant.ts";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { theLog } from "../src/audit.ts";
 import { aDatabase } from "./support/database.ts";
 

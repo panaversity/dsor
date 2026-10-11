@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertPipeline, runPipeline, applies, type Context, type Stage } from "../src/pipeline.ts";
 // The machinery lives in pipeline.ts; the actual list lives in operations.ts, because the stages
 // need the registry and the handlers and those belong to the operations.
-import { callOperation, makeDoor, PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
+import { PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import { theLog } from "../src/audit.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";

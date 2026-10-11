@@ -15,7 +15,8 @@ import { theLog, verifyChain, type AuditRecord } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { readNow } from "../src/freshness.ts";
 import type { Invoice } from "../src/invoice.ts";
-import { callOperation, makeDoor, PIPELINE, type Handler } from "../src/operations.ts";
+import { PIPELINE, type Handler } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import { useDatabase } from "../src/store.ts";
 import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 

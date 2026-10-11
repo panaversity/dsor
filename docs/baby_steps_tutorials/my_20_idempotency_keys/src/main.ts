@@ -1,5 +1,6 @@
 // Run with:  pnpm start
 // Node runs this TypeScript file directly. There is no build step in this tutorial.
+import { randomUUID } from "node:crypto";
 import { greet } from "./greet.ts";
 // STEP 06: the same invoice, asked for by two people, one line apart.
 import { callOperation } from "./operations.ts";
@@ -24,6 +25,14 @@ const AGENT: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const AGENT_FOR_789: Login = { loggedInAs: "accounts-payable-fte", tenant: "org_789" };
 const AGENT_UNSAID: Login = { loggedInAs: "accounts-payable-fte" };
 const CFO: Login = { loggedInAs: "cfo_100" };
+
+// NEW IN STEP 20: every command carries an idempotency key, a name for one logical request. A
+// careful client makes a new one for each new request; this demo makes them from this run's own
+// prefix, so that a second run is a second set of requests and not a replay of the first.
+const run = randomUUID().slice(0, 8);
+const keyFor = (what: string): { readonly idempotencyKey: string } => ({
+  idempotencyKey: `${run}-${what}`,
+});
 
 // STEP 14: what the door took out, if anything, on a line of its own under the answer.
 // Under it and not beside it, because a review measured the one-line version at 135 columns: on a
@@ -104,8 +113,12 @@ console.log();
 // it is. She asks to issue it and is refused. Then the agent issues the very same invoice and
 // it works. Nothing about the invoice changed between those lines -- only who asked.
 console.log(show(await callOperation(CFO, "invoice.get", { invoice: INV_1009 })));
-console.log(show(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 })));
-console.log(show(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 })));
+console.log(
+  show(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 }, keyFor("cfo-issues"))),
+);
+console.log(
+  show(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 }, keyFor("agent-issues"))),
+);
 console.log();
 
 // And with nobody logged in, nothing is even looked at.
@@ -130,12 +143,18 @@ for (const [what, run] of [
   // for word -- and the caller cannot tell whether INV-9999 exists.
   [
     "denied, real invoice",
-    async () => await callOperation(CFO, "invoice.issue", { invoice: INV_1008 }),
+    async () =>
+      await callOperation(CFO, "invoice.issue", { invoice: INV_1008 }, keyFor("cfo-real")),
   ],
   [
     "denied, no such invoice",
     async () =>
-      await callOperation(CFO, "invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" }),
+      await callOperation(
+        CFO,
+        "invoice.issue",
+        { invoice: "dsor://org_456/invoice/INV-9999" },
+        keyFor("cfo-none"),
+      ),
   ],
 ] as const) {
   console.log(`${what.padEnd(23)} ${show(await run())}`);
@@ -233,7 +252,7 @@ for (const [id, contract] of loadRegistry(contractsFromDisk())) {
       : (movedTo(example, "org_456", "org_789") as Record<string, unknown>);
 
   console.log(
-    `${id.padEnd(14)} ${theirs === undefined ? "(no example request in its contract)" : show(await callOperation(SUPERVISOR, id, theirs))}`,
+    `${id.padEnd(14)} ${theirs === undefined ? "(no example request in its contract)" : show(await callOperation(SUPERVISOR, id, theirs, keyFor(`theirs-${id}`)))}`,
   );
 }
 
@@ -287,19 +306,28 @@ console.log();
 console.log("And on every receipt:");
 console.log();
 
-const twice = await callOperation(AGENT, "payment.create", {
-  invoice: INV_1008,
-  amount: { value: "31400.00", currency: "USD" },
-});
+const twice = await callOperation(
+  AGENT,
+  "payment.create",
+  { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
+  keyFor("pay-1008-again"),
+);
 
 console.log(show(twice));
 
 if (twice.kind === "result") {
   const mistake = String(twice.envelope.data?.["uri"]);
 
-  console.log(show(await callOperation(AGENT, "payment.cancel", { payment: mistake })));
-  // And a second cancel is refused: payment.cancel changes only a draft.
-  console.log(show(await callOperation(AGENT, "payment.cancel", { payment: mistake })));
+  console.log(
+    show(await callOperation(AGENT, "payment.cancel", { payment: mistake }, keyFor("cancel"))),
+  );
+  // And a second cancel is refused: payment.cancel changes only a draft. NEW IN STEP 20: with a
+  // new key, because it is a new request; the same key would be given the first answer again.
+  console.log(
+    show(
+      await callOperation(AGENT, "payment.cancel", { payment: mistake }, keyFor("cancel-again")),
+    ),
+  );
 }
 
 console.log();
@@ -341,10 +369,12 @@ if (found.kind === "one") {
 console.log();
 console.log(
   show(
-    await callOperation(AGENT, "payment.create", {
-      invoice: INV_1009,
-      amount: { value: "60000.00", currency: "USD" },
-    }),
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1009, amount: { value: "60000.00", currency: "USD" } },
+      keyFor("over-the-limit"),
+    ),
   ),
 );
 console.log();
@@ -361,10 +391,12 @@ useDirectory(
 
 console.log(
   show(
-    await callOperation(AGENT, "payment.create", {
-      invoice: INV_1009,
-      amount: { value: "2500.00", currency: "USD" },
-    }),
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1009, amount: { value: "2500.00", currency: "USD" } },
+      keyFor("after-the-move"),
+    ),
   ),
 );
 
@@ -403,7 +435,9 @@ console.log();
 console.log("The company's directory is switched off:");
 console.log();
 useDirectory("org_456", aDirectory("org_456", { down: true }));
-console.log(show(await callOperation(AGENT, "payment.create", aSmallPayment)));
+console.log(
+  show(await callOperation(AGENT, "payment.create", aSmallPayment, keyFor("directory-off"))),
+);
 console.log();
 console.log("It answers again, with what it knew 25 hours ago:");
 console.log();
@@ -411,7 +445,9 @@ useDirectory(
   "org_456",
   aDirectory("org_456", { asOf: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() }),
 );
-console.log(show(await callOperation(AGENT, "payment.create", aSmallPayment)));
+console.log(
+  show(await callOperation(AGENT, "payment.create", aSmallPayment, keyFor("directory-stale"))),
+);
 useDirectory("org_456", undefined);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the

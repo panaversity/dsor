@@ -11,7 +11,7 @@
 
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import type { Login } from "../src/login.ts";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { aDatabase } from "./support/database.ts";

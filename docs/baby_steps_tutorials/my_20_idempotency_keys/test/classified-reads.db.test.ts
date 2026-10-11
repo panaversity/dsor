@@ -15,7 +15,7 @@ import { theHead, theLog, verifyChain } from "../src/audit.ts";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { storyStatements } from "./support/story.ts";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { useDatabase } from "../src/store.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;

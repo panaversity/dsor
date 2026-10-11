@@ -16,7 +16,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { migrationsIn } from "../src/migrations.ts";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };

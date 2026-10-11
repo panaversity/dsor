@@ -18,13 +18,8 @@ import type { Invoice } from "../src/invoice.ts";
 import { labelOfValue, leaveTheDoor } from "../src/boundary.ts";
 import { refusal, success, validateEnvelope } from "../src/envelopes.ts";
 import { readNow } from "../src/freshness.ts";
-import {
-  callOperation,
-  makeDoor,
-  PIPELINE,
-  type Handler,
-  type OperationAnswer,
-} from "../src/operations.ts";
+import { PIPELINE, type Handler, type OperationAnswer } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import { labelOf } from "../src/classification.ts";
 import { findPerson } from "../src/people.ts";
 import { aDatabase, resetTheStory } from "./support/database.ts";

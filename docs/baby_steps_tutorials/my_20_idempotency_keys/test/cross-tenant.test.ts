@@ -26,7 +26,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
+import { PIPELINE } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import { theLog } from "../src/audit.ts";
 import type { Context } from "../src/pipeline.ts";
 import { getInvoice } from "../src/invoice.ts";

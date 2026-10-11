@@ -21,7 +21,8 @@ import {
 } from "../src/audit.ts";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
+import { PIPELINE } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import { assertPipeline, type Context, type Stage } from "../src/pipeline.ts";
 import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 

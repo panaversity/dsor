@@ -14,13 +14,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { success, type ErrorEnvelope, type ResultEnvelope } from "../src/envelopes.ts";
-import {
-  callOperation,
-  makeDoor,
-  PIPELINE,
-  type Handler,
-  type OperationAnswer,
-} from "../src/operations.ts";
+import { PIPELINE, type Handler, type OperationAnswer } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import { readNow } from "../src/freshness.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { createPayment } from "../src/payment.ts";

@@ -22,7 +22,8 @@ import {
   verifyChain,
 } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
-import { callOperation, makeDoor, PIPELINE } from "../src/operations.ts";
+import { PIPELINE } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import type { Context } from "../src/pipeline.ts";
 import { aDatabase, forgetTheLog } from "./support/database.ts";
 

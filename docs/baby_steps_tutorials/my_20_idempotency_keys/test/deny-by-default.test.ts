@@ -5,7 +5,8 @@
 // accounts-payable system.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation, makeDoor, PIPELINE, type OperationAnswer } from "../src/operations.ts";
+import { PIPELINE, type OperationAnswer } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 import type { Context } from "../src/pipeline.ts";
 import { theLog } from "../src/audit.ts";
 import { aDatabase, forgetTheLog } from "./support/database.ts";

@@ -28,7 +28,8 @@ import { describe, expect, it } from "vitest";
 import { theLog, type AuditRecord } from "../../src/audit.ts";
 import type { ErrorEnvelope } from "../../src/envelopes.ts";
 import { addressesIn, movedTo } from "../../src/examples.ts";
-import { callOperation, type OperationAnswer } from "../../src/operations.ts";
+import type { OperationAnswer } from "../../src/operations.ts";
+import { callOperation } from "./door.ts";
 import {
   contractsFromDisk,
   exampleRequestOf,

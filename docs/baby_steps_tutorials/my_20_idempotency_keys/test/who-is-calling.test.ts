@@ -5,7 +5,7 @@
 
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { aDatabase } from "./support/database.ts";
 
 const INV_1009 = "dsor://org_456/invoice/INV-1009";

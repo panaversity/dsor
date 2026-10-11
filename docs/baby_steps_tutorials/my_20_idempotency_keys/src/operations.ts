@@ -1356,7 +1356,15 @@ export type Door = (
   login: Login | undefined,
   id: string,
   args: Readonly<Record<string, unknown>>,
+  // NEW IN STEP 20: what travels beside the arguments (decision 131).
+  request?: RequestOptions,
 ) => Promise<OperationAnswer>;
+
+/** NEW IN STEP 20: what a request carries beside its arguments. */
+export interface RequestOptions {
+  /** The caller's name for one logical request, new for each new one. A command needs it (DSOR-IDM-01a). */
+  readonly idempotencyKey?: unknown;
+}
 
 /**
  * Builds a door from a checklist.

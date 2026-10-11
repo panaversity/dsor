@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 
 const AGENT_FOR_456 = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };

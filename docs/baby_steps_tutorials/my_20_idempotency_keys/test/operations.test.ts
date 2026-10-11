@@ -4,13 +4,8 @@
 // registry, so an operation with no contract cannot be called at all.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  assertPaired,
-  callOperation,
-  handlerIds,
-  operationIds,
-  PAIRS_CHECKED,
-} from "../src/operations.ts";
+import { assertPaired, handlerIds, operationIds, PAIRS_CHECKED } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import {
   payloadHash,

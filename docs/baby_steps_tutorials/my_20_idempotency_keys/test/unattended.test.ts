@@ -18,7 +18,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { theLog, verifyChain, type AuditRecord } from "../src/audit.ts";
 import { aDirectory, useDirectory } from "../src/directory.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
-import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { type OperationAnswer } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };

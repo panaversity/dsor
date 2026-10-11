@@ -20,7 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resetProposalIds, resetRequestIds } from "../src/envelopes.ts";
-import { callOperation } from "../src/operations.ts";
+import { callOperation } from "./support/door.ts";
 import { aDatabase } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" } as const;
