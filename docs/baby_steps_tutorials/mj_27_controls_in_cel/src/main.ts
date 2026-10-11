@@ -1136,7 +1136,10 @@ const ruleDraft = (who: RequestEnvelope, id: string, key: string): Promise<Answe
     expected_version: 1,
   });
 const waitingFor1008 = await ruleDraft(AGENT, "INV-1008", "rule-INV-1008");
-console.log("  Tuesday 15:05, the agent drafts INV-1008, 31,400.00 USD:", waitHeard(waitingFor1008));
+console.log(
+  "  Tuesday 15:05, the agent drafts INV-1008, 31,400.00 USD:",
+  waitHeard(waitingFor1008),
+);
 for (const [id, amount] of [
   ["INV-2002", "9,000.00 EUR"],
   ["INV-2004", "14,000,000.00 PKR"],
@@ -1159,7 +1162,8 @@ for (const [what, answer] of [
 ] as const) {
   const record = await ruleRecordOf(answer);
   for (const control of record?.controls ?? []) {
-    const error = control.evaluation_error === undefined ? "" : `, error: ${control.evaluation_error}`;
+    const error =
+      control.evaluation_error === undefined ? "" : `, error: ${control.evaluation_error}`;
     console.log(
       `  ${what} record: ${record?.authorization} ${record?.result}, ${control.id} v${control.version} ${control.outcome}${error}`,
     );

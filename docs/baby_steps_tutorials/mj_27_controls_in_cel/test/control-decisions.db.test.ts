@@ -200,8 +200,14 @@ describe("C5: DENY wins, on the database", () => {
     condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
     effect: { deny: { reason: "Payments above 30,000 USD go through the bank's own desk." } },
     tests: [
-      { state: { invoice: { open_amount: { value: "30000.00", currency: "USD" } } }, expect: "ALLOW" },
-      { state: { invoice: { open_amount: { value: "30000.01", currency: "USD" } } }, expect: "DENY" },
+      {
+        state: { invoice: { open_amount: { value: "30000.00", currency: "USD" } } },
+        expect: "ALLOW",
+      },
+      {
+        state: { invoice: { open_amount: { value: "30000.01", currency: "USD" } } },
+        expect: "DENY",
+      },
     ],
   };
   const denying = withControls({
@@ -223,9 +229,7 @@ describe("C5: DENY wins, on the database", () => {
       ]),
     ).toStrictEqual([{ state: "DENIED" }]);
     expect(
-      await rowsOf(
-        "SELECT count(*)::int AS n FROM dsor.reservations WHERE delegation = 'del_190'",
-      ),
+      await rowsOf("SELECT count(*)::int AS n FROM dsor.reservations WHERE delegation = 'del_190'"),
     ).toStrictEqual([{ n: 0 }]);
     expect(await recordOf(answer.correlation.request_id)).toStrictEqual([
       {
@@ -264,7 +268,8 @@ describe("D11: the sweep, on the database", () => {
     const answer = await drafted(keyed(INTAKE), quick);
     expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
     const id = proposalOf(answer);
-    const usedBy190 = "SELECT used::text AS used FROM dsor.limit_counters WHERE delegation = 'del_190'";
+    const usedBy190 =
+      "SELECT used::text AS used FROM dsor.limit_counters WHERE delegation = 'del_190'";
     expect(await rowsOf(usedBy190)).toStrictEqual([{ used: "31400.00" }]);
     await pause(1200);
     const swept = await call(quick, log, keyed(SCHEDULER), "proposal.expire_due", {
