@@ -72,10 +72,12 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     }
 
     // STEP 17: an invoice's receipt or a payment's: an address and a status either way.
-    const row = r.data as { uri: string; status: string };
+    // NEW IN STEP 25: or a brake's, which says whether it is on instead.
+    const row = r.data as { uri: string; status?: string; suspended?: boolean };
+    const status = row.status ?? (row.suspended === true ? "brake on" : "brake off");
 
     // STEP 17: and whether its effect can be undone, which every receipt says now.
-    return `${who} ${r.outcome.padEnd(24)} ${row.uri}  ${row.status.padEnd(9)}  ${r.semantics}${withheld(r.redactions)}`;
+    return `${who} ${r.outcome.padEnd(24)} ${row.uri}  ${status.padEnd(9)}  ${r.semantics}${withheld(r.redactions)}`;
   }
 
   if (answer.kind === "page") {
@@ -706,6 +708,72 @@ if (firstOver !== undefined) {
 }
 
 console.log(`  the day has used ${await usedToday("org_456", "del_100")} USD of 200000.00`);
+
+// NEW IN STEP 25: the emergency brake (decision 142). At 3 a.m. the agent pays what it should not, and
+// a person stops it from DSoR's side: nothing here asks the agent to stop, and nothing in the agent
+// changes. A stopped agent can still read; it can change nothing until a person lifts the brake.
+console.log();
+console.log("3 a.m.: the agent is paying what it should not. user_123 pulls the brake on it:");
+console.log();
+
+const THE_AGENT = "dsor://org_456/agent/accounts-payable-fte";
+const ONE_MORE = { invoice: INV_1009, amount: { value: "100.00", currency: "USD" } };
+
+console.log(
+  show(
+    await callOperation(
+      SUPERVISOR,
+      "control.suspend",
+      { target: THE_AGENT, suspended: true, reason: "paying invoices it should not" },
+      keyFor("brake-on"),
+    ),
+  ),
+);
+console.log(show(await callOperation(AGENT, "payment.create", ONE_MORE, keyFor("braked-payment"))));
+console.log(show(await callOperation(AGENT, "invoice.get", { invoice: INV_1008 })));
+console.log();
+console.log("user_123 lifts it, and the agent's payment goes through:");
+console.log();
+console.log(
+  show(
+    await callOperation(
+      SUPERVISOR,
+      "control.suspend",
+      { target: THE_AGENT, suspended: false },
+      keyFor("brake-off"),
+    ),
+  ),
+);
+console.log(
+  show(await callOperation(AGENT, "payment.create", ONE_MORE, keyFor("released-payment"))),
+);
+console.log();
+console.log("Month-end: cfo_100 freezes every agent in org_456, and lifts the freeze after:");
+console.log();
+
+const THE_COMPANY = "dsor://org_456/tenant/org_456";
+
+console.log(
+  show(
+    await callOperation(
+      CFO,
+      "control.suspend",
+      { target: THE_COMPANY, suspended: true, reason: "month-end close" },
+      keyFor("freeze-on"),
+    ),
+  ),
+);
+console.log(show(await callOperation(AGENT, "payment.create", ONE_MORE, keyFor("frozen-payment"))));
+console.log(
+  show(
+    await callOperation(
+      CFO,
+      "control.suspend",
+      { target: THE_COMPANY, suspended: false },
+      keyFor("freeze-off"),
+    ),
+  ),
+);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

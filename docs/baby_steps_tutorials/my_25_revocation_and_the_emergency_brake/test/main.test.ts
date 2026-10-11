@@ -142,8 +142,9 @@ describe("the program a learner runs", () => {
     // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
     // STEP 24: 51, with del_100's day: six payments made and four refused.
     // NEW IN STEP 25: 53, with control.suspend and delegation.revoke refused another company's
-    // address.
-    expect(rows).toHaveLength(53);
+    // address; and 61, with the brake's eight: pulled, the agent refused, its read, lifted, its
+    // payment, the freeze, the agent refused again, the freeze lifted.
+    expect(rows).toHaveLength(61);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -151,8 +152,8 @@ describe("the program a learner runs", () => {
     // Ten since the review: a principal planted in the arguments that is not the caller is refused
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(26); // STEP 24: four over the day; STEP 25: the brake's and the slip's addresses
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(27); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made
+    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(28); // STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(33); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
     // STEP 14: the gaps — 1, 5, 23, 25, 27 since step 17 — are the records of reads, which this
@@ -161,10 +162,10 @@ describe("the program a learner runs", () => {
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
       0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 28,
       30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
-      53, 54, 55, 0, 1,
+      53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 56 records, chain verifies against the head: true"); // STEP 25: 51 decisions, 5 reads
+    expect(out).toContain("org_456: 64 records, chain verifies against the head: true"); // STEP 25: 59 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -210,22 +211,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(56); // STEP 25: 51 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(64); // STEP 25: 59 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 56 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 64 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(110); // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it never happen
+    expect(records(second, "org_456")).toBe(126); // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it never happen
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 110 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 126 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      104,
+      120,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -255,8 +256,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(58); // STEP 25: 56 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(58);
+    expect(hashesOf(first.raw)).toHaveLength(66); // STEP 25: 64 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(66);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -521,6 +522,26 @@ describe("the program a learner runs", () => {
       `${"accounts-payable-fte".padEnd(21)} ${"LIMIT_EXCEEDED".padEnd(24)} retry: ${"after_delay".padEnd(20)} 25000.00 USD would take del_100 past its limit of 200000.00 USD a day`,
     );
     expect(out).toContain("  the day has used 184500.00 USD of 200000.00");
+  });
+
+  it("DSOR-OPS-01a: the demo pulls the brake on the agent and releases it, and freezes every agent", () => {
+    // NEW IN STEP 25 (decision 142). The map's "done when": a suspended agent is refused, and
+    // nothing in the agent changed.
+    const out = demo().report;
+    const stopped = (by: string, what: string): string =>
+      `${"accounts-payable-fte".padEnd(21)} ${"AGENT_SUSPENDED".padEnd(24)} retry: ${"never".padEnd(20)} ${what}, by ${by}; a person must lift it`;
+
+    expect(out).toContain(
+      "3 a.m.: the agent is paying what it should not. user_123 pulls the brake on it:",
+    );
+    expect(out).toContain(stopped("user_123", "accounts-payable-fte is suspended in org_456"));
+    expect(out).toContain(stopped("cfo_100", "every agent in org_456 is stopped"));
+    expect(out).toMatch(
+      /user_123 {14}COMMITTED {16}dsor:\/\/org_456\/control\/ctl_\d+ {2}brake on {3}atomic/,
+    );
+    expect(out).toMatch(
+      /user_123 {14}COMMITTED {16}dsor:\/\/org_456\/control\/ctl_\d+ {2}brake off {2}atomic/,
+    );
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
