@@ -165,6 +165,17 @@ describe("C2: the condition, the operation, and the effect", () => {
     },
   );
 
+  // Found while building step 27: the registry read a contract's risk as text, so a condition saw
+  // "[object Object]" where Appendix B gives the operation's risk level.
+  it("DSOR-CTL-05: a condition reads `risk`, the risk level of the operation it governs: medium for payment.create", () => {
+    const byRisk = {
+      condition: 'risk == "medium"',
+      effect: { deny: { reason: "every medium-risk payment is refused" } },
+      tests: [{ expect: "DENY" }],
+    };
+    expect(refusal(() => startWith(withOne(byRisk)))).toBe("");
+  });
+
   it("DSOR-AUT-02a: start-up takes the two effects this step builds, deny and require_approval, and refuses require_step_up and require_verification (step 27's README, decision D8)", () => {
     const deny = { effect: { deny: { reason: "payments above 25,000 USD are not allowed" } } };
     const denying = {

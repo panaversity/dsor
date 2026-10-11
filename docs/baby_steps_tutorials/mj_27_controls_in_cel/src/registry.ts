@@ -294,7 +294,9 @@ export function buildRegistry(
     if (!code.has(operation)) return "which has no code of the company's";
     return undefined;
   };
-  const riskOf = (operation: string): string => String(contracts.get(operation)?.["risk"] ?? "");
+  // The operation's risk level, which a condition reads as `risk` (Appendix B).
+  const riskOf = (operation: string): string =>
+    String((contracts.get(operation)?.["risk"] as { level?: unknown } | undefined)?.level ?? "");
   const { controls, problems: controlProblems } = checkControls(
     controlSource,
     governable,
