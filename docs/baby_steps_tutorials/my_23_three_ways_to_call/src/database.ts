@@ -121,7 +121,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.delegations", "tenant"],
   // STEP 20: the idempotency keys, DSoR's third kind of paperwork (decision 131).
   ["dsor.idempotency_keys", "tenant"],
-  // NEW IN STEP 22: the proposals and their moves, DSoR's fourth kind of paperwork (decision 136).
+  // STEP 22: the proposals and their moves, DSoR's fourth kind of paperwork (decision 136).
   ["dsor.proposals", "tenant"],
   ["dsor.proposal_moves", "tenant"],
 ]);
@@ -649,7 +649,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 22: the proposals. The application adds a proposal and its moves, and changes
+  // STEP 22: the proposals. The application adds a proposal and its moves, and changes
   // nothing: a move it could change or delete is a finished proposal it could start again, a
   // proposal it could change is a payload approved as one thing and run as another, and a time it
   // could write is a history it could reorder. And it may not touch the map, where a move out of

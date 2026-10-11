@@ -1,4 +1,4 @@
-// NEW IN STEP 22: the proposal, and the rules of §26.2 kept by the database (decision 136).
+// STEP 22: the proposal, and the rules of §26.2 kept by the database (decision 136).
 //
 // Rule DSOR-APR-01a: proposals MUST follow this state machine.
 // Rule DSOR-APR-01b: every proposal transition MUST be recorded with its actor and its cause.
@@ -340,7 +340,7 @@ describe("the application adds, and changes nothing", () => {
   });
 });
 
-// NEW IN STEP 22, piece 2: the door makes the proposal at §21.8 and moves it as the request goes.
+// STEP 22, piece 2: the door makes the proposal at §21.8 and moves it as the request goes.
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };

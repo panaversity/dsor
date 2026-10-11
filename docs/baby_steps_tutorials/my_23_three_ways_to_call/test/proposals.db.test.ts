@@ -1,4 +1,4 @@
-// NEW IN STEP 22: a proposal runs at most once, on a real server (decision 136).
+// STEP 22: a proposal runs at most once, on a real server (decision 136).
 //
 // PGlite has one connection, so two moves sent together reach it one after the other. A pool
 // against a real PostgreSQL lets them truly race: twenty requests try to move one proposal out of

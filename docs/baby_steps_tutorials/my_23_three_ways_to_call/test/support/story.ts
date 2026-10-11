@@ -24,7 +24,7 @@ export function storyStatements(): readonly string[] {
   };
 
   return [
-    // NEW IN STEP 22: the proposals and their moves, moves first because they point at them.
+    // STEP 22: the proposals and their moves, moves first because they point at them.
     "DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.proposals WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM public.payments WHERE tenant_id IN ('org_456', 'org_789')",
@@ -38,7 +38,7 @@ export function storyStatements(): readonly string[] {
     rowsFrom("017_del_100_may_be_used_unattended.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",
-    // NEW IN STEP 22: and so a test's first proposal is prop_1.
+    // STEP 22: and so a test's first proposal is prop_1.
     "ALTER SEQUENCE dsor.proposal_numbers RESTART WITH 1",
   ];
 }

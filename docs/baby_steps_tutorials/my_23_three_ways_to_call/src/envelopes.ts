@@ -263,7 +263,7 @@ export function refusal(
  * schema then requires three companions. One of them is a placeholder this step is open
  * about:
  *
- * - NEW IN STEP 22: `proposal` is no longer one. It is the address of the proposal this command
+ * - STEP 22: `proposal` is no longer one. It is the address of the proposal this command
  *   became at §21.8, a record in DSoR's own store, handed to the handler by the door (decision
  *   136). It was a counter here, which started again with every run.
  * - `payload_hash` is a fingerprint of the arguments, so the same request hashes the
@@ -278,14 +278,14 @@ export function success(answer: {
   payloadHash: string;
   /** STEP 10: the company the command ran in. */
   tenant: string;
-  /** NEW IN STEP 22: the address of the proposal this command became, in that company. */
+  /** STEP 22: the address of the proposal this command became, in that company. */
   proposal: string;
   requestId?: string;
   principalId?: string;
 }): ResultEnvelope {
   // STEP 10: a proposal is a tenant-owned resource (DSOR-TEN-01a), and its address names its
-  // company: a review once got a receipt for org_789's command in org_456's proposal space. NEW IN
-  // STEP 22: the address comes from the store now, and is still checked against the company.
+  // company: a review once got a receipt for org_789's command in org_456's proposal space. STEP
+  // 22: the address comes from the store now, and is still checked against the company.
   if (!answer.proposal.startsWith(`dsor://${answer.tenant}/proposal/`)) {
     throw new TypeError(
       `a receipt for a command in ${answer.tenant} named ${answer.proposal}, which is not one of its proposals`,

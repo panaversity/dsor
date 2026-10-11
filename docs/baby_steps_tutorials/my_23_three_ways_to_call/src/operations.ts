@@ -66,7 +66,7 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 import { audit, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
-// NEW IN STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
+// STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
   moveProposal,
   moveProposalThrough,
@@ -145,7 +145,7 @@ export type Handler = (
   hash: string,
   requestId: string,
   /**
-   * NEW IN STEP 22: the address of the proposal this command became, for its receipt. A query has
+   * STEP 22: the address of the proposal this command became, for its receipt. A query has
    * none, and is handed an empty string (decision 136).
    */
   proposal: string,
@@ -1251,7 +1251,7 @@ const claimTheKey: Stage["run"] = async (context) => {
 };
 
 /**
- * NEW IN STEP 22: §21.8 — create the proposal (DSOR-APR-01a, decision 136).
+ * STEP 22: §21.8 — create the proposal (DSOR-APR-01a, decision 136).
  *
  * For a command only, after its key is claimed: a retry of the same request was answered at §21.7
  * and never gets here, so one request is one proposal. Before anything is decided, so every
@@ -1435,7 +1435,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
                 // retry of it could run twice (decision 131).
                 contract.kind === "command" && context.claim === undefined
                 ? "a claimed idempotency key"
-                : // NEW IN STEP 22: and a proposal to move (decision 136).
+                : // STEP 22: and a proposal to move (decision 136).
                   contract.kind === "command" && context.proposal === undefined
                   ? "a proposal"
                   : Object.hasOwn(handlers, contract.id)
@@ -1616,7 +1616,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(6, "validate the input", "both", validateTheInput),
   // STEP 20. §21.7: one INSERT claims the request's key; a replay ends the walk here.
   stage(7, "claim the idempotency key", "command", claimTheKey),
-  // NEW IN STEP 22. §21.8: the command becomes a proposal, with a state (decision 136).
+  // STEP 22. §21.8: the command becomes a proposal, with a state (decision 136).
   stage(8, "create the proposal", "command", createTheProposal),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
@@ -1785,7 +1785,7 @@ async function recordTheRead(
 }
 
 /**
- * NEW IN STEP 22, decision 137: the refusals a handler gives when it did nothing, the only ones that
+ * STEP 22, decision 137: the refusals a handler gives when it did nothing, the only ones that
  * finish a proposal as FAILED. A careless handler that made the payment and then answered
  * TRANSACTION_FAILED left its proposal FAILED, a review measured; any code not here is
  * OUTCOME_UNKNOWN, because the door cannot tell what happened.
@@ -1797,14 +1797,14 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
   "VALIDATION_FAILED",
 ]);
 
-/** NEW IN STEP 22: where one request's proposal has got to, and whether its handler ran. */
+/** STEP 22: where one request's proposal has got to, and whether its handler ran. */
 interface Progress {
   state: ProposalState | undefined;
   handlerRan: boolean;
 }
 
 /**
- * NEW IN STEP 22: the proposal's last move, from EXECUTING unless said otherwise, tried twice.
+ * STEP 22: the proposal's last move, from EXECUTING unless said otherwise, tried twice.
  *
  * If it cannot be written, the proposal stays where it was, and the caller is still told what
  * happened: a proposal left EXECUTING is one whose outcome nobody recorded, which is
@@ -1895,7 +1895,7 @@ export function makeDoor(
       hash === undefined ||
       handler === undefined ||
       recorded === undefined ||
-      // NEW IN STEP 22: and a command with no proposal has no record of where it is (decision 136).
+      // STEP 22: and a command with no proposal has no record of where it is (decision 136).
       (contract.kind === "command" && context.proposal === undefined)
     ) {
       // Named inside the block, not computed above it. Both existed for a while — a ternary chain
@@ -1938,7 +1938,7 @@ export function makeDoor(
     // answer that is data, a part that would answer differently on a second read never gets one.
     // Code written to trick the copy is decision 119's.
     //
-    // NEW IN STEP 22: and a command's proposal moves first: to READY, because the decision is
+    // STEP 22: and a command's proposal moves first: to READY, because the decision is
     // recorded, then to EXECUTING, the last thing before its handler runs (decision 136). Only one
     // request can write the move out of READY, so a proposal runs at most once (DSOR-IDM-04). A move
     // that cannot be written means the handler does not run.
@@ -2009,7 +2009,7 @@ export function makeDoor(
       progress.state = "EXECUTING";
     }
 
-    // NEW IN STEP 22: from here on, something may have happened. A handler that throws leaves its
+    // STEP 22: from here on, something may have happened. A handler that throws leaves its
     // proposal OUTCOME_UNKNOWN, because nobody knows whether it ran, and the throw goes on to the
     // caller as before.
     progress.handlerRan = true;
@@ -2033,7 +2033,7 @@ export function makeDoor(
 
     const answer = copyOnce(handed);
 
-    // NEW IN STEP 22: and how it ended, from what the handler answered: a receipt is COMMITTED, a
+    // STEP 22: and how it ended, from what the handler answered: a receipt is COMMITTED, a
     // refusal is FAILED, and anything else is OUTCOME_UNKNOWN, because a command that answered with
     // a row, or said itself that it does not know, may or may not have done its work.
     if (proposal !== undefined) {
@@ -2114,7 +2114,7 @@ export function makeDoor(
     // here, from the contract, whatever the handler wrote (DSOR-EXE-05b, decision 125). A query has
     // none, and a query that answered with a receipt was refused above.
     const semantics = contract.execution?.semantics;
-    // NEW IN STEP 22: and the proposal it names is the one the door made, whatever the handler
+    // STEP 22: and the proposal it names is the one the door made, whatever the handler
     // wrote, as for its semantics (decision 136).
     const named =
       proposal === undefined || answer.kind !== "result"
@@ -2186,7 +2186,7 @@ export function makeDoor(
       return walked.answer;
     }
 
-    // NEW IN STEP 22: where this request's proposal has got to, and whether its handler ran.
+    // STEP 22: where this request's proposal has got to, and whether its handler ran.
     const progress: Progress = {
       state: walked.context.proposal === undefined ? undefined : "PROPOSED",
       handlerRan: false,
@@ -2198,7 +2198,7 @@ export function makeDoor(
     const claim = walked.context.claim;
     const { proposal, tenant } = walked.context;
 
-    // NEW IN STEP 22: refused before anything moved it: DENIED, with the code that refused it.
+    // STEP 22: refused before anything moved it: DENIED, with the code that refused it.
     if (
       proposal !== undefined &&
       tenant !== undefined &&
@@ -2221,7 +2221,7 @@ export function makeDoor(
     // class it carries: a handler that made a payment and then answered TRANSACTION_FAILED had
     // its claim released, and three attempts made three payments (decision 132).
     //
-    // NEW IN STEP 22: or a refusal from the door before the handler ran, when a proposal's move
+    // STEP 22: or a refusal from the door before the handler ran, when a proposal's move
     // could not be written: nothing ran then either (decision 136).
     const releases =
       (walked.kind === "refused" || !progress.handlerRan) &&

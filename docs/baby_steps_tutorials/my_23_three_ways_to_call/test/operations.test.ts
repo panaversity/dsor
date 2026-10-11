@@ -310,7 +310,7 @@ describe("callOperation", () => {
       expect(validateEnvelope("result", first.envelope)).toBe(true);
       expect(first.envelope.outcome).toBe("COMMITTED");
       expect(first.envelope.semantics).toBe("atomic");
-      // NEW IN STEP 22: the address of a proposal in the store, numbered by the store, which
+      // STEP 22: the address of a proposal in the store, numbered by the store, which
       // proposals.test.ts pins; it was a counter here that started again with every run.
       expect(first.envelope.proposal).toMatch(/^dsor:\/\/org_456\/proposal\/prop_\d+$/);
 

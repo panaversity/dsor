@@ -287,7 +287,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     );
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
     // STEP 17: four of them now. STEP 18: five, with the slips. STEP 20: six, with the keys.
-    // NEW IN STEP 22: eight, with the proposals and their moves.
+    // STEP 22: eight, with the proposals and their moves.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",
@@ -578,7 +578,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-APR-01c: an application that may change a proposal, its moves or the map is refused at start-up", async () => {
-    // NEW IN STEP 22: a move it could change or delete is a finished proposal it could start
+    // STEP 22: a move it could change or delete is a finished proposal it could start
     // again, and a move it could add to the map is a way out of COMMITTED (decision 136). Each
     // right, one of them one SET ROLE away, and one through a helper's owner.
     for (const grant of [
@@ -639,7 +639,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec("CREATE TABLE dsor.audit (result TEXT);");
     // STEP 11: every tenant table must exist, or the check refuses before this test's question.
     // STEP 17: four of them now. STEP 18: five, with the slips. STEP 20: six, with the keys.
-    // NEW IN STEP 22: eight, with the proposals and their moves.
+    // STEP 22: eight, with the proposals and their moves.
     await db.exec("CREATE TABLE invoices (tenant_id TEXT, id TEXT);");
     await db.exec(
       "CREATE TABLE vendors (tenant_id TEXT, id TEXT); CREATE TABLE payments (tenant_id TEXT, id TEXT);",

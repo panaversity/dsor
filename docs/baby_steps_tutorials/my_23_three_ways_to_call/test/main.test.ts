@@ -461,7 +461,7 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-APR-01a: the demo lists where each command went, move by move, and a finished one refuses to move", () => {
-    // NEW IN STEP 22: every command past its key's claim is a proposal, and its state is its last
+    // STEP 22: every command past its key's claim is a proposal, and its state is its last
     // move (decision 136). The numbers change from run to run; the operations and states do not.
     const out = demo().report;
     const listed = [...out.matchAll(/^ {2}prop_\d+ +(\S+) +(\S+)$/gm)].map(

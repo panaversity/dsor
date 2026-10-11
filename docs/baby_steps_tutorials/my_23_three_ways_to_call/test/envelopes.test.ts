@@ -272,7 +272,7 @@ describe("the result envelope", () => {
   });
 
   it("DSOR-TEN-01a: a receipt for one company that names another company's proposal is never built", () => {
-    // NEW IN STEP 22: the address comes from the store now, and is still checked against the
+    // STEP 22: the address comes from the store now, and is still checked against the
     // company the command ran in, as step 10's review asked of the counter it replaced.
     expect(() =>
       success({

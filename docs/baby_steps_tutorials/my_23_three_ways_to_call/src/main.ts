@@ -583,7 +583,7 @@ if (contested.kind === "result") {
   );
 }
 
-// NEW IN STEP 22: where each command went. Every command that got past its key's claim became a
+// STEP 22: where each command went. Every command that got past its key's claim became a
 // proposal, and its state is its last move (decision 136). This run's, found by their keys, because
 // the store keeps every run's. A command refused before §21.8, by who asked or what it asked for,
 // has none: there was nothing to propose.

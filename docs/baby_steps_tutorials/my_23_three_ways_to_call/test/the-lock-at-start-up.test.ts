@@ -201,7 +201,7 @@ describe("a window past the lock", () => {
 
   it("DSOR-MOD-01: a SECURITY DEFINER function whose owner may create in the schema dsor is refused", async () => {
     // STEP 16: the application may create nothing in dsor, and through a helper whose owner
-    // may, it made dsor.proposals anyway, a review measured (decision 124). NEW IN STEP 22: step 22
+    // may, it made dsor.proposals anyway, a review measured (decision 124). STEP 22: step 22
     // built dsor.proposals, so the helper makes dsor.approvals, a name a later step still has to build.
     await asTheOwner(async () => {
       await db.exec("CREATE ROLE a_builder");
@@ -381,7 +381,7 @@ describe("a schema the application may create things in", () => {
   // STEP 16: only the migrations, run as the owner, put tables in DSoR's schema or the
   // business's. A table the application made there would be its own, every row of it, and a later
   // step's migration would find its name taken. A review measured the application making
-  // `dsor.proposals` six steps before step 22 built it (decision 123); NEW IN STEP 22: the test makes
+  // `dsor.proposals` six steps before step 22 built it (decision 123); STEP 22: the test makes
   // `approvals` now, a name a later step still has to build. Migration 008 takes
   // CREATE back, and start-up asks PostgreSQL, because a later grant passes the migrations by.
   for (const [id, schema] of [

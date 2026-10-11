@@ -1,4 +1,4 @@
-// NEW IN STEP 22: the proposal, a record with a state you can look up (decision 136).
+// STEP 22: the proposal, a record with a state you can look up (decision 136).
 //
 // Every command that gets past the idempotency claim becomes one. Its payload is written once and
 // never changed; where it is now is its history of moves, each with who made it and why, and its
@@ -140,7 +140,7 @@ export async function moveProposal(
 }
 
 /**
- * NEW IN STEP 22, decision 137: several moves, one after the other, in one INSERT: all of them are
+ * STEP 22, decision 137: several moves, one after the other, in one INSERT: all of them are
  * written, or none.
  *
  * The door moves a proposal to READY and to EXECUTING together. Written one at a time, a failure
