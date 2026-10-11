@@ -27,7 +27,11 @@
 // too, and a prepared draft that nobody releases expires after its company's lifetime, when
 // dsor-scheduler sweeps, in memory with a clock of its own. Then the suspension, in memory: the
 // directory suspends her, and
-// DSoR suspends both her slips. Then it prints the log: the records it can read,
+// DSoR suspends both her slips. Since step 26, money in two currencies, in memory: dsor-rates
+// loads Tuesday's sheet, the agent drafts bills in euros, pounds, and rupees, and on Saturday the
+// sheet is too old. NEW IN STEP 27: the company's rule, in memory: payments above 25,000 USD wait
+// for the CFO, a bill in yen that no sheet lists waits too, a dry run says so, and a week later the
+// sweep expires the waiting payments. Then it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -71,7 +75,7 @@ import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 // NEW IN STEP 27: the stories of the earlier steps keep their idea, with no rule of the company in
 // their way: each of their worlds gives no controls. Step 27's own story gives the shipped file
 // (step 27's README, decision D16).
-import { NO_CONTROLS } from "./controls.ts";
+import { NO_CONTROLS, readControls } from "./controls.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { memorySlips } from "./slips.ts";
@@ -1036,6 +1040,129 @@ const saturdayRecord = (await moneyLog.records()).find(
 );
 const why = saturdayRecord?.extensions?.["org.panaversity.steps"]?.unconvertible;
 console.log(`  its record says why: no usable rate for ${why?.currency} (${why?.why})`);
+
+// NEW IN STEP 27: the company's rule, told in memory with a clock of its own. org_456's control
+// high-value-payment v8 says that a payment above 25,000.00 USD needs the CFO. Start-up checked it
+// and ran its five tests. Tuesday's sheet converts, and del_100 still allows 50,000.00 USD for one
+// payment (step 27's README, the story's numbers).
+console.log("the company's rule, in memory, with a clock of its own:");
+const ruleClock = { now: Date.parse("2026-10-06T15:05:00Z") };
+const ruleInvoices = memoryInvoices([
+  ...structuredClone(invoices),
+  bill("INV-2002", "9000.00", "EUR"),
+  bill("INV-2003", "49000.00", "GBP"),
+  bill("INV-2004", "14000000.00", "PKR"),
+  bill("INV-2006", "100000", "JPY"),
+]);
+const rulePayments = memoryPayments([]);
+const ruleProposals = memoryProposals(() => ruleClock.now);
+const ruleReservations = memoryReservations(() => ruleClock.now);
+const ruleRates = memoryRates(() => ruleClock.now);
+const ruleSlips = memorySlips(limited);
+const ruleWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  ruleInvoices,
+  rulePayments,
+  ruleSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    ruleInvoices,
+    rulePayments,
+    ruleProposals,
+    ruleReservations,
+    ruleSlips,
+    undefined,
+    ruleRates,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  // The shipped controls.json, the first world of the program that has the company's rules.
+  readControls(),
+);
+const ruleLog = createLog();
+const ruleCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(ruleWorld, ruleLog, who, name, input);
+await ruleRates.load("org_456", {
+  source: "ecb-daily",
+  base: "EUR",
+  published_at: "2026-10-06T14:00:00.000Z",
+  rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+});
+/** A call that waits, as its caller heard it: whose approval it needs, and until when. */
+function waitHeard(answer: Answer): string {
+  if (!("outcome" in answer) || answer.outcome !== "PENDING_APPROVAL") return heard(answer);
+  const needs = answer.requires
+    .map((r) => `${r.approval.role} x${r.approval.quorum} (${r.control})`)
+    .join(", ");
+  return `PENDING_APPROVAL, needs ${needs}, until ${answer.expires_at}`;
+}
+const ruleDraft = (who: RequestEnvelope, id: string, key: string): Promise<Answer> =>
+  ruleCall(withKey(who, key), "payment.create", {
+    invoice: `dsor://org_456/invoice/${id}`,
+    expected_version: 1,
+  });
+const waitingFor1008 = await ruleDraft(AGENT, "INV-1008", "rule-INV-1008");
+console.log("  Tuesday 15:05, the agent drafts INV-1008, 31,400.00 USD:", waitHeard(waitingFor1008));
+for (const [id, amount] of [
+  ["INV-2002", "9,000.00 EUR"],
+  ["INV-2004", "14,000,000.00 PKR"],
+  ["INV-2003", "49,000.00 GBP"],
+] as const) {
+  const answer = await ruleDraft(AGENT, id, `rule-${id}`);
+  console.log(`  Tuesday 15:05, the agent drafts ${id}, ${amount}:`, waitHeard(answer));
+}
+// A person's own call meets the rule too (step 27's README, decision D15). No sheet lists JPY, so
+// the condition cannot be checked, and the effect applies (DSOR-CTL-07).
+const ownJpy = await ruleDraft(SUPERVISOR_123, "INV-2006", "rule-INV-2006");
+console.log("  Tuesday 15:05, user_123 drafts INV-2006, 100,000 JPY:", waitHeard(ownJpy));
+const ruleRecordOf = async (answer: Answer) =>
+  (await ruleLog.records()).find(
+    (r) => r.kind === "decision" && r.correlation.request_id === answer.correlation.request_id,
+  );
+for (const [what, answer] of [
+  ["INV-1008's", waitingFor1008],
+  ["INV-2006's", ownJpy],
+] as const) {
+  const record = await ruleRecordOf(answer);
+  for (const control of record?.controls ?? []) {
+    const error = control.evaluation_error === undefined ? "" : `, error: ${control.evaluation_error}`;
+    console.log(
+      `  ${what} record: ${record?.authorization} ${record?.result}, ${control.id} v${control.version} ${control.outcome}${error}`,
+    );
+  }
+}
+// A dry run says what the real call would get, and books nothing (step 27's README, decision D12).
+const dry1008 = await ruleCall({ ...AGENT, mode: "validate_only" }, "payment.create", {
+  invoice: "dsor://org_456/invoice/INV-1008",
+  expected_version: 1,
+});
+console.log(
+  "  a dry run of INV-1008:",
+  "decision" in dry1008 ? `${dry1008.outcome}, ${dry1008.decision}` : heard(dry1008),
+);
+console.log(
+  `  the day's total under del_100: ${await ruleReservations.used("org_456", "del_100", "USD")} USD`,
+);
+// Nothing approves until step 29. A week later the waiting payments are past their time, and the
+// sweep expires them and gives their bookings back (step 27's README, decision D11).
+ruleClock.now = Date.parse("2026-10-13T15:05:00Z");
+const ruleSweep = await ruleCall(withKey(SCHEDULER, "rule-sweep"), "proposal.expire_due", ORG_456);
+console.log("  a week later, dsor-scheduler sweeps org_456:", sweepHeard(ruleSweep));
+const ruleId = String("proposal" in waitingFor1008 ? waitingFor1008.proposal : "")
+  .split("/")
+  .at(-1)!;
+const ruleExpired = await ruleProposals.get("org_456", ruleId);
+const ruleBooking = await ruleReservations.get("org_456", ruleId);
+console.log(
+  `  INV-1008's payment: ${ruleExpired?.state ?? "none"}, its booking ${ruleBooking?.state ?? "none"}`,
+);
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

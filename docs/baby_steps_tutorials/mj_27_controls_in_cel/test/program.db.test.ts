@@ -104,6 +104,22 @@ describe("the program", () => {
       expect(output).toMatch(
         "its record says why: no usable rate for EUR (the newest sheet of ecb-daily is older than P3D)",
       );
+      // NEW IN STEP 27: the company's rule. A payment above 25,000 USD waits for the CFO, in any
+      // currency, and a limit's DENY wins over it. A bill in yen that no sheet lists waits too, and
+      // its record says why. A dry run says what the real call would get. A week later, the sweep
+      // expires the waiting payments (step 27's README, the story's numbers, and decision D11).
+      const waits =
+        "PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z";
+      expect(output).toMatch(`the agent drafts INV-1008, 31,400.00 USD: ${waits}`);
+      expect(output).toMatch(`the agent drafts INV-2004, 14,000,000.00 PKR: ${waits}`);
+      expect(output).toMatch(`user_123 drafts INV-2006, 100,000 JPY: ${waits}`);
+      expect(output).toMatch(
+        "INV-2006's record: ALLOW PENDING_APPROVAL, high-value-payment v8 REQUIRE_APPROVAL, error: no usable rate compares JPY with USD",
+      );
+      expect(output).toMatch("a dry run of INV-1008: VALIDATED, REQUIRE_APPROVAL");
+      expect(output).toMatch("the day's total under del_100: 91120.00 USD");
+      expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
+      expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");
       expect(output).toMatch("data: {");
       expect(output).toMatch("id: 'INV-1008'");
       // The money read from the database, still a string. Anchored to the start of the line:
