@@ -326,9 +326,11 @@ describe("the agent never has more power than the person who signed, right now",
     );
 
     // user_123 may issue invoices; the slip no longer lets the agent.
-    expect(refusalOf(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 })).code).toBe(
-      "AUTHORIZATION_DENIED",
-    );
+    expect(
+      refusalOf(
+        await callOperation(AGENT, "invoice.issue", { invoice: INV_1009, expected_version: 1 }),
+      ).code,
+    ).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-DEL-01b: a scope the slip does not grant adds nothing", async () => {
@@ -339,7 +341,9 @@ describe("the agent never has more power than the person who signed, right now",
     const scoped = { ...AGENT, scopes: ["invoice:issue", "payment:create"] };
 
     expect(
-      refusalOf(await callOperation(scoped, "invoice.issue", { invoice: INV_1009 })).code,
+      refusalOf(
+        await callOperation(scoped, "invoice.issue", { invoice: INV_1009, expected_version: 1 }),
+      ).code,
     ).toBe("AUTHORIZATION_DENIED");
   });
 
@@ -347,9 +351,10 @@ describe("the agent never has more power than the person who signed, right now",
     const scoped = { ...AGENT, scopes: ["payment:cancel"] };
 
     expect(refusalOf(await create(scoped)).code).toBe("AUTHORIZATION_DENIED");
-    expect((await callOperation(scoped, "payment.cancel", { payment: PAY_901 })).kind).toBe(
-      "result",
-    );
+    expect(
+      (await callOperation(scoped, "payment.cancel", { payment: PAY_901, expected_version: 1 }))
+        .kind,
+    ).toBe("result");
   });
 });
 
@@ -396,7 +401,7 @@ describe("a slip lends only what its signer holds in its own company", () => {
     const answer = await callOperation(
       { loggedInAs: "accounts-payable-fte", tenant: "org_789" },
       "invoice.issue",
-      { invoice: "dsor://org_789/invoice/INV-1009" },
+      { invoice: "dsor://org_789/invoice/INV-1009", expected_version: 1 },
     );
 
     expect(refusalOf(answer).code).toBe("AUTHORIZATION_DENIED");
@@ -463,13 +468,22 @@ describe("a slip named in the arguments", () => {
   // disagrees with the slip DSoR found is refused and recorded (decision 127).
   it("DSOR-SRC-02b: an agent's request that names another slip is refused, and naming its own changes nothing", async () => {
     const other = refusalOf(
-      await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_999" }),
+      await callOperation(AGENT, "payment.cancel", {
+        payment: PAY_901,
+        expected_version: 1,
+        delegation: "del_999",
+      }),
     );
 
     expect(other.code).toBe("AUTHORIZATION_DENIED");
     expect(
-      (await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_100" }))
-        .kind,
+      (
+        await callOperation(AGENT, "payment.cancel", {
+          payment: PAY_901,
+          expected_version: 1,
+          delegation: "del_100",
+        })
+      ).kind,
     ).toBe("result");
   });
 
@@ -478,6 +492,7 @@ describe("a slip named in the arguments", () => {
       refusalOf(
         await callOperation(SUPERVISOR, "payment.cancel", {
           payment: PAY_901,
+          expected_version: 1,
           delegation: "del_100",
         }),
       ).code,

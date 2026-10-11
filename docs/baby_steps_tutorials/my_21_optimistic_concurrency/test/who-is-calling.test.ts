@@ -115,6 +115,7 @@ describe("who you are comes from the login, never from the arguments", () => {
   it("DSOR-SRC-02a: a principal named in the arguments is ignored by the command as well", async () => {
     const answer = await callOperation(SUPERVISOR, "invoice.issue", {
       invoice: INV_1008,
+      expected_version: 1,
       principal: "cfo_100",
       principal_id: "cfo_100",
     });
@@ -345,6 +346,7 @@ describe("who you are comes from the login, never from the arguments", () => {
   it("the answer records who asked", async () => {
     const answer = await callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-9999",
+      expected_version: 1,
     });
 
     if (answer.kind !== "error") {
@@ -381,11 +383,11 @@ describe("who you are comes from the login, never from the arguments", () => {
       ["invoice.get", { invoice: "dsor://org_456/invoice/INV-9999" }], // not found
       ["invoice.get", {}], // no address at all
       ["invoice.get", { invoice: "dsor://org_456/vendor/VENDOR-44" }], // wrong kind of thing
-      ["invoice.issue", { invoice: "INV-1009" }], // bad address
-      ["invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999" }], // not found
-      ["invoice.issue", { invoice: INV_1008 }], // already issued
+      ["invoice.issue", { invoice: "INV-1009", expected_version: 1 }], // bad address
+      ["invoice.issue", { invoice: "dsor://org_456/invoice/INV-9999", expected_version: 1 }], // not found
+      ["invoice.issue", { invoice: INV_1008, expected_version: 1 }], // already issued
       ["invoice.issue", {}], // no address at all
-      ["invoice.issue", { invoice: "dsor://org_456/vendor/VENDOR-44" }], // wrong kind of thing
+      ["invoice.issue", { invoice: "dsor://org_456/vendor/VENDOR-44", expected_version: 1 }], // wrong kind of thing
       ["execute_sql", { sql: "select 1" }], // no contract
     ];
 
@@ -449,6 +451,8 @@ describe("who you are comes from the login, never from the arguments", () => {
 
         return reads === 1 ? INV_1009 : "dsor://org_456/invoice/INV-0000";
       },
+      // NEW IN STEP 21: the version the decision was made on.
+      expected_version: 1,
     };
 
     const answer = await callOperation(ISSUER, "invoice.issue", args);
@@ -462,7 +466,7 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(reads).toBe(1);
 
     const honest = createHash("sha256")
-      .update(JSON.stringify({ invoice: INV_1009 }))
+      .update(JSON.stringify({ invoice: INV_1009, expected_version: 1 }))
       .digest("hex");
 
     expect(answer.envelope.payload_hash).toBe(`sha256:${honest}`);

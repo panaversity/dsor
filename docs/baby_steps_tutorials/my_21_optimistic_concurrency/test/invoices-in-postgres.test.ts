@@ -132,7 +132,7 @@ describe("the store, asked inside one company", () => {
 
   it("DSOR-IDN-03b: issuing org_789's INV-1008 leaves org_456's INV-1008 exactly as it was", async () => {
     const before = (await getInvoice("org_456", "INV-1008")).value;
-    const outcome = await issueInvoice("org_789", "INV-1008");
+    const outcome = await issueInvoice("org_789", "INV-1008", 1);
 
     expect(outcome.kind).toBe("issued");
     expect((await getInvoice("org_789", "INV-1008")).value?.status).toBe("issued");

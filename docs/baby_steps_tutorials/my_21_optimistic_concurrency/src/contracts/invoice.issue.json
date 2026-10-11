@@ -22,7 +22,7 @@
     "required": true
   },
   "concurrency": {
-    "strategy": "none"
+    "strategy": "optimistic"
   },
   "execution": {
     "semantics": "atomic"
@@ -41,7 +41,8 @@
   "extensions": {
     "com.panaversity.tutorial": {
       "example_request": {
-        "invoice": "dsor://org_456/invoice/INV-1009"
+        "invoice": "dsor://org_456/invoice/INV-1009",
+        "expected_version": 1
       }
     }
   }

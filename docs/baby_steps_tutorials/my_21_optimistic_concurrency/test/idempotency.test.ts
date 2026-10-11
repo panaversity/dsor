@@ -351,7 +351,7 @@ describe("whose key it is", () => {
         await callOperation(
           AGENT,
           "invoice.issue",
-          { invoice: INV_1009 },
+          { invoice: INV_1009, expected_version: 1 },
           { idempotencyKey: "same-words" },
         )
       ).kind,

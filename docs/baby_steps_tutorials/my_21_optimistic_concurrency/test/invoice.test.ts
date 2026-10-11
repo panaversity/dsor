@@ -114,12 +114,12 @@ describe("getInvoice", () => {
 
 describe("issueInvoice", () => {
   it("an id nobody holds is not_found, and nothing is invented for it", async () => {
-    expect(await issueInvoice("org_456", "INV-9999")).toEqual({ kind: "not_found" });
+    expect(await issueInvoice("org_456", "INV-9999", 1)).toEqual({ kind: "not_found" });
     expect((await getInvoice("org_456", "INV-9999")).value).toBeUndefined();
   });
 
   it("an invoice that is already issued reports not_draft, and says what it is instead", async () => {
-    expect(await issueInvoice("org_456", "INV-1008")).toEqual({
+    expect(await issueInvoice("org_456", "INV-1008", 1)).toEqual({
       kind: "not_draft",
       status: "issued",
     });
@@ -136,7 +136,7 @@ describe("issueInvoice", () => {
 
     expect(before.status).toBe("draft");
 
-    const outcome = await issueInvoice("org_456", "INV-1009");
+    const outcome = await issueInvoice("org_456", "INV-1009", 1);
 
     if (outcome.kind !== "issued") {
       throw new Error(`expected issued, got ${outcome.kind}`);
@@ -146,9 +146,11 @@ describe("issueInvoice", () => {
     expect(outcome.invoice.id).toBe("INV-1009");
     // The copy from before is a copy: frozen, and still a draft.
     expect(before.status).toBe("draft");
-    // The store moved on, and a second issue is refused because of that.
+    // The store moved on, and a second issue is refused because of that. NEW IN STEP 21: on the version
+    // it is at now, 2, the reason is the status; on the version read before, it is stale.
     expect((await ours("INV-1009")).status).toBe("issued");
-    expect(await issueInvoice("org_456", "INV-1009")).toEqual({
+    expect(await issueInvoice("org_456", "INV-1009", 1)).toEqual({ kind: "stale", version: 2 });
+    expect(await issueInvoice("org_456", "INV-1009", 2)).toEqual({
       kind: "not_draft",
       status: "issued",
     });

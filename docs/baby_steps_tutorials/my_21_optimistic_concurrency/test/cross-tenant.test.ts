@@ -116,7 +116,10 @@ describe("an address for another company", () => {
     await forgetTheLog("org_789");
 
     for (const login of [SUPERVISOR, AGENT_FOR_456]) {
-      const answer = await callOperation(login, "invoice.issue", { invoice: THEIRS });
+      const answer = await callOperation(login, "invoice.issue", {
+        invoice: THEIRS,
+        expected_version: 1,
+      });
 
       if (answer.kind !== "error") {
         throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -191,7 +194,10 @@ describe("an address for another company", () => {
     useDirectory("org_789", aDirectory("org_789", { holds: { user_789: ["invoice:issue"] } }));
 
     try {
-      const answer = await callOperation(AGENT_FOR_789, "invoice.issue", { invoice: THEIRS });
+      const answer = await callOperation(AGENT_FOR_789, "invoice.issue", {
+        invoice: THEIRS,
+        expected_version: 1,
+      });
 
       if (answer.kind !== "result") {
         throw new Error(`expected a result, got ${JSON.stringify(answer)}`);

@@ -274,6 +274,7 @@ describe("the pipeline", () => {
 
     const answer = await makeDoor(blind)({ loggedInAs: "user_123" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
     });
 
     if (answer.kind !== "error") {
@@ -298,6 +299,7 @@ describe("the pipeline", () => {
     // And the real pipeline does the same call, records it, and issues the invoice.
     const real = await callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
     });
 
     expect(real.kind).toBe("result");
@@ -429,6 +431,7 @@ describe("the pipeline", () => {
 
     const answer = await door({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
     });
 
     expect(answer.kind).toBe("error");
@@ -552,7 +555,7 @@ describe("the pipeline", () => {
     const answer = await makeDoor(list)(
       { loggedInAs: "accounts-payable-fte", tenant: "org_456" },
       "payment.cancel",
-      { payment: "dsor://org_456/payment/PAY-901" },
+      { payment: "dsor://org_456/payment/PAY-901", expected_version: 1 },
     );
 
     if (answer.kind !== "error") {
@@ -578,6 +581,7 @@ describe("the pipeline", () => {
     );
     const answer = await makeDoor(list)({ loggedInAs: "user_123" }, "payment.cancel", {
       payment: "dsor://org_456/payment/PAY-901",
+      expected_version: 1,
     });
 
     if (answer.kind !== "error") {
@@ -611,7 +615,7 @@ describe("the pipeline", () => {
     const answer = await makeDoor(list)(
       { loggedInAs: "accounts-payable-fte", tenant: "org_456" },
       "payment.cancel",
-      { payment: "dsor://org_456/payment/PAY-901" },
+      { payment: "dsor://org_456/payment/PAY-901", expected_version: 1 },
     );
 
     if (answer.kind !== "error") {
@@ -712,6 +716,7 @@ describe("the pipeline", () => {
 
     const answer = await makeDoor(hollow)({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
     });
 
     // She gets past the gate, which is exactly what the real door must never allow.
@@ -720,6 +725,7 @@ describe("the pipeline", () => {
     // And the real door refuses her.
     const real = await callOperation({ loggedInAs: "cfo_100" }, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
     });
 
     if (real.kind !== "error") {
@@ -740,8 +746,18 @@ describe("the pipeline", () => {
       ["no such operation", { loggedInAs: "user_123" }, "execute_sql", {}],
       ["an id that is not text", { loggedInAs: "user_123" }, Symbol("id"), {}],
       ["an id from the prototype", { loggedInAs: "user_123" }, "toString", {}],
-      ["denied", { loggedInAs: "cfo_100" }, "invoice.issue", { invoice: good }],
-      ["already issued", { loggedInAs: "user_123" }, "invoice.issue", { invoice: good }],
+      [
+        "denied",
+        { loggedInAs: "cfo_100" },
+        "invoice.issue",
+        { invoice: good, expected_version: 1 },
+      ],
+      [
+        "already issued",
+        { loggedInAs: "user_123" },
+        "invoice.issue",
+        { invoice: good, expected_version: 1 },
+      ],
       ["read", { loggedInAs: "user_123" }, "invoice.get", { invoice: good }],
     ] as const;
 

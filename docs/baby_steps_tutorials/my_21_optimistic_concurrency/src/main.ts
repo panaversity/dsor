@@ -11,6 +11,7 @@ import { openTheDatabase } from "./database.ts";
 import { movedTo } from "./examples.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
 import { paymentsOf } from "./payment.ts";
+import { getInvoice } from "./invoice.ts";
 import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
 
@@ -114,10 +115,30 @@ console.log();
 // it works. Nothing about the invoice changed between those lines -- only who asked.
 console.log(show(await callOperation(CFO, "invoice.get", { invoice: INV_1009 })));
 console.log(
-  show(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 }, keyFor("cfo-issues"))),
+  show(
+    await callOperation(
+      CFO,
+      "invoice.issue",
+      { invoice: INV_1009, expected_version: 1 },
+      keyFor("cfo-issues"),
+    ),
+  ),
 );
 console.log(
-  show(await callOperation(AGENT, "invoice.issue", { invoice: INV_1009 }, keyFor("agent-issues"))),
+  show(
+    await callOperation(
+      AGENT,
+      "invoice.issue",
+      // NEW IN STEP 21: on the version the agent read. The demo reads it from the store, standing
+      // in for the agent's own earlier read, so that a second run, where INV-1009 is issued
+      // already, decides on what is there now and is told CONFLICT, not STALE_STATE.
+      {
+        invoice: INV_1009,
+        expected_version: (await getInvoice("org_456", "INV-1009")).value?.version ?? 1,
+      },
+      keyFor("agent-issues"),
+    ),
+  ),
 );
 console.log();
 
@@ -144,7 +165,12 @@ for (const [what, run] of [
   [
     "denied, real invoice",
     async () =>
-      await callOperation(CFO, "invoice.issue", { invoice: INV_1008 }, keyFor("cfo-real")),
+      await callOperation(
+        CFO,
+        "invoice.issue",
+        { invoice: INV_1008, expected_version: 1 },
+        keyFor("cfo-real"),
+      ),
   ],
   [
     "denied, no such invoice",
@@ -152,7 +178,7 @@ for (const [what, run] of [
       await callOperation(
         CFO,
         "invoice.issue",
-        { invoice: "dsor://org_456/invoice/INV-9999" },
+        { invoice: "dsor://org_456/invoice/INV-9999", expected_version: 1 },
         keyFor("cfo-none"),
       ),
   ],
@@ -318,15 +344,31 @@ console.log(show(twice));
 
 if (twice.kind === "result") {
   const mistake = String(twice.envelope.data?.["uri"]);
-
-  console.log(
-    show(await callOperation(AGENT, "payment.cancel", { payment: mistake }, keyFor("cancel"))),
+  // NEW IN STEP 21: the receipt says the version the payment was made at, which is the one the
+  // agent decides on; the cancel's own receipt says the next.
+  const madeAt = Number(twice.envelope.data?.["version"]);
+  const cancelled = await callOperation(
+    AGENT,
+    "payment.cancel",
+    { payment: mistake, expected_version: madeAt },
+    keyFor("cancel"),
   );
+
+  console.log(show(cancelled));
   // And a second cancel is refused: payment.cancel changes only a draft. STEP 20: with a
   // new key, because it is a new request; the same key would be given the first answer again.
   console.log(
     show(
-      await callOperation(AGENT, "payment.cancel", { payment: mistake }, keyFor("cancel-again")),
+      await callOperation(
+        AGENT,
+        "payment.cancel",
+        {
+          payment: mistake,
+          expected_version:
+            cancelled.kind === "result" ? Number(cancelled.envelope.data?.["version"]) : madeAt,
+        },
+        keyFor("cancel-again"),
+      ),
     ),
   );
 }

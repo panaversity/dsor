@@ -217,6 +217,7 @@ describe("through the whole pipeline", () => {
       "invoice.issue",
       {
         invoice: INV_1008,
+        expected_version: 1,
       },
     );
 

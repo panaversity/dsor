@@ -32,6 +32,7 @@ const GET: Case = caseFor("invoice.get", registry.get("invoice.get")!, {
 });
 const ISSUE: Case = caseFor("invoice.issue", registry.get("invoice.issue")!, {
   invoice: "dsor://org_456/invoice/INV-1009",
+  expected_version: 1,
 });
 
 /** The caller's own invoice, for an honest own-company answer. */
@@ -252,6 +253,7 @@ describe("each question, honest and lied to", () => {
     // payment the example names.
     const cancel = caseFor("payment.cancel", registry.get("payment.cancel")!, {
       payment: "dsor://org_456/payment/PAY-901",
+      expected_version: 1,
     });
     const withPayments = honest({
       rowsOf: async () => [{ entity: "payment", id: "PAY-901", status: "draft" }],

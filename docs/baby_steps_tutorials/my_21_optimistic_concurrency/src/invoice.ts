@@ -112,26 +112,31 @@ export async function getInvoice(
 export type IssueOutcome =
   | { readonly kind: "issued"; readonly invoice: Invoice }
   | { readonly kind: "not_found" }
+  /** NEW IN STEP 21: the invoice moved on from the version the caller decided on (decision 133). */
+  | { readonly kind: "stale"; readonly version: number }
   | { readonly kind: "not_draft"; readonly status: Exclude<InvoiceStatus, "draft"> };
 
 /**
- * Issues a draft invoice, in one company.
+ * Issues a draft invoice, in one company, if it is still the version the caller decided on.
  *
- * One UPDATE with the status in its WHERE, so "is it a draft?" and "make it issued" are one
- * statement and not two — two invoices issued at once cannot both see a draft. A plain condition,
- * deliberately: this is not the precondition machinery of the contract's `predicates` (nothing reads
- * CEL until step 27) and it is not idempotency (step 20). A second issue is refused because the
- * status moved on.
+ * One UPDATE with the status and, NEW IN STEP 21, the version in its WHERE, so "is it the draft I
+ * read?" and "make it issued" are one statement and not two: two decisions on one version cannot
+ * both run (DSOR-CON-01b, decision 133). The version is raised in the same statement.
  *
- * When nothing was updated, a second read says which of the two reasons it was. That read is a
- * snapshot; the fact it reports is the fact as of that moment.
+ * When nothing was updated, a second read says which reason it was, the version first: a record
+ * that moved on is stale whatever its status now, because the caller's decision was about a record
+ * that no longer exists. That read is a snapshot; the fact it reports is the fact as of that moment.
  */
-export async function issueInvoice(tenantId: string, id: string): Promise<IssueOutcome> {
+export async function issueInvoice(
+  tenantId: string,
+  id: string,
+  expectedVersion: number,
+): Promise<IssueOutcome> {
   const { rows } = await theDatabase(tenantId).query<Row>(
     `UPDATE public.invoices SET status = 'issued', version = version + 1
-     WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
+     WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND version = $3
      RETURNING ${COLUMNS}`,
-    [tenantId, id],
+    [tenantId, id, expectedVersion],
   );
   const issued = rows[0];
 
@@ -145,20 +150,14 @@ export async function issueInvoice(tenantId: string, id: string): Promise<IssueO
     return { kind: "not_found" };
   }
 
-  // A draft that appeared between the two statements — only an owner can do that, since the
-  // application cannot insert — would make "not a draft" a lie. One more try settles it either way.
-  if (current.status === "draft") {
-    const { rows: again } = await theDatabase(tenantId).query<Row>(
-      `UPDATE public.invoices SET status = 'issued', version = version + 1
-       WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
-       RETURNING ${COLUMNS}`,
-      [tenantId, id],
-    );
-    const issuedNow = again[0];
+  if (current.version !== expectedVersion) {
+    return { kind: "stale", version: current.version };
+  }
 
-    return issuedNow === undefined
-      ? { kind: "not_found" }
-      : { kind: "issued", invoice: fromRow(issuedNow) };
+  // A draft on the caller's version that the UPDATE missed appeared between the two statements,
+  // which only an owner can bring about. It was not there to issue.
+  if (current.status === "draft") {
+    return { kind: "not_found" };
   }
 
   return { kind: "not_draft", status: current.status };

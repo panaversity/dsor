@@ -12,7 +12,8 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { getInvoice } from "../src/invoice.ts";
+import { getInvoice, issueInvoice } from "../src/invoice.ts";
+import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { paymentsOf } from "../src/payment.ts";
 import { callOperation } from "./support/door.ts";
 import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
@@ -69,5 +70,91 @@ describe("every invoice and payment has a version", () => {
       { column_name: "invoices.version", is_nullable: "NO" },
       { column_name: "payments.version", is_nullable: "NO" },
     ]);
+  });
+});
+
+describe("a command says the version it decided on", () => {
+  const INV_1009 = "dsor://org_456/invoice/INV-1009";
+  const PAY_901 = "dsor://org_456/payment/PAY-901";
+
+  it("DSOR-CON-01a: every command declares its strategy: optimistic where it changes a record, none where it makes one", () => {
+    const strategies = Object.fromEntries(
+      [...loadRegistry(contractsFromDisk()).values()]
+        .filter((c) => c.kind === "command")
+        .map((c) => [
+          c.id,
+          (c as unknown as { concurrency: { strategy: string } }).concurrency.strategy,
+        ]),
+    );
+
+    expect(strategies).toStrictEqual({
+      "invoice.issue": "optimistic",
+      "payment.cancel": "optimistic",
+      "payment.create": "none",
+    });
+  });
+
+  it("DSOR-CON-01b: an optimistic command with no version, or one that is not a whole number from 1, is refused", async () => {
+    for (const [id, args] of [
+      ["invoice.issue", { invoice: INV_1009 }],
+      ["payment.cancel", { payment: PAY_901 }],
+    ] as const) {
+      for (const given of [undefined, 0, -1, 1.5, "1", null]) {
+        const answer = await callOperation(SUPERVISOR, id, { ...args, expected_version: given });
+
+        expect(answer.kind === "error" && answer.envelope.code, `${id} ${String(given)}`).toBe(
+          "VALIDATION_FAILED",
+        );
+      }
+    }
+
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+  });
+
+  it("DSOR-CON-01b: an invoice that moved on since the version read is STALE_STATE, and is not touched", async () => {
+    await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009, expected_version: 1 });
+
+    const stale = await callOperation(AGENT, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
+
+    expect(stale.kind === "error" && stale.envelope.code).toBe("STALE_STATE");
+    expect(stale.kind === "error" && stale.envelope.retry).toBe("after_state_refresh");
+    expect((await getInvoice("org_456", "INV-1009")).value?.version).toBe(2);
+
+    // Re-read, decide again: on version 2 the answer is the business rule's.
+    const again = await callOperation(AGENT, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 2,
+    });
+
+    expect(again.kind === "error" && again.envelope.code).toBe("CONFLICT");
+  });
+
+  it("DSOR-CON-01b: so does a payment, cancelled since the version read", async () => {
+    expect(
+      (await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }))
+        .kind,
+    ).toBe("result");
+
+    const stale = await callOperation(AGENT, "payment.cancel", {
+      payment: PAY_901,
+      expected_version: 1,
+    });
+
+    expect(stale.kind === "error" && stale.envelope.code).toBe("STALE_STATE");
+  });
+
+  it("DSOR-CON-01b: two changes on one version, sent together: one is made, the other finds it stale", async () => {
+    // At the store, because two decisions in one company at one moment also race for the next
+    // place in its log, which is the log's to settle (audit-race.test.ts), not this step's.
+    const both = await Promise.all([
+      issueInvoice("org_456", "INV-1009", 1),
+      issueInvoice("org_456", "INV-1009", 1),
+    ]);
+
+    expect(both.map((o) => o.kind).sort()).toStrictEqual(["issued", "stale"]);
+    expect((await getInvoice("org_456", "INV-1009")).value?.version).toBe(2);
   });
 });

@@ -52,7 +52,9 @@ describe("anything not granted is refused", () => {
 
   // The other half of the map's "done when", and the point of the step.
   it("DSOR-AUT-01b: cfo_100 may not issue one, and nothing happens when she tries", async () => {
-    const envelope = refusalFrom(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 }));
+    const envelope = refusalFrom(
+      await callOperation(CFO, "invoice.issue", { invoice: INV_1009, expected_version: 1 }),
+    );
 
     expect(envelope.code).toBe("AUTHORIZATION_DENIED");
     expect(envelope.retry).toBe("never");
@@ -70,7 +72,9 @@ describe("anything not granted is refused", () => {
   // Decision 35. It says she may not do it, not what she was missing. A refusal that names the
   // missing permission draws the permission model for anyone willing to ask twenty times.
   it("DSOR-AUT-01b: the refusal does not say which permission was missing", async () => {
-    const envelope = refusalFrom(await callOperation(CFO, "invoice.issue", { invoice: INV_1009 }));
+    const envelope = refusalFrom(
+      await callOperation(CFO, "invoice.issue", { invoice: INV_1009, expected_version: 1 }),
+    );
 
     expect(envelope.message).toContain("cfo_100");
     expect(envelope.message).toContain("invoice.issue");
@@ -82,7 +86,10 @@ describe("anything not granted is refused", () => {
   // that a test whose expected value is a constant cannot tell the caller's real id from that
   // one string — the same trap step 05's attribution test fell into.
   it("DSOR-AUT-01b: a denial says who was denied", async () => {
-    const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    const answer = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     expect(answer.askedBy).toBe(CFO.loggedInAs);
     expect(refusalFrom(answer).correlation.principal_id).toBe(CFO.loggedInAs);
@@ -102,7 +109,11 @@ describe("anything not granted is refused", () => {
 
     for (const extra of planted) {
       const envelope = refusalFrom(
-        await callOperation(CFO, "invoice.issue", { invoice: INV_1009, ...extra }),
+        await callOperation(CFO, "invoice.issue", {
+          invoice: INV_1009,
+          expected_version: 1,
+          ...extra,
+        }),
       );
 
       expect(envelope.code, JSON.stringify(extra)).toBe("AUTHORIZATION_DENIED");
@@ -121,7 +132,10 @@ describe("anything not granted is refused", () => {
   // The denial is a new return site, and every answer in this program is frozen because
   // `readonly` is erased before Node runs. No test covered this one.
   it("a denial cannot be edited after it is handed out", async () => {
-    const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    const answer = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     expect(Object.isFrozen(answer)).toBe(true);
     expect(() => {
@@ -253,7 +267,7 @@ describe("anything not granted is refused", () => {
   // not need the one draft invoice, which the last test uses.
   it("DSOR-AUT-01b: a caller who was granted invoice:issue gets past the gate", async () => {
     const envelope = refusalFrom(
-      await callOperation(AGENT, "invoice.issue", { invoice: INV_1008 }),
+      await callOperation(AGENT, "invoice.issue", { invoice: INV_1008, expected_version: 1 }),
     );
 
     expect(envelope.code).toBe("CONFLICT");
@@ -269,7 +283,10 @@ describe("anything not granted is refused", () => {
 
   // Last in the file on purpose: it uses up the only draft invoice.
   it("DSOR-AUT-01b: the supervisor may issue, and does", async () => {
-    const answer = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (answer.kind !== "result") {
       throw new Error(`expected a result, got ${answer.kind}`);

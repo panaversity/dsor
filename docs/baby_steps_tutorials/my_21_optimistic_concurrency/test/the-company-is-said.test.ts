@@ -92,8 +92,8 @@ describe("every store statement says the request's company", () => {
     });
 
     await getInvoice("org_456", "INV-1008");
-    await issueInvoice("org_456", "INV-1009");
-    await issueInvoice("org_456", "INV-1009"); // the not-a-draft path: the UPDATE, then the read
+    await issueInvoice("org_456", "INV-1009", 1);
+    await issueInvoice("org_456", "INV-1009", 2); // the not-a-draft path: the UPDATE, then the read
     await audit(aDecision("req_1"));
     await theHead("org_456");
     await theLog("org_456");

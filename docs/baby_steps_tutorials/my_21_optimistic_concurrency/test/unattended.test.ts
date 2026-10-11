@@ -54,7 +54,11 @@ function refusalOf(answer: OperationAnswer): ErrorEnvelope {
 }
 
 const cancel = (login: object, args: object = {}): Promise<OperationAnswer> =>
-  callOperation(login as never, "payment.cancel", { payment: PAY_901, ...args });
+  callOperation(login as never, "payment.cancel", {
+    payment: PAY_901,
+    expected_version: 1,
+    ...args,
+  });
 
 const hoursAgo = (hours: number): string =>
   new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
@@ -211,7 +215,7 @@ describe("the company directory", () => {
     useDirectory("org_456", null);
 
     for (const [id, args] of [
-      ["invoice.issue", { invoice: "dsor://org_456/invoice/INV-1009" }],
+      ["invoice.issue", { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 }],
       [
         "payment.create",
         {
@@ -219,7 +223,7 @@ describe("the company directory", () => {
           amount: { value: "2500.00", currency: "USD" },
         },
       ],
-      ["payment.cancel", { payment: PAY_901 }],
+      ["payment.cancel", { payment: PAY_901, expected_version: 1 }],
     ] as const) {
       expect(refusalOf(await callOperation(AGENT, id, args)).code, id).toBe("DEPENDENCY_TIMEOUT");
     }
@@ -296,6 +300,7 @@ describe("whose authority the record says", () => {
 
     const answer = await callOperation({ ...AGENT, ...planted } as never, "payment.cancel", {
       payment: PAY_901,
+      expected_version: 1,
       ...planted,
     });
 

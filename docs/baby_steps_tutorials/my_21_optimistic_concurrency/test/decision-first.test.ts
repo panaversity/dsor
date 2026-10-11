@@ -83,7 +83,10 @@ describe("the decision is written down first", () => {
   it("DSOR-EXE-02: a refusal is recorded, with the code and the reason for the DENY", async () => {
     await fresh();
 
-    const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    const answer = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -109,8 +112,14 @@ describe("the decision is written down first", () => {
   it("DSOR-COR-01a: the record and the answer name the same request", async () => {
     await fresh();
 
-    const refused = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
-    const issued = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    const refused = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
+    const issued = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (refused.kind !== "error" || issued.kind !== "result") {
       throw new Error(`expected a refusal then a result, got ${refused.kind} then ${issued.kind}`);
@@ -136,7 +145,7 @@ describe("the decision is written down first", () => {
       {
         login: CFO,
         id: "invoice.issue",
-        args: { invoice: INV_1009 },
+        args: { invoice: INV_1009, expected_version: 1 },
         code: "AUTHORIZATION_DENIED",
       },
     ];
@@ -190,7 +199,7 @@ describe("the decision is written down first", () => {
       },
       {
         id: "invoice.issue",
-        args: { invoice: INV_1008 },
+        args: { invoice: INV_1008, expected_version: 1 },
         code: "CONFLICT",
       },
     ];
@@ -288,7 +297,10 @@ describe("the decision is written down first", () => {
 
     setClock(() => "the day before yesterday");
 
-    const answer = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -305,9 +317,10 @@ describe("the decision is written down first", () => {
 
     // And with the clock working, the same request goes through. So the refusal was about the
     // evidence and not about the request.
-    expect((await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 })).kind).toBe(
-      "result",
-    );
+    expect(
+      (await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009, expected_version: 1 }))
+        .kind,
+    ).toBe("result");
     expect(await theLog("org_456")).toHaveLength(1);
   });
 
@@ -327,7 +340,10 @@ describe("the decision is written down first", () => {
     await fresh();
     setClock(() => "the day before yesterday");
 
-    const answer = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    const answer = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (answer.kind !== "error") {
       throw new Error(`expected a refusal, got ${answer.kind}`);
@@ -340,7 +356,10 @@ describe("the decision is written down first", () => {
     resetClock();
 
     // With the clock working, the same call is refused the way it should be, and recorded.
-    const again = await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    const again = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     expect(again.kind === "error" && again.envelope.code).toBe("AUTHORIZATION_DENIED");
     expect(await theLog("org_456")).toHaveLength(1);
@@ -433,7 +452,10 @@ describe("the decision is written down first", () => {
   it("DSOR-EXE-02: the record's payload hash is of the arguments, and the answer carries the same one", async () => {
     await fresh();
 
-    const issued = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    const issued = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (issued.kind !== "result") {
       throw new Error(`expected a result, got ${issued.kind}`);
@@ -500,7 +522,10 @@ describe("the decision is written down first", () => {
           : stage,
       );
 
-      const answer = await makeDoor(list)(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+      const answer = await makeDoor(list)(SUPERVISOR, "invoice.issue", {
+        invoice: INV_1009,
+        expected_version: 1,
+      });
 
       expect(answer.kind === "error" && answer.envelope.code, lazied).toBe("INTERNAL_ERROR");
       expect(await theLog("org_456"), lazied).toHaveLength(1);
@@ -674,9 +699,9 @@ describe("the decision is written down first", () => {
     await fresh();
 
     await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
-    await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    await callOperation(CFO, "invoice.issue", { invoice: INV_1009, expected_version: 1 });
     await callOperation(SUPERVISOR, "invoice.destroy", {});
-    await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009, expected_version: 1 });
 
     // Every `validateAuditRecord` call in audit.test.ts is on a record that file built itself.
     // DSOR-AUD-01's sentence is about the records the pipeline actually writes, and a review pointed
@@ -694,10 +719,10 @@ describe("the decision is written down first", () => {
     await fresh();
 
     await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
-    await callOperation(CFO, "invoice.issue", { invoice: INV_1009 });
+    await callOperation(CFO, "invoice.issue", { invoice: INV_1009, expected_version: 1 });
     await callOperation(undefined, "invoice.get", { invoice: INV_1008 });
     await callOperation(SUPERVISOR, "invoice.destroy", {});
-    await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009, expected_version: 1 });
 
     // Five records: the caller with no login was counted instead, and STEP 14 the supervisor's read
     // is written down after its decision, with no authorization of its own.

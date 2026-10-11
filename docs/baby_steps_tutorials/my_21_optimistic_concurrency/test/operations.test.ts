@@ -300,7 +300,10 @@ describe("callOperation", () => {
       resetRequestIds();
       resetProposalIds();
 
-      const first = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+      const first = await callOperation(SUPERVISOR, "invoice.issue", {
+        invoice: INV_1009,
+        expected_version: 1,
+      });
 
       if (first.kind !== "result") {
         throw new Error(`expected a result, got ${first.kind}`);
@@ -320,9 +323,13 @@ describe("callOperation", () => {
       expect((first.envelope.data as { status: string }).status).toBe("issued");
 
       // Again. Nothing is thrown; the refusal is an envelope a caller can act on, and
-      // its retry class says plainly that trying again cannot help.
+      // its retry class says plainly that trying again cannot help. NEW IN STEP 21: on version 2, the one
+      // a caller reads now; on version 1 the answer would be STALE_STATE, which versions.test.ts pins.
       const second = refusalFrom(
-        await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 }),
+        await callOperation(SUPERVISOR, "invoice.issue", {
+          invoice: INV_1009,
+          expected_version: 2,
+        }),
       );
 
       expect(second.code).toBe("CONFLICT");
@@ -332,7 +339,12 @@ describe("callOperation", () => {
 
     it("DSOR-ERR-01a: issuing an invoice that is already issued is CONFLICT", async () => {
       expect(
-        refusalFrom(await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1008 })).code,
+        refusalFrom(
+          await callOperation(SUPERVISOR, "invoice.issue", {
+            invoice: INV_1008,
+            expected_version: 1,
+          }),
+        ).code,
       ).toBe("CONFLICT");
     });
 
@@ -349,7 +361,12 @@ describe("callOperation", () => {
 
       for (const [address, code] of cases) {
         expect(
-          refusalFrom(await callOperation(SUPERVISOR, "invoice.issue", { invoice: address })).code,
+          refusalFrom(
+            await callOperation(SUPERVISOR, "invoice.issue", {
+              invoice: address,
+              expected_version: 1,
+            }),
+          ).code,
         ).toBe(code);
       }
 
@@ -393,6 +410,7 @@ describe("callOperation", () => {
         refusalFrom(
           await callOperation(SUPERVISOR, "invoice.issue", {
             invoice: "dsor://org_456/invoice/INV-9999",
+            expected_version: 1,
           }),
         ).code,
       ).toBe("RESOURCE_NOT_FOUND");

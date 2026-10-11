@@ -104,6 +104,8 @@ export async function createPayment(
 export type CancelOutcome =
   | { readonly kind: "cancelled"; readonly payment: Payment }
   | { readonly kind: "not_found" }
+  /** NEW IN STEP 21: the payment moved on from the version the caller decided on (decision 133). */
+  | { readonly kind: "stale"; readonly version: number }
   | { readonly kind: "not_draft"; readonly status: Exclude<PaymentStatus, "draft"> };
 
 /**
@@ -112,12 +114,18 @@ export type CancelOutcome =
  * draft, and nothing in the database stops it (decision 126). The proposal's states, in step 22,
  * are where a state that cannot go back is made a rule.
  */
-export async function cancelPayment(tenantId: string, id: string): Promise<CancelOutcome> {
+export async function cancelPayment(
+  tenantId: string,
+  id: string,
+  expectedVersion: number,
+): Promise<CancelOutcome> {
+  // NEW IN STEP 21: and only the version the caller decided on, in the same statement, which raises
+  // it (DSOR-CON-01b, decision 133).
   const { rows } = await theDatabase(tenantId).query<Row>(
     `UPDATE public.payments SET status = 'cancelled', version = version + 1
-     WHERE tenant_id = $1 AND id = $2 AND status = 'draft'
+     WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND version = $3
      RETURNING ${COLUMNS}`,
-    [tenantId, id],
+    [tenantId, id, expectedVersion],
   );
   const cancelled = rows[0];
 
@@ -125,18 +133,31 @@ export async function cancelPayment(tenantId: string, id: string): Promise<Cance
     return { kind: "cancelled", payment: fromRow(cancelled) };
   }
 
-  // Not a draft, or not there: asked separately, to say which. A draft found now was made after the
-  // UPDATE looked, by a payment.create that took the very number this cancel named. It was not
-  // there to cancel, and is reported that way.
-  const { rows: found } = await theDatabase(tenantId).query<{ status: PaymentStatus }>(
-    "SELECT status FROM public.payments WHERE tenant_id = $1 AND id = $2",
-    [tenantId, id],
-  );
-  const status = found[0]?.status;
+  // Not there, moved on, or not a draft: asked separately, to say which, the version first.
+  const { rows: found } = await theDatabase(tenantId).query<{
+    status: PaymentStatus;
+    version: number;
+  }>("SELECT status, version FROM public.payments WHERE tenant_id = $1 AND id = $2", [
+    tenantId,
+    id,
+  ]);
+  const current = found[0];
 
-  return status === undefined || status === "draft"
-    ? { kind: "not_found" }
-    : { kind: "not_draft", status };
+  if (current === undefined) {
+    return { kind: "not_found" };
+  }
+
+  if (current.version !== expectedVersion) {
+    return { kind: "stale", version: current.version };
+  }
+
+  // A draft on the caller's version, found now, was made after the UPDATE looked, by a
+  // payment.create that took the very number this cancel named. It was not there to cancel.
+  if (current.status === "draft") {
+    return { kind: "not_found" };
+  }
+
+  return { kind: "not_draft", status: current.status };
 }
 
 /**

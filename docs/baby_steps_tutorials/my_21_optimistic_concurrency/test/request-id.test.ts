@@ -63,7 +63,10 @@ describe("the request id", () => {
     // Three requests, refused at three different stages, so the id is not an accident of one path.
     const noLogin = await callOperation(undefined, "invoice.get", { invoice: INV_1008 });
     const noSuchOperation = await callOperation(SUPERVISOR, "invoice.destroy", {});
-    const notAllowed = await callOperation(CFO, "invoice.issue", { invoice: INV_1008 });
+    const notAllowed = await callOperation(CFO, "invoice.issue", {
+      invoice: INV_1008,
+      expected_version: 1,
+    });
 
     expect(idOf(noLogin)).toBe("req_1");
     expect(idOf(noSuchOperation)).toBe("req_2");
@@ -84,7 +87,10 @@ describe("the request id", () => {
     // Refuse once, so the counter has moved and the success below cannot pass by starting at one.
     expect(idOf(await callOperation(undefined, "invoice.get", {}))).toBe("req_1");
 
-    const issued = await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+    const issued = await callOperation(SUPERVISOR, "invoice.issue", {
+      invoice: INV_1009,
+      expected_version: 1,
+    });
 
     if (issued.kind !== "result") {
       throw new Error(`expected a result, got ${issued.kind}`);

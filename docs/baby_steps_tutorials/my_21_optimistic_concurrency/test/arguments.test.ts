@@ -105,6 +105,8 @@ describe("the caller's arguments", () => {
 
         return reads === 1 ? INV_1009 : "dsor://org_456/invoice/INV-0000";
       },
+      // NEW IN STEP 21: the version the decision was made on.
+      expected_version: 1,
       trap: {
         toJSON(): number {
           hashed += 1;
@@ -129,7 +131,7 @@ describe("the caller's arguments", () => {
     expect(answer.envelope.outcome).toBe("COMMITTED");
 
     const honest = createHash("sha256")
-      .update(JSON.stringify({ invoice: INV_1009, trap: 1 }))
+      .update(JSON.stringify({ invoice: INV_1009, expected_version: 1, trap: 1 }))
       .digest("hex");
 
     expect(answer.envelope.payload_hash).toBe(`sha256:${honest}`);

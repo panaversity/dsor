@@ -237,7 +237,7 @@ describe("payment.create", () => {
 describe("payment.cancel", () => {
   it("DSOR-EXE-05b: takes PAY-901 back, and says how: atomic, one statement that commits or not", async () => {
     const receipt = receiptOf(
-      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }),
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
     );
 
     expect(receipt.semantics).toBe("atomic");
@@ -246,10 +246,12 @@ describe("payment.cancel", () => {
   });
 
   it("a cancelled payment is not cancelled again: CONFLICT, and asking again cannot help", async () => {
-    receiptOf(await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }));
+    receiptOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+    );
 
     const refusal = refusalOf(
-      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }),
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 2 }),
     );
 
     expect(refusal.code).toBe("CONFLICT");
@@ -261,6 +263,7 @@ describe("payment.cancel", () => {
     const refusal = refusalOf(
       await callOperation(SUPERVISOR, "payment.cancel", {
         payment: "dsor://org_456/payment/PAY-999",
+        expected_version: 1,
       }),
     );
 
@@ -269,7 +272,7 @@ describe("payment.cancel", () => {
 
   it("an invoice's address is not a payment's", async () => {
     const refusal = refusalOf(
-      await callOperation(SUPERVISOR, "payment.cancel", { payment: INV_1008 }),
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: INV_1008, expected_version: 1 }),
     );
 
     expect(refusal.code).toBe("VALIDATION_FAILED");
@@ -281,7 +284,9 @@ describe("payment.cancel", () => {
       await callOperation(AGENT, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
     );
     const address = String(made.data?.["uri"]);
-    const undone = receiptOf(await callOperation(AGENT, "payment.cancel", { payment: address }));
+    const undone = receiptOf(
+      await callOperation(AGENT, "payment.cancel", { payment: address, expected_version: 1 }),
+    );
 
     expect(undone.data?.["uri"]).toBe(address);
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft", "PAY-902 cancelled"]);
@@ -289,12 +294,16 @@ describe("payment.cancel", () => {
 
   it("DSOR-EXE-05c: the undo runs under the full pipeline: its own permission, its own decision in the log", async () => {
     // The CFO may not cancel, as the CFO may not create: the undo is an operation like any other.
-    expect(refusalOf(await callOperation(CFO, "payment.cancel", { payment: PAY_901 })).code).toBe(
-      "AUTHORIZATION_DENIED",
-    );
+    expect(
+      refusalOf(
+        await callOperation(CFO, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+      ).code,
+    ).toBe("AUTHORIZATION_DENIED");
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
 
-    receiptOf(await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901 }));
+    receiptOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+    );
 
     const decisions = (await theLog("org_456"))
       .filter((record) => record.kind === "decision")

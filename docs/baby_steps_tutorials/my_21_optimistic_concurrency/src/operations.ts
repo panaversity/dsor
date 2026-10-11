@@ -155,6 +155,33 @@ const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : 
  * Every refusal here is `VALIDATION_FAILED` or `TENANT_MISMATCH`, and both are `never`
  * retryable: asking again with the same bad address cannot start working.
  */
+/**
+ * NEW IN STEP 21: the version an optimistic command's caller decided on, or why it is not one
+ * (DSOR-CON-01b, decision 133). A whole number from 1, and required: an optional one would make the
+ * check the caller's to switch off.
+ */
+function expectedVersionFrom(args: Readonly<Record<string, unknown>>): number | string {
+  const given = Object.hasOwn(args, "expected_version") ? args["expected_version"] : undefined;
+
+  return typeof given === "number" && Number.isInteger(given) && given >= 1
+    ? given
+    : "expected_version, the version the decision was made on, must be a whole number from 1";
+}
+
+/** NEW IN STEP 21: the refusal for a record that moved on since the caller read it. */
+function stale(what: string, version: number, askedBy: string, requestId: string): HandlerAnswer {
+  return {
+    kind: "error",
+    askedBy,
+    envelope: refusal(
+      "STALE_STATE",
+      `${what} is at version ${version} now, not the version the decision was made on; read it again and decide again`,
+      requestId,
+      askedBy,
+    ),
+  };
+}
+
 function idFrom(
   args: Readonly<Record<string, unknown>>,
   entity: string,
@@ -301,7 +328,22 @@ const handlers: Readonly<Record<string, Handler>> = {
       return { kind: "error", askedBy, envelope: read.refused };
     }
 
-    const outcome = await issueInvoice(tenant, read.id);
+    const expected = expectedVersionFrom(args);
+
+    if (typeof expected === "string") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal("VALIDATION_FAILED", expected, requestId, askedBy),
+      };
+    }
+
+    const outcome = await issueInvoice(tenant, read.id, expected);
+
+    // NEW IN STEP 21: moved on since the caller read it, whatever its state now (decision 133).
+    if (outcome.kind === "stale") {
+      return stale(read.id, outcome.version, askedBy, requestId);
+    }
 
     if (outcome.kind === "not_found") {
       return {
@@ -424,7 +466,22 @@ const handlers: Readonly<Record<string, Handler>> = {
       return { kind: "error", askedBy, envelope: read.refused };
     }
 
-    const outcome = await cancelPayment(tenant, read.id);
+    const expected = expectedVersionFrom(args);
+
+    if (typeof expected === "string") {
+      return {
+        kind: "error",
+        askedBy,
+        envelope: refusal("VALIDATION_FAILED", expected, requestId, askedBy),
+      };
+    }
+
+    const outcome = await cancelPayment(tenant, read.id, expected);
+
+    // NEW IN STEP 21: moved on since the caller read it, whatever its state now (decision 133).
+    if (outcome.kind === "stale") {
+      return stale(read.id, outcome.version, askedBy, requestId);
+    }
 
     if (outcome.kind === "not_found") {
       return {

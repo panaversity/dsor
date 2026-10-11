@@ -122,6 +122,7 @@ describe("a command's receipt", () => {
   it("DSOR-CLS-02a: the receipt the agent gets for issuing an invoice carries no amount either, and says so", async () => {
     const receipt = await callOperation(AGENT, "invoice.issue", {
       invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
     });
 
     expect(receipt.kind).toBe("result");
