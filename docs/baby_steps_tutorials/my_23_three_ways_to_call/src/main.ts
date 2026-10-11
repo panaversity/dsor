@@ -61,6 +61,15 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
 
   if (answer.kind === "result") {
     const r = answer.envelope;
+
+    // NEW IN STEP 23: a command prepared or only asked about changed nothing, so its answer has no
+    // row: a READY one says its proposal, a VALIDATED one its decision (decision 138).
+    if (r.data === undefined) {
+      return r.outcome === "READY"
+        ? `${who} ${r.outcome.padEnd(24)} ${r.proposal ?? ""}  waiting to be released  ${r.semantics ?? ""}`
+        : `${who} ${r.outcome.padEnd(24)} the decision would be ${r.decision ?? ""}; nothing was done`;
+    }
+
     // STEP 17: an invoice's receipt or a payment's: an address and a status either way.
     const row = r.data as { uri: string; status: string };
 
@@ -629,6 +638,37 @@ if (finished !== undefined) {
   console.log();
   console.log(`  ${finished.id} is COMMITTED. Moved back to EXECUTING: ${tried.kind}`);
 }
+
+// NEW IN STEP 23: one payment, called three ways (decision 138). A dry run is decided and
+// recorded, and nothing else; a prepared one becomes a proposal that waits at READY for someone to
+// release it, which is step 31's; only the third makes a payment.
+console.log();
+console.log("Three ways to call one payment of 400.00 USD for INV-1009:");
+console.log();
+
+const onePayment = { invoice: INV_1009, amount: { value: "400.00", currency: "USD" } };
+const beforeThreeWays = (await paymentsOf("org_456")).length;
+
+console.log(
+  show(await callOperation(AGENT, "payment.create", onePayment, { mode: "validate_only" })),
+);
+console.log(
+  show(
+    await callOperation(AGENT, "payment.create", onePayment, {
+      ...keyFor("three-ways-prepared"),
+      mode: "propose_only",
+    }),
+  ),
+);
+
+const afterTwoWays = (await paymentsOf("org_456")).length;
+
+console.log(
+  show(await callOperation(AGENT, "payment.create", onePayment, keyFor("three-ways-executed"))),
+);
+console.log(
+  `  payments made: ${afterTwoWays - beforeThreeWays} by the first two, ${(await paymentsOf("org_456")).length - afterTwoWays} by the third`,
+);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

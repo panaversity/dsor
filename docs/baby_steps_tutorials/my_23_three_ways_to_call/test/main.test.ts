@@ -139,7 +139,8 @@ describe("the program a learner runs", () => {
     // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
     // two payments and a conflict. The replays leave none.
     // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
-    expect(rows).toHaveLength(38);
+    // NEW IN STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
+    expect(rows).toHaveLength(41);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -148,7 +149,7 @@ describe("the program a learner runs", () => {
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
     expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(20);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(18); // STEP 13: three pages read
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(21); // STEP 13: three pages read; STEP 23: three ways
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
     // STEP 14: the gaps — 1, 5, 23, 25, 27 since step 17 — are the records of reads, which this
@@ -156,10 +157,10 @@ describe("the program a learner runs", () => {
     // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
       0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29,
-      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 0, 1,
+      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 41 records, chain verifies against the head: true"); // STEP 21: 36 decisions, 5 reads
+    expect(out).toContain("org_456: 44 records, chain verifies against the head: true"); // STEP 23: 39 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -205,22 +206,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(41); // STEP 21: 36 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(44); // STEP 23: 39 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 41 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 44 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(82);
+    expect(records(second, "org_456")).toBe(88);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 82 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 88 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      76,
+      82,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -250,8 +251,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(43); // STEP 21: 41 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(43);
+    expect(hashesOf(first.raw)).toHaveLength(46); // STEP 23: 44 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(46);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -486,6 +487,20 @@ describe("the program a learner runs", () => {
       "  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE",
     );
     expect(out).toMatch(/ {2}prop_\d+ is COMMITTED\. Moved back to EXECUTING: refused\n/);
+  });
+
+  it("DSOR-OPR-05: the demo calls one payment three ways, and only the third makes it", () => {
+    // NEW IN STEP 23 (decision 138).
+    const out = demo().report;
+
+    expect(out).toContain("Three ways to call one payment of 400.00 USD for INV-1009:");
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"VALIDATED".padEnd(24)} the decision would be ALLOW; nothing was done`,
+    );
+    expect(out).toMatch(
+      /accounts-payable-fte {2}READY {20}dsor:\/\/org_456\/proposal\/prop_\d+ {2}waiting to be released {2}compensatable\n/,
+    );
+    expect(out).toContain("  payments made: 0 by the first two, 1 by the third");
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
