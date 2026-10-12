@@ -380,7 +380,7 @@ describe("C4: the sweep", () => {
       correlation: { request_id: "req_race" },
       now: new Date(T0).toISOString(),
       // The expiry sweep asks no KSoR (step 28b's README, decision D2).
-      policies: policyLook(NO_KSORS, "org_456"),
+      ksor: policyLook(NO_KSORS, "org_456"),
     };
     const expire = ownWorkFor()["proposal.expire_due"]!;
     expect(await expire.change(companyOf(SCHEDULER), work)).toStrictEqual({

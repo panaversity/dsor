@@ -136,14 +136,14 @@ function noticeOf(version: InForce, uri: string, cited: number, now: PolicyInFor
  * D3 to D6). It answers with counts, as the expiry sweep does.
  */
 async function checkAuthority(_input: unknown, work: OwnStores): Promise<unknown> {
-  const { tenant, caller, stores, correlation, now, policies } = work;
+  const { tenant, caller, stores, correlation, now, ksor } = work;
   const cited = (await stores.controls.inForce(tenant)).flatMap((version) => {
     const citation = citationOf(version);
     return citation === undefined ? [] : [{ version, ...citation }];
   });
   const heard = new Map<string, Heard>();
   for (const { uri } of cited) {
-    if (!heard.has(uri)) heard.set(uri, await policies(uri));
+    if (!heard.has(uri)) heard.set(uri, await ksor(uri));
   }
   // The record names the sweep's caller, as the expiry sweep's records do (step 25c's README,
   // decision D4).
@@ -163,6 +163,38 @@ async function checkAuthority(_input: unknown, work: OwnStores): Promise<unknown
   }
   const unanswered = [...heard.values()].filter((h) => !h.answered).length;
   return { tenant_id: tenant, asked: heard.size, unanswered, marked };
+}
+
+/**
+ * Line ⑨ of a switch-on: KSoR confirms that the version of the policy that this version cites is
+ * the one in force, with the fingerprint it cites. A version that cites local has nothing to
+ * confirm. No answer DSoR can use refuses the switch-on for now; another version in force, or
+ * another fingerprint, refuses it for good (step 28b's README, decision D12).
+ */
+export async function confirmCitation(
+  name: string,
+  version: InForce,
+  ksor: PolicyLook,
+): Promise<void> {
+  const citation = citationOf(version);
+  if (citation === undefined) return;
+  const { uri, cited } = citation;
+  const which = `version ${version.version} of rule ${version.id}`;
+  const heard = await ksor(uri);
+  if (!heard.answered) {
+    const why = `DSoR cannot confirm with KSoR the policy that ${which} cites: ${heard.why}`;
+    throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`, "internal");
+  }
+  const cites = `${which} cites version ${cited.version} of ${JSON.stringify(uri)}`;
+  if (heard.version !== cited.version) {
+    const why = `${cites}, and KSoR has version ${heard.version} in force`;
+    throw new Refusal("VALIDATION_FAILED", `${name}: ${why}`, "internal");
+  }
+  if (heard.content_hash !== cited.content_hash) {
+    const theirs = `KSoR's version ${heard.version} has ${heard.content_hash}`;
+    const why = `${cites} with the fingerprint ${cited.content_hash}, and ${theirs}`;
+    throw new Refusal("VALIDATION_FAILED", `${name}: ${why}`, "internal");
+  }
 }
 
 /** DSoR's own work for the sweep. */

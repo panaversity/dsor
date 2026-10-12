@@ -3,6 +3,8 @@
 // record too, in person. The switch-on runs the version's tests first (DSOR-CTL-02c). It retires
 // the live version, and the next call meets the new one. An agent switches nothing on.
 import { describe, expect, it } from "vitest";
+import { fakeKsor, fingerprintOf } from "../src/ksor.ts";
+import type { RequestEnvelope } from "../src/request.ts";
 import type { ControlStore } from "../src/rulebook.ts";
 import {
   ADMIN,
@@ -12,10 +14,12 @@ import {
   FIRM_IN_456,
   keyed,
   OUR_EXTENSIONS,
+  POLICY,
   rolesFile,
   shippedWith,
   STARTING_ROLES,
   SUPERVISOR,
+  V5_TEXT,
 } from "./helpers.ts";
 import {
   ADMIN_700,
@@ -503,3 +507,125 @@ function byOther() {
   const correlation = { request_id: "req_other", principal_id: "cfo_100" };
   return { person: "cfo_100", as_of: new Date().toISOString(), words: "another call", correlation };
 }
+
+// The finance team's version 5 of the payment-approval policy, with its fingerprint.
+const V5 = { version: 5, content_hash: fingerprintOf(V5_TEXT) };
+// dsor-scheduler, which sweeps (step 25c's README, decision D1).
+const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
+
+/** Version 9's text, with its citation changed. */
+function citing(changes: Record<string, unknown>): Record<string, unknown> {
+  const text = textOf(version9());
+  return { ...text, authority: { ...(text["authority"] as object), ...changes } };
+}
+
+/** The proposal of a refused call, and the state it ended in. */
+async function stateOf(w: RuleWorld, refused: unknown): Promise<string | undefined> {
+  const named = (refused as { proposal?: string }).proposal ?? "";
+  return (await w.proposals.get("org_456", named.split("/").at(-1)!))?.state;
+}
+
+describe("C8: a switch-on asks KSoR first (step 28b's README, decision D12)", () => {
+  it("DSOR-CTL-03a: once KSoR has version 5 in force, cfo_100 cannot switch on version 9, which cites version 4: VALIDATION_FAILED at line ⑨, its proposal DENIED, and version 8 stays active", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const refused = await activate(w, v9);
+    expect(refused).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message:
+        '"rule.activate": version 9 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy", and KSoR has version 5 in force',
+    });
+    expect(await stateOf(w, refused)).toBe("DENIED");
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+  });
+
+  it("DSOR-CTL-03a: a version that cites version 5 with its fingerprint switches on, and retires version 8, which the sweep marked stale: INV-1006's 640.00 USD is paid again, and INV-2007's 21,000.00 USD waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const company = { company: "dsor://org_456/tenant/org_456" };
+    expect(await w.ask(keyed(SCHEDULER), "rule.check_authority", company)).toMatchObject({
+      data: { marked: 1 },
+    });
+    const v9 = await drafted(w, CFO, citing(V5));
+    expect(await activate(w, v9)).toMatchObject({
+      data: { version: 9, status: "active", retired: 8 },
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "retired"],
+      [9, "active"],
+    ]);
+    expect(heard(await w.draft("INV-1006"))).toBe("COMMITTED");
+    expect(heard(await w.draft("INV-2007"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("Step 28b: a version that cites version 4 with another fingerprint is refused: KSoR's version 4 has another text", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w, CFO, citing({ content_hash: "sha256:0000" }));
+    expect(await activate(w, v9)).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message:
+        '"rule.activate": version 9 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy" with the fingerprint sha256:0000, and KSoR\'s version 4 has sha256:9f2c1e7ab4d0',
+    });
+  });
+
+  it("Step 28b: with KSoR off, a switch-on is refused FRESHNESS_UNSATISFIABLE and nothing moves; once KSoR answers again, the same version switches on", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    w.ksors.get("org_456")!.turn("off");
+    expect(await activate(w, v9)).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+      message:
+        '"rule.activate": DSoR cannot confirm with KSoR the policy that version 9 of rule high-value-payment cites: the KSoR of org_456 gave no answer within 2 seconds',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+    w.ksors.get("org_456")!.turn("on");
+    expect(heard(await activate(w, v9))).toBe("COMMITTED");
+  });
+
+  it("Step 28b: a version that cites a policy KSoR does not list yet waits too: FRESHNESS_UNSATISFIABLE, which says why", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w, CFO, citing({ uri: "ksor://org_456/finance/payments-2027" }));
+    expect(await activate(w, v9)).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+      message:
+        '"rule.activate": DSoR cannot confirm with KSoR the policy that version 9 of rule high-value-payment cites: the KSoR of org_456 does not list "ksor://org_456/finance/payments-2027"',
+    });
+  });
+
+  it("DSOR-CTL-01b: a version that cites local is never asked about: admin_700 switches on org_789's own rule while org_789's KSoR is off", async () => {
+    const w = await ruleWorldOnTuesday();
+    const theirs = fakeKsor("org_789", {});
+    theirs.turn("off");
+    w.ksors.set("org_789", theirs);
+    const rule = "dsor://org_789/rule/board-above-10000";
+    await ruleCall(w, ADMIN_700, "rule.draft", { draft: text789() }, rule);
+    expect(heard(await ruleCall(w, ADMIN_700, "rule.activate", { version: 1 }, rule))).toBe(
+      "COMMITTED",
+    );
+    expect(theirs.asked()).toBe(0);
+  });
+
+  it("Step 28b: a dry run of the switch-on asks KSoR too, and hears the same refusal", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const dry = { ...CFO, mode: "validate_only" as const };
+    const input = { rule: RULE, version: v9, reason: "a dry run" };
+    expect(heard(await w.ask(dry, "rule.activate", input))).toBe("VALIDATION_FAILED");
+  });
+
+  it("Step 28b: KSoR is asked after the version's own checks: step 27's quick rule is refused for its tests, and KSoR is not asked", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w, CFO, { ...textOf(version9()), condition: QUICK });
+    const before = w.ksors.get("org_456")!.asked();
+    expect(heard(await activate(w, v9))).toBe("VALIDATION_FAILED");
+    expect(w.ksors.get("org_456")!.asked()).toBe(before);
+  });
+});

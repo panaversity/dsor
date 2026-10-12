@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
+import { fingerprintOf } from "../src/ksor.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
@@ -15,7 +16,7 @@ import { createDbControls, createDbLog } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
 import { dbRegistry, newPool, ownerRules, RUNTIME_URL, tryThenRollBack } from "./db.ts";
-import { ADMIN, CFO, keyed, storyDirectories } from "./helpers.ts";
+import { ADMIN, CFO, keyed, POLICY, storyDirectories, storyKsors, V5_TEXT } from "./helpers.ts";
 import { textOf, version9 } from "./rule-world.ts";
 
 const pool = newPool();
@@ -209,6 +210,51 @@ describe("C3: two drafts of one rule wait for each other (step 28's README, deci
     expect(await statuses(id)).toStrictEqual([
       [1, "draft"],
       [2, "draft"],
+    ]);
+  });
+});
+
+describe("C8: on the database, a switch-on asks KSoR first (step 28b's README, decision D12)", () => {
+  it("DSOR-CTL-03a: on the database, once KSoR has version 5 in force, cfo_100 cannot switch on a version that cites version 4, and the hold stays a draft; a version that cites version 5 switches on, and retires migration 023's version 8 once the sweep has marked it stale", async () => {
+    const ksors = storyKsors();
+    const world = dbRegistry(
+      pool,
+      storyDirectories(),
+      handlersFor(),
+      ownWorkFor(),
+      readLifetimes(),
+      "database",
+      ksors,
+    );
+    const id = `test-${randomUUID()}`;
+    const rule = `dsor://org_456/rule/${id}`;
+    await ruleCall(CFO, "rule.draft", rule, { draft: holdOn9001("cfo_100") }, world);
+    ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    expect(await ruleCall(CFO, "rule.activate", rule, { version: 1 }, world)).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message: `"rule.activate": version 1 of rule ${id} cites version 4 of "${POLICY}", and KSoR has version 5 in force`,
+    });
+    expect(await statuses(id)).toStrictEqual([[1, "draft"]]);
+    const sweep = { token: "tok_5c4e", tenant: "org_456" };
+    const company = { company: "dsor://org_456/tenant/org_456" };
+    expect(await call(world, log, keyed(sweep), "rule.check_authority", company)).toMatchObject({
+      data: { marked: 1 },
+    });
+    const v5 = fingerprintOf(V5_TEXT);
+    const text = {
+      ...textOf(version9()),
+      authority: { ...version9().authority, version: 5, content_hash: v5 },
+    };
+    const main = "dsor://org_456/rule/high-value-payment";
+    const drafted = await ruleCall(CFO, "rule.draft", main, { draft: text }, world);
+    const number = (drafted as { data: { version: number } }).data.version;
+    expect(await ruleCall(CFO, "rule.activate", main, { version: number }, world)).toMatchObject({
+      outcome: "COMMITTED",
+      data: { version: number, status: "active", retired: 8 },
+    });
+    expect(await statuses("high-value-payment")).toStrictEqual([
+      [8, "retired"],
+      [number, "active"],
     ]);
   });
 });

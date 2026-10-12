@@ -42,6 +42,9 @@ export type OwnLook = {
   // one version, for the commands of a rule's life (step 28's README, decisions D11 and D12).
   controls: Pick<ControlStore, "versions">;
   checkRule: RuleCheck;
+  // NEW IN STEP 28b: and DSoR's question to the company's KSoR, which a switch-on asks (step
+  // 28b's README, decision D12).
+  ksor: PolicyLook;
 };
 
 /** What DSoR's own change gets after line ⑩: the company, the caller, DSoR's stores, and the call. */
@@ -54,7 +57,7 @@ export type OwnStores = {
   now: string;
   // NEW IN STEP 28b: and DSoR's question to the company's KSoR, for the sweep (step 28b's README,
   // decision D2).
-  policies: PolicyLook;
+  ksor: PolicyLook;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */
@@ -97,6 +100,8 @@ export function lookFor(
   // And the world's rules, read only too, and the registry's check of one version.
   controls: ControlStore,
   checkRule: RuleCheck,
+  // NEW IN STEP 28b: and DSoR's question to the call's own company's KSoR.
+  ksor: PolicyLook,
 ): OwnLook {
   // The roles of this company only: a tenant administrator of org_789 is no tenant
   // administrator in org_456.
@@ -111,6 +116,7 @@ export function lookFor(
     rates: { wouldLoad: (company, source, at) => rates.wouldLoad(company, source, at) },
     controls: { versions: (company, id) => controls.versions(company, id) },
     checkRule,
+    ksor,
   };
 }
 

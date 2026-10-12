@@ -387,6 +387,8 @@ export async function call(
               rates,
               controls,
               registry.checkRule,
+              // NEW IN STEP 28b: and the call's own company's KSoR (step 28b's README, D12).
+              policyLook(registry.ksors, tenant),
             ),
           );
         return bound;
@@ -528,8 +530,8 @@ export async function call(
           if (own !== undefined) {
             const now = new Date().toISOString();
             // NEW IN STEP 28b: and DSoR's question to the company's own KSoR, for the sweep.
-            const policies = policyLook(registry.ksors, tenant);
-            const work = { tenant, caller, stores, correlation, now, policies };
+            const ksor = policyLook(registry.ksors, tenant);
+            const work = { tenant, caller, stores, correlation, now, ksor };
             returned = await own.change(copy, work);
           } else if (handler !== undefined) {
             returned = await handler(copy, companyOf(stores.invoices, tenant, reads, payments));

@@ -8,11 +8,12 @@
 // the rule's lock, reads the versions again, makes the same checks, and writes each change with
 // its record (step 28's README, decisions D14 and D15).
 import type { Control } from "./controls.ts";
+import { confirmCitation } from "./drift.ts";
 import { Refusal } from "./envelope.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import type { Principal } from "./principals.ts";
 import { preview } from "./registry.ts";
-import type { Live, RuleBy, RuleStatus } from "./rulebook.ts";
+import { isLive, type Live, type RuleBy, type RuleStatus } from "./rulebook.ts";
 import { parseUri } from "./uri.ts";
 
 // The most a draft's text may hold, as JSON: a rule with its tests is a few kilobytes. A larger
@@ -151,6 +152,9 @@ function changedMeanwhile(id: string): Refusal {
 }
 
 /** Line ⑨, for a switch-on: who, which version, its status, then its checks and its tests (DSOR-CTL-02c). */
+// NEW IN STEP 28b: and last, KSoR confirms the policy it cites is the one in force. Only line ⑨
+// asks, so no network call waits inside the change's transaction (step 28b's README, decision
+// D12).
 async function mayActivate(input: unknown, look: OwnLook): Promise<void> {
   const versions = await look.controls.versions(look.tenant, ruleIdOf(input));
   const version = decide(ACTIVATE, versions, input, look.caller);
@@ -158,6 +162,7 @@ async function mayActivate(input: unknown, look: OwnLook): Promise<void> {
   if (problems.length > 0) {
     throw new Refusal("VALIDATION_FAILED", `"rule.activate": ${problems.join("; ")}`, "internal");
   }
+  await confirmCitation('"rule.activate"', version, look.ksor);
 }
 
 /**
@@ -171,9 +176,10 @@ async function activate(input: unknown, work: OwnStores): Promise<unknown> {
   const id = ruleIdOf(input);
   const versions = await stores.controls.hold(tenant, id);
   const version = decide(ACTIVATE, versions, input, caller);
-  const live = versions.find(
-    (v) => v.version !== version.version && (v.status === "active" || v.status === "suspended"),
-  );
+  // NEW IN STEP 28b: a stale version is live too, and a switch-on retires it. Found by step 28b's
+  // own test of a switch-on that asks KSoR: the owner could not replace a stale version, and heard
+  // CONFLICT (step 28b's README, decision D6).
+  const live = versions.find((v) => v.version !== version.version && isLive(v.status));
   const retiring = live === undefined ? undefined : { version: live.version, from: live.status };
   const from = version.status as RuleStatus;
   // One step of the store: the live version retired and this one switched on, or neither. Found by

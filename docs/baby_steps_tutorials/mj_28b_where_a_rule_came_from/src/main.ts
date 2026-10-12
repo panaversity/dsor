@@ -89,6 +89,7 @@ import type { RequestEnvelope } from "./request.ts";
 import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { memorySlips } from "./slips.ts";
 import { fakeDirectory } from "./directory.ts";
+import { fakeKsor, type FakeKsor } from "./ksor.ts";
 import { parseUri } from "./uri.ts";
 
 // Start-up checks every contract first. If one is broken, the program stops here and
@@ -1254,6 +1255,19 @@ const lifeRates = memoryRates(() => lifeClock.now);
 const lifeSlips = memorySlips(limited);
 // The file start-up checked fills this world's own store, which its registry and its claims share.
 const lifeRules = memoryControls(readControls(CONTROLS));
+// NEW IN STEP 28b: each company's KSoR, a stand-in. org_456's has version 4 of its
+// payment-approval policy in force, with the fingerprint version 8 cites; org_789's rules cite
+// local. A switch-on asks it (step 28b's README, decisions D1 and D12).
+const PAYMENT_POLICY = "ksor://org_456/finance/payment-approval-policy";
+/** Each company's KSoR as a story begins. */
+function storyKsors(): Map<string, FakeKsor> {
+  const text = "Payments above 25,000 USD or equivalent require CFO approval.";
+  const v4 = { version: 4, text, content_hash: "sha256:9f2c1e7ab4d0" };
+  return new Map([
+    ["org_456", fakeKsor("org_456", { [PAYMENT_POLICY]: [v4] })],
+    ["org_789", fakeKsor("org_789", {})],
+  ]);
+}
 const lifeWorld = buildRegistry(
   readContracts(CONTRACTS),
   handlersFor(),
@@ -1280,6 +1294,7 @@ const lifeWorld = buildRegistry(
   undefined,
   undefined,
   lifeRules,
+  storyKsors(),
 );
 const lifeLog = createLog();
 const lifeCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>

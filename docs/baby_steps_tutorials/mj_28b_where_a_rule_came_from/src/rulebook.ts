@@ -27,6 +27,11 @@ const LIVE: ReadonlySet<string> = new Set(["active", "suspended", "stale_authori
 // NEW IN STEP 28b: the version line ⑩ evaluates: active, or stale.
 const IN_FORCE: ReadonlySet<string> = new Set(["active", "stale_authority"]);
 
+/** NEW IN STEP 28b: true for a live version: active, stale, or suspended, one at a time for each rule. */
+export function isLive(status: string): boolean {
+  return LIVE.has(status);
+}
+
 /** A version of a policy, as KSoR has it in force: its number and its fingerprint. */
 export type PolicyInForce = { version: number; content_hash: string };
 
