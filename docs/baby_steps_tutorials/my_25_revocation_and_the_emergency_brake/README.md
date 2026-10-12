@@ -215,6 +215,10 @@ Copy `my_24_limits_with_reservations` to a new folder and ask:
   administrator. ([§13.3](../../../specs/dsor/02-security.md#133-revocation-and-subdelegation))
 - **[DSOR-DEL-04c · L2]** On revocation or expiry, every proposal created under the delegation that
   is `PENDING_APPROVAL` or `APPROVED` MUST move to `CANCELLED`.
+- **[DSOR-ERR-01b · L1]** An error MUST NOT reveal the existence or attributes of a resource the
+  caller is not authorized to read — claimed here for slips too. Nobody may read a slip, so a slip
+  that does not exist and one somebody else signed are refused in the same words.
+  ([§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes))
 - **[DSOR-OPS-01a · L2]** DSoR MUST provide per-agent suspension and a tenant-wide agent freeze.
   ([§18](../../../specs/dsor/02-security.md#18-operational-controls))
 - **[DSOR-OPS-01c · L2]** While a suspension or freeze is active, a proposal from an affected agent

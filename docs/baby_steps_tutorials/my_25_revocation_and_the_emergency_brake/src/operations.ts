@@ -1743,9 +1743,10 @@ const createTheProposal: Stage["run"] = async (context) => {
  * arguments, once; not in authorize, at §21.5, which would read the caller's arguments before §21.6
  * has copied them.
  *
- * - delegation.revoke: the slip must exist, be active, as its contract's precondition says, and have
- *   been signed by the caller (DSOR-DEL-04a). A tenant administrator, who could revoke anyone's, is
- *   nobody in the cast.
+ * - delegation.revoke: the slip must have been signed by the caller (DSOR-DEL-04a), and be active, as
+ *   its contract's precondition says. A slip that does not exist is refused in the same words as one
+ *   someone else signed (DSOR-ERR-01b, decision 156). A tenant administrator, who could revoke
+ *   anyone's, is nobody in the cast.
  * - control.suspend, releasing: only a person (DSOR-OPS-01d).
  *
  * An argument that is not an address is left for the handler, which refuses it as it always has.
@@ -1811,16 +1812,11 @@ const checkTheTarget: Stage["run"] = async (context) => {
     );
   }
 
-  if (slip === undefined) {
-    return refuse(
-      principal.id,
-      "RESOURCE_NOT_FOUND",
-      `${parsed.id} is not a slip we hold`,
-      context.requestId,
-    );
-  }
-
-  if (slip.delegator !== principal.id) {
+  // Decision 156: a slip that does not exist is refused as one the caller did not sign, in the same
+  // words. Asked "is it there?" first, a dry run told a caller which slips exist in the company and
+  // that someone else signed them, and nobody may read a slip (DSOR-ERR-01b). Only its signer goes on
+  // to learn where it stands.
+  if (slip === undefined || slip.delegator !== principal.id) {
     return refuse(
       principal.id,
       "AUTHORIZATION_DENIED",

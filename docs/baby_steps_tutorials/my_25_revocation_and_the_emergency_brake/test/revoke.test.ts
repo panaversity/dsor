@@ -140,7 +140,7 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
     expect(await statusOfDel100()).toBe("active");
   });
 
-  it("DSOR-DEL-04a: a slip revoked already, or one that does not exist, changes nothing and says so", async () => {
+  it("DSOR-DEL-04a: a slip revoked already, or one that does not exist, changes nothing and is refused", async () => {
     await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "once" });
 
     const again = await callOperation(SUPERVISOR, "delegation.revoke", {
@@ -153,7 +153,8 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
     });
 
     expect(again.kind === "error" && again.envelope.code).toBe("CONFLICT");
-    expect(nowhere.kind === "error" && nowhere.envelope.code).toBe("RESOURCE_NOT_FOUND");
+    // Decision 156: as a slip someone else signed; that none exists is not said (DSOR-ERR-01b).
+    expect(nowhere.kind === "error" && nowhere.envelope.code).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-DEL-04a: a revocation without a reason is refused, and the slip stays active", async () => {
@@ -275,7 +276,7 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
       reason: "no such slip",
     });
 
-    expect((await theLog("org_456")).at(-1)?.result).toBe("RESOURCE_NOT_FOUND");
+    expect((await theLog("org_456")).at(-1)?.result).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-DEL-04a: cfo_100 revokes del_200, which she signed", async () => {
@@ -296,6 +297,35 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
     );
 
     expect(rows).toStrictEqual([{ status: "revoked", revoked_by: "cfo_100" }]);
+  });
+
+  it("DSOR-ERR-01b: a slip that does not exist and one someone else signed are refused in the same words", async () => {
+    // Decision 156: §21.9 asked "is it there?" before "is it yours?". user_123 got RESOURCE_NOT_FOUND
+    // for del_999 and AUTHORIZATION_DENIED for del_200, so a dry run, which costs no key, told
+    // user_123 which slips exist in the company and that someone else signed them. Nobody may read a
+    // slip, so neither may be told.
+    await aSlipSignedByCfo();
+
+    const seen = new Set<string>();
+
+    for (const mode of ["execute", "validate_only"] as const) {
+      for (const id of ["del_200", "del_999"]) {
+        const answer = await callOperation(
+          SUPERVISOR,
+          "delegation.revoke",
+          { target: `dsor://org_456/delegation/${id}`, reason: "is it there?" },
+          mode === "execute" ? undefined : { mode },
+        );
+
+        expect(answer.kind === "error" && answer.envelope.code, `${id}, ${mode}`).toBe(
+          "AUTHORIZATION_DENIED",
+        );
+        // The slip's id is the caller's own words; every other word must be the same.
+        seen.add(answer.kind === "error" ? answer.envelope.message.replaceAll(id, "<slip>") : "");
+      }
+    }
+
+    expect([...seen]).toHaveLength(1);
   });
 
   it("DSOR-DEL-04a: a dry run of a revocation by someone who did not sign the slip is refused too", async () => {
