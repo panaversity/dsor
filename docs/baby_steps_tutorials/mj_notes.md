@@ -1728,6 +1728,8 @@ learner's choice of 2026-10-12, to build first and understand after, covered bot
     all. Name each file, or run the script with bash.
   - A commit's message says what its runs proved. One message said six breaks were caught where
     five were, and was corrected before the next commit.
+- **The visual story:** "When the CFO Rule Changes", an artifact page of fourteen scenes in two
+  acts, at https://claude.ai/artifact/XSRMSYFiSjsvxte2XbfGEg (private to the learner).
 - **For the learner's session:** the visual story of both halves, step 28's D1 to D21 and step
   28b's D1 to D15, the eight breaks to predict, and open questions 113 to 119.
 
