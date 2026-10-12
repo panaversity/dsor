@@ -150,6 +150,19 @@ describe("callOperation", () => {
     ).toThrow(/take it off the waiting list/);
   });
 
+  it("DSOR-EXE-05c: an undo still waiting for its handler stops the program", () => {
+    // Decision 148: the registry checks that an undo has a contract, and a contract may wait here
+    // for its handler. Together they let payment.create run, still promising payment.cancel as its
+    // undo, while every payment.cancel was refused as an operation this program does not have.
+    const running = Object.fromEntries(
+      Object.entries(handlersForBoth()).filter(([id]) => id !== "payment.cancel"),
+    );
+
+    expect(() =>
+      assertPaired(loadRegistry(contractsFromDisk()), running, new Set(["payment.cancel"])),
+    ).toThrow(/payment\.create is undone by payment\.cancel, which has no handler yet/);
+  });
+
   it("DSOR-OPR-01: on load, every contract is accounted for", async () => {
     const ids = operationIds();
 

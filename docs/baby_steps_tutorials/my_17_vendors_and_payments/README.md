@@ -32,8 +32,9 @@ Three things make the label mean something:
   a copy of another command cannot repeat that command's promise. And a command must answer with a
   receipt: one that answers like a query, with a row and no semantics, is refused.
 - **What undoes a command is a real command.** The program refuses to start if a contract names an
-  undo it does not have, names a query, names nothing, names the same undo twice, or names itself. And the undo runs through the same door as everything
-  else: its own permission, its own decision in the log.
+  undo it does not have: no contract, or a contract and no code yet. It refuses one that names a
+  query, names nothing, names the same undo twice, or names itself. And the undo runs through the
+  same door as everything else: its own permission, its own decision in the log.
 
 To have something to undo, this step adds two record types, the vendors a company pays and the
 payments it makes. They live beside the invoices, under the same two locks: every key starts with
@@ -85,7 +86,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `migrations/012_invoices_name_their_vendor.sql` | new — an invoice names a vendor its company has, after 010 has put VENDOR-44 there (decision 126) |
 | `src/payment.ts` | new — a payment, making one in one statement with its vendor read from the invoice, taking one back, and the amount a payment may carry |
 | `src/contracts/payment.create.json`, `payment.cancel.json` | new — `compensatable`, undone by `payment.cancel`; and `atomic`. `payment.create`'s example request names INV-1009, a draft in both companies, so the cross-tenant suite's same-state question has rows to compare (decision 126) |
-| `src/operations.ts` | the two handlers; the address reader takes the entity it needs, because `payment.create` takes an invoice's address; and the door writes each receipt's semantics from the contract. `?? "atomic"` is gone |
+| `src/operations.ts` | the two handlers; the address reader takes the entity it needs, because `payment.create` takes an invoice's address; and the door writes each receipt's semantics from the contract. `?? "atomic"` is gone. And start-up refuses a command whose undo has a contract and no handler yet (decision 148) |
 | `src/registry.ts` | the two contracts; a program whose contract names an undo it does not have, or a query, refuses to start; `semanticsOf`, with no default |
 | `src/boundary.ts` | `withTheContractsSemantics`; and a comment that promised step 17 a `PENDING_APPROVAL` receipt names step 27 |
 | `src/database.ts` | the tenant tables in one list, four now, and every start-up question about them built from it; a refusal for an application that may change a vendor, or more of a payment than its status; a grant of every invoice column, which slipped past since step 10, caught; and the questions about the business's tables asked of a helper function's owner too, as the log's are (decision 148) |
@@ -94,6 +95,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `test/vendors-and-payments.test.ts` | new — the tables: the running example, the company in every key, the second lock, what the application may and may not do |
 | `test/payments.test.ts` | new — the two commands, the semantics on each receipt, a careless handler that says `atomic`, and the registry's refusals; and each payment statement's own WHERE, asked as the owner, past the second lock (decision 148) |
 | `test/main.test.ts` | three tests for the demo's new section: what each contract says, the receipts, and the payments as they end. And the agent's invoice lines are matched whole, because a payment's receipt also begins `accounts-payable-fte  COMMITTED` (decision 148) |
+| `test/operations.test.ts` | the payment operations in each list of operations; and a command whose undo still waits for its handler stops the program (decision 148) |
 | `test/database.test.ts` | the start-up refusals above, tested: invoices granted column by column, a vendor or more of a payment than its status, a payment's number, each one `SET ROLE` away, and through a helper function's owner |
 | `test/support/story.ts` | new — the one list of statements that put the story's rows back, for both tiers |
 | `test/support/cross-tenant-suite.ts` | rows of both kinds, looked up by kind and number, and a new canary. The same-state question is still asked of every command but a read, as in step 16, `payment.create` included |
@@ -311,8 +313,9 @@ Copy `my_16_the_control_plane_store` to a new folder and ask:
 1. Whether the command's effect can be undone. The agent and the person who supervises it need it
    before acting: a mistake that can be undone can be put right.
 2. That another operation, which the contract names, undoes it: `payment.cancel`. The program
-   refuses to start if the named operation is missing or is a query, and the undo runs through the
-   same door as any command, with its own permission and its own decision in the log.
+   refuses to start if the named operation is missing, has no code yet, or is a query, and the
+   undo runs through the same door as any command, with its own permission and its own decision
+   in the log.
 3. The door, from the contract, on every receipt. The contract is where the promise is made; a
    handler copied from another command would otherwise repeat that command's promise. The tests
    prove it with a handler that writes `atomic` on a payment: the receipt still says

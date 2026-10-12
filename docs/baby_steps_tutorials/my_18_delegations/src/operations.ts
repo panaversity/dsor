@@ -515,6 +515,24 @@ export function assertPaired(
     checked += 1;
   }
 
+  // Decision 148: and an operation that runs is undone only by operations that run. The registry
+  // checks that an undo has a contract, and a contract may wait above for its handler: together they
+  // let payment.create run, still promising payment.cancel as its undo, while the door refused every
+  // payment.cancel as an operation this program does not have (DSOR-EXE-05c).
+  for (const [id, contract] of contracts) {
+    if (named[id] === undefined) {
+      continue;
+    }
+
+    for (const undo of contract.execution?.compensated_by ?? []) {
+      if (named[undo] === undefined) {
+        throw new TypeError(
+          `${id} is undone by ${undo}, which has no handler yet: every ${undo} would be refused`,
+        );
+      }
+    }
+  }
+
   return checked;
 }
 
