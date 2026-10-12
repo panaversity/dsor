@@ -431,8 +431,10 @@ describe("C5: line ⑩'s answer from several controls", () => {
       factsFor(money("31400.00", "USD")),
       TUESDAY,
     );
+    // Changed in step 29: with the control's version, which the proposal keeps (step 29's README,
+    // decision D4).
     expect(requirementsOf(cfo, outcomes)).toStrictEqual([
-      { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment" },
+      { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
     ]);
     const allowed = evaluateControls(
       cfo,

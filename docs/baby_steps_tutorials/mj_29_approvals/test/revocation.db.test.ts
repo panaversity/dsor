@@ -131,6 +131,11 @@ async function waiting190(): Promise<number> {
   return Number(rows[0]?.["n"]);
 }
 
+// Changed in step 29: a planted proposal that starts to wait names what it waits for, as line ⑩'s
+// does: one CFO, by version 8 of high-value-payment (step 29's README, decision D4).
+const WAITS_FOR = [
+  { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
+];
 /** A proposal of intake-fte's under del_190, made by the store, moved by hand along the picture. */
 async function planted(
   path: ("PENDING_APPROVAL" | "APPROVED")[],
@@ -169,7 +174,8 @@ async function planted(
   await proposals.create("org_456", id, draft, by, "P7D");
   let from: "PROPOSED" | "PENDING_APPROVAL" = "PROPOSED";
   for (const to of path) {
-    expect(await proposals.move("org_456", id, from, to, by)).toBe(true);
+    const waits = to === "PENDING_APPROVAL" ? WAITS_FOR : undefined;
+    expect(await proposals.move("org_456", id, from, to, by, waits)).toBe(true);
     from = to as "PENDING_APPROVAL";
   }
   return id;

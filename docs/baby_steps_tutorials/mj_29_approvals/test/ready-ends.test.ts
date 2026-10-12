@@ -169,6 +169,11 @@ function plantedBy(as_of: string) {
   };
 }
 
+// Changed in step 29: a planted proposal that starts to wait names what it waits for, as line ⑩'s
+// does: one CFO, by version 8 of high-value-payment (step 29's README, decision D4).
+const WAITS_FOR = [
+  { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
+];
 /** A proposal of the agent's under del_100, planted by the test and moved along the picture, with
  * its booking. Approvals arrive in step 29, so no call reaches PENDING_APPROVAL or APPROVED yet. */
 async function planted(w: World, path: ("PENDING_APPROVAL" | "APPROVED")[]): Promise<string> {
@@ -178,7 +183,8 @@ async function planted(w: World, path: ("PENDING_APPROVAL" | "APPROVED")[]): Pro
   await w.proposals.create("org_456", id, draftOf(id, as_of), by, "P7D");
   let from: "PROPOSED" | "PENDING_APPROVAL" | "APPROVED" = "PROPOSED";
   for (const to of path) {
-    expect(await w.proposals.move("org_456", id, from, to, by)).toBe(true);
+    const waits = to === "PENDING_APPROVAL" ? WAITS_FOR : undefined;
+    expect(await w.proposals.move("org_456", id, from, to, by, waits)).toBe(true);
     from = to;
   }
   expect(await w.reservations.reserve("org_456", id, "del_100", AMOUNT, DAY)).toBe(true);

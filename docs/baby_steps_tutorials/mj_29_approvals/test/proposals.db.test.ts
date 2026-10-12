@@ -141,6 +141,16 @@ function pathTo(target: State): State[] | undefined {
   return paths.get(target);
 }
 
+// Changed in step 29: the move from PROPOSED to PENDING_APPROVAL names what the proposal waits for,
+// and no other move changes it (step 29's README, decision D4). So this walk names it on that move
+// only, and every other try is the one step 22 wrote.
+const MOVE = `UPDATE dsor.proposals SET state = $2,
+                requires = CASE WHEN state = 'PROPOSED' AND $2 = 'PENDING_APPROVAL'
+                                THEN '[{"approval": {"role": "CFO", "quorum": 1},
+                                        "control": "high-value-payment", "control_version": 8}]'
+                                ELSE requires END
+              WHERE id = $1`;
+
 describe("the database's guard of the picture", () => {
   it("DSOR-APR-01a: the database allows exactly the moves src/proposals.ts allows, from every state there is a way to", async () => {
     const seen: [State, State, boolean][] = [];
@@ -152,13 +162,10 @@ describe("the database's guard of the picture", () => {
         const id = `prop_${randomUUID()}`;
         await client.query(RAW, [id, "PROPOSED"]);
         for (const step of path) {
-          await client.query("UPDATE dsor.proposals SET state = $2 WHERE id = $1", [id, step]);
+          await client.query(MOVE, [id, step]);
         }
         for (const to of STATES) {
-          const code = await codeOf(client, "UPDATE dsor.proposals SET state = $2 WHERE id = $1", [
-            id,
-            to,
-          ]);
+          const code = await codeOf(client, MOVE, [id, to]);
           // A refused move is the trigger's check_violation, never another error.
           expect(["none", "23514"]).toContain(code);
           seen.push([from, to, code === "none"]);

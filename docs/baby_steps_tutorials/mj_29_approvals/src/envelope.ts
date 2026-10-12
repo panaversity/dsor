@@ -112,7 +112,13 @@ export type Prepared = {
 // What a waiting payment requires: one line for each control that asked for an
 // approval, with the role and the number of approvers it needs (step 27's README, decision D10).
 /** One approval a waiting command requires, and the control that asks for it. */
-export type Requirement = { approval: { role: string; quorum: number }; control: string };
+// NEW IN STEP 29: and the control's version, in proposal.schema.json's own shape for a proposal's
+// requires, which the proposal keeps (step 29's README, decision D4).
+export type Requirement = {
+  approval: { role: string; quorum: number };
+  control: string;
+  control_version: number;
+};
 
 // A command that a control asks an approval for. Its proposal waits
 // PENDING_APPROVAL with its booking, and no code ran. The answer names what it requires and when

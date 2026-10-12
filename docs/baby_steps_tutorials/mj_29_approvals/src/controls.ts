@@ -278,7 +278,13 @@ export function requirementsOf(
   const asked = new Set(outcomes.filter((o) => o.outcome === "REQUIRE_APPROVAL").map((o) => o.id));
   return controls.flatMap((control) =>
     asked.has(control.id) && "require_approval" in control.effect
-      ? [{ approval: { ...control.effect.require_approval }, control: control.id }]
+      ? [
+          {
+            approval: { ...control.effect.require_approval },
+            control: control.id,
+            control_version: control.version,
+          },
+        ]
       : [],
   );
 }

@@ -131,6 +131,11 @@ function heard(answer: Answer): string {
   return "outcome" in answer ? answer.outcome : "data";
 }
 
+// Changed in step 29: a planted proposal that starts to wait names what it waits for, as line ⑩'s
+// does: one CFO, by version 8 of high-value-payment (step 29's README, decision D4).
+const WAITS_FOR = [
+  { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
+];
 /** The id of the proposal an answer names. */
 function idOf(answer: Answer): string {
   return String("proposal" in answer ? answer.proposal : "").slice(
@@ -178,7 +183,8 @@ async function planted(
   await world.proposals.create("org_456", id, draft, by, "P7D");
   let from: "PROPOSED" | "PENDING_APPROVAL" | "APPROVED" = "PROPOSED";
   for (const to of path) {
-    expect(await world.proposals.move("org_456", id, from, to, by)).toBe(true);
+    const waits = to === "PENDING_APPROVAL" ? WAITS_FOR : undefined;
+    expect(await world.proposals.move("org_456", id, from, to, by, waits)).toBe(true);
     from = to;
   }
   return id;

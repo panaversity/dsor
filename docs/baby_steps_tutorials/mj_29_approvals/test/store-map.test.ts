@@ -170,7 +170,9 @@ describe("the shipped map", () => {
             // trigger never lets change (step 25c's README, decisions D6 and D7).
             "expires_at",
           ],
-          UPDATE: ["state"],
+          // Changed in step 29: and what a waiting proposal waits for, which the move to
+          // PENDING_APPROVAL writes once (step 29's README, decision D4).
+          UPDATE: ["state", "requires"],
         },
       },
       triggers: [PROPOSAL_TRIGGER],

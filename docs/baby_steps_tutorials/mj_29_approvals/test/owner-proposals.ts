@@ -16,8 +16,13 @@
 //   are, and how many do not expire 7 days after they were made (step 25c's README, decision D3).
 // - due (since step 25c): DSoR's own list of org_456's due proposals, read as the owner, beside a
 //   due proposal of org_789 (step 25c's README, claim C4).
+// - rewrite requires (since step 29): name what a new proposal waits for, without the move to
+//   PENDING_APPROVAL, which the trigger refuses (step 29's README, decision D4).
+// - starts-waiting (since step 29): add a proposal that already names what it waits for, which the
+//   trigger refuses too.
 // Run by the tests as:
-//   node test/owner-proposals.ts rewrite <column> | skip | unreachable | guard | backfill | due
+//   node test/owner-proposals.ts rewrite <column> | skip | unreachable | guard | backfill | due |
+//   starts-waiting
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
@@ -51,6 +56,10 @@ const CHANGES: Record<string, string> = {
   created_at: "UPDATE dsor.proposals SET created_at = created_at - interval '1 day' WHERE id = $1",
   // The expiry is written once, as the request is (step 25c's README, decision D7).
   expires_at: "UPDATE dsor.proposals SET expires_at = expires_at + interval '1 day' WHERE id = $1",
+  // What a proposal waits for is written on the move to PENDING_APPROVAL only (step 29's README,
+  // decision D4).
+  requires: `UPDATE dsor.proposals SET requires = '[{"approval": {"role": "CFO", "quorum": 1},
+             "control": "high-value-payment", "control_version": 8}]' WHERE id = $1`,
 };
 
 const client = await pool.connect();
@@ -80,6 +89,15 @@ try {
         : CHANGES[column ?? ""];
     if (change === undefined) throw new Error(`unknown column ${String(column)}`);
     result = await tried(change, [id]);
+  } else if (command === "starts-waiting") {
+    // A new proposal that names what it waits for: the owner's own INSERT, with one more column.
+    const waiting = ADD.replace("expires_at)", "expires_at, requires)").replace(
+      "now() + interval '7 days')",
+      `now() + interval '7 days', '[{"approval": {"role": "CFO", "quorum": 1},
+       "control": "high-value-payment", "control_version": 8}]')`,
+    );
+    if (waiting === ADD) throw new Error("the owner's INSERT changed, and names no requires");
+    result = await tried(waiting, [`prop_${randomUUID()}`, "PROPOSED"]);
   } else if (command === "unreachable") {
     const lines: string[] = [];
     for (const from of ["COMPENSATING", "COMPENSATED", "COMPENSATION_FAILED"]) {

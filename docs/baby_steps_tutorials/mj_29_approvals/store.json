@@ -119,7 +119,7 @@
             "idempotency_key",
             "expires_at"
           ],
-          "UPDATE": ["state"]
+          "UPDATE": ["state", "requires"]
         }
       },
       "triggers": [

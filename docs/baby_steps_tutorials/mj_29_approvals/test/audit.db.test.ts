@@ -158,6 +158,8 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // (step 22's README, decisions 3 and 9).
       // And its expiry, given once when it is added. The database's clock sets
       // it, and nothing changes it after (step 25c's README, decisions D6 and D7).
+      // Changed in step 29: and what a waiting proposal waits for, written on the move to
+      // PENDING_APPROVAL, never when it is added (step 29's README, decision D4).
       { object: "dsor.proposals", held: "SELECT" },
       {
         object: "dsor.proposals INSERT",
@@ -165,9 +167,9 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       },
       {
         object: "dsor.proposals SELECT",
-        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key created_at expires_at",
+        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key created_at expires_at requires",
       },
-      { object: "dsor.proposals UPDATE", held: "state" },
+      { object: "dsor.proposals UPDATE", held: "state requires" },
       // The sheets of rates. Read every column, and add a sheet through six named
       // columns. Nothing on loaded_at, which the database fills, and no UPDATE or DELETE: a sheet
       // is written once (step 26's README, decision D6).

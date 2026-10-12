@@ -36,6 +36,13 @@ loadDotEnv(["DSOR_MIGRATION_URL"]);
 const owner = requireEnv("DSOR_MIGRATION_URL");
 const pool = new pg.Pool({ connectionString: owner, max: 1 });
 const [command, ...args] = process.argv.slice(2);
+// What the owner's waiting twin waits for: one CFO, by version 8 of high-value-payment (step 29's
+// README, decision D4).
+const WAITS_FOR = {
+  approval: { role: "CFO", quorum: 1 },
+  control: "high-value-payment",
+  control_version: 8,
+};
 
 // A suspension is permanent, and the owner passes every policy. So the commands
 // that suspend slips or remove them act only for a signer that one test made, never for the
@@ -186,9 +193,12 @@ try {
                  now() + interval '7 days')`,
         [proposal, `sha256:${"0".repeat(64)}`, JSON.stringify({ delegation: id }), `twin-${id}`],
       );
+      // Changed in step 29: a proposal that starts to wait names what it waits for, for the owner
+      // too (step 29's README, decision D4).
       await pool.query(
-        "UPDATE dsor.proposals SET state = 'PENDING_APPROVAL' WHERE tenant_id = 'org_789' AND id = $1",
-        [proposal],
+        `UPDATE dsor.proposals SET state = 'PENDING_APPROVAL', requires = $2
+          WHERE tenant_id = 'org_789' AND id = $1`,
+        [proposal, JSON.stringify([WAITS_FOR])],
       );
       const slips = createDbSlips(pool);
       const found = await slips.get("org_456", id);

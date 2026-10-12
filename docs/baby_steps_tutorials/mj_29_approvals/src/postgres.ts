@@ -45,8 +45,10 @@ import {
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
+import type { Requirement } from "./envelope.ts";
 import {
   checkMove,
+  checkRequires,
   isProposalOf,
   proposalUri,
   transitionFrom,
@@ -1672,6 +1674,8 @@ type ProposalRow = {
   created_at: Date;
   // And its expiry.
   expires_at: Date;
+  // NEW IN STEP 29: and what it waits for, once it waits.
+  requires: Requirement[] | null;
 };
 
 // One move's record, as pg gives it back.
@@ -1759,17 +1763,24 @@ function proposalsThrough(run: Runner): ProposalStore {
       from: State,
       to: State,
       by: MoveBy,
+      requires?: Requirement[],
     ): Promise<boolean> => {
       // DSoR's own guard first, before any statement. The trigger is the database's (decision 3).
       checkMove(from, to, by);
+      // NEW IN STEP 29: and what it waits for, on the move to PENDING_APPROVAL only.
+      checkRequires(from, to, requires);
       return run(tenant, async (client) => {
         // Only while it is still in `from`: the check and the write are one statement, so a
         // second mover that read the same state changes nothing (decision 6). DSoR's own WHERE,
         // the company first, with row-level security behind it (DSOR-TEN-01b).
+        // And what it waits for, named only on the move that starts the wait.
+        const named = requires === undefined ? "" : ", requires = $5::jsonb";
+        const values: unknown[] = [tenant, id, to, from];
+        if (requires !== undefined) values.push(JSON.stringify(requires));
         const { rows } = await client.query<{ operation: string }>(
-          `UPDATE dsor.proposals SET state = $3
+          `UPDATE dsor.proposals SET state = $3${named}
             WHERE tenant_id = $1 AND id = $2 AND state = $4 RETURNING operation`,
-          [tenant, id, to, from],
+          values,
         );
         if (rows.length === 0) return false;
         if (rows.length !== 1) throw new Error(`one move changed ${rows.length} proposals, not 1`);
@@ -1794,7 +1805,7 @@ function proposalsThrough(run: Runner): ProposalStore {
       run(tenant, async (client) => {
         const { rows } = await client.query<ProposalRow>(
           `SELECT tenant_id, id, operation, mode, state, payload, payload_hash, resources, requester,
-                  idempotency_key, created_at, expires_at
+                  idempotency_key, created_at, expires_at, requires
              FROM dsor.proposals WHERE tenant_id = $1 AND id = $2`,
           [tenant, id],
         );
@@ -1880,6 +1891,8 @@ function proposalOf(row: ProposalRow, moves: MoveRow[]): Proposal {
     operation: row.operation,
     mode: row.mode,
     state: row.state,
+    // NEW IN STEP 29: and what it waits for, once it waits.
+    ...(row.requires === null ? {} : { requires: row.requires }),
     payload: row.payload,
     payload_hash: row.payload_hash,
     resources: row.resources,

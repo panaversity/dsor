@@ -116,6 +116,9 @@ const CLAIM_COLUMNS = [
 // state (step 22's README, decisions 3 and 9).
 // And expires_at, which migration 020 adds. dsor_runtime writes it once, when it
 // adds a proposal, from the database's clock (step 25c's README, decision D6).
+// Changed in step 29: and requires, which migration 025 adds. dsor_runtime writes it on the move to
+// PENDING_APPROVAL, through UPDATE only, and never adds it with a proposal (step 29's README,
+// decision D4).
 const PROPOSAL_COLUMNS = [
   "tenant_id",
   "id",
@@ -129,6 +132,7 @@ const PROPOSAL_COLUMNS = [
   "idempotency_key",
   "created_at",
   "expires_at",
+  "requires",
 ];
 
 // Dsor.brakes, as migration 019 makes it. dsor_runtime reads every column, adds a
@@ -369,6 +373,7 @@ export function today(): Catalog {
         columns: PROPOSAL_COLUMNS.map((name) => {
           const filled = name === "created_at";
           if (name === "state") return { name, held: ["SELECT", "INSERT", "UPDATE"], filled };
+          if (name === "requires") return { name, held: ["SELECT", "UPDATE"], filled };
           return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
         }),
         rowSecurity: { enabled: true, forced: true },

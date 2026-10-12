@@ -89,10 +89,11 @@ for the learner to review, and each one says what it costs. This folder is a cop
   `CONFLICT`. *Downside:* one CFO approval satisfies two rules that each ask for the CFO. The
   specification's quorum of distinct people (DSOR-SOD-04c, L3) holds within one requirement only.
 - **D4. The proposal keeps what it waits for.** When line ⑩ stops a call at `PENDING_APPROVAL`, the
-  proposal keeps each requirement with the rule's id and version, its *awaits*, written once, on
-  that move only; the database's trigger refuses any other change. An approval satisfies only what
-  the proposal waits for. *Downside:* a rule changed after the proposal was made does not change
-  what it waits for. Step 31 checks again at execution (DSOR-APR-03b).
+  proposal keeps each requirement, with the rule's id and version, in `proposal.schema.json`'s own
+  field, `requires`. It is written once, on that move only, and the database's trigger refuses any
+  other change, the owner's too. An approval satisfies only what the proposal waits for.
+  *Downside:* a rule changed after the proposal was made does not change what it waits for. Step 31
+  checks again at execution (DSOR-APR-03b).
 - **D5. Line ⑨'s order: which proposal, who, its state, then the fingerprint.** The proposal must be
   one of this company's, or `RESOURCE_NOT_FOUND`. Then the approver: the target's
   `approve_permission` and a role it waits for, or `AUTHORIZATION_DENIED`. Then its state: only a

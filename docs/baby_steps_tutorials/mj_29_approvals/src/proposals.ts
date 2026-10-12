@@ -115,6 +115,9 @@ export type Proposal = ProposalDraft & {
   uri: string;
   tenant: string;
   state: State;
+  // NEW IN STEP 29: what it waits for, once line ⑩ stopped it at PENDING_APPROVAL: the schema's
+  // own requires (step 29's README, decision D4).
+  requires?: Requirement[];
   created_at: string;
   // When a READY proposal stops waiting: created_at plus its company's lifetime,
   // by the store's clock (step 25c's README, decisions L2 and D6).
@@ -141,7 +144,16 @@ export type ProposalStore = {
     lifetime: string,
   ) => Promise<void>;
   // Moves a proposal that is still in `from` to `to`, with the move's record, both or neither.
-  move: (tenant: string, id: string, from: State, to: State, by: MoveBy) => Promise<boolean>;
+  // NEW IN STEP 29: and the move to PENDING_APPROVAL names what the proposal waits for, which
+  // is written then, and never again (step 29's README, decision D4).
+  move: (
+    tenant: string,
+    id: string,
+    from: State,
+    to: State,
+    by: MoveBy,
+    requires?: Requirement[],
+  ) => Promise<boolean>;
   // One proposal, with its history, or none.
   get: (tenant: string, id: string) => Promise<Proposal | undefined>;
   // Every proposal made under one slip that still waits: for an approval, in PENDING_APPROVAL or
@@ -194,6 +206,17 @@ export function checkMove(from: State, to: State, by: MoveBy): void {
   // A record must name its actor and its cause (DSOR-APR-01b), so a move without one is a bug.
   if (by.cause.trim() === "") throw new Error("a move needs a cause");
   if (by.mover.subject.trim() === "") throw new Error("a move needs an actor");
+}
+
+/** NEW IN STEP 29: the check both stores make of what a move writes of what the proposal waits for: on the move to PENDING_APPROVAL, and only then. */
+export function checkRequires(from: State, to: State, requires: Requirement[] | undefined): void {
+  const starts = from === "PROPOSED" && to === "PENDING_APPROVAL";
+  if (starts && (requires === undefined || requires.length === 0)) {
+    throw new Error("a proposal that waits for an approval names what it waits for");
+  }
+  if (!starts && requires !== undefined) {
+    throw new Error("what a proposal waits for is written once, when it starts to wait");
+  }
 }
 
 /** The actor's name in a proposal's history: the agent that acted, or the person, or DSoR. */
@@ -256,6 +279,8 @@ type Row = ProposalDraft & {
   created_at: string;
   // And its expiry.
   expires_at: string;
+  // NEW IN STEP 29: and what it waits for, once it waits.
+  requires?: Requirement[];
 };
 
 /** Proposals in memory, for the unit tests. Like the database, a move and its record are made together. */
@@ -332,12 +357,16 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       from: State,
       to: State,
       by: MoveBy,
+      requires?: Requirement[],
     ): Promise<boolean> => {
       checkMove(from, to, by);
+      checkRequires(from, to, requires);
       const row = rows.get(keyOf(tenant, id));
       // Only while it is still in `from`, as the database's UPDATE … WHERE state checks.
       if (row === undefined || row.state !== from) return false;
       row.state = to;
+      // A copy, so a caller that changes its list afterwards cannot change the proposal.
+      if (requires !== undefined) row.requires = structuredClone(requires);
       const uri = proposalUri(tenant, id);
       record(
         transitionOf(tenant, uri, row.operation, from, to, by.mover, by.cause, by.correlation),
@@ -508,11 +537,11 @@ export async function openProposal(
   // the work does not run. Nothing approves until step 29 (step 27's README, decision D10).
   if (decided !== undefined) {
     const controls = decided.requires.map((r) => r.control).join(", ");
-    await moveOrFail(store, tenant, id, "PROPOSED", "PENDING_APPROVAL", {
-      mover: dsor,
-      cause: `the control ${controls} asks for an approval`,
-      correlation,
-    });
+    // NEW IN STEP 29: and the proposal keeps what it waits for (step 29's README, decision D4).
+    const by = { mover: dsor, cause: `the control ${controls} asks for an approval`, correlation };
+    if (!(await store.move(tenant, id, "PROPOSED", "PENDING_APPROVAL", by, decided.requires))) {
+      throw new Error(`the proposal ${id} was no longer PROPOSED`);
+    }
     const waiting = await store.get(tenant, id);
     if (waiting === undefined) throw new Error("a waiting proposal is gone from its store");
     const pending = { requires: decided.requires, expires_at: waiting.expires_at };
