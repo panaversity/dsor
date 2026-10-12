@@ -22,9 +22,10 @@ In `unattended` mode three things are true:
 - **A company directory says what the signer holds right now.** The person whose authority the agent
   carries is asleep and sends no login. So DSoR asks the company's directory at every decision. If the
   directory does not answer, the command is refused with `DEPENDENCY_TIMEOUT`, safe to send again
-  once it answers. If its answer is more than 24 hours old, dated in the future, has no time zone,
-  or is not a time the record can hold, such as 31 September, it is refused with
-  `FRESHNESS_UNSATISFIABLE`: wait for a fresh one.
+  once it answers. If its answer is more than 24 hours old, dated more than five minutes in the
+  future, has no time zone, or is not a time the record can hold, such as 31 September, it is
+  refused with `FRESHNESS_UNSATISFIABLE`: wait for a fresh one. The five minutes allow for two
+  clocks that never quite agree.
 
 The company directory in this step is a fake: one per company, built from this program's people,
 which the tests and the demo can change, make stale, or switch off. A real one is a directory sync
@@ -76,7 +77,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_18
 | `migrations/016_the_record_names_the_slip.sql` | new — the log's `delegation` column, granted by name |
 | `migrations/017_del_100_may_be_used_unattended.sql` | new — `del_100` says it may be used with nobody present; the tests run it again after 014 |
 | `src/directory.ts` | new — the fake company directory, one per company, which a test or the demo can change, make stale, or switch off |
-| `src/authority.ts` | what a slip's signer holds now, asked of the company's directory; no directory or no answer is one refusal, and an answer that says nothing, has no time zone, is not a time the record can hold, is dated in the future or is more than 24 hours old is another |
+| `src/authority.ts` | what a slip's signer holds now, asked of the company's directory; no directory or no answer is one refusal, and an answer that says nothing, has no time zone, is not a time the record can hold, is dated more than five minutes ahead or is more than 24 hours old is another |
 | `src/delegation.ts` | a slip's modes |
 | `src/operations.ts` | §21.3 refuses a slip that does not allow `unattended`, says why the signer's authority could not be established, and refuses under the slip once it has found it; §21.11 records an agent's command under a slip as `unattended` |
 | `src/audit.ts` | the record's identity for an unattended decision, and its slip, inside the hash |

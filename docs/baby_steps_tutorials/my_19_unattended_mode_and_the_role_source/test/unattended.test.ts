@@ -155,11 +155,17 @@ describe("the company directory", () => {
     expect(refusal.message).not.toContain(asOf.slice(0, 13));
   });
 
-  it("DSOR-IDN-06: an answer dated in the future, with no zone, or in a year past 9999 is no answer", async () => {
+  it("DSOR-IDN-06: an answer dated more than five minutes ahead, with no zone, or in a year past 9999 is no answer", async () => {
     // Decision 130: each of these passed, or broke the record, before. A year ahead and 9999 counted
     // as fresh; a time with no zone was read in this host's zone; a year past 9999 broke the
     // record's own schema check, and a healthy store answered EVIDENCE_STORE_UNAVAILABLE.
+    //
+    // Decision 150: six minutes and a day ahead hold the limit at five minutes. With only a year
+    // ahead here, a limit of 300 days passed every test. Six minutes comes first, because it has
+    // one minute to spare from the moment the list is made.
     for (const asOf of [
+      hoursAgo(-0.1),
+      hoursAgo(-24),
       hoursAgo(-24 * 365),
       "9999-12-31T23:59:59.000Z",
       "+275760-09-13T00:00:00.000Z",
