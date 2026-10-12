@@ -10,6 +10,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
 import { leaveTheDoor } from "../src/boundary.ts";
 import { overPGlite } from "../src/database.ts";
 import { success } from "../src/envelopes.ts";
@@ -222,12 +223,24 @@ describe("a value read before this request is never current", () => {
     for (const answer of [
       await door(AGENT, "invoice.get", { invoice: INV_1008 }),
       await door(AGENT, "invoice.list", {}),
+      // Decision 146: the supervisor's read is confidential, so a read that leaves is written down
+      // as READ (DSOR-CLS-05). That record names the rows that were returned (decision 116), and a
+      // refused read returned none. With the refusal moved below the record, no test failed.
+      await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 }),
     ]) {
       expect(answer.kind).toBe("error");
 
       if (answer.kind === "error") {
         expect(answer.envelope.code).toBe("INTERNAL_ERROR");
         expect(answer.envelope.retry).toBe("never");
+
+        // The log holds what was decided for this request, and nothing more.
+        const requestId = answer.envelope.correlation.request_id;
+        const records = (await theLog("org_456")).filter(
+          (record) => record.correlation.request_id === requestId,
+        );
+
+        expect(records.map((record) => record.kind)).toStrictEqual(["decision"]);
       }
     }
   });
