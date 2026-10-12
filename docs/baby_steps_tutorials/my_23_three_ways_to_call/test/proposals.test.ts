@@ -9,7 +9,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { overPGlite } from "../src/database.ts";
-import { payloadHash, refusal } from "../src/envelopes.ts";
+import { payloadHash, refusal, success } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
@@ -457,6 +457,32 @@ describe("the door makes a proposal for every command and moves it", () => {
       ["READY", "EXECUTING", "dsor", "handed to invoice.issue"],
       ["EXECUTING", "COMMITTED", "dsor", "the handler answered COMMITTED"],
     ]);
+  });
+
+  it("a receipt names the door's own proposal, whatever the handler wrote", async () => {
+    // Decision 153: every handler passes on the address the door hands it, so nothing tested the door
+    // writing it over, and a door that let the handler's word through passed every test. A careless
+    // handler here names a proposal of its own company's that this request never made.
+    const door = makeDoor(PIPELINE, {
+      "invoice.issue": (_args, _contract, askedBy, tenant, hash, requestId) => ({
+        kind: "result",
+        askedBy,
+        envelope: success({
+          data: {},
+          semantics: "atomic",
+          payloadHash: hash,
+          tenant,
+          proposal: `dsor://${tenant}/proposal/prop_999`,
+          principalId: askedBy,
+          requestId,
+        }),
+      }),
+    });
+    const answer = await door(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    expect(answer.kind === "result" && answer.envelope.proposal).toBe(
+      "dsor://org_456/proposal/prop_1",
+    );
   });
 
   it("DSOR-APR-01a: the proposal keeps the payload the receipt's hash describes, and who asked", async () => {
