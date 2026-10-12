@@ -5,7 +5,7 @@
 // money functions, which compare and convert as step 26 does. When a condition cannot be
 // evaluated, it gives an error, never true or false, and the control's effect applies.
 import { Environment } from "@marcbachmann/cel-js";
-import { compareAcross, type RateSheet } from "./exchange.ts";
+import { compareAcross, isReadable, type RateSheet } from "./exchange.ts";
 import { money, type Money } from "./money.ts";
 
 /** What a condition may read: Appendix B's eight variables, for one call. */
@@ -58,6 +58,13 @@ function compared(
 ): -1 | 0 | 1 {
   const left = moneyOf(a);
   const right = moneyOf(b);
+  // An amount that cannot be read is named as such, never as a missing rate (step 27's review,
+  // finding L9). The words name its currency, never its value.
+  for (const amount of [left, right]) {
+    if (!isReadable(amount.value)) {
+      throw new Error(`an amount in ${amount.currency} is not a decimal with no sign`);
+    }
+  }
   const answer = compareAcross(left, right, sheet ?? NO_SHEET);
   if (answer === undefined) {
     throw new Error(`${NO_RATE} compares ${left.currency} with ${right.currency}`);

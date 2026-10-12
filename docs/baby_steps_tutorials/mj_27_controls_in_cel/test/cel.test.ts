@@ -118,6 +118,15 @@ describe("C4: a condition, evaluated", () => {
     },
   );
 
+  // Found by step 27's review, finding L9: the error said "no usable rate compares USD with USD",
+  // and the person who reads the record looked for a rate.
+  it("DSOR-CTL-07: an amount that cannot be read gives an error that names the amount, never a rate: -31,400.00 USD", () => {
+    const minus = factsFor({ value: "-31400.00", currency: "USD" });
+    expect(evaluateCondition(CFO, minus, TUESDAY)).toStrictEqual({
+      error: "an amount in USD is not a decimal with no sign",
+    });
+  });
+
   it("DSOR-CTL-06: the facts are the only state a condition reads: the same condition, with another open amount in the facts, answers otherwise", () => {
     const facts = factsFor(money("31400.00", "USD"));
     expect(evaluateCondition(CFO, facts, TUESDAY)).toStrictEqual({ holds: true });

@@ -32,6 +32,13 @@ function scaled(text: string): Scaled | undefined {
   return { digits: BigInt(match[1]! + fraction), scale: fraction.length };
 }
 
+// NEW IN STEP 27: whether an amount can be read at all, so that a condition's error names the
+// amount, and not a rate. Found by step 27's review, finding L9.
+/** Whether the text is a decimal with no sign, as every comparison here reads one. */
+export function isReadable(text: string): boolean {
+  return scaled(text) !== undefined;
+}
+
 /** The sheet's rate for one currency, when it has one above zero. */
 function rateOf(currency: string, sheet: RateSheet): Scaled | undefined {
   // Only the sheet's own lines: a line it inherits, such as one that a package with a bug wrote on
