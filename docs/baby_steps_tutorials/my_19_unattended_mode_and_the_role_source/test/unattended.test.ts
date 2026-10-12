@@ -305,6 +305,64 @@ describe("whose authority the record says", () => {
     expect(decision?.correlation.principal_id).toBe("accounts-payable-fte");
   });
 
+  it("DSOR-DEL-08: the subject is whoever signed the slip: del_300, signed by cfo_100, is recorded as cfo_100", async () => {
+    // Decision 150: every record this file read was made under a slip user_123 signed, so a record
+    // that named user_123 whatever the slip said passed every test.
+    await asTheOwner(() =>
+      db.exec(
+        `UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100';
+         INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
+         VALUES ('org_456', 'del_300', 'cfo_100', 'accounts-payable-fte', ARRAY['payment:cancel'],
+                 ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`,
+      ),
+    );
+    useDirectory("org_456", aDirectory("org_456", { holds: { cfo_100: ["payment:cancel"] } }));
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity).toMatchObject({
+      mode: "unattended",
+      subject: "cfo_100",
+      actor_chain: ["accounts-payable-fte"],
+    });
+    expect(decision?.delegation).toBe("del_300");
+  });
+
+  it("DSOR-DEL-08: in org_789 the subject is the signer of org_789's own slip, user_789", async () => {
+    // Decision 150: the agent works for both companies. A slip looked up in the wrong one would put
+    // an org_456 person on org_789's record.
+    await forgetTheLog("org_789");
+    await asTheOwner(() =>
+      db.exec(
+        `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
+         VALUES ('org_789', 'del_789', 'user_789', 'accounts-payable-fte', ARRAY['invoice:issue'],
+                 ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`,
+      ),
+    );
+    useDirectory("org_789", aDirectory("org_789", { holds: { user_789: ["invoice:issue"] } }));
+
+    try {
+      const answer = await callOperation({ ...AGENT, tenant: "org_789" }, "invoice.issue", {
+        invoice: "dsor://org_789/invoice/INV-1008",
+      });
+
+      expect(answer.kind).toBe("result");
+
+      const [decision] = (await theLog("org_789")).filter((r) => r.kind === "decision");
+
+      expect(decision?.identity).toMatchObject({
+        mode: "unattended",
+        subject: "user_789",
+        actor_chain: ["accounts-payable-fte"],
+      });
+      expect(decision?.delegation).toBe("del_789");
+    } finally {
+      useDirectory("org_789", undefined);
+    }
+  });
+
   it("DSOR-DEL-10: a refusal under the slip is recorded the same way", async () => {
     await callOperation(AGENT, "payment.create", {
       invoice: "dsor://org_456/invoice/INV-1008",
