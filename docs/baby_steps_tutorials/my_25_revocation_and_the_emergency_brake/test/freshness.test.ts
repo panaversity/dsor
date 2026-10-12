@@ -9,7 +9,7 @@
 // Rule DSOR-FRS-01b: DSoR MUST NOT label a cached value `CURRENT`.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { leaveTheDoor } from "../src/boundary.ts";
 import { overPGlite } from "../src/database.ts";
@@ -340,30 +340,43 @@ describe("a value read before this request is never current", () => {
     // The tests above hand the door a label an hour old, older than any door, and the one above
     // this hands the check its start time. So a door that took the time once, when it was built,
     // passed them all, and so did a door that allowed up to an hour of slack. A value saved after
-    // start-up could then leave labelled current. Here the door is built and asked once, the value
-    // is saved after that, and it is asked for at least 5 ms later. The first question is there for
-    // a door that took the time once, at its first request: that passed the test without it.
-    let savedAt = new Date().toISOString();
-    const door = handingLabel(() => ({ ...readNow(), observed_at: savedAt }));
+    // start-up could then leave labelled current.
+    //
+    // `vi.setSystemTime` holds the program's clock at a time this test chooses, and the clock moves
+    // only when the test moves it. So "a millisecond later" is one millisecond, exactly, and a door
+    // with a millisecond of slack fails this test. On the real clock the test waited 5 ms or a
+    // little more: a door with 1 ms of slack always passed it, and one with 5 ms sometimes did.
+    const builtAt = Date.now();
+    let savedAt = new Date(builtAt).toISOString();
 
-    await door(AGENT, "invoice.get", { invoice: INV_1008 });
-    savedAt = new Date().toISOString();
+    vi.setSystemTime(builtAt);
 
-    // Until the program's clock has moved on 5 ms: a timer alone can fire a little early.
-    while (Date.now() < Date.parse(savedAt) + 5) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    }
+    try {
+      const door = handingLabel(() => ({ ...readNow(), observed_at: savedAt }));
 
-    for (const answer of [
-      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
-      await door(AGENT, "invoice.list", {}),
-    ]) {
-      expect(answer.kind).toBe("error");
+      // Read the moment its request began, so current. This first question is also there for a
+      // door that took the time once, at its first request: that passed the test without it.
+      expect((await door(AGENT, "invoice.get", { invoice: INV_1008 })).kind).toBe("data");
 
-      if (answer.kind === "error") {
-        expect(answer.envelope.code).toBe("INTERNAL_ERROR");
-        expect(answer.envelope.retry).toBe("never");
+      // The value is saved a second later, and asked for a millisecond after that.
+      vi.setSystemTime(builtAt + 1000);
+      savedAt = new Date().toISOString();
+      vi.setSystemTime(builtAt + 1001);
+
+      for (const answer of [
+        await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+        await door(AGENT, "invoice.list", {}),
+      ]) {
+        expect(answer.kind).toBe("error");
+
+        if (answer.kind === "error") {
+          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.retry).toBe("never");
+        }
       }
+    } finally {
+      // The real clock again, for the tests after this one.
+      vi.useRealTimers();
     }
   });
 });
