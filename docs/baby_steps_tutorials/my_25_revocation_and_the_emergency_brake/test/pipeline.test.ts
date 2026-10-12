@@ -57,7 +57,7 @@ describe("the pipeline", () => {
       "resolve the operation",
       // STEP 18: §21 step 3, after the operation, because it asks whether that is a command.
       "resolve the delegation",
-      // NEW IN STEP 25: §21 step 4, the brake, for commands only.
+      // NEW IN STEP 25: §21 step 4, the brake, for both kinds; it lets a query through.
       "check the operational status",
       "authorize",
       "validate the input",
