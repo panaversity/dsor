@@ -337,11 +337,13 @@ describe("a value read before this request is never current", () => {
     // The tests above hand the door a label an hour old, older than any door, and the one above
     // this hands the check its start time. So a door that took the time once, when it was built,
     // passed them all, and so did a door that allowed up to an hour of slack. A value saved after
-    // start-up could then leave labelled current. Here the door is built first, the value is saved
-    // after it, and the request comes at least 5 ms later.
-    let savedAt = "";
+    // start-up could then leave labelled current. Here the door is built and asked once, the value
+    // is saved after that, and it is asked for at least 5 ms later. The first question is there for
+    // a door that took the time once, at its first request: that passed the test without it.
+    let savedAt = new Date().toISOString();
     const door = handingLabel(() => ({ ...readNow(), observed_at: savedAt }));
 
+    await door(AGENT, "invoice.get", { invoice: INV_1008 });
     savedAt = new Date().toISOString();
 
     // Until the program's clock has moved on 5 ms: a timer alone can fire a little early.
