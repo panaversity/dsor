@@ -547,9 +547,16 @@ const fifty = await Promise.all(
   ),
 );
 const paymentsMade = (await paymentsOf("org_456")).length - paymentsBefore;
+// Decision 151: said as what happened. This line printed "50 answers, 1 different", which read as
+// one answer that differed from the rest, when all fifty were the same receipt.
+const distinct = new Set(fifty.map((a) => JSON.stringify(a))).size;
+const alike =
+  distinct === 1
+    ? `all the same ${fifty[0]?.kind === "result" ? "receipt" : "answer"}`
+    : `${distinct} different answers`;
 
 console.log(
-  `  ${fifty.length} answers, ${new Set(fifty.map((a) => JSON.stringify(a))).size} different, ${paymentsMade} ${paymentsMade === 1 ? "payment" : "payments"} made`,
+  `  ${fifty.length} answers, ${alike}, ${paymentsMade} ${paymentsMade === 1 ? "payment" : "payments"} made`,
 );
 
 // STEP 21: two decide on one payment, on the same version. The agent makes a payment;

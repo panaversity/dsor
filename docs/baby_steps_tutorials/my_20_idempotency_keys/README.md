@@ -115,7 +115,7 @@ accounts-payable-fte  IDEMPOTENCY_CONFLICT     retry: never                the k
 
 Fifty requests at once, with one key:
 
-  50 answers, 1 different, 1 payment made
+  50 answers, all the same receipt, 1 payment made
 ```
 
 The first receipt is the payment made. The second is the same request sent again with the same key:

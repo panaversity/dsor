@@ -454,7 +454,9 @@ describe("the program a learner runs", () => {
     expect(out).toContain(
       `${"accounts-payable-fte".padEnd(21)} ${"IDEMPOTENCY_CONFLICT".padEnd(24)} retry: ${"never".padEnd(20)} the key RUN-pay-1009 was used for a different payment.create request`,
     );
-    expect(out).toContain("  50 answers, 1 different, 1 payment made");
+    // Decision 151: said as what happened. "50 answers, 1 different" read as one answer that
+    // differed from the rest, when all fifty were the same receipt.
+    expect(out).toContain("  50 answers, all the same receipt, 1 payment made");
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
