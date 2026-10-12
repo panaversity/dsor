@@ -84,6 +84,17 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
       memberships: [{ tenant_id: "org_789", roles: ["ap_supervisor"] }],
     },
   ],
+  // NEW IN STEP 28: org_789's tenant administrator, who may draft and manage org_789's rules. So
+  // the cross-tenant suite attacks the rule commands from both companies, as it attacks every
+  // operation (step 12's README, outcome 5; step 28's README, decision D19).
+  [
+    "tok_a700",
+    {
+      id: "admin_700",
+      type: "human",
+      memberships: [{ tenant_id: "org_789", roles: ["tenant_admin"] }],
+    },
+  ],
   // dsor-scheduler, a login of the specification's subject type system: neither
   // a person nor an agent. The sweep is called with it, in each company: by a deployment's timer,
   // which this step does not build. Its role, scheduler, holds proposal:expire and nothing else

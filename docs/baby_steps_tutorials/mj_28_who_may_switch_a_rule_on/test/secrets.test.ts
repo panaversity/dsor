@@ -113,9 +113,12 @@ describe("decision 8: with no database named, the database tests fail and never 
 
   // The real command, with the variable set to "". .env does not override a variable
   // that is already set, so no database is reached.
+  // Found live 2026-10-12, in step 28: beside step 28's heavier cross-tenant suites, on a machine
+  // at load 23, the run of 29 database files took 88 to 124 seconds, and alone 35. A run that
+  // hangs is still stopped, at three minutes.
   it(
     "pnpm test:db with DSOR_DB_URL empty fails, and names the variable",
-    { timeout: 60_000 },
+    { timeout: 180_000 },
     () => {
       const vitest = fileURLToPath(new URL("node_modules/vitest/vitest.mjs", HERE));
       const run = spawnSync(process.execPath, [vitest, "run", "--config", "vitest.db.config.ts"], {

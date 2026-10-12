@@ -769,7 +769,10 @@ describe("from the review: every command, in each mode", () => {
       // decision D11).
       // And rate.load's 6, dsor-rates in each company (step 26's README, decision
       // D1).
-      expect(report.attacks).toHaveLength(93);
+      // And step 28's 45: 9 for each rule command, 2 callers in org_456 and 1 in org_789, and 9
+      // for admin_700 in org_789, on the tear-up and each brake command (step 28's README,
+      // decision D19).
+      expect(report.attacks).toHaveLength(138);
     },
   );
 

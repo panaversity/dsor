@@ -73,8 +73,10 @@ export type RuleWorld = {
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
 export function ruleWorld(
   controls: ControlsSource = readControls(),
-  // And these slips beside the story's, when a test needs one more.
+  // And these slips beside the story's, or in place of the story's slip with the same id.
   more: readonly StorySlip[] = [],
+  // And these input schemas, the shipped ones unless a test changes one.
+  inputs: ContractSource[] = shippedInputs,
 ): RuleWorld {
   const clock = { now: T0 };
   const store = memoryInvoices([...structuredClone(invoices), ...structuredClone(BILLS)]);
@@ -87,14 +89,17 @@ export function ruleWorld(
     per_transaction_limit: { value: "50000", currency: "USD" },
     cumulative_limits: [{ window: "P1D", amount: { value: "200000", currency: "USD" } }],
   };
-  const slips = memorySlips([{ ...DEL_100, constraints: limits }, DEL_101, DEL_102, ...more]);
+  // A slip of the test's own takes the place of the story's slip with its id.
+  const story = [{ ...DEL_100, constraints: limits }, DEL_101, DEL_102];
+  const kept = story.filter((slip) => !more.some((m) => m.id === slip.id));
+  const slips = memorySlips([...kept, ...more]);
   const brakes = memoryBrakes();
   const rules = memoryControls(controls);
   const registry = buildRegistry(
     shipped,
     handlersFor(),
     shippedRoles,
-    shippedInputs,
+    inputs,
     shippedLabels,
     store,
     payments,
@@ -124,8 +129,9 @@ export function ruleWorld(
 export async function ruleWorldOnTuesday(
   controls?: ControlsSource,
   more?: readonly StorySlip[],
+  inputs?: ContractSource[],
 ): Promise<RuleWorld> {
-  const w = ruleWorld(controls, more);
+  const w = ruleWorld(controls, more, inputs);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",
@@ -161,6 +167,26 @@ export function version9(): Control {
     v9.tests[4]!,
   ];
   return v9;
+}
+
+// The story's rule, by its address (step 28's README, decision D7).
+export const RULE = "dsor://org_456/rule/high-value-payment";
+
+/** The text of a version, as rule.draft takes it: without the six fields DSoR sets itself. */
+export function textOf(control: Control): Record<string, unknown> {
+  const { id, version, status, compiled_by, reviewed_by, effective_from, ...text } = control;
+  return text;
+}
+
+/** Someone asks for one of the four rule commands, with a fresh key, on this rule. */
+export function ruleCall(
+  w: RuleWorld,
+  who: RequestEnvelope,
+  name: "rule.draft" | "rule.activate" | "rule.suspend" | "rule.retire",
+  fields: Record<string, unknown>,
+  rule: string = RULE,
+): Promise<Answer> {
+  return w.ask(keyed(who), name, { rule, ...fields, reason: `${name} by a test` });
 }
 
 /** What one answer says, in one line: its outcome or its code. */

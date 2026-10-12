@@ -15,8 +15,10 @@ import { Refusal, type Correlation } from "./envelope.ts";
 import type { Mover } from "./log.ts";
 import type { MoneyPolicies, MoneyPolicy } from "./policies.ts";
 import type { Principal } from "./principals.ts";
+import { ruleWorkFor } from "./lifecycle.ts";
 import { rateWorkFor, type RateStore } from "./rates.ts";
 import { preview, type Contract } from "./registry.ts";
+import type { ControlStore, RuleCheck } from "./rulebook.ts";
 import type { Slip, SlipStore } from "./slips.ts";
 import { parseUri } from "./uri.ts";
 
@@ -35,6 +37,10 @@ export type OwnLook = {
   // And the company's sheets, read only: what a load of a sheet would do (step 26's README,
   // decision D16).
   rates: Pick<RateStore, "wouldLoad">;
+  // NEW IN STEP 28: and the company's rules, read only, from the world's store, and the check of
+  // one version, for the commands of a rule's life (step 28's README, decisions D11 and D12).
+  controls: Pick<ControlStore, "versions">;
+  checkRule: RuleCheck;
 };
 
 /** What DSoR's own change gets after line ⑩: the company, the caller, DSoR's stores, and the call. */
@@ -60,11 +66,13 @@ export function ownWorkFor(): Record<string, OwnWork> {
   // And the brake's two commands (step 25b's README, decision D1).
   // And the sweep, which expires READY proposals (step 25c's README, decision L3).
   // And rate.load, which writes a sheet of rates (step 26's README, decision L2).
+  // NEW IN STEP 28: and the commands of a rule's life (step 28's README, decision D7).
   return {
     "delegation.revoke": { check: mayTearUp, change: tearUp },
     ...brakeWorkFor(),
     ...expiryWorkFor(),
     ...rateWorkFor(),
+    ...ruleWorkFor(),
   };
 }
 
@@ -79,6 +87,9 @@ export function lookFor(
   policies: MoneyPolicies,
   // And the sheets of rates, read only too.
   rates: RateStore,
+  // NEW IN STEP 28: and the world's rules, read only too, and the registry's check of one version.
+  controls: ControlStore,
+  checkRule: RuleCheck,
 ): OwnLook {
   // The roles of this company only: a tenant administrator of org_789 is no tenant
   // administrator in org_456.
@@ -91,6 +102,8 @@ export function lookFor(
     brakes: { get: (company, agent) => brakes.get(company, agent) },
     moneyPolicy: policies.get(tenant),
     rates: { wouldLoad: (company, source, at) => rates.wouldLoad(company, source, at) },
+    controls: { versions: (company, id) => controls.versions(company, id) },
+    checkRule,
   };
 }
 

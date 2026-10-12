@@ -136,7 +136,8 @@ describe("C3: every principal has a type and at least one tenant membership", ()
     // Six, with admin_100 (step 25's README, decision L2).
     // Seven, with dsor-scheduler, of type system (step 25c's README, decision D1).
     // Eight, with dsor-rates, of type system too (step 26's README, decision D1).
-    expect(principals).toHaveLength(8);
+    // Nine, with admin_700, org_789's tenant administrator (step 28's README, decision D19).
+    expect(principals).toHaveLength(9);
     for (const principal of principals) {
       expect(["human", "agent", "application", "system"]).toContain(principal.type);
       expect(principal.memberships.length).toBeGreaterThan(0);
@@ -194,6 +195,12 @@ describe("C3: every principal has a type and at least one tenant membership", ()
         id: "user_700",
         type: "human",
         memberships: [{ tenant_id: "org_789", roles: ["ap_supervisor"] }],
+      },
+      // Org_789's tenant administrator (step 28's README, decision D19).
+      tok_a700: {
+        id: "admin_700",
+        type: "human",
+        memberships: [{ tenant_id: "org_789", roles: ["tenant_admin"] }],
       },
       // The timer's login, neither a person nor an agent, with the scheduler
       // role in each company (step 25c's README, decisions D1 and D10).

@@ -53,5 +53,12 @@
     "base": "internal",
     "published_at": "internal",
     "currencies": "internal"
+  },
+  "Rule": {
+    "tenant_id": "internal",
+    "id": "internal",
+    "version": "internal",
+    "status": "internal",
+    "retired": "internal"
   }
 }

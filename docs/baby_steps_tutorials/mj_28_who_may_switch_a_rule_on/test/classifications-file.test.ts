@@ -69,6 +69,15 @@ const LABELS = {
     published_at: "internal",
     currencies: "internal",
   },
+  // NEW IN STEP 28: the version of a rule that a rule command wrote or moved, and the version a
+  // switch-on retired (step 28's README, decision D7).
+  Rule: {
+    tenant_id: "internal",
+    id: "internal",
+    version: "internal",
+    status: "internal",
+    retired: "internal",
+  },
 };
 
 /** A classifications file, as start-up would read it from disk. */

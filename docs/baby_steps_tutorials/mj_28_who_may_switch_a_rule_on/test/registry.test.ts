@@ -228,7 +228,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     // And delegation.revoke, the sixth. And the brake's two, the seventh and eighth.
     // And the sweep, the ninth (step 25c's README, decision L3).
     // And rate.load, the tenth (step 26's README, decision L2).
-    expect(shipped).toHaveLength(10);
+    // And the four commands of a rule's life (step 28's README, decision D7).
+    expect(shipped).toHaveLength(14);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);

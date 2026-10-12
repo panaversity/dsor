@@ -32,6 +32,12 @@ function controlsOf(data: unknown): ControlsSource {
 // The shipped control, as a plain object that a test may change.
 const SHIPPED = (JSON.parse(readControls().text) as { org_456: Record<string, unknown>[] })
   .org_456[0]!;
+/** The shipped control as it was before anyone switched it on: no reviewer, and no time. */
+function neverOn(): Record<string, unknown> {
+  const { reviewed_by: _reviewer, effective_from: _from, ...text } = SHIPPED;
+  return text;
+}
+
 /** org_456's one control, the shipped one with these fields changed. */
 function withOne(fields: Record<string, unknown>): ControlsSource {
   return controlsOf({ org_456: [{ ...SHIPPED, ...fields }], org_789: [] });
@@ -298,7 +304,9 @@ describe("C3: the tests, run before a control is switched on", () => {
   it.each(["draft", "suspended", "retired"])(
     "Step 27: a %s control's condition is checked at start-up, and line ⑩ never sees the control (step 27's README, decision D3)",
     async (status) => {
-      const waiting = { ...SHIPPED, id: "waiting-rule", status, condition: QUICK };
+      // Changed in step 28: a draft was never switched on, so it names no reviewer and no time.
+      const base = status === "draft" ? neverOn() : SHIPPED;
+      const waiting = { ...base, id: "waiting-rule", status, condition: QUICK };
       const started = await startWith(controlsOf({ org_456: [SHIPPED, waiting], org_789: [] }));
       expect((await activeIn(started, "org_456")).map((c) => c.id)).toStrictEqual([
         "high-value-payment",
@@ -313,7 +321,7 @@ describe("C3: the tests, run before a control is switched on", () => {
   );
 
   it("Step 27: a draft's tests do not run and line ⑩ never sees it; start-up refuses a stale_authority control, whose on_stale step 28 builds (step 27's README, decision D3)", async () => {
-    const draft = { ...SHIPPED, id: "draft-rule", status: "draft", condition: QUICK };
+    const draft = { ...neverOn(), id: "draft-rule", status: "draft", condition: QUICK };
     const started = await startWith(controlsOf({ org_456: [SHIPPED, draft], org_789: [] }));
     expect((await activeIn(started, "org_456")).map((c) => c.id)).toStrictEqual([
       "high-value-payment",

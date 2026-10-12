@@ -18,7 +18,9 @@ import {
 } from "./helpers.ts";
 
 describe("C2: a contract passes the specification's own schema", () => {
-  it("DSOR-OPR-01: the ten shipped contracts pass", async () => {
+  // Changed in step 28: fourteen, with the four commands of a rule's life (step 28's README,
+  // decision D7).
+  it("DSOR-OPR-01: the fourteen shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // invoice.list. Step 17's two commands, payment.cancel and payment.create.
     // And delegation.revoke, DSoR's own command. And the brake's two, DSoR's own commands too.
@@ -35,6 +37,10 @@ describe("C2: a contract passes the specification's own schema", () => {
       "proposal.expire_due",
       // And rate.load, DSoR's own command too (step 26's README, decision L2).
       "rate.load",
+      "rule.activate",
+      "rule.draft",
+      "rule.retire",
+      "rule.suspend",
     ]);
   });
 

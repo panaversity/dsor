@@ -7,9 +7,9 @@
     "delegation:revoke",
     "control:suspend"
   ],
-  "CFO": ["invoice:read", "delegation:revoke"],
+  "CFO": ["invoice:read", "delegation:revoke", "rule:draft", "rule:manage"],
   "ap_clerk": ["invoice:read", "payment:create.propose", "delegation:revoke"],
-  "tenant_admin": ["delegation:revoke", "control:suspend"],
+  "tenant_admin": ["delegation:revoke", "control:suspend", "rule:draft", "rule:manage"],
   "scheduler": ["proposal:expire"],
   "rate_loader": ["rate:load"]
 }

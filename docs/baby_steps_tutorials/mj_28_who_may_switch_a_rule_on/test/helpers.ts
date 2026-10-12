@@ -126,9 +126,11 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "delegation:revoke",
     "control:suspend",
   ],
-  CFO: ["invoice:read", "delegation:revoke"],
+  // NEW IN STEP 28: the CFO and the tenant administrator may ask to draft and to manage a rule.
+  // Line ⑨ decides whose rule (step 28's README, decision D8).
+  CFO: ["invoice:read", "delegation:revoke", "rule:draft", "rule:manage"],
   ap_clerk: ["invoice:read", "payment:create.propose", "delegation:revoke"],
-  tenant_admin: ["delegation:revoke", "control:suspend"],
+  tenant_admin: ["delegation:revoke", "control:suspend", "rule:draft", "rule:manage"],
   scheduler: ["proposal:expire"],
   rate_loader: ["rate:load"],
 };

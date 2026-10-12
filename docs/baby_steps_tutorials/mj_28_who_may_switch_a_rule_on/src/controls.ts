@@ -15,6 +15,7 @@ import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
 import type { MoneyPolicy } from "./policies.ts";
+import { principalNamed } from "./principals.ts";
 import { isTenantId } from "./uri.ts";
 
 /** What a control can answer: its effect, or ALLOW (DSOR-AUT-02a). */
@@ -92,6 +93,8 @@ const validateControl = ajv.compile({ $ref: "urn:dsor:schema:1.3:control" });
 // active (DSOR-CTL-03b). Found by step 27's review, finding M2: it was evaluated as active, so a
 // stale control whose on_stale says deny allowed a payment.
 const STALE = "stale_authority";
+// NEW IN STEP 28: a URI's id, as uri.ts and common.schema.json write it.
+const RULE_ID = /^[A-Za-z0-9_.-]+$/;
 // NEW IN STEP 28: nor is a control in review built. The owner's switch-on is the review (step 28's
 // README, decision D17).
 const IN_REVIEW = "in_review";
@@ -305,6 +308,11 @@ export function ruleProblems(
     );
   }
   const control = raw as Control;
+  // NEW IN STEP 28: a rule's address ends with its id, so the id has the letters a URI's id may
+  // have (step 28's README, decision D7).
+  if (!RULE_ID.test(control.id)) {
+    return [`${name}: its id cannot end a rule's address, dsor://${tenant}/rule/<id>`];
+  }
   const effect = Object.keys(control.effect)[0] ?? "";
   if (!BUILT.has(effect)) {
     return [`${name} has the effect ${effect}, which this step does not build`];
@@ -315,8 +323,22 @@ export function ruleProblems(
   if (control.status === IN_REVIEW) {
     return [`${name} has the status ${IN_REVIEW}, which this step does not build`];
   }
+  // NEW IN STEP 28: a draft was never switched on, so it names no reviewer and no time. A version
+  // with a time it took effect was switched on once, and its owner is the rule's owner of record
+  // (step 28's README, decision D10).
+  const named = control.reviewed_by !== undefined || control.effective_from !== undefined;
+  if (control.status === "draft" && named) {
+    return [`${name} is a draft, so it names no reviewer and no time it took effect`];
+  }
   const why = context.governable(control.operation);
   if (why !== undefined) return [`${name} governs ${control.operation}, ${why}`];
+  // NEW IN STEP 28: its owner is a person who works in its company, who can switch it on in person
+  // (DSOR-CTL-01a: "a named human owner"; step 28's README, decision D11).
+  const owner = principalNamed(control.owner);
+  const works = owner?.memberships.some((m) => m.tenant_id === tenant) === true;
+  if (owner?.type !== "human" || !works) {
+    return [`${name}: its owner ${control.owner} is not a person who works in ${tenant}`];
+  }
   // Every control's condition, a draft's too, so a broken one is found now (DSOR-CTL-05).
   const broken = checkCondition(control.condition);
   if (broken !== undefined) {

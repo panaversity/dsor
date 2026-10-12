@@ -44,7 +44,9 @@ describe("reading the contracts folder", () => {
   // And delegation.revoke. And the brake's two commands, first in name order.
   // And the sweep (step 25c's README, decision L3).
   // And rate.load, last in name order (step 26's README, decision L2).
-  it("the shipped folder holds the ten contracts", () => {
+  // Changed in step 28: and the four commands of a rule's life, last in name order (step 28's
+  // README, decision D7).
+  it("the shipped folder holds the fourteen contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "control.lift.json",
       "control.suspend.json",
@@ -56,6 +58,10 @@ describe("reading the contracts folder", () => {
       "payment.create.json",
       "proposal.expire_due.json",
       "rate.load.json",
+      "rule.activate.json",
+      "rule.draft.json",
+      "rule.retire.json",
+      "rule.suspend.json",
     ]);
   });
 });

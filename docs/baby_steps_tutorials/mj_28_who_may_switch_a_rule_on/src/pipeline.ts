@@ -371,7 +371,17 @@ export async function call(
         if (own !== undefined)
           await own.check(
             copy,
-            lookFor(tenant, caller, slips, brakes, registry.moneyPolicies, rates),
+            // NEW IN STEP 28: and the world's rules, with the registry's check of one version.
+            lookFor(
+              tenant,
+              caller,
+              slips,
+              brakes,
+              registry.moneyPolicies,
+              rates,
+              registry.controls,
+              registry.checkRule,
+            ),
           );
         return bound;
       });

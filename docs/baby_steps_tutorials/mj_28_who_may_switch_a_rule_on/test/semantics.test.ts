@@ -116,6 +116,12 @@ describe("C1: every command declares its semantics in its contract", () => {
       // And rate.load, atomic too: a sheet is written whole, or not at all (step
       // 26's README, decision D6).
       ["rate.load", "atomic"],
+      // NEW IN STEP 28: and the four commands of a rule's life, atomic: one transaction in DSoR's
+      // own store, with their records (step 28's README, decision D14).
+      ["rule.activate", "atomic"],
+      ["rule.draft", "atomic"],
+      ["rule.retire", "atomic"],
+      ["rule.suspend", "atomic"],
     ]);
   });
 
