@@ -14,24 +14,38 @@ await callOperation(agent, "payment.create", payment, { idempotencyKey, mode: "p
 await callOperation(agent, "payment.create", payment, { idempotencyKey }); // execute
 ```
 
-- **`validate_only`** asks "would this be allowed?". Every check runs and the decision is written
-  in the log, as `VALIDATED`, so the log never shows a dry run as something that ran. Nothing else
-  happens: no proposal, no claimed key, no payment, not even a payment number taken. The answer is
-  `VALIDATED`, with the decision, `ALLOW`, and the command's semantics: whether it could be undone,
-  which the agent needs to know before it acts. A dry run the rules refuse gets the same refusal a
-  real one would. A dry run needs no key, because there is nothing to send twice.
-- **`propose_only`** prepares the command and stops. The key is claimed, the proposal is made, every
-  check runs, and the proposal moves to READY, "waiting to be released", and stays there. The answer
-  is `READY` with the proposal's address. Releasing it is `proposal.execute`, which checks
+- **`validate_only`** asks "would this be allowed?". The checks up to the decision run: who is
+  calling, for which company, under which slip, whether they may, whether the arguments are well
+  formed, and the slip's limit on one payment. The decision is written in the log, as `VALIDATED`,
+  so the log never shows a dry run as something that ran. Nothing else happens: no proposal, no
+  claimed key, no payment, not even a payment number taken. The answer is `VALIDATED`, with the
+  decision, `ALLOW`, and the command's semantics: whether it could be undone, which the agent needs
+  to know before it acts. A dry run that these checks refuse gets the same refusal a real one
+  would. A dry run needs no key, because there is nothing to send twice.
+- **`propose_only`** prepares the command and stops. The key is claimed, the proposal is made, the
+  same checks run, and the proposal moves to READY, "waiting to be released", and stays there. The
+  answer is `READY` with the proposal's address. Releasing it is `proposal.execute`, which checks
   everything again on live data; that is step 31.
 - **`execute`**, the default, is what every command did before.
 
 A query is only ever read, so it has one way to be called.
 
+A dry run is not the real call in every way. Two kinds of check do not run, so a dry run can be
+`VALIDATED` where the real call is refused:
+
+- **The key's claim.** A dry run claims no key, so it never looks at one. A key that is not a valid
+  key, or one already used for another request, is refused only when the command is executed or
+  prepared.
+- **The handlers' own checks**: whether the version is current, and whether the invoice exists.
+  They run inside the handlers, which a dry run never reaches, and a prepared command does not
+  reach them either. The end of this page says more; step 32 makes them a stage of their own.
+
 How it is called is part of the request. The idempotency claim keeps the mode beside the
-fingerprint, so the same key sent in another mode is `IDEMPOTENCY_CONFLICT`. Without that, a key
-used to prepare a payment, sent again to execute it, would be handed the prepared answer, and the
-caller would believe it had executed.
+fingerprint. So a key claimed to prepare a command and sent again to execute it, or the other way
+round, is `IDEMPOTENCY_CONFLICT`. Without that, a key used to prepare a payment, sent again to
+execute it, would be handed the prepared answer, and the caller would believe it had executed. A
+dry run claims no key, so its key is compared with nothing: a dry run that carries a key already
+used is answered like any other dry run.
 
 The mode is read once, and only the request's own. One that cannot be read, a getter that throws or
 a mode on the request's prototype, is refused with `VALIDATION_FAILED`, never taken as `execute`:
