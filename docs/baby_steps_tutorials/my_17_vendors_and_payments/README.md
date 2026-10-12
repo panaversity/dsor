@@ -88,7 +88,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `src/contracts/payment.create.json`, `payment.cancel.json` | new — `compensatable`, undone by `payment.cancel`; and `atomic`. `payment.create`'s example request names INV-1009, a draft in both companies, so the cross-tenant suite's same-state question has rows to compare (decision 126) |
 | `src/operations.ts` | the two handlers; the address reader takes the entity it needs, because `payment.create` takes an invoice's address; and the door writes each receipt's semantics from the contract. `?? "atomic"` is gone. And start-up refuses a command whose undo has a contract and no handler yet (decision 148) |
 | `src/registry.ts` | the two contracts; a program whose contract names an undo it does not have, or a query, refuses to start; `semanticsOf`, with no default |
-| `src/boundary.ts` | `withTheContractsSemantics`; and a comment that promised step 17 a `PENDING_APPROVAL` receipt names step 27 |
+| `src/boundary.ts` | `withTheContractsSemantics`; and a comment that promised step 17 a `PENDING_APPROVAL` receipt names step 27, there and in `test/model-boundary.test.ts` |
 | `src/database.ts` | the tenant tables in one list, four now, and every start-up question about them built from it; a refusal for an application that may change a vendor, or more of a payment than its status; a grant of every invoice column, which slipped past since step 10, caught; and the questions about the business's tables asked of a helper function's owner too, as the log's are (decision 148) |
 | `src/permissions.ts`, `src/classification.ts` | the supervisor and the agent may make and cancel payments; a payment's amount is confidential, like an invoice's |
 | `src/main.ts` | each receipt line says its semantics; a section that lists what each command's contract says, makes a duplicate payment and takes it back, and shows the payments as they end |
@@ -97,10 +97,14 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `test/main.test.ts` | three tests for the demo's new section: what each contract says, the receipts, and the payments as they end. And the agent's invoice lines are matched whole, because a payment's receipt also begins `accounts-payable-fte  COMMITTED` (decision 148) |
 | `test/operations.test.ts` | the payment operations in each list of operations; and a command whose undo still waits for its handler stops the program (decision 148) |
 | `test/database.test.ts` | the start-up refusals above, tested: invoices granted column by column, a vendor or more of a payment than its status, a payment's number, each one `SET ROLE` away, and through a helper function's owner |
+| `test/the-lock-at-start-up.test.ts` | an account that may become the owner of the payments is refused; and the lock's refusals are asked of the vendors and the payments too |
+| `test/permissions.test.ts`, `test/registry.test.ts`, `test/control-plane-store.test.ts` | the payment permissions, the two contracts and the two tables in their lists |
+| `test/bounded-queries.test.ts` | the invoice with a very long vendor name has that vendor made first, because an invoice names a vendor its company has (migration 012) |
+| `test/cross-tenant-suite.test.ts`, `test/cross-tenant-suite.db.test.ts` | each tier reads a company's invoices and payments with the one query, `ROWS_OF` |
 | `test/support/story.ts` | new — the one list of statements that put the story's rows back, for both tiers |
 | `test/support/cross-tenant-suite.ts` | rows of both kinds, looked up by kind and number, and a new canary. The same-state question is still asked of every command but a read, as in step 16, `payment.create` included |
 | `test/cross-tenant-suite-itself.test.ts` | a payment's number is looked for among the payments, and a command that only adds rows is asked the same-state question too (decision 148) |
-| the tests that put the story back | `resetInvoices` is `resetTheStory`, because it puts the payments back too |
+| the tests that put the story back | `resetInvoices` is `resetTheStory`, and the database tier runs the same statements from `story.ts`, because they put the payments back too |
 
 608 tests, from 548; the database tier, 51, from 39, because the cross-tenant suite asks its six
 questions of each new operation by itself.
