@@ -486,9 +486,10 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-TEN-01a: rights through a helper function's owner are refused too: payments, invoices", async () => {
-    // Decision 148: start-up asked a helper's owner only about the log. A review gave a SECURITY
-    // DEFINER helper an owner that may update a payment's amount, start-up passed, and as the
-    // application it set org_456's PAY-901 to 1.00 through the helper. The invoices had the same gap.
+    // Decision 148: start-up asked a helper's owner about the log and the lock, and not about the
+    // business's tables. A review gave a SECURITY DEFINER helper an owner that may update a
+    // payment's amount, start-up passed, and as the application it set org_456's PAY-901 to 1.00
+    // through the helper. The invoices had the same gap.
     for (const [grant, words] of [
       ["GRANT UPDATE (amount_value) ON public.payments TO lifter", /payment/],
       ["GRANT DELETE ON public.payments TO lifter", /payment/],
