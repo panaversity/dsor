@@ -21,6 +21,12 @@ for a human. An agent may gather evidence; it does not settle these alone.
    inside a record, and CEL terminates. `@marcbachmann/cel-js` 8.0.0 ran the spec's
    vectors with flat `dsor_*` functions on 2026-09-19. Not yet checked: its behavior
    with `now`, with large lists, and its error types for DSOR-CTL-07.
+   Step 27's learner build, `mj_27_controls_in_cel`, checked some of it. `now` works as a
+   timestamp, registered as `google.protobuf.Timestamp`. A missing field gives "No such key", a
+   call that no function takes gives "found no matching overload", and an error thrown inside a
+   `dsor_*` function keeps its own words; each applies the control's effect. Large lists are not
+   checked. And `matches` runs with JavaScript's backtracking regular expressions, not RE2:
+   `"^(a+)+$"` took 692 ms on 26 characters, so the build refuses `matches` at start-up (see 113).
 4. **A recorded DENY is replayed for the same idempotency key** (§22). After a human
    fixes the permission, the caller needs a new key. Is that the behavior users
    expect, or should denials not claim a key?
@@ -686,6 +692,8 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `dsor-scheduler`, whose role holds `proposal:expire` only. The time is the database's own:
     each proposal's `expires_at`, set once when it is made. Should the specification name an
     expiry operation, the kind of principal that calls it, and whose clock decides?
+    Step 27's learner build expires a `PENDING_APPROVAL` proposal the same way, so a proposal's
+    `expires_at` is also its approval window, which §26.2 names and does not size.
 106. **How is a converted reservation rounded?** DSOR-MON-06 converts each reservation into the
     limit's currency, and a quotient such as 9,000 × 1.0800 ÷ 0.8532 never ends. The
     specification names no scale and no direction. Step 26's learner build keeps six places
@@ -698,3 +706,31 @@ for a human. An agent may gather evidence; it does not settle these alone.
     the sheet, as the loader sends it, by the database's clock, and refuses a time in the future.
     So a loader that sends an old sheet with a new time makes it fresh. Should the specification
     name the time, and say who vouches for it?
+108. **What does the record of a call that waits for an approval say in `authorization`?** The
+    audit record's `authorization` allows `ALLOW` or `DENY` only. A call that a control stops at
+    `PENDING_APPROVAL` is neither allowed to run nor denied. Step 27's learner build records
+    `ALLOW`, for the caller's right to ask, with the result `PENDING_APPROVAL`, and the control's
+    own outcome `REQUIRE_APPROVAL` in `controls`. Should the audit record allow `REQUIRE_APPROVAL`
+    there, or say which of the two it means?
+109. **Where does a control's own reason for a `DENY` go?** DSOR-EXE-02 records "the reason for any
+    `DENY`", and an item of the audit record's `controls` allows no field for it. Step 27's learner
+    build keeps the reason in its own extensions, and the record's `reason` holds the words the
+    caller heard, which name no rule. Should the `controls` item carry the reason?
+110. **At line ⑩, do the controls come before the limits?** §21 lists "controls, SoD, limits", and
+    §41's walk-through of the nightly run checks the limits first. The final answer is the same,
+    because `DENY` wins. Only the refusal the caller hears differs when both refuse. Step 27's
+    learner build follows §21. Should the specification fix the order, or say that it does not
+    matter?
+111. **What does a contract's `controls` field mean?** `payment.create`'s contract says
+    `"controls": []`, and a control in the company's own store governs it. Is the contract's list
+    the controls that may govern the operation, the ones that must, or a note for readers? Nothing
+    in step 27's learner build reads it.
+112. **May a control's test vector pass by an evaluation error?** DSOR-CTL-02c runs the vectors,
+    and DSOR-CTL-07 makes an error apply the effect. So a vector that gives no state passes when it
+    expects the effect, and a rule switches on behind a test that tests nothing. Step 27's learner
+    build lets an error pass a vector only when its cause is a currency with no usable rate: the
+    vector DSOR-CTL-02d asks for. Should DSOR-CTL-02c say that a vector must evaluate?
+113. **Is an evaluation's time bounded?** CEL defines `matches` with RE2, whose time grows with the
+    text in a straight line. A library that runs it with backtracking can take exponential time on
+    a text the agent sends. Step 27's learner build refuses `matches` at start-up. Should Appendix
+    B require RE2's semantics, or §44 bound the time of one evaluation?

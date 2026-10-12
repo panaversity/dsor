@@ -1592,6 +1592,44 @@ a change to `expires_at`, a tear-up racing a prepared draft, and an agent that h
 - **Left for the learner to read, not to be quizzed on:** 25c's D5 to D15 and 26's D9 to D17,
   in each step's README under "(Claude Code)", and open questions 104 to 107.
 
+### Step 27, controls in CEL, built while the learner was away (2026-10-11 to 2026-10-12)
+
+The learner asked for the whole build first, and the review after: "first build it all then i will
+review". Step 27 copies step 26, with a database of its own on a scratch server.
+
+- **The decisions:** D1 to D18 are Claude Code's, written before any code, each with its downside.
+  The review changed D3, D5, D9, D10, D12, D13, and D16, and added D19 to D21. All of them are for
+  the learner to review.
+- **The pieces:** A, the environment a condition runs in; B, `controls.json` and its check at
+  start-up, with the tests; C1, several controls, one answer; C2, line ⑩ and `PENDING_APPROVAL`;
+  C3, the record's controls on the database; D11, the sweep expires a waiting payment; G, the
+  program's story. One commit each, each test red first, each broken on purpose.
+- **The breaks:** B1, B2, and B4 went as the design expected. B3's expectation was wrong: the
+  control's own test of a currency with no rate stopped the break at start-up. B1 found that the
+  program checked `controls.json` only when its last world was built. The learner's predictions
+  are still to be asked.
+- **The sweep:** 85 small breaks, 28 survived, every one a missing test. Each got a test. Run
+  again, 25 were caught, and the other 3 are defensive copies.
+- **The review:** two high findings, five medium, seventeen low. The high ones: the program's
+  database stories run with no controls, and nothing said so; and the controls and the limits each
+  read "the newest sheet", so a sheet loaded between the two split one decision. The medium ones:
+  a stale control evaluated as active; contract predicates neither evaluated nor refused; a test
+  that tests nothing passing by its error; and "after the command ran" said of a waiting payment.
+- **Lessons for the next builds:**
+  - Read the store once for one decision. Two parts of one line that each ask the store can see
+    two different worlds.
+  - An error applies a control's effect. So a test whose control asks for the CFO, or denies,
+    passes when the condition errs, and proves nothing about what the condition read. Give the
+    condition an answer that differs from its error's: a control that allows the story's case.
+  - A test vector that gives nothing passes by its error. Ask "what if the test gives nothing?"
+  - A world that the program builds late is checked late. Check every file at start-up, before
+    the first story.
+  - A comment that says "not built yet" goes stale on the day it is built. Search for the step's
+    own number when it lands.
+  - Run the repository's formatter on each changed file before its commit.
+- **For the learner's session:** D1 to D21, the four breaks to predict, open questions 108 to 113,
+  and the refusal of `matches`.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
