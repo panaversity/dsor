@@ -2,8 +2,9 @@
 // resources its command works on, and, under this tutorial's own name, what the command spends.
 // DSoR reads them itself, through the company's store, before any work, so the amount that a limit
 // counts is never the caller's word (§21, line 9; step 24's README, decision 2). The specification
-// writes each bind in CEL. CEL is not built yet (step 27), so only the plain path input.<field> is
-// accepted, and only an invoice can be bound, the one resource DSoR reads before the work.
+// writes each bind in CEL. Step 27 evaluates CEL for a control's condition only, so a bind is still
+// the plain path input.<field>, and only an invoice can be bound, the one resource DSoR reads before
+// the work.
 import { Refusal } from "./envelope.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
 import type { Money } from "./money.ts";

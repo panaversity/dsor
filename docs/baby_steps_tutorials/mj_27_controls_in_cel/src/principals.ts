@@ -99,7 +99,7 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
       ],
     },
   ],
-  // Dsor-rates, a login of the subject type system too, which loads each company's
+  // dsor-rates, a login of the subject type system too, which loads each company's
   // sheets of rates with rate.load. A deployment's timer calls it each day, which this step does not
   // build. Its role, rate_loader, holds rate:load and nothing else: one job, one key (step 26's
   // README, decision D1).

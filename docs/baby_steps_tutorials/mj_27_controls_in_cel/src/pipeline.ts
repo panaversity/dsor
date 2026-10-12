@@ -330,7 +330,7 @@ export async function call(
     let boundState: Bound["state"] = {};
     // NEW IN STEP 27: what a control's condition may read: Appendix B's eight variables, from DSoR's
     //   own reads and line ⑥'s checked input. The subject is the person: the slip's signer for an
-    //   agent's call, with what the directory says she holds now (DSOR-CTL-06; step 27's README,
+    //   agent's call, with what the directory says the person holds now (DSOR-CTL-06; step 27's README,
     //   decision D5).
     const factsOf = (state: Bound["state"]): Facts => {
       const requester = requesterOf(caller, under, tenant, new Date().toISOString());
@@ -723,9 +723,11 @@ export async function call(
     // A command's answer passes here too: one draft is far below the limit, so only a bug
     // reaches it.
     checkResultSize(shown.data, shown.redactions);
-    // ⑩ Evaluate controls, separation of duties, and limits. Controls and separation of duties:
-    //   not built yet, steps 27 and 30.
-    // The limits are built. They run above, before the work, where §21 puts them.
+    // ⑩ Evaluate controls, separation of duties, and limits. Separation of duties: not built yet,
+    //   step 30.
+    // The controls and the limits are built. They run above, before the work, where §21 puts them
+    //   (step 27's README, decision D9). Found by step 27's review: this said the controls were not
+    //   built.
 
     // A query's answer is { data, correlation } (step 04's README, decision 3).
     // With its label (DSOR-CLS-03), and the fields left out, when there are
@@ -835,7 +837,9 @@ export async function call(
   }
 
   // ⑫ Stop here when an approval is missing, or the mode is propose_only or
-  //   validate_only. A missing approval: not built yet, step 29.
+  //   validate_only. A call that needs an approval stopped above, after line ⑩, at
+  //   PENDING_APPROVAL, before any work (step 27's README, decision D10). Giving an approval: not
+  //   built yet, step 29.
   // A propose_only call and a dry run stopped earlier, inside decide, because the
   //   code at line ⑨ does the work that §21 puts after this line. Both come here only after line
   //   ⑪'s record (step 23's README, decision 8).
