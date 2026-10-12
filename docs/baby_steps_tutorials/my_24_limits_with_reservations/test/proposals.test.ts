@@ -8,6 +8,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { payloadHash, refusal, success } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
@@ -615,6 +616,49 @@ describe("the door makes a proposal for every command and moves it", () => {
       "dsor://org_456/proposal/prop_2",
     );
     expect(await stateOf("org_456", "prop_2")).toBe("COMMITTED");
+  });
+
+  it("DSOR-EXE-03b: a proposal that cannot be written means nothing runs, and the key may be sent again", async () => {
+    // Decision 153: decision 136 promises EVIDENCE_STORE_UNAVAILABLE here, and nothing tested it.
+    // Without the refusal at §21.8 the request reached §21.11 with no proposal and was refused
+    // INTERNAL_ERROR, retry never, kept on its claim: the key was used up for good for a request
+    // that never ran, and the log called a store outage a bug, a review measured.
+    const request = { idempotencyKey: "issue-1009-proposal-store-down" };
+    const connection = overPGlite(db);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        // The proposal's own statement. A move's says "dsor.proposal_moves", which this does not match.
+        if (sql.includes("INSERT INTO dsor.proposals")) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    const refused = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(refused.kind === "error" && refused.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(refused.kind === "error" && refused.envelope.retry).toBe("safe_same_key");
+    expect((await theLog("org_456")).at(-1)).toMatchObject({
+      authorization: "DENY",
+      result: "EVIDENCE_STORE_UNAVAILABLE",
+    });
+    expect(await proposalsOf456()).toStrictEqual([]);
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+
+    useDatabase(connection);
+
+    // The claim was released. Not prop_1 by name: on a real server a refused INSERT can use up a
+    // number, so the test asks for one proposal, carried out.
+    const sentAgain = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    const made = await proposalsOf456();
+
+    expect(sentAgain.kind).toBe("result");
+    expect(made).toHaveLength(1);
+    expect(await stateOf("org_456", made[0]?.id ?? "")).toBe("COMMITTED");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("issued");
   });
 
   it("DSOR-APR-01a: a move to EXECUTING whose reply is lost is read back, found to be the door's own, and carried out", async () => {
