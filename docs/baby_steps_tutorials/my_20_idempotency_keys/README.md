@@ -239,8 +239,9 @@ Copy `my_19_unattended_mode_and_the_role_source` to a new folder and ask:
    mistake or a second request, and DSoR cannot tell which. A new request needs a new key.
 3. Two requests that arrive together both check, both find no key, and both run. One INSERT under a
    primary key lets the database pick exactly one winner.
-4. They wait for the first one to finish, up to two seconds, and are given its answer. If it has not
-   finished by then, they are told `OUTCOME_UNKNOWN`.
+4. They wait for the first one's answer, up to two seconds, and are given it. If no answer is
+   recorded by then, they are told `OUTCOME_UNKNOWN`: the first request may still be running, or it
+   may have ended without recording one.
 5. That answer says nothing ran and the same request may be sent again. Kept, it would be given to
    the retry, and "send it again" would be a lie. Over the limit is a decision, and the retry is
    given the same decision.
