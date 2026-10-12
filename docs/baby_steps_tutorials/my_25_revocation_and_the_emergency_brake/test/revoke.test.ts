@@ -223,9 +223,10 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
   });
 
   it("DSOR-DEL-04a: user_123 revokes del_100 while it is suspended", async () => {
-    // Decision 156: a suspended slip was refused CONFLICT, "not active", in three places, so its
-    // signer could not tear it up before someone made it active again. DSOR-DEL-04a makes no exception
-    // for a slip's status. Today only an owner can suspend a slip; DSOR-IDN-07 will.
+    // Decision 156: §21.9, the statement, the slips' policy and the contract all asked for an active
+    // slip, so a suspended one was refused CONFLICT, "not active", and its signer could not tear it up
+    // before someone made it active again. DSOR-DEL-04a makes no exception for a slip's status. Today
+    // only an owner can suspend a slip; DSOR-IDN-07 will.
     await asTheOwner(() =>
       db.exec(
         "UPDATE dsor.delegations SET status = 'suspended' WHERE tenant = 'org_456' AND id = 'del_100'",
@@ -503,8 +504,9 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
   });
 
   it("DSOR-DEL-04a: a slip that cannot be read is no answer: the revocation is refused, recorded, and the slip stays active", async () => {
-    // Decision 156: §21.9's catch could carry on instead, with every test green. user_123 would then
-    // revoke del_200, which cfo_100 signed, whenever that one read failed.
+    // Decision 156: §21.9's catch could carry on instead, with every test green, and before the
+    // statement asked who signed the slip, user_123 then revoked del_200, which cfo_100 signed,
+    // whenever that one read failed.
     await aSlipSignedByCfo();
 
     const answer = await whileFailing("SELECT delegator, status FROM dsor.delegations", 1, () =>
