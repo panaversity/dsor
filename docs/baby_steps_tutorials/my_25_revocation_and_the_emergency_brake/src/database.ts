@@ -605,6 +605,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // (DSOR-TEN-01a), not whom it pays, for which invoice or how much, and it neither chooses a new
   // payment's number or status nor removes one. The number is the sequence's: UPDATE on it lets
   // `setval` choose the next one, and a review made PAY-5000 that way (decision 126).
+  // Decision 156: this is the only sequence start-up asks about. The three in dsor, which give a
+  // proposal its number, a move its place and a brake its number, are not asked about yet; that
+  // waits for step 26.
   const { rows: payments } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_any_column_privilege(${role}, 'public.vendors', 'INSERT')

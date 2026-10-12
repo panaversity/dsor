@@ -68,7 +68,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `src/pipeline.ts` | twelve stages, the two new ones required by name |
 | `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` and `delegation:revoke` for `user_123` and `cfo_100`; the two receipts' labels; the two contracts |
 | `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
-| `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on slips and brakes than revoking and braking need |
+| `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on the slips' and the brakes' tables than revoking and braking need |
 | `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze |
 | `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke |
 | the tests that pin the pipeline | twelve stages, and the stage-order proof by its parts |
@@ -250,12 +250,16 @@ only by its name: `principal` or `delegation`, alone or with `_id`. Both command
 `target`. That is a reading of the rule and not a change to it, written down for the editor in
 decision 143, and the brake's half in decision 156.
 
-Start-up leaves a gap, written down in decision 156. It asks whether the application may read a view
-or a table beside the tenant tables, because a view runs with its owner's rights: over the invoices,
-it shows every company's rows. But it asks the application itself only. Its questions about writing
-also ask one `SET ROLE` away and through a helper function (decisions 126 and 128); this one does not
-yet, so a view that the application can read only one of those ways passes start-up. That waits for
-step 26.
+Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
+the application may read a view or a table beside the tenant tables, because a view runs with its
+owner's rights: over the invoices, it shows every company's rows. But it asks the application itself
+only. Its questions about writing also ask one `SET ROLE` away and through a helper function
+(decisions 126 and 128); this one does not yet, so a view that the application can read only one of
+those ways passes start-up. And it refuses an application that may choose the next payment's number
+(step 17), but asks nothing about the other numbers DSoR gives out: a proposal's number, a move's
+place in a proposal's history, and a brake's number. An owner's careless
+`GRANT ALL ON ALL SEQUENCES IN SCHEMA dsor` passes start-up, and lets the application choose any of
+them.
 
 Everything earlier steps claimed still holds.
 
