@@ -327,6 +327,51 @@ function aLostReply(state: string, readsFail: boolean): () => void {
   return () => useDatabase(connection);
 }
 
+/**
+ * Decision 153: the store, for the first write of moves naming `state`: its reply is lost and the
+ * write is held, as a COMMIT still on its way. It lands just before the next write naming DENIED,
+ * after the door has read PROPOSED back. With `deniedFails`, every write naming DENIED fails
+ * instead, and the held one lands when `land` is called.
+ */
+function aWriteThatLandsLate(
+  state: string,
+  { deniedFails = false } = {},
+): { readonly land: () => Promise<void>; readonly putBack: () => void } {
+  const connection = overPGlite(db);
+  let held: { sql: string; params: unknown[] | undefined; tenant: string | undefined } | undefined;
+  let landed = false;
+  const land = async (): Promise<void> => {
+    if (held !== undefined && !landed) {
+      landed = true;
+      await connection.query(held.sql, held.params, held.tenant);
+    }
+  };
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      const aMove = sql.includes("INSERT INTO dsor.proposal_moves");
+
+      if (aMove && held === undefined && params?.includes(state)) {
+        held = { sql, params, tenant };
+
+        throw Object.assign(new Error("the reply was lost"), { code: "ECONNRESET" });
+      }
+
+      if (aMove && params?.includes("DENIED")) {
+        if (deniedFails) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        await land();
+      }
+
+      return connection.query<T>(sql, params, tenant);
+    },
+  });
+
+  return { land, putBack: () => useDatabase(connection) };
+}
+
 describe("a lost reply, read back", () => {
   it("DSOR-OPR-05: a move to READY whose reply is lost is read back, and the command is prepared", async () => {
     const putBack = aLostReply("READY", false);
@@ -383,6 +428,52 @@ describe("a lost reply, read back", () => {
 
     expect(again).toStrictEqual(answer);
     expect(await statusOf1009()).toBe("draft");
+    expect(await proposalsOf("org_456")).toHaveLength(1);
+  });
+
+  it("DSOR-IDM-01c: a move to READY whose reply is lost and that lands after the read-back is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 153: read back as PROPOSED, the request was told nothing was done; the lost write
+    // then landed, the move to DENIED was refused, the claim was released all the same, and the
+    // retry prepared a second READY proposal: two to release in step 31, a review measured.
+    const request = { idempotencyKey: "prepared-lands-late", mode: "propose_only" };
+    const late = aWriteThatLandsLate("READY");
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      late.putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["READY"]);
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect(await proposalsOf("org_456")).toHaveLength(1);
+  });
+
+  it("DSOR-IDM-01c: a move to READY whose reply is lost, then a DENIED that cannot be written, is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 153: a DENIED that was not written proves nothing either. The lost write lands after
+    // the request was answered.
+    const request = { idempotencyKey: "prepared-denied-down", mode: "propose_only" };
+    const late = aWriteThatLandsLate("READY", { deniedFails: true });
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+      await late.land();
+    } finally {
+      late.putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
     expect(await proposalsOf("org_456")).toHaveLength(1);
   });
 });

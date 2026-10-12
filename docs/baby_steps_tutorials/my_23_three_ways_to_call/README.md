@@ -199,8 +199,9 @@ own in step 32, and a test pins today's behaviour until then. A prepared proposa
 with nothing to release it until `proposal.execute`, step 31, and nothing to cancel it either. The
 `.propose` permission of §7.3, an agent allowed to prepare and not to execute, is not built. There
 are no reservations or holds yet for a dry run to leave alone; step 24 brings the first. When a
-move's reply is lost and the proposal cannot be read back, the answer is `OUTCOME_UNKNOWN` and the
-key stays taken until reconciliation, step 37.
+move's reply is lost and the proposal cannot be read back, or is read back as PROPOSED and then
+cannot be DENIED, the answer is `OUTCOME_UNKNOWN` and the key stays taken until reconciliation, step
+37.
 
 Everything earlier steps claimed still holds.
 

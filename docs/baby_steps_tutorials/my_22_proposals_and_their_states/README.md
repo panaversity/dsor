@@ -79,7 +79,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | --- | --- |
 | `migrations/020_proposals.sql` | new — the map of moves, the proposals, written once, and their moves; the constraints that keep the map, and a history that is one line; the application may add and read, and nothing else |
 | `src/proposal.ts` | new — make a proposal with its first move, move it, move it through several states in one statement, read its moves, its state, and a company's list |
-| `src/operations.ts` | §21.6 refuses a command whose arguments take more than 64 KiB, since its proposal keeps them for good; a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after, and tells the caller `OUTCOME_UNKNOWN` when it is; DENIED when a later stage refuses |
+| `src/operations.ts` | §21.6 refuses a command whose arguments take more than 64 KiB, since its proposal keeps them for good; a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after, and tells the caller `OUTCOME_UNKNOWN` when it is; DENIED when a later stage refuses, and after a lost reply, "nothing was done" only once DENIED is written |
 | `src/pipeline.ts` | the stage is required by name, after the claim; the context carries the proposal and the payload's text |
 | `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
 | `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
@@ -176,9 +176,12 @@ In `migrations/020_proposals.sql`, delete `UNIQUE (tenant, proposal, from_state)
  Tests  1 failed | 751 passed | 1 skipped (753)
 ```
 
-Only one, and it is the test of two different moves out of one state at once: approved and rejected
-together, and both written. Two moves into the same state, the race out of READY, are still caught,
-by "entered once". No command waits for approval yet, which is why only one test reaches this.
+The test of two different moves out of one state at once fails: approved and rejected together,
+and both written. So does the test of a move whose reply was lost and that lands late: "left once"
+is what makes a written DENIED proof that the lost move can never land, so without it DENIED is
+written beside the late move, the history forks into DENIED and EXECUTING, and the claim is
+released. Two moves into the same state, the race out of READY, are still caught, by "entered
+once".
 
 ### Break 3 · the handler runs without the move to EXECUTING
 
@@ -246,6 +249,9 @@ Copy `my_21_optimistic_concurrency` to a new folder and ask:
 the work as its key: a proposal runs at most once because READY is left once, and passing a key on
 waits for a connector that takes one (`DSOR-IDM-03`), so `DSOR-IDM-04` is met in part. One key is
 one proposal, except after a released claim: the retry makes a second, and the first is DENIED.
+When the door's own move lost its reply, the claim is released only once DENIED is written,
+because only that proves the lost move can never land; if DENIED is refused or cannot be written,
+the answer is `OUTCOME_UNKNOWN` and the key stays taken.
 DENIED is the only finished state the map has out of PROPOSED, so a store that failed is DENIED too,
 with a cause that says it was the store. Proposal numbers, like payment numbers since step 17, come
 from one sequence for every company, so a number hints at how busy the others are. A proposal whose

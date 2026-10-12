@@ -1880,6 +1880,11 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
 interface Progress {
   state: ProposalState | undefined;
   handlerRan: boolean;
+  /**
+   * Decision 153: the door's own move out of PROPOSED threw. A read-back that finds PROPOSED then
+   * proves nothing on its own: a write whose reply was lost can land after the read.
+   */
+  moveLost: boolean;
 }
 
 /**
@@ -1896,13 +1901,15 @@ async function finishTheProposal(
   to: ProposalState,
   cause: string,
   from: ProposalState = "EXECUTING",
-): Promise<void> {
-  const move = (): Promise<unknown> => moveProposal(tenant, proposal, from, to, "dsor", cause);
+): Promise<MoveOutcome["kind"] | "unknown"> {
+  const move = (): Promise<MoveOutcome> => moveProposal(tenant, proposal, from, to, "dsor", cause);
 
   try {
-    await move().catch(move);
+    return (await move().catch(move)).kind;
   } catch {
-    // Left where it was; see above.
+    // Left where it was; see above. Decision 153: and said so, because a move to DENIED that was
+    // not written proves nothing (see the door).
+    return "unknown";
   }
 }
 
@@ -2044,7 +2051,11 @@ export function makeDoor(
       } catch {
         // The write failed, or only its reply was lost. Read the proposal back to know which: at
         // EXECUTING, the move was this request's own, since no other request has this proposal; at
-        // PROPOSED, nothing was written. A read that fails too leaves it unknown.
+        // PROPOSED, nothing was written yet. A read that fails too leaves it unknown. Decision 153:
+        // "yet", because a write whose reply was lost can still land after the read, and only the
+        // door's move to DENIED, written, settles it.
+        progress.moveLost = true;
+
         let now: ProposalState | undefined;
 
         try {
@@ -2293,8 +2304,9 @@ export function makeDoor(
     const progress: Progress = {
       state: walked.context.proposal === undefined ? undefined : "PROPOSED",
       handlerRan: false,
+      moveLost: false,
     };
-    const answer =
+    let answer =
       walked.kind === "refused"
         ? walked.answer
         : await carryOut(walked.context, startedAt, progress);
@@ -2308,13 +2320,31 @@ export function makeDoor(
       progress.state === "PROPOSED" &&
       answer.kind === "error"
     ) {
-      await finishTheProposal(
+      const denied = await finishTheProposal(
         tenant,
         proposal,
         "DENIED",
         `refused: ${answer.envelope.code}`,
         "PROPOSED",
       );
+
+      // Decision 153: after the door's own move lost its reply, "nothing was done" holds only once
+      // DENIED is written, because a state is left once: from then on the lost move can never land.
+      // Read back as PROPOSED, a lost move landed after the read, DENIED was refused, the claim was
+      // released all the same, and the retry made a second proposal beside the first, a review
+      // measured. Refused, or not written: nobody knows, and the key is kept for reconciliation.
+      if (progress.moveLost && denied !== "moved") {
+        answer = Object.freeze({
+          kind: "error",
+          askedBy: answer.askedBy,
+          envelope: refusal(
+            "OUTCOME_UNKNOWN",
+            `${proposal} may have been moved after all, by a write whose reply was lost; it was not carried out, and is left for reconciliation`,
+            requestId,
+            walked.context.principal?.id,
+          ),
+        });
+      }
     }
 
     // STEP 20: the answer goes on the claim, to be given again to the same request

@@ -434,6 +434,52 @@ function failingMovesInto(
   });
 }
 
+/**
+ * Decision 153: the program's store, for the first write of moves that names `state`: its reply
+ * is lost and the write is held, as a COMMIT still on its way. It lands just before the next write
+ * that names DENIED, after the door has read PROPOSED back, which is when a real server can let it
+ * be seen. With `deniedFails`, every write that names DENIED fails instead, and the held one lands
+ * when `land` is called.
+ */
+function aWriteThatLandsLate(
+  state: ProposalState,
+  { deniedFails = false } = {},
+): { readonly land: () => Promise<void>; readonly putBack: () => void } {
+  const connection = overPGlite(db);
+  let held: { sql: string; params: unknown[] | undefined; tenant: string | undefined } | undefined;
+  let landed = false;
+  const land = async (): Promise<void> => {
+    if (held !== undefined && !landed) {
+      landed = true;
+      await connection.query(held.sql, held.params, held.tenant);
+    }
+  };
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      const aMove = sql.includes("INSERT INTO dsor.proposal_moves");
+
+      if (aMove && held === undefined && params?.includes(state)) {
+        held = { sql, params, tenant };
+
+        throw Object.assign(new Error("the reply was lost"), { code: "ECONNRESET" });
+      }
+
+      if (aMove && params?.includes("DENIED")) {
+        if (deniedFails) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        await land();
+      }
+
+      return connection.query<T>(sql, params, tenant);
+    },
+  });
+
+  return { land, putBack: () => useDatabase(connection) };
+}
+
 describe("the door makes a proposal for every command and moves it", () => {
   afterEach(() => {
     useDatabase(overPGlite(db));
@@ -766,6 +812,57 @@ describe("the door makes a proposal for every command and moves it", () => {
       "dsor://org_456/proposal/prop_2",
     );
     expect(await stateOf("org_456", "prop_1")).toBe("DENIED");
+  });
+
+  it("DSOR-IDM-01c: a move to EXECUTING whose reply is lost and that lands after the read-back is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 153: read back as PROPOSED, the request was told nothing was done; the lost write
+    // then landed, the move to DENIED was refused, the claim was released all the same, and the
+    // retry made a second proposal beside a first left EXECUTING whose handler never ran, a review
+    // measured.
+    const request = { idempotencyKey: "issue-1009-lands-late" };
+    const late = aWriteThatLandsLate("EXECUTING");
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      late.putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+    // The lost move is there now, and the handler never ran.
+    expect(await stateOf("org_456", "prop_1")).toBe("EXECUTING");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+  });
+
+  it("DSOR-IDM-01c: a move to EXECUTING whose reply is lost, then a DENIED that cannot be written, is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 153: a DENIED that was not written proves nothing either. The lost write lands after
+    // the request was answered.
+    const request = { idempotencyKey: "issue-1009-denied-down" };
+    const late = aWriteThatLandsLate("EXECUTING", { deniedFails: true });
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+      await late.land();
+    } finally {
+      late.putBack();
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
   });
 
   it("DSOR-APR-01a: moveProposalThrough writes READY and EXECUTING together, or neither", async () => {
