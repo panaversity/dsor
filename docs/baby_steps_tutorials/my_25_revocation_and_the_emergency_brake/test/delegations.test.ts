@@ -421,11 +421,22 @@ describe("scopes, and a slip that is not active", () => {
     expect(refusalOf(await create({ ...AGENT, scopes: [] })).code).toBe("AUTHORIZATION_DENIED");
   });
 
-  it("a person's scopes narrow the person too", async () => {
+  it("a person's scopes narrow the person too, and add nothing to their role", async () => {
     expect(refusalOf(await create({ ...SUPERVISOR, scopes: ["invoice:read"] })).code).toBe(
       "AUTHORIZATION_DENIED",
     );
     expect((await create({ ...SUPERVISOR, scopes: ["payment:create"] })).kind).toBe("result");
+
+    // Decision 149: cfo_100's role grants invoice:read and payment:approve, and a scope that names
+    // invoice:issue gives cfo_100 nothing. Every person's scope here was one the role held, so a
+    // check that let the scopes stand in for the role passed every test.
+    const cfo = { loggedInAs: "cfo_100", scopes: ["invoice:issue"] };
+
+    expect(
+      refusalOf(
+        await callOperation(cfo, "invoice.issue", { invoice: INV_1009, expected_version: 1 }),
+      ).code,
+    ).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-DEL-01a: a suspended slip is no active slip", async () => {
