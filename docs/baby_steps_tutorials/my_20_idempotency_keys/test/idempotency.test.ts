@@ -402,6 +402,35 @@ describe("a claim with no answer", () => {
     expect(refusal.message).not.toMatch(/has not finished/);
     expect(await paymentsFor1009()).toBe(1);
   });
+
+  it("DSOR-IDM-01d: a different request under it is refused at once, and never waits", async () => {
+    // Decision 151: a key is claimed while its first request runs, and the rule says a different
+    // request under a claimed key is refused. claimKey compares the fingerprint before it waits for
+    // a claim with no answer. In the other order, a 9,999.00 request waited two seconds and was told
+    // OUTCOME_UNKNOWN, and every other test stayed green.
+    const measured = await pay("to-learn-the-fingerprint");
+
+    if (measured.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(measured)}`);
+    }
+
+    await asTheOwner(() =>
+      db.query(
+        `INSERT INTO dsor.idempotency_keys (tenant, principal, operation, key, payload_hash)
+         VALUES ('org_456', 'accounts-payable-fte', 'payment.create', 'no-answer', $1)`,
+        [measured.envelope.payload_hash],
+      ),
+    );
+
+    const other = { ...PAYMENT, amount: { value: "9999.00", currency: "USD" } };
+    const started = Date.now();
+    const refusal = refusalOf(await pay("no-answer", other));
+
+    expect(refusal.code).toBe("IDEMPOTENCY_CONFLICT");
+    // Well under the two-second wait: refused before any waiting.
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(await paymentsFor1009()).toBe(1);
+  });
 });
 
 describe("a claim is released only when nothing ran", () => {
