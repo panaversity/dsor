@@ -75,12 +75,18 @@ export interface Row {
 /**
  * STEP 17: the one query both tiers' `rowsOf` runs, as the owner: every invoice and payment
  * of one company, each with what a careless command could change about it.
+ *
+ * Decision 152: and its version. Step 21 gave every invoice and payment one, which the application
+ * may set to any value, and this query did not read it until a review found a version-only write
+ * to another company passing the suite. The agent, the slips and the company have none.
  */
 export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS invoice,
-                               amount_value::text AS amount, amount_currency AS currency, status
+                               amount_value::text AS amount, amount_currency AS currency, status,
+                               version
                           FROM public.invoices WHERE tenant_id = $1
                         UNION ALL
-                        SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status
+                        SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status,
+                               version
                           FROM public.payments WHERE tenant_id = $1
                         -- NEW IN STEP 25: the story's agent, stopped or working, and the company,
                         -- frozen or working: what a careless control.suspend could change.
@@ -89,18 +95,20 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                                CASE WHEN EXISTS (SELECT 1 FROM dsor.agent_controls c
                                                   WHERE c.tenant = $1 AND c.lifted_at IS NULL
                                                     AND c.agent = 'accounts-payable-fte')
-                                    THEN 'stopped' ELSE 'working' END
+                                    THEN 'stopped' ELSE 'working' END,
+                               NULL
                         UNION ALL
                         -- NEW IN STEP 25: and the slips, which a careless delegation.revoke could
                         -- tear up.
-                        SELECT 'delegation', id, NULL, NULL, NULL, NULL, status
+                        SELECT 'delegation', id, NULL, NULL, NULL, NULL, status, NULL
                           FROM dsor.delegations WHERE tenant = $1
                         UNION ALL
                         SELECT 'tenant', $1, NULL, NULL, NULL, NULL,
                                CASE WHEN EXISTS (SELECT 1 FROM dsor.agent_controls c
                                                   WHERE c.tenant = $1 AND c.lifted_at IS NULL
                                                     AND c.agent IS NULL)
-                                    THEN 'frozen' ELSE 'working' END
+                                    THEN 'frozen' ELSE 'working' END,
+                               NULL
                         ORDER BY entity, id`;
 
 export interface SuiteHooks {

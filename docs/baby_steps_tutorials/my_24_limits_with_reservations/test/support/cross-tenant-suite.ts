@@ -75,12 +75,18 @@ export interface Row {
 /**
  * STEP 17: the one query both tiers' `rowsOf` runs, as the owner: every invoice and payment
  * of one company, each with what a careless command could change about it.
+ *
+ * Decision 152: and its version. Step 21 gave every invoice and payment one, which the application
+ * may set to any value, and this query did not read it until a review found a version-only write
+ * to another company passing the suite.
  */
 export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS invoice,
-                               amount_value::text AS amount, amount_currency AS currency, status
+                               amount_value::text AS amount, amount_currency AS currency, status,
+                               version
                           FROM public.invoices WHERE tenant_id = $1
                         UNION ALL
-                        SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status
+                        SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status,
+                               version
                           FROM public.payments WHERE tenant_id = $1
                         ORDER BY entity, id`;
 
