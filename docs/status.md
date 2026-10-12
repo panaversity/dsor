@@ -122,12 +122,13 @@ one before it:
 are true of all of them:
 
 - **Each step's own `pnpm check` runs in CI, and its database tests do not.** The root
-  `vitest.config.ts` collects `packages/*/src/**/*.test.ts` only, so a separate CI job,
-  "Baby steps", runs `pnpm --dir docs/baby_steps_tutorials/<step> check` inside every
-  step folder, on Ubuntu and Windows. A step's `pnpm test:db`, which needs a real
-  PostgreSQL, is run by hand. Every `my_` step also has a `test/main.test.ts` that runs its
-  demo program as a subprocess, so the output each README pastes as proof is checked
-  rather than asserted.
+  `vitest.config.ts` collects `packages/*/src/**/*.test.ts` only, so CI checks each step
+  folder by itself. Every folder gets two jobs, one on Ubuntu and one on Windows, and each
+  runs `pnpm install` and `pnpm check` inside the folder. A job named "Baby steps" passes
+  only when all of them passed. A step's `pnpm test:db`, which needs a real PostgreSQL, is
+  run by hand. Every `my_` step also has a `test/main.test.ts` that runs its demo program
+  as a subprocess, so the output each README pastes as proof is checked rather than
+  asserted.
 - **Nothing is authenticated, and only the audit log is durable.** There is no real
   login until steps 43 and 44. From step 09 the audit log is in PostgreSQL and survives
   a restart; from step 10 the invoices are rows there too. Up to step 09 the invoice store is
