@@ -220,6 +220,11 @@ describe("a command says the version it decided on", () => {
     });
 
     expect(stale.kind === "error" && stale.envelope.code).toBe("STALE_STATE");
+    // Decision 152: and word for word, as for an invoice. The invoice's test pins the shared
+    // words, so a number written into the payment's own call to them passed every test.
+    expect(stale.kind === "error" && stale.envelope.message).toBe(
+      "PAY-901 has changed since the version the decision was made on; read it again and decide again",
+    );
   });
 
   it("DSOR-CON-01b: two changes on one version, sent together: one is made, the other finds it stale", async () => {
