@@ -115,8 +115,10 @@ const REFUSED_MOVE = new Set(["23503", "23505", "23514"]);
 /**
  * Move a proposal from one state to another, if it is in that state and the map has the move.
  *
- * One INSERT, and the database decides. Two requests that both try to move a proposal out of READY
- * both reach it, and exactly one is written: a state is left at most once.
+ * One INSERT, and the database decides. Two requests that both try to move a proposal out of the
+ * same state both reach it, and exactly one is written: a state is left at most once. A move into
+ * EXECUTING is the exception, refused here before the database is asked (below). Decision 156: so
+ * the race out of READY, whose only move is into EXECUTING, is moveProposalThrough's now.
  */
 export async function moveProposal(
   tenant: string,

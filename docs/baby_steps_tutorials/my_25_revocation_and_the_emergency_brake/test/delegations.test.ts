@@ -155,7 +155,8 @@ describe("the slip, in DSoR's own store", () => {
     expect((await db.query("SELECT id FROM dsor.delegations")).rows).toStrictEqual([]);
   });
 
-  it("the application reads the slips and writes none", async () => {
+  // Since step 25 it may also revoke one: the test below says how (decision 156).
+  it("the application reads the slips, and may not add one, delete one, or change what one grants", async () => {
     expect(await asTheApplication("SELECT id FROM dsor.delegations")).toBe("allowed");
 
     for (const sql of [

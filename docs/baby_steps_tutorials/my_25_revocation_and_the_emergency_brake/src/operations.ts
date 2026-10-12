@@ -567,8 +567,6 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
-  // own permission, its own decision in the log (DSOR-EXE-05c).
   // NEW IN STEP 25: the emergency brake, pulled or released by a person (DSOR-OPS-01a, decision
   // 142). Pulling needs control:suspend, which authorize asked; releasing needs it too, and a person:
   // an agent whose slip one day grants control:suspend may set the brake, never release it
@@ -719,6 +717,8 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
+  // STEP 17: what undoes payment.create. An ordinary operation, through the same door: its
+  // own permission, its own decision in the log (DSOR-EXE-05c).
   "payment.cancel": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
     // STEP 17: read before anything changes, so a contract without one stops the command
     // first. The door writes the same value on the receipt, from the contract, whatever this says.
