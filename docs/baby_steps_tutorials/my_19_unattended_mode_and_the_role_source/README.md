@@ -77,14 +77,19 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_18
 | `migrations/016_the_record_names_the_slip.sql` | new — the log's `delegation` column, granted by name |
 | `migrations/017_del_100_may_be_used_unattended.sql` | new — `del_100` says it may be used with nobody present; the tests run it again after 014 |
 | `src/directory.ts` | new — the fake company directory, one per company, which a test or the demo can change, make stale, or switch off |
-| `src/authority.ts` | what a slip's signer holds now, asked of the company's directory; no directory or no answer is one refusal, and an answer that says nothing, has no time zone, is not a time the record can hold, is dated more than five minutes ahead or is more than 24 hours old is another |
+| `src/authority.ts` | what a slip's signer holds now, asked of the company's directory, whose answer is read once and copied before it is checked; no directory or no answer is one refusal, and an answer that says nothing, has no time zone, is not a time the record can hold, is dated more than five minutes ahead or is more than 24 hours old is another |
 | `src/delegation.ts` | a slip's modes |
 | `src/operations.ts` | §21.3 refuses a slip that does not allow `unattended`, says why the signer's authority could not be established, and refuses under the slip once it has found it; §21.11 records an agent's command under a slip as `unattended` |
 | `src/audit.ts` | the record's identity for an unattended decision, and its slip, inside the hash |
 | `src/pipeline.ts` | the context carries when the directory knew the signer's authority, and a stage may say what it learned before it refuses |
 | `src/database.ts` | start-up refuses an UPDATE granted on any column of the log |
 | `src/main.ts` | the record of the agent's command, the directory switched off and stale, and the printed log saying who acted under which slip |
+| `src/permissions.ts` | a comment: the fake directory builds its answers from this list, and a person who is logged in is still judged by it |
 | `test/unattended.test.ts` | new — the modes, the directory, and the record |
+| `test/pipeline.test.ts` | an agent's command that reaches §21.5 with no time for its signer's authority is `INTERNAL_ERROR`, and its record names the slip |
+| `test/database.test.ts` | start-up refuses an UPDATE granted on one column of the log |
+| `test/main.test.ts` | the demo's new section, the printed log telling the agent's records from user_123's own, the log's new counts, and the one refusal that invites the same request again |
+| `test/audit.test.ts`, `test/classified-reads.test.ts` | comments only: why a decision made with no slip, and a read, have an empty actor chain |
 | the tests that changed what user_123 holds | through the directory now, not step 18's seam |
 
 ## Run it
