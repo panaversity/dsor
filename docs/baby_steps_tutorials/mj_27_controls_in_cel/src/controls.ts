@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { checkCondition, evaluateCondition, type Facts } from "./cel.ts";
+import { checkCondition, evaluateCondition, NO_RATE, type Facts } from "./cel.ts";
 import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
@@ -184,7 +184,17 @@ function failedTests(control: Control, tenant: string, currency: string, risk: s
     // Its pinned rates, per one unit of the company's control currency (decision D7).
     const rates = { [currency]: "1", ...test.rates };
     const sheet: RateSheet = { source: "test", base: currency, published_at: "", rates };
-    const { answer } = answerOf(control, facts, sheet);
+    const { answer, error } = answerOf(control, facts, sheet);
+    // A test passes only by evaluating its condition. An error passes only when its cause is a
+    // currency with no usable rate: that is the test DSOR-CTL-02d asks for (decision D19). Found by
+    // step 27's review, finding M4: a test with no state erred, so the effect applied, and the quick
+    // rule switched on behind a test that expected the effect and tested nothing.
+    if (error !== undefined && !error.startsWith(NO_RATE)) {
+      failed.push(
+        `${index + 1}: expects ${test.expect}, and its condition cannot be evaluated: ${error}`,
+      );
+      return;
+    }
     if (answer !== test.expect) {
       failed.push(`${index + 1}: expects ${test.expect}, gives ${answer}`);
     }

@@ -31,6 +31,9 @@ export type Evaluated = { holds: boolean } | { error: string };
 // Appendix B's functions that later steps build. A condition that calls one is refused at start-up.
 const NOT_BUILT = new Set(["dsor_sum", "dsor_in_flight", "dsor_is_new_counterparty"]);
 
+/** How the error of a comparison with no usable rate begins: a control's test may expect it. */
+export const NO_RATE = "no usable rate";
+
 // One sheet stands in for "no rates": every conversion between two currencies fails on it.
 const NO_SHEET: RateSheet = { source: "", base: "", published_at: "", rates: {} };
 
@@ -57,7 +60,7 @@ function compared(
   const right = moneyOf(b);
   const answer = compareAcross(left, right, sheet ?? NO_SHEET);
   if (answer === undefined) {
-    throw new Error(`no usable rate compares ${left.currency} with ${right.currency}`);
+    throw new Error(`${NO_RATE} compares ${left.currency} with ${right.currency}`);
   }
   // Two currencies were converted with the sheet, so the decision's record names their rates
   // (step 27's review, finding H2). One currency needs no rate.

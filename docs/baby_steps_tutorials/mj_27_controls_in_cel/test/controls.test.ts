@@ -221,6 +221,18 @@ describe("C3: the tests, run before a control is switched on", () => {
     );
   });
 
+  // Found by step 27's review, finding M4: a test that gives no state cannot be evaluated, so the
+  // effect applied, and a test that expected the effect passed. The quick rule switched on behind a
+  // test that tested nothing.
+  it("DSOR-CTL-02c: a test passes only by evaluating its condition: the quick rule behind one test with no state, which expects the CFO, does not switch on (step 27's README, decision D19)", () => {
+    const vacuous = withOne({ condition: QUICK, tests: [{ expect: "REQUIRE_APPROVAL" }] });
+    expect(refusal(() => startWith(vacuous))).toContain(
+      "controls.json: org_456's control high-value-payment v8 fails its test 1: expects REQUIRE_APPROVAL, and its condition cannot be evaluated: ",
+    );
+    // The shipped control as it is: its test 5, in a currency with no rate, passes by its error.
+    expect(startWith(withOne({})).controls.get("org_456")).toHaveLength(1);
+  });
+
   it("DSOR-CTL-07: at start-up too, a test in a currency with no pinned rate cannot be evaluated, so it gives the effect: 100.00 XXX expected ALLOW fails", () => {
     const tests = structuredClone(SHIPPED["tests"]) as { expect: string }[];
     tests[4]!.expect = "ALLOW";
