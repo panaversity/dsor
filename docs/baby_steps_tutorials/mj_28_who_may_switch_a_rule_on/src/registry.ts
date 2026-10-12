@@ -105,7 +105,8 @@ export type Registry = {
   // (step 28's README, decisions D2 and D5).
   controls: ControlStore;
   // NEW IN STEP 28: the check of one control, with this registry's contracts and money policies,
-  // which start-up, rule.draft, and rule.activate run (decisions D6, D11, and D12).
+  // which start-up, rule.draft, and rule.activate run (step 28's README, decisions D6, D11, and
+  // D12).
   checkRule: RuleCheck;
 };
 

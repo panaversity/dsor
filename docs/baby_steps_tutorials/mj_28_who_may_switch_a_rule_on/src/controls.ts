@@ -26,7 +26,8 @@ export type ControlAnswer = "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
 type ControlTest = {
   input?: Record<string, unknown>;
   state?: Record<string, unknown>;
-  // Units of each currency for one unit of the company's control currency (decision D7).
+  // Units of each currency for one unit of the company's control currency (step 27's README,
+  // decision D7).
   rates?: Record<string, string>;
   expect: string;
 };
@@ -64,7 +65,7 @@ export function readControls(path: string = SHIPPED): ControlsSource {
   return { file: "controls.json", text: readFileSync(path, "utf8") };
 }
 
-/** Why a control may not govern this operation, or none (decision D18). */
+/** Why a control may not govern this operation, or none (step 27's README, decision D18). */
 export type Governable = (operation: string) => string | undefined;
 
 // The specification's schemas, copied byte for byte (step 03's README, decision 3).
@@ -106,7 +107,7 @@ const RULE_ID = /^[a-z](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const IN_REVIEW = "in_review";
 // NEW IN STEP 28: the most approvals one rule may ask for (step 28's README, decision D21).
 const MOST_APPROVERS = 5;
-// The effects this step builds (decision D8).
+// The effects this step builds (step 27's README, decision D8).
 const BUILT = new Set(["deny", "require_approval"]);
 
 /** The answer a control's effect gives. */
@@ -127,7 +128,7 @@ export function answerOf(
   return { answer: evaluated.holds ? effectOf(control) : "ALLOW" };
 }
 
-/** One control's answer at line ⑩, as the decision's record names it (DSOR-EXE-02; decision D14). */
+/** One control's answer at line ⑩, as the decision's record names it (DSOR-EXE-02; step 27's README, decision D14). */
 export type ControlOutcome = {
   id: string;
   version: number;
@@ -138,7 +139,7 @@ export type ControlOutcome = {
   evaluation_error?: string;
 };
 
-/** Each of these controls that governs the operation, evaluated for one call (decision D15: any caller). */
+/** Each of these controls that governs the operation, evaluated for one call (step 27's README, decision D15: any caller). */
 export function evaluateControls(
   controls: readonly Control[],
   operation: string,
@@ -159,7 +160,7 @@ export function evaluateControls(
 }
 
 // DENY over any REQUIRE_*, and any REQUIRE_* over ALLOW (DSOR-AUT-02b). A step 24 limit is a DENY
-// too, and line ⑩ checks it after the controls (decision D9).
+// too, and line ⑩ checks it after the controls (step 27's README, decision D9).
 const ORDER: readonly ControlAnswer[] = ["ALLOW", "REQUIRE_APPROVAL", "DENY"];
 
 /** The most restrictive of these answers, or ALLOW when there are none (DSOR-AUT-02b). */
@@ -171,7 +172,7 @@ export function mostRestrictive(answers: readonly ControlAnswer[]): ControlAnswe
   return most;
 }
 
-/** The role and quorum of each control that asked for an approval (decision D10). */
+/** The role and quorum of each control that asked for an approval (step 27's README, decision D10). */
 export function requirementsOf(
   controls: readonly Control[],
   outcomes: readonly ControlOutcome[],
@@ -185,8 +186,8 @@ export function requirementsOf(
 }
 
 // The record keeps the reason of each control that refused: the audit record's controls field
-// allows no reason, and the caller's words name none (decision D13). Found by step 27's review,
-// finding L2.
+// allows no reason, and the caller's words name none (step 27's README, decision D13). Found by
+// step 27's review, finding L2.
 /** A control that refused the call, and its own reason. */
 export type Denial = { control: string; reason: string };
 
@@ -224,14 +225,16 @@ function failedTests(
       risk,
       now: new Date(),
     };
-    // Its pinned rates, per one unit of the company's control currency (decision D7).
+    // Its pinned rates, per one unit of the company's control currency (step 27's README, decision
+    // D7).
     const rates = { [currency]: "1", ...test.rates };
     const sheet: RateSheet = { source: "test", base: currency, published_at: "", rates };
     const { answer, error } = answerOf(control, facts, sheet);
     // A test passes only by evaluating its condition. An error passes only when its cause is a
-    // currency with no usable rate: that is the test DSOR-CTL-02d asks for (decision D19). Found by
-    // step 27's review, finding M4: a test with no state erred, so the effect applied, and the quick
-    // rule switched on behind a test that expected the effect and tested nothing.
+    // currency with no usable rate: that is the test DSOR-CTL-02d asks for (step 27's README,
+    // decision D19). Found by step 27's review, finding M4: a test with no state erred, so the
+    // effect applied, and the quick rule switched on behind a test that expected the effect and
+    // tested nothing.
     if (error !== undefined && !error.startsWith(NO_RATE)) {
       failed.push(
         `${index + 1}: expects ${test.expect}, and its condition cannot be evaluated: ${error}`,

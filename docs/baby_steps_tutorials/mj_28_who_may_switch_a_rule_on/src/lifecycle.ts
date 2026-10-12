@@ -6,7 +6,7 @@
 // before any work: who may, which version, its status, and, for a switch-on, the version's own
 // checks and its tests. The change runs after line ⑩, inside the claim's transaction. It takes
 // the rule's lock, reads the versions again, makes the same checks, and writes each change with
-// its record (decisions D14 and D15).
+// its record (step 28's README, decisions D14 and D15).
 import type { Control } from "./controls.ts";
 import { Refusal } from "./envelope.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
@@ -16,7 +16,8 @@ import type { Live, RuleBy, RuleStatus } from "./rulebook.ts";
 import { parseUri } from "./uri.ts";
 
 // The most a draft's text may hold, as JSON: a rule with its tests is a few kilobytes. A larger
-// one would only fill the store, and the tests that each start-up runs (decision D11).
+// one would only fill the store, and the tests that each start-up runs (step 28's README, decision
+// D11).
 const MOST = 16_384;
 
 /** The rule an input names: its id, from the address that line ⑥ checked. */
@@ -33,7 +34,7 @@ function byOf(input: unknown, work: OwnStores): RuleBy {
 // The fields of a rule's text, which a draft gives. DSoR sets the other six itself. Line ⑥ refuses
 // a draft that names another field, and DSoR keeps only these anyway. Found by step 28's own
 // break of line ⑥: a draft that named a time it took effect counted as a version switched on
-// before, and could make its own owner the rule's owner of record (decision D11).
+// before, and could make its own owner the rule's owner of record (step 28's README, decision D11).
 const TEXT = [
   "operation",
   "condition",
@@ -46,7 +47,7 @@ const TEXT = [
   "extensions",
 ];
 
-/** The draft an input makes: the next version of the rule, its text, and who wrote it (decision D11). */
+/** The draft an input makes: the next version of the rule, its text, and who wrote it (step 28's README, decision D11). */
 function draftOf(input: unknown, versions: readonly Control[], person: string): Control {
   const { draft } = input as { draft: Record<string, unknown> };
   const text = Object.fromEntries(TEXT.filter((f) => f in draft).map((f) => [f, draft[f]]));
@@ -81,7 +82,7 @@ async function writeDraft(input: unknown, work: OwnStores): Promise<unknown> {
 /**
  * A rule's owner of record: the owner of its newest version that was ever switched on, or none
  * for a rule that never was. A version switched on keeps the time it took effect, and a draft
- * never names one (decision D10).
+ * never names one (step 28's README, decision D10).
  */
 export function ownerOfRecord(versions: readonly Control[]): string | undefined {
   let owner: string | undefined;
@@ -94,7 +95,8 @@ export function ownerOfRecord(versions: readonly Control[]): string | undefined 
 /** One move a command makes: its name, from which statuses, and to which. */
 type Move = { name: string; from: readonly RuleStatus[]; to: RuleStatus };
 const ACTIVATE: Move = { name: "rule.activate", from: ["draft", "suspended"], to: "active" };
-// A suspended version can be switched on again. A retired one never comes back (decision D13).
+// A suspended version can be switched on again. A retired one never comes back (step 28's README,
+// decision D13).
 const SUSPEND: Move = { name: "rule.suspend", from: ["active"], to: "suspended" };
 const RETIRE: Move = { name: "rule.retire", from: ["draft", "active", "suspended"], to: "retired" };
 
@@ -103,7 +105,7 @@ const RETIRE: Move = { name: "rule.retire", from: ["draft", "active", "suspended
  * status. Who decides is the rule's owner of record, or, for a rule never switched on, the
  * version's own owner, in person: never an agent, whatever let it past line ⑤ (DSOR-CTL-02b).
  * A switch-on needs the version's own owner too, so a rule never passes to a new owner
- * (decision D10).
+ * (step 28's README, decision D10).
  */
 function decide(
   move: Move,
@@ -116,7 +118,7 @@ function decide(
   const version = versions.find((v) => v.version === number);
   const decider = ownerOfRecord(versions) ?? version?.owner;
   // One answer for a rule that is not the caller's and for one that is not there, so the refusal
-  // says nothing of which rules exist (DSOR-ERR-01b; decision D16).
+  // says nothing of which rules exist (DSOR-ERR-01b; step 28's README, decision D16).
   if (caller.type !== "human" || decider !== caller.id) {
     const why = `${caller.id} may not change rule ${preview(id)}: only its owner may, in person`;
     throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(move.name)}: ${why}`, "internal");
@@ -143,7 +145,7 @@ function decide(
   return version;
 }
 
-/** The refusal of a change whose version moved on between line ⑨ and the change (decision D15). */
+/** The refusal of a change whose version moved on between line ⑨ and the change (step 28's README, decision D15). */
 function changedMeanwhile(id: string): Refusal {
   return new Refusal("CONFLICT", `rule ${id} changed while it was being changed`, "internal");
 }

@@ -1214,7 +1214,7 @@ const CONTROL_COLUMNS = "id, version, status, rule, compiled_by, reviewed_by, ef
 
 // A rule's lock is a PostgreSQL advisory lock, as a brake's is: one number for each rule of each
 // company, made from this text. A change takes it alone, until its transaction ends, so two
-// changes to one rule wait for each other (decision D15).
+// changes to one rule wait for each other (step 28's README, decision D15).
 function ruleKey(tenant: string, id: string): string {
   return `dsor.rule/${tenant}/${id}`;
 }
@@ -1659,8 +1659,8 @@ function proposalsThrough(run: Runner): ProposalStore {
           // With its expiry, from the database's own clock and the company's
           // lifetime, in milliseconds, so P7D is 168 hours exactly, as in memory. PostgreSQL would
           // read "P7D" as 7 calendar days of the session's time zone: 167 or 169 hours where the
-          // clocks change. Found by step 25c's review (finding L6). The table's CHECK keeps it after
-          // created_at and within 720 hours of it (step 25c's README, decision D6).
+          // clocks change. Found by step 25c's review (finding L6). The table's CHECK keeps it
+          // after created_at and within 720 hours of it (step 25c's README, decision D6).
           `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload, payload_hash,
                                        resources, requester, idempotency_key, expires_at)
            VALUES ($1, $2, $3, $9, 'PROPOSED', $4::jsonb, $5, $6::text[], $7::jsonb, $8,

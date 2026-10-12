@@ -4,7 +4,8 @@
 // adds a version, and rule.activate, rule.suspend, and rule.retire move one (lifecycle.ts;
 // DSOR-CTL-02a in specs/dsor/02-security.md, section 17.4; step 28's README, decisions D2 to D6).
 // The program keeps the rules in dsor.controls (postgres.ts). The unit tests and the program's
-// story keep them in memory (memoryControls below), filled from a controls file (decision D3).
+// story keep them in memory (memoryControls below), filled from a controls file (step 28's README,
+// decision D3).
 import { readRules, type Control, type ControlsSource } from "./controls.ts";
 import type { Correlation } from "./envelope.ts";
 import { controlChangeOf, type ControlChange } from "./log.ts";
@@ -13,7 +14,8 @@ import type { MoneyPolicies } from "./policies.ts";
 /** The statuses this step builds (step 28's README, decision D17). */
 export type RuleStatus = "draft" | "active" | "suspended" | "retired";
 
-// A live version is in force, or may come back: one at a time for each rule (decision D4).
+// A live version is in force, or may come back: one at a time for each rule (step 28's README,
+// decision D4).
 const LIVE: ReadonlySet<string> = new Set(["active", "suspended"]);
 
 /** Who changes a rule: the person, as of when, their own words, and their call. */
@@ -33,7 +35,8 @@ export type ControlStore = {
   versions: (tenant: string, id?: string) => Promise<Control[]>;
   // The change, inside the claim's transaction: every version of one rule, read under the rule's
   // lock. The database holds the lock until the transaction ends, so two changes to one rule wait
-  // for each other (decision D15). Memory has no transactions, so it holds nothing.
+  // for each other (step 28's README, decision D15). Memory has no transactions, so it holds
+  // nothing.
   hold: (tenant: string, id: string) => Promise<Control[]>;
   // rule.draft's work: adds one version, a draft, with its record, both or neither.
   add: (tenant: string, draft: Control, by: RuleBy) => Promise<void>;
