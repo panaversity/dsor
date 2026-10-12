@@ -379,11 +379,9 @@ describe("callOperation", () => {
     // passed for no reason. The assertion now lives in that test instead, where a result
     // envelope really exists.
     //
-    // What remains unprovable here: the handler reads `contract.execution?.semantics`, and
-    // this step has exactly one command, whose contract declares `"atomic"`. Replacing that
-    // read with the literal `"atomic"` is therefore indistinguishable — an equivalent mutant
-    // given this data, not a test gap. A second command declaring something else would
-    // separate them. Until then, `success()` at least provably carries whatever it is handed:
+    // The semantics on a receipt are the door's to write, from the contract: payments.test.ts
+    // proves it with a careless handler that writes `atomic` on a payment. This test proves only
+    // that `success()` carries whatever it is handed:
     it("DSOR-SCH-01: the result envelope carries the semantics it is given, whatever it is", () => {
       resetRequestIds();
       resetProposalIds();
