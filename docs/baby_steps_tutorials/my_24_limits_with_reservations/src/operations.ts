@@ -1063,12 +1063,8 @@ const validateTheInput: Stage["run"] = (context) => {
       return value;
     });
 
-    // STEP 17: and everything below, the handler included, reads a copy made from that text,
-    // every level of it. The copy was one level deep, and a nested `amount` was read again from the
-    // caller's own object: a value that answered differently the second time hashed 31400.00 and
-    // paid 1.00, a review measured (decision 126). What is checked and run is what the hash describes.
-    // Decision 153: and a command's, over the ceiling, is refused here, before its key is claimed or
-    // its proposal written. With no ceiling, a payment refused for its amount still kept a
+    // Decision 153: and refused when a command's text is over the ceiling, before its key is claimed
+    // or its proposal written. With no ceiling, a payment refused for its amount still kept a
     // 5,000,000-character note in its proposal, a review measured: the flood decision 63 closed for
     // the log, open again. Counted in bytes, as PostgreSQL stores the text: a euro sign is one
     // character and three bytes.
@@ -1083,6 +1079,10 @@ const validateTheInput: Stage["run"] = (context) => {
       );
     }
 
+    // STEP 17: and everything below, the handler included, reads a copy made from that text,
+    // every level of it. The copy was one level deep, and a nested `amount` was read again from the
+    // caller's own object: a value that answered differently the second time hashed 31400.00 and
+    // paid 1.00, a review measured (decision 126). What is checked and run is what the hash describes.
     const given = frozenAllTheWay(JSON.parse(written) as Readonly<Record<string, unknown>>);
 
     // STEP 10: DSOR-SRC-02b in full. A tenant or principal identifier inside the arguments
