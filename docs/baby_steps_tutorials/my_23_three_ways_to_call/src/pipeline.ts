@@ -36,6 +36,9 @@ export type Applies = "both" | "command";
 /** A query reads; a command changes something. The contract says which an operation is. */
 export type OperationKind = "query" | "command";
 
+/** NEW IN STEP 23: the three ways to call a command (§7.3, decision 138). */
+export type Mode = "execute" | "propose_only" | "validate_only";
+
 /**
  * What a stage is given, and what it fills in.
  *
@@ -44,9 +47,6 @@ export type OperationKind = "query" | "command";
  * the top of the list none of them is known yet — and the load-time check below is what makes sure
  * the stage that fills each one is actually in the list.
  */
-/** NEW IN STEP 23: the three ways to call a command (§7.3, decision 138). */
-export type Mode = "execute" | "propose_only" | "validate_only";
-
 export interface Context {
   readonly login: Login | undefined;
   readonly id: string;
