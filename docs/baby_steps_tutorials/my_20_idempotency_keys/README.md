@@ -87,7 +87,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_19
 | `src/database.ts` | start-up knows six tenant tables, refuses an application that may delete or rewrite a claim, and refuses the claims' table without the policy that keeps an answer |
 | `src/main.ts` | every command with a key; a payment sent twice, a different one under the same key, and fifty at once |
 | `test/support/door.ts` | new — the door the tests knock on, which gives each request a fresh key unless the test gives one |
-| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a write of the answer that fails, and fifty at once |
+| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a store that fails while a claim or an answer is written, and fifty at once |
 | `test/idempotency.db.test.ts` | new — fifty at once on a real server, over a pool of twenty connections |
 | the tests that pin the pipeline | nine stages now, and the claim among the command-only ones |
 

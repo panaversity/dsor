@@ -433,6 +433,42 @@ describe("a claim with no answer", () => {
   });
 });
 
+describe("a claim whose reply was lost", () => {
+  it("DSOR-IDM-01c: the caller is told only what is known, and the key runs nothing", async () => {
+    // Decision 151: decision 132 took "it is safe to send again" out of this message, because the
+    // claim may have been made with its reply lost, and then the key holds a claim with no answer.
+    // No test reached the message, so it could have gone back with every test green.
+    const real = overPGlite(db);
+    let lost = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        const result = await real.query<T>(sql, params, tenant);
+
+        // The claim is made, and its reply is lost on the way back.
+        if (!lost && sql.includes("INSERT INTO dsor.idempotency_keys")) {
+          lost = true;
+
+          throw new Error("Connection terminated unexpectedly");
+        }
+
+        return result;
+      },
+    });
+
+    const first = refusalOf(await pay("claim-reply-lost"));
+
+    expect(first.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(first.message).toMatch(/could not be claimed, or the claim could not be confirmed/);
+    expect(first.message).not.toMatch(/safe to send again/);
+
+    // The key holds a claim with no answer: the same request waits, is told nobody knows, and does
+    // not run. The README names this dead key; reconciliation, step 37, is what clears it.
+    expect(refusalOf(await pay("claim-reply-lost")).code).toBe("OUTCOME_UNKNOWN");
+    expect(await paymentsFor1009()).toBe(0);
+  });
+});
+
 describe("a claim is released only when nothing ran", () => {
   it("DSOR-IDM-01c: a handler that ran and then answered 'safe to send again' is not run again under its key", async () => {
     // Decision 132: the door released a claim on any safe_same_key answer, one a handler gave after
