@@ -127,6 +127,40 @@ describe("an account the lock does not apply to", () => {
     );
   });
 
+  it("DSOR-AUD-04a: an account one SET ROLE from owning the database is refused, even with public given back", async () => {
+    // Decision 147: the refusal says "owns, or may become the owner of", and only the first half
+    // had a test. A review asked about direct ownership alone, and every test still passed. Here
+    // another role owns the database, and the application may become it.
+    await asTheOwner(() =>
+      db.exec(`CREATE ROLE db_keeper;
+               DO $$ BEGIN
+                 EXECUTE format('ALTER DATABASE %I OWNER TO db_keeper', current_database());
+               END $$;
+               ALTER SCHEMA public OWNER TO postgres;
+               GRANT db_keeper TO ${APPLICATION_ROLE} WITH INHERIT FALSE;`),
+    );
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may become the owner of, the database/,
+    );
+
+    // And the route is real: one SET ROLE, and the application acts as the database's owner. It
+    // makes a schema of its own, which the application alone may not do.
+    await db.exec("SET ROLE db_keeper");
+
+    try {
+      await db.exec("CREATE SCHEMA keeper_made");
+    } finally {
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+    }
+
+    const { rows } = await db.query<{ owner: string }>(
+      "SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace WHERE nspname = 'keeper_made'",
+    );
+
+    expect(rows).toStrictEqual([{ owner: "db_keeper" }]);
+  });
+
   it("DSOR-AUD-04a: an account that may become the owner of the schema dsor is refused", async () => {
     await asTheOwner(async () => {
       await db.exec("CREATE ROLE a_plain_owner");
