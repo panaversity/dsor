@@ -265,8 +265,8 @@ describe("the program a learner runs", () => {
     }));
 
   // The hashes move every run, because the time a decision was made is part of what is hashed.
-  // Decision 155: and a run that crosses midnight UTC makes more of the ten payments than one that
-  // does not, so the reports differ: skipped then, not failed.
+  // Decision 155: and a run that crosses midnight UTC before its ten payments end can make more of
+  // them than one that does not, so the reports differ: skipped then, not failed.
   it("DSOR-AUD-04b: two fresh runs print the same report with different hashes", (context) =>
     onOneDay(context, () => {
       const first = demo();

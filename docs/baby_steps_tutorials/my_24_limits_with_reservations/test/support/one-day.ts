@@ -14,7 +14,7 @@ import type { TestContext } from "vitest";
  * Today, in UTC, on this machine's clock. PGlite reads the same clock, in these tests and in the
  * demo, so this is the day the database books against.
  */
-export function today(): string {
+function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
