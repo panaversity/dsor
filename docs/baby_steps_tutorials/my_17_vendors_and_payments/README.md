@@ -92,7 +92,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `src/permissions.ts`, `src/classification.ts` | the supervisor and the agent may make and cancel payments; a payment's amount is confidential, like an invoice's |
 | `src/main.ts` | each receipt line says its semantics; a section that lists what each command's contract says, makes a duplicate payment and takes it back, and shows the payments as they end |
 | `test/vendors-and-payments.test.ts` | new — the tables: the running example, the company in every key, the second lock, what the application may and may not do |
-| `test/payments.test.ts` | new — the two commands, the semantics on each receipt, a careless handler that says `atomic`, and the registry's refusals |
+| `test/payments.test.ts` | new — the two commands, the semantics on each receipt, a careless handler that says `atomic`, and the registry's refusals; and each payment statement's own WHERE, asked as the owner, past the second lock (decision 148) |
 | `test/main.test.ts` | three tests for the demo's new section: what each contract says, the receipts, and the payments as they end. And the agent's invoice lines are matched whole, because a payment's receipt also begins `accounts-payable-fte  COMMITTED` (decision 148) |
 | `test/database.test.ts` | the start-up refusals above, tested: invoices granted column by column, a vendor or more of a payment than its status, a payment's number, each one `SET ROLE` away, and through a helper function's owner |
 | `test/support/story.ts` | new — the one list of statements that put the story's rows back, for both tiers |
@@ -220,10 +220,13 @@ In `src/payment.ts`, change `WHERE i.tenant_id = $1 AND i.id = $2` to
  Tests  0 failed | 607 passed | 1 skipped (608)
 ```
 
-Nothing fails, and that is the lesson. The statement no longer says which company's invoice it means,
-and the second lock, which reads the company the statement was run for, still hides org_789's
-INV-1008. Two locks, so that forgetting one is not a leak. Keep `$1` in the statement: delete it
-outright and PostgreSQL cannot tell what type it is, and every payment fails for that instead.
+The statement no longer says which company's invoice it means, and through the door nothing
+notices: the second lock, which reads the company the statement was run for, still hides org_789's
+INV-1008. Two locks, so that forgetting one is not a leak. One test fails, because it asks the first
+lock alone: it calls `createPayment` as the owner, whom the second lock does not filter, and
+org_456's request now makes a payment on org_789's INV-2001. A test for each lock, so that
+forgetting one is not silent either (decision 148). Keep `$1` in the statement: delete it outright
+and PostgreSQL cannot tell what type it is, and every payment fails for that instead.
 
 ### Break 6 · the application may delete payments
 

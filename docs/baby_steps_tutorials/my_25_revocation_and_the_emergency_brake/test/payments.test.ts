@@ -18,7 +18,7 @@ import { PIPELINE, type Handler, type OperationAnswer } from "../src/operations.
 import { callOperation, makeDoor } from "./support/door.ts";
 import { readNow } from "../src/freshness.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { createPayment } from "../src/payment.ts";
+import { cancelPayment, createPayment } from "../src/payment.ts";
 import { contractsFromDisk, loadRegistry, type ContractDocument } from "../src/registry.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
@@ -361,6 +361,35 @@ describe("payment.cancel", () => {
     expect(decisions).toStrictEqual([
       "payment.cancel@1 DENY AUTHORIZATION_DENIED",
       "payment.cancel@1 ALLOW ALLOWED",
+    ]);
+  });
+});
+
+describe("the first lock: every payment statement names its company", () => {
+  it("DSOR-TEN-01b: as the owner, past the second lock, the payment statements still reach only their own company", async () => {
+    // Decision 148: two locks keep the companies apart, and the payments' first lock, the company in
+    // each statement's WHERE, had no test of its own. A review took it out of createPayment and every
+    // test passed, because the second lock still hid org_789's rows (README, Break 5). The owner is
+    // not filtered by the second lock, so as the owner the WHERE is all that answers.
+    const made = await asTheOwner(() => createPayment("org_456", "INV-2001", AMOUNT));
+    const cancelled = await asTheOwner(() => cancelPayment("org_456", "PAY-901", 1));
+
+    // INV-2001 is org_789's alone, so org_456 holds no such invoice, and nothing is made.
+    expect(made).toStrictEqual({ kind: "no_invoice" });
+    // Each company has a PAY-901, and only org_456's is taken back.
+    expect(cancelled.kind).toBe("cancelled");
+    expect(
+      await asTheOwner(
+        async () =>
+          (
+            await db.query<{ tenant_id: string; id: string; status: string }>(
+              "SELECT tenant_id, id, status FROM public.payments ORDER BY tenant_id, id",
+            )
+          ).rows,
+      ),
+    ).toStrictEqual([
+      { tenant_id: "org_456", id: "PAY-901", status: "cancelled" },
+      { tenant_id: "org_789", id: "PAY-901", status: "draft" },
     ]);
   });
 });
