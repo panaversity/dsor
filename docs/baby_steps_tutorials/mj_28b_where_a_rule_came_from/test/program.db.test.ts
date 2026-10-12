@@ -158,7 +158,7 @@ describe("the program", () => {
         `the notice to cfo_100: Version 8 of rule high-value-payment cites version 4 of ${policy}, and KSoR now has version 5 in force. DSoR marked it stale_authority.`,
         `the agent drafts INV-2008, 21,000.00 USD: ${waits}`,
         `the agent drafts INV-2009, 900.00 USD: ${waits}`,
-        "INV-2008's record: high-value-payment version 8, REQUIRE_APPROVAL, the policy's version 5 in force, superseded_version 4",
+        "INV-2008's record: high-value-payment version 8, REQUIRE_APPROVAL, cites version 4, superseded_version 4, and beside it the policy's version 5 in force",
         "cfo_100 drafts version 9 above 20,000.00 USD, still citing version 4: version 9, draft",
         `cfo_100 switches version 9 on: VALIDATION_FAILED: "rule.activate": version 9 of rule high-value-payment cites version 4 of ${policy}, and KSoR has version 5 in force`,
         "cfo_100 drafts version 10 above 20,000.00 USD, citing version 5: version 10, draft",

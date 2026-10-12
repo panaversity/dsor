@@ -256,30 +256,40 @@ describe("C6: the floor a stale version answers at least, at the edge of its gra
 });
 
 describe("C7: the record names the policy in force (step 28b's README, decision D11)", () => {
-  it("DSOR-CTL-04: the decision's record names stale version 8 by id and version, with the policy in force, version 5 and its fingerprint, and superseded_version 4, the version that version 8 cites", async () => {
+  // Changed by step 28b's review, finding M1: the record named KSoR's version 5 and its fingerprint
+  // as the authority, and lost the fingerprint of the text that version 8 enforces. An auditor who
+  // follows §17.4's chain, from the control to its authority, reached a text the control does not
+  // enforce. The authority stays the version's own citation now.
+  it("DSOR-CTL-04: the decision's record names stale version 8 by id and version, with the authority it cites, version 4 and its fingerprint, marked superseded_version 4; and beside it, the policy's version 5 in force, with its fingerprint, and the time of the mark", async () => {
     const w = await ruleWorldOnTuesday();
-    await markStale(w);
+    const at = Date.now() - 60 * 1000;
+    await markStale(w, "high-value-payment", 8, at);
     const record = await recordOf(w, await w.draft("INV-1008"));
     expect(record.controls).toStrictEqual([
       {
         id: "high-value-payment",
         version: 8,
         outcome: "REQUIRE_APPROVAL",
-        authority: {
-          system: "ksor",
-          uri: "ksor://org_456/finance/payment-approval-policy",
-          rule: "high-value-payment",
-          version: 5,
-          content_hash: V5.content_hash,
-        },
+        authority: shippedRule().authority,
         superseded_version: 4,
+      },
+    ]);
+    const ours = record.extensions?.[OUR_EXTENSIONS] as { stale?: unknown } | undefined;
+    expect(ours?.stale).toStrictEqual([
+      {
+        control: "high-value-payment",
+        version: 8,
+        since: new Date(at).toISOString(),
+        in_force: V5,
       },
     ]);
   });
 
-  it("DSOR-CTL-04: an up-to-date rule's record names its own citation as the policy in force, and no superseded_version", async () => {
+  it("DSOR-CTL-04: an up-to-date rule's record names its own citation, no superseded_version, and no stale rule beside it", async () => {
     const w = await ruleWorldOnTuesday();
     const record = await recordOf(w, await w.draft("INV-1008"));
+    const ours = record.extensions?.[OUR_EXTENSIONS] as { stale?: unknown } | undefined;
+    expect(ours?.stale).toBeUndefined();
     expect(record.controls).toStrictEqual([
       {
         id: "high-value-payment",

@@ -18,7 +18,7 @@ import { keysWrittenTwice } from "./json.ts";
 import type { Roles } from "./permissions.ts";
 import type { MoneyPolicy } from "./policies.ts";
 import { principalNamed } from "./principals.ts";
-import type { InForce } from "./rulebook.ts";
+import type { InForce, PolicyInForce } from "./rulebook.ts";
 import { isTenantId } from "./uri.ts";
 
 /** What a control can answer: its effect, or ALLOW (DSOR-AUT-02a). */
@@ -152,10 +152,9 @@ export type ControlOutcome = {
   version: number;
   outcome: ControlAnswer;
   // The policy it came from. The record keeps it: DSOR-CTL-04, step 28's rule, met early.
-  // NEW IN STEP 28b: the policy in force, which for a stale version is KSoR's newer version.
   authority: Record<string, unknown>;
-  // NEW IN STEP 28b: for a stale version, the version of the policy it cites (step 28b's README,
-  // decision D11).
+  // NEW IN STEP 28b: for a stale version, the version of the policy it cites, which KSoR has
+  // superseded (step 28b's README, decision D11).
   superseded_version?: number;
   // Why the condition could not be evaluated, when it could not (DSOR-CTL-07).
   evaluation_error?: string;
@@ -197,17 +196,41 @@ export function staleFloor(
   return deny;
 }
 
-/** NEW IN STEP 28b: the policy in force, as the record names it, and for a stale version, the version it cites (DSOR-CTL-04; step 28b's README, decision D11). */
-function inForceOf(control: InForce): {
+/**
+ * NEW IN STEP 28b: the authority as the record names it: the version's own citation, the text it
+ * was built from, and for a stale version the cited version as superseded_version. Changed by step
+ * 28b's review, finding M1: the record named KSoR's version in force here, and lost the fingerprint
+ * of the text the version enforces (DSOR-CTL-04; step 28b's README, decision D11).
+ */
+function citedOf(control: InForce): {
   authority: Record<string, unknown>;
   superseded_version?: number;
 } {
   const authority = structuredClone(control.authority);
-  if (control.stale === undefined) return { authority };
   const cited = authority["version"];
-  const { version, content_hash } = control.stale.in_force;
-  const superseded = typeof cited === "number" ? { superseded_version: cited } : {};
-  return { authority: { ...authority, version, content_hash }, ...superseded };
+  if (control.stale === undefined || typeof cited !== "number") return { authority };
+  return { authority, superseded_version: cited };
+}
+
+/** NEW IN STEP 28b: a stale version that line ⑩ evaluated, as the record names it beside the controls: when DSoR marked it, and the version of its policy in force. */
+export type StaleOfRecord = {
+  control: string;
+  version: number;
+  since: string;
+  in_force: PolicyInForce;
+};
+
+/**
+ * NEW IN STEP 28b: each stale version on this operation, for the record: the authority reference
+ * and the version in force that DSOR-CTL-04 asks for, which the record's controls field has no
+ * place for (step 28b's README, decision D11).
+ */
+export function staleOf(controls: readonly InForce[], operation: string): StaleOfRecord[] {
+  return controls.flatMap((control) => {
+    if (control.operation !== operation || control.stale === undefined) return [];
+    const { id, version, stale } = control;
+    return [{ control: id, version, since: stale.since, in_force: { ...stale.in_force } }];
+  });
 }
 
 /** Each of these controls that governs the operation, evaluated for one call (step 27's README, decision D15: any caller). */
@@ -230,7 +253,7 @@ export function evaluateControls(
       const answer = floor === undefined ? own : mostRestrictive([own, floor.floor]);
       const { id, version } = control;
       const failed = error === undefined ? {} : { evaluation_error: error };
-      return { id, version, outcome: answer, ...inForceOf(control), ...failed };
+      return { id, version, outcome: answer, ...citedOf(control), ...failed };
     });
 }
 

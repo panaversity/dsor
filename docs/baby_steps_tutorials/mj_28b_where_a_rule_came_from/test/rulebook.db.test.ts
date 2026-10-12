@@ -675,7 +675,9 @@ describe("C2: on the database, the sweep's mark (step 28b's README, decisions D5
     expect(rows).toStrictEqual([]);
   });
 
-  it("DSOR-CTL-04: on the database, the decision's record in dsor.audit names the stale hold by id and version, with the policy in force, version 5, and superseded_version 4, beside version 8, and says why the hold refused", async () => {
+  // Changed by step 28b's review, finding M1: the authority stays the hold's own citation, and the
+  // version in force goes beside the controls.
+  it("DSOR-CTL-04: on the database, the decision's record in dsor.audit names the stale hold by id and version, with the authority it cites, marked superseded_version 4, beside version 8; names the policy's version 5 in force beside them; and says why the hold refused", async () => {
     ownerLimits("reset");
     const id = await holdOn();
     await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "x");
@@ -691,13 +693,10 @@ describe("C2: on the database, the sweep's mark (step 28b's README, decisions D5
     const cited = shippedRule().authority;
     expect(rows[0]?.["controls"]).toStrictEqual([
       { id: "high-value-payment", version: 8, outcome: "REQUIRE_APPROVAL", authority: cited },
-      {
-        id,
-        version: 1,
-        outcome: "DENY",
-        authority: { ...cited, version: 5, content_hash: V5.content_hash },
-        superseded_version: 4,
-      },
+      { id, version: 1, outcome: "DENY", authority: cited, superseded_version: 4 },
+    ]);
+    expect(rows[0]?.["extensions"]?.[OUR_EXTENSIONS]?.stale).toStrictEqual([
+      { control: id, version: 1, since: expect.any(String), in_force: V5 },
     ]);
     expect(rows[0]?.["extensions"]?.[OUR_EXTENSIONS]?.denied_by).toStrictEqual([
       {

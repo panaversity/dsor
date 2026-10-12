@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { BrakeBy } from "./brakes.ts";
 import type { Freshness, FreshnessMode } from "./freshness.ts";
 import type { Label } from "./labels.ts";
-import type { ControlOutcome, Denial } from "./controls.ts";
+import type { ControlOutcome, Denial, StaleOfRecord } from "./controls.ts";
 import type { Conversion, Unconvertible } from "./limits.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
@@ -54,6 +54,10 @@ export type Decision = {
       // Each control that refused the call, and its own reason, which the caller's
       // words leave out (step 27's README, decision D13; step 27's review, finding L2).
       denied_by?: Denial[];
+      // NEW IN STEP 28b: each stale control line ⑩ evaluated: when DSoR marked it, and the
+      // version of its policy in force, which the audit record's controls field has no place for
+      // (DSOR-CTL-04; step 28b's README, decision D11).
+      stale?: StaleOfRecord[];
     };
   };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
@@ -426,6 +430,8 @@ export function decisionOf(
   controls?: ControlOutcome[],
   // And each control that refused the call, with its reason.
   deniedBy?: Denial[],
+  // NEW IN STEP 28b: and each stale control line ⑩ evaluated, with the version in force.
+  stale?: StaleOfRecord[],
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -454,6 +460,7 @@ export function decisionOf(
     ...(conversion === undefined ? {} : { conversion: structuredClone(conversion) }),
     ...(unconvertible === undefined ? {} : { unconvertible: { ...unconvertible } }),
     ...(deniedBy === undefined ? {} : { denied_by: structuredClone(deniedBy) }),
+    ...(stale === undefined || stale.length === 0 ? {} : { stale: structuredClone(stale) }),
   };
   return {
     kind: "decision",

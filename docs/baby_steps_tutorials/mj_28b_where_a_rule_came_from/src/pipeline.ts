@@ -16,9 +16,11 @@ import {
   evaluateControls,
   mostRestrictive,
   requirementsOf,
+  staleOf,
   type ControlAnswer,
   type ControlOutcome,
   type Denial,
+  type StaleOfRecord,
 } from "./controls.ts";
 import {
   Refusal,
@@ -136,6 +138,9 @@ export async function call(
   let controlsOfRecord: ControlOutcome[] | undefined;
   // And each control that refused, with its own reason (step 27's review, finding L2).
   let denialsOfRecord: Denial[] | undefined;
+  // NEW IN STEP 28b: and each stale control, with the version of its policy in force (step 28b's
+  // README, decision D11).
+  let staleOfRecord: StaleOfRecord[] | undefined;
   // The proposal a refusal from the code ended FAILED, which its envelope names.
   // Set only from the claim, so no code can name a proposal of its own (step 22's README,
   // decision 5). Found by the review.
@@ -419,6 +424,7 @@ export async function call(
           const facts = factsOf(state);
           outcomes = evaluateControls(book, contract.id, facts, sheet, used);
           controlsOfRecord = outcomes;
+          staleOfRecord = staleOf(book, contract.id);
           // The record names the sheet and the rates a condition converted with, as it names a
           //   limit's (step 26's README, decision L7). Found by step 27's review, finding H2: a
           //   person's draft, which no limit counts, named no sheet at all.
@@ -836,6 +842,7 @@ export async function call(
           unconvertibleOfRecord,
           controlsOfRecord,
           denialsOfRecord,
+          staleOfRecord,
         ),
       ),
     );

@@ -1490,16 +1490,19 @@ for (const notice of await driftRules.notices()) {
 const staleDraft = await driftPay("INV-2008");
 console.log("  the agent drafts INV-2008, 21,000.00 USD:", waitHeard(staleDraft));
 console.log("  the agent drafts INV-2009, 900.00 USD:", waitHeard(await driftPay("INV-2009")));
-// The record names the policy's version in force, and the version that version 8 cites
-// (DSOR-CTL-04; step 28b's README, decision D11).
+// The record names the version that version 8 cites, marked superseded, and beside it the policy's
+// version in force (DSOR-CTL-04; step 28b's README, decision D11).
 const staleRecord = (await driftLog.records()).find(
   (r) => r.kind === "decision" && r.correlation.request_id === staleDraft.correlation.request_id,
 );
+const staleBeside = staleRecord?.extensions?.["org.panaversity.steps"]?.stale ?? [];
 for (const c of staleRecord?.controls ?? []) {
-  const inForce = `the policy's version ${String(c.authority["version"])} in force`;
-  const cites = `superseded_version ${String(c.superseded_version)}`;
+  const cites = `cites version ${String(c.authority["version"])}`;
+  const superseded = `superseded_version ${String(c.superseded_version)}`;
+  const inForce = staleBeside.find((s) => s.control === c.id)?.in_force.version;
+  const beside = `and beside it the policy's version ${String(inForce)} in force`;
   console.log(
-    `  INV-2008's record: ${c.id} version ${c.version}, ${c.outcome}, ${inForce}, ${cites}`,
+    `  INV-2008's record: ${c.id} version ${c.version}, ${c.outcome}, ${cites}, ${superseded}, ${beside}`,
   );
 }
 const still4 = await driftRule(CFO_100, "rule.draft", {
