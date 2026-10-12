@@ -735,10 +735,12 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
     return carryOn(context);
   }
 
-  // A slip DSoR cannot read, or a signer whose authority it cannot establish, is a refusal like any
-  // other, recorded at §21.11, and safe to send again, because nothing has run. Both used to leave
-  // the door as a thrown error with nothing recorded, and with the database down an agent got a
-  // stack trace where a person got EVIDENCE_STORE_UNAVAILABLE (DSOR-IDN-06, decision 128).
+  // A slip DSoR cannot read is a refusal like any other, recorded at §21.11, and safe to send again,
+  // because nothing has run. It used to leave the door as a thrown error with nothing recorded, and
+  // with the database down an agent got a stack trace where a person got EVIDENCE_STORE_UNAVAILABLE
+  // (decision 128). A signer whose authority DSoR cannot establish is refused further down, once the
+  // slip is found, and not always as safe to send again: an answer DSoR has and cannot use asks for
+  // a wait instead (DSOR-IDN-06, decision 130).
   const notEstablished = (what: string): StageResult =>
     refuse(
       principal.id,
@@ -848,8 +850,9 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   // A signer the directory does not know in this company holds nothing there, and the agent holds
   // nothing under them. STEP 19: asked of the company's directory, which may have no answer
-  // DSoR can use: none configured, no reply, or one more than 24 hours old. Each is refused, and the
-  // refusal says which (DSOR-IDN-05, DSOR-IDN-06, decision 129).
+  // DSoR can use: none configured, no reply, one that says nothing this program can use, or one more
+  // than 24 hours old. Each is refused, and the refusal says which (DSOR-IDN-05, DSOR-IDN-06,
+  // decision 129).
   let signer;
 
   try {
