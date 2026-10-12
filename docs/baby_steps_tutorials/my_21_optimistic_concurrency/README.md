@@ -116,7 +116,7 @@ is not beside it, so the total reads `718` with `1 skipped`; in the repository i
 
 ### Break 1 · the version is not in the UPDATE
 
-The map's "break it". In `src/invoice.ts`, change `AND status = 'draft' AND version = $3` to
+In `src/invoice.ts`, change `AND status = 'draft' AND version = $3` to
 `AND status = 'draft' AND $3::int > 0`, which still uses the number and no longer compares it.
 
 ```text
@@ -141,8 +141,9 @@ In `src/invoice.ts`, change `SET status = 'issued', version = version + 1` to
 The record changes and its version stays at 1, so a caller who decided on version 1 finds the
 version it expects and is told `CONFLICT`, "already issued", instead of `STALE_STATE`, "you decided
 on something that has changed". The tests of the version going up, of the stale invoice, of the
-race, and two older tests that issue an invoice twice and expect the second attempt, on the old
-version, to be stale.
+race, and two older tests that issue an invoice twice. One sends the second attempt on the old
+version and expects it to be stale; it is told the invoice is not a draft. The other sends it on the
+new version, 2, and expects `CONFLICT`; it is told `STALE_STATE`, because the invoice is still at 1.
 
 ### Break 3 · §21.6 does not ask for the version
 

@@ -62,15 +62,31 @@ describe("every invoice and payment has a version", () => {
   });
 
   it("the version is a whole number from 1, and the table says so", async () => {
-    const { rows } = await db.query<{ column_name: string; is_nullable: string }>(
-      `SELECT table_name || '.' || column_name AS column_name, is_nullable FROM information_schema.columns
+    const { rows } = await db.query<{
+      column_name: string;
+      is_nullable: string;
+      data_type: string;
+    }>(
+      `SELECT table_name || '.' || column_name AS column_name, is_nullable, data_type
+         FROM information_schema.columns
         WHERE column_name = 'version' AND table_name IN ('invoices', 'payments') ORDER BY 1`,
     );
 
+    // Decision 152: the type and the lowest value too. This asked only that the column is never
+    // empty, so a BIGINT column, or one with no CHECK, passed it and every other test.
     expect(rows).toStrictEqual([
-      { column_name: "invoices.version", is_nullable: "NO" },
-      { column_name: "payments.version", is_nullable: "NO" },
+      { column_name: "invoices.version", is_nullable: "NO", data_type: "integer" },
+      { column_name: "payments.version", is_nullable: "NO", data_type: "integer" },
     ]);
+
+    for (const table of ["invoices", "payments"]) {
+      await expect(
+        asTheOwner(() =>
+          db.exec(`UPDATE public.${table} SET version = 0 WHERE tenant_id = 'org_456'`),
+        ),
+        table,
+      ).rejects.toThrow(/violates check constraint/);
+    }
   });
 });
 
