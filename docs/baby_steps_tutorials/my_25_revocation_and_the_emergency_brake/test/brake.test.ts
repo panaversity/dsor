@@ -213,44 +213,55 @@ describe("§21.4: a stopped agent changes nothing", () => {
 
 // NEW IN STEP 25, piece 3: and again as the proposal moves to EXECUTING.
 
+/**
+ * Decision 156: both brakes, the agent's suspension and the company's freeze. Every test of the
+ * second lock pulled a suspension, so it could forget the freeze with every test green.
+ */
+const BRAKES = [
+  ["a suspension", AGENT, "user_123"],
+  ["a freeze", undefined, "cfo_100"],
+] as const;
+
 describe("a brake pulled after §21.4 still stops the handler", () => {
-  it("DSOR-OPS-01c: pulled between the decision and the handler, the handler never runs and the proposal never enters EXECUTING", async () => {
-    // The brake is pulled by a stage after §21.4, as a person would pull it while the request is on
-    // its way: §21.4 found nothing, and the move to EXECUTING must find it.
-    const list = PIPELINE.map((stage) =>
-      stage.name === "record the decision"
-        ? Object.freeze({
-            ...stage,
-            run: async (context: Context) => {
-              const done = await stage.run(context);
+  for (const [brake, agent, by] of BRAKES) {
+    it(`DSOR-OPS-01c: ${brake} pulled between the decision and the handler: the handler never runs and the proposal never enters EXECUTING`, async () => {
+      // The brake is pulled by a stage after §21.4, as a person would pull it while the request is
+      // on its way: §21.4 found nothing, and the move to EXECUTING must find it.
+      const list = PIPELINE.map((stage) =>
+        stage.name === "record the decision"
+          ? Object.freeze({
+              ...stage,
+              run: async (context: Context) => {
+                const done = await stage.run(context);
 
-              await pullTheBrake("org_456", AGENT, "user_123", "pulled mid-flight");
+                await pullTheBrake("org_456", agent, by, "pulled mid-flight");
 
-              return done;
-            },
-          })
-        : stage,
-    );
-    let ran = 0;
-    const door = makeDoor(list, {
-      "payment.create": () => {
-        ran += 1;
+                return done;
+              },
+            })
+          : stage,
+      );
+      let ran = 0;
+      const door = makeDoor(list, {
+        "payment.create": () => {
+          ran += 1;
 
-        throw new Error("the handler ran");
-      },
+          throw new Error("the handler ran");
+        },
+      });
+      const answer = await door(AGENT_LOGIN, "payment.create", PAY);
+
+      expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+      expect(ran).toBe(0);
+
+      const [proposal] = await proposalsOf("org_456");
+
+      expect(proposal?.state).toBe("DENIED");
+      expect((await movesOf("org_456", proposal?.id ?? "")).map((m) => m.to)).not.toContain(
+        "EXECUTING",
+      );
     });
-    const answer = await door(AGENT_LOGIN, "payment.create", PAY);
-
-    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
-    expect(ran).toBe(0);
-
-    const [proposal] = await proposalsOf("org_456");
-
-    expect(proposal?.state).toBe("DENIED");
-    expect((await movesOf("org_456", proposal?.id ?? "")).map((m) => m.to)).not.toContain(
-      "EXECUTING",
-    );
-  });
+  }
 
   it("DSOR-OPS-01c: a person's command is not stopped by a brake on the agent", async () => {
     await pullTheBrake("org_456", undefined, "cfo_100", "month-end close");
@@ -473,30 +484,34 @@ describe("no way into EXECUTING forgets the brake", () => {
     ).toStrictEqual({ kind: "moved" });
   });
 
-  it("DSOR-OPS-01a: a brake pulled while a prepared command is on its way stops it before READY", async () => {
-    // Decision 143: the agent was told READY, and a proposal of a stopped agent waited to be released.
-    const list = PIPELINE.map((stage) =>
-      stage.name === "record the decision"
-        ? Object.freeze({
-            ...stage,
-            run: async (context: Context) => {
-              const done = await stage.run(context);
+  for (const [brake, agent, by] of BRAKES) {
+    it(`DSOR-OPS-01a: ${brake} pulled while a prepared command is on its way stops it before READY`, async () => {
+      // Decision 143: the agent was told READY, and a proposal of a stopped agent waited to be
+      // released.
+      const list = PIPELINE.map((stage) =>
+        stage.name === "record the decision"
+          ? Object.freeze({
+              ...stage,
+              run: async (context: Context) => {
+                const done = await stage.run(context);
 
-              await pullTheBrake("org_456", AGENT, "user_123", "pulled mid-flight");
+                await pullTheBrake("org_456", agent, by, "pulled mid-flight");
 
-              return done;
-            },
-          })
-        : stage,
-    );
-    const answer = await makeDoor(list)(AGENT_LOGIN, "payment.create", PAY, {
-      idempotencyKey: "prepared-mid-flight",
-      mode: "propose_only",
+                return done;
+              },
+            })
+          : stage,
+      );
+      // A key of its own for each brake: the story's reset keeps the keys.
+      const answer = await makeDoor(list)(AGENT_LOGIN, "payment.create", PAY, {
+        idempotencyKey: `prepared-mid-flight-${by}`,
+        mode: "propose_only",
+      });
+
+      expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
+      expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
     });
-
-    expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
-    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
-  });
+  }
 
   for (const mode of ["propose_only", "validate_only"]) {
     it(`DSOR-OPS-01a: a stopped agent's ${mode} is refused as its execute is`, async () => {
