@@ -283,12 +283,13 @@ Copy `my_18_delegations` to a new folder and ask:
 **What this step leaves, said plainly.** The directory is a fake in memory; a real one is a
 directory sync or an identity provider, and connecting one is outside this tutorial. When the
 directory says a signer has left or is suspended, DSoR refuses the agent but does not suspend the
-signer's slips, which `DSOR-IDN-07` asks for and a later step builds. `on_behalf_of`, the agent beside
-a person who is logged in, is step 45's. A person who is logged in is judged by this program's list
-of people and the slip's signer by the directory, two sources for one person, until a real login in
-steps 43 and 44. The record's `subject_authority.as_of` has no way to say an authority was never
-established, so a refusal before the directory gave a time carries the decision's own: a question for
-the specification. And an agent's reads run under its own role, with no slip, recorded `direct`.
+signer's slips, which `DSOR-IDN-07` asks for and no step in the map builds yet. `on_behalf_of`, the
+agent beside a person who is logged in, is step 45's. A person who is logged in is judged by this
+program's list of people and the slip's signer by the directory, two sources for one person, until
+a real login in steps 43 and 44. The record's `subject_authority.as_of` has no way to say an
+authority was never established, so a refusal before the directory gave a time carries the
+decision's own: a question for the specification. And an agent's reads run under its own role, with
+no slip, recorded `direct`.
 
 Everything earlier steps claimed still holds.
 
