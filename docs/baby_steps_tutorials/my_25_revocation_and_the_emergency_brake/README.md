@@ -242,10 +242,13 @@ payment's amount is booked against the slip's day; and the command runs. Unlike 
 asks the slip again. A brake that commits while a move to EXECUTING is running is not seen by that
 move, which reads the brakes as they were when its statement began; no test races the two on a real
 server. "A person" is whoever logged in: logins are believed until steps 43 and 44. And a question for
-the specification: `DSOR-SRC-02b` refuses a delegation identifier in the arguments that disagrees with
-the request's own, and read literally that would stop a delegator from naming the slip they revoke,
-which `DSOR-DEL-04a` asks that they can. This step calls the argument `target`, a reading of the rule
-and not a change to it, written down in decision 143 for the editor.
+the specification: `DSOR-SRC-02b` refuses a principal or delegation identifier in the arguments that
+disagrees with the request's own. Read literally, that would stop a delegator from naming the slip
+they revoke, which `DSOR-DEL-04a` asks that they can. It would stop `control.suspend` too, whose
+target names the agent to stop, not the person asking. DSoR counts an argument as such an identifier
+only by its name: `principal` or `delegation`, alone or with `_id`. Both commands call theirs
+`target`. That is a reading of the rule and not a change to it, written down for the editor in
+decision 143, and the brake's half in decision 156.
 
 Everything earlier steps claimed still holds.
 
