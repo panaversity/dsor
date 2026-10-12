@@ -8,6 +8,7 @@ import pg from "pg";
 import {
   createDbBrakes,
   createDbClaims,
+  createDbControls,
   createDbInvoices,
   createDbPayments,
   createDbSlips,
@@ -54,9 +55,10 @@ export function dbRegistry(
   // And the controls: none, unless the test gives them, so the earlier steps'
   // database tests keep their idea. Step 27's own give the shipped file (step 27's README, decision
   // D16).
-  // NEW IN STEP 28: a store of them. Step 28's own give dsor.controls (step 28's README, decision
-  // D18).
-  controls: ControlStore = NO_CONTROLS,
+  // NEW IN STEP 28: a store of them, or "database" for dsor.controls, which the claims then read
+  // inside their own transactions. Step 28's own give "database" (step 28's README, decision D18;
+  // step 28's review, finding M5).
+  controls: ControlStore | "database" = NO_CONTROLS,
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
@@ -75,14 +77,15 @@ export function dbRegistry(
     readRoleSettings(),
     // And the claims of idempotency keys, in dsor.idempotency (step 20's README,
     // decision 6).
-    createDbClaims(pool),
+    // And the same rules as the registry's.
+    createDbClaims(pool, controls),
     own,
     // And the brakes, in dsor.brakes (step 25b's README, decision D5).
     createDbBrakes(pool),
     lifetimes,
     // The shipped money policies.
     undefined,
-    controls,
+    controls === "database" ? createDbControls(pool) : controls,
   );
 }
 

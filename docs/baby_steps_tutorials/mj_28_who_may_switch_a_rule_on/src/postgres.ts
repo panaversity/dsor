@@ -32,7 +32,14 @@ import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
 import type { RateSheet } from "./exchange.ts";
 import type { Loaded, Newest, RateStore } from "./rates.ts";
-import { movable, type ControlStore, type Live, type RuleBy, type RuleStatus } from "./rulebook.ts";
+import {
+  movable,
+  NO_CONTROLS,
+  type ControlStore,
+  type Live,
+  type RuleBy,
+  type RuleStatus,
+} from "./rulebook.ts";
 import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import {
@@ -929,7 +936,14 @@ type ClaimRow = {
 const IN_SCOPE = "tenant_id = $1 AND principal = $2 AND operation = $3 AND idempotency_key = $4";
 
 /** The claims, in dsor.idempotency. */
-export function createDbClaims(pool: pg.Pool): ClaimStore {
+export function createDbClaims(
+  pool: pg.Pool,
+  // NEW IN STEP 28: and the store of rules that the claim's work reads and changes: "database" for
+  // dsor.controls, inside the claim's own transaction, or the store the world gives, none unless
+  // it gives one, so a world of an earlier step's idea reads no rule (step 28's README, decision
+  // D18).
+  controls: ControlStore | "database" = NO_CONTROLS,
+): ClaimStore {
   return Object.freeze({
     // The reservations, each piece in a transaction of its own, for a dry run.
     reservations: createDbReservations(pool),
@@ -963,7 +977,7 @@ export function createDbClaims(pool: pg.Pool): ClaimStore {
         );
         if (added.rowCount === 0) return replay(client, ids, payloadHash, mode);
         if (added.rowCount !== 1) throw new Error(`the claim added ${added.rowCount} rows, not 1`);
-        const stores = storesIn(client, scope.tenant);
+        const stores = storesIn(client, scope.tenant, controls);
         // Line ⑧, before the savepoint, so a refusal that undoes the code's work
         // keeps the proposal (step 22's README, decision 9).
         const opened = steps === undefined ? undefined : await steps.open(stores);
@@ -1056,7 +1070,11 @@ async function keepAnswer(client: pg.PoolClient, ids: string[], text: string): P
 
 // The stores for a claim's work, inside its transaction.
 // The proposals too, so line ⑧ writes inside the claim's transaction.
-function storesIn(client: pg.PoolClient, tenant: string): WorkStores {
+function storesIn(
+  client: pg.PoolClient,
+  tenant: string,
+  controls: ControlStore | "database",
+): WorkStores {
   const run = inClaim(client, tenant);
   return {
     invoices: invoicesThrough(run),
@@ -1074,9 +1092,10 @@ function storesIn(client: pg.PoolClient, tenant: string): WorkStores {
     // And the sheets of rates, so line ⑩ converts with the rates of the claim's
     // own transaction, and rate.load writes a sheet there (step 26's README, decisions L1 and L2).
     rates: ratesThrough(run),
-    // NEW IN STEP 28: and the company's rules, so DSoR's own work changes a rule inside the
-    // claim's transaction, with its record (step 28's README, decisions D14 and D15).
-    controls: controlsThrough(run),
+    // NEW IN STEP 28: and the company's rules, so line ⑩ reads them and DSoR's own work changes
+    // one inside the claim's transaction, with its record (step 28's README, decisions D14 and
+    // D15).
+    controls: controls === "database" ? controlsThrough(run) : controls,
   };
 }
 

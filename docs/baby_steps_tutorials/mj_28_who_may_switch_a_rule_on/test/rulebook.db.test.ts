@@ -38,7 +38,7 @@ const registry = dbRegistry(
   handlersFor(),
   ownWorkFor(),
   readLifetimes(),
-  rules,
+  "database",
 );
 // intake-fte, under del_190, which the owner keeps with step 24's limits. Only the tests know its
 // login, so they plant it for each call, as step 27's database tests do.
@@ -358,6 +358,45 @@ describe("C2: line ⑩ reads dsor.controls at every call (step 28's README, deci
     expect(await draft9001()).toMatchObject({ code: "POLICY_DENIED" });
     await rules.move("org_456", id, 1, "active", "suspended", byCfo("off"));
     expect(await draft9001()).toMatchObject({ outcome: "PENDING_APPROVAL" });
+  });
+});
+
+// Found by step 28's review, finding M5: line ⑨ and line ⑩ read the rules through the pool, while
+// the claim held a connection of its own. Four calls at once on a pool of two each held one
+// connection and waited for another, for ever.
+describe("C2: line ⑩ reads the rules on the claim's own connection (step 28's README, decision D5)", () => {
+  it("Step 28: four payments of INV-9001 at once, through one pool of two connections, in a world that reads dsor.controls: each one waits for the CFO, and none waits for a connection", async () => {
+    ownerLimits("reset");
+    const small = newPool();
+    try {
+      const world = dbRegistry(
+        small,
+        storyDirectories(),
+        handlersFor(),
+        ownWorkFor(),
+        readLifetimes(),
+        "database",
+      );
+      const one = () =>
+        call(world, log, keyed(INTAKE), "payment.create", {
+          invoice: "dsor://org_456/invoice/INV-9001",
+          expected_version: 1,
+        });
+      const answers = await withPlanted("tok_intake", intake, () =>
+        Promise.all([one(), one(), one(), one()]),
+      );
+      const heard = answers.map((a) =>
+        "outcome" in a ? a.outcome : "code" in a ? a.code : "data",
+      );
+      expect(heard).toStrictEqual([
+        "PENDING_APPROVAL",
+        "PENDING_APPROVAL",
+        "PENDING_APPROVAL",
+        "PENDING_APPROVAL",
+      ]);
+    } finally {
+      await small.end();
+    }
   });
 });
 

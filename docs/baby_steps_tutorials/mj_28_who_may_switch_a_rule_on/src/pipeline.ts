@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
-import { NO_CONTROLS } from "./rulebook.ts";
+import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
@@ -363,6 +363,11 @@ export async function call(
       brakes: BrakeStore,
       // And the sheets of rates, which line ⑩ converts with.
       rates: RateStore,
+      // NEW IN STEP 28: and the company's rules, which line ⑩ evaluates and line ⑨'s look reads.
+      //   Inside the claim, the claim's own store, on its own connection: found by step 28's
+      //   review, finding M5. Read through the pool, four calls at once on a pool of two each held
+      //   a connection and waited for another, for ever.
+      controls: ControlStore,
       reserveFor?: string,
       // It answers the approvals a control asks for, when one does.
     ): Promise<Requirement[] | undefined> => {
@@ -371,7 +376,7 @@ export async function call(
         if (own !== undefined)
           await own.check(
             copy,
-            // NEW IN STEP 28: and the world's rules, with the registry's check of one version.
+            // NEW IN STEP 28: and the rules, with the registry's check of one version.
             lookFor(
               tenant,
               caller,
@@ -379,7 +384,7 @@ export async function call(
               brakes,
               registry.moneyPolicies,
               rates,
-              registry.controls,
+              controls,
               registry.checkRule,
             ),
           );
@@ -396,9 +401,9 @@ export async function call(
         //   one sheet. Found by step 27's review, finding H2: each read its own, and a sheet loaded
         //   between the two split the decision.
         const once = readOnce(rates);
-        // NEW IN STEP 28: the active versions in the world's store, read at this call, so a change
-        //   applies to the next call (step 28's README, decision D5).
-        const book = await registry.controls.active(tenant, contract.id);
+        // NEW IN STEP 28: the active versions in the store, read at this call, so a change applies
+        //   to the next call (step 28's README, decision D5).
+        const book = await controls.active(tenant, contract.id);
         let outcomes: ControlOutcome[] = [];
         let answer: ControlAnswer = "ALLOW";
         if (book.length > 0) {
@@ -466,6 +471,8 @@ export async function call(
           registry.brakes,
           // And the claim store's rates, outside any claim.
           registry.claims.rates,
+          // NEW IN STEP 28: and the world's rules, outside any claim.
+          registry.controls,
         );
       } catch (thrown) {
         // Masked as the real call's refusal is, as it leaves the claim (step 23's README, decision
@@ -609,7 +616,7 @@ export async function call(
                     //   DENIED. A pull waits for a draft that is past this point. So no proposal of
                     //   a braked agent enters EXECUTING after the brake takes effect (DSOR-OPS-01c;
                     //   step 25b's README, decisions L8, D4, and D8).
-                    const { invoices, reservations, slips, brakes, rates } = stores;
+                    const { invoices, reservations, slips, brakes, rates, controls } = stores;
                     await holdBrake(caller, contract, brakes, tenant);
                     // And line ③ again, under the slip's lock. A draft that passed
                     //   line ③ a moment before a tear-up waits for it, then is refused, and its
@@ -623,6 +630,7 @@ export async function call(
                       slips,
                       brakes,
                       rates,
+                      controls,
                       reserveFor,
                     );
                     // A control's approval stops the proposal at PENDING_APPROVAL.

@@ -23,14 +23,13 @@ const log = createDbLog(pool);
 
 /** A registry on the database whose rules are dsor.controls, through this pool. */
 function on(through: pg.Pool) {
-  const rules = createDbControls(through);
   return dbRegistry(
     through,
     storyDirectories(),
     handlersFor(),
     ownWorkFor(),
     readLifetimes(),
-    rules,
+    "database",
   );
 }
 const registry = on(pool);
