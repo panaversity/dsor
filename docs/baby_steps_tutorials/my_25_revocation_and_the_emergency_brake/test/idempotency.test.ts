@@ -583,11 +583,19 @@ describe("an answer whose write fails", () => {
 
     const first = pay("lost-release");
 
-    await released.promise;
+    // Until the release is written. A door that never releases ends the first request without
+    // one, and this test fails here, at once, rather than by its timeout.
+    await Promise.race([released.promise, first]);
+
+    expect(lost, "the first request's claim was released").toBe(true);
+
     // The store is back, and the same request is sent again, with the same key.
     resetClock();
 
     const second = await pay("lost-release");
+
+    // The lost reply reaches the first request's door, even if nothing took the claim back.
+    takenBack.resolve();
 
     expect(refusalOf(await first).code).toBe("EVIDENCE_STORE_UNAVAILABLE");
     expect(second.kind).toBe("result");

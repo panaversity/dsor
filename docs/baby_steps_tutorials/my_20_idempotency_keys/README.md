@@ -195,7 +195,9 @@ thing; this one shows how much rests on the claim and its answer naming the same
 
 ### Break 4 · the answer is not kept
 
-In `src/operations.ts`, replace the line that writes the answer on the claim with `void settleKey;`.
+In `src/operations.ts`, replace the line that writes a kept answer on the claim,
+`await settleKey(claim, answer, false).catch(() => settleKey(claim, answer, false));`, with
+`void settleKey;`.
 
 ```text
  Tests  13 failed | 688 passed | 1 skipped (702)
