@@ -357,6 +357,26 @@ describe("the agent's payments against del_100's day", () => {
     expect(await usedToday("org_456", "del_100")).toBe("40000.00");
   });
 
+  it("only a payment books against the day: an amount planted in invoice.issue books nothing", async () => {
+    // Decision 155: the stage booked any command whose arguments carried an `amount`, and the
+    // arguments keep every field a contract does not name. So the agent's invoice.issue of INV-1009,
+    // with 50,000.00 USD planted beside it, took that much of del_100's day, and kept it.
+    const answer = await callOperation(
+      AGENT,
+      "invoice.issue",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        expected_version: 1,
+        amount: { value: "50000.00", currency: "USD" },
+      },
+      { idempotencyKey: "issue-with-an-amount" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("COMMITTED");
+    expect(await reservationStates()).toStrictEqual([]);
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
   it("DSOR-DEL-06c: a prepared payment, READY, holds its reservation, because it may still run", async () => {
     expect((await pay("40000.00", "propose_only")).kind).toBe("result");
     expect(await reservationStates()).toStrictEqual(["held"]);

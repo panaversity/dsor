@@ -41,6 +41,9 @@ A reservation is settled only when the proposal's history holds the move that sa
 cannot be settled stays held, and counts against the day: the limit errs toward refusing, never
 toward paying more.
 
+Only a payment books. An `amount` written into another command, an `invoice.issue` for example,
+books nothing: that command spends nothing.
+
 A dry run, `validate_only`, books nothing: it reads the room left and answers from it. A prepared
 command, `propose_only`, books and holds, because it may still run. An amount in another currency
 than the limit's is over it, until step 26 brings exchange rates: an amount that cannot be compared

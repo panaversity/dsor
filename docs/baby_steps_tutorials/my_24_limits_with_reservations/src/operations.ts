@@ -1512,7 +1512,11 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
   // decision 140). After the proposal, because the reservation is keyed by it.
   const daily = slip.dailyLimit;
 
-  if (daily === undefined) {
+  // Decision 155: and only a payment books. The arguments keep every field a contract does not
+  // name, so any command that carried an `amount` was booked: the agent's invoice.issue with
+  // 50,000.00 planted in it took that much of the day, and kept it. The limit per payment above
+  // may look at any amount, because it only refuses; a booking takes room from the day.
+  if (daily === undefined || context.contract?.id !== "payment.create") {
     return carryOn(context);
   }
 
