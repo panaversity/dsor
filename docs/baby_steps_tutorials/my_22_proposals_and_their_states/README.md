@@ -84,9 +84,17 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
 | `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
 | `src/main.ts` | where each command of this run went, the stale cancel move by move, and a COMMITTED proposal refusing to move back |
-| `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, the race, the rights, and the door's moves on every path |
+| `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, even one with no "from", the race, the rights, and the door's moves on every path, a lost reply that lands late among them |
 | `test/proposals.db.test.ts` | new — twenty moves out of READY at once on a real server, and twenty out of COMMITTED |
 | the tests that pin the pipeline | ten stages now, and all 3,628,800 orderings walked one at a time |
+| `test/database.test.ts` | the new start-up refusal, one right at a time: an application that may change a proposal, a move or the map |
+| `test/control-plane-store.test.ts` | DSoR's store has six tables now: the proposals, their moves and the map |
+| `test/envelopes.test.ts` | a receipt names a real proposal, and one naming another company's proposal is never built |
+| `test/main.test.ts` | the demo's list of where each command went, one proposal move by move |
+| `test/payments.test.ts` | the careless handlers pass the proposal on |
+| `test/the-lock-at-start-up.test.ts` | the table a helper builds in the lock's way is `dsor.approvals` now, since `dsor.proposals` is real |
+| `test/support/story.ts` | the reset empties the proposals and their moves, and numbers them from 1 again |
+| `test/arguments.test.ts`, `test/cross-tenant.test.ts`, `test/decision-first.test.ts`, `test/freshness.test.ts`, `test/model-boundary.test.ts`, `test/operations.test.ts`, `test/request-id.test.ts` | no proposal counter to reset: a receipt names `prop_1`, or any real proposal |
 
 ## Run it
 
