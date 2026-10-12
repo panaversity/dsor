@@ -194,6 +194,29 @@ describe("C4: the owner switches on only a draft the owner wrote (step 28's READ
   });
 });
 
+// Found by step 28's review, finding M6: with the owner of record counted from active versions
+// only, or from versions not retired, every test passed. A suspension or a retirement must not
+// make the rule anyone's.
+describe("C4: the owner of record stays after a suspension and after a retirement (step 28's README, decision D10)", () => {
+  it.each([
+    ["suspends", "rule.suspend", "suspended"],
+    ["retires", "rule.retire", "retired"],
+  ] as const)(
+    "DSOR-CTL-02a: after cfo_100 %s version 8, admin_100 still may not switch on a version that names admin_100: cfo_100 is still the owner of record",
+    async (_what, name, status) => {
+      const w = await ruleWorldOnTuesday();
+      const text = { ...textOf(version9()), owner: "admin_100" };
+      const v9 = await drafted(w, ADMIN, text);
+      expect(heard(await ruleCall(w, CFO, name, { version: 8 }))).toBe("COMMITTED");
+      expect(heard(await activate(w, v9, ADMIN))).toBe("AUTHORIZATION_DENIED");
+      expect(await statuses(w)).toStrictEqual([
+        [8, status],
+        [9, "draft"],
+      ]);
+    },
+  );
+});
+
 describe("C4: a switch-on runs the version's tests first (DSOR-CTL-02c)", () => {
   it("DSOR-CTL-02c: a version with the quick rule fails its test 3, 50,000,000.00 PKR: the switch-on is refused VALIDATION_FAILED, before any work, nothing changes, and rupees still wait for the CFO under version 8", async () => {
     const w = await ruleWorldOnTuesday();
@@ -208,6 +231,24 @@ describe("C4: a switch-on runs the version's tests first (DSOR-CTL-02c)", () => 
       [9, "draft"],
     ]);
     expect(heard(await w.draft("INV-2004"))).toBe("PENDING_APPROVAL");
+  });
+
+  // Found by step 28's review, finding M7: with the tests run for a draft only, every test passed.
+  // Start-up runs the tests of active versions only, so a suspended version meets its tests again
+  // at its second switch-on.
+  it("DSOR-CTL-02c: a suspended version whose test now fails is not switched on again: VALIDATION_FAILED, before any work, and it stays suspended", async () => {
+    const v8 = { ...shippedRule(), status: "suspended" };
+    v8.tests = [{ ...v8.tests[0]!, expect: "REQUIRE_APPROVAL" }];
+    const w = await ruleWorldOnTuesday({
+      file: "controls.json",
+      text: JSON.stringify({ org_456: [v8] }),
+    });
+    const answer = await activate(w, 8);
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect("message" in answer && answer.message).toContain(
+      "org_456's control high-value-payment v8 fails its test 1: expects REQUIRE_APPROVAL, gives ALLOW",
+    );
+    expect(await statuses(w)).toStrictEqual([[8, "suspended"]]);
   });
 
   it("DSOR-CTL-02c: a dry run of a switch-on runs the tests too, and changes nothing: VALIDATED for version 9, refused for the quick rule", async () => {
