@@ -5,7 +5,7 @@ import { pinned, readBound, type Bound } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
-import { payloadHash } from "./canonical.ts";
+import { NotCanonical, payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { policyLook } from "./drift.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
@@ -295,11 +295,22 @@ export async function call(
     //   It checks line ①'s copy, the one the code gets (step 07's README, decision 9).
     //   Found by the Stage 2 review, and fixed from step 07 on.
     // Then the copy's fingerprint, its payload hash, which line ⑦ claims the
-    //   key with (DSOR-IDM-01b; step 20's README, decision 5). Canonicalizing in full: not built
-    //   yet, step 29.
+    //   key with (DSOR-IDM-01b; step 20's README, decision 5).
+    // NEW IN STEP 29: canonicalizing in full: a request whose text is not valid Unicode has no
+    //   canonical JSON, so it has no fingerprint, and line ⑥ refuses it (DSOR-APR-02b; step 29's
+    //   README, decision D6).
     const hash = line(6, () => {
       checkInput(name, registry.inputs, copy);
-      return payloadHash(copy);
+      try {
+        return payloadHash(copy);
+      } catch (error) {
+        if (!(error instanceof NotCanonical)) throw error;
+        const why = `${error.message}, so it has no canonical JSON and no fingerprint`;
+        throw new Refusal(
+          "VALIDATION_FAILED",
+          `the input of ${preview(name)} is not valid: ${why}`,
+        );
+      }
     });
 
     // Ours, not §21's: every URI in the checked input must name the active

@@ -3,7 +3,23 @@
 // 22). A payload hash is SHA-256 over the RFC 8785 canonical JSON of the input (DSOR-APR-02b,
 // section 26). Step 29 builds canonicalization in full; this step builds the part it needs,
 // early (step 20's README, decision 5).
+// NEW IN STEP 29: the last part. RFC 8785 takes only I-JSON, whose text is valid Unicode, so text
+// that holds a lone surrogate has no canonical JSON, and line ⑥ refuses it. An approval names the
+// fingerprint, and two programs must compute the same one (step 29's README, decision D6).
 import { createHash } from "node:crypto";
+
+/** NEW IN STEP 29: thrown for a value that has no canonical JSON: text that is not valid Unicode. */
+export class NotCanonical extends Error {}
+
+/** NEW IN STEP 29: the text, when it is valid Unicode, or the refusal of a lone surrogate. */
+function wellFormed(text: string): string {
+  // A surrogate is half of a character that UTF-16 writes in two parts. Alone, or in the wrong
+  // order, it is no character at all.
+  if (!text.isWellFormed()) {
+    throw new NotCanonical("it holds text that is not valid Unicode, a lone surrogate");
+  }
+  return text;
+}
 
 // A piece of the text: one already written, or a value still to write.
 type Piece = { text: string } | { value: unknown };
@@ -38,14 +54,15 @@ export function canonicalJson(value: unknown): string {
       const keys = Object.keys(inner).sort();
       next.push({ text: "{" });
       keys.forEach((key, at) => {
-        next.push({ text: `${at > 0 ? "," : ""}${JSON.stringify(key)}:` });
+        next.push({ text: `${at > 0 ? "," : ""}${JSON.stringify(wellFormed(key))}:` });
         next.push({ value: (inner as Record<string, unknown>)[key] });
       });
       next.push({ text: "}" });
     } else {
       // Text, a number, true, false, or null, as JSON writes it. RFC 8785 writes a number as
       // JavaScript does, so 1.50 and 1.5 are one value.
-      next.push({ text: JSON.stringify(inner) });
+      // NEW IN STEP 29: and text only when it is valid Unicode.
+      next.push({ text: JSON.stringify(typeof inner === "string" ? wellFormed(inner) : inner) });
     }
     // Pushed from the end, so the first piece is taken first. One at a time: a spread of a
     // long list would pass too many arguments to push.
