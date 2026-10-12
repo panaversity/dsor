@@ -84,7 +84,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
 | `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
 | `src/main.ts` | where each command of this run went, the stale cancel move by move, and a COMMITTED proposal refusing to move back |
-| `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, even one with no "from", the race, the rights, and the door's moves on every path, a lost reply that lands late among them |
+| `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, even one with no "from", the race, the rights, and the door's moves on every path, a lost reply that lands late or cannot be read back among them |
 | `test/proposals.db.test.ts` | new — twenty moves out of READY at once on a real server, and twenty out of COMMITTED |
 | the tests that pin the pipeline | ten stages now, and all 3,628,800 orderings walked one at a time |
 | `test/database.test.ts` | the new start-up refusal, one right at a time: an application that may change a proposal, a move or the map |
@@ -256,10 +256,11 @@ Copy `my_21_optimistic_concurrency` to a new folder and ask:
 **What this step leaves, said plainly.** The proposal id is not passed on to the system that does
 the work as its key: a proposal runs at most once because READY is left once, and passing a key on
 waits for a connector that takes one (`DSOR-IDM-03`), so `DSOR-IDM-04` is met in part. One key is
-one proposal, except after a released claim: the retry makes a second, and the first is DENIED.
+one proposal, except after a released claim: the retry makes a second. The first is DENIED, or
+stays PROPOSED if even DENIED cannot be written, and nothing here carries out a PROPOSED proposal.
 When the door's own move lost its reply, the claim is released only once DENIED is written,
-because only that proves the lost move can never land; if DENIED is refused or cannot be written,
-the answer is `OUTCOME_UNKNOWN` and the key stays taken.
+because only that proves the lost move can never land. If the proposal cannot be read back, or
+DENIED is refused or cannot be written, the answer is `OUTCOME_UNKNOWN` and the key stays taken.
 DENIED is the only finished state the map has out of PROPOSED, so a store that failed is DENIED too,
 with a cause that says it was the store. §26.2's last line moves COMMITTED and FAILED on to
 COMPENSATING, for commands that can be undone, such as `payment.create`; with no compensation here,

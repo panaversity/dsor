@@ -2072,12 +2072,24 @@ export function makeDoor(
           return Object.freeze({
             kind: "error",
             askedBy: principal.id,
-            envelope: refusal(
-              "EVIDENCE_STORE_UNAVAILABLE",
-              `${proposal} could not be moved to EXECUTING, so it was not carried out; nothing was done`,
-              id_,
-              principal.id,
-            ),
+            // Decision 153: "nothing was done" only when the read-back says so. When it fails too,
+            // the move may have been written. Told "safe to send again", the retry made a second
+            // proposal beside a first left EXECUTING whose handler never ran, a review of step 22
+            // measured. Unknown, then, with the claim kept for reconciliation.
+            envelope:
+              now === undefined
+                ? refusal(
+                    "OUTCOME_UNKNOWN",
+                    `${proposal} may or may not have been moved to EXECUTING, and could not be read back; it was not carried out, and is left for reconciliation`,
+                    id_,
+                    principal.id,
+                  )
+                : refusal(
+                    "EVIDENCE_STORE_UNAVAILABLE",
+                    `${proposal} could not be moved to EXECUTING, so it was not carried out; nothing was done`,
+                    id_,
+                    principal.id,
+                  ),
           });
         }
       }

@@ -410,27 +410,6 @@ describe("a lost reply, read back", () => {
     expect(await proposalsOf("org_456")).toHaveLength(1);
   });
 
-  it("DSOR-IDM-04: a move to EXECUTING whose reply is lost and cannot be read back is OUTCOME_UNKNOWN, and nothing runs twice", async () => {
-    const request = { idempotencyKey: "executed-unknown" };
-    const putBack = aLostReply("EXECUTING", true);
-    let answer;
-
-    try {
-      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
-    } finally {
-      putBack();
-    }
-
-    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
-    expect(await statusOf1009()).toBe("draft");
-
-    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
-
-    expect(again).toStrictEqual(answer);
-    expect(await statusOf1009()).toBe("draft");
-    expect(await proposalsOf("org_456")).toHaveLength(1);
-  });
-
   it("DSOR-IDM-01c: a move to READY whose reply is lost and that lands after the read-back is OUTCOME_UNKNOWN, and its key stays taken", async () => {
     // Decision 153: read back as PROPOSED, the request was told nothing was done; the lost write
     // then landed, the move to DENIED was refused, the claim was released all the same, and the

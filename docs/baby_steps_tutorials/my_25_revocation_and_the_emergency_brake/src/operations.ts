@@ -2813,9 +2813,10 @@ export function makeDoor(
           return Object.freeze({
             kind: "error",
             askedBy: principal.id,
-            // STEP 23, decision 139: "nothing was done" only when the read-back says so. When it
-            // fails too, the move may have been written, and a retry told "safe to send again"
-            // made a second proposal: unknown, then, with the claim kept for reconciliation.
+            // Decision 153: "nothing was done" only when the read-back says so. When it fails too,
+            // the move may have been written. Told "safe to send again", the retry made a second
+            // proposal beside a first left EXECUTING whose handler never ran, a review of step 22
+            // measured. Unknown, then, with the claim kept for reconciliation.
             envelope:
               now === undefined
                 ? refusal(

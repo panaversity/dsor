@@ -415,14 +415,16 @@ const historyOf = async (id: string): Promise<unknown[][]> =>
 /**
  * The program's store, failing every write of moves that names one of the states, until it is put
  * back, or only the first `times` of them. With `replyLost`, the write happens and only its reply
- * is lost (decision 137).
+ * is lost (decision 137). With `readBackFails`, once a write has failed, every read of a proposal's
+ * state fails too (decision 153).
  */
 function failingMovesInto(
   states: readonly ProposalState[],
-  { replyLost = false, times = Number.POSITIVE_INFINITY } = {},
+  { replyLost = false, times = Number.POSITIVE_INFINITY, readBackFails = false } = {},
 ): void {
   const connection = overPGlite(db);
   let left = times;
+  let failed = false;
 
   useDatabase({
     async query<T>(sql: string, params?: unknown[], tenant?: string) {
@@ -432,11 +434,16 @@ function failingMovesInto(
         states.some((state) => params?.includes(state))
       ) {
         left -= 1;
+        failed = true;
 
         if (replyLost) {
           await connection.query(sql, params, tenant);
         }
 
+        throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+      }
+
+      if (readBackFails && failed && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) {
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
 
@@ -799,6 +806,31 @@ describe("the door makes a proposal for every command and moves it", () => {
     expect(answer.kind).toBe("result");
     expect(await stateOf("org_456", "prop_1")).toBe("COMMITTED");
     expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
+  });
+
+  it("DSOR-IDM-01c: a move to EXECUTING whose reply is lost and cannot be read back is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Decision 153: step 22 told this request nothing was done, safe to send again, and released
+    // its claim. The same key then made a second proposal, COMMITTED, beside a first left EXECUTING
+    // whose handler never ran, a review measured.
+    const request = { idempotencyKey: "issue-1009-unreadable" };
+
+    failingMovesInto(["EXECUTING"], { replyLost: true, times: 1, readBackFails: true });
+
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    useDatabase(overPGlite(db));
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+    // The lost move is there, and the handler never ran.
+    expect(await stateOf("org_456", "prop_1")).toBe("EXECUTING");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+
+    const again = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(again).toStrictEqual(answer);
+    expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
   });
 
   it("DSOR-APR-01a: a move to EXECUTING that cannot be written leaves the proposal DENIED, never READY, and the key may be sent again", async () => {
