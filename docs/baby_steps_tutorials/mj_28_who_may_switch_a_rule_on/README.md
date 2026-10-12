@@ -133,6 +133,13 @@ decision below is Claude Code's, for the learner to review, and each one says wh
   every operation from both companies, as a person who may call it, and nobody in org_789 held a
   rule permission. *Downside:* one more login, and the suite's counts change: 138 attacks, where
   step 27 made 93. Found while building.
+- **D20. A draft is switched on only by the owner who wrote it.** DSoR shows no version's text yet,
+  so this is how the owner has read every word they switch on. A version that was switched on
+  before was reviewed then, so its owner may switch it on again, whoever wrote it. Found by the
+  hostile review (finding M4): cfo_100 switched on, by its number, a version 9 that admin_100
+  wrote, which said `false`. *Downside:* a version that someone else wrote must be written again by
+  the owner. A read of a version, and a fingerprint that ties a switch-on to the text it names,
+  wait for step 28b, whose policy compiler will write drafts for owners.
 
 ### The story's numbers
 

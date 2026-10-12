@@ -113,7 +113,8 @@ describe("C4: the owner switches a version on (step 28's README, decisions D10 a
     const w = await ruleWorldOnTuesday();
     const rule = "dsor://org_456/rule/board-above-45000";
     const text = { ...textOf(version9()), owner: "admin_100" };
-    expect(await ruleCall(w, CFO, "rule.draft", { draft: text }, rule)).toMatchObject({
+    // Changed by step 28's review, finding M4: admin_100 writes the draft that admin_100 owns.
+    expect(await ruleCall(w, ADMIN, "rule.draft", { draft: text }, rule)).toMatchObject({
       data: { version: 1 },
     });
     expect(heard(await ruleCall(w, CFO, "rule.activate", { version: 1 }, rule))).toBe(
@@ -163,6 +164,33 @@ describe("C4: each company's rules are its own (DSOR-TEN-01b)", () => {
       "board-above-10000",
     ]);
     expect(await statuses(w)).toStrictEqual([[8, "active"]]);
+  });
+});
+
+// Found by step 28's review, finding M4: a switch-on named a version by its number only, and DSoR
+// shows no version's text. admin_100 wrote a version 9 that said false and named cfo_100 its owner,
+// cfo_100 switched it on by its number, and INV-1008 was paid without the CFO.
+describe("C4: the owner switches on only a draft the owner wrote (step 28's README, decision D20)", () => {
+  it("DSOR-CTL-02a: admin_100 writes a version 9 that says false and names cfo_100 its owner: cfo_100 may not switch it on, and INV-1008 still waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    const text = { ...textOf(version9()), condition: "false", tests: [{ expect: "ALLOW" }] };
+    const v9 = await drafted(w, ADMIN, text);
+    expect(await activate(w, v9)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": version 9 of rule high-value-payment was written by another person, and its owner switches on only a draft the owner wrote',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+    expect(heard(await w.draft("INV-1008"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("Step 28: a version that was switched on before is switched on again by its owner, whoever wrote it: cfo_100 suspends version 8, which policy-compiler-fte wrote, and switches it on again", async () => {
+    const w = await ruleWorldOnTuesday();
+    expect(heard(await ruleCall(w, CFO, "rule.suspend", { version: 8 }))).toBe("COMMITTED");
+    expect(await activate(w, 8)).toMatchObject({ data: { version: 8, status: "active" } });
   });
 });
 

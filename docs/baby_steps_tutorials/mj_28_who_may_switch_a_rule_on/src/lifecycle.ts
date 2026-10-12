@@ -125,6 +125,14 @@ function decide(
     const why = `version ${number} of rule ${id} names another owner, and only its own owner may switch it on`;
     throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(move.name)}: ${why}`, "internal");
   }
+  // A draft is switched on only by the owner who wrote it. DSoR shows no version's text yet, so
+  // this is how the owner has read every word they switch on. A version switched on before was
+  // reviewed then (step 28's README, decision D20). Found by step 28's review, finding M4: cfo_100
+  // switched on, by its number, a version 9 that admin_100 wrote, which said false.
+  if (move.to === "active" && version?.status === "draft" && version.compiled_by !== caller.id) {
+    const why = `version ${number} of rule ${id} was written by another person, and its owner switches on only a draft the owner wrote`;
+    throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(move.name)}: ${why}`, "internal");
+  }
   if (version === undefined) {
     throw new Refusal("RESOURCE_NOT_FOUND", `no version ${number} of rule ${id}`, "internal");
   }
