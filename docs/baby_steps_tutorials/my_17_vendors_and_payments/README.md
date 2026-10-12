@@ -93,6 +93,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `src/main.ts` | each receipt line says its semantics; a section that lists what each command's contract says, makes a duplicate payment and takes it back, and shows the payments as they end |
 | `test/vendors-and-payments.test.ts` | new — the tables: the running example, the company in every key, the second lock, what the application may and may not do |
 | `test/payments.test.ts` | new — the two commands, the semantics on each receipt, a careless handler that says `atomic`, and the registry's refusals |
+| `test/main.test.ts` | three tests for the demo's new section: what each contract says, the receipts, and the payments as they end. And the agent's invoice lines are matched whole, because a payment's receipt also begins `accounts-payable-fte  COMMITTED` (decision 148) |
 | `test/database.test.ts` | the start-up refusals above, tested: invoices granted column by column, a vendor or more of a payment than its status, a payment's number, each one `SET ROLE` away, and through a helper function's owner |
 | `test/support/story.ts` | new — the one list of statements that put the story's rows back, for both tiers |
 | `test/support/cross-tenant-suite.ts` | rows of both kinds, looked up by kind and number, and a new canary. The same-state question is still asked of every command but a read, as in step 16, `payment.create` included |

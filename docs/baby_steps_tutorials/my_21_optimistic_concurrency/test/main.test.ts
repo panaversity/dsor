@@ -86,7 +86,12 @@ describe("the program a learner runs", () => {
 
     // Step 06's whole lesson, in the output rather than in a test double.
     expect(out).toContain("cfo_100               AUTHORIZATION_DENIED");
-    expect(out).toContain("accounts-payable-fte  COMMITTED");
+    // Decision 148: the agent's own line for INV-1009. "accounts-payable-fte  COMMITTED" alone
+    // matched the payment receipts step 17 added, and a review took invoice:issue from the agent
+    // with this test still passing.
+    expect(out).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} dsor://org_456/invoice/INV-1009`,
+    );
 
     // And the two refusals that must be word for word identical, so a caller cannot tell whether
     // INV-9999 exists.
@@ -232,7 +237,11 @@ describe("the program a learner runs", () => {
     const issued = `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} dsor://org_456/invoice/INV-1009`;
 
     expect(first).toContain(issued);
-    expect(second).toContain("accounts-payable-fte  CONFLICT");
+    // Decision 148: the invoice's own CONFLICT, by name. The agent's name and the code alone also
+    // matched the demo's second cancel of the agent's payment, which is refused on every run.
+    expect(second).toContain(
+      `${"accounts-payable-fte".padEnd(21)} ${"CONFLICT".padEnd(24)} retry: ${"never".padEnd(20)} INV-1009 is issued, and only a draft invoice can be issued`,
+    );
     expect(second).not.toContain(issued);
   });
 
