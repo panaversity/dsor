@@ -2161,17 +2161,26 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
  * STEP 23: what a dry run the rules allow is told: VALIDATED, ALLOW, and the fingerprint of
  * what was asked. Only with the decision on record, as for anything else (DSOR-OPR-06, decision
  * 138).
+ *
+ * Decision 154: and the semantics the command would run with, from its contract, as prepare and
+ * every receipt say them (DSOR-EXE-05b).
  */
 function aDryRunsAnswer(context: Context): OperationAnswer {
   const { principal, payloadHash: hash, recorded, requestId } = context;
+  const semantics = context.contract?.execution?.semantics;
 
-  if (principal === undefined || hash === undefined || recorded === undefined) {
+  if (
+    principal === undefined ||
+    hash === undefined ||
+    recorded === undefined ||
+    semantics === undefined
+  ) {
     return Object.freeze({
       kind: "error",
       askedBy: principal?.id ?? "(nobody)",
       envelope: refusal(
         "INTERNAL_ERROR",
-        `${nameOf(context.id)} finished a dry run without a principal, a payload hash and a record of the decision`,
+        `${nameOf(context.id)} finished a dry run without a principal, a payload hash, a record of the decision and its semantics`,
         requestId,
         principal?.id,
       ),
@@ -2181,7 +2190,7 @@ function aDryRunsAnswer(context: Context): OperationAnswer {
   return Object.freeze({
     kind: "result",
     askedBy: principal.id,
-    envelope: validated({ payloadHash: hash, requestId, principalId: principal.id }),
+    envelope: validated({ payloadHash: hash, semantics, requestId, principalId: principal.id }),
   });
 }
 

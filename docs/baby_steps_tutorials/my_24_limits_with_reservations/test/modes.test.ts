@@ -237,6 +237,20 @@ describe("validate_only is a dry run", () => {
     expect(made.kind === "result" && made.envelope.data?.["id"]).toBe("PAY-902");
   });
 
+  it("DSOR-EXE-05b: a dry run says whether the command could be undone, before anything is done", async () => {
+    // Decision 154: §24 says the agent needs that answer before it acts, not after, and a dry run is
+    // where it asks. A VALIDATED answer said everything else, and not this.
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: "dsor://org_456/invoice/INV-1009", amount: { value: "2500.00", currency: "USD" } },
+      { mode: "validate_only" },
+    );
+
+    expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
+    expect(answer.kind === "result" && answer.envelope.semantics).toBe("compensatable");
+  });
+
   it("DSOR-OPR-05: a dry run the rules refuse gets the same refusal execute would, and leaves nothing", async () => {
     const answer = await callOperation(
       AGENT,

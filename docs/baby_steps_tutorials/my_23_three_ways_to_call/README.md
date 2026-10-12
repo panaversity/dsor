@@ -17,8 +17,9 @@ await callOperation(agent, "payment.create", payment, { idempotencyKey }); // ex
 - **`validate_only`** asks "would this be allowed?". Every check runs and the decision is written
   in the log, as `VALIDATED`, so the log never shows a dry run as something that ran. Nothing else
   happens: no proposal, no claimed key, no payment, not even a payment number taken. The answer is
-  `VALIDATED`, with the decision, `ALLOW`. A dry run the rules refuse gets the same refusal a real
-  one would. A dry run needs no key, because there is nothing to send twice.
+  `VALIDATED`, with the decision, `ALLOW`, and the command's semantics: whether it could be undone,
+  which the agent needs to know before it acts. A dry run the rules refuse gets the same refusal a
+  real one would. A dry run needs no key, because there is nothing to send twice.
 - **`propose_only`** prepares the command and stops. The key is claimed, the proposal is made, every
   check runs, and the proposal moves to READY, "waiting to be released", and stays there. The answer
   is `READY` with the proposal's address. Releasing it is `proposal.execute`, which checks

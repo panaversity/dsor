@@ -101,7 +101,8 @@ export interface ErrorEnvelope {
  *
  * NEW IN STEP 23: or was prepared, READY, or was only asked about, VALIDATED (decision 138). The
  * schema says which parts each one needs: COMMITTED and READY name their proposal, its hash and its
- * semantics; VALIDATED names the decision, and has no proposal, because none was made.
+ * semantics; VALIDATED names the decision, and has no proposal, because none was made. Decision 154:
+ * VALIDATED says its semantics too, as every answer to a command must (DSOR-EXE-05b).
  */
 export interface ResultEnvelope {
   readonly outcome: "COMMITTED" | "READY" | "VALIDATED";
@@ -358,11 +359,17 @@ export function ready(answer: {
 /**
  * NEW IN STEP 23: the answer to a dry run the rules would allow (DSOR-OPR-06, decision 138).
  *
- * The decision, and the fingerprint of what was asked; no proposal, because none was made, and no
- * data, because nothing changed.
+ * The decision, the fingerprint of what was asked, and the semantics the command would run with; no
+ * proposal, because none was made, and no data, because nothing changed.
+ *
+ * Decision 154: the schema asks for semantics only on an answer that names a proposal, and this
+ * answer had none. But every answer to a command must say them (DSOR-EXE-05b), and §24 says the
+ * agent needs to know whether a command can be undone before it acts, which is when it sends a dry
+ * run.
  */
 export function validated(answer: {
   payloadHash: string;
+  semantics: string;
   requestId?: string;
   principalId?: string;
 }): ResultEnvelope {
@@ -370,6 +377,7 @@ export function validated(answer: {
     outcome: "VALIDATED" as const,
     decision: "ALLOW" as const,
     payload_hash: answer.payloadHash,
+    semantics: answer.semantics,
     correlation: correlationFor(answer.requestId, answer.principalId),
   });
 
