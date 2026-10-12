@@ -705,12 +705,6 @@ const authorize: Stage["run"] = (context) => {
   return carryOn(context);
 };
 
-/**
- * §21.6 — validate and canonicalize the input; compute the payload hash.
- *
- * Only partly, and the README says so. What is here is the copy-once and the can-it-be-written-down
- * check from step 04. Canonical JSON, where key order is settled, is step 29.
- */
 /** NEW IN STEP 17: an argument JSON would write as something else, named. */
 class NotWritable extends Error {}
 
@@ -727,6 +721,12 @@ function frozenAllTheWay<T>(value: T): T {
   return value;
 }
 
+/**
+ * §21.6 — validate and canonicalize the input; compute the payload hash.
+ *
+ * Only partly, and the README says so. What is here is the copy-once and the can-it-be-written-down
+ * check from step 04. Canonical JSON, where key order is settled, is step 29.
+ */
 const validateTheInput: Stage["run"] = (context) => {
   const askedBy = context.principal?.id ?? "(nobody)";
 
