@@ -25,6 +25,7 @@ import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { makeDoor } from "./support/door.ts";
+import { onOneDay } from "./support/one-day.ts";
 
 const DAILY = money("200000.00", "USD");
 
@@ -136,16 +137,19 @@ describe("reserving against the day", () => {
     expect(await usedToday("org_456", "del_100")).toBe("10000.00");
   });
 
-  it("DSOR-DEL-06a: fifty reservations sent together never take the day past its limit", async () => {
-    const ids = await Promise.all(Array.from({ length: 50 }, () => aProposal()));
-    const outcomes = await Promise.all(
-      ids.map((id) => reserve("org_456", id, "del_100", money("5000.00", "USD"), DAILY)),
-    );
+  // Decision 155: fifty bookings take long enough for midnight UTC to fall among them. Then they
+  // are on two days, and the test is skipped, not failed (test/support/one-day.ts).
+  it("DSOR-DEL-06a: fifty reservations sent together never take the day past its limit", (context) =>
+    onOneDay(context, async () => {
+      const ids = await Promise.all(Array.from({ length: 50 }, () => aProposal()));
+      const outcomes = await Promise.all(
+        ids.map((id) => reserve("org_456", id, "del_100", money("5000.00", "USD"), DAILY)),
+      );
 
-    expect(outcomes.filter((o) => o.kind === "reserved")).toHaveLength(40);
-    expect(outcomes.filter((o) => o.kind === "over")).toHaveLength(10);
-    expect(await usedToday("org_456", "del_100")).toBe("200000.00");
-  });
+      expect(outcomes.filter((o) => o.kind === "reserved")).toHaveLength(40);
+      expect(outcomes.filter((o) => o.kind === "over")).toHaveLength(10);
+      expect(await usedToday("org_456", "del_100")).toBe("200000.00");
+    }));
 });
 
 /**
@@ -294,24 +298,26 @@ const totalsOf = async (): Promise<string[]> => {
 };
 
 describe("the agent's payments against del_100's day", () => {
-  it("DSOR-DEL-06e: four payments of 50,000.00 fill the day, and the fifth is LIMIT_EXCEEDED", async () => {
-    for (let i = 0; i < 4; i += 1) {
-      expect((await pay("50000.00")).kind).toBe("result");
-    }
+  // Decision 155: on one day, or skipped, as the fifty above.
+  it("DSOR-DEL-06e: four payments of 50,000.00 fill the day, and the fifth is LIMIT_EXCEEDED", (context) =>
+    onOneDay(context, async () => {
+      for (let i = 0; i < 4; i += 1) {
+        expect((await pay("50000.00")).kind).toBe("result");
+      }
 
-    const fifth = await pay("50000.00");
+      const fifth = await pay("50000.00");
 
-    expect(fifth.kind === "error" && fifth.envelope.code).toBe("LIMIT_EXCEEDED");
-    expect(fifth.kind === "error" && fifth.envelope.message).toMatch(/200000\.00 USD a day/);
-    expect(await usedToday("org_456", "del_100")).toBe("200000.00");
-    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual([
-      "COMMITTED",
-      "COMMITTED",
-      "COMMITTED",
-      "COMMITTED",
-      "DENIED",
-    ]);
-  });
+      expect(fifth.kind === "error" && fifth.envelope.code).toBe("LIMIT_EXCEEDED");
+      expect(fifth.kind === "error" && fifth.envelope.message).toMatch(/200000\.00 USD a day/);
+      expect(await usedToday("org_456", "del_100")).toBe("200000.00");
+      expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual([
+        "COMMITTED",
+        "COMMITTED",
+        "COMMITTED",
+        "COMMITTED",
+        "DENIED",
+      ]);
+    }));
 
   it("DSOR-DEL-06a: a payment made commits its reservation, and keeps its amount on the day", async () => {
     await pay("31400.00");
@@ -383,18 +389,20 @@ describe("the agent's payments against del_100's day", () => {
     expect(await reservationStates()).toStrictEqual(["held"]);
   });
 
-  it("DSOR-OPR-06: a dry run reserves nothing, and is refused when the day has no room for it", async () => {
-    expect((await pay("40000.00", "validate_only")).kind).toBe("result");
-    expect(await reservationStates()).toStrictEqual([]);
+  // Decision 155: on one day, or skipped, as the fifty above.
+  it("DSOR-OPR-06: a dry run reserves nothing, and is refused when the day has no room for it", (context) =>
+    onOneDay(context, async () => {
+      expect((await pay("40000.00", "validate_only")).kind).toBe("result");
+      expect(await reservationStates()).toStrictEqual([]);
 
-    for (let i = 0; i < 4; i += 1) {
-      await pay("50000.00");
-    }
+      for (let i = 0; i < 4; i += 1) {
+        await pay("50000.00");
+      }
 
-    const dry = await pay("0.01", "validate_only");
+      const dry = await pay("0.01", "validate_only");
 
-    expect(dry.kind === "error" && dry.envelope.code).toBe("LIMIT_EXCEEDED");
-  });
+      expect(dry.kind === "error" && dry.envelope.code).toBe("LIMIT_EXCEEDED");
+    }));
 
   it("DSOR-DEL-06d: a decision that cannot be recorded after the amount was booked gives it back", async () => {
     const connection = overPGlite(db);

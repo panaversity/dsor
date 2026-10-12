@@ -18,6 +18,7 @@ import { operationIds } from "../src/operations.ts";
 import { rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { onOneDay } from "./support/one-day.ts";
 
 /**
  * The program's own database, which it keeps on disk between runs.
@@ -131,55 +132,59 @@ describe("the program a learner runs", () => {
     expect(retryable.every((line) => line.includes("DEPENDENCY_TIMEOUT"))).toBe(true);
   });
 
-  it("DSOR-EXE-02: the log it prints has the decisions in it, and the chain verifies", () => {
-    const out = demo().report;
-    const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
+  // Decision 155: four tests in this file count what one day's payments did: how many of the ten
+  // were made, and what a second run finds left of the day. Across midnight UTC the demo's payments
+  // fall on two days, and each of the four is skipped, not failed (test/support/one-day.ts).
+  it("DSOR-EXE-02: the log it prints has the decisions in it, and the chain verifies", (context) =>
+    onOneDay(context, () => {
+      const out = demo().report;
+      const rows = out.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line));
 
-    // STEP 10: two logs, printed one after the other — org_456's seventeen records and
-    // org_789's two. STEP 12: seventeen, not fifteen, because the generated section refuses
-    // one request per operation, and a refusal is a decision.
-    // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
-    // each payment operation from the generated section, and the agent's three payment decisions.
-    // STEP 18: 30, with the two refusals of the slip's section. STEP 19: 32, with the
-    // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
-    // two payments and a conflict. The replays leave none.
-    // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
-    // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
-    // NEW IN STEP 24: 51, with del_100's day: six payments made and four refused.
-    // Decision 152: 52, with the agent's read of INV-1009 before it issues it.
-    expect(rows).toHaveLength(52);
+      // STEP 10: two logs, printed one after the other — org_456's seventeen records and
+      // org_789's two. STEP 12: seventeen, not fifteen, because the generated section refuses
+      // one request per operation, and a refusal is a decision.
+      // STEP 13: one more refusal for invoice.list, and three pages read. STEP 17: 28, with a refusal for
+      // each payment operation from the generated section, and the agent's three payment decisions.
+      // STEP 18: 30, with the two refusals of the slip's section. STEP 19: 32, with the
+      // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
+      // two payments and a conflict. The replays leave none.
+      // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
+      // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
+      // NEW IN STEP 24: 51, with del_100's day: six payments made and four refused.
+      // Decision 152: 52, with the agent's read of INV-1009 before it issues it.
+      expect(rows).toHaveLength(52);
 
-    // Denials recorded, which is step 08's point: a program that logged only its successes
-    // would have lost every one of them. Five of the nine are this step's — four refusals for being
-    // outside one company, and the agent's unsaid request counted once in each employer's log.
-    // Ten since the review: a principal planted in the arguments that is not the caller is refused
-    // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
-    // since step 12: one refusal per operation from the generated section.
-    expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(24); // STEP 24: four over the day
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(28); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; decision 152: the agent's read of INV-1009
+      // Denials recorded, which is step 08's point: a program that logged only its successes
+      // would have lost every one of them. Five of the nine are this step's — four refusals for being
+      // outside one company, and the agent's unsaid request counted once in each employer's log.
+      // Ten since the review: a principal planted in the arguments that is not the caller is refused
+      // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
+      // since step 12: one refusal per operation from the generated section.
+      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(24); // STEP 24: four over the day
+      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(28); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; decision 152: the agent's read of INV-1009
 
-    // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
-    // STEP 14: the gaps — 1, 5, 24, 26, 28 since decision 152 — are the records of reads, which
-    // this filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
-    // pages, each written down after the decision that allowed it. The agent's reads leave none.
-    expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 27, 29,
-      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
-      53, 54, 0, 1,
-    ]);
+      // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
+      // STEP 14: the gaps — 1, 5, 24, 26, 28 since decision 152 — are the records of reads, which
+      // this filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
+      // pages, each written down after the decision that allowed it. The agent's reads leave none.
+      expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
+        0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 27, 29,
+        30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
+        53, 54, 0, 1,
+      ]);
 
-    expect(out).toContain("org_456: 55 records, chain verifies against the head: true"); // Decision 152: 50 decisions, 5 reads
-    expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
-    expect(out).toContain("2 refusals counted without a record");
+      expect(out).toContain("org_456: 55 records, chain verifies against the head: true"); // Decision 152: 50 decisions, 5 reads
+      expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
+      expect(out).toContain("2 refusals counted without a record");
 
-    // The line that shows what a checkpoint is for — and only as far as it goes. Hash chaining alone
-    // says a shortened log is fine, because every link in it still holds; the head notices, for a log
-    // held in memory. It does NOT notice a row deleted from the table, because `theHead("org_456")` is a query
-    // over that table and moves with it. The demo's wording says so, and so does `theHead("org_456")`.
-    expect(out).toContain(
-      "drop one from the copy we are holding: the chain alone still says true, and against the head false",
-    );
-  });
+      // The line that shows what a checkpoint is for — and only as far as it goes. Hash chaining alone
+      // says a shortened log is fine, because every link in it still holds; the head notices, for a log
+      // held in memory. It does NOT notice a row deleted from the table, because `theHead("org_456")` is a query
+      // over that table and moves with it. The demo's wording says so, and so does `theHead("org_456")`.
+      expect(out).toContain(
+        "drop one from the copy we are holding: the chain alone still says true, and against the head false",
+      );
+    }));
 
   it("DSOR-AUD-01: an unknown operation is recorded with no operation field", () => {
     // The whole line for record 10 (STEP 14: two reads sit before it now; decision 152: and the
@@ -208,69 +213,78 @@ describe("the program a learner runs", () => {
    * Note what the chain does across that boundary: run two reads records written by a process that
    * no longer exists, links its own onto them, and the whole chain still verifies. The fingerprint of
    * the last record of run one is what run two's first record points at.
+   *
+   * Decision 155: run two must find run one's day. Past midnight UTC it starts a fresh day, makes
+   * the payments run one made, and prints 108 records, not 106: skipped then, not failed.
    */
-  it("DSOR-AUD-01: the log survives the program stopping, and the chain survives with it", () => {
-    const records = (out: string, company: string): number =>
-      Number(new RegExp(`^${company}: (\\d+) records, chain verifies`, "m").exec(out)?.[1] ?? "-1");
+  it("DSOR-AUD-01: the log survives the program stopping, and the chain survives with it", (context) =>
+    onOneDay(context, () => {
+      const records = (out: string, company: string): number =>
+        Number(
+          new RegExp(`^${company}: (\\d+) records, chain verifies`, "m").exec(out)?.[1] ?? "-1",
+        );
 
-    const first = demo().report;
+      const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(55); // Decision 152: 50 decisions and 5 reads
-    expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 55 records, chain verifies against the head: true");
+      expect(records(first, "org_456")).toBe(55); // Decision 152: 50 decisions and 5 reads
+      expect(records(first, "org_789")).toBe(2);
+      expect(first).toContain("org_456: 55 records, chain verifies against the head: true");
 
-    // A second process. Nothing is shared with the first but the directory on disk.
-    const second = demo().report;
+      // A second process. Nothing is shared with the first but the directory on disk.
+      const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(108); // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it never happen
-    expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 108 records, chain verifies against the head: true");
-    expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
+      expect(records(second, "org_456")).toBe(108); // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it never happen
+      expect(records(second, "org_789")).toBe(4);
+      expect(second).toContain("org_456: 108 records, chain verifies against the head: true");
+      expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
-    // Run one's records are still there, unchanged, among run two's.
-    expect(second).toContain(" 0  ALLOW  invoice.get@1");
-    expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      102,
-    );
+      // Run one's records are still there, unchanged, among run two's.
+      expect(second).toContain(" 0  ALLOW  invoice.get@1");
+      expect(
+        second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line)),
+      ).toHaveLength(102);
 
-    // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
-    // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
-    // died with the process — every run issued it afresh.
-    //
-    // STEP 17: the invoice's own line. The agent's payment is committed on every run, a new
-    // number each time, so "no COMMITTED at all" stopped being the question.
-    const issued = `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} dsor://org_456/invoice/INV-1009`;
+      // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
+      // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
+      // died with the process — every run issued it afresh.
+      //
+      // STEP 17: the invoice's own line. The agent's payment is committed on every run, a new
+      // number each time, so "no COMMITTED at all" stopped being the question.
+      const issued = `${"accounts-payable-fte".padEnd(21)} ${"COMMITTED".padEnd(24)} dsor://org_456/invoice/INV-1009`;
 
-    expect(first).toContain(issued);
-    // Decision 148: the invoice's own CONFLICT, by name. The agent's name and the code alone also
-    // matched the demo's second cancel of the agent's payment, which is refused on every run.
-    // Decision 152: and so the issue is sent on the version the agent's read returned. On run two
-    // that read finds INV-1009 issued, at version 2, and the issue is told the invoice is not a
-    // draft. A main.ts that sent version 1, whatever the read said, would be told STALE_STATE.
-    expect(second).toContain(
-      `${"accounts-payable-fte".padEnd(21)} ${"CONFLICT".padEnd(24)} retry: ${"never".padEnd(20)} INV-1009 is issued, and only a draft invoice can be issued`,
-    );
-    expect(second).not.toContain(issued);
-  });
+      expect(first).toContain(issued);
+      // Decision 148: the invoice's own CONFLICT, by name. The agent's name and the code alone also
+      // matched the demo's second cancel of the agent's payment, which is refused on every run.
+      // Decision 152: and so the issue is sent on the version the agent's read returned. On run two
+      // that read finds INV-1009 issued, at version 2, and the issue is told the invoice is not a
+      // draft. A main.ts that sent version 1, whatever the read said, would be told STALE_STATE.
+      expect(second).toContain(
+        `${"accounts-payable-fte".padEnd(21)} ${"CONFLICT".padEnd(24)} retry: ${"never".padEnd(20)} INV-1009 is issued, and only a draft invoice can be issued`,
+      );
+      expect(second).not.toContain(issued);
+    }));
 
   // The hashes move every run, because the time a decision was made is part of what is hashed.
-  it("DSOR-AUD-04b: two fresh runs print the same report with different hashes", () => {
-    const first = demo();
+  // Decision 155: and a run that crosses midnight UTC makes more of the ten payments than one that
+  // does not, so the reports differ: skipped then, not failed.
+  it("DSOR-AUD-04b: two fresh runs print the same report with different hashes", (context) =>
+    onOneDay(context, () => {
+      const first = demo();
 
-    rmSync(ITS_DATABASE, { recursive: true, force: true });
+      rmSync(ITS_DATABASE, { recursive: true, force: true });
 
-    const second = demo();
+      const second = demo();
 
-    // The same report once the hashes are normalised.
-    expect(second.report).toBe(first.report);
+      // The same report once the hashes are normalised.
+      expect(second.report).toBe(first.report);
 
-    // And genuinely different underneath — ten hashes each, none of them shared.
-    const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
+      // And genuinely different underneath — ten hashes each, none of them shared.
+      const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(57); // Decision 152: 55 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(57);
-    expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
-  });
+      expect(hashesOf(first.raw)).toHaveLength(57); // Decision 152: 55 and 2, reads included
+      expect(hashesOf(second.raw)).toHaveLength(57);
+      expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
+    }));
 
   // STEP 10: what the demo shows about two companies.
   // STEP 11: the two lines that are this step. An evaluation inverted them — no company
@@ -533,21 +547,23 @@ describe("the program a learner runs", () => {
     expect(out).toContain("  payments made: 0 by the first two, 1 by the third");
   });
 
-  it("DSOR-DEL-06e: the demo fills del_100's day, and the payment that would pass it is refused", () => {
-    // NEW IN STEP 24 (decision 140). On a fresh database: 34,500.00 used by the sections before,
-    // six of ten payments of 25,000.00 made, and the day stops at 184,500.00.
-    const out = demo().report;
+  it("DSOR-DEL-06e: the demo fills del_100's day, and the payment that would pass it is refused", (context) =>
+    onOneDay(context, () => {
+      // NEW IN STEP 24 (decision 140). On a fresh database: 34,500.00 used by the sections before,
+      // six of ten payments of 25,000.00 made, and the day stops at 184,500.00. Decision 155: all
+      // on one day, or skipped.
+      const out = demo().report;
 
-    expect(out).toContain(
-      "del_100's day: 200000.00 USD. Ten payments of 25,000.00, one after another:",
-    );
-    expect(out).toContain("  the day had used 34500.00 USD before them");
-    expect(out).toContain("  made 6, refused 4");
-    expect(out).toContain(
-      `${"accounts-payable-fte".padEnd(21)} ${"LIMIT_EXCEEDED".padEnd(24)} retry: ${"after_delay".padEnd(20)} 25000.00 USD would take del_100 past its limit of 200000.00 USD a day`,
-    );
-    expect(out).toContain("  the day has used 184500.00 USD of 200000.00");
-  });
+      expect(out).toContain(
+        "del_100's day: 200000.00 USD. Ten payments of 25,000.00, one after another:",
+      );
+      expect(out).toContain("  the day had used 34500.00 USD before them");
+      expect(out).toContain("  made 6, refused 4");
+      expect(out).toContain(
+        `${"accounts-payable-fte".padEnd(21)} ${"LIMIT_EXCEEDED".padEnd(24)} retry: ${"after_delay".padEnd(20)} 25000.00 USD would take del_100 past its limit of 200000.00 USD a day`,
+      );
+      expect(out).toContain("  the day has used 184500.00 USD of 200000.00");
+    }));
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
     // STEP 15: under each read, a line of its own: the mode, when, and from where. The time
