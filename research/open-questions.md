@@ -734,3 +734,25 @@ for a human. An agent may gather evidence; it does not settle these alone.
     text in a straight line. A library that runs it with backtracking can take exponential time on
     a text the agent sends. Step 27's learner build refuses `matches` at start-up. Should Appendix
     B require RE2's semantics, or §44 bound the time of one evaluation?
+    Step 28's learner build found a second case: CEL's macros, `all`, `exists`, `exists_one`,
+    `map`, and `filter`, loop, and a loop inside a loop multiplies the time. Seven levels of
+    ten-element lists took about a second, and every company's calls waited. Step 28 lets a person
+    write a condition over the network, so its learner build refuses a condition that loops. A
+    bound on the steps of one evaluation would allow loops and still stop the stall.
+
+114. **Who may own a new control, and who answers when its owner abuses it?** DSOR-CTL-02a says a
+    control is activated, suspended, or retired "only by its human control owner". It does not say
+    who may create a control, or name its owner. In step 28's learner build, a person who holds
+    `rule:draft` and `rule:manage` writes a new rule, names themselves its owner, and switches it
+    on. A rule that refuses every payment then stops the company, and DSOR-CTL-02a leaves nobody
+    else who may switch it off, not a tenant administrator, not a second owner. Should §17.4 say
+    who appoints a control's owner, or give a recorded override that a second person must approve?
+
+115. **How does an owner review a draft that someone else wrote?** §17.2 lets `compiled_by` be an
+    agent and requires `reviewed_by` to be a human, so the specification expects a policy
+    compiler to draft and an owner to review. But no operation reads a draft, and nothing ties a
+    switch-on to the text that the owner read. In step 28's learner build, the owner of a rule
+    switched on, by its number, a version 9 that someone else wrote, which said `false`. Its
+    learner build now lets the owner switch on only a draft the owner wrote. Should a switch-on
+    name a fingerprint of the version's text, as an approval names a fingerprint of the request
+    (§26.3), with an operation that reads a version?

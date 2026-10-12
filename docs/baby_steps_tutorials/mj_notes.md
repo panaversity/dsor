@@ -1658,6 +1658,46 @@ predictions, each settled by a real run in a scratch copy of the step.
 - **Design questions for step 28:** whether a broken control should stop only its own company (D2's
   other way), and how a stale control behaves through `on_stale` and its grace (D3).
 
+### Step 28, who may switch a rule on, built first by the learner's choice (2026-10-12 to 2026-10-13)
+
+The understanding session of step 28 began from zero, and the learner said the explanations assumed
+half of what they knew. Then they asked "why not build first understand later", heard the reason
+for the usual order, and chose to build first, with a visual story after. The map's step 28 holds
+two ideas, so the build is its first half, who may switch a rule on; the second half, where a rule
+came from, is step 28b, not built. Step 28 copies step 27, with a database of its own.
+
+- **The decisions:** D1 to D19 are Claude Code's, written before any code, each with its downside;
+  D19, org_789's tenant administrator, came while building. The review changed D5, D6, D10, D12,
+  D15, and D16, and added D20 and D21. All of them are for the learner to review.
+- **The pieces:** A, the rules in a store, read by line ⑩ at every call; B, `dsor.controls` on the
+  database; C, `rule.draft` and the four contracts; D, `rule.activate` and its race on the
+  database; E, `rule.suspend` and `rule.retire`; G, the program. One commit each, each test red
+  first, each broken on purpose.
+- **The breaks:** B1 to B4 went as the design expected. B2 showed two checks, line ⑤ and line ⑨,
+  either of which holds. The break of line ⑥ during piece C found a hole: a draft that named a
+  time it took effect looked switched on before, and could move the owner of record.
+- **The sweep:** 58 small breaks, 16 survived, 13 of them missing tests. Run again with a test for
+  each, 13 were caught; the other 3 change nothing that DSoR does.
+- **The review:** two high findings, five medium, sixteen low. The high ones: in memory, a switch-on
+  was two moves, so a retirement at the same moment left no rule, and a payment between the two
+  moves met none; and a condition could loop inside a loop and stall every company. The medium
+  ones: a new rule's owner names themselves (left open, question 114); the owner switched on a
+  version by its number, unread (D20, and question 115); a deadlock on the database, shown live;
+  and two missing tests. The database now has a trigger that draws a version's moves.
+- **Lessons for the next builds:**
+  - A change of two parts is one step of the store, or it is not one change. In memory, a wait
+    between the parts lets another call in.
+  - Inside a claim, read every store through the claim. A second connection from the same pool
+    waits for ever when the pool is full.
+  - A rule that a person writes over the network is code that the server runs: bound what it can
+    do, its loops too.
+  - Write a commit's counts only after the run that prints them. Twice a count was written before
+    its run, and twice it was wrong.
+  - Copying a step's `.env` into a scratch copy was refused once. Run database breaks in a copy
+    whose own `.env` was written by command for its own server, such as the sweep's.
+- **For the learner's session:** the visual story, D1 to D21, the four breaks to predict, and open
+  questions 113 to 115.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
