@@ -80,22 +80,24 @@ async function whileFailing<T>(sql: string, times: number, run: () => Promise<T>
   }
 }
 
-/** A proposal the agent made under del_100, walked to a state, as approvals one day will. */
-async function underDel100(path: readonly ProposalState[]): Promise<string> {
+/**
+ * A proposal `actor` asked for, as `requester` says, walked to a state, as approvals one day will.
+ * Decision 156: any requester, so a test can make proposals under another slip, or none.
+ */
+async function aProposal(
+  requester: Readonly<Record<string, unknown>>,
+  actor: string,
+  path: readonly ProposalState[],
+): Promise<string> {
   const id = await propose({
     tenant: "org_456",
     operation: "payment.create@1",
     mode: "execute",
     payload: "{}",
     payloadHash: "sha256:0",
-    requester: JSON.stringify({
-      mode: "unattended",
-      subject: "user_123",
-      actor_chain: ["accounts-payable-fte"],
-      delegation: "del_100",
-    }),
+    requester: JSON.stringify(requester),
     idempotencyKey: `revoke-${Math.random()}`,
-    actor: "accounts-payable-fte",
+    actor,
     cause: "payment.create@1 invoked",
   });
   const steps = path.slice(1).map((to, i) => [path[i] as ProposalState, to, `to ${to}`] as const);
@@ -105,6 +107,29 @@ async function underDel100(path: readonly ProposalState[]): Promise<string> {
   }
 
   return id;
+}
+
+/** A proposal the agent made under del_100, walked to a state, as approvals one day will. */
+function underDel100(path: readonly ProposalState[]): Promise<string> {
+  return aProposal(
+    {
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+      delegation: "del_100",
+    },
+    "accounts-payable-fte",
+    path,
+  );
+}
+
+/** A slip in org_456 that cfo_100 signed, for an agent of no one's, as an owner would add one. */
+async function aSlipSignedByCfo(): Promise<void> {
+  await asTheOwner(() =>
+    db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+             VALUES ('org_456', 'del_200', 'cfo_100', 'another-agent', ARRAY['invoice:read'],
+                     'active', '2099-12-31T23:59:59Z')`),
+  );
 }
 
 let db: PGlite;
@@ -263,6 +288,49 @@ describe("what was waiting under the slip", () => {
 
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
+
+  it("DSOR-DEL-04c: proposals under another slip, or asked for directly, are left as they are", async () => {
+    // Decision 156: one line of the statement keeps the cancelling to the revoked slip, and no test
+    // held it. Without it, user_123 revoking del_100 cancelled a payment approved under del_200,
+    // which cfo_100 signed, and gave its amount back to the day.
+    await aSlipSignedByCfo();
+
+    const mine = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+    const another = await aProposal(
+      {
+        mode: "unattended",
+        subject: "cfo_100",
+        actor_chain: ["another-agent"],
+        delegation: "del_200",
+      },
+      "another-agent",
+      ["PROPOSED", "PENDING_APPROVAL", "APPROVED"],
+    );
+    const direct = await aProposal(
+      { mode: "direct", subject: "cfo_100", actor_chain: [] },
+      "cfo_100",
+      ["PROPOSED", "PENDING_APPROVAL"],
+    );
+
+    await reserve(
+      "org_456",
+      another,
+      "del_200",
+      money("40000.00", "USD"),
+      money("200000.00", "USD"),
+    );
+
+    const answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+      target: DEL_100,
+      reason: "stop",
+    });
+
+    expect(answer.kind === "result" && answer.envelope.data?.["cancelled"]).toBe(1);
+    expect(await stateOf("org_456", mine)).toBe("CANCELLED");
+    expect(await stateOf("org_456", another)).toBe("APPROVED");
+    expect(await stateOf("org_456", direct)).toBe("PENDING_APPROVAL");
+    expect(await usedToday("org_456", "del_200")).toBe("40000.00");
+  });
 });
 
 describe("what the application may do to a slip", () => {
@@ -317,15 +385,6 @@ describe("what the application may do to a slip", () => {
 // NEW IN STEP 25, decision 143: who may revoke is decided at §21.9, before the decision is recorded.
 
 describe("§21.9: the target's own rules, decided and recorded", () => {
-  /** A slip in org_456 that cfo_100 signed, for an agent of no one's, as an owner would add one. */
-  async function aSlipSignedByCfo(): Promise<void> {
-    await asTheOwner(() =>
-      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
-               VALUES ('org_456', 'del_200', 'cfo_100', 'another-agent', ARRAY['invoice:read'],
-                       'active', '2099-12-31T23:59:59Z')`),
-    );
-  }
-
   it("DSOR-DEL-04a: user_123, who may revoke slips, may not revoke one cfo_100 signed, and the log says DENY", async () => {
     // Decision 143: this was refused in the handler, after §21.11 had recorded ALLOW.
     await aSlipSignedByCfo();
