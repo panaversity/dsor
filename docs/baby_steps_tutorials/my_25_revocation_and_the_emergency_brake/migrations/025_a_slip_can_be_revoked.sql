@@ -17,9 +17,11 @@ ALTER TABLE dsor.delegations
 GRANT UPDATE (status, revoked_by, revoked_at, revoked_reason) ON dsor.delegations TO dsor_runtime;
 
 -- Restrictive, so AND'ed with the tenant policy: an UPDATE may touch only an active or suspended
--- slip, and may leave it only revoked, with who revoked it. Without it, the right to revoke would be
--- the right to un-revoke; without the who, a revocation nobody gave (decision 143). Decision 156: a
--- suspended slip too, or its signer could not tear it up before someone made it active again.
+-- slip, and may leave it only revoked, with who revoked it, when and why. Without it, the right to
+-- revoke would be the right to un-revoke; without the who, a revocation nobody gave (decision 143);
+-- without the when and the why, one nobody can explain afterwards (decision 156). Decision 156
+-- too: a suspended slip, or its signer could not tear it up before someone made it active again.
 CREATE POLICY a_slip_only_becomes_revoked ON dsor.delegations AS RESTRICTIVE FOR UPDATE
   USING      (status IN ('active', 'suspended'))
-  WITH CHECK (status = 'revoked' AND revoked_by IS NOT NULL);
+  WITH CHECK (status = 'revoked' AND revoked_by IS NOT NULL
+              AND revoked_at IS NOT NULL AND revoked_reason IS NOT NULL);

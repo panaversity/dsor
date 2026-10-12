@@ -387,9 +387,12 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    THEN '(status = ANY (ARRAY[''active''::text, ''suspended''::text]))' END,
               -- NEW IN STEP 25: what the second policy lets a row become: anything, the program's
               -- to say, except for a slip, which only becomes revoked.
-              -- Decision 143: and with who revoked it.
+              -- Decision 143: and with who revoked it. Decision 156: and when and why, as
+              -- PostgreSQL writes it back, measured.
               CASE WHEN rel = to_regclass('dsor.delegations')
-                   THEN '((status = ''revoked''::text) AND (revoked_by IS NOT NULL))' ELSE 'true' END
+                   THEN '((status = ''revoked''::text) AND (revoked_by IS NOT NULL)'
+                        || ' AND (revoked_at IS NOT NULL) AND (revoked_reason IS NOT NULL))'
+                   ELSE 'true' END
          FROM tenant_table
      )
      SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypasses,

@@ -171,6 +171,27 @@ describe("the slip, in DSoR's own store", () => {
     // Not testing nothing: the owner may, and the slip is still there afterwards for the others.
     await owner("UPDATE dsor.delegations SET status = 'active' WHERE id = 'del_100'");
   });
+
+  it("DSOR-DEL-04a: a revocation the application writes says who, when and why, or is refused", async () => {
+    // Decision 156: the slips' second policy asked only who (decision 143, in revoke.test.ts), so
+    // the application could mark a slip revoked with no time and no reason, a review measured. The
+    // program always writes all three; now the database makes sure of it, as for a brake's time and
+    // reason.
+    const revoke = (columns: string): Promise<string> =>
+      asTheApplication(
+        `UPDATE dsor.delegations SET status = 'revoked', ${columns} WHERE id = 'del_100'`,
+      );
+    const WHO = "revoked_by = 'user_123'";
+    const WHEN = "revoked_at = now()";
+    const WHY = "revoked_reason = 'the agent is paying the wrong invoices'";
+
+    for (const columns of [WHO, `${WHO}, ${WHEN}`, `${WHO}, ${WHY}`]) {
+      expect(await revoke(columns), columns).toMatch(/row-level security/);
+    }
+
+    // Not testing nothing: with who, when and why, the same statement revokes it.
+    expect(await revoke(`${WHO}, ${WHEN}, ${WHY}`)).toBe("allowed");
+  });
 });
 
 describe("an agent's command runs under its slip", () => {
