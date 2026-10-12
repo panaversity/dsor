@@ -108,6 +108,9 @@ describe("the door insists on a label", () => {
   // its label fails loudly instead of answering.
   const notALabel: readonly [string, () => unknown][] = [
     ["no label at all", () => undefined],
+    // Decision 146: `null` too, which JavaScript calls an object. With the check for it taken out,
+    // the door threw a raw TypeError after the decision was recorded, and no test failed.
+    ["a null label", () => null],
     // Decision 120 spells the modes as the schemas do. §27's capitals are not one of them here.
     ["its mode in capitals", () => ({ ...readNow(), mode: "CURRENT" })],
     ["a mode that is not one of the four", () => ({ ...readNow(), mode: "fresh" })],
