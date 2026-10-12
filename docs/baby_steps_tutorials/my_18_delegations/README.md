@@ -35,8 +35,10 @@ Where in the checklist: a stage of its own, §21's third, "resolve the delegatio
 the operation and authorizing it. A command from an agent with no active slip is refused there,
 `DELEGATION_REQUIRED`; an expired slip, `DELEGATION_EXPIRED`, and so is a slip whose expiry DSoR
 cannot read. If the slip, or what its signer holds, cannot be read at all, the command is refused
-with `DEPENDENCY_TIMEOUT`, safe to send again, because nothing has run. Every one of these
-refusals is recorded, like every decision. The slip's limit is checked later, as part of §21's
+with `DEPENDENCY_TIMEOUT`, safe to send again, because nothing has run. A slip that is read but
+cannot be used, because its limit is not a number, is refused with `DELEGATION_REQUIRED`: sending
+the request again would not mend the slip. Every one of these refusals is recorded, like every
+decision. The slip's limit is checked later, as part of §21's
 tenth step, because it needs the validated amount: the one the payload hash describes.
 
 The agent's own role, `ap_worker`, keeps one permission: `invoice:read`. A person's power is
@@ -67,9 +69,9 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_17
 | --- | --- |
 | `migrations/013_delegations.sql` | new — `dsor.delegations`: who signed, for which agent, which permissions, up to how much per payment, the status and an expiry that must be a time; one active slip per agent per company; the second lock; the application reads and writes none |
 | `migrations/014_delegations_running_example.sql` | new — `del_100`, written with its company said, for an owner the lock holds; it expires at the end of 2099, not 2026 as the specification's does, so the tutorial keeps working |
-| `src/delegation.ts` | new — finding an agent's active slip, none, one or more than one, and the agent's power under it |
+| `src/delegation.ts` | new — finding an agent's active slip, none, one or more than one, or one whose limit is not a number, and the agent's power under it |
 | `src/authority.ts` | new — what a person holds in a company right now, from a source a test can replace |
-| `src/operations.ts` | the stage at §21.3, which refuses a slip it cannot read as `DEPENDENCY_TIMEOUT`; authorize asks the slip's power for an agent's command, and refuses one that reaches it with no slip resolved; the limit at §21.10, `LIMIT_EXCEEDED`; a planted slip id that disagrees is refused |
+| `src/operations.ts` | the stage at §21.3, which refuses a slip it cannot read as `DEPENDENCY_TIMEOUT`, and one whose limit is not a number as `DELEGATION_REQUIRED`; authorize asks the slip's power for an agent's command, and refuses one that reaches it with no slip resolved; the limit at §21.10, `LIMIT_EXCEEDED`; a planted slip id that disagrees is refused |
 | `src/registry.ts`, `src/contracts/*.json` | every command's contract says it needs a slip, and the registry refuses one that says not |
 | `src/payment.ts` | an amount in cents, exactly, for the limit |
 | `src/login.ts` | a login may carry `scopes`, read as data; they only ever narrow |

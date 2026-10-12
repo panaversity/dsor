@@ -323,6 +323,37 @@ describe("when the slip, or what its signer holds, cannot be read", () => {
     expect(await decisions()).toStrictEqual(["DEPENDENCY_TIMEOUT"]);
   });
 
+  it("DSOR-DEL-01a: a slip whose limit is not a number is refused, and never as safe to send again", async () => {
+    // Decision 149: the table's check, `> 0`, lets 'NaN' in, because PostgreSQL sorts NaN above
+    // every number. Reading that slip threw, and every agent command was refused as
+    // DEPENDENCY_TIMEOUT, "safe to send again", which no retry could change. The slip was read, and
+    // it is broken: the agent acts under no slip, and sending again does not mend it. The daily
+    // limit's check is the same, so it is asked of both limits.
+    for (const column of ["per_transaction_limit_value", "daily_limit_value"]) {
+      await resetTheStory();
+      await forgetTheLog("org_456");
+      await owner(
+        `UPDATE dsor.delegations SET ${column} = 'NaN' WHERE tenant = 'org_456' AND id = 'del_100'`,
+      );
+
+      for (const [id, args] of [
+        ["payment.create", { invoice: INV_1008, amount: AMOUNT }],
+        ["payment.cancel", { payment: PAY_901, expected_version: 1 }],
+      ] as const) {
+        const refusal = refusalOf(await callOperation(AGENT, id, args));
+
+        expect(refusal.code, `${column}, ${id}`).toBe("DELEGATION_REQUIRED");
+        expect(refusal.retry, `${column}, ${id}`).toBe("never");
+        expect(refusal.message, `${column}, ${id}`).toMatch(/del_100 cannot be used/);
+      }
+
+      expect(await decisions(), column).toStrictEqual([
+        "DELEGATION_REQUIRED",
+        "DELEGATION_REQUIRED",
+      ]);
+    }
+  });
+
   it("DSOR-EXE-03b: with the database down, the agent is told what a person is told", async () => {
     for (const login of [SUPERVISOR, AGENT]) {
       const answer = await withTheStoreFailing(

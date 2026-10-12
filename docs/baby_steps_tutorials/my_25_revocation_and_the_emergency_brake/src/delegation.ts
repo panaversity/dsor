@@ -68,10 +68,34 @@ interface Row {
 export type SlipFound =
   | { readonly kind: "none" }
   | { readonly kind: "one"; readonly slip: Delegation }
-  | { readonly kind: "more_than_one"; readonly ids: readonly string[] };
+  | { readonly kind: "more_than_one"; readonly ids: readonly string[] }
+  /** Decision 149: one slip, read, that cannot be used, and the words that say why. */
+  | { readonly kind: "broken"; readonly id: string; readonly why: string };
 
 /**
- * The agent's active slip in one company: none, one, or more than one.
+ * Decision 149: a limit from the store, as money; `undefined` for no limit; or, for a limit that is
+ * not an amount, the words that say so. Migration 013's check, `> 0`, lets 'NaN' in, because
+ * PostgreSQL sorts NaN above every number, and `money` refuses it. Migration 022's check on the
+ * daily limit is the same.
+ */
+function limitFrom(
+  name: string,
+  value: string | null,
+  currency: string | null,
+): Money | undefined | string {
+  if (value === null || currency === null) {
+    return undefined;
+  }
+
+  try {
+    return money(value, currency);
+  } catch {
+    return `its ${name}, ${value} ${currency}, is not an amount`;
+  }
+}
+
+/**
+ * The agent's active slip in one company: none, one, more than one, or one that cannot be used.
  *
  * "Active" is the slip's status. Whether it has expired is the caller's to ask, against the time of
  * the decision, so that an expired slip is refused for being expired and not for being absent.
@@ -114,6 +138,20 @@ export async function activeSlipFor(tenant: string, delegate: string): Promise<S
     return Object.freeze({ kind: "none" });
   }
 
+  // Decision 149: a slip whose limit is not an amount was read, and it is broken. `money` threw here,
+  // and the stage refused the command as a slip that "could not be read, safe to send again", which
+  // no retry could change. It is said instead, and the stage refuses it for what it is.
+  const perTransactionLimit = limitFrom("limit per payment", row.limit_value, row.limit_currency);
+  const dailyLimit = limitFrom("daily limit", row.daily_value, row.daily_currency);
+
+  if (typeof perTransactionLimit === "string") {
+    return Object.freeze({ kind: "broken", id: row.id, why: perTransactionLimit });
+  }
+
+  if (typeof dailyLimit === "string") {
+    return Object.freeze({ kind: "broken", id: row.id, why: dailyLimit });
+  }
+
   const slip: Delegation = Object.freeze({
     id: row.id,
     tenant: row.tenant,
@@ -121,14 +159,8 @@ export async function activeSlipFor(tenant: string, delegate: string): Promise<S
     delegate: row.delegate,
     permissions: Object.freeze([...row.permissions]),
     modes: Object.freeze([...row.modes]),
-    perTransactionLimit:
-      row.limit_value === null || row.limit_currency === null
-        ? undefined
-        : money(row.limit_value, row.limit_currency),
-    dailyLimit:
-      row.daily_value === null || row.daily_currency === null
-        ? undefined
-        : money(row.daily_value, row.daily_currency),
+    perTransactionLimit,
+    dailyLimit,
     status: row.status,
     expiresAt: row.expires_at ?? undefined,
   });

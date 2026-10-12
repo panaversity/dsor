@@ -689,6 +689,18 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
     );
   }
 
+  // Decision 149: a slip DSoR read and cannot use is no slip to act under. One whose limit was 'NaN',
+  // which the table lets in, was refused as DEPENDENCY_TIMEOUT, "safe to send again", and no retry
+  // could change it. DELEGATION_REQUIRED, retry never: sending again does not mend the slip.
+  if (found.kind === "broken") {
+    return refuse(
+      principal.id,
+      "DELEGATION_REQUIRED",
+      `${found.id} cannot be used: ${found.why}. Sending the request again will not change that`,
+      context.requestId,
+    );
+  }
+
   const slip = found.slip;
 
   // In force only when its expiry is shown to be later than now. Asked this way round because
