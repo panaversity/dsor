@@ -231,6 +231,36 @@ describe("a finished proposal refuses to move to any other state", () => {
     });
   }
 
+  // Decision 153: PostgreSQL does not check a foreign key when one of its columns is NULL, so neither
+  // key above checks a move with no "from". Only the CHECK that the first move is into PROPOSED
+  // refuses one. Without it, a review measured a DENIED proposal given a second line of history that
+  // went on to EXECUTING, and a COMMITTED one that went on to FAILED.
+  for (const path of FINISHED) {
+    const finished = path.at(-1) as ProposalState;
+
+    it(`DSOR-APR-01c: ${finished}, by ${path.join(" -> ")}, takes no move with no "from" into any of the ${EVERY_STATE.length} states`, async () => {
+      const id = await aProposal();
+
+      await walk(id, path);
+
+      for (const to of EVERY_STATE) {
+        // Not through moveProposal: the SQL a careless handler would write, with the application's
+        // own rights. A move into PROPOSED is the one the CHECK allows, and "entered once" refuses it.
+        await expect(
+          theDatabase("org_456").query(
+            `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
+             VALUES ('org_456', $1, NULL, $2, 'dsor', 'a second first move')`,
+            [id, to],
+          ),
+        ).rejects.toThrow(to === "PROPOSED" ? /duplicate key/ : /check constraint/);
+      }
+
+      // The count, not only the state: two lines of history would still answer the first state.
+      expect(await movesOf("org_456", id)).toHaveLength(path.length);
+      expect(await stateOf("org_456", id)).toBe(finished);
+    });
+  }
+
   it("DSOR-APR-01c: the application writing the SQL itself cannot move a COMMITTED proposal either", async () => {
     const id = await aProposal();
 

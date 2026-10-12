@@ -37,14 +37,18 @@ proposal is written, because nobody is logged in, the company is wrong, the call
 permission or the arguments are bad, has none: there was nothing to propose. A query has none
 either: it changes nothing.
 
-Two rules make "never out of a finished state" true, and both live in the database, not in the
-code, so no handler, careless or not, can get round them:
+Three rules make "never out of a finished state" true, and all three live in the database, not in
+the code, so no handler, careless or not, can get round them:
 
 - **The map is a table.** Every move written must be one of its moves, and a finished state has
   none out of it, so a move out of COMMITTED has nothing to point at and is refused.
 - **The history is one line.** The map has no loops, so a proposal enters each state once and
   leaves it once, and a move out of a state needs the move into it. Two requests that both try to
   move a proposal out of READY cannot both be written: a proposal runs at most once.
+- **Only the first move has no "from".** The rules above check a move's "from" against the map and
+  against the history, and PostgreSQL skips those checks when the "from" is NULL, its word for "no
+  value". So a CHECK says the one move with no "from" is the first, into PROPOSED. Without it, a
+  DENIED proposal could be given a fresh move into READY, and then run.
 
 The application, `dsor_runtime`, may add proposals and moves and read them, and do nothing else: no
 changing, no deleting, and no touching the map. Start-up refuses an application that may.
@@ -213,7 +217,9 @@ Copy `my_21_optimistic_concurrency` to a new folder and ask:
 2. A column would be a second copy of the truth beside the history, and the two could disagree. It
    would also need the right to change rows, which is the right to change a finished one.
 3. The database. The map has no move out of COMMITTED, so the move has nothing to point at; and the
-   application may not change or delete a move, so it cannot rewrite the history either.
+   application may not change or delete a move, so it cannot rewrite the history either. A move
+   with no "from", which no foreign key checks, is refused by the CHECK that keeps it for the first
+   move, into PROPOSED.
 4. Exactly one is written. A state is left only once, and the database checks it. That is how a
    proposal runs at most once.
 5. FAILED is finished, and says nothing happened. Only a refusal that proves it, such as `CONFLICT`
