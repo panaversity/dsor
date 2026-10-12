@@ -157,6 +157,25 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
     expect(nowhere.kind === "error" && nowhere.envelope.code).toBe("AUTHORIZATION_DENIED");
   });
 
+  it("DSOR-DEL-04a: user_123 revokes del_100 while it is suspended", async () => {
+    // Decision 156: a suspended slip was refused CONFLICT, "not active", in three places, so its
+    // signer could not tear it up before someone made it active again. DSOR-DEL-04a makes no exception
+    // for a slip's status. Today only an owner can suspend a slip; DSOR-IDN-07 will.
+    await asTheOwner(() =>
+      db.exec(
+        "UPDATE dsor.delegations SET status = 'suspended' WHERE tenant = 'org_456' AND id = 'del_100'",
+      ),
+    );
+
+    const answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+      target: DEL_100,
+      reason: "it must not come back",
+    });
+
+    expect(answer.kind === "result" && answer.envelope.data?.["status"]).toBe("revoked");
+    expect(await statusOfDel100()).toBe("revoked");
+  });
+
   it("DSOR-DEL-04a: a revocation without a reason is refused, and the slip stays active", async () => {
     const answer = await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100 });
 
@@ -207,7 +226,7 @@ describe("what was waiting under the slip", () => {
 });
 
 describe("what the application may do to a slip", () => {
-  it("DSOR-DEL-04a: it may only change an active slip to revoked, even writing the SQL itself", async () => {
+  it("DSOR-DEL-04a: it may only change a slip to revoked, even writing the SQL itself", async () => {
     // Not back to active, and not to anything else.
     await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "stop" });
 
@@ -229,6 +248,29 @@ describe("what the application may do to a slip", () => {
         "UPDATE dsor.delegations SET permissions = ARRAY['payment:create'] WHERE tenant = 'org_456' AND id = 'del_100'",
       ),
     ).rejects.toThrow(/permission denied/);
+  });
+
+  it("DSOR-DEL-04a: a suspended slip may become revoked, and never active again, even writing the SQL itself", async () => {
+    // Decision 156: the policy lets the application reach a suspended slip now, to revoke it. Its
+    // second half still lets it leave only revoked, with who revoked it.
+    await asTheOwner(() =>
+      db.exec(
+        "UPDATE dsor.delegations SET status = 'suspended' WHERE tenant = 'org_456' AND id = 'del_100'",
+      ),
+    );
+
+    await expect(
+      theDatabase("org_456").query(
+        "UPDATE dsor.delegations SET status = 'active' WHERE tenant = 'org_456' AND id = 'del_100'",
+      ),
+    ).rejects.toThrow(/row-level security/);
+    expect(await statusOfDel100()).toBe("suspended");
+
+    const { rows } = await theDatabase("org_456").query(
+      "UPDATE dsor.delegations SET status = 'revoked', revoked_by = 'user_123' WHERE tenant = 'org_456' AND id = 'del_100' RETURNING id",
+    );
+
+    expect(rows).toHaveLength(1);
   });
 });
 

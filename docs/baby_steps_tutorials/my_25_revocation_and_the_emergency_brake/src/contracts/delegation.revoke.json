@@ -29,7 +29,7 @@
   },
   "preconditions": {
     "freshness": "current",
-    "predicates": ["state.delegation.status == \"active\""]
+    "predicates": ["state.delegation.status in [\"active\", \"suspended\"]"]
   },
   "controls": [],
   "risk": {

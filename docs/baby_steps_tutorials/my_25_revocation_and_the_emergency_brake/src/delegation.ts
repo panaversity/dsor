@@ -226,12 +226,15 @@ export async function slipNamed(
 /** NEW IN STEP 25: what revoking a slip did. */
 export type Revoked =
   | { readonly kind: "revoked"; readonly cancelled: readonly string[] }
-  /** It was not active when the statement ran: revoked, suspended or expired already. */
-  | { readonly kind: "not_active" };
+  /** It had ended when the statement ran, revoked or expired already: nothing was changed. */
+  | { readonly kind: "ended" };
 
 /**
  * NEW IN STEP 25: revoke an active slip, and cancel what was waiting under it (DSOR-DEL-04a,
  * DSOR-DEL-04c, decision 142).
+ *
+ * Decision 156: or a suspended one. DSOR-DEL-04a makes no exception for a slip's status, and a slip
+ * suspended today can be made active tomorrow; its signer must be able to tear it up first.
  *
  * One statement: the slip becomes revoked, with who, when and why, and every proposal under it that
  * is waiting for approval or approved moves to CANCELLED, its cause naming the slip and who revoked
@@ -249,7 +252,7 @@ export async function revokeSlip(
     `WITH revoked AS (
        UPDATE dsor.delegations
           SET status = 'revoked', revoked_by = $3, revoked_at = clock_timestamp(), revoked_reason = $4
-        WHERE tenant = $1 AND id = $2 AND status = 'active'
+        WHERE tenant = $1 AND id = $2 AND status IN ('active', 'suspended')
         RETURNING id
      ),
      waiting AS (
@@ -277,6 +280,6 @@ export async function revokeSlip(
   const row = rows[0];
 
   return row === undefined || row.revoked !== 1
-    ? Object.freeze({ kind: "not_active" })
+    ? Object.freeze({ kind: "ended" })
     : Object.freeze({ kind: "revoked", cancelled: Object.freeze([...row.cancelled]) });
 }

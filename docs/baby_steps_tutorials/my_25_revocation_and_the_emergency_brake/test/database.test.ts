@@ -616,7 +616,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     const db = await aDatabase();
 
     await db.exec("RESET ROLE");
-    await db.exec("DROP POLICY only_an_active_slip_is_revoked ON dsor.delegations");
+    await db.exec("DROP POLICY a_slip_only_becomes_revoked ON dsor.delegations");
     await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(

@@ -381,9 +381,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    WHEN rel = to_regclass('dsor.agent_controls')
                    THEN '(lifted_at IS NULL)'
                    -- NEW IN STEP 25: and the slips', which lets an active slip become revoked
-                   -- and nothing else.
+                   -- and nothing else. Decision 156: or a suspended one, in the words PostgreSQL
+                   -- writes an IN list back in, measured.
                    WHEN rel = to_regclass('dsor.delegations')
-                   THEN '(status = ''active''::text)' END,
+                   THEN '(status = ANY (ARRAY[''active''::text, ''suspended''::text]))' END,
               -- NEW IN STEP 25: what the second policy lets a row become: anything, the program's
               -- to say, except for a slip, which only becomes revoked.
               -- Decision 143: and with who revoked it.

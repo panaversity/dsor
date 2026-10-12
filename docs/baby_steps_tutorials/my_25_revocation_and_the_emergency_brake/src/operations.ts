@@ -673,12 +673,13 @@ const handlers: Readonly<Record<string, Handler>> = {
       );
     }
 
-    // Who may, and whether the slip is active, were decided at §21.9 and recorded (decision 143).
-    // The slip can still have been revoked by someone else since, which the statement sees.
+    // Who may, and whether the slip can still be revoked, were decided at §21.9 and recorded
+    // (decision 143). The slip can still have been revoked by someone else since, which the
+    // statement sees.
     const revoked = await revokeSlip(tenant, read.id, askedBy, reason);
 
-    if (revoked.kind === "not_active") {
-      return refused("CONFLICT", `${read.id} is not active; nothing was changed`);
+    if (revoked.kind === "ended") {
+      return refused("CONFLICT", `${read.id} is revoked or expired already; nothing was changed`);
     }
 
     for (const cancelled of revoked.cancelled) {
@@ -1743,10 +1744,10 @@ const createTheProposal: Stage["run"] = async (context) => {
  * arguments, once; not in authorize, at §21.5, which would read the caller's arguments before §21.6
  * has copied them.
  *
- * - delegation.revoke: the slip must have been signed by the caller (DSOR-DEL-04a), and be active, as
- *   its contract's precondition says. A slip that does not exist is refused in the same words as one
- *   someone else signed (DSOR-ERR-01b, decision 156). A tenant administrator, who could revoke
- *   anyone's, is nobody in the cast.
+ * - delegation.revoke: the slip must have been signed by the caller (DSOR-DEL-04a), and be active or
+ *   suspended, as its contract's precondition says. A slip that does not exist is refused in the same
+ *   words as one someone else signed (DSOR-ERR-01b, decision 156). A tenant administrator, who could
+ *   revoke anyone's, is nobody in the cast.
  * - control.suspend, releasing: only a person (DSOR-OPS-01d).
  *
  * An argument that is not an address is left for the handler, which refuses it as it always has.
@@ -1825,12 +1826,14 @@ const checkTheTarget: Stage["run"] = async (context) => {
     );
   }
 
-  return slip.status === "active"
+  // Decision 156: and a suspended slip, so its signer can tear it up before anyone makes it active
+  // again. One revoked or expired already has nothing left to tear up.
+  return slip.status === "active" || slip.status === "suspended"
     ? carryOn(context)
     : refuse(
         principal.id,
         "CONFLICT",
-        `${parsed.id} is not active; nothing was changed`,
+        `${parsed.id} is ${slip.status} already; nothing was changed`,
         context.requestId,
       );
 };
