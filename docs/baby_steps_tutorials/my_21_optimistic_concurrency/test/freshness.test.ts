@@ -273,6 +273,45 @@ describe("a value read before this request is never current", () => {
     }
   });
 
+  it("DSOR-FRS-01b: the door reads a label once, so the label it checks is the label that leaves", async () => {
+    // Decision 146, decision 116's rule for a label. With the label passed on uncopied, a label
+    // whose mode said `observational` to the check and `current` on the way out left an hour-old
+    // value labelled current, and no test failed. Careless code does not write a label like this
+    // (decision 119). The copy makes it harmless: the mode is read once, and both see that.
+    const savedAt = anHourAgo();
+    let reads = 0;
+    const door = handingLabel(() => ({
+      get mode() {
+        reads += 1;
+
+        return reads === 1 ? "observational" : "current";
+      },
+      observed_at: savedAt,
+      connector: "postgres",
+    }));
+
+    for (const [id, args] of [
+      ["invoice.get", { invoice: INV_1008 }],
+      ["invoice.list", {}],
+    ] as const) {
+      reads = 0;
+
+      const answer = await door(AGENT, id, args);
+
+      expect(answer.kind === "data" || answer.kind === "page").toBe(true);
+
+      if (answer.kind === "data" || answer.kind === "page") {
+        expect(answer.freshness).toStrictEqual({
+          mode: "observational",
+          observed_at: savedAt,
+          connector: "postgres",
+        });
+      }
+
+      expect(reads).toBe(1);
+    }
+  });
+
   it("DSOR-FRS-01b: the line is the moment the request began: read then is current, a millisecond earlier is not", () => {
     // Decision 121: only an hour-old label was tested, so a check that allowed any slack under an
     // hour would have passed. This test hands the check a start time. Where the door takes that
