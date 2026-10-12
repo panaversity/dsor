@@ -320,14 +320,17 @@ describe("C3: the tests, run before a control is switched on", () => {
     },
   );
 
-  it("Step 27: a draft's tests do not run and line ⑩ never sees it; start-up refuses a stale_authority control, whose on_stale step 28 builds (step 27's README, decision D3)", async () => {
+  // Changed in step 28b: a stale control is evaluated now, so start-up takes one from the store,
+  // and a file can never give the status, which only DSoR's sweep gives (step 28b's README,
+  // decision D14).
+  it("Step 27: a draft's tests do not run and line ⑩ never sees it; a stale_authority control in a file stops start-up (step 27's README, decision D3)", async () => {
     const draft = { ...neverOn(), id: "draft-rule", status: "draft", condition: QUICK };
     const started = await startWith(controlsOf({ org_456: [SHIPPED, draft], org_789: [] }));
     expect((await activeIn(started, "org_456")).map((c) => c.id)).toStrictEqual([
       "high-value-payment",
     ]);
     expect(await refusalAtStart(() => startWith(withOne({ status: "stale_authority" })))).toContain(
-      "controls.json: org_456's control high-value-payment has the status stale_authority, whose on_stale this step does not build",
+      "controls.json: org_456's control high-value-payment has the status stale_authority, which only DSoR's sweep gives",
     );
   });
 });

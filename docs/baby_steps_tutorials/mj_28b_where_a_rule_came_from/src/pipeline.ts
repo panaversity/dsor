@@ -403,7 +403,9 @@ export async function call(
         const once = readOnce(rates);
         // The active versions in the store, read at this call, so a change applies
         //   to the next call (step 28's README, decision D5).
-        const book = await controls.active(tenant, contract.id);
+        // NEW IN STEP 28b: and the stale ones, in the same read: a stale rule is never dropped
+        //   and never skipped (DSOR-CTL-03b; step 28b's README, decision D7).
+        const book = await controls.inForce(tenant, contract.id);
         let outcomes: ControlOutcome[] = [];
         let answer: ControlAnswer = "ALLOW";
         if (book.length > 0) {

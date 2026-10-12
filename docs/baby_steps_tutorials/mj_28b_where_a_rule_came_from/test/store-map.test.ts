@@ -38,7 +38,8 @@ describe("the shipped map", () => {
   // Ten, with the brakes (step 25b's README, decision D5).
   // Eleven, with the sheets of rates (step 26's README, decisions L1 and D6).
   // Changed in step 28: twelve, with dsor.controls (step 28's README, decision D2).
-  it("step 16's decision 1: it names three schemas and twelve tables", () => {
+  // Changed in step 28b: and dsor.notices (step 28b's README, decision D5).
+  it("step 16's decision 1: it names three schemas and thirteen tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -53,6 +54,7 @@ describe("the shipped map", () => {
       "dsor.brakes",
       "dsor.rates",
       "dsor.controls",
+      "dsor.notices",
       "dsor.migrations",
     ]);
   });
@@ -60,6 +62,8 @@ describe("the shipped map", () => {
   // A version of a rule is read inside its company, added as a draft through six
   // named columns, and moved through three. Nothing deletes one, and nothing changes its text or
   // who wrote it (step 28's README, decisions D2 and D11).
+  // Changed in step 28b: and moved through a fourth, the version in force that the sweep's mark
+  // names (step 28b's README, decision D5).
   it("step 28's decision D2: dsor.controls is read inside its company, added through named columns, moved through named columns, and guarded by its trigger", () => {
     const { map } = checkStore(SHIPPED);
     expect(map.tables.get("dsor.controls")).toStrictEqual({
@@ -69,13 +73,38 @@ describe("the shipped map", () => {
         table: ["SELECT"],
         columns: {
           INSERT: ["tenant_id", "id", "version", "status", "rule", "compiled_by"],
-          UPDATE: ["status", "reviewed_by", "effective_from"],
+          UPDATE: ["status", "reviewed_by", "effective_from", "in_force"],
         },
       },
       // And the trigger that draws each move, as the proposals' does (step 28's review, finding L14).
       triggers: [
         "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()",
       ],
+    });
+  });
+
+  // A notice to a rule's owner is read inside its company and added through seven named columns.
+  // Nothing changes or removes one (step 28b's README, decision D5).
+  it("step 28b's decision D5: dsor.notices is read inside its company, added through named columns, and never changed", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.notices")).toStrictEqual({
+      kind: "append-only",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "notice_id",
+            "tenant_id",
+            "to_person",
+            "rule_id",
+            "version",
+            "words",
+            "correlation",
+          ],
+        },
+      },
+      triggers: [],
     });
   });
 

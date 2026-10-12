@@ -106,11 +106,13 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // change to a version's text or to who wrote it (step 28's README, decisions D2 and D11).
       { object: "dsor.controls", held: "SELECT" },
       { object: "dsor.controls INSERT", held: "tenant_id id version status rule compiled_by" },
+      // And the sweep's mark: the version in force, which dsor_runtime names, and the time of the
+      // mark, which the trigger writes (step 28b's README, decision D5).
       {
         object: "dsor.controls SELECT",
-        held: "tenant_id id version status rule compiled_by drafted_at reviewed_by effective_from",
+        held: "tenant_id id version status rule compiled_by drafted_at reviewed_by effective_from stale_since in_force",
       },
-      { object: "dsor.controls UPDATE", held: "status reviewed_by effective_from" },
+      { object: "dsor.controls UPDATE", held: "status reviewed_by effective_from in_force" },
       // Step 18's slips: read every column (step 18's README, decision 3).
       { object: "dsor.delegations", held: "SELECT" },
       {
@@ -139,6 +141,18 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       { object: "dsor.limit_counters INSERT", held: "tenant_id delegation day currency used" },
       { object: "dsor.limit_counters SELECT", held: "tenant_id delegation day currency used" },
       { object: "dsor.limit_counters UPDATE", held: "used" },
+      // The notices to each rule's owner. Read every column, and add a notice through seven.
+      // Nothing on at, which the database fills, and no change or removal (step 28b's README,
+      // decision D5).
+      { object: "dsor.notices", held: "SELECT" },
+      {
+        object: "dsor.notices INSERT",
+        held: "notice_id tenant_id to_person rule_id version words correlation",
+      },
+      {
+        object: "dsor.notices SELECT",
+        held: "notice_id tenant_id to_person rule_id version words at correlation",
+      },
       // The proposals. Read every column, add a proposal through named
       // columns, and change its state only. Nothing on created_at, which the database fills
       // (step 22's README, decisions 3 and 9).

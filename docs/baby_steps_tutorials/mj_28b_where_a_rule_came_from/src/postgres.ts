@@ -36,9 +36,12 @@ import {
   movable,
   NO_CONTROLS,
   type ControlStore,
+  type InForce,
   type Live,
+  type PolicyInForce,
   type RuleBy,
   type RuleStatus,
+  type StaleMark,
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
@@ -1212,6 +1215,10 @@ type ControlRow = {
 };
 const CONTROL_COLUMNS = "id, version, status, rule, compiled_by, reviewed_by, effective_from";
 
+// NEW IN STEP 28b: and DSoR's mark on a stale version, which only line ⑩'s read and the sweep's
+// get (step 28b's README, decision D5).
+type MarkRow = { stale_since: Date | null; in_force: PolicyInForce | null };
+
 // A rule's lock is a PostgreSQL advisory lock, as a brake's is: one number for each rule of each
 // company, made from this text. A change takes it alone, until its transaction ends, so two
 // changes to one rule wait for each other (step 28's README, decision D15).
@@ -1245,15 +1252,26 @@ function controlsThrough(run: Runner): ControlStore {
     });
   return Object.freeze({
     where: "dsor.controls",
-    active: async (tenant: string, operation: string): Promise<Control[]> =>
+    // NEW IN STEP 28b: the versions in force, active and stale, in one read, each stale one with
+    // its mark, on one operation or on every one (step 28b's README, decision D7).
+    inForce: async (tenant: string, operation?: string): Promise<InForce[]> =>
       run(tenant, async (client) => {
-        const { rows } = await client.query<ControlRow>(
-          `SELECT ${CONTROL_COLUMNS} FROM dsor.controls
-            WHERE tenant_id = $1 AND status = 'active' AND rule->>'operation' = $2
+        const { rows } = await client.query<ControlRow & MarkRow>(
+          `SELECT ${CONTROL_COLUMNS}, stale_since, in_force FROM dsor.controls
+            WHERE tenant_id = $1 AND status IN ('active', 'stale_authority')
+              AND ($2::text IS NULL OR rule->>'operation' = $2::text)
             ORDER BY id, version`,
-          [tenant, operation],
+          [tenant, operation ?? null],
         );
-        return rows.map(versionOf);
+        return rows.map((row): InForce => {
+          const version = versionOf(row);
+          // The database keeps a stale version's mark, so a stale row always has one.
+          const since = row.stale_since === null ? undefined : writable(row.stale_since);
+          if (row.status !== "stale_authority" || since === undefined || row.in_force === null) {
+            return version;
+          }
+          return { ...version, stale: { since, in_force: row.in_force } };
+        });
       }),
     versions,
     // The rule's lock first, alone, until the transaction ends. Then its versions.
@@ -1361,6 +1379,43 @@ function controlsThrough(run: Runner): ControlStore {
         return true;
       });
     },
+    // NEW IN STEP 28b: the sweep's mark, its record, and the notice to the version's owner, in
+    // one transaction: all, or none. Only from what the sweep saw: active, or stale with the
+    // version in force it saw, and only to another version in force. The database's trigger
+    // writes the time of a first mark, by its own clock (step 28b's README, decisions D5 and D6).
+    mark: async (
+      tenant: string,
+      id: string,
+      version: number,
+      seen: StaleMark | undefined,
+      in_force: PolicyInForce,
+      by: RuleBy,
+      words: string,
+    ): Promise<boolean> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<{ owner: string }>(
+          `UPDATE dsor.controls SET status = 'stale_authority', in_force = $5::jsonb
+            WHERE tenant_id = $1 AND id = $2 AND version = $3
+              AND (($4::jsonb IS NULL AND status = 'active')
+                OR (status = 'stale_authority' AND in_force = $4::jsonb
+                    AND in_force IS DISTINCT FROM $5::jsonb))
+            RETURNING rule->>'owner' AS owner`,
+          [tenant, id, version, seen === undefined ? null : seen.in_force, in_force],
+        );
+        if (rows.length === 0) return false;
+        if (rows.length !== 1) throw new Error(`one mark changed ${rows.length} versions, not 1`);
+        const from = seen === undefined ? "active" : "stale_authority";
+        const record = controlChangeOf(tenant, id, version, from, "stale_authority", by, in_force);
+        await recordRuleChange(client, record);
+        const { rowCount } = await client.query(
+          `INSERT INTO dsor.notices
+             (notice_id, tenant_id, to_person, rule_id, version, words, correlation)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [`ntc_${randomUUID()}`, tenant, rows[0]!.owner, id, version, words, by.correlation],
+        );
+        if (rowCount !== 1) throw new Error(`the notices kept ${rowCount ?? 0} rows, not 1`);
+        return true;
+      }),
   });
 }
 

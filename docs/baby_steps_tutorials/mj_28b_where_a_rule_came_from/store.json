@@ -184,12 +184,30 @@
         "table": ["SELECT"],
         "columns": {
           "INSERT": ["tenant_id", "id", "version", "status", "rule", "compiled_by"],
-          "UPDATE": ["status", "reviewed_by", "effective_from"]
+          "UPDATE": ["status", "reviewed_by", "effective_from", "in_force"]
         }
       },
       "triggers": [
         "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()"
       ]
+    },
+    "dsor.notices": {
+      "kind": "append-only",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "notice_id",
+            "tenant_id",
+            "to_person",
+            "rule_id",
+            "version",
+            "words",
+            "correlation"
+          ]
+        }
+      }
     },
     "dsor.migrations": {
       "kind": "bookkeeping",

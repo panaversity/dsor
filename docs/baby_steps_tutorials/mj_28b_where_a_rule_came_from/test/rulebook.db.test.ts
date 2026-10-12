@@ -16,6 +16,7 @@ import { createDbControls, createDbLog } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
+import { fingerprintOf } from "../src/ksor.ts";
 import { checkRules, type RuleBy } from "../src/rulebook.ts";
 import {
   dbRegistry,
@@ -127,7 +128,7 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
     // The database gives a time back with its milliseconds: the same moment, written longer.
     expect(Date.parse(v8?.effective_from ?? "")).toBe(Date.parse(shipped.effective_from ?? ""));
     expect({ ...v8, effective_from: shipped.effective_from }).toStrictEqual(shipped);
-    expect(await rules.active("org_456", "payment.create")).toHaveLength(1);
+    expect(await rules.inForce("org_456", "payment.create")).toHaveLength(1);
     expect(await rules.versions("org_789")).toStrictEqual([]);
   });
 
@@ -154,7 +155,7 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
   it("DSOR-TEN-01b: DSoR's own WHERE names the company first: run by the owner, which no policy filters, org_456's reads and moves never see or touch a twin of its rule in org_789", () => {
     const seen = ownerRules("filters", `req_${randomUUID()}`);
     expect(seen).toStrictEqual({
-      active: [8],
+      inForce: [8],
       versions: [8],
       held: [8],
       moved: false,
@@ -162,7 +163,7 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
         { version: 8, status: "active" },
         { version: 9, status: "draft" },
       ],
-      names: ["active high-value-payment", "version high-value-payment"],
+      names: ["in force high-value-payment", "version high-value-payment"],
     });
   });
 
@@ -447,5 +448,239 @@ describe("C8: start-up checks dsor.controls (step 28's README, decision D6)", ()
     } finally {
       ownerRules("clear");
     }
+  });
+});
+
+// The version of the payment-approval policy in force once the finance team publishes version 5,
+// and version 6 after it, as the sweep hands them to the store (step 28b's README, decision D5).
+const V5 = {
+  version: 5,
+  content_hash: fingerprintOf("Payments above 20,000 USD or equivalent require CFO approval."),
+};
+const V6 = {
+  version: 6,
+  content_hash: fingerprintOf("Payments above 15,000 USD or equivalent require CFO approval."),
+};
+
+/** dsor-scheduler's sweep, now, on a call of its own. */
+function bySweep(): RuleBy {
+  const correlation = { request_id: `req_${randomUUID()}`, principal_id: "dsor-scheduler" };
+  return {
+    person: "dsor-scheduler",
+    as_of: new Date().toISOString(),
+    words: "its policy moved in KSoR",
+    correlation,
+  };
+}
+
+/** The notices of this call, as dsor_runtime reads them inside org_456. */
+async function noticesOf(by: RuleBy): Promise<Record<string, unknown>[]> {
+  const { rows } = await tryThenRollBack(
+    pool,
+    `SELECT tenant_id, to_person, rule_id, version, words FROM dsor.notices
+      WHERE correlation->>'request_id' = $1 ORDER BY at`,
+    "org_456",
+    [by.correlation.request_id],
+  );
+  return rows;
+}
+
+/** A rule of the tests' own, switched on: the hold on INV-9001, active. */
+async function holdOn(): Promise<string> {
+  const id = `test-${randomUUID()}`;
+  await rules.add("org_456", refusing9001(id), byCfo("a hold on INV-9001"));
+  await rules.switchOn("org_456", id, 1, "draft", undefined, byCfo("switch the hold on"));
+  return id;
+}
+
+describe("C2: on the database, the sweep's mark (step 28b's README, decisions D5 and D6)", () => {
+  it("DSOR-CTL-03a: on the database, the sweep's mark moves a version from active to stale_authority, by the database's own clock, with the version in force, its record, and a notice to its owner, cfo_100, in one transaction", async () => {
+    const id = await holdOn();
+    const by = bySweep();
+    const before = Date.now();
+    expect(await rules.mark("org_456", id, 1, undefined, V5, by, "the hold cites version 4")).toBe(
+      true,
+    );
+    const [v1] = (await rules.inForce("org_456", "payment.create")).filter((v) => v.id === id);
+    expect(v1).toMatchObject({ id, version: 1, status: "stale_authority" });
+    expect(v1?.stale?.in_force).toStrictEqual(V5);
+    const since = Date.parse(v1?.stale?.since ?? "");
+    expect(since).toBeGreaterThanOrEqual(before - 5_000);
+    expect(since).toBeLessThanOrEqual(Date.now() + 5_000);
+    expect(await recordsOf(by)).toStrictEqual([
+      {
+        kind: "control_change",
+        result: "stale_authority",
+        reason: "its policy moved in KSoR",
+        tenant: "org_456",
+        identity: {
+          mode: "direct",
+          subject: "dsor-scheduler",
+          actor_chain: [],
+          subject_authority: { source: "token", as_of: by.as_of },
+        },
+        resources: [`dsor://org_456/rule/${id}`],
+        extensions: { [OUR_EXTENSIONS]: { version: 1, from: "active", in_force: V5 } },
+      },
+    ]);
+    expect(await noticesOf(by)).toStrictEqual([
+      {
+        tenant_id: "org_456",
+        to_person: "cfo_100",
+        rule_id: id,
+        version: 1,
+        words: "the hold cites version 4",
+      },
+    ]);
+    // The mark rides only with line ⑩'s read: the versions read elsewhere carry none.
+    expect("stale" in (await rules.versions("org_456", id))[0]!).toBe(false);
+  });
+
+  it("Step 28b: on the database, a second mark keeps the time of the first and names the newer version in force; a mark that finds the version not as the sweep saw it changes nothing (decision D5)", async () => {
+    const id = await holdOn();
+    expect(await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "first")).toBe(true);
+    const [first] = (await rules.inForce("org_456")).filter((v) => v.id === id);
+    const again = bySweep();
+    expect(await rules.mark("org_456", id, 1, first!.stale, V6, again, "again")).toBe(true);
+    const [second] = (await rules.inForce("org_456")).filter((v) => v.id === id);
+    expect(second?.stale).toStrictEqual({ since: first!.stale!.since, in_force: V6 });
+    expect((await noticesOf(again)).map((n) => n["words"])).toStrictEqual(["again"]);
+    const late = bySweep();
+    expect(await rules.mark("org_456", id, 1, undefined, V6, late, "x")).toBe(false);
+    expect(await rules.mark("org_456", id, 1, first!.stale, V6, late, "x")).toBe(false);
+    expect(await rules.mark("org_456", id, 1, second!.stale, V6, late, "x")).toBe(false);
+    await rules.add("org_456", { ...refusing9001(id), version: 2 }, byCfo("two"));
+    expect(await rules.mark("org_456", id, 2, undefined, V5, late, "x")).toBe(false);
+    expect(await recordsOf(late)).toStrictEqual([]);
+    expect(await noticesOf(late)).toStrictEqual([]);
+  });
+
+  it("Step 28b: a mark whose notice cannot be written does not happen: the version stays active, with no record (decision D5)", async () => {
+    const id = await holdOn();
+    // A pool whose every notice fails, as a full disk would: fault injection around the real
+    // client (§47), as for the log above.
+    const odd = newPool();
+    odd.on("connect", (client) => {
+      const query = client.query.bind(client) as (...a: unknown[]) => Promise<unknown>;
+      client.query = ((...a: unknown[]) => {
+        if (typeof a[0] === "string" && a[0].includes("INSERT INTO dsor.notices")) {
+          return Promise.reject(new Error("the notices are broken"));
+        }
+        return query(...a);
+      }) as typeof client.query;
+    });
+    const by = bySweep();
+    try {
+      await expect(
+        createDbControls(odd).mark("org_456", id, 1, undefined, V5, by, "x"),
+      ).rejects.toThrow("the notices are broken");
+    } finally {
+      await odd.end();
+    }
+    expect((await rules.versions("org_456", id)).map((v) => v.status)).toStrictEqual(["active"]);
+    expect(await recordsOf(by)).toStrictEqual([]);
+  });
+
+  it.each([
+    [
+      "move a version to stale_authority with no version in force",
+      "UPDATE dsor.controls SET status = 'stale_authority' WHERE id = $1",
+      "controls_stale_marked",
+    ],
+    [
+      "name the time a version went stale",
+      "UPDATE dsor.controls SET stale_since = clock_timestamp() WHERE id = $1",
+      "permission denied",
+    ],
+    [
+      "give an active version a version in force",
+      `UPDATE dsor.controls SET in_force = '{"version": 5, "content_hash": "sha256:ab"}' WHERE id = $1`,
+      "a version of a rule does not move from active to active",
+    ],
+    [
+      "mark a version with a version in force of another shape",
+      `UPDATE dsor.controls SET status = 'stale_authority',
+                                in_force = '{"version": "5", "content_hash": "sha256:ab"}' WHERE id = $1`,
+      "controls_in_force_shape",
+    ],
+    ["change a notice", "UPDATE dsor.notices SET to_person = 'admin_100'", "permission denied"],
+    ["delete a notice", "DELETE FROM dsor.notices", "permission denied"],
+    [
+      "add a notice with a time of its own",
+      `INSERT INTO dsor.notices (notice_id, tenant_id, to_person, rule_id, version, words,
+                                 correlation, at)
+       VALUES ('ntc_00000000-0000-4000-8000-000000000001', 'org_456', 'cfo_100', $1, 1, 'x',
+               '{}', '2020-01-01T00:00:00Z')`,
+      "permission denied",
+    ],
+  ])(
+    "Step 28b: dsor_runtime may not %s (step 28b's README, decisions D5 and D6)",
+    async (_what, sql, refusal) => {
+      const id = await holdOn();
+      expect(await asRuntime(sql, sql.includes("$1") ? [id] : [])).toContain(refusal);
+    },
+  );
+
+  it("Step 28b: a stale version never moves back to active, keeps its mark when its owner suspends it, and is marked again only with another version in force (decision D6)", async () => {
+    const id = await holdOn();
+    await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "x");
+    expect(
+      await asRuntime("UPDATE dsor.controls SET status = 'active' WHERE id = $1", [id]),
+    ).toContain("a version of a rule does not move from stale_authority to active");
+    expect(
+      await asRuntime(`UPDATE dsor.controls SET in_force = $2::jsonb WHERE id = $1`, [id, V5]),
+    ).toContain("a second mark keeps the time of the first, and names another version in force");
+    expect(
+      await asRuntime(
+        "UPDATE dsor.controls SET status = 'suspended', in_force = NULL WHERE id = $1",
+        [id],
+      ),
+    ).toContain("only a mark names when a version went stale, and the version in force");
+    expect(await rules.move("org_456", id, 1, "stale_authority", "suspended", byCfo("off"))).toBe(
+      true,
+    );
+    expect(
+      await rules.inForce("org_456", "payment.create").then((v) => v.map((c) => c.id)),
+    ).not.toContain(id);
+  });
+
+  // Found by step 28b's own break of migration 024: with the trigger letting a second mark change
+  // the time of the first, every test passed, because dsor_runtime cannot name the column at all.
+  // The owner can.
+  it("Step 28b: the trigger keeps the time of a first mark for the owner too, who holds every privilege (decision D9)", () => {
+    expect(ownerRules("retime")).toStrictEqual({
+      refused: "a second mark keeps the time of the first, and names another version in force",
+    });
+  });
+
+  it("Step 28b: a stale version is its rule's live version: the database refuses an active one beside it (decision D7)", async () => {
+    const id = await holdOn();
+    await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "x");
+    await rules.add("org_456", { ...refusing9001(id), version: 2 }, byCfo("two"));
+    await expect(rules.move("org_456", id, 2, "draft", "active", byCfo("on"))).rejects.toThrow(
+      "controls_one_live",
+    );
+    const live = { version: 1, from: "stale_authority" as const };
+    expect(await rules.switchOn("org_456", id, 2, "draft", live, byCfo("on"))).toBe(true);
+    expect((await rules.versions("org_456", id)).map((v) => [v.version, v.status])).toStrictEqual([
+      [1, "retired"],
+      [2, "active"],
+    ]);
+  });
+
+  it("DSOR-TEN-01b: with no company set, dsor_runtime reads no notice", async () => {
+    const id = await holdOn();
+    await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "x");
+    const { rows } = await tryThenRollBack(pool, "SELECT * FROM dsor.notices");
+    expect(rows).toStrictEqual([]);
+  });
+
+  it("DSOR-CTL-03b: on the database, a stale rule is still read at line ⑩: the stale hold on INV-9001 still refuses intake-fte's payment, and start-up still checks it and runs its tests", async () => {
+    ownerLimits("reset");
+    const id = await holdOn();
+    expect(await draft9001()).toMatchObject({ code: "POLICY_DENIED" });
+    await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "x");
+    expect(await draft9001()).toMatchObject({ code: "POLICY_DENIED" });
+    expect(await checkRules(registry, ["org_456", "org_789"])).toStrictEqual([]);
   });
 });

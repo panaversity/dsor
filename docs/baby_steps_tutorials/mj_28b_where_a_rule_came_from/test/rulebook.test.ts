@@ -4,7 +4,8 @@
 // Start-up checks every version in the store, and runs the tests of the active ones.
 import { describe, expect, it } from "vitest";
 import { readControls, type ControlsSource } from "../src/controls.ts";
-import { memoryControls, NO_CONTROLS, type RuleBy } from "../src/rulebook.ts";
+import { fingerprintOf } from "../src/ksor.ts";
+import { checkRules, memoryControls, NO_CONTROLS, type RuleBy } from "../src/rulebook.ts";
 import { OUR_EXTENSIONS, SUPERVISOR } from "./helpers.ts";
 import {
   activeIn,
@@ -37,10 +38,10 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
     ]);
     expect(versions[0]).toStrictEqual(shippedRule());
     expect(await store.versions("org_789")).toStrictEqual([]);
-    expect((await store.active("org_456", "payment.create")).map((v) => v.version)).toStrictEqual([
+    expect((await store.inForce("org_456", "payment.create")).map((v) => v.version)).toStrictEqual([
       8,
     ]);
-    expect(await store.active("org_456", "payment.cancel")).toStrictEqual([]);
+    expect(await store.inForce("org_456", "payment.cancel")).toStrictEqual([]);
     expect(store.companies()).toStrictEqual(["org_456", "org_789"]);
   });
 
@@ -95,7 +96,7 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
 
   it("Step 28: the store gives back copies: a caller that changes what it read changes nothing in the store", async () => {
     const store = memoryControls(readControls());
-    const [read] = await store.active("org_456", "payment.create");
+    const [read] = await store.inForce("org_456", "payment.create");
     read!.condition = "false";
     read!.status = "retired";
     expect((await store.versions("org_456"))[0]).toStrictEqual(shippedRule());
@@ -122,7 +123,7 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
   });
 
   it("Step 28: no store, NO_CONTROLS: it holds no rule, and keeps none (step 28's README, decision D18)", async () => {
-    expect(await NO_CONTROLS.active("org_456", "payment.create")).toStrictEqual([]);
+    expect(await NO_CONTROLS.inForce("org_456", "payment.create")).toStrictEqual([]);
     expect(await NO_CONTROLS.versions("org_456")).toStrictEqual([]);
     await expect(NO_CONTROLS.add("org_456", version9(), byCfo("x"))).rejects.toThrow(
       "this world keeps no rules",
@@ -219,7 +220,7 @@ describe("C8: start-up checks every version in the store (step 28's README, deci
     expect(
       await refusalAtStart(() => startWith(controlsOf({ org_456: [shippedRule(), v9] }))),
     ).toContain(
-      "controls.json: org_456 has two live versions of high-value-payment: one at a time may be active or suspended",
+      "controls.json: org_456 has two live versions of high-value-payment: one at a time may be active, stale, or suspended",
     );
   });
 
@@ -275,5 +276,272 @@ describe("C8: start-up checks every version in the store (step 28's README, deci
     expect((await registry.controls.versions("org_456")).map((c) => c.version)).toStrictEqual([
       7, 8,
     ]);
+  });
+});
+
+// The version of the payment-approval policy in force once the finance team publishes version 5,
+// and once they publish version 6, as the sweep hands it to the store (step 28b's README, D5).
+const V5 = {
+  version: 5,
+  content_hash: fingerprintOf("Payments above 20,000 USD or equivalent require CFO approval."),
+};
+const V6 = {
+  version: 6,
+  content_hash: fingerprintOf("Payments above 15,000 USD or equivalent require CFO approval."),
+};
+// The words of the sweep's notice to the owner, which the sweep writes and the store keeps.
+const NOTICE =
+  "version 8 of rule high-value-payment cites version 4 of the policy, and KSoR has version 5 in force";
+
+/** dsor-scheduler's sweep, at this time, on a call of its own. */
+function bySweep(as_of = "2026-10-07T00:00:00.000Z"): RuleBy {
+  const correlation = { request_id: `req_sweep_${as_of}`, principal_id: "dsor-scheduler" };
+  return { person: "dsor-scheduler", as_of, words: "its policy moved in KSoR", correlation };
+}
+
+/** A second rule of org_456 on payment.create, active, so a store holds two rules in force. */
+function secondRule() {
+  return { ...shippedRule(), id: "second-rule", version: 1 };
+}
+
+describe("C2: the store keeps DSoR's mark on a stale version (step 28b's README, decisions D5 and D6)", () => {
+  it("DSOR-CTL-03a: the sweep's mark moves version 8 from active to stale_authority, keeps the time and the policy's version in force, writes its record, and leaves cfo_100, its owner, a notice", async () => {
+    const store = memoryControls(readControls());
+    const by = bySweep();
+    expect(await store.mark("org_456", "high-value-payment", 8, undefined, V5, by, NOTICE)).toBe(
+      true,
+    );
+    expect((await store.versions("org_456")).map((v) => [v.version, v.status])).toStrictEqual([
+      [8, "stale_authority"],
+    ]);
+    const [v8] = await store.inForce("org_456", "payment.create");
+    expect(v8?.stale).toStrictEqual({ since: "2026-10-07T00:00:00.000Z", in_force: V5 });
+    expect((await store.records()).at(-1)).toStrictEqual({
+      kind: "control_change",
+      result: "stale_authority",
+      reason: "its policy moved in KSoR",
+      correlation: by.correlation,
+      tenant: "org_456",
+      resources: ["dsor://org_456/rule/high-value-payment"],
+      identity: {
+        mode: "direct",
+        subject: "dsor-scheduler",
+        actor_chain: [],
+        subject_authority: { source: "token", as_of: by.as_of },
+      },
+      extensions: { [OUR_EXTENSIONS]: { version: 8, from: "active", in_force: V5 } },
+    });
+    expect(await store.notices()).toStrictEqual([
+      {
+        tenant_id: "org_456",
+        to: "cfo_100",
+        rule: "high-value-payment",
+        version: 8,
+        words: NOTICE,
+        at: by.as_of,
+        correlation: by.correlation,
+      },
+    ]);
+  });
+
+  it("Step 28b: a stale version whose policy moved again keeps the time of its first mark, and gets the newer version in force, a record, and a new notice (decision D5)", async () => {
+    const store = memoryControls(readControls());
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    const first = { since: "2026-10-07T00:00:00.000Z", in_force: V5 };
+    const later = bySweep("2026-10-08T00:00:00.000Z");
+    expect(await store.mark("org_456", "high-value-payment", 8, first, V6, later, "again")).toBe(
+      true,
+    );
+    const [v8] = await store.inForce("org_456", "payment.create");
+    expect(v8?.stale).toStrictEqual({ since: "2026-10-07T00:00:00.000Z", in_force: V6 });
+    const marks = (await store.records()).filter((r) => r.result === "stale_authority");
+    expect(marks.map((r) => r.extensions[OUR_EXTENSIONS])).toStrictEqual([
+      { version: 8, from: "active", in_force: V5 },
+      { version: 8, from: "stale_authority", in_force: V6 },
+    ]);
+    expect((await store.notices()).map((n) => [n.to, n.words, n.at])).toStrictEqual([
+      ["cfo_100", NOTICE, "2026-10-07T00:00:00.000Z"],
+      ["cfo_100", "again", "2026-10-08T00:00:00.000Z"],
+    ]);
+  });
+
+  it("Step 28b: a mark changes nothing when the version is not as the sweep saw it: a draft, a suspended version, a version marked meanwhile, a mark that names another version in force, or no change at all", async () => {
+    const store = memoryControls(readControls());
+    await store.add("org_456", version9(), byCfo("version 9"));
+    const by = bySweep();
+    const mark = (version: number, seen: Parameters<typeof store.mark>[3], to = V5) =>
+      store.mark("org_456", "high-value-payment", version, seen, to, by, NOTICE);
+    expect(await mark(9, undefined)).toBe(false);
+    expect(await mark(8, undefined)).toBe(true);
+    const records = (await store.records()).length;
+    // Marked meanwhile: the sweep saw it active.
+    expect(await mark(8, undefined)).toBe(false);
+    // The sweep saw another version in force than the one the mark keeps.
+    expect(await mark(8, { since: by.as_of, in_force: V6 }, V6)).toBe(false);
+    // The same version in force: nothing moved.
+    expect(await mark(8, { since: by.as_of, in_force: V5 }, V5)).toBe(false);
+    await store.move("org_456", "high-value-payment", 8, "stale_authority", "suspended", by);
+    expect(await mark(8, undefined)).toBe(false);
+    expect(await mark(8, { since: by.as_of, in_force: V5 }, V6)).toBe(false);
+    expect((await store.records()).length).toBe(records + 1);
+    expect(await store.notices()).toHaveLength(1);
+  });
+
+  it("Step 28b: only the sweep's mark makes a version stale: a move to stale_authority is refused, and a stale version never moves back to active (decision D6)", async () => {
+    const store = memoryControls(readControls());
+    const by = bySweep();
+    expect(
+      await store.move("org_456", "high-value-payment", 8, "active", "stale_authority", by),
+    ).toBe(false);
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, by, NOTICE);
+    expect(
+      await store.move(
+        "org_456",
+        "high-value-payment",
+        8,
+        "stale_authority",
+        "active",
+        byCfo("on"),
+      ),
+    ).toBe(false);
+    expect(
+      await store.switchOn("org_456", "high-value-payment", 8, "stale_authority", undefined, by),
+    ).toBe(false);
+    expect((await store.versions("org_456")).map((v) => v.status)).toStrictEqual([
+      "stale_authority",
+    ]);
+  });
+
+  it("Step 28b: a stale version is in force: line ⑩'s read gives the active versions and the stale ones, each stale one with its mark, and its owner's suspension or retirement takes it out (decision D7)", async () => {
+    const file = { org_456: [shippedRule(), secondRule()], org_789: [] };
+    const store = memoryControls({ file: "controls.json", text: JSON.stringify(file) });
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    const read = await store.inForce("org_456", "payment.create");
+    expect(read.map((v) => [v.id, v.status, v.stale?.in_force.version])).toStrictEqual([
+      ["high-value-payment", "stale_authority", 5],
+      ["second-rule", "active", undefined],
+    ]);
+    expect("stale" in read[1]!).toBe(false);
+    // Every operation, when none is named: what the sweep reads.
+    expect((await store.inForce("org_456")).map((v) => v.id)).toStrictEqual([
+      "high-value-payment",
+      "second-rule",
+    ]);
+    const off = byCfo("off while version 9 is written");
+    expect(
+      await store.move("org_456", "high-value-payment", 8, "stale_authority", "suspended", off),
+    ).toBe(true);
+    expect((await store.inForce("org_456", "payment.create")).map((v) => v.id)).toStrictEqual([
+      "second-rule",
+    ]);
+    expect(await store.move("org_456", "second-rule", 1, "active", "retired", byCfo("gone"))).toBe(
+      true,
+    );
+    expect(await store.inForce("org_456", "payment.create")).toStrictEqual([]);
+  });
+
+  it("Step 28b: a stale version is its rule's live version: switching on a new version retires it, with its record (decision D6)", async () => {
+    const store = memoryControls(readControls());
+    await store.add("org_456", version9(), byCfo("version 9 cites version 5"));
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    const live = { version: 8, from: "stale_authority" as const };
+    expect(
+      await store.switchOn("org_456", "high-value-payment", 9, "draft", live, byCfo("on")),
+    ).toBe(true);
+    expect((await store.versions("org_456")).map((v) => [v.version, v.status])).toStrictEqual([
+      [8, "retired"],
+      [9, "active"],
+    ]);
+    const retired = (await store.records()).find((r) => r.result === "retired");
+    expect(retired?.extensions[OUR_EXTENSIONS]).toStrictEqual({
+      version: 8,
+      from: "stale_authority",
+    });
+    // Retired, version 8 is in force no more, and its mark goes with it.
+    expect((await store.inForce("org_456", "payment.create")).map((v) => v.version)).toStrictEqual([
+      9,
+    ]);
+  });
+
+  it("Step 28b: the mark is DSoR's, beside the rule's text: the versions read at line ⑨ and under the rule's lock carry none, and the text still passes control.schema.json and its tests", async () => {
+    const registry = await startWith(readControls());
+    const store = memoryControls(readControls());
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    const [kept] = await store.versions("org_456");
+    expect(kept).toStrictEqual({ ...shippedRule(), status: "stale_authority" });
+    expect(await store.hold("org_456", "high-value-payment")).toStrictEqual([kept]);
+    expect(registry.checkRule("org_456", kept, true)).toStrictEqual([]);
+  });
+
+  // Found by step 28b's own break of the store: with the mark kept on any version in force, every
+  // test passed, because no test switched a stale version on again after its owner suspended it.
+  it("Step 28b: a version that was stale, then suspended, then switched on again, is in force with no mark: the old mark is history, and line ⑩ reads the version as active", async () => {
+    const store = memoryControls(readControls());
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    const off = byCfo("off");
+    await store.move("org_456", "high-value-payment", 8, "stale_authority", "suspended", off);
+    await store.move("org_456", "high-value-payment", 8, "suspended", "active", byCfo("on"));
+    const [v8] = await store.inForce("org_456", "payment.create");
+    expect(v8?.status).toBe("active");
+    expect("stale" in v8!).toBe(false);
+  });
+
+  it("Step 28b: the store gives back copies of its marks and notices", async () => {
+    const store = memoryControls(readControls());
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    const [read] = await store.inForce("org_456", "payment.create");
+    read!.stale!.in_force.version = 99;
+    const [notice] = await store.notices();
+    notice!.to = "admin_100";
+    expect((await store.inForce("org_456", "payment.create"))[0]?.stale?.in_force).toStrictEqual(
+      V5,
+    );
+    expect((await store.notices())[0]?.to).toBe("cfo_100");
+  });
+
+  it("Step 28b: no store, NO_CONTROLS: nothing is in force, and nothing can be marked", async () => {
+    expect(await NO_CONTROLS.inForce("org_456")).toStrictEqual([]);
+    await expect(
+      NO_CONTROLS.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE),
+    ).rejects.toThrow("this world keeps no rules");
+  });
+});
+
+describe("C9: start-up and a stale version (step 28b's README, decision D14)", () => {
+  it("Step 28b: start-up accepts a stale version in the store, and runs its tests as an active one's: a stale version 8 whose test 1 fails stops it", async () => {
+    const { checkRule, moneyPolicies } = await startWith(readControls());
+    const good = memoryControls(readControls());
+    await good.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    expect(
+      await checkRules({ controls: good, checkRule, moneyPolicies }, ["org_456"]),
+    ).toStrictEqual([]);
+    const v8 = shippedRule();
+    v8.tests = [{ ...v8.tests[0]!, expect: "REQUIRE_APPROVAL" }];
+    const broken = memoryControls(controlsOf({ org_456: [v8] }));
+    await broken.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    expect(
+      await checkRules({ controls: broken, checkRule, moneyPolicies }, ["org_456"]),
+    ).toStrictEqual([
+      "controls.json: org_456's control high-value-payment v8 fails its test 1: expects REQUIRE_APPROVAL, gives ALLOW",
+    ]);
+  });
+
+  it("Step 28b: a stale version and an active one of one rule are two live versions, and stop start-up", async () => {
+    const { checkRule, moneyPolicies } = await startWith(readControls());
+    const store = memoryControls(readControls());
+    await store.add("org_456", version9(), byCfo("version 9"));
+    await store.mark("org_456", "high-value-payment", 8, undefined, V5, bySweep(), NOTICE);
+    // A move, not a switch-on, so version 8 is not retired first.
+    await store.move("org_456", "high-value-payment", 9, "draft", "active", byCfo("on"));
+    expect(await checkRules({ controls: store, checkRule, moneyPolicies }, ["org_456"])).toContain(
+      "controls.json: org_456 has two live versions of high-value-payment: one at a time may be active, stale, or suspended",
+    );
+  });
+
+  it("Step 28b: a controls file never gives a version stale_authority: only DSoR's sweep marks a rule stale, with the time and the version in force", async () => {
+    const stale = { ...shippedRule(), status: "stale_authority" };
+    expect(await refusalAtStart(() => startWith(controlsOf({ org_456: [stale] })))).toContain(
+      "controls.json: org_456's control high-value-payment has the status stale_authority, which only DSoR's sweep gives",
+    );
   });
 });

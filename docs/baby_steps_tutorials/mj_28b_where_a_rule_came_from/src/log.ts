@@ -11,7 +11,7 @@ import type { Conversion, Unconvertible } from "./limits.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
 import type { Mode } from "./request.ts";
-import type { RuleBy } from "./rulebook.ts";
+import type { PolicyInForce, RuleBy } from "./rulebook.ts";
 
 // The audit record's own field names, where this step can fill them honestly (step 08's
 // README, decision 5).
@@ -219,7 +219,8 @@ export function controlOf(
 export type ControlChange = {
   kind: "control_change";
   // The status the version moved to: draft for a new version.
-  result: "draft" | "active" | "suspended" | "retired";
+  // NEW IN STEP 28b: and stale_authority, for the sweep's mark (step 28b's README, decision D5).
+  result: "draft" | "active" | "suspended" | "retired" | "stale_authority";
   // The person's own words.
   reason: string;
   correlation: Correlation;
@@ -234,10 +235,13 @@ export type ControlChange = {
     subject_authority: { source: "token"; as_of: string };
   };
   // The version, and the status it left. A draft left none.
-  extensions: { [namespace: string]: { version: number; from?: string } };
+  // NEW IN STEP 28b: and for a mark, the version of the policy that KSoR had in force.
+  extensions: {
+    [namespace: string]: { version: number; from?: string; in_force?: PolicyInForce };
+  };
 };
 
-/** The record of one draft or one move of a version of a company's rule, by a person. */
+/** The record of one draft or one move of a version of a company's rule, by a person, or by the sweep's mark. */
 export function controlChangeOf(
   tenant: string,
   id: string,
@@ -245,7 +249,10 @@ export function controlChangeOf(
   from: string | undefined,
   to: ControlChange["result"],
   by: RuleBy,
+  // NEW IN STEP 28b: for a mark, the version of the policy in force.
+  in_force?: PolicyInForce,
 ): ControlChange {
+  const moved = from === undefined ? { version } : { version, from };
   return {
     kind: "control_change",
     result: to,
@@ -260,7 +267,9 @@ export function controlChangeOf(
       actor_chain: [],
       subject_authority: { source: "token", as_of: by.as_of },
     },
-    extensions: { [OURS]: from === undefined ? { version } : { version, from } },
+    extensions: {
+      [OURS]: in_force === undefined ? moved : { ...moved, in_force: { ...in_force } },
+    },
   };
 }
 

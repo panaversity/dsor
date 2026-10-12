@@ -151,6 +151,8 @@ const BRAKE_LIFTED = ["lifted_by", "lifted_at", "lift_reason"];
 // Dsor.controls, as migration 023 makes it. dsor_runtime reads every column, adds
 // a draft through six, and moves a version through three. drafted_at is the database's to fill,
 // and nothing removes a row or changes a version's text (step 28's README, decisions D2 and D11).
+// Changed in step 28b: and the sweep's mark, in two more columns. dsor_runtime names the version
+// in force, and the trigger writes the time of the mark (step 28b's README, decision D5).
 const CONTROL_COLUMNS = [
   "tenant_id",
   "id",
@@ -161,9 +163,25 @@ const CONTROL_COLUMNS = [
   "drafted_at",
   "reviewed_by",
   "effective_from",
+  "stale_since",
+  "in_force",
 ];
 const CONTROL_ADDED = ["tenant_id", "id", "version", "status", "rule", "compiled_by"];
-const CONTROL_MOVED = ["status", "reviewed_by", "effective_from"];
+const CONTROL_MOVED = ["status", "reviewed_by", "effective_from", "in_force"];
+
+// Dsor.notices, as migration 024 makes it. dsor_runtime reads every column and adds a notice
+// through seven. at is the database's to fill, and nothing changes or removes a notice (step
+// 28b's README, decision D5).
+const NOTICE_COLUMNS = [
+  "notice_id",
+  "tenant_id",
+  "to_person",
+  "rule_id",
+  "version",
+  "words",
+  "at",
+  "correlation",
+];
 
 // Dsor.rates, as migration 021 makes it. dsor_runtime reads every column, and adds a
 // sheet through six. loaded_at is the database's to fill, and nothing changes or removes a row
@@ -327,6 +345,19 @@ export function today(): Catalog {
           { name: "at", held: [], filled: true },
         ],
         rowSecurity: { enabled: false, forced: false },
+        rules: [],
+        triggers: [],
+      },
+      // The notices to each rule's owner, behind the company's lock, written once.
+      {
+        name: "dsor.notices",
+        kind: "table",
+        held: ["SELECT"],
+        columns: NOTICE_COLUMNS.map((name) => {
+          const filled = name === "at";
+          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [],
       },

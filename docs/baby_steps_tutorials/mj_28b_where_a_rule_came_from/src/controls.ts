@@ -90,11 +90,6 @@ ajv.addSchema(loadSchema("common.schema.json"));
 ajv.addSchema(loadSchema("control.schema.json"));
 const validateControl = ajv.compile({ $ref: "urn:dsor:schema:1.3:control" });
 
-// A stale control behaves per its on_stale while its stale_grace lasts (§17.4), which step 28b
-// builds. Until then start-up refuses one: it is never skipped, and never evaluated as if it were
-// active (DSOR-CTL-03b). Found by step 27's review, finding M2: it was evaluated as active, so a
-// stale control whose on_stale says deny allowed a payment.
-const STALE = "stale_authority";
 // A rule's address ends with its id, so the id is one form only: lower-case words
 // joined by dashes, from a letter to a letter or a digit, at most 64 characters. Found by step
 // 28's review, finding L16: ".", "..", and "high-value-payment." passed the URI's own form, and a
@@ -349,9 +344,6 @@ export function ruleProblems(
       const most = `this step allows at most ${MOST_APPROVERS}`;
       return [`${name}: its effect asks for ${quorum} approvals, and ${most}`];
     }
-  }
-  if (control.status === STALE) {
-    return [`${name} has the status ${STALE}, whose on_stale this step does not build`];
   }
   if (control.status === IN_REVIEW) {
     return [`${name} has the status ${IN_REVIEW}, which this step does not build`];

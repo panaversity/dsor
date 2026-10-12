@@ -17,6 +17,9 @@
 //   node test/owner-rules.ts plant                  adds an active rule that never passed a
 //                                                   switch-on, as a hand edit of the database
 //                                                   would
+//   node test/owner-rules.ts retime                 tries to move the time of a stale version's
+//                                                   first mark, as the owner, and says what the
+//                                                   database said (step 28b)
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { createDbControls, loadDotEnv, requireEnv } from "../src/postgres.ts";
@@ -74,7 +77,7 @@ try {
         words: "the owner's test of DSoR's own WHERE",
         correlation: { request_id, principal_id: "cfo_100" },
       };
-      const active = await rules.active("org_456", "payment.create");
+      const inForce = await rules.inForce("org_456", "payment.create");
       const versions = await rules.versions("org_456");
       const held = await rules.hold("org_456", "high-value-payment");
       // org_456 has no version 9: a move of it must find nothing, and leave org_789's alone.
@@ -86,12 +89,12 @@ try {
       const tenantsOf = (list: { id: string }[], label: string) =>
         list.map((c) => `${label} ${c.id}`);
       result = {
-        active: active.map((c) => c.version),
+        inForce: inForce.map((c) => c.version),
         versions: versions.map((c) => c.version),
         held: held.map((c) => c.version),
         moved,
         twin: twin.rows,
-        names: [...tenantsOf(active, "active"), ...tenantsOf(versions, "version")],
+        names: [...tenantsOf(inForce, "in force"), ...tenantsOf(versions, "version")],
       };
     } finally {
       await pool.query("DELETE FROM dsor.controls WHERE tenant_id = 'org_789'");
@@ -111,6 +114,33 @@ try {
     try {
       await pool.query(
         "UPDATE dsor.controls SET status = 'active' WHERE tenant_id = 'org_456' AND id = $1",
+        [id],
+      );
+    } catch (error) {
+      refused = (error as Error).message;
+    } finally {
+      await pool.query("DELETE FROM dsor.controls WHERE tenant_id = 'org_456' AND id = $1", [id]);
+    }
+    result = { refused };
+  } else if (command === "retime") {
+    // The trigger keeps the time of a version's first mark, for the owner too, who holds every
+    // privilege: an earlier time would end the grace at once, and a later one lengthen it (step
+    // 28b's README, decision D9).
+    const id = `test-${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO dsor.controls (tenant_id, id, version, status, rule, compiled_by, drafted_at,
+                                  reviewed_by, effective_from, stale_since, in_force)
+       SELECT tenant_id, $1, 1, 'stale_authority', rule, compiled_by, drafted_at, reviewed_by,
+              effective_from, clock_timestamp(), '{"version": 5, "content_hash": "sha256:aa"}'
+         FROM dsor.controls WHERE ${SEED}`,
+      [id],
+    );
+    let refused = "";
+    try {
+      await pool.query(
+        `UPDATE dsor.controls SET stale_since = '2020-01-01T00:00:00Z',
+                in_force = '{"version": 6, "content_hash": "sha256:bb"}'
+          WHERE tenant_id = 'org_456' AND id = $1`,
         [id],
       );
     } catch (error) {

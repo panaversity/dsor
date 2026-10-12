@@ -170,7 +170,7 @@ describe("C4: each company's rules are its own (DSOR-TEN-01b)", () => {
     expect(await ruleCall(w, ADMIN_700, "rule.activate", { version: 1 }, rule)).toMatchObject({
       data: { tenant_id: "org_789", version: 1, status: "active" },
     });
-    expect((await w.rules.active("org_789", "payment.create")).map((v) => v.id)).toStrictEqual([
+    expect((await w.rules.inForce("org_789", "payment.create")).map((v) => v.id)).toStrictEqual([
       "board-above-10000",
     ]);
     expect(await statuses(w)).toStrictEqual([[8, "active"]]);
