@@ -93,10 +93,13 @@ const validateControl = ajv.compile({ $ref: "urn:dsor:schema:1.3:control" });
 // active (DSOR-CTL-03b). Found by step 27's review, finding M2: it was evaluated as active, so a
 // stale control whose on_stale says deny allowed a payment.
 const STALE = "stale_authority";
-// NEW IN STEP 28: a rule's address ends with its id, so the id has the letters of a URI's id.
-// not copied: the id part of common.schema.json's resourceUri pattern, which uri.ts copies whole
-// (step 28's README, decision D7).
-const RULE_ID = /^[A-Za-z0-9_.-]+$/;
+// NEW IN STEP 28: a rule's address ends with its id, so the id is one form only: lower-case words
+// joined by dashes, from a letter to a letter or a digit, at most 64 characters. Found by step
+// 28's review, finding L16: ".", "..", and "high-value-payment." passed the URI's own form, and a
+// lookalike rule stood beside the real one in the agent's answer.
+// not copied: this tutorial's own form for a rule's id, stricter than the URI's (step 28's README,
+// decision D7).
+const RULE_ID = /^[a-z](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 // NEW IN STEP 28: nor is a control in review built. The owner's switch-on is the review (step 28's
 // README, decision D17).
 const IN_REVIEW = "in_review";
@@ -313,7 +316,10 @@ export function ruleProblems(
   // NEW IN STEP 28: a rule's address ends with its id, so the id has the letters a URI's id may
   // have (step 28's README, decision D7).
   if (!RULE_ID.test(control.id)) {
-    return [`${name}: its id cannot end a rule's address, dsor://${tenant}/rule/<id>`];
+    const form = "lower-case letters, digits, and dashes, start with a letter";
+    return [
+      `${name}: its id must be ${form}, end with a letter or a digit, and hold at most 64 characters`,
+    ];
   }
   const effect = Object.keys(control.effect)[0] ?? "";
   if (!BUILT.has(effect)) {

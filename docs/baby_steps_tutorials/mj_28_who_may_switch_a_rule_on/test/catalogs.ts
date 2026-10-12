@@ -28,6 +28,9 @@ export const PAYMENT_TRIGGER =
 // decision 3).
 export const PROPOSAL_TRIGGER =
   "CREATE TRIGGER proposals_move BEFORE INSERT OR UPDATE ON dsor.proposals FOR EACH ROW EXECUTE FUNCTION dsor.proposal_moves()";
+// NEW IN STEP 28: the guard on a version's moves (step 28's review, finding L14).
+export const CONTROL_TRIGGER =
+  "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
 // database fills in (step 09's README, decision 6).
 const AUDIT_COLUMNS = [
@@ -272,7 +275,7 @@ export function today(): Catalog {
         })),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [],
+        triggers: [CONTROL_TRIGGER],
       },
       {
         name: "dsor.delegations",

@@ -3,9 +3,10 @@
 -- the owner, after 022 (step 28's README, decisions D2 to D4, D14, and D17).
 CREATE TABLE dsor.controls (
   tenant_id      text NOT NULL CHECK (tenant_id ~ '^org_[0-9]+$'),
-  -- A rule's id is the last part of its address, dsor://org_456/rule/high-value-payment, so it
-  -- has the letters a URI's id may have (decision D7).
-  id             text NOT NULL CHECK (id ~ '^[A-Za-z0-9_.-]+$'),
+  -- A rule's id is the last part of its address, dsor://org_456/rule/high-value-payment: lower-case
+  -- words joined by dashes, from a letter to a letter or a digit, at most 64 characters (step 28's
+  -- README, decision D7; step 28's review, finding L16).
+  id             text NOT NULL CHECK (id ~ '^[a-z]([a-z0-9-]{0,62}[a-z0-9])?$'),
   version        integer NOT NULL CHECK (version >= 1),
   -- The four statuses this step builds. in_review is never set, and stale_authority arrives with
   -- step 28b (decision D17).
@@ -56,6 +57,48 @@ CREATE POLICY starts_as_draft ON dsor.controls AS RESTRICTIVE FOR INSERT TO dsor
   WITH CHECK (status = 'draft' AND reviewed_by IS NULL AND effective_from IS NULL);
 CREATE POLICY moves_on ON dsor.controls AS RESTRICTIVE FOR UPDATE TO dsor_runtime
   USING (status <> 'retired') WITH CHECK (status <> 'draft');
+
+-- The database's guard of a version's moves, beside DSoR's own picture in src/rulebook.ts, as
+-- step 22's guards the moves of a proposal. A draft is switched on or retired. An active version
+-- is suspended or retired. A suspended one is switched on again or retired. A retired one never
+-- moves. Only a switch-on names a reviewer and the time it took effect, so the owner of record,
+-- which DSoR reads from that history, cannot be forged by a move. Nothing else of a version ever
+-- changes. It runs for every role, the owner's too, and returns the row, so it never swallows a
+-- write. search_path is pinned, as for step 22's guard (step 28's README, decisions D10 and D13;
+-- step 28's review, finding L14).
+CREATE FUNCTION dsor.control_moves() RETURNS trigger LANGUAGE plpgsql
+  SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF (NEW.tenant_id, NEW.id, NEW.version, NEW.rule, NEW.compiled_by, NEW.drafted_at)
+     IS DISTINCT FROM
+     (OLD.tenant_id, OLD.id, OLD.version, OLD.rule, OLD.compiled_by, OLD.drafted_at) THEN
+    RAISE EXCEPTION 'a version of a rule keeps its text, its number, and who wrote it'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM (VALUES
+      ('draft', 'active'), ('draft', 'retired'),
+      ('active', 'suspended'), ('active', 'retired'),
+      ('suspended', 'active'), ('suspended', 'retired')
+    ) AS drawn (from_status, to_status)
+    WHERE drawn.from_status = OLD.status AND drawn.to_status = NEW.status
+  ) THEN
+    RAISE EXCEPTION 'a version of a rule does not move from % to %', OLD.status, NEW.status
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.status <> 'active'
+     AND (NEW.reviewed_by, NEW.effective_from) IS DISTINCT FROM (OLD.reviewed_by, OLD.effective_from)
+  THEN
+    RAISE EXCEPTION 'only a switch-on names a reviewer and the time it took effect'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END
+$$;
+-- Nobody calls it by hand. The database runs it at each UPDATE.
+REVOKE ALL ON FUNCTION dsor.control_moves() FROM PUBLIC;
+CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls
+  FOR EACH ROW EXECUTE FUNCTION dsor.control_moves();
 
 -- dsor_runtime reads the rules, adds a draft through named columns, and moves a version through
 -- named columns. No DELETE, and no change to a version's text or to who wrote it. drafted_at is

@@ -186,7 +186,10 @@
           "INSERT": ["tenant_id", "id", "version", "status", "rule", "compiled_by"],
           "UPDATE": ["status", "reviewed_by", "effective_from"]
         }
-      }
+      },
+      "triggers": [
+        "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()"
+      ]
     },
     "dsor.migrations": {
       "kind": "bookkeeping",

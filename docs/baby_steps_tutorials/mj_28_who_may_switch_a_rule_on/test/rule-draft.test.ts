@@ -255,9 +255,34 @@ describe("C8: start-up checks a version's owner and its id (step 28's README, de
     );
   });
 
-  it("Step 28: start-up refuses a version whose id cannot end a rule's address", async () => {
-    expect(await refusalAtStart(() => startWith(withRule({ id: "high value payment" })))).toContain(
-      "controls.json: org_456's control high value payment: its id cannot end a rule's address, dsor://org_456/rule/<id>",
+  // Changed by step 28's review, finding L16: ".", "..", "-", a trailing dot, and capitals were
+  // accepted, and a rule "high-value-payment." stood beside the real one in the agent's answer.
+  it.each([
+    "high value payment",
+    ".",
+    "..",
+    "-",
+    "high-value-payment.",
+    "High-Value-Payment",
+    "9-lives",
+    "high-value-payment-",
+    "a".repeat(65),
+  ])(
+    "Step 28: start-up refuses a version whose id is %s: a rule's id is lower-case words with dashes",
+    async (id) => {
+      expect(await refusalAtStart(() => startWith(withRule({ id })))).toContain(
+        `controls.json: org_456's control ${id}: its id must be lower-case letters, digits, and dashes, start with a letter, end with a letter or a digit, and hold at most 64 characters`,
+      );
+    },
+  );
+
+  it("Step 28: a draft of the rule high-value-payment. is refused at line ⑨: its id is not a rule's id", async () => {
+    const w = await ruleWorldOnTuesday();
+    const lookalike = "dsor://org_456/rule/high-value-payment.";
+    const answer = await ruleCall(w, CFO, "rule.draft", { draft: textOf(version9()) }, lookalike);
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect("message" in answer && answer.message).toContain(
+      "its id must be lower-case letters, digits, and dashes, start with a letter, end with a letter or a digit, and hold at most 64 characters",
     );
   });
 });

@@ -171,6 +171,9 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
     expect(rows).toStrictEqual([]);
   });
 
+  // Changed by step 28's review, findings L14 and L16: the database draws a version's moves too,
+  // with a trigger, for every role, and refuses an id that is not a rule's id. Each statement runs
+  // beside a draft of the test's own, $1.
   it.each([
     ["delete a version", "DELETE FROM dsor.controls", "permission denied"],
     [
@@ -185,21 +188,51 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
       "row-level security",
     ],
     [
-      "move a version back to draft",
-      "UPDATE dsor.controls SET status = 'draft' WHERE id = 'high-value-payment'",
-      "row-level security",
+      "add a version whose id is not a rule's id",
+      `INSERT INTO dsor.controls (tenant_id, id, version, status, rule, compiled_by)
+       VALUES ('org_456', 'High-Value-Payment.', 1, 'draft', '{}', 'cfo_100')`,
+      "controls_id_check",
     ],
     [
-      "switch a version on with no reviewer",
-      "UPDATE dsor.controls SET reviewed_by = NULL WHERE id = 'high-value-payment'",
+      "move a version back to draft",
+      "UPDATE dsor.controls SET status = 'draft' WHERE id = 'high-value-payment'",
+      "a version of a rule does not move from active to draft",
+    ],
+    [
+      "switch a draft on with no reviewer",
+      "UPDATE dsor.controls SET status = 'active' WHERE id = $1",
       "controls_switched_on",
     ],
+    [
+      "move a draft straight to suspended, naming a reviewer and a time",
+      `UPDATE dsor.controls SET status = 'suspended', reviewed_by = 'cfo_100',
+                                effective_from = clock_timestamp() WHERE id = $1`,
+      "a version of a rule does not move from draft to suspended",
+    ],
+    [
+      "retire a draft, naming a time it took effect",
+      "UPDATE dsor.controls SET status = 'retired', effective_from = clock_timestamp() WHERE id = $1",
+      "only a switch-on names a reviewer and the time it took effect",
+    ],
+    [
+      "name another reviewer of an active version",
+      "UPDATE dsor.controls SET reviewed_by = 'admin_100' WHERE id = 'high-value-payment'",
+      "a version of a rule does not move from active to active",
+    ],
   ])(
-    "Step 28: dsor_runtime may not %s (step 28's README, decision D2)",
+    "Step 28: dsor_runtime may not %s (step 28's README, decisions D2 and D13)",
     async (_what, sql, refusal) => {
-      expect(await asRuntime(sql)).toContain(refusal);
+      const id = `test-${randomUUID()}`;
+      await rules.add("org_456", refusing9001(id), byCfo("a draft"));
+      expect(await asRuntime(sql, sql.includes("$1") ? [id] : [])).toContain(refusal);
     },
   );
+
+  it("Step 28: the trigger runs for the owner too: a retired version never comes back, whoever asks (step 28's review, finding L14)", () => {
+    expect(ownerRules("back")).toStrictEqual({
+      refused: "a version of a rule does not move from retired to active",
+    });
+  });
 
   it("Step 28: one live version for each rule: the database refuses a second active or suspended version of one rule (step 28's README, decision D4)", async () => {
     const id = `test-${randomUUID()}`;

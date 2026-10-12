@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
-import { INVOICE_TRIGGER, PAYMENT_TRIGGER, PROPOSAL_TRIGGER } from "./catalogs.ts";
+import { CONTROL_TRIGGER, INVOICE_TRIGGER, PAYMENT_TRIGGER, PROPOSAL_TRIGGER } from "./catalogs.ts";
 import { AGENT, CFO, SUPERVISOR, keyed } from "./helpers.ts";
 import {
   NO_PRIVILEGE,
@@ -320,7 +320,9 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
     const sql = `SELECT pg_get_triggerdef(t.oid) AS def FROM pg_trigger t
                   WHERE NOT t.tgisinternal ORDER BY 1`;
     const { rows } = await tryThenRollBack(observer, sql);
+    // And, since step 28, the guard on a version's moves (step 28's review, finding L14).
     expect(rows.map((row) => row["def"])).toStrictEqual([
+      CONTROL_TRIGGER,
       INVOICE_TRIGGER,
       PAYMENT_TRIGGER,
       PROPOSAL_TRIGGER,

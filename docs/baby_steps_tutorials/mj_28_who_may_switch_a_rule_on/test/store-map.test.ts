@@ -60,7 +60,7 @@ describe("the shipped map", () => {
   // NEW IN STEP 28: a version of a rule is read inside its company, added as a draft through six
   // named columns, and moved through three. Nothing deletes one, and nothing changes its text or
   // who wrote it (step 28's README, decisions D2 and D11).
-  it("step 28's decision D2: dsor.controls is read inside its company, added through named columns, and moved through named columns", () => {
+  it("step 28's decision D2: dsor.controls is read inside its company, added through named columns, moved through named columns, and guarded by its trigger", () => {
     const { map } = checkStore(SHIPPED);
     expect(map.tables.get("dsor.controls")).toStrictEqual({
       kind: "control-moved",
@@ -72,8 +72,10 @@ describe("the shipped map", () => {
           UPDATE: ["status", "reviewed_by", "effective_from"],
         },
       },
-      // And no trigger: the database's policies and checks guard each move.
-      triggers: [],
+      // And the trigger that draws each move, as the proposals' does (step 28's review, finding L14).
+      triggers: [
+        "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()",
+      ],
     });
   });
 

@@ -66,7 +66,8 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
 
   // Found by step 28's own break: with a retired version allowed back, every command test passed,
   // because each command checks the status first. The store draws the moves too, as the database's
-  // policies do (step 28's README, decision D13).
+  // trigger does (step 28's README, decision D13). Changed by step 28's review, finding L14: this
+  // said the database's policies drew them, and they did not.
   it("Step 28: the store makes only the moves of a version's life: a retired version never moves, a draft is never suspended, and nothing moves back to draft", async () => {
     const store = memoryControls(readControls());
     await store.add("org_456", version9(), byCfo("version 9"));

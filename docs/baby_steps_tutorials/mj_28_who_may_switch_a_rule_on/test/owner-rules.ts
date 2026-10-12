@@ -12,9 +12,12 @@
 //   node test/owner-rules.ts filters <request id>   runs the store's statements for org_456, as
 //                                                   the owner, beside a twin of org_456's rule in
 //                                                   org_789
+//   node test/owner-rules.ts back                   tries to bring a retired version back, as
+//                                                   the owner, and says what the database said
 //   node test/owner-rules.ts plant                  adds an active rule that never passed a
 //                                                   switch-on, as a hand edit of the database
 //                                                   would
+import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { createDbControls, loadDotEnv, requireEnv } from "../src/postgres.ts";
 import { redact } from "./db.ts";
@@ -37,7 +40,16 @@ try {
   let result: unknown;
   if (command === "clear") {
     const { rowCount } = await pool.query(`DELETE FROM dsor.controls WHERE NOT (${SEED})`);
-    await pool.query(`UPDATE dsor.controls SET status = 'active' WHERE ${SEED}`);
+    // The trigger keeps a retired version retired, for the owner too, so version 8 comes back as a
+    // row of its own, active again, with its text and its history.
+    await pool.query(
+      `WITH gone AS (DELETE FROM dsor.controls WHERE ${SEED} AND status <> 'active' RETURNING *)
+       INSERT INTO dsor.controls (tenant_id, id, version, status, rule, compiled_by, drafted_at,
+                                  reviewed_by, effective_from)
+       SELECT tenant_id, id, version, 'active', rule, compiled_by, drafted_at, reviewed_by,
+              effective_from
+         FROM gone`,
+    );
     result = { removed: rowCount };
   } else if (command === "filters") {
     // A twin of org_456's rule in org_789: the same id, the same version 8, active, and a
@@ -84,6 +96,29 @@ try {
     } finally {
       await pool.query("DELETE FROM dsor.controls WHERE tenant_id = 'org_789'");
     }
+  } else if (command === "back") {
+    // The trigger runs for every role, the owner's too: a retired version never comes back.
+    const id = `test-${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO dsor.controls (tenant_id, id, version, status, rule, compiled_by, drafted_at,
+                                  reviewed_by, effective_from)
+       SELECT tenant_id, $1, 1, 'retired', rule, compiled_by, drafted_at, reviewed_by,
+              effective_from
+         FROM dsor.controls WHERE ${SEED}`,
+      [id],
+    );
+    let refused = "";
+    try {
+      await pool.query(
+        "UPDATE dsor.controls SET status = 'active' WHERE tenant_id = 'org_456' AND id = $1",
+        [id],
+      );
+    } catch (error) {
+      refused = (error as Error).message;
+    } finally {
+      await pool.query("DELETE FROM dsor.controls WHERE tenant_id = 'org_456' AND id = $1", [id]);
+    }
+    result = { refused };
   } else if (command === "plant") {
     // A hand edit of the database, behind DSoR's back: an active rule that never passed a
     // switch-on. Version 8's text with the condition true, so its own test 1, 25,000.00 USD
