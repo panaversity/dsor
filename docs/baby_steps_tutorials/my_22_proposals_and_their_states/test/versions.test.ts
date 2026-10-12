@@ -13,9 +13,11 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { getInvoice, issueInvoice } from "../src/invoice.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { paymentsOf } from "../src/payment.ts";
+import { useDatabase } from "../src/store.ts";
 import { callOperation } from "./support/door.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
@@ -295,5 +297,85 @@ describe("the version, and nothing else, decides staleness", () => {
     expect(stale.kind === "error" && stale.envelope.message).toBe(
       "INV-1009 has changed since the version the decision was made on; read it again and decide again",
     );
+  });
+});
+
+describe("an invoice the owner puts back to draft while it is being issued", () => {
+  // Decision 152: when the read after the UPDATE found a draft, steps 10 to 20 ran the UPDATE once
+  // more. Step 21 answered RESOURCE_NOT_FOUND there, "not an invoice we hold", about an invoice that
+  // exists, and is a draft on the very version the caller decided on.
+  const BACK_TO_DRAFT =
+    "UPDATE public.invoices SET status = 'draft' WHERE tenant_id = 'org_456' AND id = 'INV-1008'";
+  const BACK_TO_ISSUED =
+    "UPDATE public.invoices SET status = 'issued' WHERE tenant_id = 'org_456' AND id = 'INV-1008'";
+
+  /**
+   * Runs `call` through a store that lets the owner change INV-1008 by hand around each UPDATE that
+   * issues an invoice: `before` just before it, and `afterAMiss` just after one that issued nothing.
+   * Only an owner can do this; the application has no right to put an invoice back to draft.
+   */
+  async function withTheOwnerInTheGap<T>(
+    edits: { readonly before?: string; readonly afterAMiss: string },
+    call: () => Promise<T>,
+  ): Promise<T> {
+    const { before, afterAMiss } = edits;
+    const real = overPGlite(db);
+    const issuing = (sql: string): boolean =>
+      sql.includes("UPDATE public.invoices SET status = 'issued'");
+
+    useDatabase({
+      async query<R>(sql: string, params?: unknown[], tenant?: string) {
+        if (issuing(sql) && before !== undefined) {
+          await asTheOwner(() => db.exec(before));
+        }
+
+        const result = await real.query<R>(sql, params, tenant);
+
+        if (issuing(sql) && result.rows.length === 0) {
+          await asTheOwner(() => db.exec(afterAMiss));
+        }
+
+        return result;
+      },
+    });
+
+    try {
+      return await call();
+    } finally {
+      useDatabase(real);
+    }
+  }
+
+  it("decision 152: put back to draft between the UPDATE and the read after it, it is issued on the version the caller decided on, not called missing", async () => {
+    // INV-1008 starts issued, at version 1. The caller decides on version 1, the UPDATE finds no
+    // draft, and then, before the read, the owner puts it back to draft, still at version 1.
+    const answer = await withTheOwnerInTheGap({ afterAMiss: BACK_TO_DRAFT }, () =>
+      callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1008, expected_version: 1 }),
+    );
+
+    // The outcome, or the refusal's code, so that a failure says which.
+    expect(
+      answer.kind === "result"
+        ? answer.envelope.outcome
+        : answer.kind === "error" && answer.envelope.code,
+    ).toBe("COMMITTED");
+    expect((await getInvoice("org_456", "INV-1008")).value?.status).toBe("issued");
+  });
+
+  it("decision 152: put back and forth around every statement, it is STALE_STATE: read it again, and decide again", async () => {
+    // Issued before each UPDATE, a draft again after each one misses: every read finds a draft on
+    // the caller's version, and no UPDATE ever does. Two tries, then the caller is sent to read.
+    const answer = await withTheOwnerInTheGap(
+      { before: BACK_TO_ISSUED, afterAMiss: BACK_TO_DRAFT },
+      () => callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1008, expected_version: 1 }),
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("STALE_STATE");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_state_refresh");
+
+    const now = (await getInvoice("org_456", "INV-1008")).value;
+
+    // Nothing was issued: the version is where the story started it.
+    expect(`${now?.status} ${now?.version}`).toBe("draft 1");
   });
 });

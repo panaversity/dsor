@@ -112,7 +112,10 @@ export async function getInvoice(
 export type IssueOutcome =
   | { readonly kind: "issued"; readonly invoice: Invoice }
   | { readonly kind: "not_found" }
-  /** NEW IN STEP 21: the invoice moved on from the version the caller decided on (decision 133). */
+  /**
+   * NEW IN STEP 21: the invoice moved on from the version the caller decided on (decision 133), or
+   * kept changing under the caller, by hand, though its version did not (decision 152).
+   */
   | { readonly kind: "stale"; readonly version: number }
   | { readonly kind: "not_draft"; readonly status: Exclude<InvoiceStatus, "draft"> };
 
@@ -132,35 +135,42 @@ export async function issueInvoice(
   id: string,
   expectedVersion: number,
 ): Promise<IssueOutcome> {
-  const { rows } = await theDatabase(tenantId).query<Row>(
-    `UPDATE public.invoices SET status = 'issued', version = version + 1
-     WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND version = $3
-     RETURNING ${COLUMNS}`,
-    [tenantId, id, expectedVersion],
-  );
-  const issued = rows[0];
+  // Decision 152: two tries at most, as in steps 10 to 20. The end of the loop says why.
+  for (let tries = 1; tries <= 2; tries += 1) {
+    const { rows } = await theDatabase(tenantId).query<Row>(
+      `UPDATE public.invoices SET status = 'issued', version = version + 1
+       WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND version = $3
+       RETURNING ${COLUMNS}`,
+      [tenantId, id, expectedVersion],
+    );
+    const issued = rows[0];
 
-  if (issued !== undefined) {
-    return { kind: "issued", invoice: fromRow(issued) };
+    if (issued !== undefined) {
+      return { kind: "issued", invoice: fromRow(issued) };
+    }
+
+    const current = (await getInvoice(tenantId, id)).value;
+
+    if (current === undefined) {
+      return { kind: "not_found" };
+    }
+
+    if (current.version !== expectedVersion) {
+      return { kind: "stale", version: current.version };
+    }
+
+    if (current.status !== "draft") {
+      return { kind: "not_draft", status: current.status };
+    }
+
+    // A draft on the caller's version, which the UPDATE missed: the owner put it back to draft
+    // between the two statements, and only an owner can. It is there now, so the UPDATE runs once
+    // more. Step 21 answered "not an invoice we hold" here, about an invoice that exists.
   }
 
-  const current = (await getInvoice(tenantId, id)).value;
-
-  if (current === undefined) {
-    return { kind: "not_found" };
-  }
-
-  if (current.version !== expectedVersion) {
-    return { kind: "stale", version: current.version };
-  }
-
-  // A draft on the caller's version that the UPDATE missed appeared between the two statements,
-  // which only an owner can bring about. It was not there to issue.
-  if (current.status === "draft") {
-    return { kind: "not_found" };
-  }
-
-  return { kind: "not_draft", status: current.status };
+  // Put back to draft after each try, and taken away again before the next: the invoice keeps
+  // changing under the caller, though its version does not, so the caller is sent to read it again.
+  return { kind: "stale", version: expectedVersion };
 }
 
 /** One page of a company's invoices, and where the next page starts, if there is one. */
