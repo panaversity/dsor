@@ -11,7 +11,6 @@ import { openTheDatabase } from "./database.ts";
 import { movedTo } from "./examples.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts";
 import { paymentsOf } from "./payment.ts";
-import { getInvoice } from "./invoice.ts";
 import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
 import { moveProposal, movesOf, proposalsOf } from "./proposal.ts";
@@ -134,17 +133,22 @@ console.log(
     ),
   ),
 );
+
+// STEP 21: the agent reads INV-1009 through the door, as any caller would, and decides on the
+// version that read gave it. A second run, where INV-1009 is issued already, decides on what is
+// there now and is told CONFLICT, not STALE_STATE. The read is not printed; the log has it.
+// Decision 152: the version came from the store, past the door, while the README said the agent
+// read it. With no read, there is no version to send, and the command is refused for that.
+const agentsRead = await callOperation(AGENT, "invoice.get", { invoice: INV_1009 });
+
 console.log(
   show(
     await callOperation(
       AGENT,
       "invoice.issue",
-      // STEP 21: on the version the agent read. The demo reads it from the store, standing
-      // in for the agent's own earlier read, so that a second run, where INV-1009 is issued
-      // already, decides on what is there now and is told CONFLICT, not STALE_STATE.
       {
         invoice: INV_1009,
-        expected_version: (await getInvoice("org_456", "INV-1009")).value?.version ?? 1,
+        expected_version: agentsRead.kind === "data" ? agentsRead.invoice.version : undefined,
       },
       keyFor("agent-issues"),
     ),

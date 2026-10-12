@@ -61,7 +61,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_20
 | `src/registry.ts`, `src/contracts/*.json` | each command's contract says its strategy, `optimistic` or `none`, and the registry refuses one this program does not carry out |
 | `src/classification.ts` | the version is `internal`, like the status |
 | `src/database.ts` | start-up refuses an application that may set a new payment's version, or change an invoice's vendor or amount |
-| `src/main.ts` | the agent issues INV-1009 on the version it read, cancels on the version from its receipt, and two decide on the same payment |
+| `src/main.ts` | the agent reads INV-1009 through the door and issues it on the version it read, cancels on the version from its receipt, and two decide on the same payment |
 | `test/versions.test.ts` | new — the column, the strategies, the version checked and refused, and a change that raises it |
 | `test/versions.db.test.ts` | new — twenty cancels of one payment on one version, at once, over a pool |
 | the tests that send a command | each says the version it decided on |
@@ -86,10 +86,11 @@ The agent makes PAY-905, a draft at version 1, and decides to cancel it. Before 
 `user_123` cancels it by hand, on version 1, and the payment moves to version 2. The agent's cancel
 says version 1 and is refused. The retry says what to do: read again, then decide again.
 
-Earlier in the demo, the agent issues INV-1009 on the version it read, and cancels a payment on
-the version its receipt gave. In the printed log, the stale cancel is record 40, and it says
-`ALLOW`: the log records the decision, and the decision was to let the agent try. The record had
-moved on when the command ran.
+Earlier in the demo, the agent reads INV-1009 through the door and issues it on the version that
+read gave, and cancels a payment on the version its receipt gave. The read is not printed; the log
+has it, as record 7. In the printed log, the stale cancel is record 41, and it says `ALLOW`: the log
+records the decision, and the decision was to let the agent try. The record had moved on when the
+command ran.
 
 ### The database tier
 

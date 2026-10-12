@@ -11,7 +11,7 @@ asked, who asked, and the request's fingerprint. Then, as the request goes, it w
 
 ```text
             -> PROPOSED   accounts-payable-fte  payment.cancel@1 invoked
-  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:40
+  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:41
   READY     -> EXECUTING  dsor                  handed to payment.cancel
   EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE
 ```
@@ -107,7 +107,7 @@ Where each command went: org_456's proposals from this run
 prop_10, move by move:
 
             -> PROPOSED   accounts-payable-fte  payment.cancel@1 invoked
-  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:40
+  PROPOSED  -> READY      dsor                  allowed: the decision is recorded as audit:org_456:41
   READY     -> EXECUTING  dsor                  handed to payment.cancel
   EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE
 

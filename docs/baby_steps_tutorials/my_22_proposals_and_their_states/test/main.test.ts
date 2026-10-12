@@ -144,7 +144,8 @@ describe("the program a learner runs", () => {
     // two of the directory's. STEP 20: 35, with the three decisions of the keys' section:
     // two payments and a conflict. The replays leave none.
     // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
-    expect(rows).toHaveLength(38);
+    // Decision 152: 39, with the agent's read of INV-1009 before it issues it.
+    expect(rows).toHaveLength(39);
 
     // Denials recorded, which is step 08's point: a program that logged only its successes
     // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -153,18 +154,19 @@ describe("the program a learner runs", () => {
     // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
     // since step 12: one refusal per operation from the generated section.
     expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(20);
-    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(18); // STEP 13: three pages read
+    // STEP 13: three pages read. Decision 152: and the agent's read of INV-1009.
+    expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(19);
 
     // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
-    // STEP 14: the gaps — 1, 5, 23, 25, 27 since step 17 — are the records of reads, which this
-    // filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
+    // STEP 14: the gaps — 1, 5, 24, 26, 28 since decision 152 — are the records of reads, which
+    // this filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
     // pages, each written down after the decision that allowed it. The agent's reads leave none.
     expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26, 28, 29,
-      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 0, 1,
+      0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 27, 29,
+      30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 0, 1,
     ]);
 
-    expect(out).toContain("org_456: 41 records, chain verifies against the head: true"); // STEP 21: 36 decisions, 5 reads
+    expect(out).toContain("org_456: 42 records, chain verifies against the head: true"); // Decision 152: 37 decisions, 5 reads
     expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
     expect(out).toContain("2 refusals counted without a record");
 
@@ -178,11 +180,12 @@ describe("the program a learner runs", () => {
   });
 
   it("DSOR-AUD-01: an unknown operation is recorded with no operation field", () => {
-    // The whole line for record 9 (STEP 14: two reads sit before it now), because the fallback label is now also printed for §21.2
+    // The whole line for record 10 (STEP 14: two reads sit before it now; decision 152: and the
+    // agent's read of INV-1009), because the fallback label is now also printed for §21.2
     // refusals. Built with the printer's own widths rather than typed, so the test pins the
     // content — DENY, no operation, UNSUPPORTED_CAPABILITY — and not a guess at the spacing.
     const line = [
-      " 9",
+      "10",
       "DENY ",
       "(none resolved)".padEnd(19),
       "user_123".padEnd(21),
@@ -210,22 +213,22 @@ describe("the program a learner runs", () => {
 
     const first = demo().report;
 
-    expect(records(first, "org_456")).toBe(41); // STEP 21: 36 decisions and 5 reads
+    expect(records(first, "org_456")).toBe(42); // Decision 152: 37 decisions and 5 reads
     expect(records(first, "org_789")).toBe(2);
-    expect(first).toContain("org_456: 41 records, chain verifies against the head: true");
+    expect(first).toContain("org_456: 42 records, chain verifies against the head: true");
 
     // A second process. Nothing is shared with the first but the directory on disk.
     const second = demo().report;
 
-    expect(records(second, "org_456")).toBe(82);
+    expect(records(second, "org_456")).toBe(84);
     expect(records(second, "org_789")).toBe(4);
-    expect(second).toContain("org_456: 82 records, chain verifies against the head: true");
+    expect(second).toContain("org_456: 84 records, chain verifies against the head: true");
     expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
     // Run one's records are still there, unchanged, among run two's.
     expect(second).toContain(" 0  ALLOW  invoice.get@1");
     expect(second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line))).toHaveLength(
-      76,
+      78,
     );
 
     // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
@@ -259,8 +262,8 @@ describe("the program a learner runs", () => {
     // And genuinely different underneath — ten hashes each, none of them shared.
     const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-    expect(hashesOf(first.raw)).toHaveLength(43); // STEP 21: 41 and 2, reads included
-    expect(hashesOf(second.raw)).toHaveLength(43);
+    expect(hashesOf(first.raw)).toHaveLength(44); // Decision 152: 42 and 2, reads included
+    expect(hashesOf(second.raw)).toHaveLength(44);
     expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
   });
 
@@ -424,9 +427,21 @@ describe("the program a learner runs", () => {
 
     expect(theAgents.length).toBeGreaterThanOrEqual(5);
     expect(theAgents.every((line) => /\s{2}user_123\s/.test(line))).toBe(true);
+    // Decision 152: the agent reads INV-1009 through the door, as itself, and then issues it on the
+    // version that read gave, under the slip: two records, side by side.
     expect(lines).toContain(
       [
         " 7",
+        "ALLOW",
+        "invoice.get@1".padEnd(19),
+        "accounts-payable-fte".padEnd(21),
+        "ALLOWED".padEnd(22),
+        "sha256:HASH...",
+      ].join("  "),
+    );
+    expect(lines).toContain(
+      [
+        " 8",
         "ALLOW",
         "invoice.issue@1".padEnd(19),
         "user_123".padEnd(21),

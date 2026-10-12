@@ -87,7 +87,7 @@ prop_11, waiting at READY; only the third makes a payment. All three are in the 
 them, and the dry run says so:
 
 ```text
-41  ALLOW  payment.create@1     user_123               VALIDATED               sha256:161c18a...  unattended: by accounts-payable-fte under del_100
+42  ALLOW  payment.create@1     user_123               VALIDATED               sha256:a5b5f82...  unattended: by accounts-payable-fte under del_100
 ```
 
 ### The database tier
