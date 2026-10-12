@@ -19,8 +19,8 @@ asked, who asked, and the request's fingerprint. Then, as the request goes, it w
 A proposal's *state* is its last move. Each move says who made it, the *actor*, and why, the
 *cause*. The first move is made by whoever logged in to ask; the rest are DSoR's own.
 
-The states and the moves between them come from the specification's map, §26.2. This step uses the
-plain path:
+The states and the moves between them come from the specification's map, §26.2, all but its last
+line, compensation, which this tutorial never builds. This step uses the plain path:
 
 - **DENIED**: a check after the proposal was written said no, for example the slip's limit.
 - **READY**, then **EXECUTING**: allowed, and handed to the code that carries it out.
@@ -253,7 +253,10 @@ When the door's own move lost its reply, the claim is released only once DENIED 
 because only that proves the lost move can never land; if DENIED is refused or cannot be written,
 the answer is `OUTCOME_UNKNOWN` and the key stays taken.
 DENIED is the only finished state the map has out of PROPOSED, so a store that failed is DENIED too,
-with a cause that says it was the store. Proposal numbers, like payment numbers since step 17, come
+with a cause that says it was the store. §26.2's last line moves COMMITTED and FAILED on to
+COMPENSATING, for commands that can be undone, such as `payment.create`; with no compensation here,
+COMMITTED and FAILED are finished for every command, as §26.2's own plain words say. That is why
+prop_2 stays COMMITTED after prop_3 cancels its payment. Proposal numbers, like payment numbers since step 17, come
 from one sequence for every company, so a number hints at how busy the others are. A proposal whose
 creation committed with its reply lost stays PROPOSED, and one whose last move could not be written
 stays EXECUTING: both wait for reconciliation, step 37. A handler that throws leaves its proposal

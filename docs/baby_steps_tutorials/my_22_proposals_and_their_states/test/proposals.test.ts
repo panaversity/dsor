@@ -112,7 +112,9 @@ beforeEach(async () => {
 });
 
 describe("the map is §26.2's", () => {
-  it("DSOR-APR-01a: the database's map of moves is the specification's diagram", async () => {
+  it("DSOR-APR-01a: the database's map of moves is the specification's diagram, without its compensation line", async () => {
+    // Decision 153: §26.2's last line moves COMMITTED and FAILED on to COMPENSATING, for commands
+    // that can be undone. This tutorial never builds compensation, and the README says so.
     const { rows } = await asTheOwner(() =>
       db.query<{ move: string }>(
         "SELECT from_state || ' -> ' || to_state AS move FROM dsor.proposal_map ORDER BY 1",
