@@ -98,8 +98,20 @@ type Move = { name: string; from: readonly RuleStatus[]; to: RuleStatus };
 const ACTIVATE: Move = { name: "rule.activate", from: ["draft", "suspended"], to: "active" };
 // A suspended version can be switched on again. A retired one never comes back (step 28's README,
 // decision D13).
-const SUSPEND: Move = { name: "rule.suspend", from: ["active"], to: "suspended" };
-const RETIRE: Move = { name: "rule.retire", from: ["draft", "active", "suspended"], to: "retired" };
+// NEW IN STEP 28b: and the owner suspends or retires a stale version, which is in force too. Found
+// by step 28b's review, finding H1: the store drew these moves, and both commands refused them, so
+// with KSoR down nobody could stop a stale rule that refuses every payment (step 28b's README,
+// decision D6).
+const SUSPEND: Move = {
+  name: "rule.suspend",
+  from: ["active", "stale_authority"],
+  to: "suspended",
+};
+const RETIRE: Move = {
+  name: "rule.retire",
+  from: ["draft", "active", "suspended", "stale_authority"],
+  to: "retired",
+};
 
 /**
  * The version a move may change, after its checks, in this order: who, which version, and its

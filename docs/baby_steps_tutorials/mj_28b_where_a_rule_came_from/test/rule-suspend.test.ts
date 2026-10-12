@@ -3,13 +3,25 @@
 // Only the owner of record, in person. A suspended version can be switched on again; a retired
 // one never comes back. Each move applies to the next call, and leaves its record.
 import { describe, expect, it } from "vitest";
+import type { Control } from "../src/controls.ts";
+import type { RequestEnvelope } from "../src/request.ts";
 import type { ControlStore } from "../src/rulebook.ts";
-import { ADMIN, CFO, DEL_101, FIRM_IN_456, keyed, OUR_EXTENSIONS } from "./helpers.ts";
+import {
+  ADMIN,
+  CFO,
+  DEL_101,
+  FIRM_IN_456,
+  keyed,
+  OUR_EXTENSIONS,
+  POLICY,
+  V5_TEXT,
+} from "./helpers.ts";
 import {
   heard,
   RULE,
   ruleCall,
   ruleWorldOnTuesday,
+  shippedRule,
   textOf,
   version9,
   type RuleWorld,
@@ -220,5 +232,56 @@ describe("C7: a suspension and a retirement leave their records (step 28's READM
     expect(await of(retired.correlation.request_id)).toStrictEqual([
       ["retired", "cfo_100", "rule.retire by a test", { version: 9, from: "suspended" }],
     ]);
+  });
+});
+
+// dsor-scheduler, which sweeps (step 25c's README, decision D1).
+const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
+
+/** A world in which the finance team published version 5, and the sweep marked version 8 stale. */
+async function withVersion8Stale(rule: Control = shippedRule()): Promise<RuleWorld> {
+  const file = { org_456: [rule], org_789: [] };
+  const w = await ruleWorldOnTuesday({ file: "controls.json", text: JSON.stringify(file) });
+  w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+  const company = { company: "dsor://org_456/tenant/org_456" };
+  const swept = await w.ask(keyed(SCHEDULER), "rule.check_authority", company);
+  if (!("data" in swept)) throw new Error(`the sweep was refused: ${heard(swept)}`);
+  return w;
+}
+
+// Found by step 28b's review, finding H1: the store and the database drew these moves, and the two
+// commands refused them, CONFLICT. The store's own tests called the store directly, and passed.
+describe("C10: the owner suspends or retires a stale version (step 28b's README, decision D6)", () => {
+  it("DSOR-CTL-02a: cfo_100 suspends stale version 8: no rule is in force, by the owner's choice, so INV-1006's 640.00 USD is paid, and the record names the status version 8 left", async () => {
+    const w = await withVersion8Stale();
+    expect(heard(await w.draft("INV-1009"))).toBe("PENDING_APPROVAL");
+    const suspended = await move(w, "rule.suspend", 8);
+    expect(suspended).toMatchObject({ data: { version: 8, status: "suspended" } });
+    expect(await statuses(w)).toStrictEqual([[8, "suspended"]]);
+    expect(heard(await w.draft("INV-1006"))).toBe("COMMITTED");
+    const records = (await w.rules.records()).filter(
+      (r) => r.correlation.request_id === suspended.correlation.request_id,
+    );
+    expect(records.map((r) => [r.result, r.extensions[OUR_EXTENSIONS]])).toStrictEqual([
+      ["suspended", { version: 8, from: "stale_authority" }],
+    ]);
+  });
+
+  it("DSOR-CTL-02a: with KSoR down, cfo_100 retires stale version 8, whose on_stale is deny: the owner can always end a stale rule, and INV-1006 is paid again", async () => {
+    const w = await withVersion8Stale({ ...shippedRule(), on_stale: "deny" });
+    expect(heard(await w.draft("INV-1009"))).toBe("POLICY_DENIED");
+    w.ksors.get("org_456")!.turn("off");
+    expect(await move(w, "rule.retire", 8)).toMatchObject({
+      data: { version: 8, status: "retired" },
+    });
+    expect(heard(await w.draft("INV-1006"))).toBe("COMMITTED");
+  });
+
+  it("DSOR-CTL-02a: admin_100 may not suspend or retire stale version 8: only its owner may, in person", async () => {
+    const w = await withVersion8Stale();
+    for (const name of ["rule.suspend", "rule.retire"] as const) {
+      expect(heard(await move(w, name, 8, ADMIN))).toBe("AUTHORIZATION_DENIED");
+    }
+    expect(await statuses(w)).toStrictEqual([[8, "stale_authority"]]);
   });
 });
