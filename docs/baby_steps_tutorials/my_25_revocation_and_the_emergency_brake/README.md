@@ -65,7 +65,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `src/operations.ts` | §21.4 asks the brake; §21.9 asks who may act on the target; the door's move to EXECUTING, and a prepared command's to READY, ask the brake again; the handlers of `control.suspend` and `delegation.revoke` |
 | `src/proposal.ts` | the path into EXECUTING must be told the agent, and asks the brake; nothing enters EXECUTING one move at a time |
 | `src/pipeline.ts` | twelve stages, the two new ones required by name |
-| `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` for `user_123` and `cfo_100`, `delegation:revoke` for `user_123`; the two receipts' labels; the two contracts |
+| `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` and `delegation:revoke` for `user_123` and `cfo_100`; the two receipts' labels; the two contracts |
 | `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
 | `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on slips and brakes than revoking and braking need |
 | `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze |

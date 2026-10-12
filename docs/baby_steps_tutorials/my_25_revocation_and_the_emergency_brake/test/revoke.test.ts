@@ -122,6 +122,11 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
     });
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+    // Decision 156: refused by the signer check at §21.9, which the title names. It was refused at
+    // §21.5, for want of delegation:revoke, and stayed green with the signer check deleted.
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(
+      /only the person who signed del_100/,
+    );
     expect(await statusOfDel100()).toBe("active");
   });
 
@@ -271,6 +276,26 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
     });
 
     expect((await theLog("org_456")).at(-1)?.result).toBe("RESOURCE_NOT_FOUND");
+  });
+
+  it("DSOR-DEL-04a: cfo_100 revokes del_200, which she signed", async () => {
+    // Decision 156: §21.5 refused her, because the approver's role had no delegation:revoke, before
+    // §21.9 asked who signed the slip. So a slip an approver signed could be revoked by nobody.
+    await aSlipSignedByCfo();
+
+    const answer = await callOperation(CFO, "delegation.revoke", {
+      target: "dsor://org_456/delegation/del_200",
+      reason: "the agent no longer needs it",
+    });
+
+    expect(answer.kind === "result" && answer.envelope.data?.["status"]).toBe("revoked");
+    expect((await theLog("org_456")).at(-1)?.authorization).toBe("ALLOW");
+
+    const { rows } = await theDatabase("org_456").query<{ status: string; revoked_by: string }>(
+      "SELECT status, revoked_by FROM dsor.delegations WHERE tenant = 'org_456' AND id = 'del_200'",
+    );
+
+    expect(rows).toStrictEqual([{ status: "revoked", revoked_by: "cfo_100" }]);
   });
 
   it("DSOR-DEL-04a: a dry run of a revocation by someone who did not sign the slip is refused too", async () => {

@@ -116,6 +116,8 @@ describe("permissions", () => {
     ]);
     expect([...permissionsOf(person("cfo_100"))].sort()).toEqual([
       "control:suspend", // NEW IN STEP 25
+      // Decision 156: so she can revoke a slip she signed.
+      "delegation:revoke",
       "invoice:read",
       "payment:approve",
     ]);
