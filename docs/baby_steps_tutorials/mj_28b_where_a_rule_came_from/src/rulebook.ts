@@ -227,8 +227,13 @@ export function memoryControls(source: ControlsSource): MemoryControls {
           .filter((c) => IN_FORCE.has(c.status))
           .filter((c) => operation === undefined || c.operation === operation)
           .map((c): InForce => {
+            if (c.status !== "stale_authority") return c;
+            // A stale version always has its mark: only the mark makes one. Should one ever have
+            // none, line ⑩ refuses, and never reads it as active. Found by step 28b's review,
+            // finding L2.
             const mark = marks.get(keyOf(tenant, c.id, c.version));
-            return c.status === "stale_authority" && mark !== undefined ? { ...c, stale: mark } : c;
+            if (mark === undefined) throw new Error(`version ${c.version} of ${c.id} has no mark`);
+            return { ...c, stale: mark };
           }),
       ).sort(inOrder),
     versions,

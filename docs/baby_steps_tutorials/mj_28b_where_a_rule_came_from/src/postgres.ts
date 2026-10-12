@@ -1265,10 +1265,13 @@ function controlsThrough(run: Runner): ControlStore {
         );
         return rows.map((row): InForce => {
           const version = versionOf(row);
-          // The database keeps a stale version's mark, so a stale row always has one.
+          if (row.status !== "stale_authority") return version;
+          // The database keeps a stale version's mark: controls_stale_marked. Should a row ever
+          // have none, line ⑩ refuses, and never reads it as active. Found by step 28b's review,
+          // finding L2.
           const since = row.stale_since === null ? undefined : writable(row.stale_since);
-          if (row.status !== "stale_authority" || since === undefined || row.in_force === null) {
-            return version;
+          if (since === undefined || row.in_force === null) {
+            throw new Error(`version ${row.version} of ${row.id} has no mark`);
           }
           return { ...version, stale: { since, in_force: row.in_force } };
         });
