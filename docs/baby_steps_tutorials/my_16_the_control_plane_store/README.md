@@ -25,7 +25,8 @@ side by side. This step makes a folder for DSoR, `dsor`, and moves the log into 
   the application owns the database, or owns `dsor` or `public`: an owner may delete what it owns,
   and a schema's owner may delete any table in it, even one it does not own. It also refuses if the
   application may create things in either schema, or a helper function's owner may. Only the
-  migrations, run as the owner, put tables there.
+  migrations, run as the owner, should put tables there. Start-up asks this of the application
+  and of every helper's owner, not of each other role on the server.
 - **The same database, on purpose.** Not a second database: in step 36, a business change and
   DSoR's record of it can then be saved together, or not at all.
 - **The log only, for now.** It is the only paperwork in the database today. Each other kind,
@@ -55,7 +56,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_15
 
 | File | What |
 | --- | --- |
-| `migrations/008_the_control_plane_store.sql` | new — the schema `dsor`; every right on it taken back from every role, and `CREATE` from the application by name, before `USAGE` is given to the application; and the log moved into it as it is |
+| `migrations/008_the_control_plane_store.sql` | new — the schema `dsor`; every right on it taken back from `PUBLIC`, and `CREATE` from the application by name, before `USAGE` is given to the application; and the log moved into it as it is. `PUBLIC` is every role at once, but a right a server gave one other role by name is not taken back |
 | `src/audit.ts` | every statement names the log `dsor.audit` |
 | `src/database.ts` | the start-up checks look for the log in `dsor`. "Do both tables exist?" is asked first, on its own, so a server that missed migration 008 gets the program's own words. And start-up refuses an application that owns the database or either schema, or may create things in either schema, itself or one `SET ROLE` away, and names the role and schema that let it, or `PUBLIC` when the right is every role's. A helper function whose owner owns either schema, or may create in it, is refused too |
 | `src/main.ts` | the demo's second line says where the log lives |
