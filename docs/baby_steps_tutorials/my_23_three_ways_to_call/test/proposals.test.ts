@@ -545,7 +545,9 @@ describe("the door makes a proposal for every command and moves it", () => {
     ]);
   });
 
-  it("DSOR-UNK-01b: a handler that throws leaves its proposal OUTCOME_UNKNOWN, never FAILED", async () => {
+  it("DSOR-UNK-01a: a handler that throws leaves its proposal OUTCOME_UNKNOWN, never FAILED", async () => {
+    // Decision 153: the proposal's state is DSOR-UNK-01a's subject. What the caller is told is
+    // UNK-01b's, and here the throw reaches the caller as a throw, which decision 126 left to step 37.
     const door = makeDoor(PIPELINE, {
       "invoice.issue": () => {
         throw new Error("the connector hung up half way");
@@ -561,18 +563,28 @@ describe("the door makes a proposal for every command and moves it", () => {
     ]);
   });
 
-  it("DSOR-UNK-01b: a handler that answers OUTCOME_UNKNOWN leaves its proposal OUTCOME_UNKNOWN", async () => {
+  it("DSOR-UNK-01b: a handler that answers OUTCOME_UNKNOWN leaves its proposal OUTCOME_UNKNOWN, and the caller is told so", async () => {
+    let called = 0;
     const door = makeDoor(PIPELINE, {
-      "invoice.issue": (_args, _contract, askedBy, _tenant, _hash, requestId) => ({
-        kind: "error",
-        askedBy,
-        envelope: refusal("OUTCOME_UNKNOWN", "the bank did not say", requestId, askedBy),
-      }),
-    });
+      "invoice.issue": (_args, _contract, askedBy, _tenant, _hash, requestId) => {
+        called += 1;
 
-    await door(SUPERVISOR, "invoice.issue", ISSUE_1009);
+        return {
+          kind: "error",
+          askedBy,
+          envelope: refusal("OUTCOME_UNKNOWN", "the bank did not say", requestId, askedBy),
+        };
+      },
+    });
+    const request = { idempotencyKey: "issue-1009-the-bank-did-not-say" };
+    const answer = await door(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
 
     expect(await stateOf("org_456", "prop_1")).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+    // Sent again with its key: the same answer, and the handler is not called again.
+    expect(await door(SUPERVISOR, "invoice.issue", ISSUE_1009, request)).toStrictEqual(answer);
+    expect(called).toBe(1);
   });
 
   it("DSOR-APR-01a: a request refused before §21.8, and a query, make no proposal", async () => {
@@ -729,20 +741,30 @@ describe("the door makes a proposal for every command and moves it", () => {
     expect(await stateOf("org_456", id)).toBe("EXECUTING");
   });
 
-  it("DSOR-UNK-01b: a handler that answers a failure which does not say nothing was done leaves its proposal OUTCOME_UNKNOWN", async () => {
+  it("DSOR-UNK-01b: a handler that answers a failure which does not say nothing was done leaves its proposal OUTCOME_UNKNOWN, and the caller is told so, never to try again", async () => {
     // Decision 137: a careless handler that made the payment and then answered TRANSACTION_FAILED
-    // left its proposal FAILED, finished, a review measured.
+    // left its proposal FAILED, finished, a review measured. Decision 153: and its caller was still
+    // told TRANSACTION_FAILED, retry safe_same_key, an invitation to make the payment again.
+    let called = 0;
     const door = makeDoor(PIPELINE, {
-      "invoice.issue": (_args, _contract, askedBy, _tenant, _hash, requestId) => ({
-        kind: "error",
-        askedBy,
-        envelope: refusal("TRANSACTION_FAILED", "the bank hung up", requestId, askedBy),
-      }),
-    });
+      "invoice.issue": (_args, _contract, askedBy, _tenant, _hash, requestId) => {
+        called += 1;
 
-    await door(SUPERVISOR, "invoice.issue", ISSUE_1009);
+        return {
+          kind: "error",
+          askedBy,
+          envelope: refusal("TRANSACTION_FAILED", "the bank hung up", requestId, askedBy),
+        };
+      },
+    });
+    const request = { idempotencyKey: "issue-1009-the-bank-hung-up" };
+    const answer = await door(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
 
     expect(await stateOf("org_456", "prop_1")).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+    expect(await door(SUPERVISOR, "invoice.issue", ISSUE_1009, request)).toStrictEqual(answer);
+    expect(called).toBe(1);
   });
 
   it("DSOR-IDM-04: a door that finds its proposal already finished does not run the handler", async () => {

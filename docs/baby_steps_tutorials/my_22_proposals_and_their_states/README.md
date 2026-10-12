@@ -25,8 +25,9 @@ plain path:
 - **DENIED**: a check after the proposal was written said no, for example the slip's limit.
 - **READY**, then **EXECUTING**: allowed, and handed to the code that carries it out.
 - **COMMITTED**: it was done. **FAILED**: the code refused, for example a stale version.
-- **OUTCOME_UNKNOWN**: the code crashed, or said itself that it does not know. Nobody knows whether
-  it ran, so DSoR does not pretend to.
+- **OUTCOME_UNKNOWN**: the code crashed, said itself that it does not know, or refused with a code
+  that does not say nothing was done. Nobody knows whether it ran, so DSoR does not pretend to. A
+  caller whose code refused that way is told `OUTCOME_UNKNOWN` too, never "safe to send again".
 
 DENIED, COMMITTED and FAILED are *finished*: there is no move out of them on the map. The other
 states on the map, waiting for approval, approved, rejected, expired and the rest, arrive with
@@ -76,7 +77,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | --- | --- |
 | `migrations/020_proposals.sql` | new — the map of moves, the proposals, written once, and their moves; the constraints that keep the map, and a history that is one line; the application may add and read, and nothing else |
 | `src/proposal.ts` | new — make a proposal with its first move, move it, move it through several states in one statement, read its moves, its state, and a company's list |
-| `src/operations.ts` | a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after; DENIED when a later stage refuses |
+| `src/operations.ts` | a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after, and tells the caller `OUTCOME_UNKNOWN` when it is; DENIED when a later stage refuses |
 | `src/pipeline.ts` | the stage is required by name, after the claim; the context carries the proposal and the payload's text |
 | `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
 | `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
@@ -222,9 +223,11 @@ Copy `my_21_optimistic_concurrency` to a new folder and ask:
    move, into PROPOSED.
 4. Exactly one is written. A state is left only once, and the database checks it. That is how a
    proposal runs at most once.
-5. FAILED is finished, and says nothing happened. Only a refusal that proves it, such as `CONFLICT`
-   or `STALE_STATE`, is believed. A handler that made the payment and then answered
-   `TRANSACTION_FAILED` would otherwise leave a payment nobody looks for.
+5. FAILED is finished, and says nothing happened. Only a refusal whose code says nothing was done,
+   `CONFLICT`, `STALE_STATE`, `RESOURCE_NOT_FOUND` or `VALIDATION_FAILED`, is believed. A handler
+   that made the payment and then answered `TRANSACTION_FAILED` would otherwise leave a payment
+   nobody looks for. The caller is told `OUTCOME_UNKNOWN` as well: `TRANSACTION_FAILED` says "safe
+   to send again", an invitation to pay twice.
 
 </details>
 
@@ -245,7 +248,9 @@ DENIED is the only finished state the map has out of PROPOSED, so a store that f
 with a cause that says it was the store. Proposal numbers, like payment numbers since step 17, come
 from one sequence for every company, so a number hints at how busy the others are. A proposal whose
 creation committed with its reply lost stays PROPOSED, and one whose last move could not be written
-stays EXECUTING: both wait for reconciliation, step 37. There is no `proposal.get` yet, because who
+stays EXECUTING: both wait for reconciliation, step 37. A handler that throws leaves its proposal
+OUTCOME_UNKNOWN, but the throw still reaches the caller as a throw, not as an `OUTCOME_UNKNOWN`
+answer; that is step 37's too. There is no `proposal.get` yet, because who
 may read a proposal is a rule of its own; the demo reads the store. Only one mode, `execute`, is
 built; `propose_only` and `validate_only` are step 23's, and the approval states step 26's.
 

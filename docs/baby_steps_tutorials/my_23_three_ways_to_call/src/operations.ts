@@ -2320,11 +2320,12 @@ export function makeDoor(
       throw error;
     }
 
-    const answer = copyOnce(handed);
+    let answer = copyOnce(handed);
 
-    // STEP 22: and how it ended, from what the handler answered: a receipt is COMMITTED, a
-    // refusal is FAILED, and anything else is OUTCOME_UNKNOWN, because a command that answered with
-    // a row, or said itself that it does not know, may or may not have done its work.
+    // STEP 22: and how it ended, from what the handler answered: a receipt is COMMITTED; a
+    // refusal whose code says nothing was done is FAILED (decision 137); anything else is
+    // OUTCOME_UNKNOWN, because a command that answered with a row, refused with another code, or
+    // said itself that it does not know, may or may not have done its work.
     if (proposal !== undefined) {
       const [ended, cause]: readonly [ProposalState, string] =
         answer.kind === "result"
@@ -2340,6 +2341,27 @@ export function makeDoor(
               ];
 
       await finishTheProposal(tenant, proposal, ended, cause);
+
+      // Decision 153: and the caller is told what the record says. A refusal with another code went
+      // out as it came: TRANSACTION_FAILED, retry safe_same_key, an invitation to make the payment
+      // again, for an outcome DSoR itself recorded as unknown (DSOR-UNK-01b). Kept on the claim, as
+      // every answer is once the handler has run.
+      if (
+        ended === "OUTCOME_UNKNOWN" &&
+        answer.kind === "error" &&
+        answer.envelope.code !== "OUTCOME_UNKNOWN"
+      ) {
+        answer = Object.freeze({
+          kind: "error",
+          askedBy: principal.id,
+          envelope: refusal(
+            "OUTCOME_UNKNOWN",
+            `${nameOf(contract.id)} refused with a code that does not say nothing was done, so whether it did its work is unknown until it is reconciled`,
+            id_,
+            principal.id,
+          ),
+        });
+      }
     }
 
     // STEP 14: and an answer this program cannot filter is this program's bug, said in an
