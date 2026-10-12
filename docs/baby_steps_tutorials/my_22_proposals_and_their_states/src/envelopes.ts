@@ -180,7 +180,9 @@ export function resetRequestIds(): void {
  * `principal_id` is filled in once a caller exists. `request_id` stays
  * required — that is the schema's own floor. The other five ids wait for their steps:
  * `tenant_id` for the step that gives envelopes a tenant (the audit record carries it from step
- * 10; the envelope does not yet), `agent_id` for 18, and the rest for 40.
+ * 10; the envelope does not yet), and `agent_id` with the rest for 40, which carries them through
+ * connectors, audit and events (DSOR-COR-01a). This said `agent_id` for 18, which built the
+ * permission slip and put no agent id in an envelope.
  */
 function correlationFor(
   requestId: string | undefined,

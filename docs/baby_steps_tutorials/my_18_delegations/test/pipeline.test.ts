@@ -63,9 +63,9 @@ describe("the pipeline", () => {
     ]);
   });
 
-  // §21 numbers its seventeen steps. This step has four, and the gaps in the numbering are the
-  // roadmap: 1 to 5 is missing the tenant, the delegation and the operational status; after 6 come
-  // the idempotency claim, the proposal, the preconditions and the controls.
+  // §21 numbers its seventeen steps, and the gaps in the numbering are the roadmap. Seven are here.
+  // 4, the operational status, is still missing; after 6 come the idempotency claim, the proposal,
+  // the preconditions and the rest of the controls, of which only the slip's limit is here, at 10.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
     expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 5, 6, 10, 11]);
 
