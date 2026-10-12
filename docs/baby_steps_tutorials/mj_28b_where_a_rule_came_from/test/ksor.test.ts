@@ -128,6 +128,10 @@ describe("C1: DSoR asks the company's KSoR which version of a policy is in force
     ],
     ["a version written as text", { ...good, version: "4", content_hash: V4.content_hash }],
     ["a fingerprint of another kind", { ...good, content_hash: "md5:9f2c1e7ab4d0" }],
+    // Found by step 28b's review, finding L1: with the form unanchored, both passed, and on the
+    // database the mark's own check would then roll back the whole sweep.
+    ["a fingerprint with something before it", { ...good, content_hash: "xsha256:9f2c1e7ab4d0" }],
+    ["a fingerprint with a space in it", { ...good, content_hash: "sha256:9f2c 1e7ab4d0" }],
     ["no fingerprint", good],
     ["no word on whether it lists the policy", { tenant: "org_456", uri: POLICY, version: 4 }],
     ["null", null],

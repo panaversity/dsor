@@ -342,3 +342,50 @@ describe("C3: who may sweep, and what the sweep never marks (step 28b's README, 
     });
   });
 });
+
+// Found by step 28b's review, findings M2 and M4: with the sweep and the switch-on asking org_456's
+// KSoR for every company, or the sweep reading payment.create's rules only, every test passed,
+// because org_789's rules cited local, and every rule governed payment.create.
+describe("C2: the sweep and the switch-on ask the call's own company's KSoR, about every operation's rules (step 28b's README, decisions D2 and D4)", () => {
+  const URI = "ksor://org_789/finance/board-policy";
+  const BOARD = "Payments above 10,000 EUR need the CFO.";
+
+  it("Step 28b: org_789's rule cites org_789's own policy: admin_700's switch-on asks org_789's KSoR, org_789's sweep marks the rule when that policy moves, and org_456's KSoR is never asked", async () => {
+    const w = await ruleWorldOnTuesday();
+    const theirs = fakeKsor("org_789", {
+      [URI]: [{ version: 1, text: BOARD, content_hash: fingerprintOf(BOARD) }],
+    });
+    w.ksors.set("org_789", theirs);
+    const ours = ksorOf(w);
+    const before = ours.asked();
+    const rule = "dsor://org_789/rule/board-above-10000";
+    const authority = {
+      system: "ksor",
+      uri: URI,
+      rule: "board-above-10000",
+      version: 1,
+      content_hash: fingerprintOf(BOARD),
+    };
+    await ruleCall(w, ADMIN_700, "rule.draft", { draft: { ...text789(), authority } }, rule);
+    expect(heard(await ruleCall(w, ADMIN_700, "rule.activate", { version: 1 }, rule))).toBe(
+      "COMMITTED",
+    );
+    expect(theirs.asked()).toBe(1);
+    theirs.publish(URI, "Payments above 5,000 EUR need the CFO.");
+    expect(await sweep(w, SCHEDULER_789, "dsor://org_789/tenant/org_789")).toMatchObject({
+      data: { tenant_id: "org_789", asked: 1, unanswered: 0, marked: 1 },
+    });
+    const kept = await w.rules.versions("org_789", "board-above-10000");
+    expect(kept.map((v) => [v.version, v.status])).toStrictEqual([[1, "stale_authority"]]);
+    expect(ours.asked()).toBe(before);
+  });
+
+  it("Step 28b: the sweep reads the rules of every operation: a rule on payment.cancel that cites the policy is marked too", async () => {
+    const cancel = { ...shippedRule(), id: "cancel-rule", version: 1, operation: "payment.cancel" };
+    const w = await ruleWorldOnTuesday(controlsOf(shippedRule(), cancel));
+    ksorOf(w).publish(POLICY, V5_TEXT);
+    expect(await sweep(w)).toMatchObject({ data: { asked: 1, marked: 2 } });
+    const kept = await w.rules.versions("org_456", "cancel-rule");
+    expect(kept.map((v) => [v.version, v.status])).toStrictEqual([[1, "stale_authority"]]);
+  });
+});

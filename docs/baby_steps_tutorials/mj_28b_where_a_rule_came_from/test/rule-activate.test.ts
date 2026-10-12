@@ -621,6 +621,25 @@ describe("C8: a switch-on asks KSoR first (step 28b's README, decision D12)", ()
     expect(heard(await w.ask(dry, "rule.activate", input))).toBe("VALIDATION_FAILED");
   });
 
+  // Found by step 28b's review, finding M3: with KSoR asked for a draft only, every test passed. The
+  // sweep never marks a suspended version, so this question is the only one asked of it (step
+  // 28b's README, decision D6).
+  it("DSOR-CTL-03a: cfo_100 suspends version 8, and the finance team publishes version 5: the sweep leaves the suspended version alone, and switching it on again is refused, because it cites version 4", async () => {
+    const w = await ruleWorldOnTuesday();
+    expect(heard(await ruleCall(w, CFO, "rule.suspend", { version: 8 }))).toBe("COMMITTED");
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const company = { company: "dsor://org_456/tenant/org_456" };
+    expect(await w.ask(keyed(SCHEDULER), "rule.check_authority", company)).toMatchObject({
+      data: { asked: 0, marked: 0 },
+    });
+    expect(await activate(w, 8)).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message:
+        '"rule.activate": version 8 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy", and KSoR has version 5 in force',
+    });
+    expect(await statuses(w)).toStrictEqual([[8, "suspended"]]);
+  });
+
   it("Step 28b: KSoR is asked after the version's own checks: step 27's quick rule is refused for its tests, and KSoR is not asked", async () => {
     const w = await ruleWorldOnTuesday();
     const v9 = await drafted(w, CFO, { ...textOf(version9()), condition: QUICK });

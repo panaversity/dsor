@@ -75,6 +75,14 @@ describe("C9: a rule cites a source this step can check (step 28b's README, deci
     });
   });
 
+  // Found by step 28b's review, finding L6: the rule's tests were positive only.
+  it("DSOR-CTL-01b: a draft that names KSoR but no policy, no version, and no fingerprint is refused: only local leaves the policy out", async () => {
+    const w = await ruleWorldOnTuesday();
+    const answer = await ruleCall(w, CFO, "rule.draft", { draft: citing({ system: "ksor" }) });
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect("message" in answer && answer.message).toContain("must have required property 'uri'");
+  });
+
   it("Step 28b: a KSoR address that names no policy after the company is refused", async () => {
     const w = await ruleWorldOnTuesday();
     const bare = { ...KSOR_V4, uri: "ksor://org_456/" };
