@@ -463,7 +463,7 @@ describe("a claim whose reply was lost", () => {
     expect(first.message).not.toMatch(/safe to send again/);
 
     // The key holds a claim with no answer: the same request waits, is told nobody knows, and does
-    // not run. The README names this dead key; reconciliation, step 37, is what clears it.
+    // not run. Step 20's README names this dead key; reconciliation, step 37, is what clears it.
     expect(refusalOf(await pay("claim-reply-lost")).code).toBe("OUTCOME_UNKNOWN");
     expect(await paymentsFor1009()).toBe(0);
   });
