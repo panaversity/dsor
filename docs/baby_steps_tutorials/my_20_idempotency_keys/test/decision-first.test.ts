@@ -477,20 +477,26 @@ describe("the decision is written down first", () => {
    * so the refusal is now the thing that gets recorded.
    */
   it("DSOR-EXE-02: a call answered INTERNAL_ERROR is on the record as a DENY", async () => {
-    // Two stages, and two different guards catch them — which is worth knowing. Lazying
-    // `resolve the operation` is caught by `authorize`, which refuses without a contract; lazying
-    // `validate the input` gets past every check and is caught by §21.11's own completeness check.
-    // Either way the caller gets INTERNAL_ERROR and the record says so.
-    for (const [lazied, why] of [
+    // Two stages, and three different guards catch them — which is worth knowing. Lazying
+    // `resolve the operation` is caught by the delegation stage, §21.3, which refuses without a
+    // contract. Lazying `validate the input` is caught by the claim, §21.7, on a command; a query
+    // claims no key, so on a query it gets past every check and is caught by §21.11's own
+    // completeness check. Either way the caller gets INTERNAL_ERROR and the record says so.
+    for (const [lazied, operation, why] of [
       // STEP 18: the delegation stage, §21.3, now runs first after the operation, and is the one
       // that finds no contract.
-      ["resolve the operation", /reached the delegation without/],
+      ["resolve the operation", "invoice.issue", /reached the delegation without/],
       // NEW IN STEP 20: and the claim, §21.7, now runs next after the input, and is the one that
       // finds no payload hash.
-      ["validate the input", /reached the idempotency claim without/],
+      ["validate the input", "invoice.issue", /reached the idempotency claim without/],
+      // Decision 151: and on a query §21.11's check is still the only guard. With the command row
+      // alone, that check could go, a query answered INTERNAL_ERROR was on the record as ALLOW
+      // ALLOWED, and every test stayed green.
+      ["validate the input", "invoice.get", /reached §21.11 without/],
     ] as const) {
       await fresh();
 
+      const what = `${lazied}, ${operation}`;
       const list = PIPELINE.map((stage) =>
         stage.name === lazied
           ? Object.freeze({
@@ -500,16 +506,16 @@ describe("the decision is written down first", () => {
           : stage,
       );
 
-      const answer = await makeDoor(list)(SUPERVISOR, "invoice.issue", { invoice: INV_1009 });
+      const answer = await makeDoor(list)(SUPERVISOR, operation, { invoice: INV_1009 });
 
-      expect(answer.kind === "error" && answer.envelope.code, lazied).toBe("INTERNAL_ERROR");
-      expect(await theLog("org_456"), lazied).toHaveLength(1);
-      expect((await theLog("org_456"))[0]!.authorization, lazied).toBe("DENY");
-      expect((await theLog("org_456"))[0]!.result, lazied).toBe("INTERNAL_ERROR");
-      expect((await theLog("org_456"))[0]!.reason, lazied).toMatch(why);
+      expect(answer.kind === "error" && answer.envelope.code, what).toBe("INTERNAL_ERROR");
+      expect(await theLog("org_456"), what).toHaveLength(1);
+      expect((await theLog("org_456"))[0]!.authorization, what).toBe("DENY");
+      expect((await theLog("org_456"))[0]!.result, what).toBe("INTERNAL_ERROR");
+      expect((await theLog("org_456"))[0]!.reason, what).toMatch(why);
 
       // And nothing was carried out.
-      expect((await getInvoice("org_456", "INV-1009")).value?.status, lazied).toBe("draft");
+      expect((await getInvoice("org_456", "INV-1009")).value?.status, what).toBe("draft");
     }
   });
 

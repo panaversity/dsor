@@ -1796,8 +1796,9 @@ export function makeDoor(
     //
     // The first five clauses are a type guard. A systematic mutation sweep showed they were also
     // *unreachable*: flipping every `||` here to `&&` changed no test, because every way of arriving
-    // short is caught earlier — `authenticate` and `resolve the operation` by `authorize`,
-    // `validate the input` by §21.11's own completeness check.
+    // short is caught earlier — `authenticate` by `resolve the tenant`, `resolve the operation` by
+    // the delegation stage, §21.3, and `validate the input` by the claim, §21.7, on a command, and
+    // by §21.11's own completeness check on a query (decision 151, measured).
     //
     // `recorded === undefined` is the sixth clause and it is the one that earns its place. A door
     // built with a **no-op** `record the decision` passes every check `assertPipeline` can make — the
