@@ -250,6 +250,15 @@ only by its name: `principal` or `delegation`, alone or with `_id`. Both command
 `target`. That is a reading of the rule and not a change to it, written down for the editor in
 decision 143, and the brake's half in decision 156.
 
+The agent's own traffic can make the brake fail, written down in decision 156. Pulling a brake, or
+revoking a slip, is a decision in the company's log like any request, and the log refuses the loser
+of a race for its next place (step 09). So an agent that keeps sending requests, even ones that are
+refused, can make a person's `control.suspend` come back `EVIDENCE_STORE_UNAVAILABLE` with nothing
+done, and the person must send it again. On the in-process database, against an agent that sent
+without a pause, a resend with a new key landed on the second try; resends with the same key did not
+land in thirty tries. Nothing limits how many requests an agent sends: `DSOR-OPS-02` asks for that,
+and no step on the map builds it yet.
+
 Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
 the application may read a view or a table beside the tenant tables, because a view runs with its
 owner's rights: over the invoices, it shows every company's rows. But it asks the application itself
