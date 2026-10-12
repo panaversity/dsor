@@ -4686,3 +4686,37 @@ one move allowed into EXECUTING, 1; a prepared command forgetting the brake, 1; 
 slips' policy without `revoked_by` and start-up expecting it so, 1. The README's three breaks were
 measured twice and the runs agreed: §21.4 asking nothing fails 5, the move to EXECUTING forgetting
 the brake 1, and a revocation cancelling nothing 2.
+
+## 144 · Steps 22 to 24's ordering walk gets two minutes of its own, found when CI gave every folder its own machine (2026-10-12)
+
+**Decided by:** Claude. The learner's "continue" was taken as a yes to the recommendation before
+it, splitting the CI job. Open to reversal.
+
+CI checked every step folder in one job per system, one folder after another. With 45 folders the
+job ran past its 60 minutes on both systems, and on Windows it had never reached `my_23`, `my_24` or
+`my_25`. Now every folder has a job of its own on each system (`.github/workflows/ci.yml`). A
+hostile review of that change, five reviewers with a skeptic for each finding, found what the
+folders would meet there for the first time:
+
+1. **The ten-stage ordering walk in `my_22`, `my_23` and `my_24` would fail on Windows.** It took
+   20 to 25 seconds on CI's Ubuntu machines. The nine-stage walk took 3.2 to 4 seconds on CI's
+   Windows machines, and ten stages take about eleven times as long, so 34 to 45 seconds there. That
+   is past the 30 seconds `vitest.config.ts` gives a test, and Vitest fails a test that runs past its
+   limit even when the test never pauses: broken on purpose with a 5-second limit, the walk ran 8
+   seconds and failed with "Test timed out in 5000ms". A student running `pnpm check` on a slow
+   Windows machine would meet the same failure. **Chosen:** the test gets two minutes of its own, and
+   the proof is unchanged. **Rejected:** carrying step 25's proof by parts back into three finished
+   steps, a larger change than the problem; and a longer limit for every test, which would make a
+   real hang take two minutes to show.
+2. **A fresh Windows machine once took 33 seconds over its first TypeScript run**: job
+   114277267129, in step 00's demo test, which allows 5 seconds. The old job met that at most once
+   a run; now every folder starts on a fresh machine. CI runs `node` on TypeScript once before the
+   tests, timed, on Windows only. Not proven: that the first run is where the time goes. The timed
+   line will show it.
+
+`my_01`'s README said CI does not run its tests. CI has run them since 2026-09-25; the sentence is
+corrected.
+
+**Written down, not changed:** every job still runs the repository's own install, which no step
+needs, so a step that forgot a dependency the repository has would still pass; and every pull
+request checks every folder, though a push usually changes one.

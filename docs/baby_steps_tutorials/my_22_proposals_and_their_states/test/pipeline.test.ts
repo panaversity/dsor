@@ -908,6 +908,12 @@ describe("the pipeline", () => {
   //
   // Step 08 made the list five long, so this now walks 120 orderings instead of 24, and still
   // exactly one is accepted. The test cost nothing to strengthen: the number came from the list.
+  //
+  // Found 2026-10-12, when CI first gave this folder a Windows machine of its own: ten stages take
+  // about 9 seconds to walk on the Mac this was built on, and 20 to 25 on CI's Ubuntu machines.
+  // Nine took 3.2 to 4 on its Windows ones, and ten take eleven times as long, so about 34 to 45
+  // there, past the 30 seconds `vitest.config.ts` gives a test. A slow proof is not a hang, so this
+  // one has two minutes of its own (decision 144).
   it("DSOR-EXE-01a: of every ordering of the real stages, exactly one is accepted", () => {
     // NEW IN STEP 22: one ordering at a time, from a generator, counted and not kept. Ten stages
     // have 3,628,800 orderings, and holding them all as arrays, as this test did up to nine, would
@@ -947,7 +953,7 @@ describe("the pipeline", () => {
     expect(all).toBe(3628800);
     expect(accepted).toHaveLength(1);
     expect(accepted[0]?.map((stage) => stage.name)).toEqual(PIPELINE.map((stage) => stage.name));
-  });
+  }, 120_000);
 
   // The two swaps that matter most, named, so a failure says which guarantee went — and which guard
   // caught it. The numbers catch a swap between two numbered stages; the name order catches the ones
