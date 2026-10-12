@@ -187,11 +187,14 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
     });
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
-    // Decision 156: refused by the signer check at §21.9, which the title names. It was refused at
-    // §21.5, for want of delegation:revoke, and stayed green with the signer check deleted.
     expect(answer.kind === "error" && answer.envelope.message).toMatch(
       /only the person who signed del_100/,
     );
+    // Decision 156: refused at §21.9, by the signer check the title names, so the log says DENY. The
+    // words alone do not show it: the statement asks who signed the slip too, and refuses in the same
+    // words after §21.11 has recorded ALLOW. Without this line the test stayed green with the signer
+    // check deleted, as it did when §21.5 refused her for want of delegation:revoke.
+    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
     expect(await statusOfDel100()).toBe("active");
   });
 
