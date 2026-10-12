@@ -80,9 +80,14 @@ ajv.addSchema(loadSchema("common.schema.json"));
 ajv.addSchema(loadSchema("control.schema.json"));
 const validateControl = ajv.compile({ $ref: "urn:dsor:schema:1.3:control" });
 
-// Line ⑩ evaluates these. A stale control is never skipped (DSOR-CTL-03b, step 28's rule; decision
-// D3). A draft, a control in review, a suspended one, and a retired one wait.
-const EVALUATED = new Set(["active", "stale_authority"]);
+// Line ⑩ evaluates an active control. A draft, a control in review, a suspended one, and a retired
+// one wait (decision D3).
+const EVALUATED = new Set(["active"]);
+// A stale control behaves per its on_stale while its stale_grace lasts (§17.4), which step 28
+// builds. Until then start-up refuses one: it is never skipped, and never evaluated as if it were
+// active (DSOR-CTL-03b). Found by step 27's review, finding M2: it was evaluated as active, so a
+// stale control whose on_stale says deny allowed a payment.
+const STALE = "stale_authority";
 // The effects this step builds (decision D8).
 const BUILT = new Set(["deny", "require_approval"]);
 
@@ -247,6 +252,12 @@ export function checkControls(
       const effect = Object.keys(control.effect)[0] ?? "";
       if (!BUILT.has(effect)) {
         problems.push(`${file}: ${name} has the effect ${effect}, which this step does not build`);
+        return;
+      }
+      if (control.status === STALE) {
+        problems.push(
+          `${file}: ${name} has the status ${STALE}, whose on_stale this step does not build`,
+        );
         return;
       }
       const why = governable(control.operation);

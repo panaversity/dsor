@@ -237,15 +237,15 @@ describe("C3: the tests, run before a control is switched on", () => {
     );
   });
 
-  it("Step 27: a draft's tests do not run and line ⑩ never sees it; a stale_authority control is tested and kept (step 27's README, decision D3)", () => {
+  // Changed by step 27's review, finding M2: a stale control was evaluated as if it were active, and
+  // §17.4 says that it behaves per its on_stale, which this step does not build.
+  it("Step 27: a draft's tests do not run and line ⑩ never sees it; start-up refuses a stale_authority control, whose on_stale step 28 builds (step 27's README, decision D3)", () => {
     const draft = { ...SHIPPED, id: "draft-rule", status: "draft", condition: QUICK };
     const started = startWith(controlsOf({ org_456: [SHIPPED, draft], org_789: [] }));
     expect(started.controls.get("org_456")?.map((c) => c.id)).toStrictEqual(["high-value-payment"]);
-    expect(
-      refusal(() => startWith(withOne({ status: "stale_authority", condition: QUICK }))),
-    ).toContain("controls.json: org_456's control high-value-payment v8 fails its test 3");
-    const stale = startWith(withOne({ status: "stale_authority" }));
-    expect(stale.controls.get("org_456")?.map((c) => c.status)).toStrictEqual(["stale_authority"]);
+    expect(refusal(() => startWith(withOne({ status: "stale_authority" })))).toContain(
+      "controls.json: org_456's control high-value-payment has the status stale_authority, whose on_stale this step does not build",
+    );
   });
 });
 
