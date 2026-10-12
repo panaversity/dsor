@@ -330,8 +330,8 @@ export async function call(
     let boundState: Bound["state"] = {};
     // NEW IN STEP 27: what a control's condition may read: Appendix B's eight variables, from DSoR's
     //   own reads and line ⑥'s checked input. The subject is the person: the slip's signer for an
-    //   agent's call, with what the directory says the person holds now (DSOR-CTL-06; step 27's README,
-    //   decision D5).
+    //   agent's call, with what the directory says the person holds now (DSOR-CTL-06; step 27's
+    //   README, decision D5).
     const factsOf = (state: Bound["state"]): Facts => {
       const requester = requesterOf(caller, under, tenant, new Date().toISOString());
       const own = caller.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [];

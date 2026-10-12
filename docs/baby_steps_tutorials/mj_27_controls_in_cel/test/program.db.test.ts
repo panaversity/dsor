@@ -108,6 +108,11 @@ describe("the program", () => {
       // currency, and a limit's DENY wins over it. A bill in yen that no sheet lists waits too, and
       // its record says why. A dry run says what the real call would get. A week later, the sweep
       // expires the waiting payments (step 27's README, the story's numbers, and decision D11).
+      // The program says that the earlier stories run with no controls (step 27's review,
+      // finding H1).
+      expect(output).toMatch(
+        "controls.json passed its tests; the stories of steps 09 to 26 run with no controls, and the company's rule has its own story",
+      );
       const waits =
         "PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z";
       expect(output).toMatch(`the agent drafts INV-1008, 31,400.00 USD: ${waits}`);

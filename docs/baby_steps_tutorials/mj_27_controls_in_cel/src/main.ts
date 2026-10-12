@@ -189,6 +189,13 @@ try {
   process.exit(1);
 }
 console.log("operations:", [...registry.contracts.keys()]);
+// NEW IN STEP 27: the earlier steps' stories, on the database too, run with no controls, so each
+// keeps its idea: there the agent's 31,400.00 USD for INV-1008 is paid without the CFO. The program
+// says so before the first story. Found by step 27's review, finding H1: nothing said it (step 27's
+// README, decision D16).
+console.log(
+  "controls.json passed its tests; the stories of steps 09 to 26 run with no controls, and the company's rule has its own story",
+);
 
 // No database named, no program. It never falls back to a log in memory,
 // because a missing secret must not quietly mean evidence lost on a crash (step 09's
