@@ -165,50 +165,72 @@ describe("a window past the lock", () => {
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
   });
 
-  it("DSOR-AUD-04a: a SECURITY DEFINER function whose owner owns the schema dsor is refused", async () => {
-    // NEW IN STEP 16: the question asked of the connection, asked of a helper's owner too, as the
-    // check already does for a tenant table's owner. This owner holds no right on the log, and
-    // owns its schema: the helper may drop the log for whoever calls it (decision 123).
-    await asTheOwner(async () => {
-      await db.exec("CREATE ROLE folder_keeper");
-      await db.exec("ALTER SCHEMA dsor OWNER TO folder_keeper");
-      await db.exec(`CREATE FUNCTION drop_the_log() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
-                     AS $$ BEGIN DROP TABLE dsor.audit; END $$`);
-      await db.exec("ALTER FUNCTION drop_the_log() OWNER TO folder_keeper");
+  // NEW IN STEP 16: the question asked of the connection, asked of a helper's owner too, as the
+  // check already does for a tenant table's owner. This owner holds no right on the table, and
+  // owns its schema: the helper may drop the table for whoever calls it (decision 123).
+  //
+  // Decision 147: both schemas, and the owner gives up its own CREATE first. A schema's owner may
+  // create in it, so without that line the CREATE question below refused this helper as well, and
+  // the test still passed with the owner question deleted, measured. A review also narrowed both
+  // questions to dsor, and every test passed while a helper dropped public.invoices.
+  for (const [id, schema, table] of [
+    ["DSOR-AUD-04a", "dsor", "dsor.audit"],
+    ["DSOR-RP-01a", "public", "public.invoices"],
+  ] as const) {
+    it(`${id}: a SECURITY DEFINER function whose owner owns the schema ${schema} is refused`, async () => {
+      await asTheOwner(async () => {
+        await db.exec("CREATE ROLE folder_keeper");
+        await db.exec(`ALTER SCHEMA ${schema} OWNER TO folder_keeper`);
+        // It keeps the right to drop any table in its schema: only the owner question sees it.
+        await db.exec(`REVOKE CREATE ON SCHEMA ${schema} FROM folder_keeper`);
+        await db.exec(`CREATE FUNCTION drop_the_table() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+                       AS $$ BEGIN DROP TABLE ${table} CASCADE; END $$`);
+        await db.exec("ALTER FUNCTION drop_the_table() OWNER TO folder_keeper");
+      });
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        /SECURITY DEFINER/,
+      );
+
+      // And the route is real: as the application, one call, and the table is gone.
+      await db.exec("SELECT drop_the_table()");
+      const { rows } = await db.query<{ table: string | null }>(
+        `SELECT to_regclass('${table}')::text AS table`,
+      );
+
+      expect(rows[0]?.table).toBeNull();
     });
+  }
 
-    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
+  // NEW IN STEP 16: the application may create nothing in dsor, and through a helper whose owner
+  // may, it made dsor.proposals anyway, a review measured (decision 124). Decision 147: and in
+  // public, which no test asked. A review narrowed the question to dsor and every test passed.
+  for (const [id, schema] of [
+    ["DSOR-MOD-01", "dsor"],
+    ["DSOR-RP-01a", "public"],
+  ] as const) {
+    it(`${id}: a SECURITY DEFINER function whose owner may create in the schema ${schema} is refused`, async () => {
+      await asTheOwner(async () => {
+        await db.exec("CREATE ROLE a_builder");
+        await db.exec(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO a_builder`);
+        await db.exec(`CREATE FUNCTION make_proposals() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+                       AS $$ BEGIN CREATE TABLE ${schema}.proposals (id text); END $$`);
+        await db.exec("ALTER FUNCTION make_proposals() OWNER TO a_builder");
+      });
 
-    // And the route is real: as the application, one call, and the log is gone.
-    await db.exec("SELECT drop_the_log()");
-    const { rows } = await db.query<{ log: string | null }>(
-      "SELECT to_regclass('dsor.audit')::text AS log",
-    );
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        /SECURITY DEFINER/,
+      );
 
-    expect(rows[0]?.log).toBeNull();
-  });
+      // And the route is real: as the application, one call, and a table stands in the schema.
+      await db.exec("SELECT make_proposals()");
+      const { rows } = await db.query<{ owner: string }>(
+        `SELECT tableowner AS owner FROM pg_tables WHERE schemaname = '${schema}' AND tablename = 'proposals'`,
+      );
 
-  it("DSOR-MOD-01: a SECURITY DEFINER function whose owner may create in the schema dsor is refused", async () => {
-    // NEW IN STEP 16: the application may create nothing in dsor, and through a helper whose owner
-    // may, it made dsor.proposals anyway, a review measured (decision 124).
-    await asTheOwner(async () => {
-      await db.exec("CREATE ROLE a_builder");
-      await db.exec("GRANT USAGE, CREATE ON SCHEMA dsor TO a_builder");
-      await db.exec(`CREATE FUNCTION make_proposals() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
-                     AS $$ BEGIN CREATE TABLE dsor.proposals (id text); END $$`);
-      await db.exec("ALTER FUNCTION make_proposals() OWNER TO a_builder");
+      expect(rows).toStrictEqual([{ owner: "a_builder" }]);
     });
-
-    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
-
-    // And the route is real: as the application, one call, and a table stands in dsor.
-    await db.exec("SELECT make_proposals()");
-    const { rows } = await db.query<{ owner: string }>(
-      "SELECT tableowner AS owner FROM pg_tables WHERE schemaname = 'dsor' AND tablename = 'proposals'",
-    );
-
-    expect(rows).toStrictEqual([{ owner: "a_builder" }]);
-  });
+  }
 
   it("DSOR-RP-01a: a view the owner made is a window past the lock, and is refused", async () => {
     // A view runs with its owner's rights, and its owner is a superuser here — so a view over the
