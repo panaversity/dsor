@@ -180,8 +180,9 @@ In `src/contracts/payment.create.json`, make the semantics `atomic` and delete `
 ```
 
 The schema accepts it: an atomic command names no undo. The tests do not. The contract's own tests,
-its receipts, the careless handler's, and the demo's list all say what `payment.create` promises.
-A promise in a contract is a fact a test can check, which is the point of writing it there.
+its receipts, the careless handler's, the demo's list, and the start-up check that an undo is not
+still waiting for its handler all say what `payment.create` promises. A promise in a contract is a
+fact a test can check, which is the point of writing it there.
 
 ### Break 2 · the door passes on the handler's semantics
 
