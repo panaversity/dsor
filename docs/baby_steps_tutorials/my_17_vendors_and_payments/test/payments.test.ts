@@ -23,7 +23,7 @@ import {
 } from "../src/operations.ts";
 import { readNow } from "../src/freshness.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { cancelPayment, createPayment } from "../src/payment.ts";
+import { cancelPayment, createPayment, paymentsOf } from "../src/payment.ts";
 import { contractsFromDisk, loadRegistry, type ContractDocument } from "../src/registry.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
@@ -362,12 +362,16 @@ describe("the first lock: every payment statement names its company", () => {
     // each statement's WHERE, had no test of its own. A review took it out of createPayment and every
     // test passed, because the second lock still hid org_789's rows (README, Break 5). The owner is
     // not filtered by the second lock, so as the owner the WHERE is all that answers.
+    //
+    // payment.ts has five statements, and this test reaches all five. Its first version reached
+    // three. A second review took the company out of the other two, and every test still passed.
     const made = await asTheOwner(() => createPayment("org_456", "INV-2001", AMOUNT));
     const cancelled = await asTheOwner(() => cancelPayment("org_456", "PAY-901"));
 
-    // INV-2001 is org_789's alone, so org_456 holds no such invoice, and nothing is made.
+    // createPayment's INSERT, then its question about why nothing was made. INV-2001 is org_789's
+    // alone, so org_456 holds no such invoice, and nothing is made.
     expect(made).toStrictEqual({ kind: "no_invoice" });
-    // Each company has a PAY-901, and only org_456's is taken back.
+    // cancelPayment's UPDATE. Each company has a PAY-901, and only org_456's is taken back.
     expect(cancelled.kind).toBe("cancelled");
     expect(
       await asTheOwner(
@@ -382,6 +386,23 @@ describe("the first lock: every payment statement names its company", () => {
       { tenant_id: "org_456", id: "PAY-901", status: "cancelled" },
       { tenant_id: "org_789", id: "PAY-901", status: "draft" },
     ]);
+
+    // paymentsOf, the demo's report. org_456's payments are its own PAY-901, and not org_789's too.
+    const ours = await asTheOwner(() => paymentsOf("org_456"));
+
+    expect(ours.map((payment) => payment.uri)).toStrictEqual([PAY_901]);
+
+    // cancelPayment's question about why nothing was cancelled. It runs only when the UPDATE changed
+    // nothing, so org_456 asks for a number it does not have. org_789 pays its INV-2001 as PAY-902,
+    // then cancels it. Without the company, the question would find org_789's PAY-902, and answer
+    // that it is no longer a draft.
+    expect(
+      await createPayment("org_789", "INV-2001", { value: "4200.00", currency: "USD" }),
+    ).toMatchObject({ kind: "created", payment: { uri: "dsor://org_789/payment/PAY-902" } });
+    expect((await cancelPayment("org_789", "PAY-902")).kind).toBe("cancelled");
+    expect(await asTheOwner(() => cancelPayment("org_456", "PAY-902"))).toStrictEqual({
+      kind: "not_found",
+    });
   });
 });
 
