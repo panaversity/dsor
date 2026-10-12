@@ -251,7 +251,9 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
 });
 
 describe("C7: each change and its record, in one transaction (step 28's README, decision D14)", () => {
-  it("DSOR-AUD-01: a draft and a move each leave a control_change record in dsor.audit: who, the person's words, the rule's address, the version, and the status it left", async () => {
+  // Not titled DSOR-AUD-01: the tutorial's records do not yet pass audit-record.schema.json, as step
+  // 22's tests note. Changed by step 28's review, finding L18.
+  it("Step 28: a draft and a move each leave a control_change record in dsor.audit: who, the person's words, the rule's address, the version, and the status it left", async () => {
     const id = `test-${randomUUID()}`;
     const drafted = byCfo("a hold on INV-9001");
     await rules.add("org_456", refusing9001(id), drafted);

@@ -193,8 +193,10 @@ describe("C6: only a person who holds rule:draft drafts (step 28's README, decis
     expect(await kept(w)).toStrictEqual([[8, "active", "policy-compiler-fte"]]);
   });
 
+  // Not titled DSOR-CTL-02b, which is about a switch-on: §17.4 says an agent MAY draft, and this
+  // step decides that it does not (decision D9). Changed by step 28's review, finding L18.
   it.each(["execute", "propose_only", "validate_only"])(
-    "DSOR-CTL-02b: in %s mode, an agent drafts nothing, though cfo_100, who holds rule:draft, signed it a slip that lists it",
+    "Step 28: in %s mode, an agent drafts nothing, though cfo_100, who holds rule:draft, signed it a slip that lists it (step 28's README, decision D9)",
     async (mode) => {
       const slip = { ...DEL_101, delegator: "cfo_100", permissions: ["rule:draft", "rule:manage"] };
       const w = await ruleWorldOnTuesday(undefined, [slip]);
@@ -210,7 +212,9 @@ describe("C6: only a person who holds rule:draft drafts (step 28's README, decis
 });
 
 describe("C7: a draft leaves its record (step 28's README, decision D14)", () => {
-  it("DSOR-AUD-01: cfo_100's draft leaves a control_change record that names cfo_100, the reason, the rule, and version 9; the call's own record says ALLOW and names the rule", async () => {
+  // Not titled DSOR-AUD-01: the tutorial's records do not yet pass audit-record.schema.json, as step
+  // 22's tests note. Changed by step 28's review, finding L18.
+  it("Step 28: cfo_100's draft leaves a control_change record that names cfo_100, the reason, the rule, and version 9; the call's own record says ALLOW and names the rule", async () => {
     const w = await ruleWorldOnTuesday();
     const answer = await draft(w);
     const [change] = await w.rules.records();

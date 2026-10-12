@@ -204,7 +204,9 @@ describe("C7: a suspension checks again under the rule's lock (step 28's README,
 });
 
 describe("C7: a suspension and a retirement leave their records (step 28's README, decision D14)", () => {
-  it("DSOR-AUD-01: each move leaves one control_change record that names cfo_100, the reason, the rule, its version, and the status it left", async () => {
+  // Not titled DSOR-AUD-01: the tutorial's records do not yet pass audit-record.schema.json, as step
+  // 22's tests note. Changed by step 28's review, finding L18.
+  it("Step 28: each move leaves one control_change record that names cfo_100, the reason, the rule, its version, and the status it left", async () => {
     const w = await withVersion9On();
     const suspended = await move(w, "rule.suspend", 9);
     const retired = await move(w, "rule.retire", 9);

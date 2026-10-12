@@ -401,7 +401,9 @@ describe("C6: an agent switches nothing on (DSOR-CTL-02b; step 28's README, deci
 });
 
 describe("C7: a switch-on and its records (step 28's README, decisions D14 and D15)", () => {
-  it("DSOR-AUD-01: a switch-on leaves two control_change records, version 8 retired and version 9 switched on, each naming cfo_100, the reason, and the status it left", async () => {
+  // Not titled DSOR-AUD-01: the tutorial's records do not yet pass audit-record.schema.json, as step
+  // 22's tests note. Changed by step 28's review, finding L18.
+  it("Step 28: a switch-on leaves two control_change records, version 8 retired and version 9 switched on, each naming cfo_100, the reason, and the status it left", async () => {
     const w = await ruleWorldOnTuesday();
     const v9 = await drafted(w);
     const answer = await activate(w, v9);

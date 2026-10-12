@@ -131,7 +131,9 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
 });
 
 describe("C7: each change leaves its record (step 28's README, decision D14)", () => {
-  it("DSOR-AUD-01: a draft and a move each leave a control_change record: who, the person's words, the call, the rule's address, its version, and the status it left", async () => {
+  // Not titled DSOR-AUD-01: the tutorial's records do not yet pass audit-record.schema.json, as step
+  // 22's tests note. Changed by step 28's review, finding L18.
+  it("Step 28: a draft and a move each leave a control_change record: who, the person's words, the call, the rule's address, its version, and the status it left", async () => {
     const store = memoryControls(readControls());
     await store.add("org_456", version9(), byCfo("version 9 lowers the line to 20,000"));
     await store.move("org_456", "high-value-payment", 8, "active", "retired", byCfo("replaced"));
