@@ -17,8 +17,8 @@ import {
   registry,
   REQUEST_ID,
   run,
-  shipped,
   shippedRoles,
+  shippedWithoutPredicates,
   SUPERVISOR,
   THE_SUPERVISOR,
   THE_AGENT,
@@ -146,8 +146,9 @@ describe("C6: a query's success is { data, correlation }", () => {
     const spy = vi.fn<Handler>(() => ({}));
     // Since step 24, line ⑨ reads the invoice the contract binds, so the registry holds the
     // invoices (step 24's README, decision 2).
+    // Since step 27, with no predicate where code runs (step 27's README, decision D20).
     const issueHasCode = buildRegistry(
-      shipped,
+      shippedWithoutPredicates,
       { ...handlers, "invoice.issue": spy },
       shippedRoles,
       undefined,

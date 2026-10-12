@@ -42,6 +42,7 @@ import {
   shippedLabels,
   shippedRoles,
   shippedWith,
+  shippedWithoutPredicates,
   source,
   without,
   testSlips,
@@ -619,8 +620,9 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
   // that it is denied.
   it("DSOR-AUT-01b: a reader is denied invoice.issue even when it has code", async () => {
     const issueHasCode = { ...handlers, "invoice.issue": () => "issued" };
+    // Since step 27, with no predicate where code runs (step 27's README, decision D20).
     const answer = await call(
-      buildRegistry(shipped, issueHasCode, shippedRoles),
+      buildRegistry(shippedWithoutPredicates, issueHasCode, shippedRoles),
       log,
       CFO,
       "invoice.issue",

@@ -22,6 +22,7 @@ import {
   source,
   testSlips,
   storyDirectories,
+  withoutPredicates,
 } from "./helpers.ts";
 
 // The callers of each company who may read, in the order of DSoR's table of logins.
@@ -63,8 +64,9 @@ function suiteWithList(
 ): Promise<Report> {
   // A query that needs invoice:read, as invoice.get does, or a command that needs
   // invoice:issue, as invoice.issue does. Its input is a limit, and no URI.
+  // Since step 27, with no predicate where code runs (step 27's README, decision D20).
   const browse = {
-    ...contract(kind === "query" ? "invoice.get" : "invoice.issue"),
+    ...withoutPredicates(contract(kind === "query" ? "invoice.get" : "invoice.issue")),
     id: "invoice.browse",
     input: { schema: "InvoiceBrowseRequest" },
     // A list answers a page, and its contract says so, as invoice.list's

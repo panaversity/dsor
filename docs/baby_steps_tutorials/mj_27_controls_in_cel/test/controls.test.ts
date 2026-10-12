@@ -34,10 +34,10 @@ import {
   storyDirectories,
 } from "./helpers.ts";
 
-/** A registry of the shipped contracts and code, with these controls. */
-function startWith(controls: ControlsSource) {
+/** A registry of the shipped contracts and code, or of these contracts, with these controls. */
+function startWith(controls: ControlsSource, contracts = shipped) {
   return buildRegistry(
-    shipped,
+    contracts,
     handlersFor(),
     shippedRoles,
     shippedInputs,
@@ -202,6 +202,35 @@ describe("C2: the condition, the operation, and the effect", () => {
     );
     expect(refusal(() => startWith(withOne({ effect: { require_verification: {} } })))).toContain(
       "controls.json: org_456's control high-value-payment has the effect require_verification, which this step does not build",
+    );
+  });
+});
+
+/** The shipped contracts, with these predicates in one contract's preconditions. */
+function predicatesIn(id: string, predicates: string[]) {
+  return shipped.map((s) => {
+    const data = JSON.parse(s.text) as { id: string; preconditions?: Record<string, unknown> };
+    if (data.id !== id) return s;
+    const changed = { ...data, preconditions: { ...data.preconditions, predicates } };
+    return { file: s.file, text: JSON.stringify(changed) };
+  });
+}
+
+describe("a contract's predicates (step 27's review, finding M3)", () => {
+  // Found by step 27's review: payment.create's contract took the predicate false, start-up
+  // accepted it, and INV-2002 was paid. No step evaluates a predicate before step 32.
+  it("Step 27: start-up refuses a predicate on an operation that runs code, because no predicate is evaluated before step 32 (step 27's README, decision D20)", () => {
+    const contracts = predicatesIn("payment.create", ["false"]);
+    expect(refusal(() => startWith(withOne({}), contracts))).toContain(
+      "payment.create: it lists predicates, which no step evaluates before step 32",
+    );
+  });
+
+  it("DSOR-CTL-05: start-up checks each contract predicate as CEL in Appendix B's environment: invoice.issue's own passes, and one that names anything else is refused", () => {
+    expect(startWith(withOne({})).contracts.has("invoice.issue")).toBe(true);
+    const contracts = predicatesIn("invoice.issue", ['caller_hint == "cfo"']);
+    expect(refusal(() => startWith(withOne({}), contracts))).toContain(
+      'invoice.issue: its predicate "caller_hint == \\"cfo\\"" names caller_hint, which is not in the environment',
     );
   });
 });

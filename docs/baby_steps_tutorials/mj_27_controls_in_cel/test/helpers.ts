@@ -145,6 +145,23 @@ export function contract(id: string): Record<string, unknown> {
   return JSON.parse(source.text) as Record<string, unknown>;
 }
 
+// NEW IN STEP 27: start-up refuses a predicate on an operation that runs code, because no step
+// evaluates one before step 32. A test that gives code to invoice.issue, which the step ships with
+// a predicate and no code, or to a contract made from it, takes the predicates away first (step
+// 27's README, decision D20).
+/** The contract's data, with no predicates. */
+export function withoutPredicates(data: Record<string, unknown>): Record<string, unknown> {
+  const preconditions = data["preconditions"] as Record<string, unknown> | undefined;
+  if (preconditions === undefined) return { ...data };
+  return { ...data, preconditions: { ...preconditions, predicates: [] } };
+}
+
+/** The shipped contracts, each with no predicates. */
+export const shippedWithoutPredicates: ContractSource[] = shipped.map((s) => ({
+  file: s.file,
+  text: JSON.stringify(withoutPredicates(JSON.parse(s.text) as Record<string, unknown>)),
+}));
+
 /** A contract as a file would hold it. */
 export function source(data: unknown, file = "test.json"): ContractSource {
   return { file, text: JSON.stringify(data) };

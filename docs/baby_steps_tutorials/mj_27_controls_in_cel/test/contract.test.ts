@@ -14,6 +14,7 @@ import {
   shippedWith,
   source,
   without,
+  withoutPredicates,
 } from "./helpers.ts";
 
 describe("C2: a contract passes the specification's own schema", () => {
@@ -149,7 +150,8 @@ describe("C4: a command needs 6 more fields, and a query does not", () => {
     };
     // Since step 17, the undo must be a real command, with a contract and code (DSOR-EXE-05c;
     // step 17's README, decision 8). Until then, a name alone was accepted.
-    const cancel = { ...contract("invoice.issue"), id: "invoice.cancel" };
+    // Since step 27, with no predicate where code runs (step 27's README, decision D20).
+    const cancel = { ...withoutPredicates(contract("invoice.issue")), id: "invoice.cancel" };
     const withCancel = [source(cancel, "invoice.cancel.json")];
     const cancelCode = { "invoice.cancel": () => ({}) };
     // Only the input schema these contracts name, or start-up refuses the

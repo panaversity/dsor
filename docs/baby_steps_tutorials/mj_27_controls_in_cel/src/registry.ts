@@ -22,6 +22,7 @@ import {
 } from "./labels.ts";
 import type { Company } from "./company.ts";
 import { NO_DIRECTORIES, type Directories } from "./directory.ts";
+import { checkCondition } from "./cel.ts";
 import { checkControls, readControls, type ControlBook, type ControlsSource } from "./controls.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { NO_STORE, type InvoiceStore } from "./invoice.ts";
@@ -304,6 +305,24 @@ export function buildRegistry(
     moneyPolicies,
   );
   problems.push(...controlProblems);
+  // NEW IN STEP 27: and each contract's predicates are CEL in Appendix B's environment, as a
+  // control's condition is (DSOR-CTL-05). No step evaluates one before step 32's preconditions, so
+  // an operation that runs code may list none: a predicate that is never evaluated would let
+  // through a call that it should stop. Found by step 27's review, finding M3 (step 27's README,
+  // decision D20).
+  for (const contract of contracts.values()) {
+    const listed = (contract["preconditions"] as { predicates?: unknown } | undefined)?.predicates;
+    const predicates = Array.isArray(listed) ? (listed as unknown[]) : [];
+    for (const predicate of predicates) {
+      const broken = checkCondition(String(predicate));
+      if (broken === undefined) continue;
+      const said = broken.startsWith("it ") ? broken.slice(3) : broken;
+      problems.push(`${contract.id}: its predicate ${JSON.stringify(predicate)} ${said}`);
+    }
+    if (predicates.length > 0 && (code.has(contract.id) || ownWork.has(contract.id))) {
+      problems.push(`${contract.id}: it lists predicates, which no step evaluates before step 32`);
+    }
+  }
 
   // Every contract's input schema must have a file, and compile. A contract
   // with no check for its input would let anything through line ⑥.
