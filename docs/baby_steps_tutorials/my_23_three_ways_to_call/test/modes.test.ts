@@ -595,7 +595,11 @@ const COMMANDS = [...loadRegistry(contractsFromDisk()).values()].filter(
   (contract) => contract.kind === "command",
 );
 
-/** org_456's invoices, payments and slips, as the owner reads them: what a command could change. */
+/**
+ * org_456's invoices, payments and slips, as the owner reads them. With the claims and the
+ * proposals, which the test checks itself, and the log, which records every call, that is every
+ * table a command writes.
+ */
 const theRows = async (): Promise<unknown[]> =>
   asTheOwner(async () => {
     const { rows } = await db.query(
@@ -623,7 +627,11 @@ describe("every command can be called all three ways", () => {
         "VALIDATED",
       );
       expect(dry.kind === "result" && dry.envelope.semantics).toBe(contract.execution?.semantics);
+      // A dry run leaves nothing behind: no proposal, no claim, and no change to the rows the
+      // snapshot reads (DSOR-OPR-06). Asked here, and not only after the prepared call, so that a
+      // change the dry run made fails as the dry run's.
       expect(await leftBehind()).toStrictEqual({ proposals: 0, claims });
+      expect(await theRows(), `${contract.id}, after the dry run`).toStrictEqual(before);
 
       const prepared = await callOperation(SUPERVISOR, contract.id, example, {
         idempotencyKey: `every-command-prepared-${contract.id}`,
@@ -639,7 +647,7 @@ describe("every command can be called all three ways", () => {
       );
 
       // Its proposal waits at READY and never went to EXECUTING, the move the door makes just before
-      // a handler runs. And nothing a command could change has changed.
+      // a handler runs. And nothing the snapshot reads has changed.
       const [only] = await proposalsOf("org_456");
 
       expect(only?.state).toBe("READY");
@@ -647,7 +655,7 @@ describe("every command can be called all three ways", () => {
         "PROPOSED",
         "READY",
       ]);
-      expect(await theRows()).toStrictEqual(before);
+      expect(await theRows(), `${contract.id}, after it was prepared`).toStrictEqual(before);
 
       // Executed, it is done. So the example is one the rules allow, and VALIDATED and READY above
       // are the right answers, not refusals that happened to change nothing.

@@ -595,7 +595,12 @@ const COMMANDS = [...loadRegistry(contractsFromDisk()).values()].filter(
   (contract) => contract.kind === "command",
 );
 
-/** org_456's invoices, payments and slips, as the owner reads them: what a command could change. */
+/**
+ * org_456's invoices, payments, slips, reservations, day totals and brakes, as the owner reads
+ * them. With the claims and the proposals, which the test checks itself, and the log, which records
+ * every call, that is every table a command writes. Decision 154: step 23's copy read only the
+ * first three, so a dry run of control.suspend that pulled a brake on every agent passed here.
+ */
 const theRows = async (): Promise<unknown[]> =>
   asTheOwner(async () => {
     const { rows } = await db.query(
@@ -604,6 +609,15 @@ const theRows = async (): Promise<unknown[]> =>
        SELECT 'payment', id, status, version FROM public.payments WHERE tenant_id = 'org_456'
        UNION ALL
        SELECT 'slip', id, status, NULL FROM dsor.delegations WHERE tenant = 'org_456'
+       UNION ALL
+       SELECT 'reservation', proposal, state, NULL FROM dsor.reservations WHERE tenant = 'org_456'
+       UNION ALL
+       SELECT 'day total', delegation || ' ' || day::text, used_value::text, NULL
+         FROM dsor.day_totals WHERE tenant = 'org_456'
+       UNION ALL
+       SELECT 'brake', id || ': ' || COALESCE(agent, 'every agent'),
+              CASE WHEN lifted_at IS NULL THEN 'on' ELSE 'lifted' END, NULL
+         FROM dsor.agent_controls WHERE tenant = 'org_456'
        ORDER BY 1, 2`,
     );
 
@@ -623,7 +637,11 @@ describe("every command can be called all three ways", () => {
         "VALIDATED",
       );
       expect(dry.kind === "result" && dry.envelope.semantics).toBe(contract.execution?.semantics);
+      // A dry run leaves nothing behind: no proposal, no claim, and no change to the rows the
+      // snapshot reads (DSOR-OPR-06). Asked here, and not only after the prepared call, so that a
+      // change the dry run made fails as the dry run's.
       expect(await leftBehind()).toStrictEqual({ proposals: 0, claims });
+      expect(await theRows(), `${contract.id}, after the dry run`).toStrictEqual(before);
 
       const prepared = await callOperation(SUPERVISOR, contract.id, example, {
         idempotencyKey: `every-command-prepared-${contract.id}`,
@@ -639,7 +657,8 @@ describe("every command can be called all three ways", () => {
       );
 
       // Its proposal waits at READY and never went to EXECUTING, the move the door makes just before
-      // a handler runs. And nothing a command could change has changed.
+      // a handler runs. And nothing the snapshot reads has changed: user_123 has no slip, so not
+      // even a reservation is held. The agent's prepared payment would hold one.
       const [only] = await proposalsOf("org_456");
 
       expect(only?.state).toBe("READY");
@@ -647,7 +666,7 @@ describe("every command can be called all three ways", () => {
         "PROPOSED",
         "READY",
       ]);
-      expect(await theRows()).toStrictEqual(before);
+      expect(await theRows(), `${contract.id}, after it was prepared`).toStrictEqual(before);
 
       // Executed, it is done. So the example is one the rules allow, and VALIDATED and READY above
       // are the right answers, not refusals that happened to change nothing.
