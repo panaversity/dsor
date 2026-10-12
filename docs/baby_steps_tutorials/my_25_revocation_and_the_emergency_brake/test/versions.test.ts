@@ -175,7 +175,7 @@ describe("a command says the version it decided on", () => {
     ]);
   });
 
-  it("DSOR-CON-01a: a strategy this program does not carry out stops it at load", () => {
+  it("DSOR-CON-01a: a command that declares no strategy, or one this program does not carry out, stops it at load", () => {
     for (const strategy of ["pessimistic", "connector_managed"]) {
       const declared = contractsFromDisk().map((c) =>
         c.expectedId === "payment.cancel"
@@ -185,6 +185,21 @@ describe("a command says the version it decided on", () => {
 
       expect(() => loadRegistry(declared), strategy).toThrow(/payment\.cancel/);
     }
+
+    // Decision 152: and a command that declares none at all, which is what the rule is about. The
+    // schema's list of what a command must say refuses it, and so does the check above in the
+    // registry, but no test took the strategy out: both could be loosened and nothing failed.
+    const undeclared = contractsFromDisk().map((c) => {
+      if (c.expectedId !== "payment.cancel") {
+        return c;
+      }
+
+      const { concurrency: _left_out, ...rest } = c.document as Record<string, unknown>;
+
+      return { ...c, document: rest };
+    });
+
+    expect(() => loadRegistry(undeclared), "no strategy").toThrow(/payment\.cancel/);
   });
 
   it("DSOR-CON-01b: an invoice that moved on since the version read is STALE_STATE, and is not touched", async () => {
