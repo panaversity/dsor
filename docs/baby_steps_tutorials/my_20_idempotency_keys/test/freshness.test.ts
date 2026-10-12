@@ -251,8 +251,9 @@ describe("a value read before this request is never current", () => {
   });
 
   it("DSOR-FRS-01b: the line is the moment the request began: read then is current, a millisecond earlier is not", () => {
-    // Decision 121: only an hour-old label was tested, so a door that allowed any slack under an
-    // hour would have passed.
+    // Decision 121: only an hour-old label was tested, so a check that allowed any slack under an
+    // hour would have passed. This test hands the check a start time. Where the door takes that
+    // time from is the next test's (decision 146).
     const startedAt = Date.now() - 1000;
     const readAt = (ms: number) => ({
       kind: "data" as const,
@@ -269,6 +270,36 @@ describe("a value read before this request is never current", () => {
     expect(cannotBeLabelled(readAt(startedAt - 1), startedAt, "query")).toMatch(
       /before this request began/,
     );
+  });
+
+  it("DSOR-FRS-01b: the line is when this request began, not when the door was built", async () => {
+    // Decision 146. The program builds its door once, when it starts: that is `callOperation`.
+    // The tests above hand the door a label an hour old, older than any door, and the one above
+    // this hands the check its start time. So a door that took the time once, when it was built,
+    // passed them all, and so did a door that allowed up to an hour of slack. A value saved after
+    // start-up could then leave labelled current. Here the door is built first, the value is saved
+    // after it, and the request comes at least 5 ms later.
+    let savedAt = "";
+    const door = handingLabel(() => ({ ...readNow(), observed_at: savedAt }));
+
+    savedAt = new Date().toISOString();
+
+    // Until the program's clock has moved on 5 ms: a timer alone can fire a little early.
+    while (Date.now() < Date.parse(savedAt) + 5) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+    ]) {
+      expect(answer.kind).toBe("error");
+
+      if (answer.kind === "error") {
+        expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+        expect(answer.envelope.retry).toBe("never");
+      }
+    }
   });
 });
 
