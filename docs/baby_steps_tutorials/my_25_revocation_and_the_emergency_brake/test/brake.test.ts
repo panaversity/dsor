@@ -591,6 +591,18 @@ describe("no way into EXECUTING forgets the brake", () => {
     );
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+
+    // Decision 156: and the release, which this test's title named and never sent.
+    await pullTheBrake("org_456", AGENT, "cfo_100", "checking");
+
+    const release = await callOperation(
+      { loggedInAs: "user_123", scopes: ["invoice:read"] },
+      "control.suspend",
+      { target: THE_AGENT, suspended: false },
+    );
+
+    expect(release.kind === "error" && release.envelope.code).toBe("AUTHORIZATION_DENIED");
+    expect(await whatStops("org_456", AGENT)).toBeDefined();
   });
 });
 
