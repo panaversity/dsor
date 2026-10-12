@@ -35,7 +35,11 @@
 // too, and who may switch a rule on, in memory: cfo_100, the rule's owner, drafts version 9, and
 // admin_100 drafts version 10 and cannot switch it on; the agent cannot either; a version with the
 // quick rule fails its test; cfo_100 switches version 9 on, suspends it, and switches it on again,
-// and each change applies to the next payment. Then it prints the log: the records it can read,
+// and each change applies to the next payment. Since step 28b, where a rule came from, in memory
+// with a stand-in for KSoR: the finance team publishes version 5 of the payment-approval policy,
+// dsor-scheduler's sweep marks version 8 stale and leaves cfo_100 a notice, every payment waits
+// for the CFO until cfo_100 switches on a version that cites version 5, and a version that still
+// cites version 4 cannot be switched on. Then it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -1397,6 +1401,131 @@ for (const change of await lifeRules.records()) {
     `  the record: version ${String(version)} ${change.result}, ${left}, by ${change.identity.subject}: ${change.reason}`,
   );
 }
+
+// NEW IN STEP 28b: where a rule came from, in memory, with a store and a KSoR of its own.
+// dsor-scheduler sweeps, and finds version 4 of the policy in force. The finance team publishes
+// version 5 in KSoR: above 20,000 USD. Version 8 pays the agent's 21,000.00 USD until the next
+// sweep, which marks version 8 stale and leaves cfo_100 a notice. Then version 8 asks for the CFO
+// on every payment, as its on_stale says, and the record names the policy's version in force.
+// cfo_100 cannot switch on a version that still cites version 4; a version that cites version 5
+// switches on, and retires version 8 (step 28b's README, the story's numbers).
+console.log("where a rule came from, in memory, with a store and a KSoR of its own:");
+const driftInvoices = memoryInvoices([
+  ...structuredClone(invoices),
+  // Above version 5's 20,000.00 USD and below version 4's 25,000.00 USD, so they show which
+  // answers. And one small payment, and one under both lines.
+  bill("INV-2007", "21000.00", "USD"),
+  bill("INV-2008", "21000.00", "USD"),
+  bill("INV-2009", "900.00", "USD"),
+  bill("INV-2010", "19500.00", "USD"),
+  bill("INV-2011", "21000.00", "USD"),
+]);
+const driftPayments = memoryPayments([]);
+const driftSlips = memorySlips(limited);
+const driftRates = memoryRates(() => lifeClock.now);
+const driftRules = memoryControls(readControls(CONTROLS));
+const driftKsors = storyKsors();
+const driftWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  driftInvoices,
+  driftPayments,
+  driftSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    driftInvoices,
+    driftPayments,
+    memoryProposals(() => lifeClock.now),
+    memoryReservations(() => lifeClock.now),
+    driftSlips,
+    undefined,
+    driftRates,
+    driftRules,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  driftRules,
+  driftKsors,
+);
+const driftLog = createLog();
+const driftCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(driftWorld, driftLog, who, name, input);
+let driftKeys = 0;
+/** Someone asks for a rule command on the story's rule, in this world, with a key of its own. */
+const driftRule = (who: RequestEnvelope, name: string, fields: Record<string, unknown>) =>
+  driftCall(withKey(who, `drift-${++driftKeys}`), name, { rule: RULE, ...fields });
+/** The agent drafts a payment of one of org_456's bills, in this world. */
+const driftPay = (id: string): Promise<Answer> =>
+  driftCall(withKey(AGENT, `drift-${id}`), "payment.create", {
+    invoice: `dsor://org_456/invoice/${id}`,
+    expected_version: 1,
+  });
+/** dsor-scheduler sweeps org_456, and what it answered. */
+async function driftSweep(): Promise<string> {
+  const company = { company: "dsor://org_456/tenant/org_456" };
+  const key = withKey(SCHEDULER, `drift-sweep-${++driftKeys}`);
+  const answer = await driftCall(key, "rule.check_authority", company);
+  if (!("data" in answer)) return heard(answer);
+  const { asked, unanswered, marked } = answer.data as Record<string, number>;
+  const policies = asked === 1 ? "policy" : "policies";
+  return `asked about ${asked} ${policies}, ${unanswered} unanswered, marked ${marked}`;
+}
+console.log("  dsor-scheduler sweeps org_456:", await driftSweep());
+const above20000 = "Payments above 20,000 USD or equivalent require CFO approval.";
+const v5 = driftKsors.get("org_456")!.publish(PAYMENT_POLICY, above20000);
+console.log(
+  `  the finance team publishes version ${v5.version} of the payment-approval policy in KSoR: above 20,000 USD`,
+);
+console.log("  the agent drafts INV-2007, 21,000.00 USD:", waitHeard(await driftPay("INV-2007")));
+console.log("  dsor-scheduler sweeps org_456:", await driftSweep());
+for (const notice of await driftRules.notices()) {
+  console.log(`  the notice to ${notice.to}: ${notice.words}`);
+}
+const staleDraft = await driftPay("INV-2008");
+console.log("  the agent drafts INV-2008, 21,000.00 USD:", waitHeard(staleDraft));
+console.log("  the agent drafts INV-2009, 900.00 USD:", waitHeard(await driftPay("INV-2009")));
+// The record names the policy's version in force, and the version that version 8 cites
+// (DSOR-CTL-04; step 28b's README, decision D11).
+const staleRecord = (await driftLog.records()).find(
+  (r) => r.kind === "decision" && r.correlation.request_id === staleDraft.correlation.request_id,
+);
+for (const c of staleRecord?.controls ?? []) {
+  const inForce = `the policy's version ${String(c.authority["version"])} in force`;
+  const cites = `superseded_version ${String(c.superseded_version)}`;
+  console.log(
+    `  INV-2008's record: ${c.id} version ${c.version}, ${c.outcome}, ${inForce}, ${cites}`,
+  );
+}
+const still4 = await driftRule(CFO_100, "rule.draft", {
+  draft: textWith({ condition: ABOVE_20000, tests: NINE_TESTS }),
+  reason: "the board lowered the line to 20,000 USD",
+});
+console.log(
+  "  cfo_100 drafts version 9 above 20,000.00 USD, still citing version 4:",
+  ruleHeard(still4),
+);
+const still4On = await driftRule(CFO_100, "rule.activate", { version: 9, reason: "the new line" });
+console.log("  cfo_100 switches version 9 on:", ruleHeard(still4On));
+const cited = (VERSION_8 as { authority: Record<string, unknown> }).authority;
+const citing5 = { ...cited, version: v5.version, content_hash: v5.content_hash };
+const cites5 = await driftRule(CFO_100, "rule.draft", {
+  draft: textWith({ condition: ABOVE_20000, tests: NINE_TESTS, authority: citing5 }),
+  reason: "version 5 of the policy",
+});
+console.log(
+  "  cfo_100 drafts version 10 above 20,000.00 USD, citing version 5:",
+  ruleHeard(cites5),
+);
+const cites5On = await driftRule(CFO_100, "rule.activate", { version: 10, reason: "version 5" });
+console.log("  cfo_100 switches version 10 on:", ruleHeard(cites5On));
+console.log("  the agent drafts INV-2010, 19,500.00 USD:", waitHeard(await driftPay("INV-2010")));
+console.log("  the agent drafts INV-2011, 21,000.00 USD:", waitHeard(await driftPay("INV-2011")));
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

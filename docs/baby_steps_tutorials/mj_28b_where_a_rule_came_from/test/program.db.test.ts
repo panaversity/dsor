@@ -146,6 +146,28 @@ describe("the program", () => {
       ]) {
         expect(output).toMatch(line);
       }
+      // And the story of where a rule came from, in memory, with a KSoR of its own (step 28b's
+      // README, the story's numbers).
+      const policy = '"ksor://org_456/finance/payment-approval-policy"';
+      for (const line of [
+        "where a rule came from, in memory, with a store and a KSoR of its own:",
+        "dsor-scheduler sweeps org_456: asked about 1 policy, 0 unanswered, marked 0",
+        "the finance team publishes version 5 of the payment-approval policy in KSoR: above 20,000 USD",
+        "the agent drafts INV-2007, 21,000.00 USD: answered, PAY-",
+        "dsor-scheduler sweeps org_456: asked about 1 policy, 0 unanswered, marked 1",
+        `the notice to cfo_100: Version 8 of rule high-value-payment cites version 4 of ${policy}, and KSoR now has version 5 in force. DSoR marked it stale_authority.`,
+        `the agent drafts INV-2008, 21,000.00 USD: ${waits}`,
+        `the agent drafts INV-2009, 900.00 USD: ${waits}`,
+        "INV-2008's record: high-value-payment version 8, REQUIRE_APPROVAL, the policy's version 5 in force, superseded_version 4",
+        "cfo_100 drafts version 9 above 20,000.00 USD, still citing version 4: version 9, draft",
+        `cfo_100 switches version 9 on: VALIDATION_FAILED: "rule.activate": version 9 of rule high-value-payment cites version 4 of ${policy}, and KSoR has version 5 in force`,
+        "cfo_100 drafts version 10 above 20,000.00 USD, citing version 5: version 10, draft",
+        "cfo_100 switches version 10 on: version 10, active, version 8 retired",
+        "the agent drafts INV-2010, 19,500.00 USD: answered, PAY-",
+        `the agent drafts INV-2011, 21,000.00 USD: ${waits}`,
+      ]) {
+        expect(output).toMatch(line);
+      }
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
       expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");
