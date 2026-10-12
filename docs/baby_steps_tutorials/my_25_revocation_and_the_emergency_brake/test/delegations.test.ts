@@ -186,7 +186,10 @@ describe("the slip, in DSoR's own store", () => {
     const WHEN = "revoked_at = now()";
     const WHY = "revoked_reason = 'the agent is paying the wrong invoices'";
 
-    for (const columns of [WHO, `${WHO}, ${WHEN}`, `${WHO}, ${WHY}`]) {
+    // Each statement leaves out one of the three, so each clause of the policy has a test of its
+    // own; the last leaves out two, as the review's did. Without the first, a review deleted the
+    // who clause and every test stayed green.
+    for (const columns of [`${WHEN}, ${WHY}`, `${WHO}, ${WHY}`, `${WHO}, ${WHEN}`, WHO]) {
       expect(await revoke(columns), columns).toMatch(/row-level security/);
     }
 

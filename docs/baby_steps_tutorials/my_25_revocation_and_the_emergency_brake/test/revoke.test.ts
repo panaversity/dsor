@@ -596,9 +596,12 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
 describe("a revocation says who", () => {
   it("DSOR-DEL-04a: the application cannot write a revocation with no one's name on it", async () => {
     // Decision 143: the slips' policy lets a slip become revoked only with who revoked it.
+    // Decision 156: it asks when and why too, so this statement gives both, and the name is all it
+    // leaves out. Without them it was refused with the who clause deleted.
     await expect(
       theDatabase("org_456").query(
-        "UPDATE dsor.delegations SET status = 'revoked' WHERE tenant = 'org_456' AND id = 'del_100'",
+        `UPDATE dsor.delegations SET status = 'revoked', revoked_at = now(), revoked_reason = 'stop'
+          WHERE tenant = 'org_456' AND id = 'del_100'`,
       ),
     ).rejects.toThrow(/row-level security/);
     expect(await statusOfDel100()).toBe("active");
