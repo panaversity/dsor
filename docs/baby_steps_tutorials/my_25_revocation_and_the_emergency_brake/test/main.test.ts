@@ -533,7 +533,7 @@ describe("the program a learner runs", () => {
     expect(out).toContain(
       "  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE",
     );
-    expect(out).toMatch(/ {2}prop_\d+ is COMMITTED\. Moved back to EXECUTING: refused\n/);
+    expect(out).toMatch(/ {2}prop_\d+ is COMMITTED\. Moved to FAILED: refused\n/);
   });
 
   it("DSOR-OPR-05: the demo calls one payment three ways, and only the third makes it", () => {

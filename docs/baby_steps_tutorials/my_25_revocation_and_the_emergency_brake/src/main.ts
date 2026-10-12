@@ -637,6 +637,10 @@ if (last !== undefined) {
 
 // And a finished proposal refuses to move, whoever asks: the map has no move out of COMMITTED, and
 // the database refuses one (DSOR-APR-01c). This asks with the application's own rights.
+// Decision 156: and it asks for a move into FAILED, which only the map refuses. It used to ask
+// to go back into EXECUTING, which moveProposal has refused by itself since step 25, before
+// asking the database anything: with the map's constraint gone, the line still said "refused",
+// a review measured.
 const finished = ours.find((p) => p.state === "COMMITTED");
 
 if (finished !== undefined) {
@@ -644,13 +648,13 @@ if (finished !== undefined) {
     "org_456",
     finished.id,
     "COMMITTED",
-    "EXECUTING",
+    "FAILED",
     "dsor",
-    "run it again",
+    "it failed after all",
   );
 
   console.log();
-  console.log(`  ${finished.id} is COMMITTED. Moved back to EXECUTING: ${tried.kind}`);
+  console.log(`  ${finished.id} is COMMITTED. Moved to FAILED: ${tried.kind}`);
 }
 
 // STEP 23: one payment, called three ways (decision 138). A dry run is decided and
