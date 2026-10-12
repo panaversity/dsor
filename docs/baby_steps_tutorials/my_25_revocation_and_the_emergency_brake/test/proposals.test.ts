@@ -12,7 +12,7 @@ import { theLog } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { payloadHash, refusal, success } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
-import { PIPELINE } from "../src/operations.ts";
+import { MAX_PAYLOAD_BYTES, PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
 import {
   moveProposal,
@@ -680,6 +680,65 @@ describe("the door makes a proposal for every command and moves it", () => {
     expect(made).toHaveLength(1);
     expect(await stateOf("org_456", made[0]?.id ?? "")).toBe("COMMITTED");
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("issued");
+  });
+
+  it("a command whose arguments are over the ceiling is refused at §21.6, with no claim and no proposal", async () => {
+    // Decision 153: a proposal keeps its arguments whole, for good, in a table nobody may delete
+    // from. With no ceiling, this payment, refused for its amount, still kept a 5,000,000-character
+    // note, a review measured. Euro signs, because a size counted in characters lets this through:
+    // each is one character and three bytes.
+    const request = { idempotencyKey: "pay-1009-with-a-long-note" };
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "60000.00", currency: "USD" },
+        note: "€".repeat(Math.ceil(MAX_PAYLOAD_BYTES / 3)),
+      },
+      request,
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("VALIDATION_FAILED");
+    expect(await proposalsOf456()).toStrictEqual([]);
+
+    // Recorded as the DENY it is, and the record holds none of the note.
+    const record = (await theLog("org_456")).at(-1);
+
+    expect(record).toMatchObject({ authorization: "DENY", result: "VALIDATION_FAILED" });
+    expect(JSON.stringify(record).length).toBeLessThan(2000);
+
+    const claims = await asTheOwner(async () => {
+      const { rows } = await db.query<{ claims: number }>(
+        "SELECT count(*)::int AS claims FROM dsor.idempotency_keys WHERE tenant = 'org_456' AND key = $1",
+        [request.idempotencyKey],
+      );
+
+      return rows[0]?.claims;
+    });
+
+    expect(claims).toBe(0);
+  });
+
+  it("a command whose arguments are exactly at the ceiling still becomes a proposal", async () => {
+    const payment = {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      amount: { value: "2500.00", currency: "USD" },
+      note: "",
+    };
+    const atTheCeiling = {
+      ...payment,
+      note: "x".repeat(MAX_PAYLOAD_BYTES - JSON.stringify(payment).length),
+    };
+
+    expect(Buffer.byteLength(JSON.stringify(atTheCeiling), "utf8")).toBe(MAX_PAYLOAD_BYTES);
+
+    const answer = await callOperation(AGENT, "payment.create", atTheCeiling);
+
+    expect(answer.kind === "result" && answer.envelope.proposal).toBe(
+      "dsor://org_456/proposal/prop_1",
+    );
+    expect(await stateOf("org_456", "prop_1")).toBe("COMMITTED");
   });
 
   it("DSOR-APR-01a: a move to EXECUTING whose reply is lost is read back, found to be the door's own, and carried out", async () => {

@@ -36,7 +36,9 @@ approvals.
 The receipt names the proposal, `dsor://org_456/proposal/prop_1`. A request refused before the
 proposal is written, because nobody is logged in, the company is wrong, the caller lacks the
 permission or the arguments are bad, has none: there was nothing to propose. A query has none
-either: it changes nothing.
+either: it changes nothing. A proposal keeps its command's arguments for good, so their size is the
+server's: arguments that take more than 64 KiB written down are refused at §21.6, before any
+proposal is made.
 
 Three rules make "never out of a finished state" true, and all three live in the database, not in
 the code, so no handler, careless or not, can get round them:
@@ -77,7 +79,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | --- | --- |
 | `migrations/020_proposals.sql` | new — the map of moves, the proposals, written once, and their moves; the constraints that keep the map, and a history that is one line; the application may add and read, and nothing else |
 | `src/proposal.ts` | new — make a proposal with its first move, move it, move it through several states in one statement, read its moves, its state, and a company's list |
-| `src/operations.ts` | a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after, and tells the caller `OUTCOME_UNKNOWN` when it is; DENIED when a later stage refuses |
+| `src/operations.ts` | §21.6 refuses a command whose arguments take more than 64 KiB, since its proposal keeps them for good; a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after, and tells the caller `OUTCOME_UNKNOWN` when it is; DENIED when a later stage refuses |
 | `src/pipeline.ts` | the stage is required by name, after the claim; the context carries the proposal and the payload's text |
 | `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
 | `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
