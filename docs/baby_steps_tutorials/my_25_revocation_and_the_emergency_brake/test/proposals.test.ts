@@ -9,7 +9,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { overPGlite } from "../src/database.ts";
-import { refusal } from "../src/envelopes.ts";
+import { payloadHash, refusal } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
@@ -353,7 +353,9 @@ describe("the application adds, and changes nothing", () => {
     ]);
   });
 
-  it("DSOR-APR-01a: the payload is kept as the text it was hashed from, word for word", async () => {
+  // Decision 153: what this proves is that propose stores the text it is given, unchanged. Nothing is
+  // hashed here; the door's test below ties the stored text to its hash.
+  it("propose keeps the payload's text byte for byte", async () => {
     const id = await aProposal();
     const { rows } = await theDatabase("org_456").query<{ payload: string }>(
       "SELECT payload FROM dsor.proposals WHERE tenant = 'org_456' AND id = $1",
@@ -479,6 +481,9 @@ describe("the door makes a proposal for every command and moves it", () => {
     const [kept] = await proposalsOf456();
 
     expect(kept?.payload_hash).toBe(answer.envelope.payload_hash);
+    // Decision 153: and the text kept is the very text that was hashed. Parsing it back cannot tell:
+    // a door that kept the same arguments written another way passed every test, a review measured.
+    expect(payloadHash(kept?.payload ?? "")).toBe(kept?.payload_hash);
     expect(JSON.parse(kept?.payload ?? "null")).toStrictEqual({
       invoice: "dsor://org_456/invoice/INV-1009",
       amount: { value: "2500.00", currency: "USD" },
