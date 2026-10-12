@@ -47,6 +47,12 @@ same request takes it back, in one UPDATE, so that of fifty retries only one doe
 from the checks: an answer given after a payment was made is kept whatever it says, or a careless
 handler's "safe to send again" would make a second payment.
 
+A release is written once and never tried again. Its write can succeed and its reply can be lost,
+and by then the next request may have taken the claim back. A second try would release that
+request's claim while it runs. Its receipt would be kept nowhere, and a third request with the key
+would make a second payment. A kept answer is tried once more, because only a released claim is
+ever taken back: a second try can only meet its own claim.
+
 An answer once kept is never rewritten. The application may write a claim's answer, which would let
 it rewrite one too, so a second policy on the table, restrictive, lets an UPDATE touch only a claim
 with no answer or a released one, and start-up refuses the table without it. And a replayed answer
@@ -81,7 +87,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_19
 | `src/database.ts` | start-up knows six tenant tables, refuses an application that may delete or rewrite a claim, and refuses the claims' table without the policy that keeps an answer |
 | `src/main.ts` | every command with a key; a payment sent twice, a different one under the same key, and fifty at once |
 | `test/support/door.ts` | new — the door the tests knock on, which gives each request a fresh key unless the test gives one |
-| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, and fifty at once |
+| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a write of the answer that fails, and fifty at once |
 | `test/idempotency.db.test.ts` | new — fifty at once on a real server, over a pool of twenty connections |
 | the tests that pin the pipeline | nine stages now, and the claim among the command-only ones |
 
@@ -255,13 +261,13 @@ Copy `my_19_unattended_mode_and_the_role_source` to a new folder and ask:
 **What this step leaves, said plainly.** Claims are never deleted, so they are kept longer than the
 24 hours `DSOR-IDM-02` asks, for ever, and the table only grows; clearing old ones is a later step's.
 A claim whose answer could not be written, because the store failed after the request ran, because
-a handler threw, or because the claim's own reply was lost, keeps no answer: a retry with its key
-waits and is told `OUTCOME_UNKNOWN` until someone reconciles it, which is step 37's. A replay
-records nothing, and the fingerprint depends on the order of the request's fields until canonical
-JSON, step 29. There is one mode, execute; `propose_only` and the
-proposal whose id is the key of its execution (`DSOR-IDM-04`) are steps 22 and 23. Passing a key on
-to the bank's system (`DSOR-IDM-03`) waits for a connector that takes one. And the key's characters
-are this tutorial's choice: the specification takes any text.
+a handler threw, because its release could not be written, or because the claim's own reply was
+lost, keeps no answer: a retry with its key waits and is told `OUTCOME_UNKNOWN` until someone
+reconciles it, which is step 37's. A replay records nothing, and the fingerprint depends on the
+order of the request's fields until canonical JSON, step 29. There is one mode, execute;
+`propose_only` and the proposal whose id is the key of its execution (`DSOR-IDM-04`) are steps 22
+and 23. Passing a key on to the bank's system (`DSOR-IDM-03`) waits for a connector that takes one.
+And the key's characters are this tutorial's choice: the specification takes any text.
 
 Everything earlier steps claimed still holds.
 

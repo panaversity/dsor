@@ -31,7 +31,9 @@ import {
 } from "../src/operations.ts";
 import { createPayment, paymentsOf } from "../src/payment.ts";
 import { aDirectory, useDirectory } from "../src/directory.ts";
+import { overPGlite } from "../src/database.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
+import { useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
@@ -62,6 +64,8 @@ afterEach(() => {
   resetClock();
   useDirectory("org_456", undefined);
   useDirectory("org_789", undefined);
+  // The real connection again, after a test that put a broken one in front of it.
+  useDatabase(overPGlite(db));
 });
 
 function refusalOf(answer: OperationAnswer): ErrorEnvelope {
@@ -465,6 +469,98 @@ describe("a claim on a request that never ran", () => {
 
     expect(await paymentsFor1009()).toBe(1);
     expect(new Set(answers.map((a) => JSON.stringify(a))).size).toBe(1);
+  });
+});
+
+describe("an answer whose write fails", () => {
+  /** What a released claim holds, as idempotency.ts writes it. */
+  const RELEASED = '{"released": true}';
+  /** settleKey's statement: it writes an answer on a claim, or releases the claim. */
+  const writesTheAnswer = (sql: string): boolean => sql.includes("SET answer = $5");
+
+  it("DSOR-IDM-01c: a release whose reply was lost is not written again over the claim the same request took back", async () => {
+    // Decision 151. The door tried every failed write once more, a release too, and the second try
+    // changes any claim that has no answer yet. Here the release is written and its reply is lost.
+    // Before the door hears of it, the same request is sent again and takes the released claim
+    // back, so the claim has no answer again, and it is the second request's now. A second try
+    // released it while that request ran. Its receipt was then written nowhere, and a third request
+    // with the key made a second payment (measured: two payments under one key).
+    const real = overPGlite(db);
+    const released = Promise.withResolvers<void>();
+    const takenBack = Promise.withResolvers<void>();
+    let lost = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        const result = await real.query<T>(sql, params, tenant);
+
+        if (sql.includes("SET answer = NULL") && result.rows.length === 1) {
+          takenBack.resolve();
+        }
+
+        // The first release is written, and its reply is lost on the way back. The door hears of
+        // it only after the second request has taken the claim back.
+        if (!lost && writesTheAnswer(sql) && params?.[4] === RELEASED) {
+          lost = true;
+          released.resolve();
+          await takenBack.promise;
+
+          throw new Error("Connection terminated unexpectedly");
+        }
+
+        return result;
+      },
+    });
+
+    // The first request: the decision cannot be written, so it is refused at §21.11, and nothing
+    // ran, so its claim is released.
+    setClock(() => "not a time");
+
+    const first = pay("lost-release");
+
+    await released.promise;
+    // The store is back, and the same request is sent again, with the same key.
+    resetClock();
+
+    const second = await pay("lost-release");
+
+    expect(refusalOf(await first).code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(second.kind).toBe("result");
+
+    // A third time, later: the second request's receipt, word for word, and nothing runs.
+    const third = await pay("lost-release");
+
+    expect(await paymentsFor1009()).toBe(1);
+    expect(JSON.stringify(third)).toBe(JSON.stringify(second));
+  });
+
+  it("DSOR-IDM-01c: a kept answer whose first write fails is written by the second try", async () => {
+    // Decision 151: a kept answer is still tried once more, because a claim left with no answer is
+    // a key no retry can use. The second try cannot meet another request's claim: only a released
+    // claim is taken back, and a claim waiting for a kept answer was never released.
+    const real = overPGlite(db);
+    let failed = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        // The first write of a kept answer never reaches the server.
+        if (!failed && writesTheAnswer(sql) && params?.[4] !== RELEASED) {
+          failed = true;
+
+          throw Object.assign(new Error("Connection terminated unexpectedly"), {
+            code: "ECONNRESET",
+          });
+        }
+
+        return real.query<T>(sql, params, tenant);
+      },
+    });
+
+    const first = await pay("written-by-the-second-try");
+
+    expect(first.kind).toBe("result");
+    expect(JSON.stringify(await pay("written-by-the-second-try"))).toBe(JSON.stringify(first));
+    expect(await paymentsFor1009()).toBe(1);
   });
 });
 

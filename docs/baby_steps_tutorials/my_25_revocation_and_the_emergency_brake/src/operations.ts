@@ -3086,9 +3086,19 @@ export function makeDoor(
 
     if (claim !== undefined) {
       try {
-        // Decision 132: tried once more before it is given up, because a claim left with no
-        // answer is a key no retry can use until reconciliation.
-        await settleKey(claim, answer, releases).catch(() => settleKey(claim, answer, releases));
+        if (releases) {
+          // Decision 151: a release is written once, never tried again. Its write may have
+          // committed with the reply lost, and the same request, sent again, may then have taken
+          // the claim back already. A second try would find that request's claim, with no answer
+          // yet, and release it while it runs: its receipt is then written nowhere, and the next
+          // request with the key runs again. Two payments under one key, measured.
+          await settleKey(claim, answer, true);
+        } else {
+          // Decision 132: a kept answer is tried once more before it is given up, because a claim
+          // left with no answer is a key no retry can use until reconciliation. The second try
+          // meets only this request's claim: only a released claim is ever taken back.
+          await settleKey(claim, answer, false).catch(() => settleKey(claim, answer, false));
+        }
       } catch {
         // If the answer cannot be written, the claim keeps none: a retry with its key waits, and is
         // told nobody knows yet, and reconciliation is step 37's. The caller of this request is
