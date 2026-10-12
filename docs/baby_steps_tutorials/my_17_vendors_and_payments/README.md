@@ -320,7 +320,7 @@ Copy `my_16_the_control_plane_store` to a new folder and ask:
 
 - **[DSOR-EXE-05a · L2]** Every command MUST declare one of these execution semantics in its
   contract. `invoice.issue`, `payment.cancel` and `payment.create` each declare theirs, and the
-  registry refuses a command contract without.
+  registry refuses a command contract without one, or with a word that is not one of the five.
   ([§24](../../../specs/dsor/03-execution.md#24-execution-semantics))
 - **[DSOR-EXE-05b · L2]** Every command result MUST state the execution semantics that applied. The
   door writes them on every receipt, from the contract.

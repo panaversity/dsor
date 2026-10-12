@@ -77,6 +77,14 @@ const paymentsOf456 = async (): Promise<string[]> =>
     ).rows.map((row) => `${row.id} ${row.status}`),
   );
 
+/** The contracts on disk, with payment.create's execution replaced. */
+const withExecution = (execution: unknown): ContractDocument[] =>
+  contractsFromDisk().map((contract) =>
+    contract.expectedId === "payment.create"
+      ? { ...contract, document: { ...(contract.document as object), execution } }
+      : contract,
+  );
+
 describe("every command says whether it can be undone", () => {
   const registry = loadRegistry(contractsFromDisk());
 
@@ -91,6 +99,17 @@ describe("every command says whether it can be undone", () => {
       "payment.cancel atomic",
       "payment.create compensatable",
     ]);
+  });
+
+  it("DSOR-EXE-05a: a command contract whose semantics is not one of the five stops the program", () => {
+    // Decision 148: the test above reads the contracts this step ships, and they are well behaved.
+    // A review let the schema take any word for the semantics, and every test stayed green: a
+    // contract saying "undoable" would have loaded, and its command would have run.
+    for (const semantics of ["undoable", "ATOMIC", "best-effort", ""]) {
+      expect(() => loadRegistry(withExecution({ semantics })), semantics).toThrow(
+        /\/execution\/semantics must be equal to one of the allowed values/,
+      );
+    }
   });
 
   it("DSOR-EXE-05c: payment.create names payment.cancel as the operation that undoes it", () => {
@@ -396,14 +415,6 @@ describe("the door says the semantics, from the contract", () => {
 });
 
 describe("what undoes an operation is an operation the program has", () => {
-  /** The contracts on disk, with payment.create's execution replaced. */
-  const withExecution = (execution: unknown): ContractDocument[] =>
-    contractsFromDisk().map((contract) =>
-      contract.expectedId === "payment.create"
-        ? { ...contract, document: { ...(contract.document as object), execution } }
-        : contract,
-    );
-
   it("DSOR-EXE-05c: an operation undone by one this program does not have stops the program", () => {
     expect(() =>
       loadRegistry(
