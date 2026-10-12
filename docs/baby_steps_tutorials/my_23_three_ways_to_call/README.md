@@ -71,11 +71,14 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_22
 | `migrations/021_the_claim_keeps_its_mode.sql` | new — the claim keeps the mode it was made in, written with the claim and never changed |
 | `src/operations.ts` | the door reads the mode beside the key; §21.6 checks it; the claim and the proposal step aside for a dry run; §21.11 records a dry run as `VALIDATED`; the door answers a dry run, prepares a `propose_only` command to READY, and reads a lost reply back before it says nothing was done |
 | `src/pipeline.ts` | the three modes, and the mode in the context |
-| `src/envelopes.ts` | the result envelope has room for `READY` and `VALIDATED`, which carry no data, and their builders |
+| `src/envelopes.ts` | the result envelope has room for `READY` and `VALIDATED`, which carry no data, and their builders; both say the command's semantics |
 | `src/idempotency.ts` | the claim compares the mode as it compares the fingerprint |
 | `src/database.ts` | start-up refuses an application that may change a claim's mode |
 | `src/main.ts` | one payment called three ways, and the payments each made |
-| `test/modes.test.ts` | new — the modes, the dry run, the prepared command, a lost reply read back, and how the mode is read |
+| `test/modes.test.ts` | new — the modes, the dry run, the prepared command, a lost reply read back, how the mode is read, a released key never taken back in the other mode, and every command in the registry called all three ways |
+| `test/pipeline.test.ts` | a dry run and a prepared command without the record of the decision are refused, as a command carried out is |
+| `test/database.test.ts` | start-up refuses an application that may change a claim's mode, tested |
+| `test/model-boundary.test.ts`, `test/versions.test.ts` | a receipt's `data` is read as optional, because a `READY` or `VALIDATED` answer has none |
 | `test/main.test.ts` | three more decisions in the demo's log |
 
 ## Run it
