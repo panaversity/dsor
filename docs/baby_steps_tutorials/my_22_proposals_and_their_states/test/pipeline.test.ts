@@ -629,6 +629,8 @@ describe("the pipeline", () => {
   it("DSOR-DEL-10: with the delegation stage forgetting the signer's time, an agent's command is INTERNAL_ERROR, never recorded as direct", async () => {
     // STEP 19: a review replaced §21.3 with one that found the slip and the power and left
     // out the time, and the command ran, recorded as the agent acting for itself (decision 130).
+    await forgetTheLog("org_456");
+
     const list = PIPELINE.map((stage) =>
       stage.name === "resolve the delegation"
         ? Object.freeze({
@@ -657,6 +659,20 @@ describe("the pipeline", () => {
     }
 
     expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+
+    // Decision 150: and the refusal itself is recorded under the slip, as the title says. Only the
+    // code was asserted, and a refusal at §21.5 that dropped the slip, recorded as the agent acting
+    // for itself, passed every test.
+    const decisions = (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.result).toBe("INTERNAL_ERROR");
+    expect(decisions[0]?.identity).toMatchObject({
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+    });
+    expect(decisions[0]?.delegation).toBe("del_100");
   });
 
   it("DSOR-ERR-01a: a stage that does not do its job is INTERNAL_ERROR, not a crash", async () => {
