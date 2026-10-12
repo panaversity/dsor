@@ -113,7 +113,7 @@ needs del_100; revoking is shown in `test/revoke.test.ts` instead.
 
 ### The database tier
 
-`pnpm check` needs no server. The sixty-nine tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The seventy tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -123,15 +123,17 @@ pnpm migrate && pnpm test:db
 
 The database has to exist first, made with one `CREATE DATABASE dsor_step25` through the owner
 login. `pnpm migrate` applies the twenty-six migrations; on a server that already had step 24's
-twenty-three, it applies 024, 025 and 026. This step adds no test of its own to the tier; its two
-commands join the cross-tenant suite there, which is why the count rose from fifty-seven. No test
-races a brake against a move to EXECUTING on a real server; see what this step leaves, below.
+twenty-three, it applies 024, 025 and 026. This step adds one test of its own to the tier, in
+`test/brake.db.test.ts`: twenty people pull the same brake at once, over twenty connections, and
+one record is written. Its two commands also join the cross-tenant suite there, with six tests
+each. That is why the count rose from fifty-seven. No test races a brake against a move to
+EXECUTING on a real server; see what this step leaves, below.
 
 ## Break it
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `876` with `1 skipped`; in the repository it is `876 passed`.
+is not beside it, so the total reads `891` with `1 skipped`; in the repository it is `891 passed`.
 
 ### Break 1 · §21.4 asks nothing
 
@@ -141,13 +143,15 @@ The map's "break it" turned round: take the brake out of the checklist. In `src/
 `|| true` before its `)`.
 
 ```text
- Tests  5 failed | 870 passed | 1 skipped (876)
+ Tests  8 failed | 882 passed | 1 skipped (891)
 ```
 
 Fewer than you might think, and that is the second lock. A stopped agent's payment is still stopped,
 by the move to EXECUTING, but after an ALLOW is on the record and a proposal made, and in other words:
-the test that reads the log, the one that names who pulled the brake, and the demo's lines. And its
-dry run, which reaches no move at all, is now answered "allowed".
+the test that reads the log, the one that names who pulled the brake, the two that hold two brakes
+at once and read whose brake the refusal names, and the demo's lines. The test of a read that fails
+goes too: §21.4 no longer reads the brake at all, so nothing fails, and the payment is made. And a
+stopped agent's dry run, which reaches no move at all, is now answered "allowed".
 
 ### Break 2 · the move to EXECUTING forgets the brake
 
@@ -156,11 +160,12 @@ In `src/operations.ts`, in the door, after the comment
 `principal.type === "agent" ? principal.id : null,` to `null,`.
 
 ```text
- Tests  1 failed | 874 passed | 1 skipped (876)
+ Tests  2 failed | 888 passed | 1 skipped (891)
 ```
 
-One: the brake pulled between the decision and the handler. Every other test pulls it before the
-request starts, and §21.4 catches those. The handler runs, and the payment a person stopped is made.
+Two: a suspension and a freeze, each pulled between the decision and the handler. Every other test
+pulls the brake before the request starts, and §21.4 catches those. The handler runs, and the payment
+a person stopped is made.
 
 ### Break 3 · tearing up a slip cancels nothing waiting under it
 
@@ -168,12 +173,12 @@ In `src/delegation.ts`, in `revokeSlip`, change `WHERE EXISTS (SELECT 1 FROM rev
 `WHERE false AND EXISTS (SELECT 1 FROM revoked)`.
 
 ```text
- Tests  2 failed | 873 passed | 1 skipped (876)
+ Tests  4 failed | 886 passed | 1 skipped (891)
 ```
 
 The slip is revoked, and the payments that were waiting for approval under it, or approved, stay
-where they were, ready to run once released, with their amounts still held against the day. The two
-tests of what waited.
+where they were, ready to run once released, with their amounts still held against the day. The four
+tests of what waited: each expects a proposal cancelled, or its amount given back.
 
 ## Build it yourself with Claude Code
 
