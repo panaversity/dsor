@@ -395,6 +395,7 @@ This is how the step was built.
 | 12 | Break it | B1 to B4 on the step's own code, each restored. B1 found that the program checked the controls late |
 | 13 | Review | A sweep of small breaks in a copy with a database of its own, and a reviewer who had not seen the conversation |
 | 14 | Fix | The review's findings, one commit each, each test red first, then broken on purpose |
+| 15 | Second sweep | The 28 survivors of the sweep, run again with a test for each |
 
 To start it in a new session:
 
@@ -427,6 +428,7 @@ What each move broke, measured. These were not predictions:
 | L10, `matches` | 1 test, red first. Broken: no refusal (1) |
 | L7, the tenant's policy | 1 test, red first. Its first form could not catch its own break, because a deny control denies on an error too. Rewritten so that the policy decides: no policy at line ⑩ (1), no policy in a control's tests (1) |
 | L12, state from the input | A guard: it passed at once. A condition given the input as its state failed 8 tests |
+| The sweep's survivors | Guards, which passed at once: the code was right, and the tests were missing. Run again, 25 of the 28 were caught. P13 needed a second form of its test |
 
 ## Check yourself
 
@@ -497,6 +499,38 @@ Use Tuesday's sheet: 1 EUR buys 1.0800 USD, 0.8532 GBP, or 302.40 PKR, and no JP
   Step 26's own header still leaves it out. That fix belongs in step 26's folder.
 - **`ready-lifetimes.json` is the lifetime of every proposal now,** a waiting payment's too. Its
   name still says READY, as step 25c named it.
+
+### The sweep of small breaks
+
+The first sweep ran in a copy of the step with a database of its own, on the code as it was built,
+before the review's fixes. It made 85 small breaks, one change at a time, each restored after its
+run. 57 were caught. 28 survived both whole suites, the unit tests and the database tests:
+
+- **A payment without the CFO, or one company's rule in another company.** A `controls.json` cut
+  short by a bad edit, or with a key written twice (K19, K20). A stale sheet (RT1). Line ⑩ giving a
+  condition the wrong principal, slip, actor chain, risk, time, input, or company (P07 to P13).
+  org_456's rules or sheets for org_789 (P01, RT2), a control's tests pinned per USD for every
+  company (K22), and the other statuses evaluated (K24).
+- **A false answer or a false record.** A prepared draft on the database that answered READY
+  (PG4). A dry run that a deny control did not refuse (P15). Records that named an evaluation that
+  never ran (P02). A broken kept answer replayed (PG3). The story enforcing a file that start-up
+  never checked (MN2).
+- **Low.** A broken draft not refused (K23), a control on a command with no code (R03), a company
+  that gives no list (K21), a made-up currency (C08), a replay's copy (CL2), and three defensive
+  copies.
+
+Each one was a missing test, not wrong code. Each got a test: 14 unit tests, 4 database tests, and
+two more checks in tests that were there.
+
+### The second sweep
+
+The 28 survivors ran again, on the code after the review's fixes, with the new tests: 25 were
+caught. One of them, P13, a condition that sees no input, survived the first form of its test.
+Inside a long condition, a missing input made an error, and an error asks for the CFO too, so the
+agent's draft waited either way. The input now has a control of its own, whose answer for INV-2002
+is `ALLOW`, and P13 is caught. The three that survive are defensive copies, each covered by another
+copy: taking one away changes nothing that anyone can see. Each fix of the review was broken on
+purpose as it landed: 17 breaks, all caught.
 
 ### The hostile review
 
