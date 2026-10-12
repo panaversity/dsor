@@ -211,3 +211,280 @@ says what it costs. This folder is a copy of step 28, the first half, "who may s
 - A policy that KSoR withdraws (D3).
 - An agent that drafts a rule for a person to review, and a rule handed to a new owner: step 28's
   questions 114 and 115.
+
+## Before you build: set up a database
+
+As in step 28: a local PostgreSQL 17, the step's own database, `.env` written by a command that
+prints nothing, and `pnpm migrate`. Migration 024 runs. It adds the status `stale_authority` and
+DSoR's mark beside it, in two columns: `stale_since`, the time of the first mark, which the
+database writes itself, and `in_force`, the version of the policy KSoR had in force. The trigger
+draws the moves of a stale version, the index of one live version counts a stale one, and a new
+table, `dsor.notices`, keeps each notice to a rule's owner. DSoR's login may read a notice and add
+one, and never change or remove it.
+
+Give the step a server of its own, or at least a database of its own with its own `.env`.
+`pnpm migrate` sets `dsor_runtime`'s password for the whole PostgreSQL server, so a second step
+migrated on the same server changes the first step's login.
+
+## What changed since step 28
+
+| File | What changed |
+| --- | --- |
+| `src/ksor.ts` | **New.** The stand-in for KSoR, one for each company: each policy's versions, the newest in force, with switches for a new version, off, and stuck |
+| `src/drift.ts` | **New.** DSoR's side: its question to the company's KSoR, with a time limit and a check of the answer; the sweep, `rule.check_authority`; and the switch-on's check of a version's citation |
+| `migrations/024_stale_rules.sql` | **New.** The fifth status, the mark's two columns, the trigger's new moves, the live index, and `dsor.notices` |
+| `contracts/rule.check_authority.json`, `inputs/RuleCheckAuthorityRequest.schema.json`, `examples/rule.check_authority.json` | **New.** The sweep, for DSoR's system logins only, its input, and the cross-tenant suite's example |
+| `src/rulebook.ts` | The status `stale_authority`, the mark, `inForce` in place of the active read, the mark's one step with its record and its notice, and start-up's handling of a stale version |
+| `src/controls.ts` | A stale version's floor at line ⑩, the record's policy in force, a stale refusal's reason, and the checks of a citation and a grace. Step 27's start-up refusal of a stale control is gone: line ⑩ now evaluates one |
+| `src/lifecycle.ts` | A switch-on asks KSoR at line ⑨, and retires a stale live version |
+| `src/postgres.ts`, `src/log.ts` | The in-force read and the mark on the database, and a mark's record |
+| `src/pipeline.ts`, `src/registry.ts`, `src/revocation.ts` | Line ⑩ reads the versions in force. The registry holds each company's KSoR, and DSoR's own look and change get a question to the call's own company's KSoR |
+| `roles.json`, `classifications.json`, `store.json` | `rule:check` for the scheduler, the labels of the sweep's answer, and the map's new table and column |
+| `src/main.ts` | The step 28 story gets the story's KSoR, and the story of where a rule came from |
+| `test/ksor.test.ts`, `test/stale-rules.test.ts`, `test/rule-check.test.ts`, `test/rule-check.db.test.ts`, `test/citations.test.ts` | **New.** The claims C1 to C10 |
+| The other tests | The store's and the switch-on's tests grow. The pinned lists of contracts, roles, labels, privileges, policies, tables, and attacks grow by one command and one table |
+
+Step 28's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
+for "NEW IN STEP" finds only this step's lesson.
+
+```bash
+git diff --no-index ../mj_28_who_may_switch_a_rule_on/src src
+git diff --no-index ../mj_28_who_may_switch_a_rule_on/test test
+```
+
+## Run it
+
+```bash
+pnpm install
+pnpm migrate
+pnpm start
+```
+
+From a real run on 2026-10-13. After step 28's story, the program tells where a rule came from, in
+memory, in a world with a store and a KSoR of its own.
+
+```text
+where a rule came from, in memory, with a store and a KSoR of its own:
+  dsor-scheduler sweeps org_456: asked about 1 policy, 0 unanswered, marked 0
+  the finance team publishes version 5 of the payment-approval policy in KSoR: above 20,000 USD
+  the agent drafts INV-2007, 21,000.00 USD: answered, PAY-901
+  dsor-scheduler sweeps org_456: asked about 1 policy, 0 unanswered, marked 1
+  the notice to cfo_100: Version 8 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy", and KSoR now has version 5 in force. DSoR marked it stale_authority. It still applies: for its grace of P7D as its on_stale says, require_approval, and after that, on a high-risk operation, it asks a person at least. Draft a version that cites version 5, and switch it on.
+  the agent drafts INV-2008, 21,000.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
+  the agent drafts INV-2009, 900.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
+  INV-2008's record: high-value-payment version 8, REQUIRE_APPROVAL, the policy's version 5 in force, superseded_version 4
+  cfo_100 drafts version 9 above 20,000.00 USD, still citing version 4: version 9, draft
+  cfo_100 switches version 9 on: VALIDATION_FAILED: "rule.activate": version 9 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy", and KSoR has version 5 in force
+  cfo_100 drafts version 10 above 20,000.00 USD, citing version 5: version 10, draft
+  cfo_100 switches version 10 on: version 10, active, version 8 retired
+  the agent drafts INV-2010, 19,500.00 USD: answered, PAY-902
+  the agent drafts INV-2011, 21,000.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
+```
+
+What each line shows:
+
+- **The first sweep marks nothing.** KSoR has version 4 in force, the version that version 8 cites,
+  with the same fingerprint.
+- **INV-2007 is paid after the policy changed.** The finance team published version 5, and DSoR
+  has not asked yet. DSoR asks KSoR in the sweep, not at each payment, so the change is found at
+  the next sweep, within the 24 hours of §44 when a timer calls it daily (decision D4).
+- **The second sweep marks version 8 stale,** and cfo_100, its owner, gets a notice that says what
+  changed and what to do (decision D5).
+- **Every payment now waits for the CFO,** 900.00 USD too. Version 8 is not dropped: its
+  `on_stale` says `require_approval`, so it asks for the CFO on every payment it governs (D7, D8).
+- **The record names the policy in force.** Version 5, and `superseded_version` 4, the version that
+  version 8 was built from (decision D11).
+- **A version that still cites version 4 never switches on.** KSoR has version 5 in force
+  (decision D12).
+- **A version that cites version 5 switches on,** and retires stale version 8 in the same change.
+  Then 19,500.00 USD is paid, and 21,000.00 USD waits for the CFO, by version 10's own condition.
+
+## Break it
+
+Each break ran on 2026-10-13, in a copy of the step outside the repository, and the copy was
+restored after each run. A short script told the story against the copy's own code, in memory. The
+output is copied as it was printed.
+
+**B1. Line ⑩ reads only the active versions.** In `src/rulebook.ts`, the versions in force became
+the active ones only:
+
+```text
+the finance team publishes version 5; dsor-scheduler sweeps: asked 1, unanswered 0, marked 1
+the store: v8 stale_authority
+the agent drafts INV-2008, 21,000.00 USD: answered, PAY-901
+the agent drafts INV-1008, 31,400.00 USD: answered, PAY-902
+```
+
+As built, both wait for the CFO. Broken, the stale rule is gone, not stricter: even 31,400.00 USD,
+above both lines, is paid. This is the mistake §17.4 names: out of date is still safer than absent.
+
+**B2. The sweep compares version numbers only.** In `src/drift.ts`, the sweep compared the number of
+the version in force with the number the rule cites, and not the fingerprint. KSoR's version 4 now
+holds another text:
+
+```text
+KSoR's version 4 now holds another text; dsor-scheduler sweeps: asked 1, unanswered 0, marked 0
+the store: v8 active
+```
+
+As built, the sweep marks version 8 stale: the text it was built from is not the text in force.
+The number alone cannot tell two texts apart. The fingerprint can.
+
+**B3. The grace never ends.** In `src/controls.ts`, a stale version's grace was never over. Version
+8, with `enforce_and_flag`, was marked stale eight days ago, on a `payment.create` rated high:
+
+```text
+version 8, enforce_and_flag, marked stale eight days ago, on a high-risk payment.create
+the agent drafts INV-2007, 21,000.00 USD: answered, PAY-901
+```
+
+As built, INV-2007 waits for the CFO: after its grace, on a high-risk operation, a stale rule asks a
+person at least (DSOR-CTL-03c). Broken, `enforce_and_flag` goes on for ever, and the old line of
+25,000 USD keeps paying what the new policy sends to the CFO.
+
+**B4. The switch-on does not ask KSoR.** In `src/lifecycle.ts`, line ⑨ of a switch-on lost its
+question to KSoR:
+
+```text
+cfo_100 drafts version 9, citing version 4: version 9, draft
+the finance team publishes version 5
+cfo_100 switches version 9 on: version 9, active, version 8 retired
+the store: v8 retired, v9 active
+dsor-scheduler sweeps: asked 1, unanswered 0, marked 1
+the store: v8 retired, v9 stale_authority
+```
+
+As built, the switch-on is refused `VALIDATION_FAILED`, and version 8 stays active until the
+sweep. Broken, a version built from a policy that is no longer in force goes active, and only the
+next sweep finds it, up to a day later. The sweep is a safety net, not the gate.
+
+## Build it yourself with Claude Code
+
+This is how the step was built.
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The learner chose to build both halves of step 28 first, and a visual story after (2026-10-12) |
+| 2 | Decide | D1 to D15, each Claude Code's, each with its downside, for the learner's review |
+| 3 | The copy | Step 28 copied, its markers removed, and a PostgreSQL of its own |
+| 4 | Piece A | The stand-in for KSoR, and DSoR's question to it, red first |
+| 5 | Piece B | The store keeps the mark: in memory, migration 024, and on the database, red first |
+| 6 | Piece C | Line ⑩ answers for a stale rule as its `on_stale` says, and the record names the policy in force, red first |
+| 7 | Piece D | The sweep, `rule.check_authority`, red first, and two sweeps at once on the database |
+| 8 | Piece E | What a rule may cite, and the 30-day ceiling on its grace, red first |
+| 9 | Piece F | A switch-on asks KSoR first, red first |
+| 10 | Piece G | The program's story |
+| 11 | Break it | B1 to B4, in a copy, each restored |
+| 12 | Review | A reviewer who had not seen the conversation |
+| 13 | Fix | The review's findings |
+
+To start it in a new session:
+
+```text
+Build step 28b in learner mode from the design in
+docs/baby_steps_tutorials/mj_28b_where_a_rule_came_from/README.md.
+```
+
+What each move broke, measured. These were not predictions. Each piece was broken on purpose, one
+small change at a time, in a copy outside the repository: the unit tests in a copy of their own,
+and the database's in a copy with a PostgreSQL server of its own, built again for each break of the
+migration.
+
+| Move | What failed |
+| --- | --- |
+| Piece A | 19 tests, red first: no module. Broken on purpose, 6 ways: an answer about another policy, a version that is not a whole number, the first version taken as in force, another company's KSoR asked, no time limit, and no copy of the answer. Each failed a test |
+| Piece B | 17 tests in memory, red first: no `inForce`, no mark, old messages. Then 2 tests of the store's map, and 3 pinned lists on the database: privileges, tables with their locks, and policies. Broken on purpose, 12 ways in memory and 10 on the database. Two survived, and have tests of their own now: a mark that rode with a version switched on again, and the trigger's guard of the mark's time, which only the owner can reach |
+| Piece C | 17 tests, red first: a stale rule answered as an active one. Broken on purpose, 13 ways: no floor, the grace ignoring the risk, critical not high, a grace that never ends, one that ends a millisecond late, a deny rule asking for an approval, deny after the grace becoming an approval, the record naming the citation, no `superseded_version`, a refusal with no reason, `require_approval` not read, an unknown `on_stale` changing nothing, and the reasons read at another time. Each failed a test |
+| Piece D | 18 tests, red first: no operation. Then 28 pinned old tests: the cross-tenant suite's attacks (138 became 144), fifteen contracts, the scheduler's permissions, the labels, the semantics, and the program's list of operations. Broken on purpose, 11 ways. Two survived, and have tests now: the mark's version in force ignored, and a rule citing another system. One changes nothing a caller can see: the sweep without the rule's lock, since the mark's compare-and-set already orders two changes |
+| Piece E | 7 tests, red first. Two tests that expect "taken" passed at once, as a yes does before any code; the refusals beside them guard them. Broken on purpose, 8 ways. Each failed a test |
+| Piece F | 6 tests, red first. One of them found a bug, below. Then the program's step 28 story, whose switch-on now needed a KSoR. Broken on purpose, 6 ways. Each failed a test |
+| Piece G | 1 test, red first. Broken on purpose: the story's world with no KSoR. It failed |
+
+## Check yourself
+
+Use the story: org_456's rule `high-value-payment`, version 8, asks for the CFO above 25,000.00
+USD. It cites version 4 of the payment-approval policy in KSoR. Its `on_stale` is
+`require_approval`, and its grace is 7 days. cfo_100 owns it.
+
+1. The finance team publishes version 5 at 09:00: above 20,000 USD. At 10:00, before any sweep,
+   the agent drafts INV-2007, 21,000.00 USD. What does the agent hear, and why?
+2. The sweep runs, and marks version 8 stale. The agent drafts INV-1008, 31,400.00 USD. Is version
+   8 skipped? What does the agent hear?
+3. Then the agent drafts INV-2009, 900.00 USD. What does it hear, and why?
+4. cfo_100 drafts version 9, above 20,000 USD, but forgets to change its citation: it still cites
+   version 4. cfo_100 switches it on. What happens?
+5. KSoR is down when the sweep runs after the change. What happens to version 8?
+
+<details>
+<summary>Answers</summary>
+
+1. It is paid. DSoR asks KSoR in the sweep, not at each payment, and the sweep has not run yet. The
+   next sweep finds the change: within the 24 hours of §44 when a timer calls it daily (D4).
+2. Not skipped: a stale rule is never dropped or skipped (DSOR-CTL-03b). The agent hears
+   `PENDING_APPROVAL`, for the CFO, as before.
+3. `PENDING_APPROVAL` too. During its grace, version 8 answers as its `on_stale` says:
+   `require_approval` asks for the CFO on every payment it governs, small ones too (D8).
+4. `VALIDATION_FAILED` at line ⑨: version 9 cites version 4, and KSoR has version 5 in force.
+   Nothing changes, and version 8 stays (D12).
+5. Nothing. The sweep counts the policy as unanswered, and marks only what it knows. Version 8
+   stays active until a sweep hears KSoR's answer (D3, D4). How long DSoR may go without an
+   answer is left open.
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **A switch-on could not replace a stale version.** It looked for the live version among the
+  active and suspended ones only. The store counted the stale version as live, and refused the
+  switch-on, so the owner heard `CONFLICT`. Piece B's own tests passed the live version in by hand,
+  and never went through the command. Piece F's first test of a switch-on that asks KSoR found it.
+  One shared definition of a live version is used in both places now.
+- **The time of a mark is the database's.** The first build let DSoR's code name the time. Now the
+  trigger writes it at a first mark, and DSoR's login has no privilege on the column, so no caller
+  can shorten or lengthen a grace.
+- **One check was dropped.** A check that a version goes stale after it took effect would have
+  refused a later switch-on of a version that was once stale, suspended, and confirmed again.
+- **A failure inside the sweep is `INTERNAL_ERROR`.** When a notice cannot be written, the sweep's
+  claim rolls back with every mark of the run, and the answer is `INTERNAL_ERROR`, as for every
+  earlier command of DSoR's own.
+- **A database run timed out under load.** One concurrency test hit its 30 seconds while other
+  programs held the machine's load average at 27. The same file alone passed, and the next full
+  runs passed.
+
+### The hostile review
+
+(Written after the review.)
+
+### Left open on purpose
+
+- **A timer.** §44's 24 hours hold only if a deployment's timer calls the sweep at least once a
+  day. This step builds none, as step 25c built none (D4).
+- **No answer for days.** If KSoR is down, or the timer stops, a rule stays active on a policy that
+  nobody confirmed. DSOR-IDN-06 makes DSoR deny when a signer's authority cannot be confirmed in
+  time. Whether a control whose authority cannot be confirmed in time should count as stale is a
+  question for the specification.
+- **Sending the notice.** The notice waits in `dsor.notices`. Sending it is step 40's outbox (D5).
+- **A policy that KSoR withdraws.** The stand-in never withdraws one, so a policy KSoR does not list
+  counts as no answer (D3).
+- **Two readings of the specification.** Whether `on_stale` applies to every call the rule governs,
+  or only when its condition holds (D8), and what `superseded_version` names (D11). This tutorial
+  chose one reading of each, and the specification should say.
+
+## The rules this step meets
+
+| Rule | What it says | Where in the spec | Proved by |
+| --- | --- | --- | --- |
+| DSOR-CTL-03a | DSoR detects, within §44's bound, that a control's authority was superseded, marks it `stale_authority`, and notifies its owner | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | DSoR asks each company's KSoR itself, with a time limit and a check of the answer. The sweep marks each version whose policy moved, with its record and a notice to its owner, in one step, and a switch-on refuses a citation that is not in force. The bound holds when a timer calls the sweep daily, which this step does not build. [`test/ksor.test.ts`](test/ksor.test.ts), [`test/rule-check.test.ts`](test/rule-check.test.ts), [`test/rule-check.db.test.ts`](test/rule-check.db.test.ts), [`test/rule-activate.test.ts`](test/rule-activate.test.ts) |
+| DSOR-CTL-03b | A stale control is never dropped or skipped | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | Line ⑩ reads the active and the stale versions in one read, and evaluates each stale one as its `on_stale` says, on the database too. [`test/stale-rules.test.ts`](test/stale-rules.test.ts), [`test/rulebook.test.ts`](test/rulebook.test.ts), [`test/rulebook.db.test.ts`](test/rulebook.db.test.ts) |
+| DSOR-CTL-03c | After its grace, a stale control on a high or critical operation yields at least `REQUIRE_APPROVAL` | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | The grace runs from DSoR's mark. After it, on a high or critical operation, a stale version asks a person at least, whatever its `on_stale`. The tests rate `payment.create` high and critical to reach it. [`test/stale-rules.test.ts`](test/stale-rules.test.ts) |
+| DSOR-CTL-04 | Every decision record names each evaluated control by id and version, with the authority reference and version in force | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | Met in step 27 for a rule that is up to date. Now a stale rule's record names KSoR's version in force, with `superseded_version` for the version it cites: this tutorial's reading. [`test/stale-rules.test.ts`](test/stale-rules.test.ts), [`test/rulebook.db.test.ts`](test/rulebook.db.test.ts) |
+| DSOR-CTL-01b | A control with no governed source declares `authority.system: local` | [§17.2 Control record](../../../specs/dsor/02-security.md#172-control-record) | A rule that cites `local` is drafted, switched on, and never asked about. A rule that cites any other system than KSoR is refused. [`test/citations.test.ts`](test/citations.test.ts), [`test/rule-activate.test.ts`](test/rule-activate.test.ts) |
+| DSOR-BND-02 | A tenant-level setting never loosens a §44 limit | [§44 Operational bounds](../../../specs/dsor/06-conformance.md#44-operational-bounds) | A rule on a high or critical operation whose grace is longer than 30 days is refused at a draft and at start-up. [`test/citations.test.ts`](test/citations.test.ts) |
+
+## Next
+
+Step 29 · Approvals. `proposal.approve`: the approver logs in to DSoR in person, and the approval
+is tied to a fingerprint of the exact request, and expires. The CFO that version 8 has been asking
+for can answer at last.
