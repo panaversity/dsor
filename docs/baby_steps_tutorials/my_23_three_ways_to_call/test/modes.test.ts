@@ -12,6 +12,7 @@ import { getInvoice } from "../src/invoice.ts";
 import { callOperation } from "../src/operations.ts";
 import { paymentsOf } from "../src/payment.ts";
 import { movesOf, proposalsOf, stateOf } from "../src/proposal.ts";
+import { contractsFromDisk, exampleRequestOf, loadRegistry } from "../src/registry.ts";
 import { overPGlite } from "../src/database.ts";
 import { useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
@@ -584,4 +585,79 @@ describe("what a dry run does not check yet", () => {
 
     expect(answer.kind === "result" && answer.envelope.outcome).toBe("VALIDATED");
   });
+});
+
+// Decision 154: DSOR-OPR-05 is about every command, and the tests above call two of them. These walk
+// the registry and call each command with its contract's own example request, so a command added
+// later is called all three ways too, and a contract that turned a mode off would fail here.
+
+const COMMANDS = [...loadRegistry(contractsFromDisk()).values()].filter(
+  (contract) => contract.kind === "command",
+);
+
+/** org_456's invoices, payments and slips, as the owner reads them: what a command could change. */
+const theRows = async (): Promise<unknown[]> =>
+  asTheOwner(async () => {
+    const { rows } = await db.query(
+      `SELECT 'invoice' AS kind, id, status, version FROM public.invoices WHERE tenant_id = 'org_456'
+       UNION ALL
+       SELECT 'payment', id, status, version FROM public.payments WHERE tenant_id = 'org_456'
+       UNION ALL
+       SELECT 'slip', id, status, NULL FROM dsor.delegations WHERE tenant = 'org_456'
+       ORDER BY 1, 2`,
+    );
+
+    return rows;
+  });
+
+describe("every command can be called all three ways", () => {
+  for (const contract of COMMANDS) {
+    it(`DSOR-OPR-05: ${contract.id} is VALIDATED as a dry run and READY when prepared, and neither carries it out`, async () => {
+      const example = exampleRequestOf(contract) ?? {};
+      const before = await theRows();
+      const { claims } = await leftBehind();
+
+      const dry = await callOperation(SUPERVISOR, contract.id, example, { mode: "validate_only" });
+
+      expect(dry.kind === "result" && dry.envelope.outcome, `${contract.id}, a dry run`).toBe(
+        "VALIDATED",
+      );
+      expect(dry.kind === "result" && dry.envelope.semantics).toBe(contract.execution?.semantics);
+      expect(await leftBehind()).toStrictEqual({ proposals: 0, claims });
+
+      const prepared = await callOperation(SUPERVISOR, contract.id, example, {
+        idempotencyKey: `every-command-prepared-${contract.id}`,
+        mode: "propose_only",
+      });
+
+      expect(
+        prepared.kind === "result" && prepared.envelope.outcome,
+        `${contract.id}, prepared`,
+      ).toBe("READY");
+      expect(prepared.kind === "result" && prepared.envelope.semantics).toBe(
+        contract.execution?.semantics,
+      );
+
+      // Its proposal waits at READY and never went to EXECUTING, the move the door makes just before
+      // a handler runs. And nothing a command could change has changed.
+      const [only] = await proposalsOf("org_456");
+
+      expect(only?.state).toBe("READY");
+      expect((await movesOf("org_456", only?.id ?? "")).map((m) => m.to)).toStrictEqual([
+        "PROPOSED",
+        "READY",
+      ]);
+      expect(await theRows()).toStrictEqual(before);
+
+      // Executed, it is done. So the example is one the rules allow, and VALIDATED and READY above
+      // are the right answers, not refusals that happened to change nothing.
+      const done = await callOperation(SUPERVISOR, contract.id, example, {
+        idempotencyKey: `every-command-executed-${contract.id}`,
+      });
+
+      expect(done.kind === "result" && done.envelope.outcome, `${contract.id}, executed`).toBe(
+        "COMMITTED",
+      );
+    });
+  }
 });
