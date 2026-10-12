@@ -267,15 +267,16 @@ asks for that, and no step on the map builds it yet.
 
 Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
 the application may read a view or a table beside the tenant tables, because a view runs with its
-owner's rights: over the invoices, it shows every company's rows. But it asks the application itself
-only. Its questions about writing also ask one `SET ROLE` away and through a helper function
-(decisions 126 and 128); this one does not yet, so a view that the application can read only one of
-those ways passes start-up. And it refuses an application that may choose the next payment's number
-(step 17). But it asks nothing about the sequences, PostgreSQL's counters, that hand out the other
-numbers: a proposal's number, a move's place in its history, and a brake's number. Writing one of
-those numbers directly is refused. Setting a counter's next number with `setval` is not. So an
-owner's careless `GRANT ALL ON ALL SEQUENCES IN SCHEMA dsor` passes start-up, and lets the
-application choose the next of any of them.
+owner's rights: over the invoices, it shows every company's rows. But it asks only whether the
+application itself may read the whole of one. A grant that names its columns instead, even every one
+of them, passes start-up. So does a view the application can read only one `SET ROLE` away, or
+through a helper function whose owner can read it. The questions about writing already ask both of
+those ways (decisions 126 and 128). This one does not yet. And it refuses an application that may
+choose the next payment's number (step 17). But it asks nothing about the sequences, PostgreSQL's
+counters, that hand out the other numbers: a proposal's number, a move's place in its history, and a
+brake's number. Writing one of those numbers directly is refused. Setting a counter's next number
+with `setval` is not. So an owner's careless `GRANT ALL ON ALL SEQUENCES IN SCHEMA dsor` passes
+start-up, and lets the application choose the next of any of them.
 
 Everything earlier steps claimed still holds.
 
