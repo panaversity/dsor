@@ -1254,7 +1254,9 @@ function controlsThrough(run: Runner): ControlStore {
     // keeps in columns of its own leave the rule's text.
     add: async (tenant: string, draft: Control, by: RuleBy): Promise<void> =>
       run(tenant, async (client) => {
-        const { id, version, status, compiled_by, reviewed_by, effective_from, ...rule } = draft;
+        // A draft names no reviewer and no time, and the row keeps neither in its text.
+        const { id, version, status, compiled_by, ...kept } = draft;
+        const { reviewed_by: _reviewer, effective_from: _from, ...rule } = kept;
         await client.query(
           `INSERT INTO dsor.controls (tenant_id, id, version, status, rule, compiled_by)
            VALUES ($1, $2, $3, $4, $5, $6)`,

@@ -1305,12 +1305,23 @@ const lifePay = (id: string): Promise<Answer> =>
   });
 // Version 8, as the file start-up checked writes it.
 const VERSION_8 = (JSON.parse(readControls(CONTROLS).text) as { org_456: object[] }).org_456[0];
+// The fields of a rule's text, which a draft gives. DSoR sets the other six (step 28's README,
+// decision D11).
+const TEXT = [
+  "operation",
+  "condition",
+  "effect",
+  "authority",
+  "owner",
+  "on_stale",
+  "stale_grace",
+  "tests",
+  "extensions",
+];
 /** Version 8's text, without the six fields DSoR sets, with these changes. */
 function textWith(changes: Record<string, unknown>): Record<string, unknown> {
-  const { id, version, status, compiled_by, reviewed_by, effective_from, ...text } = {
-    ...VERSION_8,
-  } as Record<string, unknown>;
-  return { ...text, ...changes };
+  const text = Object.entries(VERSION_8 ?? {}).filter(([field]) => TEXT.includes(field));
+  return { ...Object.fromEntries(text), ...changes };
 }
 const usd = (value: string) => ({ invoice: { open_amount: { value, currency: "USD" } } });
 const pkr = (value: string) => ({ invoice: { open_amount: { value, currency: "PKR" } } });

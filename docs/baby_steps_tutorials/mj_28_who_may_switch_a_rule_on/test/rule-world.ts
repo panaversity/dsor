@@ -177,7 +177,8 @@ export const RULE = "dsor://org_456/rule/high-value-payment";
 
 /** The text of a version, as rule.draft takes it: without the six fields DSoR sets itself. */
 export function textOf(control: Control): Record<string, unknown> {
-  const { id, version, status, compiled_by, reviewed_by, effective_from, ...text } = control;
+  const { id: _id, version: _version, status: _status, ...rest } = control;
+  const { compiled_by: _writer, reviewed_by: _reviewer, effective_from: _from, ...text } = rest;
   return text;
 }
 
