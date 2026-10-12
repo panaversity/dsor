@@ -502,3 +502,36 @@ for a human. An agent may gather evidence; it does not settle these alone.
     accepts `PT`, with nothing after the `T`, and `P1DT`. ISO 8601 allows neither. Step 19's
     learner build follows the schema, and reads `PT` as zero. Should the pattern require a
     number after `T`?
+76. **Which retry class does a limit on one payment give?** §28 gives `LIMIT_EXCEEDED` the
+    retry class `after_delay`. That fits a running total, such as a daily limit, which has room
+    again the next day. A slip's limit per payment does not change with time, so waiting cannot
+    help, and `after_delay` invites a retry that is refused again. The `my_18` learner build
+    answers `LIMIT_EXCEEDED`, as DSOR-DEL-06e names, with the table's retry class. Should §28
+    give the per-payment case the class `never`, or name a code of its own for it?
+77. **What does a record say when an authority was never established?** The audit record's
+    `identity.subject_authority` requires an `as_of` time. When a role source answers with no
+    time, or is never asked because DSoR refused first, there is no such time. The `my_19`
+    learner build writes the decision's own time, which reads as though the authority was
+    checked then. Should `as_of` be optional, or should `subject_authority` be able to say that
+    the authority was not established?
+78. **Does an allowed replay need a record?** §21 stops at step 7 for a replay and returns the
+    recorded result. §29 says "every decision from step 3 onward is recorded individually". A
+    replay refused at steps 3 to 5, because authority changed (§22), is recorded, while a replay
+    that passes them leaves no record, not even its own request id. The `my_20` learner build
+    records nothing for an allowed replay. Should a replay be recorded, perhaps as a kind of its
+    own, or should §29 say that a replay is not a decision?
+79. **May a request name a slip, or an agent, as the thing it acts on?** DSOR-SRC-02b refuses "a
+    tenant, principal, or delegation identifier inside operation arguments that disagrees with
+    the security context". Read literally, a delegator could never name the slip they revoke,
+    which DSOR-DEL-04a says they may, and a person could never name the agent they stop under
+    DSOR-OPS-01a. The `my_25` learner build reads the rule as covering the authority a request
+    runs under: it refuses the argument names `principal`, `principal_id`, `delegation` and
+    `delegation_id`, and calls the slip or agent an operation acts on its `target`. Should
+    DSOR-SRC-02b say that it covers the request's own authority, and not the resource an
+    operation acts on?
+80. **Are `COMMITTED` and `FAILED` final?** §26.2's plain words say "Once a proposal is
+    `COMMITTED`, `FAILED`, `REJECTED`, and so on, it never moves again." The diagram's last
+    line moves `COMMITTED` and `FAILED` to `COMPENSATING` for compensatable and saga commands.
+    The `my_22` learner build follows the plain words: its map has no compensation moves,
+    though its `payment.create` is declared `compensatable`. Should the plain words say "final,
+    except for compensation"?
