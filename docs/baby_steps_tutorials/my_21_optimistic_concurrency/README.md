@@ -67,7 +67,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_20
 | `test/versions.test.ts` | new — the column, the strategies, the version checked and refused, each refusal in the log, a change that raises it, and an invoice put back to draft while it is issued |
 | `test/versions.db.test.ts` | new — twenty cancels of one payment on one version, at once, over a pool |
 | `test/database.test.ts` | the start-up refusals above, tested: four more rights, each refused |
-| `test/main.test.ts` | the agent's read before it decides, and the second of two decisions on one payment told it is stale |
+| `test/main.test.ts` | the agent's read before it decides, a second run's issue told `CONFLICT` on the version that read gave, and the second of two decisions on one payment told it is stale |
 | `test/support/cross-tenant-suite.ts`, `test/cross-tenant-suite.test.ts` | the suite reads each row's version, so a write that changes only a version is seen |
 | the tests that send a command, or show a whole row | each says the version it decided on, or the version the row has |
 

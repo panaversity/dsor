@@ -242,6 +242,9 @@ describe("the program a learner runs", () => {
     expect(first).toContain(issued);
     // Decision 148: the invoice's own CONFLICT, by name. The agent's name and the code alone also
     // matched the demo's second cancel of the agent's payment, which is refused on every run.
+    // Decision 152: and so the issue is sent on the version the agent's read returned. On run two
+    // that read finds INV-1009 issued, at version 2, and the issue is told the invoice is not a
+    // draft. A main.ts that sent version 1, whatever the read said, would be told STALE_STATE.
     expect(second).toContain(
       `${"accounts-payable-fte".padEnd(21)} ${"CONFLICT".padEnd(24)} retry: ${"never".padEnd(20)} INV-1009 is issued, and only a draft invoice can be issued`,
     );
