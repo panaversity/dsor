@@ -96,8 +96,9 @@ export function answerOf(
   control: Control,
   facts: Facts,
   sheet: RateSheet | undefined,
+  used?: Set<string>,
 ): { answer: ControlAnswer; error?: string } {
-  const evaluated = evaluateCondition(control.condition, facts, sheet);
+  const evaluated = evaluateCondition(control.condition, facts, sheet, used);
   // A condition that cannot be evaluated applies the effect (DSOR-CTL-07).
   if ("error" in evaluated) return { answer: effectOf(control), error: evaluated.error };
   return { answer: evaluated.holds ? effectOf(control) : "ALLOW" };
@@ -120,11 +121,14 @@ export function evaluateControls(
   operation: string,
   facts: Facts,
   sheet: RateSheet | undefined,
+  // Each currency a condition converted with the sheet is added here, for the decision's record
+  // (step 27's review, finding H2).
+  used?: Set<string>,
 ): ControlOutcome[] {
   return controls
     .filter((control) => control.operation === operation)
     .map((control) => {
-      const { answer, error } = answerOf(control, facts, sheet);
+      const { answer, error } = answerOf(control, facts, sheet, used);
       const { id, version, authority } = control;
       const failed = error === undefined ? {} : { evaluation_error: error };
       return { id, version, outcome: answer, authority: structuredClone(authority), ...failed };

@@ -88,6 +88,24 @@ export function memoryRates(now: () => number = Date.now): MemoryRates {
   });
 }
 
+// NEW IN STEP 27: one read of the newest sheet for the whole of line ⑩. The controls and the limits
+// each ask for the newest sheet, and a sheet loaded between two reads would split one decision in
+// two: the control allows with one sheet, and the limit books with another. Found by step 27's
+// review, finding H2.
+/** The same store, whose newest sheet is read once, and then given again to each who asks. */
+export function readOnce(rates: RateStore): RateStore {
+  const kept = new Map<string, Promise<Newest | undefined>>();
+  return {
+    ...rates,
+    newest: (tenant, source, maxAgeMs) => {
+      const key = JSON.stringify([tenant, source, maxAgeMs]);
+      const read = kept.get(key) ?? rates.newest(tenant, source, maxAgeMs);
+      kept.set(key, read);
+      return read;
+    },
+  };
+}
+
 // NEW IN STEP 27: the sheet a control's money functions convert with: the newest of the company's
 // source, and only while it is fresh by the store's clock. None otherwise, so a conversion between
 // two currencies fails, and the control applies (DSOR-CTL-07; step 27's README, decision D6).

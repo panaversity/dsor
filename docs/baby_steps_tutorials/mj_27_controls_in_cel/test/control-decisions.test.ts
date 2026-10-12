@@ -20,7 +20,7 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import { readMoneyPolicies } from "../src/policies.ts";
 import { memoryProposals } from "../src/proposals.ts";
-import { memoryRates } from "../src/rates.ts";
+import { memoryRates, type MemoryRates, type RateStore } from "../src/rates.ts";
 import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
@@ -56,7 +56,11 @@ const BILLS = [
 ];
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, Tuesday's sheet, and these controls. */
-function world(controls: ControlsSource = readControls()) {
+function world(
+  controls: ControlsSource = readControls(),
+  // The store of rates that line ⑩ reads, around the world's own, when a test changes it.
+  around: (rates: MemoryRates) => RateStore = (rates) => rates,
+) {
   const clock = { now: T0 };
   const ledger = [...structuredClone(invoices), ...structuredClone(BILLS)];
   const store = memoryInvoices(ledger);
@@ -83,7 +87,7 @@ function world(controls: ControlsSource = readControls()) {
     slips,
     storyDirectories(),
     readRoleSettings(),
-    memoryClaims(store, payments, proposals, reservations, slips, brakes, rates),
+    memoryClaims(store, payments, proposals, reservations, slips, brakes, around(rates)),
     ownWorkFor(),
     brakes,
     readLifetimes(),
@@ -98,8 +102,11 @@ function world(controls: ControlsSource = readControls()) {
 type World = ReturnType<typeof world>;
 
 /** The same world, with Tuesday's sheet of ecb-daily loaded. */
-async function withTuesday(controls?: ControlsSource): Promise<World> {
-  const w = world(controls);
+async function withTuesday(
+  controls?: ControlsSource,
+  around?: (rates: MemoryRates) => RateStore,
+): Promise<World> {
+  const w = world(controls, around);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",
@@ -285,6 +292,59 @@ describe("C5: DENY wins over an approval", () => {
       ["high-value-payment", "REQUIRE_APPROVAL"],
       ["very-high-value-payment", "DENY"],
     ]);
+  });
+});
+
+describe("one sheet for one decision (step 27's review, finding H2)", () => {
+  // Another sheet of ecb-daily, at 700 rupees to the euro: 14,000,000.00 PKR is 21,600.00 USD.
+  const SEVEN_HUNDRED = {
+    source: "ecb-daily",
+    base: "EUR",
+    published_at: "2026-10-06T14:30:00.000Z",
+    rates: { EUR: "1", USD: "1.0800", PKR: "700.00" },
+  };
+
+  // Found by step 27's review: the controls and the limits each read "the newest sheet", so a
+  // sheet loaded between the two reads split one decision in two.
+  it("Step 27: line ⑩ reads the newest sheet once: when it changes after the first read, the control and the limit still convert INV-2004 with one sheet, and the record names that sheet", async () => {
+    let reads = 0;
+    const w = await withTuesday(undefined, (rates) => ({
+      ...rates,
+      newest: async (tenant, source, maxAgeMs) => {
+        reads += 1;
+        if (reads > 1) return rates.newest(tenant, source, maxAgeMs);
+        return { sheet: structuredClone(SEVEN_HUNDRED), fresh: true };
+      },
+    }));
+    const answer = await draft(w, "INV-2004");
+    expect(reads).toBe(1);
+    // 21,600.00 USD: under 25,000.00 USD, so the control allows it, and the limit books it.
+    expect(answer).toMatchObject({ outcome: "COMMITTED" });
+    expect((await w.reservations.get("org_456", idOf(answer)))?.amount).toStrictEqual({
+      value: "21600.00",
+      currency: "USD",
+    });
+    const record = await recordOf(w, answer);
+    expect(record?.controls?.map((c) => c.outcome)).toStrictEqual(["ALLOW"]);
+    expect(record?.extensions?.["org.panaversity.steps"]?.conversion).toStrictEqual({
+      source: "ecb-daily",
+      published_at: SEVEN_HUNDRED.published_at,
+      base: "EUR",
+      rates: { PKR: "700.00", USD: "1.0800" },
+    });
+  });
+
+  it("Step 27: user_123's own draft of INV-2004, which no limit counts, records the sheet its control converted with", async () => {
+    const w = await withTuesday();
+    const answer = await draft(w, "INV-2004", SUPERVISOR);
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const record = await recordOf(w, answer);
+    expect(record?.extensions?.["org.panaversity.steps"]?.conversion).toStrictEqual({
+      source: "ecb-daily",
+      published_at: "2026-10-06T14:00:00.000Z",
+      base: "EUR",
+      rates: { PKR: "302.40", USD: "1.0800" },
+    });
   });
 });
 

@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
-import { freshSheet, NO_RATES, type RateStore } from "./rates.ts";
+import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
@@ -377,15 +377,28 @@ export async function call(
         //   restrictive answer wins: a control's DENY refuses here, before anything is booked, and a
         //   limit's refusal below is a DENY too. Its words name the operation only (DSOR-AUT-02a,
         //   DSOR-AUT-02b, DSOR-CTL-07; step 27's README, decisions D6, D9, D13, and D15).
+        // One read of the newest sheet for the whole line: the controls and the limits convert with
+        //   one sheet. Found by step 27's review, finding H2: each read its own, and a sheet loaded
+        //   between the two split the decision.
+        const once = readOnce(rates);
         const book = (registry.controls.get(tenant) ?? []).filter(
           (control) => control.operation === contract.id,
         );
         let outcomes: ControlOutcome[] = [];
         let answer: ControlAnswer = "ALLOW";
         if (book.length > 0) {
-          const sheet = await freshSheet(rates, tenant, registry.moneyPolicies.get(tenant));
-          outcomes = evaluateControls(book, contract.id, factsOf(state), sheet);
+          const sheet = await freshSheet(once, tenant, registry.moneyPolicies.get(tenant));
+          const used = new Set<string>();
+          outcomes = evaluateControls(book, contract.id, factsOf(state), sheet, used);
           controlsOfRecord = outcomes;
+          // The record names the sheet and the rates a condition converted with, as it names a
+          //   limit's (step 26's README, decision L7). Found by step 27's review, finding H2: a
+          //   person's draft, which no limit counts, named no sheet at all.
+          if (sheet !== undefined && used.size > 0) {
+            const { source, published_at, base } = sheet;
+            const usedRates = Object.fromEntries([...used].map((c) => [c, sheet.rates[c]!]));
+            conversionOfRecord = { source, published_at, base, rates: usedRates };
+          }
           answer = mostRestrictive(outcomes.map((outcome) => outcome.outcome));
           if (answer === "DENY") {
             const why = `${JSON.stringify(contract.id)} is refused by a control of ${tenant}`;
@@ -402,10 +415,13 @@ export async function call(
           ...(reserveFor === undefined ? {} : { reserveFor }),
           // The company's sheets of rates and its money policy, and where to keep
           // what a conversion used (step 26's README, decisions L3, L7, and D4).
-          rates,
+          // NEW IN STEP 27: the line's one read, so the limit's rates join the controls' on one
+          //   sheet (step 27's review, finding H2).
+          rates: once,
           policy: registry.moneyPolicies.get(tenant),
           converted: (conversion) => {
-            conversionOfRecord = conversion;
+            const before = conversionOfRecord?.rates ?? {};
+            conversionOfRecord = { ...conversion, rates: { ...before, ...conversion.rates } };
           },
           unconvertible: (cause) => {
             unconvertibleOfRecord = cause;

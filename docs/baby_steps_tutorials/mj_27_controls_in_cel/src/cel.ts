@@ -47,18 +47,26 @@ function moneyOf(value: unknown): Money {
 }
 
 /** a against b, after conversion with the sheet, or an error when it cannot convert. */
-function compared(a: unknown, b: unknown, sheet: RateSheet | undefined): -1 | 0 | 1 {
+function compared(
+  a: unknown,
+  b: unknown,
+  sheet: RateSheet | undefined,
+  used: Set<string>,
+): -1 | 0 | 1 {
   const left = moneyOf(a);
   const right = moneyOf(b);
   const answer = compareAcross(left, right, sheet ?? NO_SHEET);
   if (answer === undefined) {
     throw new Error(`no usable rate compares ${left.currency} with ${right.currency}`);
   }
+  // Two currencies were converted with the sheet, so the decision's record names their rates
+  // (step 27's review, finding H2). One currency needs no rate.
+  if (left.currency !== right.currency) used.add(left.currency).add(right.currency);
   return answer;
 }
 
 /** The environment, with the money functions bound to this sheet of rates, or to none. */
-function environmentFor(sheet: RateSheet | undefined): Environment {
+function environmentFor(sheet: RateSheet | undefined, used: Set<string> = new Set()): Environment {
   return (
     new Environment()
       .registerVariable("input", "map")
@@ -77,12 +85,12 @@ function environmentFor(sheet: RateSheet | undefined): Environment {
       // exactly (step 26's README, decision L5).
       .registerFunction(
         "dsor_exceeds(map, map): bool",
-        (a: unknown, b: unknown) => compared(a, b, sheet) === 1,
+        (a: unknown, b: unknown) => compared(a, b, sheet, used) === 1,
       )
       // a >= b, after converting b to a's currency.
       .registerFunction(
         "dsor_covers(map, map): bool",
-        (a: unknown, b: unknown) => compared(a, b, sheet) !== -1,
+        (a: unknown, b: unknown) => compared(a, b, sheet, used) !== -1,
       )
   );
 }
@@ -121,9 +129,11 @@ export function evaluateCondition(
   condition: string,
   facts: Facts,
   sheet: RateSheet | undefined,
+  // Each currency it converted with the sheet is added here, for the decision's record.
+  used: Set<string> = new Set(),
 ): Evaluated {
   try {
-    const answer: unknown = environmentFor(sheet).evaluate(condition, facts);
+    const answer: unknown = environmentFor(sheet, used).evaluate(condition, facts);
     if (answer === true || answer === false) return { holds: answer };
     return { error: `it answered ${typeof answer}, not true or false` };
   } catch (thrown) {
