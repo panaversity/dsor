@@ -97,7 +97,8 @@ says what it costs. This folder is a copy of step 28, the first half, "who may s
   `{ tenant_id, asked, unanswered, marked }`. *Downside:* §44's 24 hours hold only if a
   deployment's timer calls the sweep at least once a day. This step builds no timer, as step 25c
   built none. If the timer stops, or KSoR is down for days, a rule stays active on a policy nobody
-  confirmed. That is left open, as a question for the specification. And the sweep asks KSoR
+  confirmed. That is left open, as a question for the specification (open question 118). And the
+  sweep asks KSoR
   inside its own transaction, one policy at a time, so a stuck KSoR holds a database connection 2
   seconds for each policy (the review, finding L3).
 - **D5. The mark and the notice are one step of the store.** The version moves from `active` to
@@ -131,7 +132,7 @@ says what it costs. This folder is a copy of step 28, the first half, "who may s
   this tutorial's reading: the specification does not say whether `on_stale` applies only when
   the condition holds. *Downside:* under `require_approval` every payment that the rule governs
   waits for the CFO, 900.00 USD too, until the owner acts. The other reading is a question for the
-  specification.
+  specification (open question 117).
 - **D9. The grace runs from DSoR's mark,** by DSoR's own clock, not from the time KSoR published
   the new version. After the grace, on a high or critical operation, a stale version answers at
   least the approval its effect names, whatever its `on_stale` says (DSOR-CTL-03c). On a low or
@@ -148,7 +149,7 @@ says what it costs. This folder is a copy of step 28, the first half, "who may s
   record names the version KSoR had in force when DSoR marked the rule, with its fingerprint, and
   the time of the mark: the audit record's field for one control has no place for them. The
   specification does not explain `superseded_version`, so this reading is this tutorial's, and a
-  question for the specification. Changed by the review, finding M1: the record first named KSoR's
+  question for the specification (open question 116). Changed by the review, finding M1: the record first named KSoR's
   version as the authority, and lost the fingerprint of the text the rule enforces. *Downside:*
   between a change in KSoR and the next sweep, the record names the cited version with nothing
   beside it, though KSoR has moved on.
@@ -167,7 +168,7 @@ says what it costs. This folder is a copy of step 28, the first half, "who may s
   find it superseded. *Downside:* a company whose policies live in another system marks its rules
   `local`, and loses the check. And an owner can leave the check on purpose: a new version that
   cites `local` is never asked about again, though the rule cited KSoR before (the review, finding
-  L4). That is a question for the specification.
+  L4). That is a question for the specification (open question 119).
 - **D14. Start-up accepts `stale_authority` in the store, and never from a file.** Step 27
   refused the status at start-up (its review, finding M2), because nothing evaluated a stale rule
   yet. Now line ⑩ does, so a stale version in the store is checked, and its tests run, as an

@@ -1698,6 +1698,39 @@ came from, is step 28b, not built. Step 28 copies step 27, with a database of it
 - **For the learner's session:** the visual story, D1 to D21, the four breaks to predict, and open
   questions 113 to 115.
 
+### Step 28b, where a rule came from, built first by the learner's choice (2026-10-13)
+
+The second half of the map's step 28, copied from step 28, with a database of its own. The
+learner's choice of 2026-10-12, to build first and understand after, covered both halves.
+
+- **The decisions:** D1 to D15 are Claude Code's, written before any code, each with its downside.
+  The review changed the words of D4, D5, D11, D12, and D13, and made D6 true for the two
+  commands. All of them are for the learner to review, beside step 28's D1 to D21.
+- **The pieces:** A, a stand-in for KSoR and DSoR's question to it; B, the stale mark, in memory and
+  on the database (migration 024, and `dsor.notices`); C, line ⑩'s answer for a stale rule, and
+  the record; D, the sweep, `rule.check_authority`; E, what a rule may cite, and a grace of at most
+  30 days; F, a switch-on asks KSoR; G, the program. One commit each, each test red first, each
+  piece broken on purpose.
+- **The breaks:** B1 to B4 went as the design expected. Each piece's own breaks, about 70 in all,
+  found five survivors: four have tests now, and one changes nothing a caller can see.
+- **Found while building:** piece F's first test found that a switch-on could not replace a stale
+  version. It looked for the live version among the active and suspended ones only.
+- **The review:** one high finding, five medium, six low. The high one: the owner could not suspend
+  or retire a stale version through the commands, so a stale rule whose `on_stale` is `deny`,
+  with KSoR down, refused every payment, and nobody could stop it. The medium ones: the record
+  lost the fingerprint of the text the rule enforces; three places where the code was right and no
+  test held it; and DSOR-CTL-03a met in part, with no timer and a notice that nothing reads.
+- **Lessons for the next builds:**
+  - A test of a store is not a test of the command over it. H1 passed every test of the store.
+  - Name a thing once. "Policies" meant the money policies and KSoR's both, until the question
+    to KSoR was named `ksor`.
+  - zsh does not split a variable into words: a list of test files in one variable ran no test at
+    all. Name each file, or run the script with bash.
+  - A commit's message says what its runs proved. One message said six breaks were caught where
+    five were, and was corrected before the next commit.
+- **For the learner's session:** the visual story of both halves, step 28's D1 to D21 and step
+  28b's D1 to D15, the eight breaks to predict, and open questions 113 to 119.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

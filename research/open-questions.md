@@ -756,3 +756,41 @@ for a human. An agent may gather evidence; it does not settle these alone.
     learner build now lets the owner switch on only a draft the owner wrote. Should a switch-on
     name a fingerprint of the version's text, as an approval names a fingerprint of the request
     (§26.3), with an operation that reads a version?
+
+116. **What does `superseded_version` name, and where does a decision record put the authority's
+    version in force?** DSOR-CTL-04 asks every decision record to identify each evaluated control
+    "together with the authority reference and version in force". The audit record and the
+    decision bundle give each control `authority` and an integer `superseded_version`, and nothing
+    else, and the specification never explains `superseded_version`. In step 28b's learner build a
+    stale rule's record keeps the authority it cites, so the chain of §17.4 leads to the text it
+    enforces, sets `superseded_version` to the cited version, and puts KSoR's version in force in
+    the tutorial's own extensions. Its first build put the version in force in `authority`, and
+    lost the fingerprint of the text the rule enforces. Should §17.4 say what each field holds, and
+    give the version in force a field of its own?
+
+117. **Does `on_stale` apply to every call a stale control governs, or only when its condition
+    holds?** §17.4 says that "during `stale_grace` a stale control behaves per `on_stale`", and
+    DSOR-CTL-03c says that after it, the control "MUST yield at least `REQUIRE_APPROVAL`". If
+    `on_stale` applies only when the condition holds, a policy that tightened from 25,000 to 20,000
+    USD leaves every payment between the two lines unchecked for ever, and `require_approval` on a
+    rule whose effect is already an approval changes nothing. Step 28b's learner build applies it
+    to every call the rule governs, so every payment waits for a person while the rule is stale,
+    and a rule whose effect is `deny`, which names no approver, refuses. Which reading does §17.4
+    mean?
+
+118. **What happens when a control's authority cannot be confirmed within the bound of §44?**
+    DSOR-CTL-03a asks DSoR to detect a superseded authority within 24 hours at L2. A sweep that
+    nothing calls, or a KSoR that is down for days, detects nothing, and the control stays active on
+    a policy that nobody confirmed. For the signer's authority, DSOR-IDN-06 makes DSoR deny when it
+    cannot be established within its bound. Step 28b's learner build counts such a policy as
+    unanswered, marks nothing, and builds no timer; a policy that KSoR no longer lists counts the
+    same way. And the owner's notice is written beside the mark, but nothing reads or sends it.
+    Should a control whose authority is unconfirmed past the bound count as stale, and should
+    §17.4 say how the owner is told?
+
+119. **May an owner move a control from a governed source to `local`?** DSOR-CTL-01b says a control
+    with no governed source declares `authority.system: local`. In step 28b's learner build the
+    owner of a stale rule can switch on a new version that keeps the old condition and cites
+    `local`, and no sweep ever asks about it again: the drift check is gone, with a record but
+    with no second person. Should a control that cited a governed source keep one, or should moving
+    to `local` need another person's approval?
