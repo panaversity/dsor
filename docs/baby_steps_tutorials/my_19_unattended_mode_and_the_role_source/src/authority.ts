@@ -14,6 +14,8 @@
 // Rule DSOR-IDN-06: when the delegator's current authority cannot be established within the
 // staleness bound, DSoR MUST deny the command.
 
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
 import { directoryOf } from "./directory.ts";
 
 /** §44's staleness bound for the delegator's authority at L2: an answer older than this is none. */
@@ -39,6 +41,20 @@ export const CLOCK_SKEW_MS: number = 5 * 60 * 1000;
 // not copied: the specification's timestamp is the JSON Schema format date-time, which has no pattern
 // to copy; this one asks for the zone that format requires.
 const WITH_ITS_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+// ajv-formats is CommonJS; under nodenext the callable sits on `.default`. Same cast, same reason,
+// as in audit.ts.
+const addFormats = (addFormatsModule as unknown as { default: FormatsPlugin }).default;
+const ajv = new Ajv2020();
+
+addFormats(ajv);
+
+/**
+ * The test the record itself puts a time to: the audit schema's `date-time` format, from RFC 3339.
+ * Beside the zone, it asks that the day exist. JavaScript does not: it reads 31 September as
+ * 1 October, a day the directory never said (decision 150).
+ */
+const isARecordTime = ajv.compile<string>({ type: "string", format: "date-time" });
 
 /**
  * A person's authority could not be established: the case `DSOR-IDN-06` refuses.
@@ -109,6 +125,7 @@ export function authorityNow(person: string, tenant: string): Authority {
     !permissions.every((p) => typeof p === "string") ||
     typeof asOf !== "string" ||
     !WITH_ITS_ZONE.test(asOf) ||
+    !isARecordTime(asOf) ||
     Number.isNaN(Date.parse(asOf))
   ) {
     throw saysNothing;
@@ -116,8 +133,16 @@ export function authorityNow(person: string, tenant: string): Authority {
 
   const knewAt = Date.parse(asOf);
   const age = Date.now() - knewAt;
-  // In the one spelling the record's schema reads. With the zone required, only the spelling changes.
+  // The same moment, in the one spelling the record's schema reads: in UTC.
   const written = new Date(knewAt).toISOString();
+
+  // And only a moment the record can hold. An offset ahead of UTC moves the first hour of the year
+  // 0000 into the year before it, which JavaScript writes "-000001-12-31T23:00:00.000Z". The record
+  // refused that time, so a healthy store answered EVIDENCE_STORE_UNAVAILABLE, and the refusal was
+  // written nowhere (decision 150).
+  if (!isARecordTime(written)) {
+    throw saysNothing;
+  }
 
   // At most 24 hours old, and not from the future beyond the clocks' difference. An answer dated a
   // year ahead counted as fresh, and would have until its date was a day past (decision 130).

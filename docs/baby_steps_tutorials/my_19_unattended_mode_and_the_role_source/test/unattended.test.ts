@@ -14,7 +14,7 @@
 // staleness bound, DSoR MUST deny the command.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { theLog, verifyChain, type AuditRecord } from "../src/audit.ts";
 import { aDirectory, useDirectory } from "../src/directory.ts";
 import type { ErrorEnvelope } from "../src/envelopes.ts";
@@ -168,6 +168,42 @@ describe("the company directory", () => {
       useDirectory("org_456", aDirectory("org_456", { asOf }));
 
       expect(refusalOf(await cancel(AGENT)).code, asOf).toBe("FRESHNESS_UNSATISFIABLE");
+    }
+  });
+
+  it("DSOR-EXE-02: an answer from the year 0000, ahead of UTC, is no answer, and the refusal is written down", async () => {
+    // Decision 150: JavaScript reads this time as the year before 0000, and writes it
+    // "-000001-12-31T23:00:00.000Z". The record's schema cannot hold that, so a healthy store
+    // answered EVIDENCE_STORE_UNAVAILABLE, and the refusal was written nowhere.
+    useDirectory("org_456", aDirectory("org_456", { asOf: "0000-01-01T00:00:00+01:00" }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("FRESHNESS_UNSATISFIABLE");
+
+    const decisions = (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.result).toBe("FRESHNESS_UNSATISFIABLE");
+    // The directory gave no time this program can use, so the record has the decision's own.
+    expect(decisions[0]?.identity.subject_authority.as_of).toBe(decisions[0]?.at);
+  });
+
+  it("DSOR-IDN-06: an answer dated on a day the calendar does not have is no answer", async () => {
+    // Decision 150: JavaScript reads 31 September as 1 October. At 10:00 on 1 October that answer
+    // was ten hours old, it counted, and the agent's command ran under it. The clock is held still
+    // here, because on any later day the answer is refused as stale anyway.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-01T10:00:00Z"));
+
+    try {
+      useDirectory("org_456", aDirectory("org_456", { asOf: "2026-09-31T00:00:00Z" }));
+
+      expect(refusalOf(await cancel(AGENT)).code).toBe("FRESHNESS_UNSATISFIABLE");
+
+      // A real day, 22 hours before the held clock, still counts: the clock is the one held.
+      useDirectory("org_456", aDirectory("org_456", { asOf: "2026-09-30T12:00:00Z" }));
+
+      expect((await cancel(AGENT)).kind).toBe("result");
+    } finally {
+      clock.mockRestore();
     }
   });
 
