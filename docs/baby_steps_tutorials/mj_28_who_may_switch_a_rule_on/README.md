@@ -1,616 +1,174 @@
-# Step 27 · Controls in CEL
+# Step 28 · Who may switch a rule on
 
-**New in this step:** a company's business rule, "payments above 25,000 USD need the CFO", becomes
-a *control*: a condition written in CEL, a small language for conditions, with tests that must pass
-before it is switched on. Line ⑩ checks it on every payment that org_456 drafts.
+**New in this step:** org_456's rules move from a file into DSoR's own store, and only each
+rule's human owner can switch it on, change it, suspend it, or retire it. An agent never can.
 
 ## In plain words
 
-Until now, DSoR enforced the limits on an agent's permission slip, and no rule of the company. In
-this step, org_456's payment policy becomes a control in `controls.json`: a condition, an effect, a
-human owner, the policy it came from, and its tests. Start-up runs the tests, and refuses to start
-when one fails. On every `payment.create` in org_456, line ⑩ checks the condition: when it is
-true, the payment waits for the CFO, and when it cannot be checked, it counts as true. The new
-clerk works the same way, with a card for each of the company's rules on the desk.
+In step 27, org_456's rules lived in a file, `controls.json`, which DSoR read when it started. A
+rule could change only through an edit of that file and a restart, and nothing asked who made the
+edit. In this step the rules move into DSoR's own store, and people change them through DSoR, with
+four commands: draft a new version, switch a version on, suspend it, and retire it. Only the
+rule's *owner*, the person whose name the rule carries, may switch it on, suspend it, or retire
+it. Switching a rule on runs its sample cases first, as start-up did in step 27. An agent may
+never do any of it, whatever its permission slip says. In the new clerk's picture from step 27:
+only the person named on a card may put the card on the clerk's desk, or take it off.
 
 ## Why it matters
 
-The agent drafts INV-1008, 31,400.00 USD. del_100 allows 50,000.00 USD for one payment, so step 26
-pays it. But org_456's policy says that any payment above 25,000 USD needs the CFO. The policy lives
-in KSoR, the record of what the company knows, and nothing in DSoR checks it. And the quick way to
-write the rule, "the amount is over 25000 and the currency is USD", lets INV-2004 through without
-the CFO: 14,000,000.00 PKR, which is 50,000.00 USD (§9).
+user_123, the AP supervisor, wants INV-1008, 31,400.00 USD, paid today, without waiting for the
+CFO. admin_100, the tenant administrator, can change the company's settings. If DSoR let any
+administrator change a rule, admin_100 could write version 10 of the CFO rule with the condition
+`false`, name themselves its owner, and switch it on. The agent's next draft for INV-1008 would be
+paid, and its record would show a rule that "allowed" it. An agent with a wide permission slip
+could do the same, and switch off the very rule that governs it. §17.4 says that only a human may
+switch a control on, change it, or retire it, and that an agent may only write a draft.
 
 ## The design, before any code
 
 The circled numbers are lines of DSoR's checklist, which every call runs through in order, as a
-pilot runs through a checklist. ③ finds the agent's slip, ⑤ checks the caller's permission, ⑧
-makes the proposal, ⑨ is DSoR's own look at the state before any work, and ⑩ checks the controls
-and the limits.
+pilot runs through a checklist: ⑤ checks the caller's permission, ⑥ the input, ⑧ makes the
+proposal, ⑨ is DSoR's own look before any work, ⑩ checks the rules and the limits, and ⑪ writes
+the record.
 
 ### How this step was made
 
-The understanding session of 2026-10-11 covered two parts: what a control is, and CEL with the PKR
-hole. Then the learner asked for the build first, and the review after. So every decision below is
-Claude Code's, for the learner to review, and each one says what it costs.
+The learner chose to build first and understand afterwards, as in step 27 (2026-10-12). So every
+decision below is Claude Code's, for the learner to review, and each one says what it costs.
 
 ### What each rule says
 
-- **DSOR-CTL-01a:** a control must pass `control.schema.json`: a version, a condition, an effect, a
-  status, a named human owner, and an authority reference, which points at the policy it came from
-  ([§17.2](../../../specs/dsor/02-security.md#172-control-record)).
-- **DSOR-CTL-05:** a condition is written in CEL, and evaluated in the environment of
-  [Appendix B](../../../specs/dsor/appendix-b-cel.md): eight variables and the `dsor_*` functions
-  ([§17.3](../../../specs/dsor/02-security.md#173-expression-language)). CEL is a small language
-  for conditions. It cannot loop for ever, cannot call the network, and sees only what DSoR gives
-  it. A contract's predicates are CEL too: start-up checks them, and step 32 evaluates them
-  (decision D20).
-- **DSOR-CTL-07:** when a condition fails to evaluate, the control's effect applies.
-- **DSOR-CTL-02c:** switching a control on runs its tests, and fails when one fails
-  ([§17.4](../../../specs/dsor/02-security.md#174-lifecycle-and-drift)).
-- **DSOR-AUT-02a:** checks can answer at least `ALLOW`, `DENY`, and `REQUIRE_APPROVAL`
-  ([§15](../../../specs/dsor/02-security.md#15-authorization)).
-- **DSOR-AUT-02b:** when several checks apply, the most restrictive answer wins: `DENY` over any
-  `REQUIRE_*`, and any `REQUIRE_*` over `ALLOW`.
-- **DSOR-EXE-02**, met since step 08: the decision's record names the controls evaluated
-  ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline)). This step is the first with
-  controls to name.
+- **DSOR-CTL-02a:** a control "MUST be activated, modified, suspended, or retired only by its human
+  control owner" ([§17.4](../../../specs/dsor/02-security.md#174-lifecycle-and-drift)).
+- **DSOR-CTL-02b:** "An agent principal MUST NOT activate a control."
+- **DSOR-CTL-02c**, met in step 27 at start-up: activation "MUST run the control's test vectors and
+  fail if any vector fails". This step runs them when a person switches a rule on.
+- **DSOR-CTL-01a**, met in step 27: a control names "a named human owner". This step checks that
+  the owner is a person.
 
 ### Decisions (Claude Code)
 
-- **D1. Controls live in `controls.json`, one list for each company,** each control a record that
-  `control.schema.json` accepts. Start-up checks the file, as it checks `money-policies.json`.
-  *Downside:* a new rule needs a restart. Step 28 gives controls a lifecycle that people drive.
-- **D2. Start-up refuses to start when a control is broken or fails one of its tests.** A control
-  that never became active would leave its rule unenforced, so DSoR does not run at all.
-  *Downside:* one bad control stops DSoR for every company.
-- **D3. Line ⑩ evaluates the controls whose status is `active`.** `draft`, `in_review`,
-  `suspended`, and `retired` controls are checked against the schema and CEL, and never evaluated.
-  Start-up refuses a `stale_authority` control. A control is *stale* when the policy it came from
-  has changed, and §17.4 says that it then behaves as its `on_stale` says while its `stale_grace`
-  lasts, which step 28 builds. So it is never skipped (DSOR-CTL-03b), and never evaluated as if it
-  were active. Changed by the review, finding M2: it was evaluated as active, so a stale control
-  whose `on_stale` says deny allowed a payment. *Downside:* a draft's tests run only when it is
-  switched on, and a stale control stops DSoR until step 28.
-- **D4. The story's control governs `payment.create` and reads `state.invoice.open_amount`.** It is
-  §17.2's `high-value-payment`, moved to the command and the bind this tutorial has: the spec's
-  example names `payment.execute` and `state.payment.amount`. *Downside:* the spec's example does
-  not run here as written.
-- **D5. The environment gives all eight variables of Appendix B, and three of its six functions:**
-  `dsor_money`, `dsor_exceeds`, and `dsor_covers`. `principal` is the person on whose authority the
-  call runs, user_123 for the agent's call, with the roles held now. `tenant` is the company's id
-  and its money policy, the part of its policy this tutorial builds (found by the review, L7).
-  Start-up refuses a condition that calls `dsor_sum`, `dsor_in_flight`, or
-  `dsor_is_new_counterparty`, which later steps build, one that names anything outside the
-  environment (DSOR-CTL-06), and one that calls `matches`. The library runs `matches` with
-  JavaScript's regular expressions, whose time has no bound, and the text it reads can be the
-  agent's (found by the review, L10). *Downside:* rules that need those four wait.
-- **D6. The money functions use step 26's rates:** the newest *sheet* of the company's source (one
-  source's rates at one time), fresh by the store's clock, both rates from that sheet. With no
-  usable rate, the condition fails to evaluate, so the effect applies (DSOR-CTL-07, DSOR-MON-04).
-  *Downside:* an old sheet stops every payment in another currency at the CFO.
-- **D7. A test's pinned rates are per one unit of the company's `control_currency`,** as
-  `control.schema.json` describes them. Step 26 checked that setting at start-up, and this step is
-  the first to read it. *Downside:* a test cannot pin a rate between two other currencies.
-- **D8. Two effects are built: `deny` and `require_approval`.** Start-up refuses `require_step_up`
-  and `require_verification`, which DSOR-AUT-02a does not ask for. *Downside:* those two wait for a
-  later step.
-- **D9. At line ⑩ the controls come first, then step 24's limits.** A control's `DENY` refuses
-  before anything is *booked*: held against the slip's limit for the day (step 24). A limit is a
-  `DENY` too. A payment that needs an approval still books its amount against the day, and holds it
-  while it waits (DSOR-DEL-06c). *Downside:* a payment that waits for the CFO holds its share of the
-  day. Nothing stops a second proposal for one invoice until step 32, so six waiting drafts of
-  INV-1008 hold 188,400.00 USD of del_100's 200,000.00 USD day (found by the review, L4).
-- **D10. A call that needs an approval stops at `PENDING_APPROVAL`,** in `execute` and
-  `propose_only` modes. The work does not run. The answer is the result envelope's
-  `PENDING_APPROVAL` (§28's shape for an answer that is not an error), with what it `requires`
-  (each control's role, and its quorum: how many approvals) and its `expires_at`, the proposal's
-  own since step 25c. A *replay*, the same call sent again with the same idempotency key (step 20),
-  gives the same answer. *Downside:* nothing can approve until step 29, so in this step such a
-  payment waits until a tear-up or its expiry ends it. And a replay after the *sweep* (step 25c's
-  command that expires proposals past their time) expired the proposal still answers
-  `PENDING_APPROVAL`, with the old `expires_at`: a replay gives back the first answer, as
-  DSOR-IDM-01c says (found by the review, L1).
-- **D11. The sweep expires a `PENDING_APPROVAL` proposal past its time too,** and gives back its
-  booking, as step 25c does for READY. §26.2 draws PENDING_APPROVAL → EXPIRED. *Downside:* an
-  approval that comes too late finds the proposal expired.
-- **D12. A dry run answers `VALIDATED` with the decision the real call would get:** `ALLOW` or
-  `REQUIRE_APPROVAL`. A `DENY` is refused, as the real call is. *Downside:* the answer does not
-  say whose approval the real call would need (found by the review, L17).
-- **D13. A control's `DENY` answers `POLICY_DENIED`, and its proposal ends DENIED.** The words name
-  the operation only, because the control's reason is the company's own text, which has no label
-  (DSOR-CLS-01). The record keeps each refusing control's id and reason in this tutorial's own
-  extensions, as `denied_by`, because the audit record's `controls` field allows no other fields.
-  Changed by the review, finding L2: the record kept no reason. *Downside:* the caller cannot tell
-  which rule refused it.
-- **D14. The decision's record names each control evaluated,** in the audit record's own field
-  `controls`: its id, version, outcome, authority, and `evaluation_error` when it could not be
-  checked (DSOR-EXE-02). The authority part is step 28's DSOR-CTL-04, met early. *Downside:* a
-  record grows with each control.
-- **D15. A control applies to every caller of its operation in the company,** a person's own call
-  too. user_123's own draft of INV-1008 needs the CFO, as the policy says. *Downside:* none, by the
-  policy's own words.
-- **D16. The tests and stories of earlier steps keep their idea, with no controls.** Their worlds
-  say so in one line, so a test about a tear-up still tests a tear-up. This step's tests, its story,
-  and the registry's default use the shipped `controls.json`. *Downside:* most test worlds have no
-  CFO rule, which a reader could copy. And the program's earlier stories, on the database too,
-  run with no controls: there the agent's 31,400.00 USD for INV-1008 is paid without the CFO. The
-  program says so before its first story (found by the review, H1).
-- **D17. CEL comes from `@marcbachmann/cel-js` 8.0.0,** the version that the repository's catalog
-  pins and that decision 6 checked against the spec's tests. *Downside:* one more dependency in
-  the step.
-- **D18. A control may govern a command that has the company's own code, never a query or DSoR's
-  own operations.** A tear-up, a brake, a sweep, and a load of rates must answer at once, and
-  DSOR-APR-08 forbids `REQUIRE_APPROVAL` on `proposal.*`. Start-up refuses the rest. *Downside:* no
-  rule can govern DSoR's own commands.
-- **D19. A control's test passes only by evaluating its condition.** A test whose condition cannot
-  be evaluated fails, unless the cause is a currency with no usable rate: that is the test
-  DSOR-CTL-02d asks for. Found by the review, finding M4: a test with no state erred, the effect
-  applied, and the quick rule switched on behind one test that tested nothing. *Downside:* a test
-  cannot expect any other error.
-- **D20. Start-up checks each contract predicate as CEL, and refuses one on an operation that runs
-  code.** A *predicate* is a contract's condition on the state before the work. DSOR-CTL-05 covers
-  predicates too. No step evaluates one before step 32, and a predicate that is never evaluated
-  lets through a call that it should stop. `invoice.issue` keeps its predicate, because it has no
-  code. Found by the review, finding M3. *Downside:* a contract cannot carry a predicate for its
-  code until step 32, and four earlier tests that give `invoice.issue` code take its predicate
-  away.
-- **D21. Line ⑩ reads the newest sheet once,** and its controls and its limits convert with that
-  one sheet. The record names the sheet and its rates whenever a control or a limit converted.
-  Found by the review, finding H2: each read its own sheet, and a sheet loaded between the two
-  reads split one decision in two. *Downside:* none found.
+- **D1. Step 28 is built in two halves.** This half is "who may switch a rule on": DSOR-CTL-02a and
+  DSOR-CTL-02b. Step 28b, "where a rule came from", adds a stand-in for KSoR, a rule that goes
+  stale when its policy changes, and its owner told (DSOR-CTL-03a, DSOR-CTL-03b). They are two new
+  ideas, and the build skill says to split such a step, as steps 19 and 25 were. *Downside:* two
+  folders, and the map's step 28 is complete only with 28b.
+- **D2. The rules live in DSoR's own store,** `dsor.controls` on the database and a store in
+  memory for the unit tests: one row for each version of a rule, with its status. A version's
+  rule text never changes after its draft. A change is a new version. *Downside:* an edit of
+  `controls.json` no longer changes a running DSoR.
+- **D3. The shipped `controls.json` fills a store in memory.** On the database, migration 023 adds
+  the same rule, org_456's `high-value-payment` version 8, active, as earlier migrations add the
+  story's invoices and slips. *Downside:* the story's rule is written in two places, the file and
+  the migration. A test keeps them equal.
+- **D4. One live version of a rule at a time.** Live means active or suspended. Switching version
+  9 on retires version 8, in the same change. On the database, a unique index keeps it so.
+  *Downside:* two versions of one rule can never run side by side, for example as a trial.
+- **D5. Line ⑩ reads the active rules from its world's store at every call,** as line ④ reads the
+  brakes. A change applies to the next call. Each world gives the same store to its registry and
+  to its claims, as with the brakes, so a change that a command makes is the change that line ⑩
+  reads. *Downside:* one more read at every call.
+- **D6. Start-up checks every version in its world's store, as step 27 checked the file:** the
+  schema, the CEL, the effect, what the rule governs, and its owner. It runs the sample cases of
+  each active version. One that fails stops DSoR. The program checks `dsor.controls` too, for each
+  company where a login works. *Downside:* a row that someone edits by hand in the database after
+  start-up runs unchecked until the next start.
+- **D7. Four commands: `rule.draft`, `rule.activate`, `rule.suspend`, and `rule.retire`.** Step 25b
+  named its emergency brake `control.suspend` and `control.lift`, so these use the word "rule". A
+  rule's address is `dsor://org_456/rule/high-value-payment`, and a command names the version by
+  its number. *Downside:* the specification calls them controls, and the names say rule.
+- **D8. Two permissions: `rule:draft` to write a draft, and `rule:manage` to switch a version on,
+  suspend it, or retire it.** The CFO role and the tenant administrator hold both. A permission
+  lets a person ask. Only the owner check at line ⑨ lets the change happen. *Downside:* a tenant
+  administrator holds a permission that, alone, changes nothing.
+- **D9. The four commands are for people only,** with step 25's `people_only` field, so line ⑤
+  refuses an agent and an application in every mode, whatever a slip lists (DSOR-CTL-02b). §17.4
+  says that an agent MAY draft a rule. No agent in the story has a slip for it, and step 28b's
+  policy compiler may add one. *Downside:* the specification's "an agent may draft" is not shown
+  here.
+- **D10. The owner check, at line ⑨.** A rule's *owner of record* is the owner of its newest
+  version that was ever switched on. A version is switched on only by its own owner, and only when
+  that person is the owner of record too, if the rule has one. A suspension or a retirement is
+  made by the owner of record, or, for a rule that was never switched on, by the version's own
+  owner. The caller must be that person, in person: never an agent. So admin_100 can draft a
+  version 10 that names admin_100, and can never switch it on. *Downside:* a rule never passes to
+  a new owner in this step. An owner who leaves the company leaves the rule with no one to change
+  it.
+- **D11. `rule.draft` checks the draft at line ⑨ and adds it as the next version, `draft`:** the
+  schema, the CEL, the effect, what it governs, and its owner: a person with a login in the
+  company. DSoR sets the id, the version, the status, and `compiled_by`, the person who wrote it.
+  Its sample cases run when it is switched on, as DSOR-CTL-02c says. *Downside:* a draft whose
+  cases fail waits in the store until someone tries to switch it on.
+- **D12. `rule.activate` switches a draft or a suspended version on.** Line ⑨ checks the owner,
+  then the version, then its status, then the draft's checks again, then its sample cases. A
+  failing case answers `VALIDATION_FAILED` and names the case. The work makes the version active,
+  retires the live version, and sets `reviewed_by` to the owner and `effective_from` to DSoR's
+  clock, as `control.schema.json` asks of an active control. *Downside:* the owner reviews and
+  switches on in one act. No second person checks.
+- **D13. `rule.suspend` switches the active version off; `rule.retire` ends a draft, an active, or
+  a suspended version for good.** A suspended version can be switched on again. A retired one
+  cannot. *Downside:* the owner can switch the CFO rule off, and payments then go through without
+  the CFO, by the owner's choice.
+- **D14. Each change writes a record of the audit record's own kind, `control_change`,** in the
+  same transaction as the change: who, which rule, the version and the status it moved to and
+  from, and the reason the person gives. *Downside:* none found.
+- **D15. The change checks again, under the rule's lock.** Line ⑨ looked a moment before, and
+  another call may have changed the rule since. On the database, the change takes a lock on the
+  rule until its transaction ends, reads the versions again, and makes the same checks, except
+  the sample cases: a version's text never changes. *Downside:* two changes to one rule wait for
+  each other.
+- **D16. A refusal follows step 25's tear-up:** a person who may not change a rule hears
+  `AUTHORIZATION_DENIED`, whether the rule and the version exist or not, so the refusal tells
+  nothing about which rules exist (DSOR-ERR-01b). The owner hears `RESOURCE_NOT_FOUND` for a
+  version that is not there, and `CONFLICT` for a move the status does not allow. *Downside:* a
+  person who mistypes a rule's id hears "only its owner".
+- **D17. Four statuses are built: `draft`, `active`, `suspended`, and `retired`.** `in_review` is
+  never set, because the owner's switch-on is the review. `stale_authority` stays refused at
+  start-up until step 28b. *Downside:* a rule cannot wait for review by a second person.
+- **D18. The earlier steps' tests and stories keep their idea, with no rules,** as in step 27:
+  their worlds give an empty store, on the database too, where the store holds version 8.
+  *Downside:* as in step 27, most test worlds have no CFO rule.
 
 ### The story's numbers
 
-org_456's control: payments above 25,000.00 USD need the CFO. Tuesday's sheet of `ecb-daily`, from
-step 26, converts. del_100 still allows 50,000.00 USD for one payment and 200,000.00 USD a day.
-
-| Who drafts | Bill | In USD | The control | The limit | DSoR answers |
-| --- | --- | --- | --- | --- | --- |
-| the agent | INV-1008, 31,400.00 USD | 31,400.00 | needs the CFO | within | `PENDING_APPROVAL` |
-| the agent | INV-2002, 9,000.00 EUR | 9,720.00 | allows | within | `COMMITTED` |
-| the agent | INV-2004, 14,000,000.00 PKR | 50,000.00 | needs the CFO | within, at the limit | `PENDING_APPROVAL` |
-| the agent | INV-2003, 49,000.00 GBP | 62,025.32 | needs the CFO | over | `LIMIT_EXCEEDED`: `DENY` wins |
-| user_123, own call | INV-2006, 100,000 JPY | no rate | cannot be checked, so needs the CFO | none for a person | `PENDING_APPROVAL` |
-
-The control's own tests, with their pinned rate of 280 PKR to the dollar: 25,000.00 USD is allowed,
-25,000.01 USD needs the CFO, 50,000,000.00 PKR needs the CFO, 6,000,000.00 PKR is allowed, and
-100.00 in `XXX`, which has no rate, needs the CFO.
+| Who | Asks | DSoR answers |
+|---|---|---|
+| the agent | drafts INV-1012, 22,750.00 USD | paid: version 8 asks for the CFO above 25,000 |
+| cfo_100, the owner | drafts version 9: above 20,000 USD, the CFO | `draft`, version 9 |
+| admin_100, a tenant administrator | drafts version 10: the condition `false`, admin_100 its owner | `draft`, version 10: a draft changes nothing |
+| admin_100 | switches version 10 on | `AUTHORIZATION_DENIED`: only the rule's owner |
+| the agent | switches version 9 on | `AUTHORIZATION_DENIED` at line ⑤: for people only |
+| cfo_100 | drafts version 11 with step 27's quick rule, and switches it on | `VALIDATION_FAILED`: it fails its sample case 3 |
+| cfo_100 | switches version 9 on | version 9 `active`, version 8 `retired` |
+| the agent | drafts INV-2007, 21,000.00 USD | waits for the CFO: version 9 applies at once |
+| cfo_100 | suspends version 9 | `suspended`: no rule is in force |
+| the agent | drafts INV-1008, 31,400.00 USD | paid without the CFO, by the owner's choice |
+| cfo_100 | switches version 9 on again | the agent's draft of INV-1004, 27,300.00 USD, waits for the CFO |
 
 ### The tests, by claim
 
 | Claim | What it says |
-| --- | --- |
-| C1 | Start-up refuses a control that `control.schema.json` refuses: no owner, no authority, a status or an effect it does not know |
-| C2 | Start-up refuses a condition that is not CEL, returns no `bool`, or names anything outside the environment, and a control on a query or on DSoR's own operations |
-| C3 | Start-up runs each control's tests with the rates they pin, and refuses to start when one fails |
-| C4 | At line ⑩, a condition that is true applies the control's effect, false allows, and one that fails to evaluate applies the effect |
-| C5 | Several controls and the limits combine: `DENY` wins over `REQUIRE_APPROVAL`, and `REQUIRE_APPROVAL` over `ALLOW` |
-| C6 | A call that needs an approval waits at `PENDING_APPROVAL` with its booking, in `execute` and `propose_only` modes; a dry run answers `VALIDATED` with `REQUIRE_APPROVAL`; a replay gives the same answer; the sweep expires it |
-| C7 | The decision's record names each control evaluated, with its outcome and authority |
-| C8 | On the database: the waiting proposal, its booking, its claim's answer, and the record's controls |
+|---|---|
+| C1 | The store keeps each version with its status, one live version at a time, behind its company's lock on the database |
+| C2 | Line ⑩ reads the store at every call: a version switched on applies to the next call, and a suspended one stops |
+| C3 | `rule.draft` checks the draft, its owner a person of the company, adds the next version, and names who wrote it |
+| C4 | `rule.activate` lets only the version's owner, who is the owner of record too, switch it on, runs its sample cases, and retires the live version |
+| C5 | `rule.suspend` and `rule.retire` let only the owner of record change the status |
+| C6 | An agent can do none of it, in any mode, whatever its slip lists: line ⑤ refuses it, and the owner check refuses it too |
+| C7 | Each change has its `control_change` record, in the same transaction, and checks again under the rule's lock |
+| C8 | Start-up checks every version in the store, runs the sample cases of the active ones, and refuses to start on one that fails |
 
 ### Breaks we will try, and what we expect
 
 | Break | What we expect | The learner predicted |
-| --- | --- | --- |
-| B1. The control is the quick rule, "over 25000 and in USD" | Its test of 50,000,000.00 PKR fails, so start-up refuses to start | (asked at the review) |
-| B2. The quick rule, and start-up skips the tests | The rule goes active, and the agent's draft of INV-2004, 50,000.00 USD in rupees, is paid without the CFO | (asked at the review) |
-| B3. A condition that fails to evaluate counts as false | user_123's draft of INV-2006 in JPY, which no sheet lists, is paid without the CFO | (asked at the review) |
-| B4. The least restrictive answer wins | With a second control that denies payments above 45,000 USD, INV-2004 waits for the CFO instead of being refused | (asked at the review) |
-
-### Left open, and not this step's idea
-
-- Only a human switches a control on, a policy that changes, and a stale control: step 28.
-- Approving, `proposal.approve`, and two approvals for two rules (DSOR-AUT-02c): step 29.
-- The effects `require_step_up` and `require_verification`, and the functions `dsor_sum`,
-  `dsor_in_flight`, and `dsor_is_new_counterparty`.
-- DSOR-CTL-02d, an L3 rule: a control on a money threshold must have a test in another currency and
-  one in a currency with no rate. The story's control has both, and nothing checks it yet.
-
-## Before you build: set up a database
-
-As in step 26: a local PostgreSQL 17, the step's own database, `.env` written by a command that
-prints nothing, and `pnpm migrate`. Migration 022 runs: `dsor.audit` gets the column `controls`,
-and `dsor_runtime` may write it and never change it.
-
-Give the step a server of its own, or at least a database of its own with its own `.env`.
-`pnpm migrate` sets `dsor_runtime`'s password for the whole PostgreSQL server, so a second step
-migrated on the same server changes the first step's login.
-
-## What changed since step 26
-
-| File | What changed |
-| --- | --- |
-| `controls.json`, `schemas/control.schema.json` | **New.** org_456's control `high-value-payment` v8, with its five tests, and the specification's schema, byte for byte |
-| `src/cel.ts` | **New.** The environment a condition runs in: Appendix B's eight variables, and `dsor_money`, `dsor_exceeds`, and `dsor_covers`. The check of a condition at start-up, and its evaluation |
-| `src/controls.ts` | **New.** Each company's controls, checked at start-up against the schema, CEL, their effect, and what they govern, with their tests run. At line ⑩: each control's answer, the most restrictive answer, and what a waiting payment requires |
-| `migrations/022_record_controls.sql` | **New.** The column `controls` of `dsor.audit`, and one more column that `dsor_runtime` may insert |
-| `src/pipeline.ts` | Line ⑩ asks the controls first, then the limits. A `DENY` answers `POLICY_DENIED`. A call that needs an approval answers `PENDING_APPROVAL`. A dry run answers its decision |
-| `src/proposals.ts`, `src/claims.ts`, `src/envelope.ts` | A proposal waits at `PENDING_APPROVAL`, with what it requires and when it expires. A claim, DSoR's note of an idempotency key and its answer (step 20), keeps that answer for a replay. The answer's shape |
-| `src/expiry.ts` | The sweep expires a waiting payment too, and gives its booking back |
-| `src/log.ts`, `src/postgres.ts` | The record names each control evaluated, in memory and in `dsor.audit`. The claim's waiting answer, and the sweep's list, on the database |
-| `src/registry.ts`, `src/rates.ts`, `src/exchange.ts` | Start-up checks `controls.json`, what a control may govern, and each contract predicate. A condition gets the operation's risk level. Line ⑩ reads the newest sheet once. An amount that cannot be read is named as such |
-| `src/main.ts` | Start-up checks the controls before any story, and says that the earlier stories run with none. The company's rule, told in memory |
-| `package.json` | `@marcbachmann/cel-js` 8.0.0 (decision D17) |
-| `test/cel.test.ts`, `test/controls.test.ts`, `test/control-decisions.test.ts`, `test/control-decisions.db.test.ts` | **New.** The claims C1 to C8 |
-| `test/helpers.ts`, `test/db.ts`, and nine test files | The earlier steps' worlds give no controls, through `withoutControls` (decision D16) |
-| The other tests | The program's start-up and its story, the store map and the catalog, the privileges, and the sweep's list. Four tests that give `invoice.issue` code take its predicate away (decision D20) |
-
-Step 26's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
-for "NEW IN STEP" finds only this step's lesson.
-
-```bash
-git diff --no-index ../mj_26_money_done_right/src src
-git diff --no-index ../mj_26_money_done_right/test test
-```
-
-## Run it
-
-```bash
-pnpm install
-pnpm migrate
-pnpm start
-```
-
-Before the program does anything, start-up checks `controls.json` and runs the control's five
-tests. When they pass, the program says so, before its first story:
-
-```text
-controls.json passed its tests; the stories of steps 09 to 26 run with no controls, and the company's rule has its own story
-```
-
-The earlier stories keep their idea with no rule of the company in their way (decision D16), so
-there the agent's 31,400.00 USD for INV-1008 is paid without the CFO.
-
-From a real run on 2026-10-12, shortened. After step 26's money story, the program tells the
-company's rule, in memory, with a clock of its own.
-
-```text
-the company's rule, in memory, with a clock of its own:
-  Tuesday 15:05, the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  Tuesday 15:05, the agent drafts INV-2002, 9,000.00 EUR: answered, PAY-901
-  Tuesday 15:05, the agent drafts INV-2004, 14,000,000.00 PKR: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  Tuesday 15:05, the agent drafts INV-2003, 49,000.00 GBP: LIMIT_EXCEEDED: "payment.create" would pass slip del_100's limit for one payment
-  Tuesday 15:05, user_123 drafts INV-2006, 100,000 JPY: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  INV-1008's record: ALLOW PENDING_APPROVAL, high-value-payment v8 REQUIRE_APPROVAL
-  INV-2006's record: ALLOW PENDING_APPROVAL, high-value-payment v8 REQUIRE_APPROVAL, error: no usable rate compares JPY with USD
-  a dry run of INV-1008: VALIDATED, REQUIRE_APPROVAL
-  the day's total under del_100: 91120.00 USD
-  a week later, dsor-scheduler sweeps org_456: answered, 3 expired
-  INV-1008's payment: EXPIRED, its booking released
-```
-
-What each line shows:
-
-- **INV-1008 waits for the CFO.** 31,400.00 USD is above 25,000.00 USD. The work does not run, so
-  no payment is drafted. The answer says whose approval it needs, and until when.
-- **INV-2004 waits too.** On Tuesday's sheet, 14,000,000.00 PKR is exactly 50,000.00 USD. A rule
-  that checks only "over 25000 and in USD" would let it through.
-- **INV-2002 is paid.** 9,000.00 EUR is 9,720.00 USD, under 25,000.00 USD.
-- **INV-2003 is refused.** The control asks for the CFO, and del_100's limit for one payment
-  refuses it. A refusal is a `DENY`, and `DENY` wins (DSOR-AUT-02b).
-- **user_123's own bill in yen waits.** No sheet lists JPY, so the condition cannot be checked, and
-  the control's effect applies (DSOR-CTL-07). The record names the error. A person's own call meets
-  the rule too (decision D15).
-- **The dry run** says what the real call would get, and books nothing (decision D12).
-- **The day's total** is 31,400.00 and 50,000.00 USD for the two waiting payments, and 9,720.00
-  USD for the paid one. A waiting payment holds its booking (decision D9).
-- **A week later**, nobody has approved, because approving comes in step 29. org_456's proposals
-  live seven days (step 25c). dsor-scheduler, DSoR's own login for the sweep, sweeps org_456: the
-  program calls it here, as a deployment's timer would each night. It expires the three waiting
-  payments. The agent's two bookings go back to the day; user_123's own payment booked nothing,
-  because a person's call has no slip and no limit (decision D11).
-
-## Break it
-
-Each break ran on the step's own code on 2026-10-12, and the code was restored after each run. The
-output is copied as it was printed, shortened.
-
-**B1. The control is the quick rule.** In `controls.json`, the condition became "over 25000 and in
-USD":
-
-```text
-double(state.invoice.open_amount.value) > 25000.0 && state.invoice.open_amount.currency == "USD"
-```
-
-```text
-$ pnpm start
-the registry refused to start:
-  controls.json: org_456's control high-value-payment v8 fails its test 3: expects REQUIRE_APPROVAL, gives ALLOW
-  controls.json: org_456's control high-value-payment v8 fails its test 5: expects REQUIRE_APPROVAL, gives ALLOW
-```
-
-Test 3 is 50,000,000.00 PKR. At the test's own rate of 280 rupees to the dollar, that is about
-178,571 USD. Test 5 is 100.00 in `XXX`, a currency with no rate. The quick rule allows both, and
-each test expects the CFO. So the control never switches on, and DSoR does not start (decision
-D2). This break also found a defect, now fixed: the program first ran all its other stories, and
-refused only at the end. See "Found while building".
-
-**B2. The quick rule, and start-up skips the tests.** In `src/controls.ts`, the list of failed
-tests was always empty.
-
-```text
-  Tuesday 15:05, the agent drafts INV-2004, 14,000,000.00 PKR: answered, PAY-902
-  Tuesday 15:05, user_123 drafts INV-2006, 100,000 JPY: answered, PAY-903
-  INV-2006's record: ALLOW ok, high-value-payment v8 ALLOW
-```
-
-This is the break that the map of all steps (`../readme.md`) gives for this step. 50,000.00 USD in rupees is paid without the CFO, and so is the bill
-in yen. The quick rule never converts, so it never fails, and it says `ALLOW`. The control's tests
-are the only thing between the quick rule and these payments.
-
-**B3. A condition that fails to evaluate counts as false.** In `src/controls.ts`, an error answered
-`ALLOW`.
-
-```text
-$ pnpm start
-the registry refused to start:
-  controls.json: org_456's control high-value-payment v8 fails its test 5: expects REQUIRE_APPROVAL, gives ALLOW
-```
-
-The design expected user_123's bill in yen to be paid. It was not: the control's own test 5, the
-currency with no rate, caught the break at start-up. The design's expectation was wrong, and DSoR
-was safer than predicted. With the tests skipped too, as in B2, the bill in yen is paid:
-
-```text
-  Tuesday 15:05, user_123 drafts INV-2006, 100,000 JPY: answered, PAY-902
-  INV-2006's record: ALLOW ok, high-value-payment v8 ALLOW, error: no usable rate compares JPY with
-  USD
-```
-
-The record still names the error. The break turned "I cannot tell" into "no".
-
-**B4. The least restrictive answer wins.** In `src/controls.ts`, `mostRestrictive` kept the least
-restrictive answer.
-
-```text
- × DSOR-AUT-02b: with a second control that denies payments above 45,000 USD, INV-2004's 14,000,000.00 PKR, 50,000.00 USD, hears POLICY_DENIED, ...
-AssertionError: expected { outcome: 'PENDING_APPROVAL', …(6) } to match object { code: 'POLICY_DENIED', …(1) }
- × DSOR-AUT-02b: the most restrictive answer wins: DENY over REQUIRE_APPROVAL, and REQUIRE_APPROVAL over ALLOW, in any order; no answer at all is ALLOW
- × DSOR-AUT-02b: INV-2004's 14,000,000.00 PKR, 50,000.00 USD, meets both controls: the CFO's asks for an approval, the second denies, and DENY wins
-      Tests  3 failed | 40 passed (43)
-```
-
-With a second rule that refuses payments above 45,000 USD, INV-2004 waited for the CFO instead. A
-CFO could then approve a payment that the company's rules refuse.
-
-## Build it yourself with Claude Code
-
-This is how the step was built.
-
-| # | Move | What was done |
 |---|---|---|
-| 1 | Understand | The session of 2026-10-11: two parts, what a control is, and CEL with the PKR hole. Then the learner asked for the build first, and the review after |
-| 2 | Decide | D1 to D18, each Claude Code's, each with its downside, for the learner's review |
-| 3 | The copy | Step 26 copied, its markers removed, `@marcbachmann/cel-js` 8.0.0, and a PostgreSQL of its own |
-| 4 | Piece A | The environment a condition runs in, red first |
-| 5 | Piece B | `controls.json`, its schema, and its check at start-up, with the tests, red first |
-| 6 | A fix | The operation's risk level, which a condition saw as "[object Object]" |
-| 7 | Piece C1 | Several controls, one answer, red first |
-| 8 | Piece C2 | Line ⑩: the controls, `PENDING_APPROVAL`, `POLICY_DENIED`, a dry run's decision, and the record |
-| 9 | Piece C3 | The database: migration 022, the record's controls, and a waiting payment, red first |
-| 10 | Piece D11 | The sweep expires a waiting payment, red first |
-| 11 | Piece G | The program's story of the company's rule |
-| 12 | Break it | B1 to B4 on the step's own code, each restored. B1 found that the program checked the controls late |
-| 13 | Review | A sweep of small breaks in a copy with a database of its own, and a reviewer who had not seen the conversation |
-| 14 | Fix | The review's findings, one commit each, each test red first, then broken on purpose |
-| 15 | Second sweep | The 28 survivors of the sweep, run again with a test for each |
+| B1. Switching on checks only the version's own owner, not the owner of record | admin_100 switches on version 10, which names admin_100, and INV-1008 is paid without the CFO | (asked at the review) |
+| B2. `rule.activate` loses `people_only` | line ⑤ lets the agent through, and the owner check at line ⑨ still refuses it: an agent is never an owner | (asked at the review) |
+| B3. Switching on skips the sample cases | version 11, the quick rule, goes active, and rupees pass without the CFO | (asked at the review) |
+| B4. Line ⑩ keeps the rules it read at start-up | a version switched on never applies, and a suspended one still holds INV-1008 | (asked at the review) |
 
-To start it in a new session:
+### Left open, and not this half's idea
 
-```text
-Build step 27 in learner mode from the design in
-docs/baby_steps_tutorials/mj_27_controls_in_cel/README.md.
-```
-
-What each move broke, measured. These were not predictions:
-
-| Move | What failed |
-| --- | --- |
-| Piece A | 13 tests, red first. Broken on purpose: an error counted as false (5 tests failed), and amounts compared without conversion (3) |
-| Piece B | 21 tests, red first. Broken on purpose: the tests skipped at switch-on (5), and a draft evaluated (1) |
-| The risk fix | 1 test, red first: a control that asks `risk == "medium"` failed its own test on `payment.create` |
-| Piece C1 | 6 tests, red first. Broken on purpose: the least restrictive answer winning (2), and every control answering every operation (1) |
-| Piece C2, the old tests | 132 tests: the shipped control asked for the CFO on payments that the earlier steps' tests expect to be paid. Fixed with `withoutControls` (decision D16) |
-| Piece C2, broken | No `POLICY_DENIED` (1), a proposal that ignores what a control requires (6), a dry run that always says `ALLOW` (1), and the limits before the controls (2) |
-| The program's test | 2 tests: ajv, the library that checks JSON against a schema, warned about the "date-time" format at start-up, and the program must start with no warning |
-| Piece C3 | 5 tests, red first: no column `controls`. Then 2 old tests: the one that lists every privilege of `dsor_runtime`, column by column, and one whose replacement INSERT took 14 values |
-| Piece C3, broken | The log writes no controls (2), store.json forgets the column (3), and the log's read drops them (none at first; 1 after a new test) |
-| Piece D11 | 2 tests, red first. The third, "one millisecond before", passed before the code, and guards it. Broken on purpose: the database lists READY only (1), memory lists READY only (2), the sweep always moves from READY (3) |
-| Piece G, broken | The story's world with no controls: the program's test failed |
-| B1 | The program ran its other stories and refused late. A new start-up test failed without the fix |
-| H2, one sheet | 2 tests, red first: two reads, and no sheet in a person's record. Broken on purpose: a read kept by nobody (1 test), no record of the control's conversion (1), the limits given the store directly (1) |
-| M2, a stale control | 1 test, red first. Broken: no refusal (1) |
-| M4, a test that tests nothing | 1 test, red first. Broken: errors passing again (1), and every error failing, no rate too (the shipped control stops start-up, and the file does not load) |
-| M3, predicates | 2 tests, red first. Then 4 old tests that give `invoice.issue` code. Broken: no refusal where code runs (1), no CEL check (1), a refusal everywhere (the file does not load) |
-| M1, L2, L9, the record | 1, 1, and 1 tests, red first. Broken: the old words (1), no reason kept (1), every deny control giving its reason (1), an unreadable amount called a missing rate (1) |
-| L10, `matches` | 1 test, red first. Broken: no refusal (1) |
-| L7, the tenant's policy | 1 test, red first. Its first form could not catch its own break, because a deny control denies on an error too. Rewritten so that the policy decides: no policy at line ⑩ (1), no policy in a control's tests (1) |
-| L12, state from the input | A guard: it passed at once. A condition given the input as its state failed 8 tests |
-| The sweep's survivors | Guards, which passed at once: the code was right, and the tests were missing. Run again, 25 of the 28 were caught. P13 needed a second form of its test |
-
-## Check yourself
-
-Use Tuesday's sheet: 1 EUR buys 1.0800 USD, 0.8532 GBP, or 302.40 PKR, and no JPY. del_100 allows
-50,000.00 USD for one payment. org_456's control asks for the CFO above 25,000.00 USD.
-
-1. The agent drafts INV-2004, 14,000,000.00 PKR. What does it hear, and why?
-2. user_123 drafts INV-2006, 100,000 JPY, as a person, with no slip. What does user_123 hear, and
-   what does the decision's record say?
-3. The agent drafts INV-2003, 49,000.00 GBP. The control asks for the CFO. What does the agent hear?
-4. Someone writes the control as "over 25000 and in USD", and restarts DSoR. What happens?
-5. The agent's payment of INV-1008 waits for the CFO, and nobody approves. What happens to it, and
-   to its 31,400.00 USD on the day's total?
-
-<details>
-<summary>Answers</summary>
-
-1. `PENDING_APPROVAL`, for the CFO. 14,000,000.00 PKR is exactly 50,000.00 USD, which is above
-   25,000.00 USD. The control compares through the money functions, which convert with the
-   company's sheet (decisions D5 and D6).
-2. `PENDING_APPROVAL`, for the CFO. No sheet lists JPY, so the condition cannot be evaluated, and
-   the effect applies (DSOR-CTL-07). The record says `ALLOW` for the right to ask,
-   `PENDING_APPROVAL` for the result, and names the control with the error "no usable rate compares
-   JPY with USD". The control applies to every caller of the operation (decision D15).
-3. `LIMIT_EXCEEDED`. 49,000.00 GBP is about 62,025 USD, above del_100's 50,000.00 USD. The limit's
-   refusal is a `DENY`, and `DENY` wins over `REQUIRE_APPROVAL` (DSOR-AUT-02b). Nothing is booked,
-   and the proposal ends DENIED.
-4. DSoR does not start. The control's tests 3 (rupees) and 5 (a currency with no rate) expect the
-   CFO, and the quick rule allows both, so the control cannot switch on (DSOR-CTL-02c, decision D2).
-5. It waits seven days, org_456's lifetime for a proposal. Then dsor-scheduler's sweep moves it to
-   EXPIRED, and its 31,400.00 USD goes back to the day (decision D11, DSOR-DEL-06d).
-
-</details>
-
-## Think it through
-
-### Found while building
-
-- **A condition saw the operation's risk as "[object Object]".** The registry gave
-  `String(contract.risk)`, and risk is an object. Now a condition gets the risk level, as Appendix
-  B says, with its own test.
-- **The earlier steps' tests met the company's rule.** 132 tests failed, because their payments
-  of INV-1008 waited for the CFO. Their worlds now give no controls, in one line each, so a test
-  about a tear-up still tests a tear-up (decision D16).
-- **ajv warned at start-up** about the "date-time" format of a control's `effective_from`. The
-  checker turns formats off, as `src/slips.ts` does. Nothing in this step reads that field.
-- **pg, the PostgreSQL client library, writes a JavaScript array as a PostgreSQL array,** which a
-  `jsonb` column, JSON in PostgreSQL, refuses. The log
-  writes the list of controls as JSON text.
-- **The log's read could drop the controls,** and no test saw it, because every database test
-  read the row with SQL. A test now reads the record back through the log.
-- **The program checked the controls late.** Found by B1: the earlier stories' worlds give no
-  controls, so only the last world read `controls.json`. Start-up now checks the controls beside
-  the contracts, the roles, the inputs, the labels, and the map, before any caller can ask
-  (decision D2). A controls file can be named as the program's seventh file, so a test can start
-  with a broken one.
-- **B3's expectation was wrong.** The design expected the bill in yen to be paid. The control's own
-  test 5, a currency with no rate, stopped the break at start-up. DSOR-CTL-02c guards DSOR-CTL-07.
-- **D13's first words were wrong.** They said that the control's reason goes to the record. The
-  audit record's `controls` field allows no other fields, so the record names the control by its
-  id and version, and that version of the control holds the reason. D13 now says so.
-- **The order of controls and limits.** §21 lists "controls, SoD, limits" at line ⑩, and decision
-  D9 follows it. The specification's walk-through of the nightly run, in
-  [§41](../../../specs/dsor/05-bindings.md#41-reference-profile-vertical-and-workflow-informative),
-  checks the limits first. The final answer is the same either way. The order changes only which
-  refusal the caller hears when both say `DENY`.
-- **The program's header never named step 26's money story.** Step 27's header names both stories.
-  Step 26's own header still leaves it out. That fix belongs in step 26's folder.
-- **`ready-lifetimes.json` is the lifetime of every proposal now,** a waiting payment's too. Its
-  name still says READY, as step 25c named it.
-
-### The sweep of small breaks
-
-The first sweep ran in a copy of the step with a database of its own, on the code as it was built,
-before the review's fixes. It made 85 small breaks, one change at a time, each restored after its
-run. 57 were caught. 28 survived both whole suites, the unit tests and the database tests:
-
-- **A payment without the CFO, or one company's rule in another company.** A `controls.json` cut
-  short by a bad edit, or with a key written twice (K19, K20). A stale sheet (RT1). Line ⑩ giving a
-  condition the wrong principal, slip, actor chain, risk, time, input, or company (P07 to P13).
-  org_456's rules or sheets for org_789 (P01, RT2), a control's tests pinned per USD for every
-  company (K22), and the other statuses evaluated (K24).
-- **A false answer or a false record.** A prepared draft on the database that answered READY
-  (PG4). A dry run that a deny control did not refuse (P15). Records that named an evaluation that
-  never ran (P02). A broken kept answer replayed (PG3). The story enforcing a file that start-up
-  never checked (MN2).
-- **Low.** A broken draft not refused (K23), a control on a command with no code (R03), a company
-  that gives no list (K21), a made-up currency (C08), a replay's copy (CL2), and three defensive
-  copies.
-
-Each one was a missing test, not wrong code. Each got a test: 14 unit tests, 4 database tests, and
-two more checks in tests that were there.
-
-### The second sweep
-
-The 28 survivors ran again, on the code after the review's fixes, with the new tests: 25 were
-caught. One of them, P13, a condition that sees no input, survived the first form of its test.
-Inside a long condition, a missing input made an error, and an error asks for the CFO too, so the
-agent's draft waited either way. The input now has a control of its own, whose answer for INV-2002
-is `ALLOW`, and P13 is caught. The three that survive are defensive copies, each covered by another
-copy: taking one away changes nothing that anyone can see. Each fix of the review was broken on
-purpose as it landed: 17 breaks, all caught.
-
-### The hostile review
-
-A reviewer who had not seen the conversation read the rules, the code, and this README, and
-attacked the step with inputs of its own, in memory. It found no way for the agent to turn a
-payment that waits for the CFO into a payment: not a replay, another mode, a dry run, the sweep, a
-tear-up, a second key, or ten calls at once. It found two high findings, five medium ones, and
-seventeen low ones. Each fix has its own commit, its test written red first, and a break that the
-test caught.
-
-| Finding | What it found | What was done |
-| --- | --- | --- |
-| H1 | The program's earlier stories, on the database too, run with no controls, and nothing said so: there the agent's 31,400.00 USD is paid without the CFO | The program says so before its first story. D16's downside names it |
-| H2 | The controls and the limits each read the newest sheet, so a sheet loaded between the two reads split one decision. A person's draft recorded no sheet | Line ⑩ reads the sheet once (D21). The record names the sheet whenever a control converted |
-| M1 | A waiting payment whose record could not be written heard "after the command ran", and nothing ran | It hears "after the proposal was made". The window between the claim and the record is step 36's |
-| M2 | A stale control was evaluated as if it were active, so one whose `on_stale` says deny allowed a payment | Start-up refuses a stale control until step 28 (D3) |
-| M3 | Contract predicates, the other half of DSOR-CTL-05, were neither evaluated nor refused | Start-up checks each as CEL, and refuses one where code runs (D20) |
-| M4 | A test with no state passed by its error, so the quick rule switched on behind a test that tested nothing | A test passes only by evaluating, unless a currency has no rate (D19) |
-| M5 | The hand-over was not done | Done after the review |
-| L1 | A replay after the sweep still answers `PENDING_APPROVAL` | Named in D10's downside |
-| L2 | No record kept a control's own reason for a refusal | The record keeps it, in `denied_by` (D13) |
-| L3 | A draft with a stale `expected_version` now waits and books, because the version check runs inside the work | Left open: step 32's preconditions refuse it before line ⑩ |
-| L4 | D9's downside understated what waiting payments hold | D9's downside |
-| L5 | A control that reads state its operation does not bind passes start-up, then fails every call, closed | Left open |
-| L6 | `now` is the program's clock, and the stores use their own | Left open |
-| L7 | `tenant` held the id only, and Appendix B says id and policy | `tenant` holds the money policy too (D5) |
-| L8 | `requires` names no control version | Left open: §28's example names none, and step 29 binds an approval to a version |
-| L9 | An amount that cannot be read was recorded as a missing rate | Its own words: "an amount in USD is not a decimal with no sign" |
-| L10 | `matches` runs with no bound on its time, on text that can be the agent's | Start-up refuses it (D5) |
-| L11 | The CEL tests gave the agent as the principal | The subject, user_123, as Appendix B says |
-| L12 | DSOR-CTL-06 had no test that calls DSoR | A test that calls DSoR |
-| L13 | Three comments called built things unbuilt | Fixed |
-| L14 | `payment.create`'s contract says `"controls": []`, and a control governs it | Left open: a question for the specification |
-| L15 | Nothing checks that the owner is a person: the agent as owner was accepted | Left open: step 28 lets only the owner switch a control on |
-| L16 | A typo, "Dsor-rates" | Fixed |
-| L17 | D12 said it had no downside | D12's downside |
-
-The reviewer also listed the analogies. On the list of the write-for-learners skill: booking the
-last hotel room (a booking), the permission slip (a tear-up), the pilot's checklist, and the new
-clerk (a card for each rule on the desk). Not on it: "sheet" and "sweep" are the names of step 26's
-and step 25c's things, not analogies, and "the map" is the tutorial's map of steps. Migration 022
-called a column "one more slot in the letterbox". It now says it in plain words. The reviewer
-also found terms used before they were defined: each is defined where it first appears now.
-
-### Left open on purpose
-
-- The list under "Left open, and not this step's idea" above.
-- **DSOR-CTL-04 is met early.** The record names each control's id, version, and authority
-  (decision D14). The map gives that rule to step 28, which adds the version in force when a
-  policy changes.
-- **A waiting payment's record says `ALLOW`.** The audit record's `authorization` allows only
-  `ALLOW` or `DENY`, and the call was not denied. Its `result` says `PENDING_APPROVAL`.
-- **Contract predicates are checked, and not evaluated.** Step 32 evaluates them. Until then a
-  contract of an operation that runs code may list none (D20).
-- **The review's open lows:** L3, a draft with a stale version that waits for an approval it can
-  never use; L5, a control that reads state its operation does not bind; L6, the clock of `now`; L8,
-  the control's version in `requires`; L14, the contract's `controls` field; L15, an owner who is
-  not a person.
-- **The window between the claim and the record** (review M1): a waiting proposal and its booking
-  commit before line ⑪ writes the record, so a record that fails loses the controls evaluated.
-  Step 36 commits the two together.
-- **`src/controls.ts` is 326 lines,** past the 150 that the build skill names. The start-up check
-  and line ⑩'s evaluation could live in two files, in a step of their own.
-
-## The rules this step meets
-
-| Rule | What it says | Where in the spec | Proved by |
-| --- | --- | --- | --- |
-| DSOR-CTL-01a | A control validates against `control.schema.json`: a version, a condition, an effect, a status, a named human owner, and an authority reference | [§17.2 Control record](../../../specs/dsor/02-security.md#172-control-record) | Start-up refuses a control with no owner, no authority, or a status or an effect that the schema does not know. [`test/controls.test.ts`](test/controls.test.ts) |
-| DSOR-CTL-05 | Conditions and contract predicates are CEL, evaluated in Appendix B's environment | [§17.3 Expression language](../../../specs/dsor/02-security.md#173-expression-language) | Partly. A control's condition is evaluated with the eight variables and three money functions, and start-up refuses one that is not CEL or does not answer true or false. A contract's predicates are checked as CEL, and evaluated from step 32 (D20). [`test/cel.test.ts`](test/cel.test.ts), [`test/controls.test.ts`](test/controls.test.ts) |
-| DSOR-CTL-06 | An expression has nothing outside that environment | [§17.3 Expression language](../../../specs/dsor/02-security.md#173-expression-language) | Start-up refuses a condition that names anything else, a function of a later step included. `state` is DSoR's own look at line ⑨, never the caller's input, proved by a call to DSoR. [`test/cel.test.ts`](test/cel.test.ts), [`test/control-decisions.test.ts`](test/control-decisions.test.ts) |
-| DSOR-CTL-07 | A condition that fails to evaluate applies the control's effect | [§17.3 Expression language](../../../specs/dsor/02-security.md#173-expression-language) | A bill in yen that no sheet lists waits for the CFO, and the record names the error. [`test/cel.test.ts`](test/cel.test.ts), [`test/control-decisions.test.ts`](test/control-decisions.test.ts) |
-| DSOR-CTL-02c | Switching a control on runs its tests, and fails when one fails | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | The quick rule fails tests 3 and 5, and start-up refuses, before any story. A test passes only by evaluating its condition (D19). [`test/controls.test.ts`](test/controls.test.ts), [`test/startup.test.ts`](test/startup.test.ts) |
-| DSOR-AUT-02a | Checks answer at least `ALLOW`, `DENY`, and `REQUIRE_APPROVAL` | [§15 Authorization](../../../specs/dsor/02-security.md#15-authorization) | INV-2002 is allowed, INV-1008 waits for the CFO, and a deny control refuses. [`test/control-decisions.test.ts`](test/control-decisions.test.ts) |
-| DSOR-AUT-02b | The most restrictive answer wins | [§15 Authorization](../../../specs/dsor/02-security.md#15-authorization) | A limit's `DENY` and a control's `DENY` both win over the CFO's approval, in any order. [`test/controls.test.ts`](test/controls.test.ts), [`test/control-decisions.test.ts`](test/control-decisions.test.ts), [`test/control-decisions.db.test.ts`](test/control-decisions.db.test.ts) |
-| DSOR-EXE-02 | The decision, with the controls evaluated, is recorded before the answer | [§21 Command pipeline](../../../specs/dsor/03-execution.md#21-command-pipeline) | Still met, now with controls to name: each record names each control, its version, outcome, and authority, in memory and in `dsor.audit`, and a refusal's record keeps the refusing control's reason. [`test/control-decisions.test.ts`](test/control-decisions.test.ts), [`test/control-decisions.db.test.ts`](test/control-decisions.db.test.ts) |
-| DSOR-DEL-06d | A booking is released when its proposal ends | [§13.4 Cumulative limits](../../../specs/dsor/02-security.md#134-cumulative-limits) | Still met: a waiting payment that expires gives its booking back. [`test/control-decisions.test.ts`](test/control-decisions.test.ts), [`test/control-decisions.db.test.ts`](test/control-decisions.db.test.ts) |
-
-## Next
-
-Step 28 · Where a rule came from. Each control points at the exact policy sentence and version it
-was built from. When the policy changes, the control is marked stale and its owner is told. Only
-a human may switch a control on.
+- A rule that goes stale when its policy changes, the stand-in for KSoR, and the owner told: step
+  28b.
+- An agent that drafts a rule, a second person who reviews it, and a rule handed to a new owner.
