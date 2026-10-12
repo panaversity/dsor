@@ -14,14 +14,16 @@ await callOperation(agent, "payment.create", payment, { idempotencyKey, mode: "p
 await callOperation(agent, "payment.create", payment, { idempotencyKey }); // execute
 ```
 
-- **`validate_only`** asks "would this be allowed?". The checks up to the decision run: who is
-  calling, for which company, under which slip, whether they may, whether the arguments are well
-  formed, and the slip's limit on one payment. The decision is written in the log, as `VALIDATED`,
-  so the log never shows a dry run as something that ran. Nothing else happens: no proposal, no
-  claimed key, no payment, not even a payment number taken. The answer is `VALIDATED`, with the
-  decision, `ALLOW`, and the command's semantics: whether it could be undone, which the agent needs
-  to know before it acts. A dry run that these checks refuse gets the refusal they would give a
-  real call. A dry run needs no key, because there is nothing to send twice.
+- **`validate_only`** asks "would this be allowed?". The checks up to the decision run. They ask
+  who is calling, for which company, for which operation, under which slip, and whether they may.
+  They ask whether the arguments can be written down, and whether any argument names another
+  company, slip or person. They ask whether a command that needs a version was given one, as a
+  whole number. And they check the slip's limit on one payment. The decision is written in the log,
+  as `VALIDATED`, so the log never shows a dry run as something that ran. Nothing else happens: no
+  proposal, no claimed key, no payment, not even a payment number taken. The answer is `VALIDATED`,
+  with the decision, `ALLOW`, and the command's semantics: whether it could be undone, which the
+  agent needs to know before it acts. A dry run that these checks refuse gets the refusal they
+  would give a real call. A dry run needs no key, because there is nothing to send twice.
 - **`propose_only`** prepares the command and stops. The key is claimed, the proposal is made, the
   same checks run, and the proposal moves to READY, "waiting to be released", and stays there. The
   answer is `READY` with the proposal's address. Releasing it is `proposal.execute`, which checks
@@ -36,9 +38,12 @@ A dry run is not the real call in every way. Two kinds of check do not run, so a
 - **The key's claim.** A dry run claims no key, so it never looks at one. A key that is not a valid
   key, or one already used for another request, is refused only when the command is executed or
   prepared.
-- **The handlers' own checks**: whether the version is current, and whether the invoice exists.
-  They run inside the handlers, which a dry run never reaches, and a prepared command does not
-  reach them either. The end of this page says more; step 32 makes them a stage of their own.
+- **The handlers' own checks.** A handler checks that the address it acts on, and a payment's
+  amount, are there and well formed, and that the address names the right kind of record. It checks
+  whether the version is current, whether the invoice or payment exists and is still a draft, and
+  whether a payment is in its invoice's currency. A dry run never reaches the handlers, and a
+  prepared command does not reach them either. So a dry run of a payment of 0.00 USD is
+  `VALIDATED`, and the real call is refused. The end of this page says more.
 
 How it is called is part of the request. The idempotency claim keeps the mode beside the
 fingerprint. So a key claimed to prepare a command and sent again to execute it, or the other way
@@ -211,8 +216,10 @@ Copy `my_22_proposals_and_their_states` to a new folder and ask:
   reservation, place a hold, or cause a side effect.
 
 **What this step leaves, said plainly.** A dry run, and a prepared command, are decided without the
-preconditions the handlers check: whether the version is current, whether the invoice exists. Those
-run inside the handlers, which a dry run never reaches, so `expected_version: 99` is `VALIDATED`, and
+checks the handlers make: whether the address and a payment's amount are there, well formed and of
+the right kind, whether the version is current, whether the invoice or payment exists and is still a
+draft, and whether a payment is in its invoice's currency. Those run inside the handlers, which
+neither reaches. So `expected_version: 99` is `VALIDATED`, a payment of 0.00 USD is `VALIDATED`, and
 a payment for an invoice that does not exist is READY. §21.9's preconditions become a stage of their
 own in step 32, and a test pins today's behaviour until then. A prepared proposal waits at READY
 with nothing to release it until `proposal.execute`, step 31, and nothing to cancel it either. The
