@@ -258,7 +258,12 @@ COMPENSATING, for commands that can be undone, such as `payment.create`; with no
 COMMITTED and FAILED are finished for every command, as §26.2's own plain words say. That is why
 prop_2 stays COMMITTED after prop_3 cancels its payment. Proposal numbers, like payment numbers
 since step 17, come from one sequence for every company, so a number hints at how busy the others
-are. A proposal whose creation committed with its reply lost stays PROPOSED, and one whose last move
+are. Start-up does not yet ask whether the application may set that sequence, or the one that
+orders a proposal's moves, as step 17 asks of the payments' numbers: an application given UPDATE on
+`dsor.proposal_numbers` could choose the next proposal's number and still start; step 26 adds the
+question. No rule's guarantee rests on it: a number set back onto one already used is refused, and
+nothing runs.
+A proposal whose creation committed with its reply lost stays PROPOSED, and one whose last move
 could not be written stays EXECUTING: both wait for reconciliation, step 38. A handler that throws
 leaves its proposal OUTCOME_UNKNOWN, but the throw still reaches the caller as a throw, not as an
 `OUTCOME_UNKNOWN` answer; that is step 37's. There is no `proposal.get` yet, because who may read a
