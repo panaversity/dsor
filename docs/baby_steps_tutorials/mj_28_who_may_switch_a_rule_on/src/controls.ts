@@ -93,7 +93,9 @@ const validateControl = ajv.compile({ $ref: "urn:dsor:schema:1.3:control" });
 // active (DSOR-CTL-03b). Found by step 27's review, finding M2: it was evaluated as active, so a
 // stale control whose on_stale says deny allowed a payment.
 const STALE = "stale_authority";
-// NEW IN STEP 28: a URI's id, as uri.ts and common.schema.json write it.
+// NEW IN STEP 28: a rule's address ends with its id, so the id has the letters of a URI's id.
+// not copied: the id part of common.schema.json's resourceUri pattern, which uri.ts copies whole
+// (step 28's README, decision D7).
 const RULE_ID = /^[A-Za-z0-9_.-]+$/;
 // NEW IN STEP 28: nor is a control in review built. The owner's switch-on is the review (step 28's
 // README, decision D17).
