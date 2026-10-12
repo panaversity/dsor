@@ -11,6 +11,7 @@ import { PIPELINE, STAGES_CHECKED } from "../src/operations.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 import { theLog } from "../src/audit.ts";
 import { getInvoice } from "../src/invoice.ts";
+import { proposalsOf } from "../src/proposal.ts";
 import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 /** A stage that does nothing, for tests about the list rather than about the work. */
@@ -384,6 +385,49 @@ describe("the pipeline", () => {
     expect(answer.kind).toBe("error");
     expect(await theLog("org_456")).toHaveLength(0);
   });
+
+  // Decision 154: and the two answers step 23 added. A dry run and a prepared command never reach
+  // the check in carryOut, so each of their answers checks the receipt itself. Nothing tested either
+  // copy: with one deleted, the whole suite passed, and the door answered VALIDATED, or left a
+  // proposal waiting at READY, with nothing in the log.
+  for (const request of [
+    { mode: "validate_only" },
+    // A prepared command claims its key, so it brings one: this door adds a key only to a request
+    // that came with none.
+    { mode: "propose_only", idempotencyKey: "blind-prepared" },
+  ]) {
+    it(`DSOR-EXE-02: a command called ${request.mode} without a record is refused as well`, async () => {
+      await forgetTheLog("org_456");
+      await resetTheStory();
+
+      const blind = PIPELINE.map((stage) =>
+        stage.name === "record the decision"
+          ? Object.freeze({
+              ...stage,
+              run: (context: Context) => ({ kind: "carry_on" as const, context }),
+            })
+          : stage,
+      );
+
+      const answer = await makeDoor(blind)(
+        { loggedInAs: "user_123" },
+        "invoice.issue",
+        { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 },
+        request,
+      );
+
+      expect(answer.kind === "error" && answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.kind === "error" && answer.envelope.message).toContain(
+        "a record of the decision",
+      );
+      expect(await theLog("org_456")).toHaveLength(0);
+      expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+      // And nothing waits at READY: a dry run makes no proposal, and a prepared one is DENIED.
+      expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(
+        request.mode === "propose_only" ? ["DENIED"] : [],
+      );
+    });
+  }
 
   // STEP 08, and every one of these is a list a review got `assertPipeline` to ACCEPT.
   it("DSOR-EXE-01a: an unnumbered stage may not float anywhere it likes", () => {
