@@ -7,6 +7,7 @@ import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
+import { policyLook } from "./drift.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { checkDelegation, checkNamedSlips, holdSlip } from "./delegation.ts";
 import { tenantOf, type Facts } from "./cel.ts";
@@ -526,7 +527,10 @@ export async function call(
           let returned: unknown;
           if (own !== undefined) {
             const now = new Date().toISOString();
-            returned = await own.change(copy, { tenant, caller, stores, correlation, now });
+            // NEW IN STEP 28b: and DSoR's question to the company's own KSoR, for the sweep.
+            const policies = policyLook(registry.ksors, tenant);
+            const work = { tenant, caller, stores, correlation, now, policies };
+            returned = await own.change(copy, work);
           } else if (handler !== undefined) {
             returned = await handler(copy, companyOf(stores.invoices, tenant, reads, payments));
           } else {

@@ -21,12 +21,14 @@ import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
 import { ownWorkFor, type OwnWork } from "../src/revocation.ts";
 import type { Directories } from "../src/directory.ts";
+import type { Ksors } from "../src/ksor.ts";
 import {
   shipped,
   shippedInputs,
   shippedLabels,
   shippedRoles,
   storyDirectories,
+  storyKsors,
 } from "./helpers.ts";
 
 // dsor_runtime's connection string. test/db-setup.ts has already stopped the run if it
@@ -59,6 +61,9 @@ export function dbRegistry(
   // inside their own transactions. Step 28's own give "database" (step 28's README, decision D18;
   // step 28's review, finding M5).
   controls: ControlStore | "database" = NO_CONTROLS,
+  // And each company's KSoR: the story's, unless the test gives another (step 28b's README,
+  // decision D1).
+  ksors: Ksors = storyKsors(),
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
@@ -86,6 +91,7 @@ export function dbRegistry(
     // The shipped money policies.
     undefined,
     controls === "database" ? createDbControls(pool) : controls,
+    ksors,
   );
 }
 

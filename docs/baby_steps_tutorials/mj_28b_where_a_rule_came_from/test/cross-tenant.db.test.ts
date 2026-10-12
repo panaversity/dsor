@@ -61,6 +61,8 @@ describe("the suite, on the database", () => {
       "rate.load",
       // And step 28's four commands of a rule's life.
       "rule.activate",
+      // And step 28b's sweep.
+      "rule.check_authority",
       "rule.draft",
       "rule.retire",
       "rule.suspend",
@@ -68,7 +70,9 @@ describe("the suite, on the database", () => {
     // Changed in step 28: each rule command by cfo_100 and admin_100 in org_456 and admin_700 in
     // org_789, and admin_700 on the tear-up and each brake command: 45 more (step 28's README,
     // decision D19).
-    expect(report.attacks).toHaveLength(138);
+    // Changed in step 28b: and the sweep rule.check_authority, by dsor-scheduler in each company:
+    // 6 more (step 28b's README, decision D4).
+    expect(report.attacks).toHaveLength(144);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -116,7 +120,9 @@ describe("the suite, on the database", () => {
       // Changed in step 28: each rule command, cfo_100 and admin_100 in org_456 and admin_700 in
       // org_789, (2 and 1) × 4 × 3, and admin_700 on the tear-up and each brake command, 3 × 3
       // (step 28's README, decision D19).
-      expect(made).toHaveLength(home === "org_456" ? 78 : 60);
+      // Changed in step 28b: and the sweep rule.check_authority, dsor-scheduler in each company,
+      // 1 × 3 (step 28b's README, decision D4).
+      expect(made).toHaveLength(home === "org_456" ? 81 : 63);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({

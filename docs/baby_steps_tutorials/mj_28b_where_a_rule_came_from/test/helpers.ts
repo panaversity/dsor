@@ -13,6 +13,7 @@ import { memoryPayments, type Payment } from "../src/payment.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { readRoleSettings } from "../src/authority.ts";
 import type { ProposalStore } from "../src/proposals.ts";
+import { fakeKsor, type FakeKsor } from "../src/ksor.ts";
 import { readClassifications, type ClassificationSource } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { readRoles, type RoleTableSource } from "../src/permissions.ts";
@@ -131,7 +132,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
   CFO: ["invoice:read", "delegation:revoke", "rule:draft", "rule:manage"],
   ap_clerk: ["invoice:read", "payment:create.propose", "delegation:revoke"],
   tenant_admin: ["delegation:revoke", "control:suspend", "rule:draft", "rule:manage"],
-  scheduler: ["proposal:expire"],
+  // And, since step 28b, sweeps the policies the rules cite (step 28b's README, decision D4).
+  scheduler: ["proposal:expire", "rule:check"],
   rate_loader: ["rate:load"],
 };
 
@@ -299,6 +301,21 @@ export function extraField(field: string): string {
 
 // The name under which a record keeps the company a caller claimed (step 10's decision 6).
 export const OUR_EXTENSIONS = "org.panaversity.steps";
+
+// The story's KSoR, typed out again from step 28b's README rather than read from src. org_456
+// keeps its payment-approval policy, version 4 in force, with the short fingerprint that version 8
+// cites. org_789's rules cite local, so its KSoR lists nothing (step 28b's README, decision D1).
+export const POLICY = "ksor://org_456/finance/payment-approval-policy";
+export const V4_TEXT = "Payments above 25,000 USD or equivalent require CFO approval.";
+export const V5_TEXT = "Payments above 20,000 USD or equivalent require CFO approval.";
+/** Each company's KSoR as the story begins, new at each call. */
+export function storyKsors(): Map<string, FakeKsor> {
+  const v4 = { version: 4, text: V4_TEXT, content_hash: "sha256:9f2c1e7ab4d0" };
+  return new Map([
+    ["org_456", fakeKsor("org_456", { [POLICY]: [v4] })],
+    ["org_789", fakeKsor("org_789", {})],
+  ]);
+}
 
 /** The message when the arguments name a tenant other than the active one, in this place. */
 export function otherTenant(place: string): string {

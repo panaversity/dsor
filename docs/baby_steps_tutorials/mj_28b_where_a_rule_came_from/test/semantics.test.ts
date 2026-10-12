@@ -119,6 +119,9 @@ describe("C1: every command declares its semantics in its contract", () => {
       // And the four commands of a rule's life, atomic: one transaction in DSoR's
       // own store, with their records (step 28's README, decision D14).
       ["rule.activate", "atomic"],
+      // And the sweep of where each rule came from: every mark, its record, and its notice in
+      // one transaction (step 28b's README, decision D5).
+      ["rule.check_authority", "atomic"],
       ["rule.draft", "atomic"],
       ["rule.retire", "atomic"],
       ["rule.suspend", "atomic"],

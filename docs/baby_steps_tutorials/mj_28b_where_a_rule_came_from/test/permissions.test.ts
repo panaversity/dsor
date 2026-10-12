@@ -287,6 +287,8 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
 describe("C2: a caller holds the permissions of its roles, and only those", () => {
   // And the scheduler role, which holds proposal:expire alone (step 25c's README,
   // decisions D1 and D10).
+  // Changed in step 28b: and rule:check, the sweep of where each rule came from (step 28b's
+  // README, decision D4).
   it("DSOR-AUT-01a: the shipped roles.json is step 06's decision 6, with step 17's payment permissions, step 19's ap_clerk, step 25's tear-up, step 25b's brake, step 25c's scheduler, step 26's rate loader, and step 28's rules", async () => {
     expect(JSON.parse(shippedRoles.text)).toStrictEqual(STARTING_ROLES);
   });
@@ -324,7 +326,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     ],
     // The timer's login may sweep, and do nothing else (step 25c's README,
     // decision D10).
-    ["dsor-scheduler", "tok_5c4e", ["proposal:expire"]],
+    // And, since step 28b, sweep the rules' policies too (step 28b's README, decision D4).
+    ["dsor-scheduler", "tok_5c4e", ["proposal:expire", "rule:check"]],
     // The rates' login may load rates, and do nothing else (step 26's README,
     // decision D1).
     ["dsor-rates", "tok_3b8f", ["rate:load"]],
@@ -591,6 +594,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         controls: registry.controls,
         // And its check of one control.
         checkRule: registry.checkRule,
+        // And the shared registry's KSoR (step 28b's README, decision D1).
+        ksors: registry.ksors,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

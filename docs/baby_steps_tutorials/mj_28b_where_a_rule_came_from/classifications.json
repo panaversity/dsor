@@ -60,5 +60,11 @@
     "version": "internal",
     "status": "internal",
     "retired": "internal"
+  },
+  "AuthorityCheck": {
+    "tenant_id": "internal",
+    "asked": "internal",
+    "unanswered": "internal",
+    "marked": "internal"
   }
 }

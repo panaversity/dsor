@@ -78,6 +78,14 @@ const LABELS = {
     status: "internal",
     retired: "internal",
   },
+  // The company the sweep of where each rule came from worked on, and its counts (step 28b's
+  // README, decision D4).
+  AuthorityCheck: {
+    tenant_id: "internal",
+    asked: "internal",
+    unanswered: "internal",
+    marked: "internal",
+  },
 };
 
 /** A classifications file, as start-up would read it from disk. */

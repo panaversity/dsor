@@ -772,7 +772,9 @@ describe("from the review: every command, in each mode", () => {
       // And step 28's 45: 9 for each rule command, 2 callers in org_456 and 1 in org_789, and 9
       // for admin_700 in org_789, on the tear-up and each brake command (step 28's README,
       // decision D19).
-      expect(report.attacks).toHaveLength(138);
+      // And step 28b's 6: the sweep rule.check_authority, dsor-scheduler in each company (step
+      // 28b's README, decision D4).
+      expect(report.attacks).toHaveLength(144);
     },
   );
 

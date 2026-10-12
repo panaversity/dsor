@@ -7,6 +7,7 @@ import { memoryClaims } from "../src/claims.ts";
 import { readControls, type Control, type ControlsSource } from "../src/controls.ts";
 import type { Answer } from "../src/envelope.ts";
 import { invoices, memoryInvoices, type Invoice } from "../src/invoice.ts";
+import type { FakeKsor } from "../src/ksor.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
 import { memoryReservations, type MemoryReservations } from "../src/limits.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
@@ -40,6 +41,7 @@ import {
   shippedRoles,
   STORY_SLIPS,
   storyDirectories,
+  storyKsors,
   type StorySlip,
 } from "./helpers.ts";
 
@@ -74,6 +76,8 @@ export type RuleWorld = {
   draft: (id: string, who?: RequestEnvelope) => Promise<Answer>;
   log: MemoryLog;
   registry: Registry;
+  // And each company's KSoR, whose switches a test turns (step 28b's README, decision D1).
+  ksors: Map<string, FakeKsor>;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -90,6 +94,9 @@ export function ruleWorld(
   around: (rules: MemoryControls) => ControlStore = (rules) => rules,
   // And this role table, the shipped one unless a test changes a role.
   roles: RoleTableSource = shippedRoles,
+  // And each company's KSoR: the story's, unless a test gives another (step 28b's README,
+  // decision D1).
+  ksors: Map<string, FakeKsor> = storyKsors(),
 ): RuleWorld {
   const clock = { now: T0 };
   const store = memoryInvoices([...structuredClone(invoices), ...structuredClone(BILLS)]);
@@ -126,6 +133,7 @@ export function ruleWorld(
     readLifetimes(),
     readMoneyPolicies(),
     given,
+    ksors,
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -136,7 +144,19 @@ export function ruleWorld(
       invoice: `dsor://org_456/invoice/${id}`,
       expected_version: 1,
     });
-  return { clock, rates, rules, drafted, proposals, reservations, ask, draft, log, registry };
+  return {
+    clock,
+    rates,
+    rules,
+    drafted,
+    proposals,
+    reservations,
+    ask,
+    draft,
+    log,
+    registry,
+    ksors,
+  };
 }
 
 /** The same world, with Tuesday's sheet of ecb-daily loaded. */
@@ -147,8 +167,9 @@ export async function ruleWorldOnTuesday(
   contracts?: ContractSource[],
   around?: (rules: MemoryControls) => ControlStore,
   roles?: RoleTableSource,
+  ksors?: Map<string, FakeKsor>,
 ): Promise<RuleWorld> {
-  const w = ruleWorld(controls, more, inputs, contracts, around, roles);
+  const w = ruleWorld(controls, more, inputs, contracts, around, roles, ksors);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",

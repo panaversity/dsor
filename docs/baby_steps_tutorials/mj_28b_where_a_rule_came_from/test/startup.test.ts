@@ -46,7 +46,9 @@ describe("reading the contracts folder", () => {
   // And rate.load, last in name order (step 26's README, decision L2).
   // Changed in step 28: and the four commands of a rule's life, last in name order (step 28's
   // README, decision D7).
-  it("the shipped folder holds the fourteen contracts", () => {
+  // Changed in step 28b: fifteen, with the sweep of where each rule came from (step 28b's
+  // README, decision D4).
+  it("the shipped folder holds the fifteen contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "control.lift.json",
       "control.suspend.json",
@@ -59,6 +61,7 @@ describe("reading the contracts folder", () => {
       "proposal.expire_due.json",
       "rate.load.json",
       "rule.activate.json",
+      "rule.check_authority.json",
       "rule.draft.json",
       "rule.retire.json",
       "rule.suspend.json",

@@ -24,6 +24,7 @@ import type { Company } from "./company.ts";
 import { NO_DIRECTORIES, type Directories } from "./directory.ts";
 import { checkCondition } from "./cel.ts";
 import { ruleName, ruleProblems } from "./controls.ts";
+import { NO_KSORS, type Ksors } from "./ksor.ts";
 import { NO_CONTROLS, type ControlStore, type RuleCheck } from "./rulebook.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { NO_STORE, type InvoiceStore } from "./invoice.ts";
@@ -108,6 +109,9 @@ export type Registry = {
   // which start-up, rule.draft, and rule.activate run (step 28's README, decisions D6, D11, and
   // D12).
   checkRule: RuleCheck;
+  // NEW IN STEP 28b: each company's KSoR, which DSoR's own work asks which version of a policy is
+  // in force (step 28b's README, decisions D1 and D2).
+  ksors: Ksors;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -194,6 +198,10 @@ export function buildRegistry(
   // command makes is the change that line ⑩ reads, as with the brakes (step 28's README, decisions
   // D5 and D18).
   controls: ControlStore = NO_CONTROLS,
+  // NEW IN STEP 28b: each company's KSoR. None, unless the caller gives them, so no policy is
+  // known: no version that cites one can be switched on, and the sweep hears no answer (step 28b's
+  // README, decision D1).
+  ksors: Ksors = NO_KSORS,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -374,6 +382,7 @@ export function buildRegistry(
     moneyPolicies,
     controls,
     checkRule,
+    ksors,
   };
 }
 

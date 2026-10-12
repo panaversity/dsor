@@ -1,10 +1,17 @@
 // NEW IN STEP 28b: where a rule came from, DSoR's side. Each rule cites the version of a policy it
 // was built from, with the policy's fingerprint. DSoR asks the company's KSoR which version is in
-// force: a switch-on asks, and so does the sweep (DSOR-CTL-03a in specs/dsor/02-security.md,
-// section 17.4; step 28b's README, decisions D2 and D3). Never the rule's word, never the
-// agent's. KSoR's side is in ksor.ts.
+// force: a switch-on asks, and so does the sweep, rule.check_authority, DSoR's own command, which
+// marks each rule whose policy moved stale_authority and leaves its owner a notice (DSOR-CTL-03a in
+// specs/dsor/02-security.md, section 17.4; step 28b's README, decisions D2 to D6). Never the
+// rule's word, never the agent's. KSoR's side is in ksor.ts. Only dsor-scheduler, a system login
+// holding rule:check, may sweep, which line ⑤ checks. A deployment's timer would call it at least
+// once a day, the 24 hours of §44. This step builds no timer, as step 25c built none.
+import { Refusal } from "./envelope.ts";
 import type { Ksors } from "./ksor.ts";
 import { preview } from "./registry.ts";
+import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
+import { samePolicy, type InForce, type PolicyInForce, type RuleBy } from "./rulebook.ts";
+import { parseUri } from "./uri.ts";
 
 /** What DSoR heard about one policy: the version in force and its fingerprint, or why it heard nothing it can use. */
 export type Heard =
@@ -82,4 +89,83 @@ export function policyLook(ksors: Ksors, tenant: string): PolicyLook {
     if (listed !== true || !counted || !printed) return { answered: false, why: cannotUse };
     return { answered: true, version, content_hash };
   };
+}
+
+/**
+ * Line ⑨: the company the sweep names must be the call's own, as the expiry sweep's must. The check
+ * of the URIs refused another company's URI before line ⑥ (step 25c's README, decision D11).
+ */
+async function mayCheck(input: unknown, look: OwnLook): Promise<void> {
+  const { id } = parseUri((input as { company: string }).company);
+  if (id !== look.tenant) {
+    throw new Refusal("RESOURCE_NOT_FOUND", `no company ${preview(id)} here`, "internal");
+  }
+}
+
+/** The policy a version cites in KSoR, and its version and fingerprint, or none for a rule that cites local. */
+function citationOf(version: InForce): { uri: string; cited: PolicyInForce } | undefined {
+  const { system, uri, version: number, content_hash } = version.authority;
+  // A rule that cites local has no governed source, so nothing can supersede it (DSOR-CTL-01b).
+  if (system !== "ksor" || typeof uri !== "string") return undefined;
+  if (typeof number !== "number" || typeof content_hash !== "string") return undefined;
+  return { uri, cited: { version: number, content_hash } };
+}
+
+/** The words of the notice to a version's owner: what changed, what DSoR did, and what to do. */
+function noticeOf(version: InForce, uri: string, cited: number, now: PolicyInForce): string {
+  const name = `Version ${version.version} of rule ${version.id}`;
+  const where = JSON.stringify(uri);
+  const todo = `Draft a version that cites version ${now.version}, and switch it on.`;
+  if (version.stale !== undefined) {
+    const moved = `KSoR now has version ${now.version} of ${where} in force`;
+    return `${name} is stale_authority, and its policy moved again: ${moved}. ${todo}`;
+  }
+  const grace = `for its grace of ${version.stale_grace} as its on_stale says, ${version.on_stale}`;
+  return (
+    `${name} cites version ${cited} of ${where}, and KSoR now has version ${now.version} in ` +
+    `force. DSoR marked it stale_authority. It still applies: ${grace}, and after that, on a ` +
+    `high-risk operation, it asks a person at least. ${todo}`
+  );
+}
+
+/**
+ * The sweep's work, after line ⑩, inside the claim's transaction: every version in force that
+ * cites a policy in KSoR, KSoR asked once for each policy, and each version whose policy moved
+ * marked, under its rule's lock, with its record and a notice to its owner. A policy KSoR gave no
+ * usable answer about marks nothing: DSoR marks only what it knows (step 28b's README, decisions
+ * D3 to D6). It answers with counts, as the expiry sweep does.
+ */
+async function checkAuthority(_input: unknown, work: OwnStores): Promise<unknown> {
+  const { tenant, caller, stores, correlation, now, policies } = work;
+  const cited = (await stores.controls.inForce(tenant)).flatMap((version) => {
+    const citation = citationOf(version);
+    return citation === undefined ? [] : [{ version, ...citation }];
+  });
+  const heard = new Map<string, Heard>();
+  for (const { uri } of cited) {
+    if (!heard.has(uri)) heard.set(uri, await policies(uri));
+  }
+  // The record names the sweep's caller, as the expiry sweep's records do (step 25c's README,
+  // decision D4).
+  const words = "the policy it cites moved in KSoR";
+  const by: RuleBy = { person: caller.id, as_of: now, words, correlation };
+  let marked = 0;
+  for (const { version, uri, cited: citation } of cited) {
+    const answer = heard.get(uri);
+    if (answer === undefined || !answer.answered) continue;
+    const inForce = { version: answer.version, content_hash: answer.content_hash };
+    // What DSoR last knew to be in force: the version the rule cites, or a stale one's mark.
+    if (samePolicy(version.stale?.in_force ?? citation, inForce)) continue;
+    await stores.controls.hold(tenant, version.id);
+    const notice = noticeOf(version, uri, citation.version, inForce);
+    const { id, version: number, stale } = version;
+    if (await stores.controls.mark(tenant, id, number, stale, inForce, by, notice)) marked += 1;
+  }
+  const unanswered = [...heard.values()].filter((h) => !h.answered).length;
+  return { tenant_id: tenant, asked: heard.size, unanswered, marked };
+}
+
+/** DSoR's own work for the sweep. */
+export function driftWorkFor(): Record<string, OwnWork> {
+  return { "rule.check_authority": { check: mayCheck, change: checkAuthority } };
 }

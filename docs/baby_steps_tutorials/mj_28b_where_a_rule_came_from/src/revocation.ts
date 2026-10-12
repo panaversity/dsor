@@ -9,6 +9,7 @@
 // in the same transaction (DSOR-DEL-04a, DSOR-DEL-04c, and DSOR-DEL-06d in
 // specs/dsor/02-security.md, section 13).
 import { brakeWorkFor, type BrakeStore } from "./brakes.ts";
+import { driftWorkFor, type PolicyLook } from "./drift.ts";
 import { expiryWorkFor } from "./expiry.ts";
 import type { WorkStores } from "./claims.ts";
 import { Refusal, type Correlation } from "./envelope.ts";
@@ -51,6 +52,9 @@ export type OwnStores = {
   correlation: Correlation;
   // The time of the call, which a record of a person's change names.
   now: string;
+  // NEW IN STEP 28b: and DSoR's question to the company's KSoR, for the sweep (step 28b's README,
+  // decision D2).
+  policies: PolicyLook;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */
@@ -67,12 +71,15 @@ export function ownWorkFor(): Record<string, OwnWork> {
   // And the sweep, which expires READY proposals (step 25c's README, decision L3).
   // And rate.load, which writes a sheet of rates (step 26's README, decision L2).
   // And the commands of a rule's life (step 28's README, decision D7).
+  // NEW IN STEP 28b: and the sweep that checks where each rule came from (step 28b's README,
+  // decision D4).
   return {
     "delegation.revoke": { check: mayTearUp, change: tearUp },
     ...brakeWorkFor(),
     ...expiryWorkFor(),
     ...rateWorkFor(),
     ...ruleWorkFor(),
+    ...driftWorkFor(),
   };
 }
 

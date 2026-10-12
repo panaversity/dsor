@@ -10,6 +10,8 @@ import { describe, expect, it } from "vitest";
 import { readRoleSettings } from "../src/authority.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims, type WorkStores } from "../src/claims.ts";
+import { policyLook } from "../src/drift.ts";
+import { NO_KSORS } from "../src/ksor.ts";
 import type { Answer } from "../src/envelope.ts";
 import { invoices, memoryInvoices } from "../src/invoice.ts";
 import { checkLifetimes, readLifetimes, type LifetimesSource } from "../src/lifetimes.ts";
@@ -377,6 +379,8 @@ describe("C4: the sweep", () => {
       stores,
       correlation: { request_id: "req_race" },
       now: new Date(T0).toISOString(),
+      // The expiry sweep asks no KSoR (step 28b's README, decision D2).
+      policies: policyLook(NO_KSORS, "org_456"),
     };
     const expire = ownWorkFor()["proposal.expire_due"]!;
     expect(await expire.change(companyOf(SCHEDULER), work)).toStrictEqual({

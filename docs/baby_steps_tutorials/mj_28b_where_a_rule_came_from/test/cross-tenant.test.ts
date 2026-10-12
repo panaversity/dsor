@@ -162,7 +162,7 @@ function pairDiffers(operation: string, who: string, home: string): string {
 }
 
 describe("C1: every operation in the registry is attacked with foreign URIs, and refused", () => {
-  it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 138 swaps, no findings", async () => {
+  it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 144 swaps, no findings", async () => {
     const report = await crossTenantSuite(registry, createLog(), examples);
     expect(report.findings).toStrictEqual([]);
     // Typed out, and the registry's own list: nothing skipped. invoice.list
@@ -181,6 +181,8 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
       "rate.load",
       // And step 28's four commands of a rule's life.
       "rule.activate",
+      // And step 28b's sweep.
+      "rule.check_authority",
       "rule.draft",
       "rule.retire",
       "rule.suspend",
@@ -202,15 +204,18 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     // admin_100, and 1 in org_789, admin_700. And admin_700, org_789's tenant administrator, adds
     // 1 caller in org_789 to the tear-up and to each brake command (step 28's README, decision
     // D19): 93 + (4 × (2 + 1) + 1 + 1 + 1) × 3 = 138, of which org_789's 39 + 7 × 3 = 60.
-    expect(report.attacks).toHaveLength(138);
-    expect(new Set(report.attacks.map((attack) => attack.request_id)).size).toBe(138);
-    expect(report.attacks.filter((attack) => attack.home === "org_789")).toHaveLength(60);
+    // Changed in step 28b: the sweep rule.check_authority adds 1 caller in each company,
+    // dsor-scheduler, and its example names its company's URI (step 28b's README, decision D4):
+    // 138 + (1 + 1) × 3 = 144, of which org_789's 60 + 3 = 63.
+    expect(report.attacks).toHaveLength(144);
+    expect(new Set(report.attacks.map((attack) => attack.request_id)).size).toBe(144);
+    expect(report.attacks.filter((attack) => attack.home === "org_789")).toHaveLength(63);
   });
 
   // As if step 10's URI check were gone (break W1): the fake answers every request with
   // the invoice of the company the call works in. Found by the review: with the suite's
   // call to its judge deleted, every test stayed green.
-  it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 138 attacks", async () => {
+  it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 144 attacks", async () => {
     // A list has no URI to check, so its calls go to DSoR itself.
     const noUriCheck: Send = async (reg, log, request, name, input) =>
       name === "invoice.list"
@@ -223,7 +228,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
             correlation: { request_id: `req_${randomUUID()}` },
           };
     const report = await crossTenantSuite(registry, createLog(), examples, noUriCheck);
-    expect(report.findings).toHaveLength(138);
+    expect(report.findings).toHaveLength(144);
     for (const finding of report.findings) {
       expect(finding).toMatch(/: answered with data, not TENANT_MISMATCH$/);
     }
@@ -396,7 +401,9 @@ describe("C2: the three foreign answers are the same, apart from the request id"
     // And rate.load's 1 + 1, dsor-rates in each company.
     // Changed in step 28: each rule command's 2 + 1, and admin_700 in org_789 for the tear-up and
     // each brake command, 1 + 1 + 1 (step 28's README, decision D19).
-    expect(report.findings).toHaveLength(46);
+    // Changed in step 28b: and the sweep rule.check_authority's 1 + 1, dsor-scheduler in each
+    // company (step 28b's README, decision D4).
+    expect(report.findings).toHaveLength(48);
     for (const finding of report.findings) expect(finding).toMatch(/: the three answers differ$/);
   });
 
@@ -605,6 +612,8 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
         "rate.load",
         // And step 28's four commands of a rule's life.
         "rule.activate",
+        // And step 28b's sweep.
+        "rule.check_authority",
         "rule.draft",
         "rule.retire",
         "rule.suspend",
@@ -635,6 +644,8 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       "rate.load",
       // And step 28's four commands of a rule's life.
       "rule.activate",
+      // And step 28b's sweep.
+      "rule.check_authority",
       "rule.draft",
       "rule.retire",
       "rule.suspend",
@@ -680,7 +691,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     ["VALIDATION_FAILED", "has an input that is not valid"],
     ["RESOURCE_NOT_FOUND", "names nothing"],
   ])(
-    "DSOR-TEN-02b: handed a fake DSoR that refuses every foreign request with %s, the suite names each of the 138 attacks",
+    "DSOR-TEN-02b: handed a fake DSoR that refuses every foreign request with %s, the suite names each of the 144 attacks",
     async (code, why) => {
       const wrongReason: Send = async (reg, log, request, name, input) => {
         const answer = await call(reg, log, request, name, input);
@@ -688,7 +699,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
         return { ...answer, code, message: `"${name}" ${why}` };
       };
       const report = await crossTenantSuite(registry, createLog(), examples, wrongReason);
-      expect(report.findings).toHaveLength(138);
+      expect(report.findings).toHaveLength(144);
       const said = `answered ${code}, not TENANT_MISMATCH`;
       for (const finding of report.findings) expect(finding.endsWith(`: ${said}`)).toBe(true);
       const first =
@@ -847,7 +858,7 @@ describe("C6: every attack leaves its record in the caller's company", () => {
   it("DSOR-EXE-02: the suite's log holds one record for each attack, in the company it worked in", async () => {
     const fresh = createLog();
     const report = await crossTenantSuite(registry, fresh, examples);
-    expect(report.attacks).toHaveLength(138);
+    expect(report.attacks).toHaveLength(144);
     const records = await fresh.records();
     for (const { home, operation, request_id } of report.attacks) {
       const its = records.filter((record) => record.correlation.request_id === request_id);

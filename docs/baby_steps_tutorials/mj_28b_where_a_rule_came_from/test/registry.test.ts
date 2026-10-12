@@ -7,6 +7,7 @@ import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
 import { NO_PAYMENTS } from "../src/payment.ts";
 import { NO_SLIPS } from "../src/slips.ts";
 import { NO_BRAKES } from "../src/brakes.ts";
+import { NO_KSORS } from "../src/ksor.ts";
 import { NO_CONTROLS } from "../src/rulebook.ts";
 import { createRoleSource } from "../src/authority.ts";
 import { NO_DIRECTORIES } from "../src/directory.ts";
@@ -144,6 +145,8 @@ describe("C1: nothing can be called without a contract", () => {
       // An empty store, and a check that finds nothing.
       controls: NO_CONTROLS,
       checkRule: () => [],
+      // And no KSoR, since this registry asks about no policy (step 28b's README, decision D1).
+      ksors: NO_KSORS,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
@@ -229,7 +232,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     // And the sweep, the ninth (step 25c's README, decision L3).
     // And rate.load, the tenth (step 26's README, decision L2).
     // And the four commands of a rule's life (step 28's README, decision D7).
-    expect(shipped).toHaveLength(14);
+    // And the sweep of where each rule came from (step 28b's README, decision D4).
+    expect(shipped).toHaveLength(15);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);
