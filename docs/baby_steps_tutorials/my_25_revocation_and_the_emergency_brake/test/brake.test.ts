@@ -74,6 +74,24 @@ describe("the brake, in DSoR's own store", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("DSOR-OPS-01a: two people pulling the same brake at once write one record, and one is told it is on", async () => {
+    // Decision 156: the test above pulls one after the other. Sent together, a pull that looked for
+    // a brake first and then wrote one would let both look before either wrote. PGlite has one
+    // connection, so these still reach it in turn; brake.db.test.ts races twenty on a real pool.
+    const pulls = await Promise.all([
+      pullTheBrake("org_456", AGENT, "user_123", "paying the wrong invoices"),
+      pullTheBrake("org_456", AGENT, "cfo_100", "paying the wrong invoices"),
+    ]);
+
+    expect(pulls.map((p) => p.kind).sort()).toStrictEqual(["already", "pulled"]);
+
+    const { rows } = await theDatabase("org_456").query(
+      "SELECT id FROM dsor.agent_controls WHERE tenant = 'org_456' AND lifted_at IS NULL",
+    );
+
+    expect(rows).toHaveLength(1);
+  });
+
   it("DSOR-OPS-01a: a lifted brake stops nothing, and stays on the record with who lifted it", async () => {
     await pullTheBrake("org_456", AGENT, "user_123", "checking");
 
