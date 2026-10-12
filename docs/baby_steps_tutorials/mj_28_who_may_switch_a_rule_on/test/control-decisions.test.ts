@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { readRoleSettings } from "../src/authority.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
-import { NO_CONTROLS, readControls, type ControlsSource } from "../src/controls.ts";
+import { readControls, type ControlsSource } from "../src/controls.ts";
 import type { Answer } from "../src/envelope.ts";
 import { invoices, memoryInvoices, type Invoice } from "../src/invoice.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
@@ -24,6 +24,7 @@ import { memoryRates, type MemoryRates, type RateStore } from "../src/rates.ts";
 import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
+import { memoryControls } from "../src/rulebook.ts";
 import { memorySlips } from "../src/slips.ts";
 import {
   AGENT,
@@ -77,6 +78,8 @@ function world(
   };
   const slips = memorySlips([{ ...DEL_100, constraints: limits }, DEL_101, DEL_102]);
   const brakes = memoryBrakes();
+  // Changed in step 28: the file fills a store in memory, which the registry and the claims share.
+  const rules = memoryControls(controls);
   const registry = buildRegistry(
     shipped,
     handlersFor(),
@@ -88,12 +91,12 @@ function world(
     slips,
     storyDirectories(),
     readRoleSettings(),
-    memoryClaims(store, payments, proposals, reservations, slips, brakes, around(rates)),
+    memoryClaims(store, payments, proposals, reservations, slips, brakes, around(rates), rules),
     ownWorkFor(),
     brakes,
     readLifetimes(),
     readMoneyPolicies(),
-    controls,
+    rules,
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -605,7 +608,8 @@ describe("D11: a payment that waits too long expires", () => {
 
 describe("the earlier steps' worlds, with no controls", () => {
   it("Step 27: a world that gives no controls pays INV-1008 as step 26 did, and its record names none (step 27's README, decision D16)", async () => {
-    const w = await withTuesday(NO_CONTROLS);
+    // Changed in step 28: no controls is an empty file, which fills an empty store.
+    const w = await withTuesday({ file: "controls.json", text: "{}" });
     const paid = await draft(w, "INV-1008");
     expect(paid).toMatchObject({ outcome: "COMMITTED" });
     expect(await recordOf(w, paid)).not.toHaveProperty("controls");

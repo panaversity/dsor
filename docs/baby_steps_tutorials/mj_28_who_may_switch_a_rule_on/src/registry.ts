@@ -23,7 +23,8 @@ import {
 import type { Company } from "./company.ts";
 import { NO_DIRECTORIES, type Directories } from "./directory.ts";
 import { checkCondition } from "./cel.ts";
-import { checkControls, readControls, type ControlBook, type ControlsSource } from "./controls.ts";
+import { ruleName, ruleProblems } from "./controls.ts";
+import { NO_CONTROLS, type ControlStore, type RuleCheck } from "./rulebook.ts";
 import { checkInputs, readInputs, type InputChecks, type InputSource } from "./inputs.ts";
 import { NO_STORE, type InvoiceStore } from "./invoice.ts";
 import { keysWrittenTwice } from "./json.ts";
@@ -100,7 +101,12 @@ export type Registry = {
   moneyPolicies: MoneyPolicies;
   // Each company's controls that line ⑩ evaluates, checked and tested at
   // start-up (DSOR-CTL-01a, DSOR-CTL-02c; step 27's README, decisions D1 to D3).
-  controls: ControlBook;
+  // NEW IN STEP 28: in a store, which line ⑩ reads at every call, and DSoR's own work changes
+  // (step 28's README, decisions D2 and D5).
+  controls: ControlStore;
+  // NEW IN STEP 28: the check of one control, with this registry's contracts and money policies,
+  // which start-up, rule.draft, and rule.activate run (decisions D6, D11, and D12).
+  checkRule: RuleCheck;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -181,10 +187,12 @@ export function buildRegistry(
   // Each company's money policy. This step's own file, unless the caller gives
   // another (step 26's README, decision L3).
   policySource: PoliciesSource = readMoneyPolicies(),
-  // Each company's controls. This step's own file, unless the caller gives another,
-  // such as NO_CONTROLS for a test of an earlier step's idea (step 27's README, decisions D1 and
-  // D16).
-  controlSource: ControlsSource = readControls(),
+  // Each company's controls.
+  // NEW IN STEP 28: a store of them. None, unless the caller gives one, so a world of an earlier
+  // step's idea has no rule. The claims above must be given the same store, so that a change one
+  // command makes is the change that line ⑩ reads, as with the brakes (step 28's README, decisions
+  // D5 and D18).
+  controls: ControlStore = NO_CONTROLS,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -298,13 +306,15 @@ export function buildRegistry(
   // The operation's risk level, which a condition reads as `risk` (Appendix B).
   const riskOf = (operation: string): string =>
     String((contracts.get(operation)?.["risk"] as { level?: unknown } | undefined)?.level ?? "");
-  const { controls, problems: controlProblems } = checkControls(
-    controlSource,
-    governable,
-    riskOf,
-    moneyPolicies,
-  );
-  problems.push(...controlProblems);
+  // NEW IN STEP 28: the check of one control, which no longer runs here: a store is read at
+  //   start-up, and a read of the database waits (step 28's README, decision D6).
+  const checkRule: RuleCheck = (tenant, raw, tests, place = 1) => {
+    const policy = moneyPolicies.get(tenant);
+    if (policy === undefined)
+      return [`${tenant} has controls, and no money policy to count them in`];
+    const context = { governable, riskOf, policy };
+    return ruleProblems(ruleName(tenant, raw, place), raw, tenant, context, tests);
+  };
   // And each contract's predicates are CEL in Appendix B's environment, as a
   // control's condition is (DSOR-CTL-05). No step evaluates one before step 32's preconditions, so
   // an operation that runs code may list none: a predicate that is never evaluated would let
@@ -362,6 +372,7 @@ export function buildRegistry(
     lifetimes,
     moneyPolicies,
     controls,
+    checkRule,
   };
 }
 

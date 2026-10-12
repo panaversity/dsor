@@ -75,7 +75,11 @@ import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 // The stories of the earlier steps keep their idea, with no rule of the company in
 // their way: each of their worlds gives no controls. Step 27's own story gives the shipped file
 // (step 27's README, decision D16).
-import { NO_CONTROLS, readControls } from "./controls.ts";
+import { readControls } from "./controls.ts";
+// NEW IN STEP 28: the rules live in a store. The earlier steps' worlds give an empty one, and the
+// story of the company's rule gives a store in memory, filled from controls.json (step 28's README,
+// decisions D3 and D18).
+import { checkRules, memoryControls, NO_CONTROLS, type MemoryControls } from "./rulebook.ts";
 import type { RequestEnvelope } from "./request.ts";
 import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { memorySlips } from "./slips.ts";
@@ -124,6 +128,8 @@ const directories = new Map([
 ]);
 let registry: Registry;
 let store: StoreMap;
+// NEW IN STEP 28: the store of the company's rules for the program's own story.
+let storyRules: MemoryControls;
 try {
   registry = buildRegistry(
     readContracts(CONTRACTS),
@@ -159,24 +165,17 @@ try {
   //   worlds of the stories give no controls, so the earlier steps' stories keep their idea, and
   //   this check stands on its own: the files, and DSoR's own work, with no store (step 27's
   //   README, decisions D2 and D16).
-  buildRegistry(
-    readContracts(CONTRACTS),
-    handlersFor(),
-    readRoles(ROLES),
-    readInputs(INPUTS),
-    readClassifications(CLASSIFICATIONS),
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    ownWorkFor(),
-    undefined,
-    undefined,
-    undefined,
-    readControls(CONTROLS),
+  // NEW IN STEP 28: controls.json fills the story's store, and start-up checks every version in
+  //   it, with the contracts and the money policies the registry checked. A file that is not one
+  //   stops start-up as it is read (step 28's README, decisions D3 and D6).
+  storyRules = memoryControls(readControls(CONTROLS));
+  const ruleProblems = await checkRules(
+    { ...registry, controls: storyRules },
+    storyRules.companies(),
   );
+  if (ruleProblems.length > 0) {
+    throw new Error(`the rules refused to start:\n  ${ruleProblems.join("\n  ")}`);
+  }
   // A broken map stops start-up here, with the other files, before the
   // program logs in (step 16's README, C7).
   const { map, problems } = checkStore(readStore(STORE));
@@ -1111,6 +1110,8 @@ const ruleWorld = buildRegistry(
     ruleSlips,
     undefined,
     ruleRates,
+    // NEW IN STEP 28: and the same store of rules as the registry below.
+    storyRules,
   ),
   ownWorkFor(),
   undefined,
@@ -1118,7 +1119,8 @@ const ruleWorld = buildRegistry(
   undefined,
   // The controls.json start-up checked, the first world of the program that has the company's
   // rules.
-  readControls(CONTROLS),
+  // NEW IN STEP 28: in the store that controls.json filled, which start-up checked.
+  storyRules,
 );
 const ruleLog = createLog();
 const ruleCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>

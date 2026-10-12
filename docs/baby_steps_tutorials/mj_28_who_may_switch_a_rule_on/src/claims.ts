@@ -19,6 +19,7 @@ import {
 } from "./proposals.ts";
 import type { Contract } from "./registry.ts";
 import { NO_RATES, type RateStore } from "./rates.ts";
+import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 
 /**
@@ -47,6 +48,9 @@ export type WorkStores = {
   // And the company's sheets of rates, so line ⑩ converts inside the claim's
   // transaction, and rate.load writes a sheet there (step 26's README, decisions L1 and L2).
   rates: RateStore;
+  // NEW IN STEP 28: and the company's rules, so DSoR's own work changes a rule inside the claim's
+  // transaction, with its record (step 28's README, decisions D14 and D15).
+  controls: ControlStore;
 };
 
 /** How the code's work ended: with its value, or with the refusal it gave. */
@@ -234,6 +238,9 @@ export function memoryClaims(
   // And these sheets of rates. None, unless the test gives them: then every amount
   // in another currency than its limit is refused (DSOR-MON-04; step 26's README, claim C2).
   rates: RateStore = NO_RATES,
+  // NEW IN STEP 28: and the rules that line ⑩ reads, so the claim's work changes them. None,
+  // unless the test gives them (step 28's README, decision D5).
+  controls: ControlStore = NO_CONTROLS,
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
@@ -264,6 +271,7 @@ export function memoryClaims(
         slips,
         brakes,
         rates,
+        controls,
       };
       const outcome = Promise.resolve().then(async (): Promise<Kept> => {
         const opened = steps === undefined ? undefined : await steps.open(stores);

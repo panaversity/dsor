@@ -583,6 +583,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         moneyPolicies: registry.moneyPolicies,
         // And the shared registry's controls.
         controls: registry.controls,
+        // NEW IN STEP 28: and its check of one control.
+        checkRule: registry.checkRule,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

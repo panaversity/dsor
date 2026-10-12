@@ -14,7 +14,7 @@ import {
   requireEnv,
 } from "../src/postgres.ts";
 import { readRoleSettings } from "../src/authority.ts";
-import { NO_CONTROLS, type ControlsSource } from "../src/controls.ts";
+import { NO_CONTROLS, type ControlStore } from "../src/rulebook.ts";
 import { readLifetimes, type LifetimesSource } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry, type Handler, type Registry } from "../src/registry.ts";
@@ -54,7 +54,9 @@ export function dbRegistry(
   // And the controls: none, unless the test gives them, so the earlier steps'
   // database tests keep their idea. Step 27's own give the shipped file (step 27's README, decision
   // D16).
-  controls: ControlsSource = NO_CONTROLS,
+  // NEW IN STEP 28: a store of them. Step 28's own give dsor.controls (step 28's README, decision
+  // D18).
+  controls: ControlStore = NO_CONTROLS,
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(

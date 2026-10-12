@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { payloadHash } from "../src/canonical.ts";
 import { readControls, type ControlsSource } from "../src/controls.ts";
+import { memoryControls } from "../src/rulebook.ts";
 import type { Answer } from "../src/envelope.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -34,6 +35,8 @@ const proposals = createDbProposals(pool);
 const reservations = createDbReservations(pool);
 
 /** A registry on the database with these controls. */
+// Changed in step 28: the file fills a store in memory, so these tests keep step 27's version 8
+// whatever step 28's own tests do to dsor.controls (step 28's README, decision D18).
 function withControls(controls: ControlsSource): Registry {
   return dbRegistry(
     pool,
@@ -41,7 +44,7 @@ function withControls(controls: ControlsSource): Registry {
     handlersFor(),
     ownWorkFor(),
     readLifetimes(),
-    controls,
+    memoryControls(controls),
   );
 }
 // The shipped file: org_456's high-value-payment v8 (step 27's README, decision D16).
@@ -313,7 +316,7 @@ describe("D11: the sweep, on the database", () => {
     handlersFor(),
     ownWorkFor(),
     { file: "ready-lifetimes.json", text: '{ "org_456": "PT1S", "org_789": "PT1S" }' },
-    readControls(),
+    memoryControls(readControls()),
   );
   const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
   const pause = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));

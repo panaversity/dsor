@@ -1,9 +1,12 @@
 // Each company's controls: a business rule written so that a program can check it
 // (DSOR-CTL-01a, DSOR-CTL-02c, and DSOR-CTL-05 in specs/dsor/02-security.md, section 17; step 27's
 // README, decisions D1 to D3, D7, D8, and D18). A control has a condition in CEL, an effect, a
-// human owner, the policy it came from, and its own tests. controls.json gives each company its
-// list. Start-up checks each control against control.schema.json, checks its condition and what it
-// governs, and runs its tests before line ⑩ may evaluate it. One that fails stops start-up.
+// human owner, the policy it came from, and its own tests. One check, ruleProblems, checks a
+// control against control.schema.json, checks its condition and what it governs, and runs its
+// tests before line ⑩ may evaluate it.
+// NEW IN STEP 28: the controls live in DSoR's own store (rulebook.ts). controls.json fills a store
+// in memory, and start-up runs the check on every version in a store. rule.draft and rule.activate
+// run it too (step 28's README, decisions D3, D6, D11, and D12).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -11,7 +14,7 @@ import { checkCondition, evaluateCondition, NO_RATE, tenantOf, type Facts } from
 import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
-import type { MoneyPolicies, MoneyPolicy } from "./policies.ts";
+import type { MoneyPolicy } from "./policies.ts";
 import { isTenantId } from "./uri.ts";
 
 /** What a control can answer: its effect, or ALLOW (DSOR-AUT-02a). */
@@ -27,6 +30,7 @@ type ControlTest = {
 };
 
 /** One control, as control.schema.json shapes it, once start-up has checked it. */
+// NEW IN STEP 28: with every field the schema names, so a store keeps a version whole.
 export type Control = {
   id: string;
   version: number;
@@ -36,11 +40,17 @@ export type Control = {
   effect: { deny: { reason: string } } | { require_approval: { role: string; quorum: number } };
   authority: Record<string, unknown>;
   owner: string;
+  // Who wrote its condition. DSoR sets it to the person who drafts a version.
+  compiled_by?: string;
+  // The human who reviewed it. DSoR sets it to the owner who switches the version on.
+  reviewed_by?: string;
+  on_stale: string;
+  stale_grace: string;
   tests: ControlTest[];
+  // When it took effect. DSoR sets it when the version is switched on.
+  effective_from?: string;
+  extensions?: Record<string, unknown>;
 };
-
-/** Each company's controls that line ⑩ evaluates, by company. */
-export type ControlBook = ReadonlyMap<string, readonly Control[]>;
 
 /** The controls file, as it was read from disk: its name and its text. */
 export type ControlsSource = { file: string; text: string };
@@ -52,10 +62,6 @@ export function readControls(path: string = SHIPPED): ControlsSource {
   return { file: "controls.json", text: readFileSync(path, "utf8") };
 }
 
-// A world that tests another idea, with no rule of the company in its way (decision D16).
-/** No controls at all. */
-export const NO_CONTROLS: ControlsSource = Object.freeze({ file: "controls.json", text: "{}" });
-
 /** Why a control may not govern this operation, or none (decision D18). */
 export type Governable = (operation: string) => string | undefined;
 
@@ -66,8 +72,9 @@ function loadSchema(file: string): object {
 }
 // As registry.ts builds its checker: name every problem, and never change what is checked.
 // validateFormats is off, as in slips.ts, because ajv knows no formats without a package of its
-// own, and warns at start-up. So effective_from's "date-time" is not checked here. Nothing in this
-// step reads it: step 28's lifecycle does.
+// own, and warns at start-up. So effective_from's "date-time" is not checked here.
+// NEW IN STEP 28: DSoR writes it itself, from its own clock, when a version is switched on (step
+// 28's README, decision D12).
 const ajv = new Ajv2020({
   allErrors: true,
   useDefaults: false,
@@ -80,14 +87,14 @@ ajv.addSchema(loadSchema("common.schema.json"));
 ajv.addSchema(loadSchema("control.schema.json"));
 const validateControl = ajv.compile({ $ref: "urn:dsor:schema:1.3:control" });
 
-// Line ⑩ evaluates an active control. A draft, a control in review, a suspended one, and a retired
-// one wait (decision D3).
-const EVALUATED = new Set(["active"]);
-// A stale control behaves per its on_stale while its stale_grace lasts (§17.4), which step 28
+// A stale control behaves per its on_stale while its stale_grace lasts (§17.4), which step 28b
 // builds. Until then start-up refuses one: it is never skipped, and never evaluated as if it were
 // active (DSOR-CTL-03b). Found by step 27's review, finding M2: it was evaluated as active, so a
 // stale control whose on_stale says deny allowed a payment.
 const STALE = "stale_authority";
+// NEW IN STEP 28: nor is a control in review built. The owner's switch-on is the review (step 28's
+// README, decision D17).
+const IN_REVIEW = "in_review";
 // The effects this step builds (decision D8).
 const BUILT = new Set(["deny", "require_approval"]);
 
@@ -227,25 +234,26 @@ function failedTests(
   return failed;
 }
 
-/** Checks each company's controls, runs the tests of each one line ⑩ evaluates, and names every problem. */
-export function checkControls(
-  source: ControlsSource,
-  governable: Governable,
-  riskOf: (operation: string) => string,
-  policies: MoneyPolicies,
-): { controls: ControlBook; problems: string[] } {
+// NEW IN STEP 28: step 27's check of the file, in two parts. The file's own shape is read here,
+// when a store in memory is filled from it. Each control is checked by ruleProblems below, at
+// start-up, for every version in a store (step 28's README, decisions D3 and D6).
+/** Each company's list of controls in a controls file, unchecked, and every problem with the file itself. */
+export function readRules(source: ControlsSource): {
+  rules: Map<string, unknown[]>;
+  problems: string[];
+} {
   const { file, text } = source;
-  const book = new Map<string, Control[]>();
+  const rules = new Map<string, unknown[]>();
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
-    return { controls: book, problems: [`${file}: not valid JSON`] };
+    return { rules, problems: [`${file}: not valid JSON`] };
   }
   // A list and null are objects in JavaScript too. Neither one names a company.
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     const problem = `${file}: must be an object that gives each company its list of controls`;
-    return { controls: book, problems: [problem] };
+    return { rules, problems: [problem] };
   }
   // JSON.parse keeps the last of two lines for one key, and says nothing.
   const problems = keysWrittenTwice(text).map(
@@ -256,71 +264,69 @@ export function checkControls(
       problems.push(`${file}: ${JSON.stringify(tenant)} is not a company id like org_456`);
       continue;
     }
-    // A test's rates count in the company's control currency, so a company needs its policy.
-    const policy = policies.get(tenant);
-    if (policy === undefined) {
-      problems.push(`${file}: ${tenant} has controls, and no money policy to count them in`);
-      continue;
-    }
     if (!Array.isArray(list)) {
       problems.push(`${file}: ${tenant} must give a list of controls`);
       continue;
     }
-    const kept: Control[] = [];
-    const ids = new Set<string>();
-    list.forEach((raw: unknown, index) => {
-      const id = (raw as { id?: unknown } | null)?.id;
-      const name = `${tenant}'s control ${typeof id === "string" ? id : String(index + 1)}`;
-      // The specification's shape first (DSOR-CTL-01a).
-      if (!validateControl(raw)) {
-        for (const error of validateControl.errors ?? []) {
-          problems.push(`${file}: ${name}${error.instancePath} ${error.message ?? "is wrong"}`);
-        }
-        return;
-      }
-      const control = raw as Control;
-      if (ids.has(control.id)) {
-        problems.push(`${file}: ${tenant} has two controls with the id ${control.id}`);
-        return;
-      }
-      ids.add(control.id);
-      const effect = Object.keys(control.effect)[0] ?? "";
-      if (!BUILT.has(effect)) {
-        problems.push(`${file}: ${name} has the effect ${effect}, which this step does not build`);
-        return;
-      }
-      if (control.status === STALE) {
-        problems.push(
-          `${file}: ${name} has the status ${STALE}, whose on_stale this step does not build`,
-        );
-        return;
-      }
-      const why = governable(control.operation);
-      if (why !== undefined) {
-        problems.push(`${file}: ${name} governs ${control.operation}, ${why}`);
-        return;
-      }
-      // Every control's condition, a draft's too, so a broken one is found now (DSOR-CTL-05).
-      const broken = checkCondition(control.condition);
-      if (broken !== undefined) {
-        const said = broken.startsWith("it ") ? broken.slice(3) : broken;
-        problems.push(`${file}: ${name}: its condition ${said}`);
-        return;
-      }
-      // Kept in the file, and never evaluated (decision D3).
-      if (!EVALUATED.has(control.status)) return;
-      // Switching a control on runs its tests, and fails when one fails (DSOR-CTL-02c).
-      const risk = riskOf(control.operation);
-      const failed = failedTests(control, tenant, policy, risk);
-      if (failed.length > 0) {
-        for (const test of failed) {
-          problems.push(`${file}: ${name} v${control.version} fails its test ${test}`);
-        }
-        return;
-      }
-      kept.push(structuredClone(control));
-    });
-    book.set(tenant, kept);
+    rules.set(tenant, list as unknown[]);
   }
-  return { controls: book, problems };
+  return { rules, problems };
+}
+
+/** What the check of a control needs to know: what may be governed, an operation's risk, and the company's money policy. */
+export type RuleContext = {
+  governable: Governable;
+  riskOf: (operation: string) => string;
+  policy: MoneyPolicy;
+};
+
+/** The name of a control in a problem: its company, and its id, or its place in a list. */
+export function ruleName(tenant: string, raw: unknown, place: number): string {
+  const id = (raw as { id?: unknown } | null)?.id;
+  return `${tenant}'s control ${typeof id === "string" ? id : String(place)}`;
+}
+
+/**
+ * Every problem with one control of a company, each named, and the problems of its tests when
+ * they are asked for. Empty when the control may be kept, and switched on.
+ */
+export function ruleProblems(
+  name: string,
+  raw: unknown,
+  tenant: string,
+  context: RuleContext,
+  // Whether to run its tests: for an active control at start-up, and at a switch-on.
+  tests: boolean,
+): string[] {
+  // The specification's shape first (DSOR-CTL-01a).
+  if (!validateControl(raw)) {
+    return (validateControl.errors ?? []).map(
+      (error) => `${name}${error.instancePath} ${error.message ?? "is wrong"}`,
+    );
+  }
+  const control = raw as Control;
+  const effect = Object.keys(control.effect)[0] ?? "";
+  if (!BUILT.has(effect)) {
+    return [`${name} has the effect ${effect}, which this step does not build`];
+  }
+  if (control.status === STALE) {
+    return [`${name} has the status ${STALE}, whose on_stale this step does not build`];
+  }
+  if (control.status === IN_REVIEW) {
+    return [`${name} has the status ${IN_REVIEW}, which this step does not build`];
+  }
+  const why = context.governable(control.operation);
+  if (why !== undefined) return [`${name} governs ${control.operation}, ${why}`];
+  // Every control's condition, a draft's too, so a broken one is found now (DSOR-CTL-05).
+  const broken = checkCondition(control.condition);
+  if (broken !== undefined) {
+    const said = broken.startsWith("it ") ? broken.slice(3) : broken;
+    return [`${name}: its condition ${said}`];
+  }
+  if (!tests) return [];
+  // Switching a control on runs its tests, and fails when one fails (DSOR-CTL-02c).
+  const risk = context.riskOf(control.operation);
+  return failedTests(control, tenant, context.policy, risk).map(
+    (test) => `${name} v${control.version} fails its test ${test}`,
+  );
 }

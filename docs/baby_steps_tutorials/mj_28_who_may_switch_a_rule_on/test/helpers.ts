@@ -23,7 +23,7 @@ import {
   type Person,
 } from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
-import { NO_CONTROLS } from "../src/controls.ts";
+import { NO_CONTROLS } from "../src/rulebook.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
 import {
@@ -177,6 +177,8 @@ export function shippedWith(changed: Record<string, unknown>): ContractSource[] 
 // A world of an earlier step keeps its idea, with no rule of the company in its way,
 // and says so in one word: withoutControls in place of buildRegistry. Every setting it is given
 // passes on as it is, and the controls are none (step 27's README, decision D16).
+// NEW IN STEP 28: none is an empty store, which is buildRegistry's own default now. The word stays,
+// so a reader sees the world's idea (step 28's README, decision D18).
 /** buildRegistry with these settings, and no controls. */
 export function withoutControls(...given: Parameters<typeof buildRegistry>): Registry {
   const [sources, code, roles, inputs, labels, invoices, payments, slips, directories] = given;

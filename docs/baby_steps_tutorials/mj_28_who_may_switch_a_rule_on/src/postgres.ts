@@ -30,6 +30,7 @@ import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
 import type { RateSheet } from "./exchange.ts";
 import type { Loaded, Newest, RateStore } from "./rates.ts";
+import { NO_CONTROLS } from "./rulebook.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import {
   checkMove,
@@ -1070,6 +1071,8 @@ function storesIn(client: pg.PoolClient, tenant: string): WorkStores {
     // And the sheets of rates, so line ⑩ converts with the rates of the claim's
     // own transaction, and rate.load writes a sheet there (step 26's README, decisions L1 and L2).
     rates: ratesThrough(run),
+    // NEW IN STEP 28: no rules on the database yet: they arrive with dsor.controls.
+    controls: NO_CONTROLS,
   };
 }
 

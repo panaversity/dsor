@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
+import { NO_CONTROLS } from "./rulebook.ts";
 import { payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
@@ -385,9 +386,9 @@ export async function call(
         //   one sheet. Found by step 27's review, finding H2: each read its own, and a sheet loaded
         //   between the two split the decision.
         const once = readOnce(rates);
-        const book = (registry.controls.get(tenant) ?? []).filter(
-          (control) => control.operation === contract.id,
-        );
+        // NEW IN STEP 28: the active versions in the world's store, read at this call, so a change
+        //   applies to the next call (step 28's README, decision D5).
+        const book = await registry.controls.active(tenant, contract.id);
         let outcomes: ControlOutcome[] = [];
         let answer: ControlAnswer = "ALLOW";
         if (book.length > 0) {
@@ -554,6 +555,8 @@ export async function call(
           brakes: NO_BRAKES,
           // And no sheet of rates to load or read.
           rates: NO_RATES,
+          // NEW IN STEP 28: and no rule to change.
+          controls: NO_CONTROLS,
         });
       } else {
         const { scope, claimed } = await line(7, async () => {

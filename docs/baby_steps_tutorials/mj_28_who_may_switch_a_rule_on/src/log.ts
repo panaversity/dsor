@@ -11,6 +11,7 @@ import type { Conversion, Unconvertible } from "./limits.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
 import type { Mode } from "./request.ts";
+import type { RuleBy } from "./rulebook.ts";
 
 // The audit record's own field names, where this step can fill them honestly (step 08's
 // README, decision 5).
@@ -205,6 +206,61 @@ export function controlOf(
       actor_chain: [],
       subject_authority: { source: "token", as_of: by.as_of },
     },
+  };
+}
+
+// NEW IN STEP 28: the log's fifth kind of record, a change to a company's rule. Each draft and each
+// move of a version leaves one, in the change's own transaction. It names the person, their words,
+// their call, and the rule, in resources, as audit-record.schema.json has it. The record has no
+// field for a version or for the status it left, so they sit under this tutorial's own name, as a
+// proposal's move keeps the state it left (DSOR-SCH-02). Nothing was allowed or denied by the
+// change itself: the command's own decision record says ALLOW (step 28's README, decision D14).
+/** The record of one draft or one move of a version of a company's rule. */
+export type ControlChange = {
+  kind: "control_change";
+  // The status the version moved to: draft for a new version.
+  result: "draft" | "active" | "suspended" | "retired";
+  // The person's own words.
+  reason: string;
+  correlation: Correlation;
+  tenant: string;
+  // The rule's address: dsor://org_456/rule/high-value-payment.
+  resources: [string];
+  // The person, in direct mode, on the login DSoR gave that person.
+  identity: {
+    mode: "direct";
+    subject: string;
+    actor_chain: [];
+    subject_authority: { source: "token"; as_of: string };
+  };
+  // The version, and the status it left. A draft left none.
+  extensions: { [namespace: string]: { version: number; from?: string } };
+};
+
+/** The record of one draft or one move of a version of a company's rule, by a person. */
+export function controlChangeOf(
+  tenant: string,
+  id: string,
+  version: number,
+  from: string | undefined,
+  to: ControlChange["result"],
+  by: RuleBy,
+): ControlChange {
+  return {
+    kind: "control_change",
+    result: to,
+    reason: by.words,
+    // A copy, so a record cannot change with the call's correlation afterwards.
+    correlation: { ...by.correlation },
+    tenant,
+    resources: [`dsor://${tenant}/rule/${id}`],
+    identity: {
+      mode: "direct",
+      subject: by.person,
+      actor_chain: [],
+      subject_authority: { source: "token", as_of: by.as_of },
+    },
+    extensions: { [OURS]: from === undefined ? { version } : { version, from } },
   };
 }
 

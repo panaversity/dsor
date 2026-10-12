@@ -7,6 +7,7 @@ import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
 import { NO_PAYMENTS } from "../src/payment.ts";
 import { NO_SLIPS } from "../src/slips.ts";
 import { NO_BRAKES } from "../src/brakes.ts";
+import { NO_CONTROLS } from "../src/rulebook.ts";
 import { createRoleSource } from "../src/authority.ts";
 import { NO_DIRECTORIES } from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
@@ -140,7 +141,9 @@ describe("C1: nothing can be called without a contract", () => {
       // And no money policy, since this registry converts nothing.
       moneyPolicies: new Map(),
       // And no control, since this registry evaluates none.
-      controls: new Map(),
+      // NEW IN STEP 28: an empty store, and a check that finds nothing.
+      controls: NO_CONTROLS,
+      checkRule: () => [],
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
