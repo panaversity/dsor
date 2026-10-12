@@ -213,6 +213,32 @@ describe("settling a reservation", () => {
     ]);
   });
 
+  it("DSOR-DEL-06d: a reservation booked yesterday and released today gives its amount back to yesterday, not to today", async () => {
+    // Decision 155: the test above books its reservation today, so a release that took the amount
+    // off today's total, and not off the reservation's own day, still passed it. A payment booked
+    // before midnight UTC can end FAILED after it. Given back to today, its amount is room that
+    // today never booked, and the slip can spend past its daily limit. So, as the owner: del_100's
+    // yesterday, with a reservation still held on it, and 150,000.00 booked today.
+    const id = await aProposal();
+
+    await asTheOwner(async () => {
+      await db.exec(`INSERT INTO dsor.day_totals (tenant, delegation, day, used_value, currency)
+                     VALUES ('org_456', 'del_100', (now() AT TIME ZONE 'UTC')::date - 1, 40000.00, 'USD'),
+                            ('org_456', 'del_100', (now() AT TIME ZONE 'UTC')::date, 150000.00, 'USD')`);
+      await db.query(
+        `INSERT INTO dsor.reservations (tenant, proposal, delegation, day, amount_value, amount_currency)
+         VALUES ('org_456', $1, 'del_100', (now() AT TIME ZONE 'UTC')::date - 1, 40000.00, 'USD')`,
+        [id],
+      );
+    });
+
+    await endedAs(id, "FAILED");
+    await settleReservation("org_456", id, "released");
+
+    expect(await reservationStates()).toStrictEqual(["released"]);
+    expect(await totalsOf()).toStrictEqual(["del_100 yesterday 0.00", "del_100 today 150000.00"]);
+  });
+
   it("DSOR-DEL-06a: a committed reservation keeps its amount on the day", async () => {
     const id = await aProposal();
 
