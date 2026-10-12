@@ -377,6 +377,19 @@ describe("one sheet for one decision (step 27's review, finding H2)", () => {
 });
 
 describe("what a condition reads", () => {
+  // Found by step 27's review, finding L12: only the evaluator was tested, never a call.
+  it("DSOR-CTL-06: a condition's state is DSoR's own look at line ⑨, never the caller's input: an input that carries an amount of its own is refused at line ⑥, INV-1008 waits by the 31,400.00 USD the store holds, and INV-2002 is paid by its 9,000.00 EUR", async () => {
+    const w = await withTuesday();
+    const lying = await w.ask(keyed(AGENT), "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      expected_version: 1,
+      open_amount: { value: "100.00", currency: "USD" },
+    });
+    expect(lying).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await draft(w, "INV-1008")).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect(await draft(w, "INV-2002")).toMatchObject({ outcome: "COMMITTED" });
+  });
+
   // Found by step 27's review, finding L7: Appendix B gives tenant as "Tenant id and policy", and a
   // condition saw the id only. This tutorial's tenant policy is its money part (step 26).
   it("Step 27: a condition reads the company's id and its money policy, as Appendix B gives tenant: a control that asks for the CFO unless org_456 counts in USD allows INV-2002, at line ⑩ and in its own test", async () => {
