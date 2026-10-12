@@ -81,7 +81,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `migrations/011_the_lock_on_vendors_and_payments.sql` | new — the second lock on both tables, word for word as 005 wrote it |
 | `migrations/012_invoices_name_their_vendor.sql` | new — an invoice names a vendor its company has, after 010 has put VENDOR-44 there (decision 126) |
 | `src/payment.ts` | new — a payment, making one in one statement with its vendor read from the invoice, taking one back, and the amount a payment may carry |
-| `src/contracts/payment.create.json`, `payment.cancel.json` | new — `compensatable`, undone by `payment.cancel`; and `atomic` |
+| `src/contracts/payment.create.json`, `payment.cancel.json` | new — `compensatable`, undone by `payment.cancel`; and `atomic`. `payment.create`'s example request names INV-1009, a draft in both companies, so the cross-tenant suite's same-state question has rows to compare (decision 126) |
 | `src/operations.ts` | the two handlers; the address reader takes the entity it needs, because `payment.create` takes an invoice's address; and the door writes each receipt's semantics from the contract. `?? "atomic"` is gone |
 | `src/registry.ts` | the two contracts; a program whose contract names an undo it does not have, or a query, refuses to start; `semanticsOf`, with no default |
 | `src/boundary.ts` | `withTheContractsSemantics`; and a comment that promised step 17 a `PENDING_APPROVAL` receipt names step 27 |
@@ -91,7 +91,8 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `test/vendors-and-payments.test.ts` | new — the tables: the running example, the company in every key, the second lock, what the application may and may not do |
 | `test/payments.test.ts` | new — the two commands, the semantics on each receipt, a careless handler that says `atomic`, and the registry's refusals |
 | `test/support/story.ts` | new — the one list of statements that put the story's rows back, for both tiers |
-| `test/support/cross-tenant-suite.ts` | rows of both kinds, a new canary, and the same-state question asked only of a command that changes a row |
+| `test/support/cross-tenant-suite.ts` | rows of both kinds, looked up by kind and number, and a new canary. The same-state question is still asked of every command but a read, as in step 16, `payment.create` included |
+| `test/cross-tenant-suite-itself.test.ts` | a payment's number is looked for among the payments, and a command that only adds rows is asked the same-state question too (decision 148) |
 | the tests that put the story back | `resetInvoices` is `resetTheStory`, because it puts the payments back too |
 
 608 tests, from 548; the database tier, 51, from 39, because the cross-tenant suite asks its six

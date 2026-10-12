@@ -266,6 +266,24 @@ describe("each question, honest and lied to", () => {
     );
   });
 
+  it("somethingToTouch: a command that only adds rows is asked too", async () => {
+    // Decision 148: decision 126 asked this of every command but a read again, payment.create
+    // included, and no test held it there. With decision 125's exemption put back, an example on
+    // INV-1008, issued in one company and a draft in the other, passed every test: step 12's
+    // hollow pass, for a command that only adds rows.
+    const create = caseFor("payment.create", registry.get("payment.create")!, {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      amount: { value: "31400.00", currency: "USD" },
+    });
+    const deps = honest({
+      rowsOf: async (tenant) => [
+        { entity: "invoice", id: "INV-1008", status: tenant === THEIRS ? "draft" : "issued" },
+      ],
+    });
+
+    await expect(questions.somethingToTouch(deps, create)).rejects.toThrow(/nothing to do to it/);
+  });
+
   it("rowsUntouched: a call that changed the other company's row", async () => {
     let calls = 0;
     const deps = honest({
