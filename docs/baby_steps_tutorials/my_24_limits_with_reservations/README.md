@@ -17,10 +17,14 @@ is never read and then written. Each payment *books* its amount in one statement
 the total stays within the limit:
 
 ```sql
-INSERT INTO dsor.day_totals ... VALUES (..., amount, ...)
+INSERT INTO dsor.day_totals ... SELECT ..., amount, ... WHERE amount <= limit
 ON CONFLICT (tenant, delegation, day) DO UPDATE SET used_value = used_value + amount
  WHERE used_value + amount <= limit
 ```
+
+The day's first payment starts the total, and only if its amount alone is within the limit. Every
+later payment adds to the total, and only if the sum stays within the limit. Both conditions are
+needed: without the first, a single payment of 250,000.00 on an empty day would be booked.
 
 Of two payments that arrive together, PostgreSQL makes the second wait for the first, then checks
 again on the total the first left. Only one can have the last room.

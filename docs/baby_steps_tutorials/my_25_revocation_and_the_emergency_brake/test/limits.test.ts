@@ -17,6 +17,7 @@ import { activeSlipFor } from "../src/delegation.ts";
 import { refusal } from "../src/envelopes.ts";
 import { money } from "../src/money.ts";
 import { callOperation, PIPELINE } from "../src/operations.ts";
+import { paymentsOf } from "../src/payment.ts";
 import { moveProposalThrough, propose, proposalsOf } from "../src/proposal.ts";
 import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
@@ -83,6 +84,19 @@ describe("reserving against the day", () => {
       await reserve("org_456", second, "del_100", money("20000.01", "USD"), DAILY),
     ).toStrictEqual({ kind: "over" });
     expect(await usedToday("org_456", "del_100")).toBe("180000.00");
+  });
+
+  it("DSOR-DEL-06e: the day's first amount, alone over the limit, is not reserved, and the day is not started", async () => {
+    // Decision 155: the day's first booking inserts the total, and only its own condition, the
+    // amount within the limit, refuses it. The test above books 180,000.00 first, so its refusal
+    // comes from the addition; with that condition taken out, every test still passed.
+    const id = await aProposal();
+
+    expect(await reserve("org_456", id, "del_100", money("200000.01", "USD"), DAILY)).toStrictEqual(
+      { kind: "over" },
+    );
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+    expect(await reservationStates()).toStrictEqual([]);
   });
 
   it("DSOR-DEL-06e: exactly the limit is within it", async () => {
@@ -479,5 +493,26 @@ describe("what reserve() keeps to itself", () => {
     expect(answer.kind === "error" && answer.envelope.message).toMatch(
       /cannot be compared with del_100's limit of 200000\.00 USD a day/,
     );
+  });
+
+  it("DSOR-DEL-06e: a slip with only a daily limit refuses the day's first payment over it", async () => {
+    // Decision 155: del_100's limit per payment, 50,000.00, refuses any amount that could pass
+    // 200,000.00 alone, so no payment ever took the day's first booking over the limit. Here
+    // del_100 has only its daily limit, as above.
+    await asTheOwner(() =>
+      db.exec(`UPDATE dsor.delegations
+                  SET per_transaction_limit_value = NULL, per_transaction_limit_currency = NULL
+                WHERE tenant = 'org_456' AND id = 'del_100'`),
+    );
+
+    const answer = await pay("250000.00");
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("LIMIT_EXCEEDED");
+    expect(answer.kind === "error" && answer.envelope.message).toBe(
+      "250000.00 USD would take del_100 past its limit of 200000.00 USD a day",
+    );
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+    expect((await paymentsOf("org_456")).map((p) => p.id)).toStrictEqual(["PAY-901"]);
   });
 });
