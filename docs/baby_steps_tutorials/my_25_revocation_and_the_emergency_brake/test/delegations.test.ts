@@ -320,6 +320,18 @@ describe("the agent never has more power than the person who signed, right now",
 
     expect(refusal.code).toBe("AUTHORIZATION_DENIED");
     expect(refusal.message).toMatch(/payment:create/);
+
+    // Decision 149: and a login whose scopes name payment:create does not give it back. A login made
+    // before the move may carry all three of the slip's permissions as scopes. A scope can only take
+    // away (DSOR-DEL-01b), so it never stands in for what the signer has lost.
+    for (const scopes of [
+      ["payment:create"],
+      ["invoice:issue", "payment:create", "payment:cancel"],
+    ]) {
+      expect(refusalOf(await create({ ...AGENT, scopes })).code, JSON.stringify(scopes)).toBe(
+        "AUTHORIZATION_DENIED",
+      );
+    }
   });
 
   it("DSOR-DEL-02: a permission the slip does not grant is not the agent's, whatever the signer holds", async () => {
