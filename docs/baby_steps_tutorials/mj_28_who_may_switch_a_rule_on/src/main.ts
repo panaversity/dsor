@@ -31,7 +31,11 @@
 // loads Tuesday's sheet, the agent drafts bills in euros, pounds, and rupees, and on Saturday the
 // sheet is too old. Since step 27, the company's rule, in memory: payments above 25,000 USD wait
 // for the CFO, a bill in yen that no sheet lists waits too, a dry run says so, and a week later the
-// sweep expires the waiting payments. Then it prints the log: the records it can read,
+// sweep expires the waiting payments. Since step 28, start-up checks the rules in dsor.controls
+// too, and who may switch a rule on, in memory: cfo_100, the rule's owner, drafts version 9, and
+// admin_100 drafts version 10 and cannot switch it on; the agent cannot either; a version with the
+// quick rule fails its test; cfo_100 switches version 9 on, suspends it, and switches it on again,
+// and each change applies to the next payment. Then it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -54,6 +58,7 @@ import { readInputs } from "./inputs.ts";
 import {
   createDbBrakes,
   createDbClaims,
+  createDbControls,
   createDbInvoices,
   createDbLog,
   createDbPayments,
@@ -237,6 +242,30 @@ if (differences.length > 0) {
   await pool.end();
   process.exit(1);
 }
+
+// NEW IN STEP 28: and every version in dsor.controls, as start-up checks the story's store: the
+// rules of each company that DSoR counts money for, which is each company where a login works. A
+// row that someone changed by hand stops start-up here. The stories of the earlier steps still run
+// with no rule: their world gives an empty store (step 28's README, decisions D6 and D18).
+let storedRules: string[];
+try {
+  const stored = { ...registry, controls: createDbControls(pool) };
+  storedRules = await checkRules(stored, registry.moneyPolicies.keys());
+} catch (error) {
+  console.error(
+    `The rules in dsor.controls could not be checked. Refused: ${(error as Error).message}`,
+  );
+  await pool.end().catch(() => {});
+  process.exit(1);
+}
+if (storedRules.length > 0) {
+  console.error(`the rules refused to start:\n  ${storedRules.join("\n  ")}`);
+  await pool.end();
+  process.exit(1);
+}
+console.log(
+  "dsor.controls passed its checks too; the program's stories keep their rules in memory",
+);
 
 // The log every decision is written to is the table dsor.audit.
 const log = createDbLog(pool);
@@ -1203,6 +1232,145 @@ const ruleBooking = await ruleReservations.get("org_456", ruleId);
 console.log(
   `  INV-1008's payment: ${ruleExpired?.state ?? "none"}, its booking ${ruleBooking?.state ?? "none"}`,
 );
+
+// NEW IN STEP 28: who may switch a rule on, in memory, in a world of its own whose store starts
+// from controls.json, as start-up checked it. Version 8 asks for the CFO above 25,000.00 USD.
+// cfo_100, its owner, drafts version 9, above 20,000.00 USD. admin_100, a tenant administrator,
+// drafts version 10, which says false and names admin_100 its owner, and cannot switch it on. The
+// agent cannot switch anything on. A version with step 27's quick rule fails its test. cfo_100
+// switches version 9 on, suspends it, and switches it on again, and each change applies to the
+// agent's next payment (step 28's README, the story's numbers).
+console.log("who may switch a rule on, in memory, with a store of its own:");
+const lifeClock = { now: Date.parse("2026-10-06T15:05:00Z") };
+const lifeInvoices = memoryInvoices([
+  ...structuredClone(invoices),
+  // Above version 9's 20,000.00 USD and below version 8's 25,000.00 USD, so it shows which answers.
+  bill("INV-2007", "21000.00", "USD"),
+]);
+const lifePayments = memoryPayments([]);
+const lifeProposals = memoryProposals(() => lifeClock.now);
+const lifeReservations = memoryReservations(() => lifeClock.now);
+const lifeRates = memoryRates(() => lifeClock.now);
+const lifeSlips = memorySlips(limited);
+// The file start-up checked fills this world's own store, which its registry and its claims share.
+const lifeRules = memoryControls(readControls(CONTROLS));
+const lifeWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  lifeInvoices,
+  lifePayments,
+  lifeSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    lifeInvoices,
+    lifePayments,
+    lifeProposals,
+    lifeReservations,
+    lifeSlips,
+    undefined,
+    lifeRates,
+    lifeRules,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  lifeRules,
+);
+const lifeLog = createLog();
+const lifeCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(lifeWorld, lifeLog, who, name, input);
+const CFO_100: RequestEnvelope = { token: "tok_d4e8", tenant: "org_456" };
+const RULE = "dsor://org_456/rule/high-value-payment";
+/** A rule command's answer, as its caller heard it: the version and its status, or the refusal. */
+function ruleHeard(answer: Answer): string {
+  if (!("data" in answer)) return heard(answer);
+  const { version, status, retired } = answer.data as Record<string, unknown>;
+  const after = retired === undefined ? "" : `, version ${String(retired)} retired`;
+  return `version ${String(version)}, ${String(status)}${after}`;
+}
+let lifeKeys = 0;
+/** Someone asks for a rule command on the story's rule, with a key of its own. */
+const lifeRule = (who: RequestEnvelope, name: string, fields: Record<string, unknown>) =>
+  lifeCall(withKey(who, `life-${++lifeKeys}`), name, { rule: RULE, ...fields });
+/** The agent drafts a payment of one of org_456's bills, with a key of its own. */
+const lifePay = (id: string): Promise<Answer> =>
+  lifeCall(withKey(AGENT, `life-${id}`), "payment.create", {
+    invoice: `dsor://org_456/invoice/${id}`,
+    expected_version: 1,
+  });
+// Version 8, as the file start-up checked writes it.
+const VERSION_8 = (JSON.parse(readControls(CONTROLS).text) as { org_456: object[] }).org_456[0];
+/** Version 8's text, without the six fields DSoR sets, with these changes. */
+function textWith(changes: Record<string, unknown>): Record<string, unknown> {
+  const { id, version, status, compiled_by, reviewed_by, effective_from, ...text } = {
+    ...VERSION_8,
+  } as Record<string, unknown>;
+  return { ...text, ...changes };
+}
+const usd = (value: string) => ({ invoice: { open_amount: { value, currency: "USD" } } });
+const pkr = (value: string) => ({ invoice: { open_amount: { value, currency: "PKR" } } });
+// Version 9's tests move with its line: 5,000,000.00 PKR at 280 is 17,857.14 USD, below it.
+const NINE_TESTS = [
+  { state: usd("20000.00"), expect: "ALLOW" },
+  { state: usd("20000.01"), expect: "REQUIRE_APPROVAL" },
+  { state: pkr("50000000.00"), rates: { PKR: "280" }, expect: "REQUIRE_APPROVAL" },
+  { state: pkr("5000000.00"), rates: { PKR: "280" }, expect: "ALLOW" },
+  {
+    state: { invoice: { open_amount: { value: "100.00", currency: "XXX" } } },
+    expect: "REQUIRE_APPROVAL",
+  },
+];
+const ABOVE_20000 = 'dsor_exceeds(state.invoice.open_amount, dsor_money("20000", "USD"))';
+const QUICK =
+  'double(state.invoice.open_amount.value) > 20000.0 && state.invoice.open_amount.currency == "USD"';
+console.log("  the agent drafts INV-1012, 22,750.00 USD:", waitHeard(await lifePay("INV-1012")));
+const nine = await lifeRule(CFO_100, "rule.draft", {
+  draft: textWith({ condition: ABOVE_20000, tests: NINE_TESTS }),
+  reason: "the board lowered the line to 20,000 USD",
+});
+console.log("  cfo_100 drafts the rule above 20,000.00 USD:", ruleHeard(nine));
+const ten = await lifeRule(ADMIN_100, "rule.draft", {
+  draft: textWith({ condition: "false", owner: "admin_100", tests: [{ expect: "ALLOW" }] }),
+  reason: "no more waiting for the CFO",
+});
+console.log("  admin_100 drafts the rule false, naming admin_100 its owner:", ruleHeard(ten));
+const tenOn = await lifeRule(ADMIN_100, "rule.activate", { version: 10, reason: "switch it on" });
+console.log("  admin_100 switches version 10 on:", ruleHeard(tenOn));
+const agentOn = await lifeCall(withKey(AGENT, "life-agent"), "rule.activate", {
+  rule: RULE,
+  version: 9,
+  reason: "the agent's own idea",
+});
+console.log("  the agent switches version 9 on:", ruleHeard(agentOn));
+const quick = await lifeRule(CFO_100, "rule.draft", {
+  draft: textWith({ condition: QUICK, tests: NINE_TESTS }),
+  reason: "a quicker rule",
+});
+console.log("  cfo_100 drafts step 27's quick rule:", ruleHeard(quick));
+const quickOn = await lifeRule(CFO_100, "rule.activate", { version: 11, reason: "switch it on" });
+console.log("  cfo_100 switches version 11 on:", ruleHeard(quickOn));
+const nineOn = await lifeRule(CFO_100, "rule.activate", { version: 9, reason: "the new line" });
+console.log("  cfo_100 switches version 9 on:", ruleHeard(nineOn));
+console.log("  the agent drafts INV-2007, 21,000.00 USD:", waitHeard(await lifePay("INV-2007")));
+const nineOff = await lifeRule(CFO_100, "rule.suspend", { version: 9, reason: "audit week" });
+console.log("  cfo_100 suspends version 9:", ruleHeard(nineOff));
+console.log("  the agent drafts INV-1008, 31,400.00 USD:", waitHeard(await lifePay("INV-1008")));
+const nineBack = await lifeRule(CFO_100, "rule.activate", { version: 9, reason: "audit over" });
+console.log("  cfo_100 switches version 9 on again:", ruleHeard(nineBack));
+console.log("  the agent drafts INV-1004, 27,300.00 USD:", waitHeard(await lifePay("INV-1004")));
+// Each change left its record, in the change's own transaction (step 28's README, decision D14).
+for (const change of await lifeRules.records()) {
+  const { version, from } = change.extensions["org.panaversity.steps"] ?? {};
+  const left = from === undefined ? "new" : `from ${from}`;
+  console.log(
+    `  the record: version ${String(version)} ${change.result}, ${left}, by ${change.identity.subject}: ${change.reason}`,
+  );
+}
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
-import { RUNTIME_URL, newPool, redact, tryThenRollBack } from "./db.ts";
+import { RUNTIME_URL, newPool, ownerRules, redact, tryThenRollBack } from "./db.ts";
 
 // A window into the database, to see that a run leaves the story's slips active.
 const observer = newPool();
@@ -123,6 +123,28 @@ describe("the program", () => {
         "INV-2006's record: ALLOW PENDING_APPROVAL, high-value-payment v8 REQUIRE_APPROVAL, error: no usable rate compares JPY with USD",
       );
       expect(output).toMatch("a dry run of INV-1008: VALIDATED, REQUIRE_APPROVAL");
+      // NEW IN STEP 28: start-up checks dsor.controls too, and the story of who may switch a rule
+      // on runs in memory (step 28's README, the story's numbers, and decisions D6 and D10).
+      expect(output).toMatch(
+        "dsor.controls passed its checks too; the program's stories keep their rules in memory",
+      );
+      for (const line of [
+        "the agent drafts INV-1012, 22,750.00 USD: answered, PAY-",
+        "cfo_100 drafts the rule above 20,000.00 USD: version 9, draft",
+        "admin_100 drafts the rule false, naming admin_100 its owner: version 10, draft",
+        'admin_100 switches version 10 on: AUTHORIZATION_DENIED: "rule.activate": admin_100 may not change rule "high-value-payment": only its owner may, in person',
+        'the agent switches version 9 on: AUTHORIZATION_DENIED: "rule.activate" is for people only, and accounts-payable-fte is not a person',
+        'cfo_100 switches version 11 on: VALIDATION_FAILED: "rule.activate": org_456\'s control high-value-payment v11 fails its test 3: expects REQUIRE_APPROVAL, gives ALLOW',
+        "cfo_100 switches version 9 on: version 9, active, version 8 retired",
+        `the agent drafts INV-2007, 21,000.00 USD: ${waits}`,
+        "cfo_100 suspends version 9: version 9, suspended",
+        "the agent drafts INV-1008, 31,400.00 USD: answered, PAY-",
+        "cfo_100 switches version 9 on again: version 9, active",
+        `the agent drafts INV-1004, 27,300.00 USD: ${waits}`,
+        "the record: version 9 suspended, from active, by cfo_100: audit week",
+      ]) {
+        expect(output).toMatch(line);
+      }
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
       expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");
@@ -441,6 +463,26 @@ describe("the program's start-up check", () => {
         );
       } finally {
         rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
+  // NEW IN STEP 28: a row of dsor.controls that a hand edit planted, active, whose test fails.
+  it(
+    "Step 28: refuses to start when dsor.controls holds an active rule whose test fails, and names it (step 28's README, decision D6)",
+    { timeout: 180_000 },
+    () => {
+      ownerRules("plant");
+      try {
+        const run = start();
+        const stderr = redact(run.stderr, { "<runtime URL>": RUNTIME_URL });
+        expect(run.status).toBe(1);
+        expect(stderr).toMatch(
+          "the rules refused to start:\n  dsor.controls: org_456's control planted-rule v1 fails its test 1: expects ALLOW, gives REQUIRE_APPROVAL",
+        );
+        expect(run.stdout).not.toMatch("data: {");
+      } finally {
+        ownerRules("clear");
       }
     },
   );
