@@ -329,13 +329,22 @@ describe("when the label's time is taken", () => {
     });
 
     try {
-      const answer = await callOperation(AGENT, "invoice.get", { invoice: INV_1008 });
+      // Decision 146: a page too. This test asked for a single invoice only, so a page labelled
+      // after the reply passed every test.
+      for (const [id, args] of [
+        ["invoice.get", { invoice: INV_1008 }],
+        ["invoice.list", { limit: 3 }],
+      ] as const) {
+        asked = 0;
 
-      expect(answer.kind).toBe("data");
+        const answer = await callOperation(AGENT, id, args);
 
-      if (answer.kind === "data") {
-        expect(asked).toBeGreaterThan(0);
-        expect(Date.parse(answer.freshness.observed_at)).toBeLessThanOrEqual(asked);
+        expect(answer.kind === "data" || answer.kind === "page").toBe(true);
+
+        if (answer.kind === "data" || answer.kind === "page") {
+          expect(asked).toBeGreaterThan(0);
+          expect(Date.parse(answer.freshness.observed_at)).toBeLessThanOrEqual(asked);
+        }
       }
     } finally {
       useDatabase(real);
