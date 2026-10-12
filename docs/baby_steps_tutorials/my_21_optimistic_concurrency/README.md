@@ -21,8 +21,10 @@ and the command is refused with `STALE_STATE`, retry `after_state_refresh`: the 
 was about a record that no longer exists. On the version it has now, the record's own rules answer:
 an invoice already issued is `CONFLICT`, as before.
 
-`invoice.issue` and `payment.cancel` are optimistic. `payment.create` makes a new record, so nothing
-can have moved on, and its contract says `none`. Every command's contract says which it is.
+`invoice.issue` and `payment.cancel` are optimistic. `payment.create` changes no record that already
+exists: the payment it makes is new. So this step checks no version for it, and its contract says
+`none`. It does read the invoice it pays, and that invoice has a version, which this step does not
+check. Every command's contract says which it is.
 
 Where does the caller get a version? From what it read. `invoice.get` and `invoice.list` return
 it with each invoice. Payments have no read operation yet, so the agent takes a payment's version
@@ -186,7 +188,9 @@ Copy `my_20_idempotency_keys` to a new folder and ask:
    the check and the change happen together, and the database lets one of two changes through.
 3. With the number, an agent could send it straight back without reading the record, and decide
    about a record it has never seen. Without it, the only way to a current version is a read.
-4. It makes a new record, so there is no earlier version anyone could have decided on.
+4. It changes no record that already exists. The payment it makes is new, so there is no earlier
+   version of it that anyone could have decided on. It does read an invoice, and this step does not
+   check that invoice's version: a limit, said at the end of this page.
 5. A cancel also asks for a draft, and only one of the twenty finds a draft. The status refuses the
    other nineteen, with or without the version. A draft decided on as version 7, which the status
    would let through, catches it.
@@ -206,10 +210,12 @@ row deleted and written again starts at 1, so an old decision on version 1 match
 record. Every new record starts at 1, so `expected_version: 1` does not prove the caller read
 anything. The read label still has no `resource_version` beside its time, so `DSOR-FRS-01a` is met
 in part. Payments have no read operation, so the agent knows a payment's version only from a
-receipt. The strategies `pessimistic` and `connector_managed` are refused at load rather than
-carried out. The log records the decision and not what happened after, so a stale command shows as
-`ALLOW`. Two decisions in one company at the same moment race for the next place in its log, and
-the database tier races the change itself, not the log.
+receipt. `payment.create` reads the invoice it pays and does not check that invoice's version, so a
+payment can be made for an invoice that changed after the caller read it. The strategies
+`pessimistic` and `connector_managed` are refused at load rather than carried out. The log records
+the decision and not what happened after, so a stale command shows as `ALLOW`. Two decisions in one
+company at the same moment race for the next place in its log, and the database tier races the
+change itself, not the log.
 
 Everything earlier steps claimed still holds.
 
