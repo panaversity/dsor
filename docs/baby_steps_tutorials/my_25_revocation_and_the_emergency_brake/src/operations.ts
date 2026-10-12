@@ -1598,7 +1598,7 @@ const claimTheKey: Stage["run"] = async (context) => {
         principal.id,
         "EVIDENCE_STORE_UNAVAILABLE",
         // Decision 132: what is known, and no more. The INSERT may have committed with its reply
-        // lost, and then the key is claimed with no answer, which reconciliation, step 37, clears.
+        // lost, and then the key is claimed with no answer, which reconciliation, step 38, clears.
         `the idempotency key ${key} could not be claimed, or the claim could not be confirmed; nothing was done`,
         context.requestId,
       );
@@ -3185,7 +3185,7 @@ export function makeDoor(
         }
       } catch {
         // If the answer cannot be written, the claim keeps none: a retry with its key waits, and is
-        // told nobody knows yet, and reconciliation is step 37's. The caller of this request is
+        // told nobody knows yet, and reconciliation is step 38's. The caller of this request is
         // still told what happened to it.
       }
     }

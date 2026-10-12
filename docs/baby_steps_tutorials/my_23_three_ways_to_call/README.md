@@ -201,7 +201,7 @@ with nothing to release it until `proposal.execute`, step 31, and nothing to can
 are no reservations or holds yet for a dry run to leave alone; step 24 brings the first. When a
 move's reply is lost and the proposal cannot be read back, or is read back as PROPOSED and then
 cannot be DENIED, the answer is `OUTCOME_UNKNOWN` and the key stays taken until reconciliation, step
-37.
+38.
 
 Everything earlier steps claimed still holds.
 

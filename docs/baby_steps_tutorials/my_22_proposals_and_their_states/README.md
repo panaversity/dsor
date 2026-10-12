@@ -64,8 +64,8 @@ decision in the audit log, an answer on an idempotency claim, and a payment, if 
 request refused by the slip's limit leaves no payment. One whose code crashed leaves a claim with
 no answer. Nothing says "this request, and where it is now".
 
-And nothing would keep it there. Step 23 prepares a command now and releases it later, and approvals
-attach to a waiting command. Both need a record whose state moves only forward. A payment that is
+And nothing would keep it there. Step 23 prepares a command now for step 31 to release later, and
+approvals attach to a waiting command. Both need a record whose state moves only forward. A payment that is
 COMMITTED and could be moved back to EXECUTING is a payment that can run twice.
 
 ## What changed since step 21
@@ -256,14 +256,14 @@ DENIED is the only finished state the map has out of PROPOSED, so a store that f
 with a cause that says it was the store. §26.2's last line moves COMMITTED and FAILED on to
 COMPENSATING, for commands that can be undone, such as `payment.create`; with no compensation here,
 COMMITTED and FAILED are finished for every command, as §26.2's own plain words say. That is why
-prop_2 stays COMMITTED after prop_3 cancels its payment. Proposal numbers, like payment numbers since step 17, come
-from one sequence for every company, so a number hints at how busy the others are. A proposal whose
-creation committed with its reply lost stays PROPOSED, and one whose last move could not be written
-stays EXECUTING: both wait for reconciliation, step 37. A handler that throws leaves its proposal
-OUTCOME_UNKNOWN, but the throw still reaches the caller as a throw, not as an `OUTCOME_UNKNOWN`
-answer; that is step 37's too. There is no `proposal.get` yet, because who
-may read a proposal is a rule of its own; the demo reads the store. Only one mode, `execute`, is
-built; `propose_only` and `validate_only` are step 23's, and the approval states step 26's.
+prop_2 stays COMMITTED after prop_3 cancels its payment. Proposal numbers, like payment numbers
+since step 17, come from one sequence for every company, so a number hints at how busy the others
+are. A proposal whose creation committed with its reply lost stays PROPOSED, and one whose last move
+could not be written stays EXECUTING: both wait for reconciliation, step 38. A handler that throws
+leaves its proposal OUTCOME_UNKNOWN, but the throw still reaches the caller as a throw, not as an
+`OUTCOME_UNKNOWN` answer; that is step 37's. There is no `proposal.get` yet, because who may read a
+proposal is a rule of its own; the demo reads the store. Only one mode, `execute`, is built;
+`propose_only` and `validate_only` are step 23's, and the approval states step 29's.
 
 Everything earlier steps claimed still holds.
 
