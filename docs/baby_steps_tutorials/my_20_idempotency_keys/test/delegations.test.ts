@@ -476,6 +476,37 @@ describe("up to a limit", () => {
     );
   });
 
+  it("DSOR-DEL-02: the limit is checked against the amount the payload hash describes", async () => {
+    // Decision 149: the stage reads the validated copy, made once from the text the hash
+    // describes. The only test with an amount that answers differently when read again was a
+    // person's, and a person has no slip. So a limit that read the caller's own object again
+    // passed every test, and under it a review's agent had 60,000.00 USD hashed, checked as 1.00
+    // and paid, above del_100's limit of 50,000.00.
+    let reads = 0;
+    const amount = {
+      currency: "USD",
+      get value() {
+        reads += 1;
+
+        return reads === 1 ? "60000.00" : "1.00";
+      },
+    };
+
+    expect(refusalOf(await create(AGENT, amount)).code).toBe("LIMIT_EXCEEDED");
+    expect(reads).toBe(1);
+
+    const payments = await asTheOwner(
+      async () =>
+        (
+          await db.query<{ id: string }>(
+            "SELECT id FROM public.payments WHERE tenant_id = 'org_456'",
+          )
+        ).rows,
+    );
+
+    expect(payments.map((p) => p.id)).toStrictEqual(["PAY-901"]);
+  });
+
   it("the limit is the slip's, not the person's: user_123 may make a payment above it", async () => {
     expect((await create(SUPERVISOR, { value: "75000.00", currency: "USD" })).kind).toBe("result");
   });
