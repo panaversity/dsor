@@ -271,10 +271,11 @@ owner's rights: over the invoices, it shows every company's rows. But it asks th
 only. Its questions about writing also ask one `SET ROLE` away and through a helper function
 (decisions 126 and 128); this one does not yet, so a view that the application can read only one of
 those ways passes start-up. And it refuses an application that may choose the next payment's number
-(step 17), but asks nothing about the other numbers DSoR gives out: a proposal's number, a move's
-place in a proposal's history, and a brake's number. An owner's careless
-`GRANT ALL ON ALL SEQUENCES IN SCHEMA dsor` passes start-up, and lets the application choose any of
-them.
+(step 17). But it asks nothing about the sequences, PostgreSQL's counters, that hand out the other
+numbers: a proposal's number, a move's place in its history, and a brake's number. Writing one of
+those numbers directly is refused. Setting a counter's next number with `setval` is not. So an
+owner's careless `GRANT ALL ON ALL SEQUENCES IN SCHEMA dsor` passes start-up, and lets the
+application choose the next of any of them.
 
 Everything earlier steps claimed still holds.
 
