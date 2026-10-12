@@ -55,6 +55,16 @@ describe("C2: a condition, checked before it runs", () => {
     expect(checkCondition('"25000"')).toBe("it answers a string, not true or false");
     expect(checkCondition("size(actor_chain)")).toBe("it answers an int, not true or false");
   });
+
+  // Found by step 27's review, finding L10: the library runs matches() with JavaScript's regular
+  // expressions, not CEL's RE2, and "^(a+)+$" took 692 ms on 26 characters of input, more with each
+  // one. The input can be the agent's.
+  it("Step 27: start-up refuses a condition that calls matches, whose regular expressions the library runs with no bound on their time (step 27's README, decision D5)", () => {
+    const refused = "it calls matches, which this step refuses: its time has no bound";
+    expect(checkCondition('input.memo.matches("^(a+)+$")')).toBe(refused);
+    expect(checkCondition('state.invoice.vendor_id.matches("^VENDOR-")')).toBe(refused);
+    expect(checkCondition('state.invoice.vendor_id == "VENDOR-44"')).toBeUndefined();
+  });
 });
 
 describe("C4: a condition, evaluated", () => {

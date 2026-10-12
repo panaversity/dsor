@@ -112,6 +112,11 @@ const checker = environmentFor(undefined);
 const UNKNOWN_VARIABLE = /^Unknown variable: ([A-Za-z_][A-Za-z0-9_]*)/;
 // not copied: the CEL library's own words for a call that no function of the environment takes.
 const NO_OVERLOAD = /found no matching overload for '(([A-Za-z_][A-Za-z0-9_]*)\([^']*\))'/;
+// not copied: a call of CEL's matches(), on a string. The library runs its regular expression with
+// JavaScript's engine, whose time can grow without bound, and not with CEL's RE2. A text in quotes
+// that holds ".matches(" is refused too: refused when in doubt. Found by step 27's review, finding
+// L10.
+const MATCHES = /\.\s*matches\s*\(/;
 
 /** Why the condition cannot run as a control's condition, or none (DSOR-CTL-05, DSOR-CTL-06). */
 export function checkCondition(condition: string): string | undefined {
@@ -127,6 +132,8 @@ export function checkCondition(condition: string): string | undefined {
     if (call !== null) return `it calls ${call[1]}, which the environment does not have`;
     return `it is not CEL: ${message}`;
   }
+  if (MATCHES.test(condition))
+    return "it calls matches, which this step refuses: its time has no bound";
   // A map's field is "dyn": its type is known only when it runs, so the answer is checked then.
   const type = String(checked.type);
   if (type === "bool" || type === "dyn") return undefined;
