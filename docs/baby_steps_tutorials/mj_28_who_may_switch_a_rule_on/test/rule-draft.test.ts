@@ -106,6 +106,12 @@ describe("C3: line ⑨ checks a draft as start-up checks a version (step 28's RE
       "governs invoice.get, which is a query: a query waits for nobody",
     ],
     ["no tests", { tests: [] }, "/tests must NOT have fewer than 1 items"],
+    // Found by step 28's review, finding H2: loops inside loops stalled every company.
+    [
+      "a condition that loops over a list",
+      { condition: "[1, 2, 3].all(a, [1, 2, 3].all(b, a + b > 0))" },
+      "its condition loops with all, which this step refuses: a loop's time has no bound",
+    ],
     ["an agent as its owner", { owner: "accounts-payable-fte" }, owner("accounts-payable-fte")],
     ["a person of org_789 as its owner", { owner: "user_700" }, owner("user_700")],
     ["an owner nobody knows", { owner: "user_900" }, owner("user_900")],

@@ -72,6 +72,23 @@ describe("C2: a condition, checked before it runs", () => {
   // Found by step 27's review, finding L10: the library runs matches() with JavaScript's regular
   // expressions, not CEL's RE2, and "^(a+)+$" took 692 ms on 26 characters of input, more with each
   // one. The input can be the agent's.
+  // Found by step 28's review, finding H2: a condition of ten-element lists, each looped over with
+  // all() inside the last, took 97 ms at six levels and 967 ms at seven, and every company's calls
+  // waited. Each level multiplies the time by ten. Step 28 lets a person write a condition over the
+  // network, so a loop is refused, as matches is.
+  it.each(["all", "exists", "exists_one", "map", "filter"])(
+    "Step 28: start-up refuses a condition that loops over a list with %s: loops inside loops have no bound on their time (step 28's review, finding H2)",
+    (macro) => {
+      const condition =
+        macro === "map" || macro === "filter"
+          ? `size([1, 2, 3].${macro}(x, x > 1)) > 0`
+          : `[1, 2, 3].${macro}(x, x > 1)`;
+      expect(checkCondition(condition)).toBe(
+        `it loops with ${macro}, which this step refuses: a loop's time has no bound`,
+      );
+    },
+  );
+
   it("Step 27: start-up refuses a condition that calls matches, whose regular expressions the library runs with no bound on their time (step 27's README, decision D5)", () => {
     const refused = "it calls matches, which this step refuses: its time has no bound";
     expect(checkCondition('input.memo.matches("^(a+)+$")')).toBe(refused);

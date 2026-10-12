@@ -132,9 +132,20 @@ const NO_OVERLOAD = /found no matching overload for '(([A-Za-z_][A-Za-z0-9_]*)\(
 // that holds ".matches(" is refused too: refused when in doubt. Found by step 27's review, finding
 // L10.
 const MATCHES = /\.\s*matches\s*\(/;
+// NEW IN STEP 28: and CEL's loops: all, exists, exists_one, map, and filter. A loop inside a loop
+// multiplies its time, and the library bounds an expression's size, not its steps. Step 28 lets a
+// person write a condition over the network, so a condition that loops is refused, as matches is:
+// refused when in doubt, a loop's name inside a string too (step 28's review, finding H2).
+// not copied: the CEL specification's macros that run a loop, by their names.
+const LOOPS = /\.\s*(all|exists_one|exists|map|filter)\s*\(/;
 
 /** Why the condition cannot run as a control's condition, or none (DSOR-CTL-05, DSOR-CTL-06). */
 export function checkCondition(condition: string): string | undefined {
+  // NEW IN STEP 28: a loop first, whatever else the condition says (step 28's review, finding H2).
+  const loop = LOOPS.exec(condition)?.[1];
+  if (loop !== undefined) {
+    return `it loops with ${loop}, which this step refuses: a loop's time has no bound`;
+  }
   const checked = checker.check(condition);
   if (!checked.valid) {
     const message = String(checked.error?.message ?? "").split("\n")[0] ?? "";
