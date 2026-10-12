@@ -89,7 +89,12 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_19
 | `test/support/door.ts` | new — the door the tests knock on, which gives each request a fresh key unless the test gives one |
 | `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a store that fails while a claim or an answer is written, and fifty at once |
 | `test/idempotency.db.test.ts` | new — fifty at once on a real server, over a pool of twenty connections |
-| the tests that pin the pipeline | nine stages now, and the claim among the command-only ones |
+| `test/database.test.ts` | start-up refuses the claims' table without the policy that keeps an answer, and an application that may delete a claim, rewrite one, or write its answer in advance |
+| `test/main.test.ts` | the demo's payment sent twice, its conflict, and its fifty at once; three more decisions in the printed log |
+| `test/decision-first.test.ts` | `validate the input`, lazied, is caught by the claim on a command, and still by §21.11 on a query |
+| `test/control-plane-store.test.ts`, `test/registry.test.ts` | DSoR's own store has a third table, and every command's contract says it needs a key |
+| the tests that pin the pipeline | nine stages now, and the claim among the command-only ones; with the claim doing nothing, a command is refused, never run unclaimed |
+| the tests that knock on the door | through `test/support/door.ts` now, so each command carries a fresh key |
 
 ## Run it
 
