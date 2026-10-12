@@ -424,6 +424,59 @@ describe("control.suspend: people pull the brake and release it", () => {
   }
 });
 
+// Decision 156: one clause keeps a release to its own brake, and no test had two brakes on at once.
+// Without it, user_123 releasing the agent lifted cfo_100's month-end freeze too, the record said
+// user_123 lifted it, and the agent paid.
+
+describe("two brakes at once", () => {
+  it("DSOR-OPS-01a: releasing the agent's suspension leaves the company's freeze on", async () => {
+    await pullTheBrake("org_456", undefined, "cfo_100", "month-end close");
+    await pullTheBrake("org_456", AGENT, "user_123", "paying the wrong invoices");
+
+    const lifted = await callOperation(SUPERVISOR, "control.suspend", {
+      target: THE_AGENT,
+      suspended: false,
+    });
+
+    expect(lifted.kind).toBe("result");
+    expect(await whatStops("org_456", AGENT)).toMatchObject({
+      agent: undefined,
+      imposedBy: "cfo_100",
+    });
+
+    const { rows } = await theDatabase("org_456").query<{ lifted_by: string | null }>(
+      "SELECT lifted_by FROM dsor.agent_controls WHERE tenant = 'org_456' AND agent IS NULL",
+    );
+
+    expect(rows).toStrictEqual([{ lifted_by: null }]);
+
+    const refused = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+
+    expect(refused.kind === "error" && refused.envelope.message).toMatch(
+      /every agent in org_456 is stopped, by cfo_100/,
+    );
+  });
+
+  it("DSOR-OPS-01a: releasing the company's freeze leaves the agent's suspension on", async () => {
+    await pullTheBrake("org_456", undefined, "cfo_100", "month-end close");
+    await pullTheBrake("org_456", AGENT, "user_123", "paying the wrong invoices");
+
+    const lifted = await callOperation(CFO, "control.suspend", {
+      target: THE_COMPANY,
+      suspended: false,
+    });
+
+    expect(lifted.kind).toBe("result");
+    expect((await whatStops("org_456", AGENT))?.agent).toBe(AGENT);
+
+    const refused = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+
+    expect(refused.kind === "error" && refused.envelope.message).toMatch(
+      /accounts-payable-fte is suspended in org_456, by user_123/,
+    );
+  });
+});
+
 // NEW IN STEP 25, decision 143: the brake on every way into EXECUTING, and on a prepared command.
 
 describe("no way into EXECUTING forgets the brake", () => {
