@@ -290,6 +290,13 @@ not its fields, so nothing can check that yet. `LIMIT_EXCEEDED` carries the retr
 `after_delay`, the specification's, which fits a daily total; for a limit on one payment, waiting
 changes nothing.
 
+Start-up refuses an application that may write a slip itself, one `SET ROLE` away, or through a
+helper function. It does not ask about a view that the application may write through but not
+read. A view is a saved query that looks like a table, and it runs with its owner's rights. So an
+owner can make a view over the slips and let the application write through it. Start-up passes
+that, and a review lifted del_100's limit through such a view and had the agent's 60,000.00 USD
+payment committed. The invoices, the payments and the log have the same gap. Step 26 closes it.
+
 Everything earlier steps claimed still holds.
 
 **Next:** step 19, `unattended_mode_and_the_role_source` — at 2 a.m. nobody is logged in, the agent
