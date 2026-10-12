@@ -257,7 +257,8 @@ Copy `my_21_optimistic_concurrency` to a new folder and ask:
 the work as its key: a proposal runs at most once because READY is left once, and passing a key on
 waits for a connector that takes one (`DSOR-IDM-03`), so `DSOR-IDM-04` is met in part. One key is
 one proposal, except after a released claim: the retry makes a second. The first is DENIED, or
-stays PROPOSED if even DENIED cannot be written, and nothing here carries out a PROPOSED proposal.
+stays PROPOSED when even DENIED cannot be written or the reply to its creation was lost. Nothing
+here carries out a PROPOSED proposal.
 When the door's own move lost its reply, the claim is released only once DENIED is written,
 because only that proves the lost move can never land. If the proposal cannot be read back, or
 DENIED is refused or cannot be written, the answer is `OUTCOME_UNKNOWN` and the key stays taken.
