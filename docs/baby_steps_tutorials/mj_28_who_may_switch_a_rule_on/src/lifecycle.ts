@@ -1,13 +1,17 @@
 // NEW IN STEP 28: who may switch a rule on. Commands of DSoR's own, for people only: rule.draft
-// writes a new version of a rule (DSOR-CTL-02a and DSOR-CTL-02b in specs/dsor/02-security.md,
-// section 17.4; step 28's README, decisions D7 to D11). Each has two parts, as DSoR's own work
-// does (revocation.ts). The check is line ⑨'s look, before any work. The change runs after line
-// ⑩, inside the claim's transaction. It takes the rule's lock, reads the versions again, and
-// writes, with the record (decisions D14 and D15).
+// writes a new version of a rule, and rule.activate switches one on (DSOR-CTL-02a, DSOR-CTL-02b,
+// and DSOR-CTL-02c in specs/dsor/02-security.md, section 17.4; step 28's README, decisions D7 to
+// D12). Each has two parts, as DSoR's own work does (revocation.ts). The check is line ⑨'s look,
+// before any work: who may, which version, its status, and, for a switch-on, the version's own
+// checks and its tests. The change runs after line ⑩, inside the claim's transaction. It takes
+// the rule's lock, reads the versions again, makes the same checks, and writes each change with
+// its record (decisions D14 and D15).
 import type { Control } from "./controls.ts";
 import { Refusal } from "./envelope.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
-import type { RuleBy } from "./rulebook.ts";
+import type { Principal } from "./principals.ts";
+import { preview } from "./registry.ts";
+import type { RuleBy, RuleStatus } from "./rulebook.ts";
 import { parseUri } from "./uri.ts";
 
 // The most a draft's text may hold, as JSON: a rule with its tests is a few kilobytes. A larger
@@ -73,9 +77,107 @@ async function writeDraft(input: unknown, work: OwnStores): Promise<unknown> {
   return { tenant_id: tenant, id: draft.id, version: draft.version, status: "draft" };
 }
 
+/**
+ * A rule's owner of record: the owner of its newest version that was ever switched on, or none
+ * for a rule that never was. A version switched on keeps the time it took effect, and a draft
+ * never names one (decision D10).
+ */
+export function ownerOfRecord(versions: readonly Control[]): string | undefined {
+  let owner: string | undefined;
+  for (const version of versions) {
+    if (version.effective_from !== undefined) owner = version.owner;
+  }
+  return owner;
+}
+
+/** One move a command makes: its name, from which statuses, and to which. */
+type Move = { name: string; from: readonly RuleStatus[]; to: RuleStatus };
+const ACTIVATE: Move = { name: "rule.activate", from: ["draft", "suspended"], to: "active" };
+
+/**
+ * The version a move may change, after its checks, in this order: who, which version, and its
+ * status. Who decides is the rule's owner of record, or, for a rule never switched on, the
+ * version's own owner, in person: never an agent, whatever let it past line ⑤ (DSOR-CTL-02b).
+ * A switch-on needs the version's own owner too, so a rule never passes to a new owner
+ * (decision D10).
+ */
+function decide(
+  move: Move,
+  versions: readonly Control[],
+  input: unknown,
+  caller: Principal,
+): Control {
+  const id = ruleIdOf(input);
+  const { version: number } = input as { version: number };
+  const version = versions.find((v) => v.version === number);
+  const decider = ownerOfRecord(versions) ?? version?.owner;
+  // One answer for a rule that is not the caller's and for one that is not there, so the refusal
+  // says nothing of which rules exist (DSOR-ERR-01b; decision D16).
+  if (caller.type !== "human" || decider !== caller.id) {
+    const why = `${caller.id} may not change rule ${preview(id)}: only its owner may, in person`;
+    throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(move.name)}: ${why}`, "internal");
+  }
+  if (move.to === "active" && version !== undefined && version.owner !== caller.id) {
+    const why = `version ${number} of rule ${id} names another owner, and only its own owner may switch it on`;
+    throw new Refusal("AUTHORIZATION_DENIED", `${JSON.stringify(move.name)}: ${why}`, "internal");
+  }
+  if (version === undefined) {
+    throw new Refusal("RESOURCE_NOT_FOUND", `no version ${number} of rule ${id}`, "internal");
+  }
+  if (!move.from.includes(version.status as RuleStatus)) {
+    const why = `version ${number} of rule ${id} is ${version.status}, so it cannot be ${move.to}`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
+  return version;
+}
+
+/** The refusal of a change whose version moved on between line ⑨ and the change (decision D15). */
+function changedMeanwhile(id: string): Refusal {
+  return new Refusal("CONFLICT", `rule ${id} changed while it was being changed`, "internal");
+}
+
+/** Line ⑨, for a switch-on: who, which version, its status, then its checks and its tests (DSOR-CTL-02c). */
+async function mayActivate(input: unknown, look: OwnLook): Promise<void> {
+  const versions = await look.controls.versions(look.tenant, ruleIdOf(input));
+  const version = decide(ACTIVATE, versions, input, look.caller);
+  const problems = look.checkRule(look.tenant, version, true);
+  if (problems.length > 0) {
+    throw new Refusal("VALIDATION_FAILED", `"rule.activate": ${problems.join("; ")}`, "internal");
+  }
+}
+
+/**
+ * The switch-on's work, after line ⑩: under the rule's lock, the same checks again, then the live
+ * version retired and this one switched on, each with its record. One live version for each rule
+ * (decision D4). The tests ran at line ⑨: a version's text never changes.
+ */
+async function activate(input: unknown, work: OwnStores): Promise<unknown> {
+  const { tenant, caller, stores } = work;
+  const id = ruleIdOf(input);
+  const versions = await stores.controls.hold(tenant, id);
+  const version = decide(ACTIVATE, versions, input, caller);
+  const by = byOf(input, work);
+  const live = versions.find(
+    (v) => v.version !== version.version && (v.status === "active" || v.status === "suspended"),
+  );
+  if (live !== undefined) {
+    const from = live.status as RuleStatus;
+    if (!(await stores.controls.move(tenant, id, live.version, from, "retired", by))) {
+      throw changedMeanwhile(id);
+    }
+  }
+  const from = version.status as RuleStatus;
+  if (!(await stores.controls.move(tenant, id, version.version, from, "active", by))) {
+    throw changedMeanwhile(id);
+  }
+  const retired = live === undefined ? {} : { retired: live.version };
+  return { tenant_id: tenant, id, version: version.version, status: "active", ...retired };
+}
+
 /** The commands of a rule's life, as DSoR's own work. */
 export function ruleWorkFor(): Record<string, OwnWork> {
   return {
     "rule.draft": { check: mayDraft, change: writeDraft },
+    "rule.activate": { check: mayActivate, change: activate },
   };
 }

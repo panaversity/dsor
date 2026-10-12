@@ -77,6 +77,8 @@ export function ruleWorld(
   more: readonly StorySlip[] = [],
   // And these input schemas, the shipped ones unless a test changes one.
   inputs: ContractSource[] = shippedInputs,
+  // And these contracts, the shipped ones unless a test changes one.
+  contracts: ContractSource[] = shipped,
 ): RuleWorld {
   const clock = { now: T0 };
   const store = memoryInvoices([...structuredClone(invoices), ...structuredClone(BILLS)]);
@@ -96,7 +98,7 @@ export function ruleWorld(
   const brakes = memoryBrakes();
   const rules = memoryControls(controls);
   const registry = buildRegistry(
-    shipped,
+    contracts,
     handlersFor(),
     shippedRoles,
     inputs,
@@ -130,8 +132,9 @@ export async function ruleWorldOnTuesday(
   controls?: ControlsSource,
   more?: readonly StorySlip[],
   inputs?: ContractSource[],
+  contracts?: ContractSource[],
 ): Promise<RuleWorld> {
-  const w = ruleWorld(controls, more, inputs);
+  const w = ruleWorld(controls, more, inputs, contracts);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",
