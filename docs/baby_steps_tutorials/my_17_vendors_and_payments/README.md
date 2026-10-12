@@ -336,6 +336,10 @@ does not stop it, until the states of step 22. A handler that throws leaves the 
 error, not an envelope, as it has since step 03; for a command the honest answer is
 `OUTCOME_UNKNOWN`, which step 37 builds. Nothing checks that a payment's amount fits what the invoice still owes,
 or that the invoice is issued and the vendor approved: those are preconditions, in step 32. A
+payment in another currency than its invoice is refused, and the refusal names only the currency
+that was sent, because an invoice's currency is part of its confidential amount (decision 148). An
+agent can still learn it by guessing: a wrong guess is refused, and a right one makes a draft
+payment, which the person who reviews its work can see. A
 payment's vendor is the invoice's at the moment the payment is made; a vendor suspended later is
 step 31's. There is no `payment.get` yet: the demo reads the payments for its report through the
 same store as every statement, as the program's own report, not as an operation a caller can ask.

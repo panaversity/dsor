@@ -59,8 +59,12 @@ function fromRow(row: Row): Payment {
 export type CreateOutcome =
   | { readonly kind: "created"; readonly payment: Payment }
   | { readonly kind: "no_invoice" }
-  /** STEP 17, decision 126: the invoice is in another currency, which is `currency`. */
-  | { readonly kind: "wrong_currency"; readonly currency: string };
+  /**
+   * STEP 17, decision 126: the invoice is in another currency. Which one is not said. An
+   * invoice's amount is confidential, its currency too, and a handler holding it could put it in a
+   * refusal, which the door does not filter: a review read USD out of one (decision 148).
+   */
+  | { readonly kind: "wrong_currency" };
 
 /**
  * Make a draft payment for one of this company's invoices, to that invoice's vendor.
@@ -91,14 +95,14 @@ export async function createPayment(
     return { kind: "created", payment: fromRow(created) };
   }
 
-  // Nothing made: no such invoice, or one in another currency. Asked to say which.
-  const { rows: found } = await theDatabase(tenantId).query<{ currency: string }>(
-    "SELECT amount_currency AS currency FROM public.invoices WHERE tenant_id = $1 AND id = $2",
+  // Nothing made: no such invoice, or one in another currency. Asked to say which, and only which:
+  // whether the invoice is there, not what currency it is in (decision 148).
+  const { rows: found } = await theDatabase(tenantId).query<{ found: number }>(
+    "SELECT 1 AS found FROM public.invoices WHERE tenant_id = $1 AND id = $2",
     [tenantId, invoiceId],
   );
-  const currency = found[0]?.currency;
 
-  return currency === undefined ? { kind: "no_invoice" } : { kind: "wrong_currency", currency };
+  return found[0] === undefined ? { kind: "no_invoice" } : { kind: "wrong_currency" };
 }
 
 export type CancelOutcome =

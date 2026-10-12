@@ -445,13 +445,17 @@ const handlers: Readonly<Record<string, Handler>> = {
     }
 
     // STEP 17, decision 126: the caller's to fix, so never retryable.
+    //
+    // Decision 148: and it names the currency the caller sent, never the invoice's own. The message
+    // said "INV-1008 is in USD", and a review read a confidential invoice's currency out of it as the
+    // agent, whose every read and receipt leaves the amount out. The door does not filter an error.
     if (outcome.kind === "wrong_currency") {
       return {
         kind: "error",
         askedBy,
         envelope: refusal(
           "VALIDATION_FAILED",
-          `${read.id} is in ${outcome.currency}, and a payment is in its invoice's currency`,
+          `${read.id} is not in ${amount.currency}, and a payment is in its invoice's currency`,
           requestId,
           askedBy,
         ),

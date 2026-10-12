@@ -185,9 +185,36 @@ describe("payment.create", () => {
       );
 
       expect(refusal.code, currency).toBe("VALIDATION_FAILED");
-      expect(refusal.message, currency).toMatch(/INV-1008 is in USD/);
+      // Decision 148: the refusal names the currency the caller sent, never the invoice's own.
+      expect(refusal.message, currency).toMatch(`INV-1008 is not in ${currency},`);
     }
 
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
+  it("DSOR-CLS-02a: the agent's refusal for another currency does not name the invoice's own", async () => {
+    // Decision 148: the refusal said "INV-1008 is in USD". An invoice's amount is confidential, its
+    // currency too, and the agent's reads and receipts leave it out; one payment.create in another
+    // currency handed it back, with nothing made and nothing in the log to show it, a review
+    // measured. INV-1009 is moved to EUR first, so what is tested is a value the database holds,
+    // not a word the message could hold whatever the invoice says. The payment is in USD, as the
+    // agent's slip is, so the slip's limit does not refuse it first.
+    await asTheOwner(() =>
+      db.exec(
+        "UPDATE public.invoices SET amount_currency = 'EUR' WHERE tenant_id = 'org_456' AND id = 'INV-1009'",
+      ),
+    );
+
+    const refusal = refusalOf(
+      await callOperation(AGENT, "payment.create", {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "1.00", currency: "USD" },
+      }),
+    );
+
+    expect(JSON.stringify(refusal)).not.toContain("EUR");
+    expect(refusal.code).toBe("VALIDATION_FAILED");
+    expect(refusal.message).toMatch("INV-1009 is not in USD,");
     expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
   });
 
