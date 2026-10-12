@@ -95,7 +95,7 @@ describe("a command says the version it decided on", () => {
     });
   });
 
-  it("DSOR-CON-01b: an optimistic command with no version, or one that is not a whole number from 1, is refused", async () => {
+  it("DSOR-CON-01b: an optimistic command with no version, or one that is not a whole number from 1, is refused, and each refusal is recorded as a DENY", async () => {
     for (const [id, args] of [
       ["invoice.issue", { invoice: INV_1009 }],
       ["payment.cancel", { payment: PAY_901 }],
@@ -111,6 +111,14 @@ describe("a command says the version it decided on", () => {
     }
 
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+    // Decision 152: and the log says so, sixteen times. The handlers ask for the version again, so
+    // the answer above is VALIDATION_FAILED even when §21.6 lets a bad version through; only the log
+    // shows that §21.11 then recorded ALLOW for a request that was never valid.
+    expect(
+      (await theLog("org_456"))
+        .filter((r) => r.kind === "decision")
+        .map((r) => `${r.authorization} ${r.result}`),
+    ).toStrictEqual(Array(16).fill("DENY VALIDATION_FAILED"));
   });
 
   it("DSOR-CON-01b: a missing version is refused at §21.6, and recorded as the DENY it is", async () => {

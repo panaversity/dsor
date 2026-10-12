@@ -100,7 +100,7 @@ describe("a command says the version it decided on", () => {
     });
   });
 
-  it("DSOR-CON-01b: an optimistic command with no version, or one that is not a whole number from 1, is refused", async () => {
+  it("DSOR-CON-01b: an optimistic command with no version, or one that is not a whole number from 1, is refused, and each refusal is recorded as a DENY", async () => {
     for (const [id, args] of [
       ["invoice.issue", { invoice: INV_1009 }],
       ["payment.cancel", { payment: PAY_901 }],
@@ -116,6 +116,52 @@ describe("a command says the version it decided on", () => {
     }
 
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+    // Decision 152: and the log says so, sixteen times. The handlers ask for the version again, so
+    // the answer above is VALIDATION_FAILED even when §21.6 lets a bad version through; only the log
+    // shows that §21.11 then recorded ALLOW for a request that was never valid.
+    expect(
+      (await theLog("org_456"))
+        .filter((r) => r.kind === "decision")
+        .map((r) => `${r.authorization} ${r.result}`),
+    ).toStrictEqual(Array(16).fill("DENY VALIDATION_FAILED"));
+  });
+
+  // Decision 152: since step 23 a command can be prepared, propose_only, or tried as a dry run,
+  // validate_only, and neither runs the handler that asks for the version a second time. For those
+  // two, §21.6 is the only check: with it weakened, a bad version was prepared READY and dry-run
+  // VALIDATED (measured).
+  it("DSOR-CON-01b: a prepared command or a dry run with a version that is not a whole number from 1 is refused at §21.6, and recorded as a DENY", async () => {
+    let key = 0;
+
+    for (const mode of ["propose_only", "validate_only"] as const) {
+      for (const [id, args] of [
+        ["invoice.issue", { invoice: INV_1009 }],
+        ["payment.cancel", { payment: PAY_901 }],
+      ] as const) {
+        for (const given of [undefined, 0, -1, 1.5, "1", null, 2 ** 31, 1e300]) {
+          // A key of its own, so that nothing after §21.6 refuses it for some other reason.
+          key += 1;
+
+          const answer = await callOperation(
+            SUPERVISOR,
+            id,
+            { ...args, expected_version: given },
+            { idempotencyKey: `bad-version-${key}`, mode },
+          );
+
+          expect(
+            answer.kind === "error" && answer.envelope.code,
+            `${mode} ${id} ${String(given)}`,
+          ).toBe("VALIDATION_FAILED");
+        }
+      }
+    }
+
+    expect(
+      (await theLog("org_456"))
+        .filter((r) => r.kind === "decision")
+        .map((r) => `${r.authorization} ${r.result}`),
+    ).toStrictEqual(Array(32).fill("DENY VALIDATION_FAILED"));
   });
 
   it("DSOR-CON-01b: a missing version is refused at §21.6, and recorded as the DENY it is", async () => {
