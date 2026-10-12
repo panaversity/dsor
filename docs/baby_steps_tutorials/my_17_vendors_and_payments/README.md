@@ -45,7 +45,9 @@ which company it is about.
   one vendor and pay another's invoice. The database refuses it too: a payment's key points at the
   invoice and its vendor together, and an invoice must name a vendor its company has.
 - **The database numbers a payment.** The running example's PAY-901 is there from the start, as
-  INV-1008 is, so a new payment is PAY-902, then PAY-903. The caller never picks the number.
+  INV-1008 is, so the first payment made is PAY-902. The caller never picks the number. One
+  sequence numbers every company's payments, so org_456's next one is PAY-903 only if org_789 has
+  made none in between.
 - **An amount is checked before anything is written:** above zero, at most two decimal places, at
   most sixteen digits before the point, and in the invoice's own currency. The column holds two
   decimals, and PostgreSQL would round a third away without a word. Converting between currencies is
@@ -331,7 +333,9 @@ Copy `my_16_the_control_plane_store` to a new folder and ask:
   operation through the door.
 
 **What this step leaves, said plainly.** A retried `payment.create` makes a second payment, until
-step 20's idempotency key. A cancelled payment stays cancelled because `payment.cancel` changes only
+step 20's idempotency key. Payment numbers come from one sequence for every company, so the number
+on a receipt hints at how many payments the other companies made: org_456 makes PAY-902, org_789
+PAY-903, and org_456's next is PAY-904. Numbering each company on its own is a later step's. A cancelled payment stays cancelled because `payment.cancel` changes only
 a draft: the application's right to change a payment's status could set one back, and the database
 does not stop it, until the states of step 22. A handler that throws leaves the door as a thrown
 error, not an envelope, as it has since step 03; for a command the honest answer is
