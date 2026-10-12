@@ -150,8 +150,8 @@ describe("callOperation", () => {
 
   it("DSOR-EXE-05c: an undo still waiting for its handler stops the program", () => {
     // Decision 148: the registry checks that an undo has a contract, and a contract may wait here
-    // for its handler. Together they let payment.create run, still promising payment.cancel as its
-    // undo, while every payment.cancel was refused as an operation this program does not have.
+    // for its handler. Together they would let payment.create run, still promising payment.cancel as
+    // its undo, while every payment.cancel was refused as an operation this program does not have.
     const running = Object.fromEntries(
       Object.entries(handlersForBoth()).filter(([id]) => id !== "payment.cancel"),
     );
