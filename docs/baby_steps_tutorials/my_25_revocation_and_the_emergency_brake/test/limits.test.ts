@@ -165,6 +165,34 @@ describe("settling a reservation", () => {
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
 
+  it("DSOR-DEL-06d: a release gives the amount back to the total it was booked against, and to no other", async () => {
+    // Decision 155: only `t.delegation = s.delegation AND t.day = s.day` keeps a release to its own
+    // total, and no test had a second total beside it. Without them, every test still passed, and
+    // one refused payment under del_100 gave its amount back to every slip's total in the company,
+    // on every day. So, as the owner: another slip with a total today, and del_100's yesterday.
+    await asTheOwner(() =>
+      db.exec(`INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status,
+                                             expires_at, daily_limit_value, daily_limit_currency)
+               VALUES ('org_456', 'del_200', 'user_123', 'another-agent', ARRAY['payment:create'],
+                       'active', '2099-12-31T23:59:59Z', 200000.00, 'USD');
+               INSERT INTO dsor.day_totals (tenant, delegation, day, used_value, currency)
+               VALUES ('org_456', 'del_200', (now() AT TIME ZONE 'UTC')::date, 100000.00, 'USD'),
+                      ('org_456', 'del_100', (now() AT TIME ZONE 'UTC')::date - 1, 100000.00, 'USD')`),
+    );
+
+    const id = await aProposal();
+
+    await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await endedAs(id, "FAILED");
+    await settleReservation("org_456", id, "released");
+
+    expect(await totalsOf()).toStrictEqual([
+      "del_100 yesterday 100000.00",
+      "del_100 today 0.00",
+      "del_200 today 100000.00",
+    ]);
+  });
+
   it("DSOR-DEL-06a: a committed reservation keeps its amount on the day", async () => {
     const id = await aProposal();
 
@@ -234,6 +262,19 @@ const reservationStates = async (): Promise<string[]> => {
   );
 
   return rows.map((r) => r.state);
+};
+
+/** Decision 155: org_456's day totals, "slip day used", by slip and then by day. */
+const totalsOf = async (): Promise<string[]> => {
+  const { rows } = await theDatabase("org_456").query<{ total: string }>(
+    `SELECT delegation || ' ' ||
+            CASE day - (now() AT TIME ZONE 'UTC')::date
+              WHEN 0 THEN 'today' WHEN -1 THEN 'yesterday' ELSE day::text
+            END || ' ' || used_value::text AS total
+       FROM dsor.day_totals WHERE tenant = 'org_456' ORDER BY delegation, day`,
+  );
+
+  return rows.map((r) => r.total);
 };
 
 describe("the agent's payments against del_100's day", () => {
