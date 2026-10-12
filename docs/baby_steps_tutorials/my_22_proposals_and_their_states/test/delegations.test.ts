@@ -232,6 +232,17 @@ describe("an agent's command runs under its slip", () => {
     expect(refusalOf(await create(AGENT)).code).toBe("DELEGATION_EXPIRED");
   });
 
+  it("DSOR-DEL-01a: an expiry before the year 1 is refused: 4000 BC is not read as the year 4000", async () => {
+    // Decision 149: `to_char` wrote the year without its era, so a slip that expired in 4000 BC came
+    // back as 4000-01-01, far in the future, and a review's agent paid under a slip the database
+    // itself called expired. The second is the earliest time PostgreSQL keeps.
+    for (const expiry of ["4000-01-01 00:00:00+00 BC", "4714-11-24 00:00:00+00 BC"]) {
+      await owner(`UPDATE dsor.delegations SET expires_at = '${expiry}' WHERE id = 'del_100'`);
+
+      expect(refusalOf(await create(AGENT)).code, expiry).toBe("DELEGATION_EXPIRED");
+    }
+  });
+
   it("DSOR-DEL-01a: the table refuses an expiry that is no time at all", async () => {
     // Decision 128: `-infinity` came back from the database as no time, and the slip passed.
     for (const never of ["infinity", "-infinity"]) {

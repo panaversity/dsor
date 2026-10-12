@@ -38,7 +38,9 @@ export interface Delegation {
   /**
    * When it stops counting, as an exact ISO time, or `undefined` when the store's value is no time
    * this program can write down. Migration 013 refuses `infinity`; `undefined` is for a store that
-   * lets one in anyway, and it is refused as not in force (decision 128).
+   * lets one in anyway (decision 128), and for a time before the year 1, which `to_char` writes
+   * without its era, so that 4000 BC would read as the year 4000 (decision 149). Either way it is
+   * refused as not in force.
    */
   readonly expiresAt: string | undefined;
 }
@@ -55,7 +57,10 @@ interface Row {
   readonly daily_value: string | null;
   readonly daily_currency: string | null;
   readonly status: DelegationStatus;
-  /** NULL for `infinity` and `-infinity`, which `to_char` cannot write as a date. */
+  /**
+   * NULL for `infinity` and `-infinity`, which `to_char` cannot write as a date, and for a time
+   * before the year 1, which it writes without its era (decision 149).
+   */
   readonly expires_at: string | null;
 }
 
@@ -76,12 +81,19 @@ export type SlipFound =
  * whichever row came first (decision 128). So it reads up to two, and the caller refuses two.
  */
 export async function activeSlipFor(tenant: string, delegate: string): Promise<SlipFound> {
+  // Decision 149: the expiry is written out only from the year 1 on. `to_char` writes a year without
+  // its era, so a slip that expired in 4000 BC came back as 4000-01-01, far in the future, and a
+  // review's agent paid under it. Before the year 1 the answer is NULL, which the delegation stage
+  // refuses as no time this program can read.
   const { rows } = await theDatabase(tenant).query<Row>(
     `SELECT tenant, id, delegator, delegate, permissions, modes,
             per_transaction_limit_value::text AS limit_value,
             per_transaction_limit_currency AS limit_currency,
             daily_limit_value::text AS daily_value, daily_limit_currency AS daily_currency,
-            status, to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at
+            status,
+            CASE WHEN expires_at >= TIMESTAMPTZ '0001-01-01 00:00:00+00'
+                 THEN to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            END AS expires_at
        FROM dsor.delegations
       WHERE tenant = $1 AND delegate = $2 AND status = 'active'
       ORDER BY id
