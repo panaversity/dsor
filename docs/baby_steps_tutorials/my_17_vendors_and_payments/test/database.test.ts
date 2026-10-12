@@ -485,6 +485,31 @@ describe("refuseIfItCanRewriteHistory", () => {
     }
   });
 
+  it("DSOR-TEN-01a: rights through a helper function's owner are refused too: payments, invoices", async () => {
+    // Decision 148: start-up asked a helper's owner only about the log. A review gave a SECURITY
+    // DEFINER helper an owner that may update a payment's amount, start-up passed, and as the
+    // application it set org_456's PAY-901 to 1.00 through the helper. The invoices had the same gap.
+    for (const [grant, words] of [
+      ["GRANT UPDATE (amount_value) ON public.payments TO lifter", /payment/],
+      ["GRANT DELETE ON public.payments TO lifter", /payment/],
+      ["GRANT DELETE ON public.invoices TO lifter", /invoices/],
+    ] as const) {
+      const db = await aDatabase();
+
+      await db.exec("RESET ROLE");
+      await db.exec(
+        `CREATE ROLE lifter; ${grant};
+         CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';
+         ALTER FUNCTION public.a_helper() OWNER TO lifter`,
+      );
+      await db.exec(`SET ROLE ${APPLICATION_ROLE}`);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db)), grant).rejects.toThrow(words);
+
+      await db.close();
+    }
+  });
+
   it("DSOR-AUD-04a: a right reached through inherited role membership is caught too", async () => {
     // `dsor_runtime` has no UPDATE of its own. Make it a member of a role that does, and
     // `has_table_privilege` follows the membership — which is why the check asks PostgreSQL

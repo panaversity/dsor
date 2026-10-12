@@ -498,9 +498,9 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-DEL-01a: rights through a helper function's owner are refused too: slips, payments, invoices", async () => {
-    // Decision 128: start-up asked a helper's owner only about the log. A review lifted del_100's
-    // limit through a SECURITY DEFINER helper owned by a role that may update the slips, and
-    // committed 60,000.00 USD; the payments and the invoices had the same gap.
+    // Decision 128: a review lifted del_100's limit through a SECURITY DEFINER helper owned by a
+    // role that may update the slips, and committed 60,000.00 USD. The payments and the invoices
+    // are asked of a helper's owner since step 17 (decision 148); the slips are asked the same way.
     for (const [grant, words] of [
       ["GRANT UPDATE ON dsor.delegations TO lifter", /may write a permission slip/],
       ["GRANT DELETE ON public.payments TO lifter", /payment/],

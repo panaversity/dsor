@@ -54,7 +54,8 @@ which company it is about.
   step 26's.
 - **The application may make a draft and change a payment's status, and nothing else.** Start-up
   refuses to run if it may change a vendor, more of a payment than its status, or the sequence that
-  numbers payments, itself or through a role it can become.
+  numbers payments, itself, through a role it can become, or through a helper function, which runs
+  with its owner's rights whoever calls it.
 
 ## Why it matters
 
@@ -87,11 +88,12 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `src/operations.ts` | the two handlers; the address reader takes the entity it needs, because `payment.create` takes an invoice's address; and the door writes each receipt's semantics from the contract. `?? "atomic"` is gone |
 | `src/registry.ts` | the two contracts; a program whose contract names an undo it does not have, or a query, refuses to start; `semanticsOf`, with no default |
 | `src/boundary.ts` | `withTheContractsSemantics`; and a comment that promised step 17 a `PENDING_APPROVAL` receipt names step 27 |
-| `src/database.ts` | the tenant tables in one list, four now, and every start-up question about them built from it; a refusal for an application that may change a vendor, or more of a payment than its status; and a grant of every invoice column, which slipped past since step 10, caught |
+| `src/database.ts` | the tenant tables in one list, four now, and every start-up question about them built from it; a refusal for an application that may change a vendor, or more of a payment than its status; a grant of every invoice column, which slipped past since step 10, caught; and the questions about the business's tables asked of a helper function's owner too, as the log's are (decision 148) |
 | `src/permissions.ts`, `src/classification.ts` | the supervisor and the agent may make and cancel payments; a payment's amount is confidential, like an invoice's |
 | `src/main.ts` | each receipt line says its semantics; a section that lists what each command's contract says, makes a duplicate payment and takes it back, and shows the payments as they end |
 | `test/vendors-and-payments.test.ts` | new — the tables: the running example, the company in every key, the second lock, what the application may and may not do |
 | `test/payments.test.ts` | new — the two commands, the semantics on each receipt, a careless handler that says `atomic`, and the registry's refusals |
+| `test/database.test.ts` | the start-up refusals above, tested: invoices granted column by column, a vendor or more of a payment than its status, a payment's number, each one `SET ROLE` away, and through a helper function's owner |
 | `test/support/story.ts` | new — the one list of statements that put the story's rows back, for both tiers |
 | `test/support/cross-tenant-suite.ts` | rows of both kinds, looked up by kind and number, and a new canary. The same-state question is still asked of every command but a read, as in step 16, `payment.create` included |
 | `test/cross-tenant-suite-itself.test.ts` | a payment's number is looked for among the payments, and a command that only adds rows is asked the same-state question too (decision 148) |

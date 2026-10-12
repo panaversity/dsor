@@ -134,10 +134,11 @@ const TENANT_REGCLASSES = TENANT_TABLES.map(([table]) => `to_regclass('${table}'
  * `pg_has_role(…, 'MEMBER')` sees a membership whether or not it is inherited, and a role is a
  * member of itself, so the connection's own rights are asked too (decision 126).
  *
- * STEP 18: and of every role it acts as through a helper. A SECURITY DEFINER function runs
- * with its owner's rights, whoever calls it, and the log's question has been asked of those owners
- * since step 09; the business's tables' and the slips' were not. A review lifted del_100's limit
- * through such a helper (decision 128).
+ * STEP 17, decision 148: and of every role it acts as through a helper. A SECURITY DEFINER function
+ * runs with its owner's rights, whoever calls it, and the log's question has been asked of those
+ * owners since step 09; the business's tables' were not. A review set PAY-901's amount to 1.00
+ * through such a helper, with start-up passing. STEP 18: the slips are asked the same way, and a
+ * review lifted del_100's limit through a helper before they were (decision 128).
  */
 const forAnyRoleItCanActAs = (question: (role: string) => string): string =>
   `(EXISTS (SELECT 1 FROM pg_roles r WHERE pg_has_role(current_user, r.oid, 'MEMBER') AND (${question("r.oid")}))
