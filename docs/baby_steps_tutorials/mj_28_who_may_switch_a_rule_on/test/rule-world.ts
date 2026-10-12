@@ -13,6 +13,7 @@ import { createLog, type MemoryLog } from "../src/log.ts";
 import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
+import type { RoleTableSource } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { readMoneyPolicies } from "../src/policies.ts";
 import { memoryProposals, type MemoryProposals } from "../src/proposals.ts";
@@ -87,6 +88,8 @@ export function ruleWorld(
   // And the store that the registry and the claims are given, around the world's own, when a test
   // changes how it answers.
   around: (rules: MemoryControls) => ControlStore = (rules) => rules,
+  // And this role table, the shipped one unless a test changes a role.
+  roles: RoleTableSource = shippedRoles,
 ): RuleWorld {
   const clock = { now: T0 };
   const store = memoryInvoices([...structuredClone(invoices), ...structuredClone(BILLS)]);
@@ -109,7 +112,7 @@ export function ruleWorld(
   const registry = buildRegistry(
     contracts,
     handlersFor(),
-    shippedRoles,
+    roles,
     inputs,
     shippedLabels,
     store,
@@ -143,8 +146,9 @@ export async function ruleWorldOnTuesday(
   inputs?: ContractSource[],
   contracts?: ContractSource[],
   around?: (rules: MemoryControls) => ControlStore,
+  roles?: RoleTableSource,
 ): Promise<RuleWorld> {
-  const w = ruleWorld(controls, more, inputs, contracts, around);
+  const w = ruleWorld(controls, more, inputs, contracts, around, roles);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",

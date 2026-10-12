@@ -230,6 +230,25 @@ describe("C8: start-up checks every version in the store (step 28's README, deci
     expect(registry.checkRule("org_789", rule, true)).toStrictEqual([]);
   });
 
+  // Found by step 28's review, finding L10: with start-up checking the first company only, every
+  // test passed.
+  it("Step 28: start-up checks every company: a good rule of org_456 and an active rule of org_789 whose test fails stop it, and the problem names org_789", async () => {
+    const [first] = text789()["tests"] as object[];
+    const broken = {
+      ...text789(),
+      id: "board-above-10000",
+      version: 1,
+      status: "active",
+      reviewed_by: "admin_700",
+      effective_from: "2026-09-01T00:00:00Z",
+      tests: [{ ...first, expect: "REQUIRE_APPROVAL" }],
+    };
+    const file = controlsOf({ org_456: [shippedRule()], org_789: [broken] });
+    expect(await refusalAtStart(() => startWith(file))).toContain(
+      "controls.json: org_789's control board-above-10000 v1 fails its test 1: expects REQUIRE_APPROVAL, gives ALLOW",
+    );
+  });
+
   it("Step 28: one version written twice stops start-up", async () => {
     expect(
       await refusalAtStart(() =>

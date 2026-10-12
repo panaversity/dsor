@@ -12,7 +12,9 @@ import {
   FIRM_IN_456,
   keyed,
   OUR_EXTENSIONS,
+  rolesFile,
   shippedWith,
+  STARTING_ROLES,
   SUPERVISOR,
 } from "./helpers.ts";
 import {
@@ -120,9 +122,17 @@ describe("C4: the owner switches a version on (step 28's README, decisions D10 a
     expect(heard(await ruleCall(w, CFO, "rule.activate", { version: 1 }, rule))).toBe(
       "AUTHORIZATION_DENIED",
     );
-    expect(await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule)).toMatchObject({
-      data: { id: "board-above-45000", version: 1, status: "active" },
-    });
+    const on = await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule);
+    expect(on).toMatchObject({ data: { id: "board-above-45000", version: 1, status: "active" } });
+    // Found by step 28's review, finding L9: the reviewer and the record name admin_100, who acted.
+    const [v1] = await w.rules.versions("org_456", "board-above-45000");
+    expect(v1).toMatchObject({ reviewed_by: "admin_100", compiled_by: "admin_100" });
+    const records = (await w.rules.records()).filter(
+      (r) => r.correlation.request_id === on.correlation.request_id,
+    );
+    expect(records.map((r) => [r.result, r.identity.subject])).toStrictEqual([
+      ["active", "admin_100"],
+    ]);
   });
 });
 
@@ -355,6 +365,30 @@ describe("C6: an agent switches nothing on (DSOR-CTL-02b; step 28's README, deci
     });
     const [kept] = await w.rules.versions("org_456", "agent-made");
     expect(kept?.status).toBe("draft");
+  });
+
+  // Found by step 28's review, finding L12: with "in person" refusing agents only, every test
+  // passed. dsor-scheduler, a login of the subject type system, is no person either.
+  it("DSOR-CTL-02a: a person decides, never a system login: a version planted with dsor-scheduler as its owner is not switched on by dsor-scheduler, even with rule.activate open and rule:manage in its role", async () => {
+    const open = { ...contract("rule.activate"), extensions: {} };
+    const roles = rolesFile({ ...STARTING_ROLES, scheduler: ["proposal:expire", "rule:manage"] });
+    const w = await ruleWorldOnTuesday(
+      undefined,
+      [],
+      undefined,
+      shippedWith(open),
+      undefined,
+      roles,
+    );
+    const planted = { ...version9(), id: "system-made", version: 1, owner: "dsor-scheduler" };
+    await w.rules.add("org_456", planted, byOther());
+    const scheduler = { token: "tok_5c4e", tenant: "org_456" };
+    const rule = "dsor://org_456/rule/system-made";
+    expect(await ruleCall(w, scheduler, "rule.activate", { version: 1 }, rule)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": dsor-scheduler may not change rule "system-made": only its owner may, in person',
+    });
   });
 
   it("Step 28: user_123, who holds no rule:manage, is refused at line ⑤", async () => {
