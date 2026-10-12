@@ -122,6 +122,18 @@ describe("an account the lock does not apply to", () => {
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
   });
 
+  it("DSOR-RP-01a: an account that may become the owner of the idempotency keys is refused", async () => {
+    // Decision 147: the keys' table, dsor.idempotency_keys, is a tenant table, asked about
+    // like the payments. The code refused this already, and no test said so.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER TABLE dsor.idempotency_keys OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
+  });
+
   it("DSOR-AUD-04a: an account that owns the database is refused, even with public given back", async () => {
     // STEP 16: one login that owns its own database is the commonest careless setup. It was
     // caught only because `public` belongs to `pg_database_owner`, and doing what that refusal said,
@@ -507,6 +519,10 @@ describe("a lock that is not there", () => {
     // STEP 18: and the permission slips.
     ["ALTER TABLE dsor.delegations NO FORCE ROW LEVEL SECURITY", /forced/],
     ["DROP POLICY tenant_isolation ON dsor.delegations", /policy/],
+    // Decision 147: and the idempotency keys, which the code refused already and no test said, as
+    // decision 126 found for the vendors and the payments.
+    ["ALTER TABLE dsor.idempotency_keys NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["DROP POLICY tenant_isolation ON dsor.idempotency_keys", /policy/],
   ] as const) {
     it(`DSOR-RP-01b: refuses to start when the lock is off — ${undo}`, async () => {
       await asTheOwner(() => db.exec(undo));

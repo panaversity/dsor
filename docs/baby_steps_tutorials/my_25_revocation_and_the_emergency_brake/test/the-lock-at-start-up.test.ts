@@ -122,6 +122,54 @@ describe("an account the lock does not apply to", () => {
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
   });
 
+  it("DSOR-RP-01a: an account that may become the owner of the idempotency keys is refused", async () => {
+    // Decision 147: the keys' table, dsor.idempotency_keys, is a tenant table, asked about
+    // like the payments. The code refused this already, and no test said so.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER TABLE dsor.idempotency_keys OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
+  });
+
+  it("DSOR-RP-01a: an account that may become the owner of the proposals is refused", async () => {
+    // Decision 147: the proposals' table, dsor.proposals, is a tenant table, asked about
+    // like the payments. The code refused this already, and no test said so.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER TABLE dsor.proposals OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
+  });
+
+  it("DSOR-RP-01a: an account that may become the owner of the reservations is refused", async () => {
+    // Decision 147: the reservations' table, dsor.reservations, is a tenant table, asked about
+    // like the payments. The code refused this already, and no test said so.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER TABLE dsor.reservations OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
+  });
+
+  it("DSOR-RP-01a: an account that may become the owner of the brake is refused", async () => {
+    // Decision 147: the brake's table, dsor.agent_controls, is a tenant table, asked about
+    // like the payments. The code refused this already, and no test said so.
+    await asTheOwner(async () => {
+      await db.exec("CREATE ROLE a_plain_owner");
+      await db.exec("ALTER TABLE dsor.agent_controls OWNER TO a_plain_owner");
+      await db.exec(`GRANT a_plain_owner TO ${APPLICATION_ROLE} WITH INHERIT FALSE`);
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/owner of, a tenant/);
+  });
+
   it("DSOR-AUD-04a: an account that owns the database is refused, even with public given back", async () => {
     // STEP 16: one login that owns its own database is the commonest careless setup. It was
     // caught only because `public` belongs to `pg_database_owner`, and doing what that refusal said,
@@ -510,6 +558,23 @@ describe("a lock that is not there", () => {
     // STEP 18: and the permission slips.
     ["ALTER TABLE dsor.delegations NO FORCE ROW LEVEL SECURITY", /forced/],
     ["DROP POLICY tenant_isolation ON dsor.delegations", /policy/],
+    // Decision 147: and the idempotency keys, which the code refused already and no test said, as
+    // decision 126 found for the vendors and the payments.
+    ["ALTER TABLE dsor.idempotency_keys NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["DROP POLICY tenant_isolation ON dsor.idempotency_keys", /policy/],
+    // Decision 147: and the proposals and their moves.
+    ["ALTER TABLE dsor.proposals NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["DROP POLICY tenant_isolation ON dsor.proposals", /policy/],
+    ["ALTER TABLE dsor.proposal_moves DISABLE ROW LEVEL SECURITY", /row-level security/],
+    ["CREATE POLICY for_app ON dsor.proposal_moves TO dsor_runtime USING (true)", /policy/],
+    // Decision 147: and the day totals and the reservations.
+    ["ALTER TABLE dsor.day_totals NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["DROP POLICY tenant_isolation ON dsor.day_totals", /policy/],
+    ["ALTER TABLE dsor.reservations DISABLE ROW LEVEL SECURITY", /row-level security/],
+    ["CREATE POLICY for_app ON dsor.reservations TO dsor_runtime USING (true)", /policy/],
+    // Decision 147: and the emergency brake.
+    ["ALTER TABLE dsor.agent_controls NO FORCE ROW LEVEL SECURITY", /forced/],
+    ["DROP POLICY tenant_isolation ON dsor.agent_controls", /policy/],
   ] as const) {
     it(`DSOR-RP-01b: refuses to start when the lock is off — ${undo}`, async () => {
       await asTheOwner(() => db.exec(undo));
