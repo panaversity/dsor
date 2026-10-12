@@ -352,8 +352,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // are compared as PostgreSQL prints them back, so a server that printed them differently would
   // refuse to start rather than let an unchecked policy through. And `reads_beyond` is the view
   // trap the same review measured: a view runs with its owner's rights, and its owner skips the
-  // lock, so a view over the invoices shows every company to whoever may SELECT from it. The
-  // application may read the two tenant tables and nothing else.
+  // lock, so a view over the invoices shows every company to whoever may SELECT from it. So the
+  // application itself may read the tenant tables and nothing else. Decision 156: unlike the
+  // questions about writing, this one is not yet asked one SET ROLE away, or of a helper function's
+  // owner; that waits for step 26.
   const { rows: lock } = await db.query<{
     bypasses: boolean;
     bypassing_roles: string | null;

@@ -250,6 +250,13 @@ only by its name: `principal` or `delegation`, alone or with `_id`. Both command
 `target`. That is a reading of the rule and not a change to it, written down for the editor in
 decision 143, and the brake's half in decision 156.
 
+Start-up leaves a gap, written down in decision 156. It asks whether the application may read a view
+or a table beside the tenant tables, because a view runs with its owner's rights: over the invoices,
+it shows every company's rows. But it asks the application itself only. Its questions about writing
+also ask one `SET ROLE` away and through a helper function (decisions 126 and 128); this one does not
+yet, so a view that the application can read only one of those ways passes start-up. That waits for
+step 26.
+
 Everything earlier steps claimed still holds.
 
 **Stage 3 of the learning path is complete.** **Next:** step 26, `money_done_right` — compare amounts
