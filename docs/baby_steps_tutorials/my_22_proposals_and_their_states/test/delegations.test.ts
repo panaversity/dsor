@@ -191,6 +191,29 @@ describe("an agent's command runs under its slip", () => {
     ]);
   });
 
+  it("DSOR-DEL-01a: a slip made out to another agent is not this agent's", async () => {
+    // Decision 149: DSoR finds the slip from the company and the agent, and only `delegate = $2` in
+    // activeSlipFor says "the agent". Every slip a test wrote was this agent's, so a read that left the
+    // agent out passed them all, and a review's agent paid under another agent's slip. The other slip
+    // may be used unattended, so that only whose it is keeps this agent from using it.
+    await owner(
+      `UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100';
+       INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
+       VALUES ('org_456', 'del_200', 'user_123', 'collections-fte', ARRAY['payment:create'],
+               ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`,
+    );
+
+    const refusal = refusalOf(await create(AGENT));
+
+    expect(refusal.code).toBe("DELEGATION_REQUIRED");
+    expect(refusal.message).toMatch(/holds no active permission slip in org_456/);
+
+    // And beside del_100, the other agent's slip is not a second slip of this agent's.
+    await owner("UPDATE dsor.delegations SET status = 'active' WHERE id = 'del_100'");
+
+    expect((await create(AGENT)).kind).toBe("result");
+  });
+
   it("DSOR-DEL-01a: an expired slip is refused as expired", async () => {
     await owner(
       "UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'",
