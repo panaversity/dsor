@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { migrationsIn } from "../src/migrations.ts";
 import { callOperation } from "../src/operations.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
@@ -131,6 +132,91 @@ describe("creating nothing in dsor, on a server that hands out rights to every n
 
       expect(await may("a_stranger", "dsor")).toStrictEqual({ use: false, create: false });
       expect(await may("dsor_runtime", "dsor")).toStrictEqual({ use: true, create: false });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("moving a log that already has records in it", () => {
+  // Decision 147: every other database these tests build runs 008 while the log is still empty,
+  // so an 008 that lost the records passed them all. A review measured it: 008 with one line added,
+  // `TRUNCATE dsor.audit`, and the whole suite still passed. A real server meets 008 with records
+  // in its log, as step 15's own database did. This test builds that server, and asks what step 16
+  // promised: the table moves with every record in it, and nothing is copied.
+  //
+  // In step 16 the program's own writer made these records. Since step 19 it also fills
+  // `delegation`, a column the log gets only in migration 016, so it cannot write to the log as 001
+  // to 007 leave it. The records are written here by hand, as the owner, in the shape the program
+  // wrote before step 19. What catches a lost record is the comparison of rows, and that is the same.
+  it("DSOR-MOD-01: migration 008 moves a log that has records, every one of them, and copies nothing", async () => {
+    const server = await PGlite.create();
+    const migrations = migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)));
+
+    /** A table's identity and every row in it, recorded_at included, asked as the owner. */
+    const theTable = async (name: string): Promise<{ oid: unknown; rows: unknown[] }> => ({
+      oid: (await server.query<{ oid: unknown }>("SELECT $1::regclass::oid AS oid", [name])).rows[0]
+        ?.oid,
+      rows: (await server.query(`SELECT * FROM ${name} ORDER BY chain, sequence`)).rows,
+    });
+
+    try {
+      await server.exec(
+        "CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-throwaway-not-a-secret';",
+      );
+
+      // A server as step 15 left it: migrations 001 to 007, and nothing in dsor.
+      for (const migration of migrations.filter((m) => m.number < 8)) {
+        await server.exec(migration.sql);
+      }
+
+      // Three records in org_456's chain, at the log's old address, each pointing at the one before.
+      await server.exec(`
+        INSERT INTO public.audit (
+          record_id, chain, sequence, previous_hash, record_hash, at,
+          tenant, kind, identity, correlation, operation, "authorization", result
+        ) VALUES
+          ('audit:org_456:0', 'audit:org_456', 0, 'sha256:' || repeat('0', 64), 'sha256:first',
+           '2026-10-02T09:14:00Z', 'org_456', 'decision',
+           '{"mode":"direct","subject":"user_123","actor_chain":[]}', '{"request_id":"req_1"}',
+           'invoice.get@1', 'ALLOW', 'ALLOWED'),
+          ('audit:org_456:1', 'audit:org_456', 1, 'sha256:first', 'sha256:second',
+           '2026-10-02T09:15:00Z', 'org_456', 'decision',
+           '{"mode":"direct","subject":"user_123","actor_chain":[]}', '{"request_id":"req_2"}',
+           'invoice.get@1', 'ALLOW', 'ALLOWED'),
+          ('audit:org_456:2', 'audit:org_456', 2, 'sha256:second', 'sha256:third',
+           '2026-10-02T09:16:00Z', 'org_456', 'decision',
+           '{"mode":"direct","subject":"user_123","actor_chain":[]}', '{"request_id":"req_3"}',
+           'invoice.get@1', 'DENY', 'AUTHORIZATION_DENIED');
+      `);
+
+      const before = await theTable("public.audit");
+
+      expect(before.rows).toHaveLength(3);
+
+      // Then 008 alone, as the owner, as `pnpm migrate` runs it on that server.
+      for (const migration of migrations.filter((m) => m.number === 8)) {
+        await server.exec(migration.sql);
+      }
+
+      const after = await theTable("dsor.audit");
+
+      // The same table, not a new one beside it with the rows copied in.
+      expect(after.oid).toBe(before.oid);
+      // Every record, as it was, down to the time the database stamped on it.
+      expect(after.rows).toStrictEqual(before.rows);
+
+      // And the application still reads them at the new address, with its company said: the
+      // grants and the lock moved with the table.
+      await server.exec("SET ROLE dsor_runtime");
+
+      const { rows: seen } = await overPGlite(server).query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM dsor.audit",
+        [],
+        "org_456",
+      );
+
+      expect(seen[0]?.n).toBe(3);
     } finally {
       await server.close();
     }

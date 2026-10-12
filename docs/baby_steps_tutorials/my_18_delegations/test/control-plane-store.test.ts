@@ -14,7 +14,8 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { theLog } from "../src/audit.ts";
+import { audit, theLog, useDatabase, verifyChain } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { migrationsIn } from "../src/migrations.ts";
 import { callOperation } from "../src/operations.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
@@ -132,6 +133,90 @@ describe("creating nothing in dsor, on a server that hands out rights to every n
       expect(await may("a_stranger", "dsor")).toStrictEqual({ use: false, create: false });
       expect(await may("dsor_runtime", "dsor")).toStrictEqual({ use: true, create: false });
     } finally {
+      await server.close();
+    }
+  });
+});
+
+describe("moving a log that already has records in it", () => {
+  // Decision 147: every other database these tests build runs 008 while the log is still empty,
+  // so an 008 that lost the records passed them all. A review measured it: 008 with one line added,
+  // `TRUNCATE dsor.audit`, and the whole suite still passed. A real server meets 008 with records
+  // in its log, as step 15's own database did. This test builds that server, and asks what step
+  // 16 promised: the table moves with every record in it, and nothing is copied.
+  it("DSOR-MOD-01: migration 008 moves a log that has records, every one of them, and copies nothing", async () => {
+    const server = await PGlite.create();
+    const migrations = migrationsIn(fileURLToPath(new URL("../migrations", import.meta.url)));
+
+    /** A table's identity and every row in it, recorded_at included, asked as the owner. */
+    const theTable = async (name: string): Promise<{ oid: unknown; rows: unknown[] }> => ({
+      oid: (await server.query<{ oid: unknown }>("SELECT $1::regclass::oid AS oid", [name])).rows[0]
+        ?.oid,
+      rows: (await server.query(`SELECT * FROM ${name} ORDER BY chain, sequence`)).rows,
+    });
+
+    try {
+      await server.exec(
+        "CREATE ROLE dsor_runtime WITH LOGIN PASSWORD 'local-throwaway-not-a-secret';",
+      );
+
+      // A server as step 15 left it: migrations 001 to 007, and nothing in dsor.
+      for (const migration of migrations.filter((m) => m.number < 8)) {
+        await server.exec(migration.sql);
+      }
+
+      // Three records, written by the program's own writer, as the application, to the log's old
+      // address. The one name is swapped, as the re-run of 002 does, so the records are real: each
+      // hashed and chained to the one before.
+      const theOldAddress = overPGlite(server);
+
+      useDatabase({
+        query: <T>(sql: string, params?: unknown[], tenant?: string): Promise<{ rows: T[] }> =>
+          theOldAddress.query<T>(sql.replaceAll("dsor.audit", "public.audit"), params, tenant),
+      });
+      await server.exec("SET ROLE dsor_runtime");
+
+      for (const requestId of ["req_1", "req_2", "req_3"]) {
+        await audit({
+          kind: "decision",
+          subject: "user_123",
+          tenant: "org_456",
+          requestId,
+          operation: "invoice.get@1",
+          authorization: "ALLOW",
+          result: "ALLOWED",
+        });
+      }
+
+      await server.exec("RESET ROLE");
+
+      const before = await theTable("public.audit");
+
+      expect(before.rows).toHaveLength(3);
+
+      // Then 008 alone, as the owner, as `pnpm migrate` runs it on that server.
+      for (const migration of migrations.filter((m) => m.number === 8)) {
+        await server.exec(migration.sql);
+      }
+
+      const after = await theTable("dsor.audit");
+
+      // The same table, not a new one beside it with the rows copied in.
+      expect(after.oid).toBe(before.oid);
+      // Every record, as it was, down to the time the database stamped on it.
+      expect(after.rows).toStrictEqual(before.rows);
+
+      // And the chain still verifies at the new address, read the way the program reads it.
+      useDatabase(overPGlite(server));
+      await server.exec("SET ROLE dsor_runtime");
+
+      const log = await theLog("org_456");
+
+      expect(log).toHaveLength(3);
+      expect(verifyChain(log)).toBe(true);
+    } finally {
+      // Back to this file's own database, for any test that runs after this one.
+      useDatabase(overPGlite(db));
       await server.close();
     }
   });
