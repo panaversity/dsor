@@ -71,7 +71,13 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on the slips' and the brakes' tables than revoking and braking need |
 | `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze |
 | `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke |
-| the tests that pin the pipeline | twelve stages, and the stage-order proof by its parts |
+| `test/pipeline.test.ts` | twelve stages, and the stage-order proof by its parts |
+| `test/database.test.ts` | the start-up refusals above, tested: a brake or a slip without its second policy, and rights on either beyond braking and revoking |
+| `test/delegations.test.ts` | the test that reads del_100 reads org_456's only, now that org_789 has one too; a revocation the application writes says who, when and why, or is refused |
+| `test/main.test.ts` | the demo's brake and freeze, the log's new totals, and a finished proposal asked to move into FAILED |
+| `test/proposals.test.ts`, `test/proposals.db.test.ts`, `test/limits.test.ts` | into EXECUTING only through the path, told who the moves are for; a step-24 title the wider release made false, retitled |
+| `test/operations.test.ts`, `test/registry.test.ts`, `test/permissions.test.ts`, `test/payments.test.ts`, `test/versions.test.ts` | the two new operations, in each list of operations, contracts, permissions, semantics and concurrency |
+| `test/control-plane-store.test.ts`, `test/support/story.ts`, `test/support/cross-tenant-suite.ts` | the brake's table among DSoR's, no brake on when a test starts, org_789's slip, and the rows a careless brake or revocation could change |
 
 ## Run it
 
