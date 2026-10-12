@@ -96,9 +96,10 @@ export async function reserve(
  *
  * STEP 24, decision 141: and only when the proposal's history holds the move that says so,
  * asked in the same statement: committed with a move into COMMITTED, released with one into FAILED
- * or DENIED. A review measured a reservation released for a proposal whose move to FAILED was never
- * written, left EXECUTING, whose end nobody knew. Without the move, the reservation stays held, and
- * its amount counts against the day: the limit errs toward refusing.
+ * or DENIED, and since step 25 into any other ending §13.4 lists (below). A review measured a
+ * reservation released for a proposal whose move to FAILED was never written, left EXECUTING, whose
+ * end nobody knew. Without the move, the reservation stays held, and its amount counts against the
+ * day: the limit errs toward refusing.
  */
 export async function settleReservation(
   tenant: string,

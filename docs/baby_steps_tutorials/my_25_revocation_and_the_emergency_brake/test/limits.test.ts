@@ -576,7 +576,9 @@ describe("a reservation follows its proposal's history, as written", () => {
     expect(await reservationStates()).toStrictEqual(["held"]);
   });
 
-  it("DSOR-DEL-06d: a reservation is released only when its proposal's history says FAILED or DENIED", async () => {
+  // Decision 156: titled "released only when its proposal's history says FAILED or DENIED" in step
+  // 24. Step 25 releases it for every ending §13.4 lists, so the title says what the body shows.
+  it("DSOR-DEL-06d: a reservation is settled only once its proposal's history says how it ended: one still PROPOSED stays held", async () => {
     // At the store: a proposal still PROPOSED has its reservation released by nobody.
     const id = await aProposal();
 
