@@ -230,23 +230,29 @@ describe("a value read before this request is never current", () => {
 
   it("DSOR-FRS-01b: the same saved value, labelled for what it is, leaves with its label and its time", async () => {
     // Decision 120 rejected relabelling: the door does not change a label, it refuses a false one.
-    // A label that tells the truth about a saved copy is no lie, and leaves as it came.
+    // A label that tells the truth about a saved copy is no lie, and leaves as it came. Decision
+    // 146: on a page too. This test asked for a single invoice only, so a door that wrote `current`
+    // on every page passed every test.
     const savedAt = anHourAgo();
     const door = handingLabel(() => ({
       mode: "observational",
       observed_at: savedAt,
       connector: "postgres",
     }));
-    const answer = await door(AGENT, "invoice.get", { invoice: INV_1008 });
 
-    expect(answer.kind).toBe("data");
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+    ]) {
+      expect(answer.kind === "data" || answer.kind === "page").toBe(true);
 
-    if (answer.kind === "data") {
-      expect(answer.freshness).toStrictEqual({
-        mode: "observational",
-        observed_at: savedAt,
-        connector: "postgres",
-      });
+      if (answer.kind === "data" || answer.kind === "page") {
+        expect(answer.freshness).toStrictEqual({
+          mode: "observational",
+          observed_at: savedAt,
+          connector: "postgres",
+        });
+      }
     }
   });
 
