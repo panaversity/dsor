@@ -231,6 +231,24 @@ describe("C5: DENY wins, on the database", () => {
     expect(
       await rowsOf("SELECT count(*)::int AS n FROM dsor.reservations WHERE delegation = 'del_190'"),
     ).toStrictEqual([{ n: 0 }]);
+    // And the refusing control's own reason, in this tutorial's extensions (step 27's review,
+    // finding L2).
+    expect(
+      await rowsOf(
+        `SELECT extensions->'org.panaversity.steps'->'denied_by' AS denied_by FROM dsor.audit
+          WHERE kind = 'decision' AND correlation->>'request_id' = $1`,
+        [answer.correlation.request_id],
+      ),
+    ).toStrictEqual([
+      {
+        denied_by: [
+          {
+            control: "no-payment-above-30000",
+            reason: "Payments above 30,000 USD go through the bank's own desk.",
+          },
+        ],
+      },
+    ]);
     expect(await recordOf(answer.correlation.request_id)).toStrictEqual([
       {
         authorization: "DENY",

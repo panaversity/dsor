@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { readRoleSettings } from "../src/authority.ts";
 import type { Facts } from "../src/cel.ts";
 import {
+  denialsOf,
   evaluateControls,
   mostRestrictive,
   readControls,
@@ -319,6 +320,9 @@ const DENY_ABOVE_45K = {
   effect: { deny: { reason: "payments above 45,000 USD go to the board" } },
 } as unknown as Control;
 
+// A deny control that refuses payments above 60,000 USD only.
+const QUICK_60K = 'dsor_exceeds(state.invoice.open_amount, dsor_money("60000", "USD"))';
+
 describe("C5: line ⑩'s answer from several controls", () => {
   const cfo = startWith(readControls()).controls.get("org_456")!;
 
@@ -392,5 +396,21 @@ describe("C5: line ⑩'s answer from several controls", () => {
       TUESDAY,
     );
     expect(requirementsOf(cfo, allowed)).toStrictEqual([]);
+  });
+
+  // Found by step 27's review, finding L2: the record kept no reason for a refusal.
+  it("Step 27: the reasons a refusal's record keeps: each deny control that refused, and never one that allowed (step 27's README, decision D13)", () => {
+    const sixty = { ...DENY_ABOVE_45K, id: "board-above-60000", condition: QUICK_60K } as Control;
+    const controls = [...cfo, DENY_ABOVE_45K, sixty];
+    const outcomes = evaluateControls(
+      controls,
+      "payment.create",
+      factsFor(money("50000.00", "USD")),
+      TUESDAY,
+    );
+    expect(outcomes.map((o) => o.outcome)).toStrictEqual(["REQUIRE_APPROVAL", "DENY", "ALLOW"]);
+    expect(denialsOf(controls, outcomes)).toStrictEqual([
+      { control: "very-high-value-payment", reason: "payments above 45,000 USD go to the board" },
+    ]);
   });
 });

@@ -10,11 +10,13 @@ import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { checkDelegation, checkNamedSlips, holdSlip } from "./delegation.ts";
 import type { Facts } from "./cel.ts";
 import {
+  denialsOf,
   evaluateControls,
   mostRestrictive,
   requirementsOf,
   type ControlAnswer,
   type ControlOutcome,
+  type Denial,
 } from "./controls.ts";
 import {
   Refusal,
@@ -130,6 +132,8 @@ export async function call(
   // NEW IN STEP 27: and each control line ⑩ evaluated. The record names them, a refusal's too
   // (DSOR-EXE-02; step 27's README, decision D14).
   let controlsOfRecord: ControlOutcome[] | undefined;
+  // And each control that refused, with its own reason (step 27's review, finding L2).
+  let denialsOfRecord: Denial[] | undefined;
   // The proposal a refusal from the code ended FAILED, which its envelope names.
   // Set only from the claim, so no code can name a proposal of its own (step 22's README,
   // decision 5). Found by the review.
@@ -401,6 +405,7 @@ export async function call(
           }
           answer = mostRestrictive(outcomes.map((outcome) => outcome.outcome));
           if (answer === "DENY") {
+            denialsOfRecord = denialsOf(book, outcomes);
             const why = `${JSON.stringify(contract.id)} is refused by a control of ${tenant}`;
             throw new Refusal("POLICY_DENIED", why, "public");
           }
@@ -796,6 +801,7 @@ export async function call(
           conversionOfRecord,
           unconvertibleOfRecord,
           controlsOfRecord,
+          denialsOfRecord,
         ),
       ),
     );

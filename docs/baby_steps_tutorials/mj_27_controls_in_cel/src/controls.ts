@@ -166,6 +166,25 @@ export function requirementsOf(
   );
 }
 
+// The record keeps the reason of each control that refused: the audit record's controls field
+// allows no reason, and the caller's words name none (decision D13). Found by step 27's review,
+// finding L2.
+/** A control that refused the call, and its own reason. */
+export type Denial = { control: string; reason: string };
+
+/** The id and the reason of each control whose effect refused the call. */
+export function denialsOf(
+  controls: readonly Control[],
+  outcomes: readonly ControlOutcome[],
+): Denial[] {
+  const refused = new Set(outcomes.filter((o) => o.outcome === "DENY").map((o) => o.id));
+  return controls.flatMap((control) =>
+    refused.has(control.id) && "deny" in control.effect
+      ? [{ control: control.id, reason: control.effect.deny.reason }]
+      : [],
+  );
+}
+
 /** Each failing test of a control, numbered from 1, run with the rates it pins (DSOR-CTL-02c). */
 function failedTests(control: Control, tenant: string, currency: string, risk: string): string[] {
   const failed: string[] = [];

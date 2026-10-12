@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { BrakeBy } from "./brakes.ts";
 import type { Freshness, FreshnessMode } from "./freshness.ts";
 import type { Label } from "./labels.ts";
-import type { ControlOutcome } from "./controls.ts";
+import type { ControlOutcome, Denial } from "./controls.ts";
 import type { Conversion, Unconvertible } from "./limits.ts";
 import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
@@ -50,6 +50,9 @@ export type Decision = {
       // When no rate was usable, which currency and why. The answer leaves both
       // out, for an agent's clearance (step 26's review, finding H1).
       unconvertible?: Unconvertible;
+      // NEW IN STEP 27: each control that refused the call, and its own reason, which the caller's
+      // words leave out (step 27's README, decision D13; step 27's review, finding L2).
+      denied_by?: Denial[];
     };
   };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
@@ -356,6 +359,8 @@ export function decisionOf(
   unconvertible?: Unconvertible,
   // NEW IN STEP 27: and each control line ⑩ evaluated, when one governs the operation.
   controls?: ControlOutcome[],
+  // And each control that refused the call, with its reason.
+  deniedBy?: Denial[],
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -383,6 +388,7 @@ export function decisionOf(
     ...(mode !== undefined && contract?.["kind"] === "command" ? { invocation_mode: mode } : {}),
     ...(conversion === undefined ? {} : { conversion: structuredClone(conversion) }),
     ...(unconvertible === undefined ? {} : { unconvertible: { ...unconvertible } }),
+    ...(deniedBy === undefined ? {} : { denied_by: structuredClone(deniedBy) }),
   };
   return {
     kind: "decision",

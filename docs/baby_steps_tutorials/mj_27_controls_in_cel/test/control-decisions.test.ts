@@ -310,9 +310,15 @@ describe("C5: DENY wins over an approval", () => {
     });
     expect((await w.proposals.get("org_456", idOf(answer)))?.state).toBe("DENIED");
     expect(await w.reservations.all()).toStrictEqual([]);
-    expect((await recordOf(w, answer))?.controls?.map((c) => [c.id, c.outcome])).toStrictEqual([
+    const record = await recordOf(w, answer);
+    expect(record?.controls?.map((c) => [c.id, c.outcome])).toStrictEqual([
       ["high-value-payment", "REQUIRE_APPROVAL"],
       ["very-high-value-payment", "DENY"],
+    ]);
+    // The record keeps the refusing control's own reason, which the words leave out. Found by step
+    // 27's review, finding L2 (step 27's README, decision D13).
+    expect(record?.extensions?.["org.panaversity.steps"]?.denied_by).toStrictEqual([
+      { control: "very-high-value-payment", reason: "payments above 45,000 USD go to the board" },
     ]);
   });
 });
