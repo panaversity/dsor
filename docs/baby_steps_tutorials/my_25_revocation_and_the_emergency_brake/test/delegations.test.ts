@@ -195,9 +195,12 @@ describe("an agent's command runs under its slip", () => {
 
   it("DSOR-DEL-01a: a slip made out to another agent is not this agent's", async () => {
     // Decision 149: DSoR finds the slip from the company and the agent, and only `delegate = $2` in
-    // activeSlipFor says "the agent". Every slip a test wrote was this agent's, so a read that left the
-    // agent out passed them all, and a review's agent paid under another agent's slip. The other slip
-    // may be used unattended, so that only whose it is keeps this agent from using it.
+    // activeSlipFor says "the agent". In step 18 every slip a test wrote was this agent's, so a read
+    // that left the agent out passed them all, and a review's agent paid under another agent's slip.
+    // From step 25, org_789's del_100 belongs to payables-bot-789 (migration 026), and three older
+    // tests that act in org_789 fail on such a read too. This test pins the rule in org_456, where
+    // the agent would otherwise pay under another agent's slip. The other slip may be used
+    // unattended, so that only whose it is keeps this agent from using it.
     await owner(
       `UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100';
        INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
@@ -470,7 +473,7 @@ describe("scopes, and a slip that is not active", () => {
     );
     expect((await create({ ...SUPERVISOR, scopes: ["payment:create"] })).kind).toBe("result");
 
-    // Decision 149: cfo_100's role grants invoice:read and payment:approve, and a scope that names
+    // Decision 149: cfo_100's role, approver, does not grant invoice:issue, and a scope that names
     // invoice:issue gives cfo_100 nothing. Every person's scope here was one the role held, so a
     // check that let the scopes stand in for the role passed every test.
     const cfo = { loggedInAs: "cfo_100", scopes: ["invoice:issue"] };
