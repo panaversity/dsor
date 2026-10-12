@@ -548,25 +548,32 @@ describe("a slip named in the arguments", () => {
   // DSoR finds the slip itself; a request that names one is making a claim, and a claim that
   // disagrees with the slip DSoR found is refused and recorded (decision 127).
   it("DSOR-SRC-02b: an agent's request that names another slip is refused, and naming its own changes nothing", async () => {
-    const other = refusalOf(
-      await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_999" }),
-    );
+    // Decision 149: under both of the names the step refuses. Only `delegation` was ever sent, so
+    // taking `delegation_id` out of the list failed nothing. The story is put back each time,
+    // because naming its own slip cancels PAY-901.
+    for (const key of ["delegation", "delegation_id"]) {
+      await resetTheStory();
 
-    expect(other.code).toBe("AUTHORIZATION_DENIED");
-    expect(
-      (await callOperation(AGENT, "payment.cancel", { payment: PAY_901, delegation: "del_100" }))
-        .kind,
-    ).toBe("result");
+      const other = refusalOf(
+        await callOperation(AGENT, "payment.cancel", { payment: PAY_901, [key]: "del_999" }),
+      );
+
+      expect(other.code, key).toBe("AUTHORIZATION_DENIED");
+      expect(
+        (await callOperation(AGENT, "payment.cancel", { payment: PAY_901, [key]: "del_100" })).kind,
+        key,
+      ).toBe("result");
+    }
   });
 
   it("DSOR-SRC-02b: a person's request that names a slip is refused: a person acts under none", async () => {
-    expect(
-      refusalOf(
-        await callOperation(SUPERVISOR, "payment.cancel", {
-          payment: PAY_901,
-          delegation: "del_100",
-        }),
-      ).code,
-    ).toBe("AUTHORIZATION_DENIED");
+    for (const key of ["delegation", "delegation_id"]) {
+      const answer = await callOperation(SUPERVISOR, "payment.cancel", {
+        payment: PAY_901,
+        [key]: "del_100",
+      });
+
+      expect(refusalOf(answer).code, key).toBe("AUTHORIZATION_DENIED");
+    }
   });
 });
