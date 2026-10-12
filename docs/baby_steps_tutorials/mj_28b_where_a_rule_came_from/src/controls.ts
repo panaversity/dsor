@@ -106,6 +106,27 @@ const IN_REVIEW = "in_review";
 const MOST_APPROVERS = 5;
 // The effects this step builds (step 27's README, decision D8).
 const BUILT = new Set(["deny", "require_approval"]);
+// NEW IN STEP 28b: §44's limit at L2 on a stale control's grace, on a high or critical operation:
+// 30 days (DSOR-BND-02; step 28b's README, decision D10).
+const MOST_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** NEW IN STEP 28b: why a rule's citation names a source this step cannot check, or none (step 28b's README, decision D13). */
+function citationProblem(authority: Record<string, unknown>, tenant: string): string | undefined {
+  const { system, uri } = authority;
+  // A rule with no governed source declares local, and nothing can supersede it (DSOR-CTL-01b).
+  if (system === "local") return undefined;
+  if (system !== "ksor") {
+    const named = JSON.stringify(String(system).slice(0, 60));
+    return `its authority cites the system ${named}, and this step checks only ksor, or local for a rule with no governed source`;
+  }
+  // A policy of the rule's own company: the sweep asks that company's KSoR, and no other.
+  const own = `ksor://${tenant}/`;
+  if (typeof uri !== "string" || !uri.startsWith(own) || uri.length === own.length) {
+    const named = JSON.stringify(String(uri).slice(0, 60));
+    return `its authority cites ${named}, which is not a policy of ${tenant}`;
+  }
+  return undefined;
+}
 
 /** The answer a control's effect gives. */
 export function effectOf(control: Control): "DENY" | "REQUIRE_APPROVAL" {
@@ -429,6 +450,17 @@ export function ruleProblems(
   if (owner?.type !== "human" || !works) {
     return [`${name}: its owner ${control.owner} is not a person who works in ${tenant}`];
   }
+  // NEW IN STEP 28b: it cites a source this step can check (step 28b's README, decision D13).
+  const citation = citationProblem(control.authority, tenant);
+  if (citation !== undefined) return [`${name}: ${citation}`];
+  // NEW IN STEP 28b: and on a high or critical operation, a grace of at most 30 days (DSOR-BND-02;
+  // step 28b's README, decision D10).
+  const risk = context.riskOf(control.operation);
+  const highRisk = risk === "high" || risk === "critical";
+  if (highRisk && millisecondsOf(control.stale_grace) > MOST_GRACE_MS) {
+    const most = `the most §44 allows at L2 on a ${risk}-risk operation`;
+    return [`${name}: its stale_grace ${control.stale_grace} is longer than 30 days, ${most}`];
+  }
   // Every control's condition, a draft's too, so a broken one is found now (DSOR-CTL-05).
   const broken = checkCondition(control.condition);
   if (broken !== undefined) {
@@ -437,7 +469,6 @@ export function ruleProblems(
   }
   if (!tests) return [];
   // Switching a control on runs its tests, and fails when one fails (DSOR-CTL-02c).
-  const risk = context.riskOf(control.operation);
   return failedTests(control, tenant, context.policy, risk).map(
     (test) => `${name} v${control.version} fails its test ${test}`,
   );
