@@ -1,29 +1,43 @@
-# Step 28 · Who may switch a rule on
+# Step 28b · Where a rule came from
 
-**New in this step:** org_456's rules move from a file into DSoR's own store, and only each
-rule's human owner can switch it on, change it, suspend it, or retire it. An agent never can.
+**New in this step:** a stand-in for KSoR. When the policy that a rule came from changes, DSoR
+marks the rule *stale*, tells its owner, and keeps the rule in force.
 
 ## In plain words
 
-In step 27, org_456's rules lived in a file, `controls.json`, which DSoR read when it started. A
-rule could change only through an edit of that file and a restart, and nothing asked who made the
-edit. In this step the rules move into DSoR's own store, and people change them through DSoR, with
-four commands: draft a new version, switch a version on, suspend it, and retire it. Each rule has
-an *owner*: the person named by the version that is switched on, or was switched on last. Only
-the owner may switch a version on, suspend it, or retire it, and only in person. A new version
-does not change the owner, even when it names someone else. Switching a version on runs its
-tests first, as start-up did in step 27. An agent may never do any of it, whatever its permission
-slip says.
+A *policy* is a sentence that people in the company write and agree on, such as "payments above
+25,000 USD or equivalent need the CFO". The company keeps its policies in KSoR, the record of what
+the company knows. Each policy has *versions*: when the finance team changes the sentence, KSoR
+keeps the old text and adds a new version. Each version has a *fingerprint*, a short code computed
+from its exact text (the specification calls it `content_hash`). Two different texts never get the
+same fingerprint in practice.
+
+A rule in DSoR is a policy translated into a condition that a program can check. Since step 27
+each rule names the policy it came from: which system, which policy, which version, and the
+fingerprint. The specification calls this the rule's *authority*. So version 8 of
+`high-value-payment` says: "I was built from version 4 of the payment-approval policy."
+
+In this step DSoR checks that link. DSoR's own *sweep*, a command that a timer calls once a day,
+asks KSoR which version of each policy is now in force. When the answer is no longer the version
+that a rule cites, DSoR marks the rule `stale_authority` (*stale*: out of date) and leaves a
+*notice* for the rule's owner. A stale rule is never switched off by DSoR. For a time that the
+rule itself names, its *grace* (`stale_grace`), it behaves as its `on_stale` says: keep going as
+before, ask a person every time, or refuse every time. After the grace, on a high-risk operation,
+it asks a person at least. Every decision's record names the version of the policy that was in
+force. And a person can no longer switch on a version that cites a policy version that is not in
+force.
 
 ## Why it matters
 
-user_123, the AP supervisor, wants INV-1008, 31,400.00 USD, paid today, without waiting for the
-CFO. admin_100, the tenant administrator, can change the company's settings. If DSoR let any
-administrator change a rule, admin_100 could write version 10 of the CFO rule with the condition
-`false`, name themselves its owner, and switch it on. The agent's next draft for INV-1008 would be
-paid, and its record would show a rule that "allowed" it. An agent with a wide permission slip
-could do the same, and switch off the very rule that governs it. §17.4 says that only a human may
-switch a control on, change it, or retire it, and that an agent may only write a draft.
+On Monday the finance team changes the payment-approval policy in KSoR: from now on, payments above
+20,000 USD need the CFO. That is version 5 of the policy. Version 8 of `high-value-payment` still
+says 25,000, because it was built from version 4. Without this step DSoR never notices. The agent
+drafts INV-2008 for 21,000.00 USD, and DSoR pays it without the CFO, against the company's own
+policy. It does the same every day, and nobody is told.
+
+The wrong fix is as bad. A DSoR that switched version 8 off "because it is out of date" would pay
+INV-1008's 31,400.00 USD without the CFO too. §17.4 names this mistake: "Out of date is still safer
+than absent."
 
 ## The design, before any code
 
@@ -34,518 +48,166 @@ limits, and line ⑪ writes the record.
 
 ### How this step was made
 
-The learner chose to build first and understand afterwards, as in step 27 (2026-10-12). So every
-decision below is Claude Code's, for the learner to review, and each one says what it costs.
+The learner chose to build first and understand afterwards, for both halves of step 28
+(2026-10-12). So every decision below is Claude Code's, for the learner to review, and each one
+says what it costs. This folder is a copy of step 28, the first half, "who may switch a rule on".
 
 ### What each rule says
 
-- **DSOR-CTL-02a:** a control "MUST be activated, modified, suspended, or retired only by its human
-  control owner" ([§17.4](../../../specs/dsor/02-security.md#174-lifecycle-and-drift)).
-- **DSOR-CTL-02b:** "An agent principal MUST NOT activate a control."
-- **DSOR-CTL-02c**, met in step 27 at start-up: activation "MUST run the control's test vectors and
-  fail if any vector fails". A rule's *tests*, the specification's test vectors, are sample cases,
-  each with the answer the rule must give. This step runs them when a person switches a rule on.
-- **DSOR-CTL-01a**, met in step 27: a control names "a named human owner". This step checks that
-  the owner is a person.
+- **DSOR-CTL-03a:** "DSoR MUST detect, within the bound of §44, that the authority a control cites
+  has been superseded, and then mark the control `stale_authority` and notify its owner"
+  ([§17.4](../../../specs/dsor/02-security.md#174-lifecycle-and-drift)). The bound at L2 is 24 hours
+  ([§44](../../../specs/dsor/06-conformance.md#44-operational-bounds)). *Superseded* means replaced
+  by a newer version.
+- **DSOR-CTL-03b:** "A stale control MUST NOT be dropped or skipped."
+- **DSOR-CTL-03c:** "After its grace period, a stale control on a `HIGH` or `CRITICAL` operation
+  MUST yield at least `REQUIRE_APPROVAL`." §44 caps that grace at 30 days at L2.
+- **§17.4, beside the rules:** "During `stale_grace` a stale control behaves per `on_stale`." The
+  three values are `enforce_and_flag`, `require_approval`, and `deny`.
+- **DSOR-CTL-04**, met in step 27 for a rule that is up to date: "Every decision record MUST
+  identify each evaluated control by id and version, together with the authority reference and
+  version in force."
 
 ### Decisions (Claude Code)
 
-- **D1. Step 28 is built in two halves.** This half is "who may switch a rule on": DSOR-CTL-02a and
-  DSOR-CTL-02b. Step 28b, "where a rule came from", will add a stand-in for KSoR, a rule that goes
-  stale when its policy changes, and its owner told (DSOR-CTL-03a, DSOR-CTL-03b). They are two new
-  ideas, and the build skill says to split such a step, as steps 19 and 25 were. *Downside:* two
-  folders, and the map's step 28 is complete only with 28b.
-- **D2. The rules live in DSoR's own store,** `dsor.controls` on the database and a store in
-  memory for the unit tests: one row for each version of a rule, with its status. A version's
-  rule text never changes after its draft. A change is a new version. *Downside:* an edit of
-  `controls.json` no longer changes a running DSoR.
-- **D3. The shipped `controls.json` fills a store in memory.** On the database, migration 023 adds
-  the same rule, org_456's `high-value-payment` version 8, active, as earlier migrations add the
-  story's invoices and slips. *Downside:* the story's rule is written in two places, the file and
-  the migration. A test keeps them equal.
-- **D4. One live version of a rule at a time.** Live means active or suspended. Switching version
-  9 on retires version 8, in the same change. On the database, a unique index keeps it so.
-  *Downside:* two versions of one rule can never run side by side, for example as a trial.
-- **D5. Line ⑩ reads the active rules from its world's store at every call,** as line ④ reads the
-  brakes. A change applies to the next call. Each world gives the same store to its registry and
-  to its claims, as with the brakes, so a change that a command makes is the change that line ⑩
-  reads. Inside a claim, line ⑨ and line ⑩ read the claim's own store, on the database on the
-  claim's own connection (the hostile review, finding M5). *Downside:* one more read at every call.
-- **D6. Start-up checks every version in its world's store, as step 27 checked the file:** the
-  schema, the CEL, the effect, what the rule governs, its owner, and its id. It runs the tests
-  of each active version, and refuses a draft that names a reviewer or a time it took effect,
-  because a draft was never switched on. One that fails stops DSoR. The program checks
-  `dsor.controls` too, for each company where a login works. *Downside:* a row that someone edits
-  by hand in the database after start-up runs unchecked until the next start.
-- **D7. Four commands: `rule.draft`, `rule.activate`, `rule.suspend`, and `rule.retire`.** Step 25b
-  named its emergency brake `control.suspend` and `control.lift`, so these use the word "rule". A
-  rule's address is `dsor://org_456/rule/high-value-payment`, and a command names the version by
-  its number. *Downside:* the specification calls them controls, and the names say rule.
-- **D8. Two permissions: `rule:draft` to write a draft, and `rule:manage` to switch a version on,
-  suspend it, or retire it.** The CFO role and the tenant administrator hold both. A permission
-  lets a person ask. Only the owner check at line ⑨ lets the change happen. *Downside:* a tenant
-  administrator holds a permission that, alone, changes nothing.
-- **D9. The four commands are for people only,** with step 25's `people_only` field, so line ⑤
-  refuses an agent and an application in every mode, whatever a slip lists (DSOR-CTL-02b). §17.4
-  says that an agent MAY draft a rule. No agent in the story has a slip for it, and step 28b's
-  policy compiler may add one. *Downside:* the specification's "an agent may draft" is not shown
-  here.
-- **D10. The owner check, at line ⑨.** A rule's *owner of record* is the owner of its newest
-  version that was ever switched on. A version is switched on only by its own owner, and only when
-  that person is the owner of record too, if the rule has one. A suspension or a retirement is
-  made by the owner of record, or, for a rule that was never switched on, by the version's own
-  owner. The caller must be that person, in person: never an agent. So admin_100 can draft a
-  version 10 that names admin_100, and can never switch it on. *Downside:* a rule never passes to
-  a new owner in this step. An owner who leaves the company leaves the rule with no one to change
-  it. And a rule that was never switched on has no owner yet: a person who holds `rule:draft` and
-  `rule:manage` can write a new rule, name themselves its owner, and switch it on. If it refuses
-  every payment, nobody but that person can switch it off, because DSOR-CTL-02a allows nobody else.
-  The hostile review found it (finding M3), and it is left open: open question 114.
-- **D11. `rule.draft` checks the draft at line ⑨ and adds it as the next version, `draft`:** the
-  schema, the CEL, the effect, what it governs, and its owner: a person with a login in the
-  company. DSoR sets the id, the version, the status, and `compiled_by`, the person who wrote it.
-  Its tests run when it is switched on, as DSOR-CTL-02c says. *Downside:* a draft whose
-  cases fail waits in the store until someone tries to switch it on.
-- **D12. `rule.activate` switches a draft or a suspended version on.** Line ⑨ checks the owner,
-  then the version, then its status, then the draft's checks again, then its tests. A
-  failing test answers `VALIDATION_FAILED` and names the test. The work retires the live version
-  and makes this one active, in one step of the store, and sets `reviewed_by` to the owner and
-  `effective_from` to the store's clock, the database's on the database, as `control.schema.json`
-  asks of an active control. *Downside:* the owner reviews and switches on in one act. No second
-  person checks.
-- **D13. `rule.suspend` switches the active version off; `rule.retire` ends a draft, an active, or
-  a suspended version for good.** A suspended version can be switched on again. A retired one
-  cannot. *Downside:* the owner can switch the CFO rule off, and payments then go through without
-  the CFO, by the owner's choice.
-- **D14. Each change writes a record of the audit record's own kind, `control_change`,** in the
-  same transaction as the change: who, which rule, the version and the status it moved to and
-  from, and the reason the person gives. *Downside:* none found.
-- **D15. The change checks again, under the rule's lock.** Line ⑨ looked a moment before, and
-  another call may have changed the rule since. On the database, the change takes the rule's
-  lock, a lock that PostgreSQL holds on the rule's name until the change's transaction ends, so a
-  second change to the rule waits. Then it reads the versions again, and makes the same checks,
-  except the tests: a version's text never changes. *Downside:* two changes to one rule wait for
-  each other.
-- **D16. A refusal follows step 25's tear-up:** a person who may not change a rule hears
-  `AUTHORIZATION_DENIED`, whether the rule and the version exist or not, so the refusal tells
-  nothing about which rules exist (DSOR-ERR-01b). The owner hears `RESOURCE_NOT_FOUND` for a
-  version that is not there, and `CONFLICT` for a move the status does not allow. *Downside:* a
-  person who mistypes a rule's id hears "only its owner". And a draft's answer tells its writer
-  the new version's number, so a person who holds `rule:draft` learns that a rule exists and how
-  many versions it has. A drafter is trusted to write the company's rules, so this step allows it
-  (the hostile review, finding L17).
-- **D17. Four statuses are built: `draft`, `active`, `suspended`, and `retired`.** `in_review` is
-  never set, because the owner's switch-on is the review. `stale_authority` stays refused at
-  start-up until step 28b. *Downside:* a rule cannot wait for review by a second person.
-- **D18. The earlier steps' tests and stories keep their idea, with no rules,** as in step 27:
-  their worlds give an empty store, on the database too, where the store holds version 8.
-  *Downside:* as in step 27, most test worlds have no CFO rule.
-- **D19. org_789 gets a tenant administrator, admin_700.** Step 12's cross-tenant suite attacks
-  every operation from both companies, as a person who may call it, and nobody in org_789 held a
-  rule permission. *Downside:* one more login, and the suite's counts change: 138 attacks, where
-  step 27 made 93. Found while building.
-- **D20. A draft is switched on only by the owner who wrote it.** DSoR shows no version's text yet,
-  so this is how the owner has read every word they switch on. A version that was switched on
-  before was reviewed then, so its owner may switch it on again, whoever wrote it. Found by the
-  hostile review (finding M4): cfo_100 switched on, by its number, a version 9 that admin_100
-  wrote, which said `false`. *Downside:* a version that someone else wrote must be written again by
-  the owner. A read of a version, and a fingerprint that ties a switch-on to the text it names,
-  wait for step 28b, whose policy compiler will write drafts for owners.
-- **D21. An approval names a role of the role table, and at most five people.** The role reaches
-  the agent's answer, so it is never free text, and a rule that asks for a million approvals holds
-  every payment for ever. Found by the hostile review (finding L15). *Downside:* a role that the
-  role table does not list, or a board of six, cannot be written into a rule in this step.
+- **D1. A stand-in for KSoR, one for each company,** inside DSoR's program (`src/ksor.ts`), as step
+  19 wrote a stand-in for each company's staff directory. It keeps each policy's versions, each
+  with its text and its fingerprint, `sha256:` and the SHA-256 of the text. It answers one
+  question: which version of this policy is in force? The story and the tests can publish a new
+  version, and turn it off or make it stuck. *Downside:* it answers at once and never lies. A real
+  KSoR is reached over a network. DSoR checks each answer (D2), but no test here crosses a network.
+- **D2. DSoR asks KSoR itself, and waits at most 2 seconds,** as it waits for a directory (step 19,
+  decision 9). It uses an answer only when the answer names the company and the policy that DSoR
+  asked about, a version number, and a fingerprint of the form `sha256:…`. Anything else counts as
+  no answer. DSoR never takes a rule's word, or an agent's, for what is in force. *Downside:* a
+  slow KSoR makes a switch-on fail (D12), and the sweep counts the policy as unanswered.
+- **D3. A version is stale when KSoR's version in force is not the one it cites,** in number or in
+  fingerprint. A newer version, an older one, and the same number with another text all count: the
+  text the rule was built from is not the text in force. A policy that KSoR does not list at all
+  counts as no answer, not as a change, because this stand-in never withdraws a policy. *Downside:*
+  if a real KSoR withdraws a policy, the rule stays active, and the sweep counts it unanswered
+  every day. Withdrawal is left open.
+- **D4. The sweep, `rule.check_authority`, finds the change.** It is DSoR's own command, for
+  DSoR's system logins only, as the expiry sweep is (step 25c, decision D14). It needs the new
+  permission `rule:check`, which the role `scheduler` now holds beside `proposal:expire`. Its
+  input names the company, as the expiry sweep's does: `{ "company":
+  "dsor://org_456/tenant/org_456" }`. It asks KSoR once for each policy that a rule in force
+  cites, and marks each version whose policy moved. It answers with counts:
+  `{ tenant_id, asked, unanswered, marked }`. *Downside:* §44's 24 hours hold only if a
+  deployment's timer calls the sweep at least once a day. This step builds no timer, as step 25c
+  built none. If the timer stops, or KSoR is down for days, a rule stays active on a policy nobody
+  confirmed. That is left open, as a question for the specification.
+- **D5. The mark and the notice are one step of the store.** The version moves from `active` to
+  `stale_authority`. DSoR keeps the time of the mark and the version in force, with its
+  fingerprint. It writes a `control_change` record, and a notice to the version's owner. All of it
+  happens, or none of it, under the rule's lock. A version that is stale already, whose policy
+  moved again, keeps the time of its first mark and gets the new version in force, a record, and
+  a new notice. *Downside:* nothing is sent. The notice waits in DSoR's store, `dsor.notices` on
+  the database, for a mailer that this tutorial does not have. Sending it is step 40's idea, the
+  outbox. Until then the owner reads the store.
+- **D6. Only the sweep marks a version stale, and only an active one.** No command lets a person
+  or an agent set or clear `stale_authority`. A suspended version is never marked: its owner
+  switched it off, and a stale version is in force (D7), so the mark would switch it back on. A
+  stale version never becomes active again. Its owner suspends it, retires it, or switches on a
+  new version that cites the policy in force, which retires it. *Downside:* if KSoR goes back to
+  the old version, the stale version stays stale. Its owner drafts a new version with the same
+  text and switches that on.
+- **D7. Line ⑩ evaluates every version in force, at every call:** the active ones and the stale
+  ones, in one read of the store, with each stale version's mark. A stale rule is never dropped and
+  never skipped (DSOR-CTL-03b). It is the lock that stays locked when the power fails: when DSoR is
+  unsure, the rule stays. *Downside:* a stale rule keeps its cost. A company whose policy became
+  looser still waits for the CFO until the owner acts.
+- **D8. During its grace, a stale version answers as its `on_stale` says, for every call it
+  governs.** `enforce_and_flag`: its own answer, as before. `require_approval`: at least the
+  approval its effect names, even when its condition does not hold. `deny`: DENY. A rule whose
+  effect is `deny` names no approver, so where it must ask for an approval, it refuses. This is
+  this tutorial's reading: the specification does not say whether `on_stale` applies only when
+  the condition holds. *Downside:* under `require_approval` every payment that the rule governs
+  waits for the CFO, 900.00 USD too, until the owner acts. The other reading is a question for the
+  specification.
+- **D9. The grace runs from DSoR's mark,** by DSoR's own clock, not from the time KSoR published
+  the new version. After the grace, on a high or critical operation, a stale version answers at
+  least the approval its effect names, whatever its `on_stale` says (DSOR-CTL-03c). On a low or
+  medium operation its `on_stale` goes on. *Downside:* a sweep that runs late makes the grace up
+  to a day longer than the policy's change.
+- **D10. §44's ceiling on the grace.** This tutorial claims L2, so a rule on a high or critical
+  operation may have a grace of at most 30 days. The draft check and start-up refuse a longer one.
+  *Downside:* a company that wants 45 days on a high-risk operation cannot have it at L2.
+- **D11. The record names the policy in force (DSOR-CTL-04).** Line ⑪'s record names each rule
+  that line ⑩ evaluated, by id and version, with `authority`: the policy as DSoR last learned it is
+  in force. For a version that is up to date, that is its own citation, which KSoR confirmed when
+  the version was switched on. For a stale version, it is its citation with KSoR's version and
+  fingerprint in force, and `superseded_version` names the version that the rule cites. The
+  specification does not explain `superseded_version`, so this reading is this tutorial's, and a
+  question for the specification. *Downside:* a reader who skips `superseded_version` may think
+  the rule was built from the version in force.
+- **D12. A switch-on asks KSoR first.** `rule.activate`'s line ⑨ asks KSoR about the policy that
+  the version cites. It refuses `VALIDATION_FAILED` when KSoR has another version in force, or
+  another fingerprint for that version. It refuses `FRESHNESS_UNSATISFIABLE` when KSoR does not
+  answer: DSoR cannot confirm the policy now, so the owner tries again later. A version that cites
+  `local` has no policy to ask about. *Downside:* KSoR is asked at line ⑨ only, and not again
+  inside the change, so that no network call waits inside the database's transaction. A policy
+  published between the two is found by the next sweep.
+- **D13. A rule cites a source that this step can check:** `ksor`, with a policy of the rule's own
+  company (`ksor://org_456/…`), or `local`, the specification's word for a rule with no governed
+  source (DSOR-CTL-01b). A draft and start-up refuse any other system, because no sweep could ever
+  find it superseded. *Downside:* a company whose policies live in another system marks its rules
+  `local`, and loses the check.
+- **D14. Start-up accepts `stale_authority` in the store, and never from a file.** Step 27
+  refused the status at start-up (its review, finding M2), because nothing evaluated a stale rule
+  yet. Now line ⑩ does, so a stale version in the store is checked, and its tests run, as an
+  active one's do. A controls file cannot hold DSoR's mark, so a stale version in a file stops
+  start-up. *Downside:* a file cannot describe a stale rule for a test. The tests reach one through
+  the sweep, as the program does.
+- **D15. The tests rate `payment.create` high, to prove DSOR-CTL-03c.** No operation that a rule
+  may govern is high in this tutorial: `invoice.issue` and `payment.create` are medium, and
+  `payment.cancel` is low. A test world whose `payment.create` contract says high is the only way
+  to reach the rule. *Downside:* the program's story cannot show a grace ending on a high-risk
+  operation.
 
 ### The story's numbers
 
 | Who | Asks | DSoR answers |
 |---|---|---|
-| the agent | drafts INV-1012, 22,750.00 USD | paid: version 8 asks for the CFO above 25,000 |
-| cfo_100, the owner | drafts version 9: above 20,000 USD, the CFO | `draft`, version 9 |
-| admin_100, a tenant administrator | drafts version 10: the condition `false`, admin_100 its owner | `draft`, version 10: a draft changes nothing |
-| admin_100 | switches version 10 on | `AUTHORIZATION_DENIED`: only the rule's owner |
-| the agent | switches version 9 on | `AUTHORIZATION_DENIED` at line ⑤: for people only |
-| cfo_100 | drafts version 11 with step 27's quick rule, and switches it on | `VALIDATION_FAILED`: it fails its tests 3 and 5 |
-| cfo_100 | switches version 9 on | version 9 `active`, version 8 `retired` |
-| the agent | drafts INV-2007, 21,000.00 USD | waits for the CFO: version 9 applies at once |
-| cfo_100 | suspends version 9 | `suspended`: no rule is in force |
-| the agent | drafts INV-1008, 31,400.00 USD | paid without the CFO, by the owner's choice |
-| cfo_100 | switches version 9 on again | the agent's draft of INV-1004, 27,300.00 USD, waits for the CFO |
+| dsor-scheduler | sweeps org_456 | asked 1 policy, marked 0: version 8 cites version 4, which is in force |
+| the finance team, in KSoR | publishes version 5 of the payment-approval policy: above 20,000 USD | (KSoR only) |
+| the agent | drafts INV-2007, 21,000.00 USD | paid: version 8 still says 25,000, and DSoR has not swept yet |
+| dsor-scheduler | sweeps org_456 | marked 1: version 8 is `stale_authority`, and cfo_100 gets a notice |
+| the agent | drafts INV-2008, 21,000.00 USD | waits for the CFO: version 8's `on_stale` is `require_approval` |
+| the agent | drafts INV-2009, 900.00 USD | waits for the CFO too: every payment version 8 governs |
+| cfo_100 | drafts version 9, which still cites version 4, and switches it on | `VALIDATION_FAILED`: KSoR has version 5 in force |
+| cfo_100 | drafts version 10: above 20,000 USD, citing version 5, and switches it on | version 10 `active`, version 8 `retired` |
+| the agent | drafts INV-2010, 19,500.00 USD | paid |
+| the agent | drafts INV-2011, 21,000.00 USD | waits for the CFO, by version 10's own condition |
 
 ### The tests, by claim
 
 | Claim | What it says |
 |---|---|
-| C1 | The store keeps each version with its status, one live version at a time, behind its company's lock on the database |
-| C2 | Line ⑩ reads the store at every call: a version switched on applies to the next call, and a suspended one stops |
-| C3 | `rule.draft` checks the draft, its owner a person of the company, adds the next version, and names who wrote it |
-| C4 | `rule.activate` lets only the version's owner, who is the owner of record too, switch it on, runs its tests, and retires the live version |
-| C5 | `rule.suspend` and `rule.retire` let only the owner of record change the status |
-| C6 | An agent can do none of it, in any mode, whatever its slip lists: line ⑤ refuses it, and for a switch-on, a suspension, or a retirement, the owner check refuses it too |
-| C7 | Each change has its `control_change` record, in the same transaction, and checks again under the rule's lock |
-| C8 | Start-up checks every version in the store, runs the tests of the active ones, and refuses to start on one that fails |
+| C1 | The stand-in for KSoR says which version of a policy is in force. DSoR uses only an answer it can use, within 2 seconds |
+| C2 | The sweep marks an active version whose policy moved: the time, the version in force, a record, and a notice to its owner, all or none. A second sweep marks nothing new |
+| C3 | Only DSoR's system login may sweep, and the sweep never marks a draft or a suspended version |
+| C4 | Line ⑩ evaluates a stale version at every call: never dropped, never skipped |
+| C5 | During its grace, a stale version answers as its `on_stale` says |
+| C6 | After its grace, on a high or critical operation, a stale version answers at least `REQUIRE_APPROVAL` |
+| C7 | The record names each rule's id and version, the policy in force, and the version a stale rule cites |
+| C8 | A switch-on asks KSoR, and refuses a citation that is not in force, or that KSoR does not confirm |
+| C9 | A draft and start-up refuse a citation this step cannot check, and a grace above 30 days on a high or critical operation. Start-up accepts a stale version in the store, and refuses one in a file |
+| C10 | A stale version leaves its status only when its owner suspends or retires it, or switches on a new version |
 
 ### Breaks we will try, and what we expect
 
 | Break | What we expect | The learner predicted |
 |---|---|---|
-| B1. Switching on checks only the version's own owner, not the owner of record | admin_100 switches on version 10, which names admin_100, and INV-1008 is paid without the CFO | (asked at the review) |
-| B2. `rule.activate` loses `people_only` | line ⑤ lets the agent through, and the owner check at line ⑨ still refuses it: an agent is never an owner | (asked at the review) |
-| B3. Switching on skips the tests | version 11, the quick rule, goes active, and rupees pass without the CFO | (asked at the review) |
-| B4. Line ⑩ keeps the rules it read at start-up | a version switched on never applies, and a suspended one still holds INV-1008 | (asked at the review) |
+| B1. Line ⑩ reads only the active versions | after the mark, INV-2008's 21,000.00 USD and INV-1008's 31,400.00 USD are both paid without the CFO: the stale rule is gone, not stricter | (asked at the review) |
+| B2. The sweep compares version numbers only, not fingerprints | KSoR's version 4 with a changed text is not found, and version 8 stays active | (asked at the review) |
+| B3. The grace never ends | a stale rule with `enforce_and_flag` on a high-risk `payment.create` pays 21,000.00 USD without the CFO a week after its grace | (asked at the review) |
+| B4. The switch-on does not ask KSoR | cfo_100 switches on version 9, which cites version 4, after version 5 is out, and it runs as active until the next sweep marks it | (asked at the review) |
 
-### Left open, and not this half's idea
+### Left open, and not this step's idea
 
-- A rule that goes stale when its policy changes, the stand-in for KSoR, and the owner told: step
-  28b.
-- An agent that drafts a rule, a second person who reviews it, and a rule handed to a new owner.
-
-## Before you build: set up a database
-
-As in step 27: a local PostgreSQL 17, the step's own database, `.env` written by a command that
-prints nothing, and `pnpm migrate`. Migration 023 runs: it makes `dsor.controls`, its lock, its two
-policies, and its index, lets `dsor.audit` take a `control_change` record, and adds org_456's
-`high-value-payment` version 8, active.
-
-Give the step a server of its own, or at least a database of its own with its own `.env`.
-`pnpm migrate` sets `dsor_runtime`'s password for the whole PostgreSQL server, so a second step
-migrated on the same server changes the first step's login.
-
-## What changed since step 27
-
-| File | What changed |
-| --- | --- |
-| `src/rulebook.ts` | **New.** The store of each company's rules: every version with its status, a store in memory filled from a controls file, an empty store for the earlier steps' worlds, the moves a version may make, and start-up's check of a store |
-| `src/lifecycle.ts` | **New.** The four commands' own work: the draft, the switch-on, the suspension, and the retirement. The owner of record, the owner check, and the change under the rule's lock |
-| `migrations/023_controls.sql` | **New.** `dsor.controls`, its lock, `starts_as_draft` and `moves_on`, the index of one live version, the record's new kind, and version 8 |
-| `contracts/rule.*.json`, `inputs/Rule*Request.schema.json`, `examples/rule.*.json` | **New.** The four commands, for people only, their inputs, and the cross-tenant suite's examples |
-| `src/controls.ts` | A control's whole shape. Step 27's file check in two parts: the file's own shape, and one check for one control, which now checks its owner and its id too |
-| `src/registry.ts`, `src/pipeline.ts`, `src/claims.ts`, `src/revocation.ts` | The registry holds the store and the check of one control. Line ⑩ reads the store at every call. The claim's work and line ⑨'s look get the rules |
-| `src/postgres.ts`, `src/log.ts` | `dsor.controls` on the database, under the rule's lock, and the `control_change` record |
-| `roles.json`, `classifications.json`, `store.json`, `src/principals.ts` | `rule:draft` and `rule:manage` for the CFO and the tenant administrator, the labels of a rule's answer, the map's new table, and admin_700 (decision D19) |
-| `src/main.ts` | Start-up checks `dsor.controls`. The story of who may switch a rule on, in memory |
-| `test/rule-world.ts`, `test/owner-rules.ts`, and six new test files | **New.** The claims C1 to C8, in memory and on the database |
-| The other tests | Start-up's tests wait for a store. The pinned lists of contracts, logins, roles, privileges, policies, and attacks. The secrets test's time limit (Think it through) |
-
-Step 27's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
-for "NEW IN STEP" finds only this step's lesson.
-
-```bash
-git diff --no-index ../mj_27_controls_in_cel/src src
-git diff --no-index ../mj_27_controls_in_cel/test test
-```
-
-## Run it
-
-```bash
-pnpm install
-pnpm migrate
-pnpm start
-```
-
-Start-up checks the story's store, filled from `controls.json`, as step 27 did. After the database
-matches its map, start-up checks every version in `dsor.controls` too, and says so:
-
-```text
-dsor.controls passed its checks too; the program's stories keep their rules in memory
-```
-
-From a real run on 2026-10-12, shortened. After step 27's story, the program tells who may switch a
-rule on, in memory, in a world whose store starts from `controls.json`.
-
-```text
-who may switch a rule on, in memory, with a store of its own:
-  the agent drafts INV-1012, 22,750.00 USD: answered, PAY-901
-  cfo_100 drafts the rule above 20,000.00 USD: version 9, draft
-  admin_100 drafts the rule false, naming admin_100 its owner: version 10, draft
-  admin_100 switches version 10 on: AUTHORIZATION_DENIED: "rule.activate": admin_100 may not change rule "high-value-payment": only its owner may, in person
-  the agent switches version 9 on: AUTHORIZATION_DENIED: "rule.activate" is for people only, and accounts-payable-fte is not a person
-  cfo_100 drafts step 27's quick rule: version 11, draft
-  cfo_100 switches version 11 on: VALIDATION_FAILED: "rule.activate": org_456's control high-value-payment v11 fails its test 3: expects REQUIRE_APPROVAL, gives ALLOW; org_456's control high-value-payment v11 fails its test 5: expects REQUIRE_APPROVAL, gives ALLOW
-  cfo_100 switches version 9 on: version 9, active, version 8 retired
-  the agent drafts INV-2007, 21,000.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  cfo_100 suspends version 9: version 9, suspended
-  the agent drafts INV-1008, 31,400.00 USD: answered, PAY-902
-  cfo_100 switches version 9 on again: version 9, active
-  the agent drafts INV-1004, 27,300.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  the record: version 9 draft, new, by cfo_100: the board lowered the line to 20,000 USD
-  the record: version 10 draft, new, by admin_100: no more waiting for the CFO
-  the record: version 11 draft, new, by cfo_100: a quicker rule
-  the record: version 8 retired, from active, by cfo_100: the new line
-  the record: version 9 active, from draft, by cfo_100: the new line
-  the record: version 9 suspended, from active, by cfo_100: audit week
-  the record: version 9 active, from suspended, by cfo_100: audit over
-```
-
-What each line shows:
-
-- **INV-1012 is paid.** 22,750.00 USD is below version 8's 25,000.00 USD.
-- **Two drafts change nothing.** Version 9 and version 10 wait in the store. A draft is a version
-  that waits for its owner, and line ⑩ reads only the active version.
-- **admin_100 cannot switch version 10 on.** admin_100 holds `rule:manage`, and named themselves
-  the version's owner. The rule's owner of record is still cfo_100, the owner of version 8, the
-  newest version ever switched on (decision D10).
-- **The agent cannot either.** Line ⑤ refuses it before anything else: the four commands are for
-  people only (decision D9).
-- **The quick rule fails its tests.** Version 11 compares the number without converting it, so a
-  bill in rupees is never over its line. Its tests 3 and 5 expect the CFO, and it allows both, so
-  it never switches on (DSOR-CTL-02c).
-- **cfo_100 switches version 9 on,** and version 8 retires in the same change (decision D4).
-- **INV-2007 now waits for the CFO.** 21,000.00 USD is above version 9's 20,000.00 USD, and line ⑩
-  read the store at this call (decision D5).
-- **The suspension lets INV-1008 through.** With version 9 suspended, no rule is in force. That is
-  the owner's choice, and the record names who made it, and why (decision D13).
-- **The records** name each change, the person, and the reason, in the order they happened.
-
-## Break it
-
-Each break ran on 2026-10-12, in a copy of the step outside the repository, and the copy was
-restored after each run. A short script told the story against the copy's own code. The output is
-copied as it was printed. The first lines, the payment of INV-1012 and the two drafts, are left out.
-
-**B1. Switching on checks only the version's own owner.** In `src/lifecycle.ts`, the owner who
-decides became `version?.owner`, the owner the version names:
-
-```text
-admin_100 switches version 10 on: version 10, active, version 8 retired
-the agent drafts INV-1008, 31,400.00 USD: answered, PAY-902
-the store: v8 retired, v9 draft, v10 active
-```
-
-As built, the same story ends with `AUTHORIZATION_DENIED`, and INV-1008 waits for the CFO. The
-version said who owns it, and a check that believes the thing it checks checks nothing. The owner of
-record comes from the store's history.
-
-**B2. `rule.activate` loses `people_only`.** The firm's agent works under a slip that cfo_100
-signed, which lists `rule:manage`:
-
-```text
-the firm's agent, under cfo_100's slip, switches version 9 on: AUTHORIZATION_DENIED: "rule.activate": firm-ap-fte may not change rule "high-value-payment": only its owner may, in person
-```
-
-As built, line ⑤ refuses it ("is for people only"). Broken, line ⑤ lets it through, and line ⑨
-refuses it: an agent is never an owner, and the owner decides in person. Two checks, and either one
-holds.
-
-**B3. Switching on skips the tests.** In `src/lifecycle.ts`, line ⑨ checked version 11 with
-its tests left out:
-
-```text
-cfo_100 switches it on: version 11, active, version 8 retired
-the agent drafts INV-2004, 14,000,000.00 PKR: answered, PAY-902
-```
-
-As built, the switch-on is refused `VALIDATION_FAILED`, and INV-2004, exactly 50,000.00 USD on
-Tuesday's sheet, waits for the CFO. The quick rule sees "not USD" and lets the rupees through.
-
-**B4. Line ⑩ keeps the rules it read first.** In `src/pipeline.ts`, line ⑩ kept the active rules of
-its first read of each operation, as if it read the rules once, at start-up, as step 27 did:
-
-```text
-cfo_100 switches version 9 on: version 9, active, version 8 retired
-the agent drafts INV-2007, 21,000.00 USD: answered, PAY-902
-cfo_100 suspends version 9: version 9, suspended
-the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL
-the store: v8 retired, v9 suspended, v10 draft
-```
-
-Both answers are wrong. Version 9 never applies, so INV-2007 is paid. Version 8 still answers
-though it is retired, so INV-1008 waits. A change the owner made is a change the next call must
-meet.
-
-## Build it yourself with Claude Code
-
-This is how the step was built.
-
-| # | Move | What was done |
-|---|---|---|
-| 1 | Understand | The session of 2026-10-12 began from zero. The learner asked for the build first, and a visual story after |
-| 2 | Decide | D1 to D18, each Claude Code's, each with its downside, for the learner's review. D19 came while building |
-| 3 | The copy | Step 27 copied, its markers removed, and a PostgreSQL of its own |
-| 4 | Piece A | The store in memory, read by line ⑩ at every call, and start-up's check of a store, red first |
-| 5 | Piece B | `dsor.controls`: migration 023, the store on the database, red first |
-| 6 | Piece C | `rule.draft`, and the four contracts, red first |
-| 7 | Piece D | `rule.activate`, red first, and its race on the database |
-| 8 | Piece E | `rule.suspend` and `rule.retire`, red first |
-| 9 | Piece G | The program: start-up checks `dsor.controls`, and the story |
-| 10 | Break it | B1 to B4, in a copy, each restored |
-| 11 | Sweep | 58 small breaks in a copy with a PostgreSQL server of its own: 42 caught, and a test for each of 13 survivors |
-| 12 | Review | A reviewer who had not seen the conversation: 23 findings |
-| 13 | Fix | The review's findings, one commit each or two related together, each test red first, then broken on purpose |
-
-To start it in a new session:
-
-```text
-Build step 28 in learner mode from the design in
-docs/baby_steps_tutorials/mj_28_who_may_switch_a_rule_on/README.md.
-```
-
-What each move broke, measured. These were not predictions:
-
-| Move | What failed |
-| --- | --- |
-| Piece A | 13 tests, red first: no store. Then step 27's start-up tests, which now wait for a store. Broken on purpose: line ⑩ keeping its first read (6 tests, then 1 with a cache for each world) |
-| Piece B | 14 tests, red first. Then 4 old tests that pin the privileges, the locks, the policies, and the planted catalog. Broken on purpose: DSoR's own WHERE on the company gone (1), a move with no record (2), line ⑩ reading every status (1) |
-| Piece C | 25 tests, red first. Then 32 old tests: the pinned lists of contracts, logins, roles, labels, and the cross-tenant suite's attacks. Broken on purpose: no owner check (4), drafts open to agents (3), line ⑥ letting a draft set DSoR's own fields (6), no size limit (1), a draft numbered from line ⑨'s look (4) |
-| Piece C, the break of line ⑥ | It found a hole: a draft that named a time it took effect counted as switched on before, and could make its own owner the owner of record. 2 tests, red first, then DSoR keeps only a rule's text, and start-up refuses such a draft |
-| Piece D | 10 tests, red first. Broken on purpose: the version's own owner deciding (3), no tests at a switch-on (2), the command open to agents (3), a change that trusts the look (1), the live version left active (3), no lock on the rule (1). "In person" survived, and has a test of its own now |
-| Piece E | 8 tests, red first. Broken on purpose: a suspension from any status (1), a move with no record (1). A retired version allowed back in the store, and a suspension whose line ⑨ checks nobody, survived, and have tests of their own now |
-| Piece G | Broken on purpose: start-up skipping `dsor.controls` (1), the story's claims keeping no rules (1) |
-| The sweep's survivors | Tests that passed at once: the code was right, and the tests were missing. Run again, 13 of the 16 were caught |
-| H1, one step | 3 tests, red first: both versions retired by two calls at once, a payment that met no rule, and a store that refuses the switch-on. Broken on purpose: a wait between the two changes in memory (2), the database not undoing the retirement (1) |
-| H2, no loops | 6 tests, red first. Broken on purpose: loops allowed again (6) |
-| M5, the deadlock | Four payments at once on a pool of two hung after 10 seconds, in a copy. Broken on purpose: line ⑩ reading through the pool again (1) |
-| M4, the writer | 1 test, red first. Broken on purpose: the check gone (1), the check covering a suspended version too (2) |
-| M6, M7, L9, L10, L12 | Guards, which passed at once. Broken on purpose: each fails its test |
-| L14 and L16, the database | 10 unit tests and 6 database cases, red first. Migration 023 changed, so the scratch databases were built again. Broken on purpose, each on a database built for it: the URI's form again (9 unit tests, 1 database test), the trigger drawing no move (4), a move naming a reviewer (1) |
-| L15, roles | 2 tests, red first. Broken on purpose: any role (1), any quorum (1) |
-
-## Check yourself
-
-Use the story: org_456's rule `high-value-payment`, version 8, asks for the CFO above 25,000.00
-USD. cfo_100 owns it. admin_100, a tenant administrator, holds `rule:draft` and `rule:manage`.
-
-1. admin_100 drafts version 10 with the condition `false`, names admin_100 its owner, and asks to
-   switch it on. What does admin_100 hear, and why?
-2. cfo_100 drafts version 9, above 20,000.00 USD, and switches it on. The agent drafts INV-2007,
-   21,000.00 USD, a moment later. What does the agent hear?
-3. cfo_100 suspends version 9. The agent drafts INV-1008, 31,400.00 USD. What happens, and who
-   chose it?
-4. The agent works under a slip that cfo_100 signed, which lists `rule:manage`. It asks to switch
-   version 9 on. What does it hear, and which line refuses it?
-5. cfo_100 drafts a version with step 27's quick rule and asks to switch it on. What happens?
-
-<details>
-<summary>Answers</summary>
-
-1. `AUTHORIZATION_DENIED`: only the rule's owner may, in person. The owner of record is cfo_100,
-   the owner of version 8, the newest version ever switched on. A version's own words do not make
-   its writer the owner (decision D10).
-2. `PENDING_APPROVAL`, for the CFO. Line ⑩ reads the store at every call, so version 9 applies at
-   once (decision D5).
-3. It is paid. With version 9 suspended, no rule is in force. cfo_100, the owner, chose it, and the
-   record names cfo_100 and the reason (decision D13).
-4. `AUTHORIZATION_DENIED`, at line ⑤: the four commands are for people only, whatever a slip lists
-   (decision D9, DSOR-CTL-02b). If line ⑤ ever let it through, line ⑨ would refuse it: an agent is
-   never an owner.
-5. `VALIDATION_FAILED`, before any work. The switch-on runs the version's tests, and the quick rule
-   fails tests 3 and 5 (DSOR-CTL-02c). Nothing changes.
-
-</details>
-
-## Think it through
-
-### Found while building
-
-- **A draft could forge its history.** Line ⑥ refuses a draft that names `effective_from`. With that
-  check broken on purpose, a draft that named a time counted as a version switched on before, and
-  its own owner became the owner of record. Line ⑥ held, and the database refuses such a row too.
-  DSoR now keeps only the fields of a rule's text from a draft, and start-up refuses a draft that
-  names a reviewer or a time it took effect.
-- **Org_789 had nobody to attack the rule commands.** Step 12's cross-tenant suite attacks each
-  operation from both companies, as a person who may call it. Org_789 has no CFO and no tenant
-  administrator, so admin_700 joined the logins (decision D19).
-- **The secrets test ran out of time.** It runs every database test file with no database named,
-  and expects each to fail at once. On a machine at load 23, beside step 28's heavier cross-tenant
-  suites, that took 88 to 124 seconds, and 35 alone. Its limit rose from one minute to three. A run
-  that hangs is still stopped.
-- **The earlier steps' worlds on the database read no rules.** Migration 023 adds version 8, active,
-  to `dsor.controls`. A world of an earlier step gives an empty store, and since the review's fix
-  M5 its database claims get that empty store too. So line ⑩ reads no rule there, and no rule
-  command changes one.
-
-### The sweep of small breaks
-
-The sweep ran in a copy of the step with a PostgreSQL server of its own, on the code as it was
-built, before the review. It made 58 small breaks, one change at a time, each restored after its
-run, and ran each against the test files it touches. 42 were caught. 16 survived:
-
-- **One company's rule read in another.** Line ⑨'s look reading org_456's rules in every company
-  (G03), and start-up counting every company's tests in org_456's currency (G01). No test changed
-  or started a rule of org_789.
-- **The owner and the history.** The owner of record taken from the first version ever switched on
-  (L08). `compiled_by` naming the owner, and the record naming cfo_100 whoever acted (L05, L23):
-  cfo_100 wrote and owned each draft the tests read.
-- **Second guards.** A switch-on or a suspension that ignored a move the store refused, or trusted
-  line ⑨'s look (L18, L19, L21). A draft written without the rule's lock (L22). A store in memory
-  that took a version that is not a draft, took a version twice, or gave its own objects (R03,
-  R04, R15). A store on the database that suspended a draft (P05).
-- **Three that change nothing DSoR does.** A reordering of fields that never overlap (L06), a
-  reviewer kept when the same owner switches on again (P04), and one lock for every rule, which
-  only waits more (P08).
-
-Each of the first 13 was a missing test, not wrong code. Each got a test: 8 unit tests, 1 database
-test, and one more check in a test that was there.
-
-### The second sweep
-
-The 16 survivors ran again with the new tests: 13 were caught. The three left are the three that
-change nothing. Each fix of the review below was broken on purpose as it landed.
-
-### The hostile review
-
-A reviewer who had not seen the conversation read the step, attacked it as an agent and as a
-person, made 46 small breaks of its own, and checked this README against the `write-for-learners`
-skill. It found 23 things. Each is fixed or recorded here:
-
-- **H1. A switch-on was two moves, in memory.** A retirement of the same version at the same moment
-  left both versions retired, and a payment that read the rules between the two moves met no rule:
-  INV-1008 was paid without the CFO. Fixed: the store's `switchOn` is one step, in memory with no
-  wait inside it, and on the database under a savepoint (decision D4).
-- **H2. A condition could loop.** Ten-element lists looped inside each other took about a second at
-  seven levels, and every company's calls waited. A condition that loops, with `all`, `exists`,
-  `exists_one`, `map`, or `filter`, is refused now, as step 27 refused `matches`.
-- **M3. A new rule has a self-appointed owner.** Recorded in decision D10, and left open (open
-  question 114).
-- **M4. The owner switched on a version by its number, unread.** Fixed by decision D20: a draft is
-  switched on only by the owner who wrote it.
-- **M5. A deadlock waited on the database.** Line ⑨ and line ⑩ read the rules through the pool
-  while the claim held a connection: four payments at once on a pool of two hung, shown live.
-  Fixed: inside a claim they read the claim's own store.
-- **M6 and M7. Two missing tests.** The owner of record after a suspension or a retirement, and the
-  tests of a suspended version at its second switch-on. Both are tested now.
-- **L8 to L13. More missing tests.** The re-check of a suspension, the person of a change, start-up
-  of every company, the look of another company, "in person" for a system login, and the store's
-  own guards. The sweep had found four of them; the rest are tested now.
-- **L14. The database did not draw a version's moves.** A trigger draws them now, for every role,
-  and only a switch-on names a reviewer and a time.
-- **L15. An approval's role was free text that reached the agent.** Decision D21: a role of the role
-  table, and at most five people.
-- **L16. Lookalike rule ids.** A rule's id is lower-case words joined by dashes now.
-- **L17. A draft's answer tells its writer that a rule exists.** Recorded in decision D16.
-- **L18. Test titles claimed too much.** Five record tests and the agent-draft tests are titled by
-  the step now.
-- **L19 to L21. This README.** The owner rule in plain words, the figure for INV-2004, what the
-  quick rule does, the store's clock, one name for tests, and one meaning for "lock".
-- **L22. The truth sweep.** The hand-over commit updates `docs/status.md` and `rules-met.md`.
-- **L23. Comments that cited a decision without the step.** Each names its step now.
-
-### Left open on purpose
-
-- A rule that goes stale when its policy changes, the stand-in for KSoR, and the owner told: step
-  28b.
-- An agent that drafts a rule (§17.4 allows it), a second person who reviews a draft, a read of a
-  version with a fingerprint that a switch-on names, and a rule handed to a new owner.
-- Who may own a new rule, and who answers when its owner blocks the company with it (decision
-  D10, open question 114).
-- A bound on a condition's time that is not a refusal of loops (open question 113).
-- A row of `dsor.controls` edited by hand after start-up runs unchecked until the next start
-  (decision D6).
-
-## The rules this step meets
-
-| Rule | What it says | Where in the spec | Proved by |
-| --- | --- | --- | --- |
-| DSOR-CTL-02a | A control is activated, modified, suspended, or retired only by its human control owner | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | Only the owner of record, in person, switches a version on, suspends it, or retires it, and the owner switches on only a draft the owner wrote. admin_100's version 10 never switches on, and the rule stays cfo_100's after a suspension or a retirement. A change is a new version, which the owner switches on, in one step. [`test/rule-activate.test.ts`](test/rule-activate.test.ts), [`test/rule-suspend.test.ts`](test/rule-suspend.test.ts), [`test/rule-draft.test.ts`](test/rule-draft.test.ts), [`test/rule-activate.db.test.ts`](test/rule-activate.db.test.ts) |
-| DSOR-CTL-02b | An agent principal never activates a control | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | Line ⑤ refuses an agent in every mode, whatever its slip lists, and line ⑨ refuses one that passed line ⑤, a system login too. [`test/rule-activate.test.ts`](test/rule-activate.test.ts) |
-| DSOR-CTL-02c | Activation runs the control's tests, and fails when one fails | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | Met at start-up in step 27, and now at a switch-on too: the quick rule fails its tests, a dry run says so, and a suspended version meets its tests again at its second switch-on. [`test/rule-activate.test.ts`](test/rule-activate.test.ts) |
-| DSOR-CTL-01a | A control names a human owner | [§17.2 Control record](../../../specs/dsor/02-security.md#172-control-record) | Met in step 27, and now checked: a draft, and a version at start-up, whose owner is not a person of its company is refused. [`test/rule-draft.test.ts`](test/rule-draft.test.ts) |
-| DSOR-CTL-04 | The decision's record names each control by id and version | [§17.4 Lifecycle and drift](../../../specs/dsor/02-security.md#174-lifecycle-and-drift) | Partly, since step 27: the record names the version read from the store at the call. The authority's version in force is step 28b's. [`test/rulebook.test.ts`](test/rulebook.test.ts) |
-| DSOR-CTL-05 | Conditions are CEL in Appendix B's environment | [§17.3 Expression language](../../../specs/dsor/02-security.md#173-expression-language) | Partly, since step 27. Now a condition that loops is refused at a draft, a switch-on, and start-up, because a loop's time has no bound. [`test/cel.test.ts`](test/cel.test.ts), [`test/rule-draft.test.ts`](test/rule-draft.test.ts) |
-| DSOR-TEN-01b | DSoR's own WHERE names the company first, with the database's lock behind it | [§14 Multi-tenancy](../../../specs/dsor/02-security.md#14-multi-tenancy) | Still met, on `dsor.controls`: run by the owner, which no policy filters, org_456's reads and moves never touch a twin rule in org_789. [`test/rulebook.db.test.ts`](test/rulebook.db.test.ts) |
-
-## Next
-
-Step 28b · Where a rule came from. Each rule will point at the exact policy sentence and version it
-was built from. When the policy changes in a stand-in for KSoR, DSoR will mark the rule stale and
-tell its owner, and a stale rule will never be skipped.
+- A timer that calls the sweep, and a rule whose policy nobody could confirm for days (D4).
+- Sending the notice: the outbox, step 40 (D5).
+- A policy that KSoR withdraws (D3).
+- An agent that drafts a rule for a person to review, and a rule handed to a new owner: step 28's
+  questions 114 and 115.
