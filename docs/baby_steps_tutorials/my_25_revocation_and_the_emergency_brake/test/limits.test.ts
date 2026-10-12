@@ -20,6 +20,7 @@ import { money } from "../src/money.ts";
 import { callOperation, PIPELINE } from "../src/operations.ts";
 import { paymentsOf } from "../src/payment.ts";
 import { moveProposalThrough, propose, proposalsOf } from "../src/proposal.ts";
+import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
@@ -580,6 +581,49 @@ describe("what reserve() keeps to itself", () => {
 
     expect(await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY)).toStrictEqual({
       kind: "settled",
+    });
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
+  it("DSOR-DEL-06b: §21.10 refuses a proposal whose reservation was settled, and books nothing", async () => {
+    // Decision 155: decision 141 refuses it at the stage, and no test reached that refusal: with
+    // the stage carrying on instead, every test still passed, and a proposal checked again after its
+    // release would run with nothing booked. Today's door makes a new proposal for every request, so
+    // the stage is run here by itself, for a proposal whose reservation was released.
+    const id = await aProposal();
+
+    await reserve("org_456", id, "del_100", money("40000.00", "USD"), DAILY);
+    await endedAs(id, "FAILED");
+    await settleReservation("org_456", id, "released");
+
+    const stage = PIPELINE.find((s) => s.name === "check the slip's limit");
+    const found = await activeSlipFor("org_456", "accounts-payable-fte");
+
+    if (stage === undefined || found.kind !== "one") {
+      throw new Error("the pipeline has no stage that checks the slip's limit, or del_100 is gone");
+    }
+
+    const checked = await stage.run({
+      login: undefined,
+      id: "payment.create",
+      args: {},
+      requestId: "req_checked_again",
+      tenant: "org_456",
+      contract: loadRegistry(contractsFromDisk()).get("payment.create"),
+      delegation: found.slip,
+      mode: "execute",
+      proposal: id,
+      given: {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "40000.00", currency: "USD" },
+      },
+    });
+
+    expect(
+      checked.kind === "refused" && checked.answer.kind === "error" && checked.answer.envelope,
+    ).toMatchObject({
+      code: "INTERNAL_ERROR",
+      message: `${id}'s reservation against del_100's day was settled already, so it is not booked again`,
     });
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
