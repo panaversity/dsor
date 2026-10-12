@@ -24,7 +24,10 @@ ON CONFLICT (tenant, delegation, day) DO UPDATE SET used_value = used_value + am
 
 The day's first payment starts the total, and only if its amount alone is within the limit. Every
 later payment adds to the total, and only if the sum stays within the limit. Both conditions are
-needed: without the first, a single payment of 250,000.00 on an empty day would be booked.
+needed. Without the first, a slip with no limit per payment would book a single payment of
+250,000.00 on an empty day. You cannot see this with del_100: its limit of 50,000.00 a payment
+refuses that payment first. So the test that pays 250,000.00 through the door takes that limit
+away from del_100.
 
 Of two payments that arrive together, PostgreSQL makes the second wait for the first, then checks
 again on the total the first left. Only one can have the last room.
