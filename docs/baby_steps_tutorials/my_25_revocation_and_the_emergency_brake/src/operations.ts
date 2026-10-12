@@ -1964,10 +1964,13 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
 
     return carryOn(context);
   } catch {
+    // The only way a failed booking becomes a refusal: the walk catches no stage that throws.
+    // Decision 155: and a dry run only read the day, so it is told the total could not be read; it
+    // was told "booked", and it books nothing.
     return refuse(
       askedBy,
       "EVIDENCE_STORE_UNAVAILABLE",
-      `the day's total for ${slip.id} could not be booked; nothing was done`,
+      `the day's total for ${slip.id} could not be ${context.mode === "validate_only" ? "read" : "booked"}; nothing was done`,
       context.requestId,
     );
   }

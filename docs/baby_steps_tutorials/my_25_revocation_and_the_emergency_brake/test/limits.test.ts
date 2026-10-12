@@ -12,6 +12,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { activeSlipFor } from "../src/delegation.ts";
 import { refusal } from "../src/envelopes.ts";
@@ -367,6 +368,39 @@ function failingMovesInto(states: readonly string[]): () => void {
   return () => useDatabase(connection);
 }
 
+/**
+ * Decision 155: run something with the store failing every statement `picked` chooses, then put
+ * the store back. The statement fails before it runs; or, with `replyLost`, after it ran, as when
+ * only its reply is lost on the way back.
+ */
+async function withTheStoreFailing<Answer>(
+  picked: (sql: string) => boolean,
+  run: () => Promise<Answer>,
+  replyLost = false,
+): Promise<Answer> {
+  const connection = overPGlite(db);
+
+  useDatabase({
+    async query<T>(sql: string, params?: unknown[], tenant?: string) {
+      if (!picked(sql)) {
+        return connection.query<T>(sql, params, tenant);
+      }
+
+      if (replyLost) {
+        await connection.query<T>(sql, params, tenant);
+      }
+
+      throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+    },
+  });
+
+  try {
+    return await run();
+  } finally {
+    useDatabase(connection);
+  }
+}
+
 describe("a reservation follows its proposal's history, as written", () => {
   it("DSOR-DEL-06c: a refusal whose move to FAILED is not written leaves the proposal EXECUTING, and its reservation held", async () => {
     // Decision 141: it was released anyway, and the day showed 0.00 for a proposal nobody knew the
@@ -514,5 +548,71 @@ describe("what reserve() keeps to itself", () => {
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
     expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
     expect((await paymentsOf("org_456")).map((p) => p.id)).toStrictEqual(["PAY-901"]);
+  });
+});
+
+describe("a day's total that cannot be booked, or read", () => {
+  // Decision 155: the walk catches no stage that throws, so the stage's own catch is what turns a
+  // failed booking into a refusal. With it taken out, every test still passed, and the door threw:
+  // nothing on the record, the proposal left PROPOSED, and its key claimed with no answer, which no
+  // retry can use.
+  const booking = (sql: string): boolean => sql.includes("WITH booked");
+  const payment = {
+    invoice: "dsor://org_456/invoice/INV-1009",
+    amount: { value: "40000.00", currency: "USD" },
+  };
+
+  it("DSOR-EXE-02: a booking the store refuses is a refusal on the record, safe to send again", async () => {
+    const answer = await withTheStoreFailing(booking, () =>
+      callOperation(AGENT, "payment.create", payment, { idempotencyKey: "pay-not-booked" }),
+    );
+
+    if (answer.kind !== "error") {
+      throw new Error(`a booking the store refused was answered ${answer.kind}`);
+    }
+
+    expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(answer.envelope.retry).toBe("safe_same_key");
+    // This request's records: its decision, a DENY that says why.
+    expect(
+      (await theLog("org_456"))
+        .filter((r) => r.correlation.request_id === answer.envelope.correlation.request_id)
+        .map((r) => `${r.kind} ${r.authorization} ${r.result}: ${r.reason}`),
+    ).toStrictEqual([
+      "decision DENY EVIDENCE_STORE_UNAVAILABLE: the day's total for del_100 could not be booked; nothing was done",
+    ]);
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+
+    // And its key was given back: the same request, with the same key, is carried out.
+    const again = await callOperation(AGENT, "payment.create", payment, {
+      idempotencyKey: "pay-not-booked",
+    });
+
+    expect(again.kind === "result" && again.envelope.outcome).toBe("COMMITTED");
+  });
+
+  it("DSOR-DEL-06d: a booking whose reply is lost is given back, when its proposal is DENIED", async () => {
+    // The booking was written, and only its reply lost. The stage refuses, the proposal moves to
+    // DENIED, and the reservation the stage never heard of is released with it.
+    const answer = await withTheStoreFailing(booking, () => pay("40000.00"), true);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+    expect(await reservationStates()).toStrictEqual(["released"]);
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
+  it("a dry run whose read of the day fails says the day's total could not be read, not booked", async () => {
+    // A dry run only reads the room left, and books nothing (DSOR-OPR-06).
+    const dry = await withTheStoreFailing(
+      (sql) => sql.includes("FROM dsor.day_totals"),
+      () => pay("40000.00", "validate_only"),
+    );
+
+    expect(dry.kind === "error" && dry.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(dry.kind === "error" && dry.envelope.message).toBe(
+      "the day's total for del_100 could not be read; nothing was done",
+    );
   });
 });
