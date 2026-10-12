@@ -99,6 +99,64 @@ describe("how a command is called travels beside its arguments", () => {
 
     expect(again.kind === "error" && again.envelope.code).toBe("IDEMPOTENCY_CONFLICT");
   });
+
+  // Decision 154: and a claim released because nothing ran is taken back only in the mode it was
+  // made in. The test above reaches the check a claim with an answer gets. This one reaches the
+  // UPDATE that takes back a released claim, whose `mode = $6` no test reached: without it, a
+  // prepared request whose move failed, sent again to execute, issued the invoice under a claim that
+  // still said propose_only.
+  for (const [first, then] of [
+    ["propose_only", "execute"],
+    ["execute", "propose_only"],
+  ] as const) {
+    it(`DSOR-IDM-01d: a key released by ${first} is not taken back by ${then}`, async () => {
+      const key = `released-by-${first}`;
+      const connection = overPGlite(db);
+
+      // The move to READY cannot be written, so nothing runs and the claim is released.
+      useDatabase({
+        async query<T>(sql: string, params?: unknown[], tenant?: string) {
+          if (sql.includes("INSERT INTO dsor.proposal_moves") && params?.includes("READY")) {
+            throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+          }
+
+          return connection.query<T>(sql, params, tenant);
+        },
+      });
+
+      try {
+        const released = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+          idempotencyKey: key,
+          mode: first,
+        });
+
+        expect(released.kind === "error" && released.envelope.retry).toBe("safe_same_key");
+      } finally {
+        useDatabase(connection);
+      }
+
+      const other = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+        idempotencyKey: key,
+        mode: then,
+      });
+
+      expect(other.kind === "error" && other.envelope.code).toBe("IDEMPOTENCY_CONFLICT");
+      expect(await statusOf1009()).toBe("draft");
+      expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+
+      // And the claim was released, so the request it belongs to may still take it back. Without
+      // this, a claim that had kept its answer would give the same conflict, and this test would
+      // pass without ever reaching the UPDATE.
+      const own = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+        idempotencyKey: key,
+        mode: first,
+      });
+
+      expect(own.kind === "result" && own.envelope.outcome).toBe(
+        first === "execute" ? "COMMITTED" : "READY",
+      );
+    });
+  }
 });
 
 // NEW IN STEP 23, piece 2: a dry run. The decision stage runs and is recorded; nothing else happens.
