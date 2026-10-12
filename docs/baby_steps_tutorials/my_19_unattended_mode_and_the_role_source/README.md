@@ -42,9 +42,9 @@ them:
 | `delegation` | `del_100`, in a column of its own, inside the hash |
 
 The same holds for a refusal once DSoR has found the slip: a slip that does not allow `unattended`,
-an expired one, or a directory that gave no usable answer. Everything else stays `direct`: a person,
-the agent's own reads, and an agent's command refused before DSoR found an active slip, because no
-one's authority was used.
+an expired one, one whose limit is not a number, or a directory that gave no usable answer.
+Everything else stays `direct`: a person, the agent's own reads, and an agent's command refused
+before DSoR found an active slip, because no one's authority was used.
 
 A slip allows `unattended` only when it says so. `del_100` says so in migration 017; a slip that
 names no modes allows only `on_behalf_of`, which nothing can use until step 45. And a slip is
@@ -187,7 +187,7 @@ The slip for `on_behalf_of` alone, the slip that names no modes, and the record 
 
 ### Break 4 · the record says the agent acted for itself
 
-In `src/operations.ts`, in `recordTheDecision`, change `...(context.delegation === undefined` to
+In `src/operations.ts`, in `recordTheDecision`, change `...(slipFound === undefined` to
 `...(true`.
 
 ```text
@@ -201,8 +201,8 @@ its own.
 
 ### Break 5 · the subject comes from the request
 
-In `src/operations.ts`, change `delegator: context.delegation.delegator,` to
-`delegator: String(context.given?.["subject"] ?? context.delegation.delegator),`.
+In `src/operations.ts`, change `delegator: slipFound.delegator,` to
+`delegator: String(context.given?.["subject"] ?? slipFound.delegator),`.
 
 ```text
  Tests  2 failed | 670 passed | 1 skipped (673)

@@ -77,6 +77,12 @@ export interface Context {
    */
   readonly authorityAsOf?: string;
   /**
+   * Decision 149: a slip §21.3 found and could not use, because a limit on it is not an amount. Its
+   * id and its signer, for the record only: there is no `delegation` here to act under. The refusal
+   * is still recorded under the slip, like every refusal after §21.3 found it (decision 130).
+   */
+  readonly unusableSlip?: { readonly id: string; readonly delegator: string };
+  /**
    * STEP 20: the idempotency key the request came with, read once by the door. It travels
    * beside the arguments and never inside them, so the payload hash stays the fingerprint of what
    * was asked (DSOR-IDM-01a, decision 131).

@@ -69,8 +69,16 @@ export type SlipFound =
   | { readonly kind: "none" }
   | { readonly kind: "one"; readonly slip: Delegation }
   | { readonly kind: "more_than_one"; readonly ids: readonly string[] }
-  /** Decision 149: one slip, read, that cannot be used, and the words that say why. */
-  | { readonly kind: "broken"; readonly id: string; readonly why: string };
+  /**
+   * Decision 149: one slip, read, that cannot be used, and the words that say why. With its signer,
+   * because DSoR found it, and the refusal is recorded under it (decision 130).
+   */
+  | {
+      readonly kind: "broken";
+      readonly id: string;
+      readonly delegator: string;
+      readonly why: string;
+    };
 
 /**
  * Decision 149: a limit from the store, as money; `undefined` for no limit; or, for a limit that is
@@ -145,11 +153,21 @@ export async function activeSlipFor(tenant: string, delegate: string): Promise<S
   const dailyLimit = limitFrom("daily limit", row.daily_value, row.daily_currency);
 
   if (typeof perTransactionLimit === "string") {
-    return Object.freeze({ kind: "broken", id: row.id, why: perTransactionLimit });
+    return Object.freeze({
+      kind: "broken",
+      id: row.id,
+      delegator: row.delegator,
+      why: perTransactionLimit,
+    });
   }
 
   if (typeof dailyLimit === "string") {
-    return Object.freeze({ kind: "broken", id: row.id, why: dailyLimit });
+    return Object.freeze({
+      kind: "broken",
+      id: row.id,
+      delegator: row.delegator,
+      why: dailyLimit,
+    });
   }
 
   const slip: Delegation = Object.freeze({

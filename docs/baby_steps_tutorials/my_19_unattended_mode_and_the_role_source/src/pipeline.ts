@@ -75,6 +75,12 @@ export interface Context {
    * record keeps it as `subject_authority.as_of` (DSOR-DEL-10, decision 129).
    */
   readonly authorityAsOf?: string;
+  /**
+   * Decision 149: a slip §21.3 found and could not use, because a limit on it is not an amount. Its
+   * id and its signer, for the record only: there is no `delegation` here to act under. The refusal
+   * is still recorded under the slip, like every refusal after §21.3 found it (decision 130).
+   */
+  readonly unusableSlip?: { readonly id: string; readonly delegator: string };
   readonly given?: Readonly<Record<string, unknown>>;
   /**
    * The fingerprint of the arguments, from the text the validate stage wrote down.

@@ -693,14 +693,28 @@ const resolveTheDelegation: Stage["run"] = async (context) => {
 
   // Decision 149: a slip DSoR read and cannot use is no slip to act under. One whose limit was 'NaN',
   // which the table lets in, was refused as DEPENDENCY_TIMEOUT, "safe to send again", and no retry
-  // could change it. DELEGATION_REQUIRED, retry never: sending again does not mend the slip.
+  // could change it. DELEGATION_REQUIRED, retry never: sending again does not mend the slip. DSoR
+  // did find the slip, so the refusal is recorded under it, like every refusal after the slip is
+  // found (decision 130). It was recorded as `direct`, the agent acting for itself. The context
+  // names the slip and its signer for the record, and holds no `delegation` to act under.
   if (found.kind === "broken") {
-    return refuse(
-      principal.id,
-      "DELEGATION_REQUIRED",
-      `${found.id} cannot be used: ${found.why}. Sending the request again will not change that`,
-      context.requestId,
-    );
+    return Object.freeze({
+      kind: "refused" as const,
+      answer: Object.freeze({
+        kind: "error" as const,
+        askedBy: principal.id,
+        envelope: refusal(
+          "DELEGATION_REQUIRED",
+          `${found.id} cannot be used: ${found.why}. Sending the request again will not change that`,
+          context.requestId,
+          principal.id,
+        ),
+      }),
+      context: Object.freeze({
+        ...context,
+        unusableSlip: Object.freeze({ id: found.id, delegator: found.delegator }),
+      }),
+    });
   }
 
   const slip = found.slip;
@@ -1346,6 +1360,9 @@ const recordTheDecision: Stage["run"] = async (context) => {
         ? [undefined]
         : principal.memberships.map((m) => m.tenantId);
 
+  // Decision 149: the slip §21.3 found, whether or not it could be used.
+  const slipFound = context.delegation ?? context.unusableSlip;
+
   let written;
   // STEP 10: which logs took the write, so the caller is told the truth on a partial failure.
   const writtenTo: string[] = [];
@@ -1370,12 +1387,13 @@ const recordTheDecision: Stage["run"] = async (context) => {
         //
         // Decision 130: whenever §21.3 found the slip, refusals after it included, and with the
         // directory's time when it gave one; with none, the record has the decision's own.
-        ...(context.delegation === undefined
+        // Decision 149: and a slip it found and could not use, because a limit on it is not an amount.
+        ...(slipFound === undefined
           ? {}
           : {
               underSlip: {
-                delegation: context.delegation.id,
-                delegator: context.delegation.delegator,
+                delegation: slipFound.id,
+                delegator: slipFound.delegator,
                 ...(context.authorityAsOf === undefined ? {} : { asOf: context.authorityAsOf }),
               },
             }),

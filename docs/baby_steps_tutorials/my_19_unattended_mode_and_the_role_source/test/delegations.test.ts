@@ -341,6 +341,18 @@ describe("when the slip, or what its signer holds, cannot be read", () => {
     }
 
     expect(await decisions()).toStrictEqual(["DELEGATION_REQUIRED", "DELEGATION_REQUIRED"]);
+
+    // Decision 149: DSoR found the one active slip, so each refusal is recorded under it, like every
+    // refusal after §21.3 found the slip (decision 130). It was recorded as `direct`, the agent
+    // acting for itself, with no slip named, and a search of the log for del_100 missed it.
+    for (const record of (await theLog("org_456")).filter((r) => r.kind === "decision")) {
+      expect(record.identity).toMatchObject({
+        mode: "unattended",
+        subject: "user_123",
+        actor_chain: ["accounts-payable-fte"],
+      });
+      expect(record.delegation).toBe("del_100");
+    }
   });
 
   it("DSOR-EXE-03b: with the database down, the agent is told what a person is told", async () => {
