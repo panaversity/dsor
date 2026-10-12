@@ -4,5 +4,6 @@
 -- README, decision D14).
 ALTER TABLE dsor.audit ADD COLUMN controls jsonb;
 
--- One more slot in the letterbox. Still no UPDATE, no DELETE, no TRUNCATE.
+-- One more column that dsor_runtime may write in a new record. Still no UPDATE, no DELETE, no
+-- TRUNCATE: a record, once written, stays as it was written.
 GRANT INSERT (controls) ON dsor.audit TO dsor_runtime;
