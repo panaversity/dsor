@@ -1630,6 +1630,34 @@ review". Step 27 copies step 26, with a database of its own on a scratch server.
 - **For the learner's session:** D1 to D21, the four breaks to predict, open questions 108 to 113,
   and the refusal of `matches`.
 
+### Step 27, understanding after the build (2026-10-12)
+
+The session followed the order of 2026-10-11: the purpose first, three short parts with real runs and
+no quiz inside them, one picture, the learner's review of the 21 decisions as one list, then four
+predictions, each settled by a real run in a scratch copy of the step.
+
+- **The parts:** a rule that a program can check (the control and its five sample cases); what line
+  ⑩ answers (allow, wait for the CFO, or refuse, and the strictest answer wins); and what happens
+  when DSoR cannot tell (an error applies the control's effect). The learner then clicked every box
+  of the picture of line ⑩, and each question got an answer with a run.
+- **The decisions:** the learner asked to talk about groups A (where rules live, and start-up) and B
+  (what a condition sees), heard each decision's reason and its other way, and kept all 21.
+- **A new habit: "straight to the payment".** Predictions 1 and 3 went to the call and skipped the
+  sample cases that start-up runs before any payment. Asked which ideas led there, the learner
+  picked four: a control's tests taken for the developers' test suite; start-up taken to check a
+  control's shape only; a change to the code taken to touch calls only; and test 5's error not
+  seen. Each got its own run, and the learner ran the deciding line with two values.
+- **Prediction 4 was not answered.** The learner said: "Honestly I am unable to answer, so why not
+  build first and complete, and then make a visual story for me." The run showed the fourth break
+  caught only by the developers' tests, and that gave the story its picture of two nets.
+- **The visual story:** "The CFO Rule", an artifact page of ten scenes, at
+  https://claude.ai/artifact/8hziAceZsXoiW59FRL9GkL (private to the learner).
+- **For the next sessions:** before any prediction, draw where each check runs: at start-up, or at
+  a call. Then ask about one call at a time. When a prediction cannot be answered, show it as a
+  story instead of asking again.
+- **Design questions for step 28:** whether a broken control should stop only its own company (D2's
+  other way), and how a stale control behaves through `on_stale` and its grace (D3).
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
