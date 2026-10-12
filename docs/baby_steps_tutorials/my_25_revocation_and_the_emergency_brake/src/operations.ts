@@ -674,8 +674,8 @@ const handlers: Readonly<Record<string, Handler>> = {
     }
 
     // Who may, and whether the slip can still be revoked, were decided at §21.9 and recorded
-    // (decision 143). The slip can still have been revoked by someone else since, which the
-    // statement sees.
+    // (decision 143). The slip can still have ended since: the signer's other revocation, sent at
+    // the same time, may land first. The statement sees it, and the caller is told CONFLICT below.
     const revoked = await revokeSlip(tenant, read.id, askedBy, reason);
 
     // Decision 156: the statement asks who signed the slip too. Unreachable through the real

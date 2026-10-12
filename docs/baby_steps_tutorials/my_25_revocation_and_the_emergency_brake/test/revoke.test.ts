@@ -10,6 +10,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
+import { revokeSlip } from "../src/delegation.ts";
 import { money } from "../src/money.ts";
 import { PIPELINE } from "../src/operations.ts";
 import type { Context } from "../src/pipeline.ts";
@@ -548,6 +549,47 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
       /only the person who signed del_200/,
     );
     expect(await statusOf("del_200")).toBe("active");
+  });
+
+  it("DSOR-DEL-04a: a revocation overtaken by another after §21.9 is told the slip is revoked already, not that its signer did not sign it", async () => {
+    // Decision 156: when the statement changes nothing, it asks whether the slip is the caller's, to
+    // tell "it has ended" (CONFLICT) from "it is not yours" (AUTHORIZATION_DENIED). Through the real
+    // pipeline only a race reaches that question: §21.9 found del_100 active, and another revocation
+    // landed before the statement ran. No test reached it. With the question answering "not yours"
+    // every time, every test stayed green, and user_123, del_100's own signer, lost the race and was
+    // told that user_123 did not sign it.
+    const overtaken = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              // user_123's other revocation lands here, after this one's decision and before its
+              // handler, as two sent at once can.
+              await revokeSlip("org_456", "del_100", "user_123", "the first of two");
+
+              return done;
+            },
+          })
+        : stage,
+    );
+    const answer = await makeDoor(overtaken)(SUPERVISOR, "delegation.revoke", {
+      target: DEL_100,
+      reason: "the second of two",
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("CONFLICT");
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(
+      /del_100 is revoked or expired already/,
+    );
+
+    // And it changed nothing: the slip keeps the reason of the revocation that landed.
+    const { rows } = await theDatabase("org_456").query<{ status: string; revoked_reason: string }>(
+      "SELECT status, revoked_reason FROM dsor.delegations WHERE tenant = 'org_456' AND id = 'del_100'",
+    );
+
+    expect(rows).toStrictEqual([{ status: "revoked", revoked_reason: "the first of two" }]);
   });
 });
 
