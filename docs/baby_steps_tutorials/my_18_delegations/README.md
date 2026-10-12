@@ -79,8 +79,14 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_17
 | `src/permissions.ts` | the agent's own role reads, and nothing more |
 | `src/database.ts` | start-up knows five tenant tables, and refuses an application that may write a slip, itself, one `SET ROLE` away, or through a helper function |
 | `src/main.ts` | the slip, a payment above its limit refused, and the done-when: user_123 loses a permission and the agent's next request is refused |
+| `src/audit.ts`, `src/envelopes.ts` | comments: an agent's command is still recorded as the agent acting for itself, until step 19, and `agent_id` waits for step 40 |
 | `test/delegations.test.ts` | new — the slip, the stage, the scopes, the limit, and a slip named in the arguments |
 | the tests that pin the pipeline, the agent's role and the demo | the two new stages, `invoice:read` alone, and two more refusals in the log |
+| `test/database.test.ts` | the start-up refusals above, tested: a slip the application may write itself, one `SET ROLE` away, or through a helper function's owner |
+| `test/the-lock-at-start-up.test.ts`, `test/control-plane-store.test.ts` | the slips are under the second lock at start-up, and `dsor` holds the log and the slips |
+| `test/cross-tenant.test.ts`, `test/support/story.ts` | the agent's command in org_789 runs under a slip of org_789's own, and putting the story back puts del_100 back too |
+| `test/decision-first.test.ts` | the delegation stage, not authorize, is now the first to find no contract |
+| `test/arguments.test.ts`, `test/deny-by-default.test.ts`, `test/classified-reads.test.ts`, `test/envelopes.test.ts`, `test/audit.test.ts` | comments that said who holds what, or which step builds what |
 
 ## Run it
 
