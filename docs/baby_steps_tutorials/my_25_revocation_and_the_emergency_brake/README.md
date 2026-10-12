@@ -27,7 +27,8 @@ reads that table and nothing it sends can change it.
 **Tearing up a slip.** `delegation.revoke` marks a slip revoked, with who and why. Its signer may: for
 del_100, `user_123`. After that the agent has no slip, and every command it sends is refused. In the
 same statement, every proposal under the slip that was waiting for approval, or approved, is
-cancelled, and any amount it held against the day is given back.
+cancelled. Then the amount each one held against the day is given back. An amount that cannot be
+given back stays held, which errs toward refusing.
 
 **Two locks, not one.** §21.4 refuses a stopped agent's command before anything is decided. But a
 person can pull the brake while one of the agent's commands is already past §21.4, on its way to its
@@ -207,7 +208,7 @@ Copy `my_24_limits_with_reservations` to a new folder and ask:
    never runs.
 3. Releasing a brake is a person's decision (`DSOR-OPS-01d`): §21.9 refuses an agent whatever it holds.
    Pulling a brake only stops things, so it needs nothing more than `control:suspend`.
-4. It is cancelled, in the same statement that revokes the slip, and its reservation is released,
+4. It is cancelled, in the same statement that revokes the slip. Then its reservation is released,
    giving its amount back to the day.
 5. Because a refusal in the handler comes after §21.11 has recorded ALLOW: the log would say one thing
    and the answer another. At §21.9 the refusal is recorded as the DENY it is.
