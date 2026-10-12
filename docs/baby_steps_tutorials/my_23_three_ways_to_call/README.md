@@ -146,7 +146,8 @@ In `src/operations.ts`, change `? await prepare(walked.context, progress)` to
 ```
 
 The caller asked to prepare a payment, and it was made. The tests of a READY answer, of the payment
-not made, of the replay, of the two moves to READY that fail, and the demo's count of payments.
+not made, of the replay, of the two moves to READY that fail, of the one whose lost write lands
+late, and the demo's count of payments.
 
 ## Build it yourself with Claude Code
 
