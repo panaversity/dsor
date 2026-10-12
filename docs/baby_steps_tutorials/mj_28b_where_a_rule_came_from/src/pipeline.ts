@@ -411,7 +411,10 @@ export async function call(
         if (book.length > 0) {
           const sheet = await freshSheet(once, tenant, registry.moneyPolicies.get(tenant));
           const used = new Set<string>();
-          outcomes = evaluateControls(book, contract.id, factsOf(state), sheet, used);
+          // One set of facts for the evaluation and for the reasons of a refusal, so both read one
+          //   time (step 28b's README, decision D9).
+          const facts = factsOf(state);
+          outcomes = evaluateControls(book, contract.id, facts, sheet, used);
           controlsOfRecord = outcomes;
           // The record names the sheet and the rates a condition converted with, as it names a
           //   limit's (step 26's README, decision L7). Found by step 27's review, finding H2: a
@@ -423,7 +426,7 @@ export async function call(
           }
           answer = mostRestrictive(outcomes.map((outcome) => outcome.outcome));
           if (answer === "DENY") {
-            denialsOfRecord = denialsOf(book, outcomes);
+            denialsOfRecord = denialsOf(book, outcomes, facts);
             const why = `${JSON.stringify(contract.id)} is refused by a control of ${tenant}`;
             throw new Refusal("POLICY_DENIED", why, "public");
           }

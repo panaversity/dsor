@@ -675,6 +675,39 @@ describe("C2: on the database, the sweep's mark (step 28b's README, decisions D5
     expect(rows).toStrictEqual([]);
   });
 
+  it("DSOR-CTL-04: on the database, the decision's record in dsor.audit names the stale hold by id and version, with the policy in force, version 5, and superseded_version 4, beside version 8, and says why the hold refused", async () => {
+    ownerLimits("reset");
+    const id = await holdOn();
+    await rules.mark("org_456", id, 1, undefined, V5, bySweep(), "x");
+    const answer = await draft9001();
+    expect(answer).toMatchObject({ code: "POLICY_DENIED" });
+    const { rows } = await tryThenRollBack(
+      pool,
+      `SELECT controls, extensions FROM dsor.audit
+        WHERE kind = 'decision' AND correlation->>'request_id' = $1`,
+      "org_456",
+      [answer.correlation.request_id],
+    );
+    const cited = shippedRule().authority;
+    expect(rows[0]?.["controls"]).toStrictEqual([
+      { id: "high-value-payment", version: 8, outcome: "REQUIRE_APPROVAL", authority: cited },
+      {
+        id,
+        version: 1,
+        outcome: "DENY",
+        authority: { ...cited, version: 5, content_hash: V5.content_hash },
+        superseded_version: 4,
+      },
+    ]);
+    expect(rows[0]?.["extensions"]?.[OUR_EXTENSIONS]?.denied_by).toStrictEqual([
+      {
+        control: id,
+        reason:
+          "it is stale: the policy it cites moved, its on_stale says require_approval, and its effect names no approver",
+      },
+    ]);
+  });
+
   it("DSOR-CTL-03b: on the database, a stale rule is still read at line ⑩: the stale hold on INV-9001 still refuses intake-fte's payment, and start-up still checks it and runs its tests", async () => {
     ownerLimits("reset");
     const id = await holdOn();

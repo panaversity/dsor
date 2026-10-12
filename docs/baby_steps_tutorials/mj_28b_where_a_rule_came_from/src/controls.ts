@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { millisecondsOf } from "./authority.ts";
 import { checkCondition, evaluateCondition, NO_RATE, tenantOf, type Facts } from "./cel.ts";
 import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
@@ -17,6 +18,7 @@ import { keysWrittenTwice } from "./json.ts";
 import type { Roles } from "./permissions.ts";
 import type { MoneyPolicy } from "./policies.ts";
 import { principalNamed } from "./principals.ts";
+import type { InForce } from "./rulebook.ts";
 import { isTenantId } from "./uri.ts";
 
 /** What a control can answer: its effect, or ALLOW (DSOR-AUT-02a). */
@@ -129,14 +131,69 @@ export type ControlOutcome = {
   version: number;
   outcome: ControlAnswer;
   // The policy it came from. The record keeps it: DSOR-CTL-04, step 28's rule, met early.
+  // NEW IN STEP 28b: the policy in force, which for a stale version is KSoR's newer version.
   authority: Record<string, unknown>;
+  // NEW IN STEP 28b: for a stale version, the version of the policy it cites (step 28b's README,
+  // decision D11).
+  superseded_version?: number;
   // Why the condition could not be evaluated, when it could not (DSOR-CTL-07).
   evaluation_error?: string;
 };
 
+/** NEW IN STEP 28b: the least a stale version answers, and why, at this time, on an operation of this risk; none for a version that is not stale. */
+export function staleFloor(
+  control: InForce,
+  now: Date,
+  risk: string,
+): { floor: ControlAnswer; why: string } | undefined {
+  const { stale } = control;
+  if (stale === undefined) return undefined;
+  // When a stale rule must ask a person, it asks for the approval its effect names. A rule whose
+  // effect is deny names no approver, so it refuses (step 28b's README, decision D8).
+  const ask: ControlAnswer = "deny" in control.effect ? "DENY" : "REQUIRE_APPROVAL";
+  const noApprover = ask === "DENY" ? ", and its effect names no approver" : "";
+  const moved = "it is stale: the policy it cites moved";
+  const deny = { floor: "DENY" as const, why: `${moved}, and its on_stale says deny` };
+  // The grace runs from DSoR's mark. A time that cannot be read ends it: the rule asks a person
+  // (step 28b's README, decision D9).
+  const ends = Date.parse(stale.since) + millisecondsOf(control.stale_grace);
+  const over = !(now.getTime() < ends);
+  // After its grace, on a high or critical operation: at least a person's approval
+  // (DSOR-CTL-03c).
+  if (over && (risk === "high" || risk === "critical")) {
+    if (control.on_stale === "deny") return deny;
+    const why = `${moved}, its grace ended, and it governs a ${risk}-risk operation${noApprover}`;
+    return { floor: ask, why };
+  }
+  // During its grace, and on a low or medium operation after it: as its on_stale says (§17.4).
+  if (control.on_stale === "enforce_and_flag") {
+    return { floor: "ALLOW", why: `${moved}, and its on_stale says enforce_and_flag` };
+  }
+  if (control.on_stale === "require_approval") {
+    return { floor: ask, why: `${moved}, its on_stale says require_approval${noApprover}` };
+  }
+  // deny, and any word the schema does not allow, which start-up and the draft refuse anyway.
+  return deny;
+}
+
+/** NEW IN STEP 28b: the policy in force, as the record names it, and for a stale version, the version it cites (DSOR-CTL-04; step 28b's README, decision D11). */
+function inForceOf(control: InForce): {
+  authority: Record<string, unknown>;
+  superseded_version?: number;
+} {
+  const authority = structuredClone(control.authority);
+  if (control.stale === undefined) return { authority };
+  const cited = authority["version"];
+  const { version, content_hash } = control.stale.in_force;
+  const superseded = typeof cited === "number" ? { superseded_version: cited } : {};
+  return { authority: { ...authority, version, content_hash }, ...superseded };
+}
+
 /** Each of these controls that governs the operation, evaluated for one call (step 27's README, decision D15: any caller). */
+// NEW IN STEP 28b: each version in force, a stale one too, which answers at least its floor
+// (DSOR-CTL-03b, DSOR-CTL-03c; step 28b's README, decisions D7 to D9).
 export function evaluateControls(
-  controls: readonly Control[],
+  controls: readonly InForce[],
   operation: string,
   facts: Facts,
   sheet: RateSheet | undefined,
@@ -147,10 +204,12 @@ export function evaluateControls(
   return controls
     .filter((control) => control.operation === operation)
     .map((control) => {
-      const { answer, error } = answerOf(control, facts, sheet, used);
-      const { id, version, authority } = control;
+      const { answer: own, error } = answerOf(control, facts, sheet, used);
+      const floor = staleFloor(control, facts.now, facts.risk);
+      const answer = floor === undefined ? own : mostRestrictive([own, floor.floor]);
+      const { id, version } = control;
       const failed = error === undefined ? {} : { evaluation_error: error };
-      return { id, version, outcome: answer, authority: structuredClone(authority), ...failed };
+      return { id, version, outcome: answer, ...inForceOf(control), ...failed };
     });
 }
 
@@ -187,16 +246,22 @@ export function requirementsOf(
 export type Denial = { control: string; reason: string };
 
 /** The id and the reason of each control whose effect refused the call. */
+// NEW IN STEP 28b: and of each stale version whose floor refused it, with why, at this time, on an
+// operation of this risk (step 28b's README, decision D8).
 export function denialsOf(
-  controls: readonly Control[],
+  controls: readonly InForce[],
   outcomes: readonly ControlOutcome[],
+  facts?: Pick<Facts, "now" | "risk">,
 ): Denial[] {
   const refused = new Set(outcomes.filter((o) => o.outcome === "DENY").map((o) => o.id));
-  return controls.flatMap((control) =>
-    refused.has(control.id) && "deny" in control.effect
+  return controls.flatMap((control) => {
+    if (!refused.has(control.id)) return [];
+    const floor = facts === undefined ? undefined : staleFloor(control, facts.now, facts.risk);
+    if (floor?.floor === "DENY") return [{ control: control.id, reason: floor.why }];
+    return "deny" in control.effect
       ? [{ control: control.id, reason: control.effect.deny.reason }]
-      : [],
-  );
+      : [];
+  });
 }
 
 /** Each failing test of a control, numbered from 1, run with the rates it pins (DSOR-CTL-02c). */
