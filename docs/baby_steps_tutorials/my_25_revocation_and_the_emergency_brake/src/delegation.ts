@@ -227,7 +227,9 @@ export async function slipNamed(
 export type Revoked =
   | { readonly kind: "revoked"; readonly cancelled: readonly string[] }
   /** It had ended when the statement ran, revoked or expired already: nothing was changed. */
-  | { readonly kind: "ended" };
+  | { readonly kind: "ended" }
+  /** Decision 156: `by` did not sign it, or there is no such slip: nothing was changed. */
+  | { readonly kind: "not_theirs" };
 
 /**
  * NEW IN STEP 25: revoke an active slip, and cancel what was waiting under it (DSOR-DEL-04a,
@@ -235,6 +237,11 @@ export type Revoked =
  *
  * Decision 156: or a suspended one. DSOR-DEL-04a makes no exception for a slip's status, and a slip
  * suspended today can be made active tomorrow; its signer must be able to tear it up first.
+ *
+ * Decision 156: and only by the person who signed it, asked again in the statement. §21.9 asks
+ * first, and decides what the caller is told; this holds for a door built without §21.9, or a read
+ * there that failed open. A tenant administrator, who may revoke anyone's slip, will need a way of
+ * their own.
  *
  * One statement: the slip becomes revoked, with who, when and why, and every proposal under it that
  * is waiting for approval or approved moves to CANCELLED, its cause naming the slip and who revoked
@@ -248,11 +255,15 @@ export async function revokeSlip(
   by: string,
   reason: string,
 ): Promise<Revoked> {
-  const { rows } = await theDatabase(tenant).query<{ revoked: number; cancelled: string[] }>(
+  const { rows } = await theDatabase(tenant).query<{
+    revoked: number;
+    theirs: boolean;
+    cancelled: string[];
+  }>(
     `WITH revoked AS (
        UPDATE dsor.delegations
           SET status = 'revoked', revoked_by = $3, revoked_at = clock_timestamp(), revoked_reason = $4
-        WHERE tenant = $1 AND id = $2 AND status IN ('active', 'suspended')
+        WHERE tenant = $1 AND id = $2 AND status IN ('active', 'suspended') AND delegator = $3
         RETURNING id
      ),
      waiting AS (
@@ -274,12 +285,16 @@ export async function revokeSlip(
        RETURNING proposal
      )
      SELECT (SELECT count(*) FROM revoked)::int AS revoked,
+            EXISTS (SELECT 1 FROM dsor.delegations
+                     WHERE tenant = $1 AND id = $2 AND delegator = $3) AS theirs,
             COALESCE((SELECT array_agg(proposal ORDER BY proposal) FROM cancelled), '{}') AS cancelled`,
     [tenant, id, by, reason],
   );
   const row = rows[0];
 
-  return row === undefined || row.revoked !== 1
-    ? Object.freeze({ kind: "ended" })
-    : Object.freeze({ kind: "revoked", cancelled: Object.freeze([...row.cancelled]) });
+  if (row?.revoked === 1) {
+    return Object.freeze({ kind: "revoked", cancelled: Object.freeze([...row.cancelled]) });
+  }
+
+  return Object.freeze(row?.theirs === true ? { kind: "ended" } : { kind: "not_theirs" });
 }

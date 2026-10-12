@@ -678,6 +678,15 @@ const handlers: Readonly<Record<string, Handler>> = {
     // statement sees.
     const revoked = await revokeSlip(tenant, read.id, askedBy, reason);
 
+    // Decision 156: the statement asks who signed the slip too. Unreachable through the real
+    // pipeline, where §21.9 refused first, in the same words; here for a door built without it.
+    if (revoked.kind === "not_theirs") {
+      return refused(
+        "AUTHORIZATION_DENIED",
+        `only the person who signed ${read.id} may revoke it here, and ${askedBy} did not`,
+      );
+    }
+
     if (revoked.kind === "ended") {
       return refused("CONFLICT", `${read.id} is revoked or expired already; nothing was changed`);
     }

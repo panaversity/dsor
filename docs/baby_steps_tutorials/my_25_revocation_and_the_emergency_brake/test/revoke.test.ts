@@ -9,7 +9,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { theLog } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { money } from "../src/money.ts";
+import { PIPELINE } from "../src/operations.ts";
+import type { Context } from "../src/pipeline.ts";
 import {
   moveProposalThrough,
   movesOf,
@@ -18,9 +21,9 @@ import {
   stateOf,
 } from "../src/proposal.ts";
 import { reserve, usedToday } from "../src/reservation.ts";
-import { theDatabase } from "../src/store.ts";
+import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
-import { callOperation } from "./support/door.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
 const CFO = { loggedInAs: "cfo_100" };
@@ -39,6 +42,43 @@ const statusOfDel100 = async (): Promise<string | undefined> => {
 
   return rows[0]?.status;
 };
+
+/** Decision 156: any slip's status in org_456, read as the application. */
+const statusOf = async (id: string): Promise<string | undefined> => {
+  const { rows } = await theDatabase("org_456").query<{ status: string }>(
+    "SELECT status FROM dsor.delegations WHERE tenant = 'org_456' AND id = $1",
+    [id],
+  );
+
+  return rows[0]?.status;
+};
+
+/**
+ * Decision 156: run `run` while the first `times` statements that contain `sql` fail, as a store
+ * that went away would; then put the store back.
+ */
+async function whileFailing<T>(sql: string, times: number, run: () => Promise<T>): Promise<T> {
+  const connection = overPGlite(db);
+  let failed = 0;
+
+  useDatabase({
+    async query<R>(text: string, params?: unknown[], tenant?: string) {
+      if (failed < times && text.includes(sql)) {
+        failed += 1;
+
+        throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+      }
+
+      return connection.query<R>(text, params, tenant);
+    },
+  });
+
+  try {
+    return await run();
+  } finally {
+    useDatabase(connection);
+  }
+}
 
 /** A proposal the agent made under del_100, walked to a state, as approvals one day will. */
 async function underDel100(path: readonly ProposalState[]): Promise<string> {
@@ -381,6 +421,49 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
     );
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  it("DSOR-DEL-04a: a slip that cannot be read is no answer: the revocation is refused, recorded, and the slip stays active", async () => {
+    // Decision 156: §21.9's catch could carry on instead, with every test green. user_123 would then
+    // revoke del_200, which cfo_100 signed, whenever that one read failed.
+    await aSlipSignedByCfo();
+
+    const answer = await whileFailing("SELECT delegator, status FROM dsor.delegations", 1, () =>
+      callOperation(SUPERVISOR, "delegation.revoke", {
+        target: "dsor://org_456/delegation/del_200",
+        reason: "while the store is away",
+      }),
+    );
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
+    expect(await statusOf("del_200")).toBe("active");
+  });
+
+  it("DSOR-DEL-04a: with §21.9 gone, the statement still revokes only its signer's slip", async () => {
+    // Decision 156: §21.9 was the only lock. Through a door built without it, user_123 revoked
+    // del_200, which cfo_100 signed. The statement now asks who signed it too, and the handler
+    // refuses in §21.9's words; the decision on the record says ALLOW, which only §21.9 can prevent.
+    await aSlipSignedByCfo();
+
+    const withoutTheStage = PIPELINE.map((stage) =>
+      stage.name === "check the target"
+        ? Object.freeze({
+            ...stage,
+            run: (context: Context) => ({ kind: "carry_on" as const, context }),
+          })
+        : stage,
+    );
+    const answer = await makeDoor(withoutTheStage)(SUPERVISOR, "delegation.revoke", {
+      target: "dsor://org_456/delegation/del_200",
+      reason: "around §21.9",
+    });
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
+    expect(answer.kind === "error" && answer.envelope.message).toMatch(
+      /only the person who signed del_200/,
+    );
+    expect(await statusOf("del_200")).toBe("active");
   });
 });
 

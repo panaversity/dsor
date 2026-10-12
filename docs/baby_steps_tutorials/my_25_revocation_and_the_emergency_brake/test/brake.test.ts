@@ -21,7 +21,7 @@ import {
   stateOf,
 } from "../src/proposal.ts";
 import { overPGlite, refuseIfItCanRewriteHistory } from "../src/database.ts";
-import { theDatabase } from "../src/store.ts";
+import { theDatabase, useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 
@@ -168,6 +168,36 @@ describe("§21.4: a stopped agent changes nothing", () => {
     await liftTheBrake("org_456", AGENT, "user_123");
 
     expect((await callOperation(AGENT_LOGIN, "payment.create", PAY)).kind).toBe("result");
+  });
+
+  it("DSOR-OPS-01a: a brake that cannot be read is no answer: the agent's command is refused, and nothing is made", async () => {
+    // Decision 156: §21.4's catch could carry on instead, with every test green. Only §21.4's own
+    // read fails here; the move to EXECUTING could still ask, and finds no brake.
+    const before = await paymentsOf("org_456");
+    const connection = overPGlite(db);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("SELECT id, agent, imposed_by, reason FROM dsor.agent_controls")) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    let answer;
+
+    try {
+      answer = await callOperation(AGENT_LOGIN, "payment.create", PAY);
+    } finally {
+      useDatabase(connection);
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(await paymentsOf("org_456")).toStrictEqual(before);
+    expect(await proposalsOf("org_456")).toStrictEqual([]);
+    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
   });
 
   it("DSOR-OPS-01a: the refusal says who pulled the brake, and never why", async () => {
