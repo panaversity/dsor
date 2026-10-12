@@ -406,6 +406,44 @@ describe("the program's start-up check", () => {
   // dsor.migrations is a valid map, so start-up gets past the files and logs in, and the
   // inspector finds the table nobody wrote down. Found by the sweep: the refusal in
   // src/main.ts could be deleted, and every test stayed green.
+  // Found by step 27's sweep, MN2: with the company's rule story reading the shipped controls.json
+  // instead of the one start-up checked, every test passed.
+  it(
+    "Step 27: the company's rule story enforces the controls file named on the command line, the one start-up checked: with a rule that never fires, the agent's INV-1008 is paid",
+    { timeout: 180_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "dsor-controls-"));
+      try {
+        const controls = JSON.parse(
+          readFileSync(new URL("../controls.json", import.meta.url), "utf8"),
+        );
+        controls.org_456[0].condition = "false";
+        controls.org_456[0].tests = [{ expect: "ALLOW" }];
+        const named = join(dir, "controls.json");
+        writeFileSync(named, JSON.stringify(controls));
+        const step = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
+        const args = [
+          "../contracts",
+          "../roles.json",
+          "../inputs",
+          "../classifications.json",
+          "../store.json",
+        ];
+        const run = spawnSync(process.execPath, [MAIN, ...args.map(step), named], {
+          encoding: "utf8",
+        });
+        const stdout = redact(run.stdout, { "<runtime URL>": RUNTIME_URL });
+        expect(run.status).toBe(0);
+        expect(stdout).toMatch("controls.json passed its tests");
+        expect(stdout).toMatch(
+          "Tuesday 15:05, the agent drafts INV-1008, 31,400.00 USD: answered, PAY-",
+        );
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    },
+  );
+
   it(
     "step 16's decision 4: refuses to start on a database that does not match its map",
     { timeout: 60_000 },

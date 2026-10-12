@@ -30,6 +30,7 @@ import {
   DEL_100,
   DEL_101,
   DEL_102,
+  FIRM_IN_789,
   keyed,
   shipped,
   shippedInputs,
@@ -239,6 +240,18 @@ describe("C4, C6: a payment that needs the CFO waits", () => {
     expect(w.drafted).toHaveLength(0);
   });
 
+  // Found by step 27's sweep, CL2: the memory claim gave its own waiting answer to the caller, so a
+  // caller that changed it changed what a replay gives back.
+  it("Step 27: a replay gives back the waiting answer as it was kept, whatever the caller did with its copy", async () => {
+    const w = await withTuesday();
+    const envelope = keyed(AGENT);
+    const input = { invoice: "dsor://org_456/invoice/INV-1008", expected_version: 1 };
+    const first = await w.ask(envelope, "payment.create", input);
+    if (!("requires" in first)) throw new Error("the first call does not wait");
+    first.requires[0]!.approval.role = "nobody";
+    expect(await w.ask(envelope, "payment.create", input)).toMatchObject({ requires: REQUIRES });
+  });
+
   it("DSOR-OPR-06: a dry run answers VALIDATED with the decision the real call would get: REQUIRE_APPROVAL for INV-1008, ALLOW for INV-2002; it books nothing and makes no proposal (step 27's README, decision D12)", async () => {
     const w = await withTuesday();
     const needs = await draft(w, "INV-1008", AGENT, "validate_only");
@@ -303,6 +316,11 @@ describe("C5: DENY wins over an approval", () => {
       text: JSON.stringify({ org_456: [cfo, board], org_789: [] }),
     };
     const w = await withTuesday(both);
+    // A dry run is refused as the real call is (decision D12). Found by step 27's sweep, P15: with a
+    // dry run not refused by a control's DENY, every test passed.
+    expect(await draft(w, "INV-2004", AGENT, "validate_only")).toMatchObject({
+      code: "POLICY_DENIED",
+    });
     const answer = await draft(w, "INV-2004");
     expect(answer).toMatchObject({
       code: "POLICY_DENIED",
@@ -376,7 +394,108 @@ describe("one sheet for one decision (step 27's review, finding H2)", () => {
   });
 });
 
+/** The shipped control, as a plain object that a test may change. */
+function shippedRule(): Record<string, unknown> {
+  return (JSON.parse(readControls().text) as { org_456: Record<string, unknown>[] }).org_456[0]!;
+}
+
+/** A controls file with these lists. */
+function controlsOf(lists: Record<string, unknown[]>): ControlsSource {
+  return { file: "controls.json", text: JSON.stringify(lists) };
+}
+
 describe("what a condition reads", () => {
+  // Found by step 27's sweep, P07 to P13: line ⑩ could give a condition the agent as the principal,
+  // no slip, no actor chain, no risk, the epoch, or no input, and every test passed, because no
+  // control at a real call read them.
+  it("Step 27: at a real call, a condition reads the call's own facts: the subject user_123 and the roles held now, the agent in the actor chain, the slip, the company, the operation's risk, the time, and the input; the agent's INV-2002 waits, and user_123's own is paid", async () => {
+    const agentPayments = {
+      ...shippedRule(),
+      id: "agent-payments-of-inv-2002",
+      version: 1,
+      condition: [
+        'principal.id == "user_123"',
+        'principal.type == "human"',
+        '"ap_supervisor" in principal.roles',
+        'actor_chain == ["accounts-payable-fte"]',
+        'delegation != null && delegation.id == "del_100"',
+        'tenant.id == "org_456"',
+        'risk == "medium"',
+        'now > timestamp("2026-01-01T00:00:00Z")',
+      ].join(" && "),
+      tests: [{ expect: "ALLOW" }],
+    };
+    // The input in a control of its own, whose answer for INV-2002 is ALLOW: a condition that could
+    // not read the input would err, and an error applies the effect. Found by step 27's second
+    // sweep: inside the first condition, an error asked for the CFO too, so P13 survived.
+    const inputNamesInv1008 = {
+      ...shippedRule(),
+      id: "input-names-inv-1008",
+      version: 1,
+      condition: 'input.invoice == "dsor://org_456/invoice/INV-1008"',
+      tests: [
+        { input: { invoice: "dsor://org_456/invoice/INV-2002" }, expect: "ALLOW" },
+        { input: { invoice: "dsor://org_456/invoice/INV-1008" }, expect: "REQUIRE_APPROVAL" },
+      ],
+    };
+    const controls = controlsOf({ org_456: [agentPayments, inputNamesInv1008], org_789: [] });
+    const w = await withTuesday(controls);
+    expect(await draft(w, "INV-2002")).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect(await draft(w, "INV-2002", SUPERVISOR)).toMatchObject({ outcome: "COMMITTED" });
+  });
+
+  // Found by step 27's sweep, P01, P12, RT2, and K22: line ⑩ could judge org_789 by org_456's
+  // rules, or convert with org_456's sheets, and a test could pin rates per USD for every company.
+  it("Step 27: each company's controls are its own: firm-ap-fte's draft of org_789's INV-2002, 3,300.00 USD, meets org_789's rule only, which counts in EUR and finds no sheet of org_789's, so it waits; the agent's INV-2002 in org_456 is paid under org_456's rule", async () => {
+    const cfo = shippedRule();
+    const rule789 = {
+      ...cfo,
+      id: "org-789-high-value",
+      version: 1,
+      condition:
+        'tenant.id == "org_789" && dsor_exceeds(state.invoice.open_amount, dsor_money("10000", "EUR"))',
+      // Rates per one euro, org_789's control currency: 12,000.00 USD is 10,000.00 EUR.
+      tests: [
+        {
+          state: { invoice: { open_amount: { value: "12000.00", currency: "USD" } } },
+          rates: { USD: "1.20" },
+          expect: "ALLOW",
+        },
+        {
+          state: { invoice: { open_amount: { value: "12000.01", currency: "USD" } } },
+          rates: { USD: "1.20" },
+          expect: "REQUIRE_APPROVAL",
+        },
+      ],
+    };
+    const w = await withTuesday(controlsOf({ org_456: [cfo], org_789: [rule789] }));
+    const answer = await w.ask(keyed(FIRM_IN_789), "payment.create", {
+      invoice: "dsor://org_789/invoice/INV-2002",
+      expected_version: 1,
+    });
+    expect(answer).toMatchObject({
+      outcome: "PENDING_APPROVAL",
+      requires: [{ approval: { role: "CFO", quorum: 1 }, control: "org-789-high-value" }],
+    });
+    const record = await recordOf(w, answer);
+    expect(record?.controls?.map((c) => [c.id, c.outcome, c.evaluation_error])).toStrictEqual([
+      ["org-789-high-value", "REQUIRE_APPROVAL", "no usable rate compares USD with EUR"],
+    ]);
+    expect(await draft(w, "INV-2002")).toMatchObject({ outcome: "COMMITTED" });
+  });
+
+  // Found by step 27's sweep, RT1: a stale sheet converted, and every test passed. A person's call
+  // meets no limit, so the control is the only check that converts.
+  it("DSOR-MON-04: on Saturday, Tuesday's sheet is older than org_456's three days: user_123's own draft of INV-2002 waits for the CFO, and the record names why", async () => {
+    const w = await withTuesday();
+    w.clock.now = Date.parse("2026-10-10T09:00:00.000Z");
+    const answer = await draft(w, "INV-2002", SUPERVISOR);
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect((await recordOf(w, answer))?.controls?.map((c) => c.evaluation_error)).toStrictEqual([
+      "no usable rate compares EUR with USD",
+    ]);
+  });
+
   // Found by step 27's review, finding L12: only the evaluator was tested, never a call.
   it("DSOR-CTL-06: a condition's state is DSoR's own look at line ⑨, never the caller's input: an input that carries an amount of its own is refused at line ⑥, INV-1008 waits by the 31,400.00 USD the store holds, and INV-2002 is paid by its 9,000.00 EUR", async () => {
     const w = await withTuesday();
@@ -446,10 +565,14 @@ describe("D11: a payment that waits too long expires", () => {
     const id = idOf(await draft(w, "INV-1008"));
     expect((await w.proposals.get("org_456", id))?.state).toBe("PENDING_APPROVAL");
     w.clock.now = T0 + 7 * DAY_MS;
-    expect(await sweep(w)).toMatchObject({
+    const swept = await sweep(w);
+    expect(swept).toMatchObject({
       outcome: "COMMITTED",
       data: { tenant_id: "org_456", expired: 1 },
     });
+    // No control governs the sweep, so its record names none. Found by step 27's sweep, P02: with
+    // line ⑩'s own filter gone, every other command's record named an evaluation that never ran.
+    expect(await recordOf(w, swept)).not.toHaveProperty("controls");
     const ended = await w.proposals.get("org_456", id);
     expect(ended?.state).toBe("EXPIRED");
     expect(ended?.transitions.at(-1)).toMatchObject({

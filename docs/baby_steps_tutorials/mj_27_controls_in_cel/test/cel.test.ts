@@ -141,6 +141,18 @@ describe("C4: a condition, evaluated", () => {
     },
   );
 
+  // Found by step 27's sweep, C08: with dsor_money's own checks gone, two amounts in a made-up
+  // currency compared with each other, and every test passed.
+  it("DSOR-CTL-07: dsor_money refuses a currency that is no currency, so a condition that compares ZZZ with ZZZ cannot be evaluated", () => {
+    const answer = evaluateCondition(
+      'dsor_exceeds(dsor_money("100", "ZZZ"), dsor_money("1", "ZZZ"))',
+      factsFor(money("100.00", "USD")),
+      TUESDAY,
+    );
+    expect(answer).toHaveProperty("error");
+    expect(answer).not.toHaveProperty("holds");
+  });
+
   // Found by step 27's review, finding L9: the error said "no usable rate compares USD with USD",
   // and the person who reads the record looked for a rate.
   it("DSOR-CTL-07: an amount that cannot be read gives an error that names the amount, never a rate: -31,400.00 USD", () => {

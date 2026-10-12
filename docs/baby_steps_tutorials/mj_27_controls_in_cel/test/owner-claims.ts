@@ -13,7 +13,8 @@
 //   Found by step 22's sweep. The kind of answer may be a waiting proposal too,
 //   ready, as a propose_only claim keeps it, or ready-yes, whose ready is not true. Those are
 //   planted in propose_only mode, the others in execute mode, unless a mode is named after the
-//   kind, to plant an answer that does not fit its claim's mode.
+//   kind, to plant an answer that does not fit its claim's mode. Since step 27, the kind may also
+//   be pending, a payment that waits for the CFO, or pending-broken, whose kept answer is not one.
 // - before016: Migration 016 on a claim made before it, inside a transaction that
 //   is always rolled back: the claim's table goes back to how 015 left it, with no mode, gets one
 //   answered claim, and then 016 runs. Prints the claim's mode and the new column's default.
@@ -49,6 +50,10 @@ try {
       refused: `"refused": {"code": "CONFLICT", "message": "planted", "label": "public"}`,
       ready: `"ready": true`,
       "ready-yes": `"ready": "yes"`,
+      // Since step 27: a payment that waits for the CFO, as its claim keeps it, and one whose kept
+      // answer is broken, with what it requires as a word and no expiry.
+      pending: `"pending": {"requires": [{"approval": {"role": "CFO", "quorum": 1}, "control": "high-value-payment"}], "expires_at": "2026-10-13T15:05:00.000Z"}`,
+      "pending-broken": `"pending": {"requires": "CFO"}`,
     };
     const outcome = OUTCOMES[kind];
     if (outcome === undefined) throw new Error(`unknown kind of answer ${kind}`);

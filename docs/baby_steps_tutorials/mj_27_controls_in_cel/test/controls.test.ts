@@ -72,6 +72,33 @@ function withOne(fields: Record<string, unknown>): ControlsSource {
 const QUICK =
   'double(state.invoice.open_amount.value) > 25000.0 && state.invoice.open_amount.currency == "USD"';
 
+// Found by step 27's sweep, K19 to K21: with each check of the file itself gone, every test passed.
+// A file cut short by a bad edit started DSoR with no rule at all.
+describe("the file itself", () => {
+  it("Step 27: a controls.json that is not JSON stops start-up, named: a file cut short does not start DSoR with no rules", () => {
+    expect(refusal(() => startWith(controlsOf(undefined)))).toContain(
+      "controls.json: not valid JSON",
+    );
+    expect(refusal(() => startWith({ file: "controls.json", text: '{"org_456": [' }))).toContain(
+      "controls.json: not valid JSON",
+    );
+  });
+
+  it("Step 27: a key written twice stops start-up: org_456 written twice, once with its rule and once with none", () => {
+    const rule = JSON.stringify(SHIPPED);
+    const twice = `{"org_456": [${rule}], "org_789": [], "org_456": []}`;
+    expect(refusal(() => startWith({ file: "controls.json", text: twice }))).toContain(
+      'controls.json: "org_456" is written twice in one object',
+    );
+  });
+
+  it("Step 27: a company that gives no list stops start-up, named", () => {
+    expect(refusal(() => startWith(controlsOf({ org_456: {}, org_789: [] })))).toContain(
+      "controls.json: org_456 must give a list of controls",
+    );
+  });
+});
+
 describe("C1: each control, against control.schema.json", () => {
   it("DSOR-CTL-01a: the shipped file passes, and line ⑩'s book holds org_456's high-value-payment, version 8, and nothing for org_789", () => {
     const { controls } = startWith(readControls());
@@ -166,6 +193,12 @@ describe("C2: the condition, the operation, and the effect", () => {
       "an operation no contract has",
       "payment.refund",
       "governs payment.refund, which no contract has",
+    ],
+    // Found by step 27's sweep, R03: with this check gone, every test passed.
+    [
+      "a command with no code",
+      "invoice.issue",
+      "governs invoice.issue, which has no code of the company's",
     ],
   ])(
     "Step 27: start-up refuses a control that governs %s (step 27's README, decision D18)",
@@ -281,6 +314,23 @@ describe("C3: the tests, run before a control is switched on", () => {
 
   // Changed by step 27's review, finding M2: a stale control was evaluated as if it were active, and
   // §17.4 says that it behaves per its on_stale, which this step does not build.
+  // Found by step 27's sweep, K23 and K24: with the status checked before the condition, or with
+  // the other statuses evaluated, every test passed.
+  it.each(["draft", "in_review", "suspended", "retired"])(
+    "Step 27: a %s control's condition is checked at start-up, and line ⑩ never sees the control (step 27's README, decision D3)",
+    (status) => {
+      const waiting = { ...SHIPPED, id: "waiting-rule", status, condition: QUICK };
+      const started = startWith(controlsOf({ org_456: [SHIPPED, waiting], org_789: [] }));
+      expect(started.controls.get("org_456")?.map((c) => c.id)).toStrictEqual([
+        "high-value-payment",
+      ]);
+      const broken = { ...waiting, condition: "state.invoice.open_amount >" };
+      expect(
+        refusal(() => startWith(controlsOf({ org_456: [SHIPPED, broken], org_789: [] }))),
+      ).toContain("controls.json: org_456's control waiting-rule: its condition is not CEL");
+    },
+  );
+
   it("Step 27: a draft's tests do not run and line ⑩ never sees it; start-up refuses a stale_authority control, whose on_stale step 28 builds (step 27's README, decision D3)", () => {
     const draft = { ...SHIPPED, id: "draft-rule", status: "draft", condition: QUICK };
     const started = startWith(controlsOf({ org_456: [SHIPPED, draft], org_789: [] }));

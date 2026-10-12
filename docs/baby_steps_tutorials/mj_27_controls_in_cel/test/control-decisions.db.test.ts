@@ -3,6 +3,7 @@
 // PENDING_APPROVAL proposal, its booking, and a record that names the control. A real PostgreSQL,
 // never a mock.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { payloadHash } from "../src/canonical.ts";
 import { readControls, type ControlsSource } from "../src/controls.ts";
 import type { Answer } from "../src/envelope.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
@@ -17,12 +18,13 @@ import {
   dbRegistry,
   newPool,
   NO_PRIVILEGE,
+  ownerClaims,
   ownerInvoices,
   ownerLimits,
   requestId,
   tryThenRollBack,
 } from "./db.ts";
-import { AGENT, keyed, storyDirectories, withPlanted } from "./helpers.ts";
+import { AGENT, keyed, storyDirectories, SUPERVISOR, withPlanted } from "./helpers.ts";
 
 // The test's own window into the database: a pool the code under test never uses.
 const observer = newPool();
@@ -168,6 +170,41 @@ describe("C4, C6, C7: a payment that needs the CFO, on the database", () => {
       ["PENDING_APPROVAL", [HIGH_VALUE]],
     ]);
   });
+
+  // Found by step 27's sweep, PG4: with the database claim checking propose_only before a waiting
+  // answer, a prepared draft that needs the CFO answered READY, and every test passed.
+  it("Step 27: on the database, intake-fte's prepared draft of INV-9001 waits at PENDING_APPROVAL, not READY, and a replay of its key says so too (step 27's README, decision D10)", async () => {
+    ownerLimits("reset");
+    const envelope = { ...keyed(INTAKE), mode: "propose_only" };
+    const first = await drafted(envelope);
+    expect(first).toMatchObject({ outcome: "PENDING_APPROVAL", requires: REQUIRES });
+    expect((await proposals.get("org_456", proposalOf(first)))?.state).toBe("PENDING_APPROVAL");
+    const again = await drafted({ ...envelope, request_id: requestId("s27-prepared") });
+    expect(again).toMatchObject({ outcome: "PENDING_APPROVAL", requires: REQUIRES });
+  });
+
+  // Found by step 27's sweep, PG3: with the check of a kept waiting answer gone, every test passed.
+  it.each([
+    [
+      "a broken waiting answer, with what it requires as a word and no expiry",
+      "pending-broken",
+      { code: "INTERNAL_ERROR" },
+    ],
+    ["a whole waiting answer", "pending", { outcome: "PENDING_APPROVAL", requires: REQUIRES }],
+  ])(
+    "Step 27: on the database, a replay of a claim that keeps %s",
+    async (_what, kind, expected) => {
+      const key = keyed(SUPERVISOR).idempotency_key;
+      const proposal = JSON.stringify(
+        "dsor://org_456/proposal/prop_00000000-0000-4000-8000-000000000027",
+      );
+      expect(ownerClaims("plant", key, payloadHash(INV_9001), proposal, kind)).toStrictEqual({
+        planted: 1,
+      });
+      const replay = { ...SUPERVISOR, idempotency_key: key };
+      expect(await call(registry, log, replay, "payment.create", INV_9001)).toMatchObject(expected);
+    },
+  );
 
   it("DSOR-EXE-02: on the database, a read's record names no control: its controls column is empty", async () => {
     const read = await call(registry, log, AGENT, "invoice.get", {
