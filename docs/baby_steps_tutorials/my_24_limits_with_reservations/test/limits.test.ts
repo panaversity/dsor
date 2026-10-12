@@ -119,6 +119,22 @@ describe("reserving against the day", () => {
     expect(await usedToday("org_456", "del_100")).toBe("10000.00");
   });
 
+  it("DSOR-DEL-06b: the same proposal reserving twice at once still reserves once", async () => {
+    // Decision 155: the test above reserves one call after the other, and a reserve() with no key
+    // that asks first and then books passed it. Sent together, both ask before either books, both
+    // find nothing, and one proposal books twice: the check-then-act §13.4 warns about.
+    const id = await aProposal();
+    const both = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        reserve("org_456", id, "del_100", money("10000.00", "USD"), DAILY),
+      ),
+    );
+
+    expect(both.filter((b) => b.kind === "reserved")).toHaveLength(1);
+    expect(both.filter((b) => b.kind === "already")).toHaveLength(1);
+    expect(await usedToday("org_456", "del_100")).toBe("10000.00");
+  });
+
   it("DSOR-DEL-06a: fifty reservations sent together never take the day past its limit", async () => {
     const ids = await Promise.all(Array.from({ length: 50 }, () => aProposal()));
     const outcomes = await Promise.all(
