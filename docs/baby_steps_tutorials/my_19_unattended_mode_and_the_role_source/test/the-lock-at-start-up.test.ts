@@ -472,6 +472,21 @@ describe("a schema the application may create things in", () => {
       /only the migrations should, itself or one SET ROLE away: a_builder on dsor/,
     );
   });
+
+  it("DSOR-MOD-01: CREATE on dsor given to PUBLIC is refused, and the refusal names PUBLIC", async () => {
+    // Decision 147: PUBLIC is every role at once, and has no row of its own in pg_roles. The
+    // refusal named the application alone and said to take CREATE back from it, which changed
+    // nothing, measured. It names PUBLIC now, and doing what it says lets the program start.
+    await asTheOwner(() => db.exec("GRANT CREATE ON SCHEMA dsor TO PUBLIC"));
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /only the migrations should, itself or one SET ROLE away: PUBLIC on dsor\. /,
+    );
+
+    await asTheOwner(() => db.exec("REVOKE CREATE ON SCHEMA dsor FROM PUBLIC"));
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
+  });
 });
 
 describe("a lock that is not there", () => {

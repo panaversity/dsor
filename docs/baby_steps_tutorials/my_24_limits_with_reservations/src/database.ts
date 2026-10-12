@@ -398,9 +398,16 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               WHERE pg_has_role(current_user, ns.nspowner, 'MEMBER')) AS owns_schema,
             -- STEP 16: where it may create things, itself or one SET ROLE away, as each
             -- role and schema, so the refusal can say which grant to take back (decision 124).
-            (SELECT string_agg(DISTINCT r.rolname || ' on ' || ns.nspname, ', '
-                               ORDER BY r.rolname || ' on ' || ns.nspname)
+            -- Decision 147: a right that PUBLIC holds is named as PUBLIC's. PUBLIC is every role
+            -- at once and has no row in pg_roles, so the refusal named the application instead,
+            -- and taking CREATE back from it, as the refusal said, changed nothing (measured).
+            (SELECT string_agg(DISTINCT holder.name || ' on ' || ns.nspname, ', '
+                               ORDER BY holder.name || ' on ' || ns.nspname)
                FROM pg_namespace ns CROSS JOIN pg_roles r
+               CROSS JOIN LATERAL (
+                 SELECT CASE WHEN has_schema_privilege('public', ns.oid, 'CREATE') THEN 'PUBLIC'
+                             ELSE r.rolname END AS name
+               ) AS holder
               WHERE ns.nspname IN ('dsor', 'public')
                 AND pg_has_role(current_user, r.oid, 'MEMBER')
                 AND has_schema_privilege(r.oid, ns.oid, 'CREATE')) AS creates_in,
@@ -500,8 +507,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, and it may create tables, views or functions where ` +
         `only the migrations should, itself or one SET ROLE away: ${second.creates_in}. A table ` +
         `the application made there would be its own, every row of it. Take CREATE on that schema ` +
-        `back from that role, or take away the membership that reaches it. Migrations ` +
-        `002_runtime_user.sql and 008_the_control_plane_store.sql take it back from ` +
+        `back from that role, or take away the membership that reaches it. PUBLIC is every role ` +
+        `at once: a right it holds is taken back from PUBLIC. Migrations 002_runtime_user.sql and ` +
+        `008_the_control_plane_store.sql take it back from PUBLIC and from ` +
         `\`${APPLICATION_ROLE}\`, on public and on dsor.`,
     );
   }
