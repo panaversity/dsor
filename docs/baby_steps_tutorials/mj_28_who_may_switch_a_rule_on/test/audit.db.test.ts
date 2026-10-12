@@ -101,6 +101,16 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "tenant_id id agent pulled_by pulled_at reason lifted_by lifted_at lift_reason",
       },
       { object: "dsor.brakes UPDATE", held: "lifted_by lifted_at lift_reason" },
+      // NEW IN STEP 28: the rules. Read every column, add a draft through six named columns, and
+      // move a version through three. Nothing on drafted_at, which the database fills, and no
+      // change to a version's text or to who wrote it (step 28's README, decisions D2 and D11).
+      { object: "dsor.controls", held: "SELECT" },
+      { object: "dsor.controls INSERT", held: "tenant_id id version status rule compiled_by" },
+      {
+        object: "dsor.controls SELECT",
+        held: "tenant_id id version status rule compiled_by drafted_at reviewed_by effective_from",
+      },
+      { object: "dsor.controls UPDATE", held: "status reviewed_by effective_from" },
       // Step 18's slips: read every column (step 18's README, decision 3).
       { object: "dsor.delegations", held: "SELECT" },
       {

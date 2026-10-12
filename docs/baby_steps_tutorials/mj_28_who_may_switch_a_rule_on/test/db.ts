@@ -200,6 +200,13 @@ export function ownerBrakes(...args: string[]): unknown {
   return asOwner("owner-brakes.ts", args);
 }
 
+// NEW IN STEP 28: the owner removes the tests' rules, and asks DSoR's store of rules with no
+// policy behind it (test/owner-rules.ts).
+/** What the owner's rules program printed, for these words. */
+export function ownerRules(...args: string[]): unknown {
+  return asOwner("owner-rules.ts", args);
+}
+
 // The owner as org_456's accounts system, which adds, changes, and removes the
 // tests' own invoice, INV-9001 (test/owner-invoices.ts; step 21's README, decision 12).
 /** What the owner's invoice program printed, for these words. */

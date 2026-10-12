@@ -145,6 +145,23 @@ const BRAKE_COLUMNS = [
 const BRAKE_ADDED = ["tenant_id", "id", "agent", "pulled_by", "reason"];
 const BRAKE_LIFTED = ["lifted_by", "lifted_at", "lift_reason"];
 
+// NEW IN STEP 28: dsor.controls, as migration 023 makes it. dsor_runtime reads every column, adds
+// a draft through six, and moves a version through three. drafted_at is the database's to fill,
+// and nothing removes a row or changes a version's text (step 28's README, decisions D2 and D11).
+const CONTROL_COLUMNS = [
+  "tenant_id",
+  "id",
+  "version",
+  "status",
+  "rule",
+  "compiled_by",
+  "drafted_at",
+  "reviewed_by",
+  "effective_from",
+];
+const CONTROL_ADDED = ["tenant_id", "id", "version", "status", "rule", "compiled_by"];
+const CONTROL_MOVED = ["status", "reviewed_by", "effective_from"];
+
 // Dsor.rates, as migration 021 makes it. dsor_runtime reads every column, and adds a
 // sheet through six. loaded_at is the database's to fill, and nothing changes or removes a row
 // (step 26's README, decisions L1 and D6).
@@ -234,6 +251,24 @@ export function today(): Catalog {
             ...(BRAKE_LIFTED.includes(name) ? ["UPDATE"] : []),
           ],
           filled: name === "pulled_at",
+        })),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
+      },
+      // NEW IN STEP 28: each company's rules, behind the company's lock.
+      {
+        name: "dsor.controls",
+        kind: "table",
+        held: ["SELECT"],
+        columns: CONTROL_COLUMNS.map((name) => ({
+          name,
+          held: [
+            "SELECT",
+            ...(CONTROL_ADDED.includes(name) ? ["INSERT"] : []),
+            ...(CONTROL_MOVED.includes(name) ? ["UPDATE"] : []),
+          ],
+          filled: name === "drafted_at",
         })),
         rowSecurity: { enabled: true, forced: true },
         rules: [],

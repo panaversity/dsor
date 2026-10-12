@@ -177,6 +177,17 @@
         }
       }
     },
+    "dsor.controls": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "id", "version", "status", "rule", "compiled_by"],
+          "UPDATE": ["status", "reviewed_by", "effective_from"]
+        }
+      }
+    },
     "dsor.migrations": {
       "kind": "bookkeeping",
       "tenant": null,

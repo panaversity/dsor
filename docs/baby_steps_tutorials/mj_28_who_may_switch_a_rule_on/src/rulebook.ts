@@ -36,8 +36,8 @@ export type ControlStore = {
   add: (tenant: string, draft: Control, by: RuleBy) => Promise<void>;
   // The work of the other three: moves one version from one status to another, with its record,
   // both or neither. A version switched on names the person as its reviewer, and the time it took
-  // effect. False when the version is not in that status. A retired version never moves again, and
-  // no version moves back to draft.
+  // effect. False when the version is not in that status, or when the picture of moves below draws
+  // no such move.
   move: (
     tenant: string,
     id: string,
@@ -48,9 +48,19 @@ export type ControlStore = {
   ) => Promise<boolean>;
 };
 
-/** True when a store may make this move: out of retired never, and back to draft never. */
+// The moves of a version, and no others. A draft is switched on or retired. An active version is
+// suspended or retired. A suspended one is switched on again or retired. A retired one never
+// moves, and nothing moves back to draft (step 28's README, decisions D12 and D13).
+const MOVES: Readonly<Record<RuleStatus, readonly RuleStatus[]>> = {
+  draft: ["active", "retired"],
+  active: ["suspended", "retired"],
+  suspended: ["active", "retired"],
+  retired: [],
+};
+
+/** True when a version may move from this status to that one. */
 export function movable(from: RuleStatus, to: RuleStatus): boolean {
-  return from !== "retired" && to !== "draft" && from !== to;
+  return MOVES[from]?.includes(to) === true;
 }
 
 /** A store with no rule, and none to keep: line ⑩ finds no rule (step 28's README, decision D18). */

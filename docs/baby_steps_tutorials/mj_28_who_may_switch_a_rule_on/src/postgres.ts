@@ -13,10 +13,12 @@ import { millionths, type Reservation, type ReservationStore } from "./limits.ts
 import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
 import {
   changeOf,
+  controlChangeOf,
   controlOf,
   revocationOf,
   transitionOf,
   type Decision,
+  type ControlChange,
   type DelegationChange,
   type OperationalControl,
   type DecisionLog,
@@ -30,7 +32,8 @@ import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
 import type { RateSheet } from "./exchange.ts";
 import type { Loaded, Newest, RateStore } from "./rates.ts";
-import { NO_CONTROLS } from "./rulebook.ts";
+import { movable, type ControlStore, type RuleBy, type RuleStatus } from "./rulebook.ts";
+import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import {
   checkMove,
@@ -1071,8 +1074,9 @@ function storesIn(client: pg.PoolClient, tenant: string): WorkStores {
     // And the sheets of rates, so line ⑩ converts with the rates of the claim's
     // own transaction, and rate.load writes a sheet there (step 26's README, decisions L1 and L2).
     rates: ratesThrough(run),
-    // NEW IN STEP 28: no rules on the database yet: they arrive with dsor.controls.
-    controls: NO_CONTROLS,
+    // NEW IN STEP 28: and the company's rules, so DSoR's own work changes a rule inside the
+    // claim's transaction, with its record (step 28's README, decisions D14 and D15).
+    controls: controlsThrough(run),
   };
 }
 
@@ -1168,6 +1172,151 @@ function ratesThrough(run: Runner): RateStore {
         return "loaded";
       }),
   });
+}
+
+// NEW IN STEP 28: each company's rules, in dsor.controls: every version, its status, and the
+// rule's text as its draft wrote it (step 28's README, decisions D2 to D4, D14, and D15).
+/** The rules, read from and written to dsor.controls, each piece in a transaction of its own. */
+export function createDbControls(pool: pg.Pool): ControlStore {
+  return controlsThrough(onPool(pool));
+}
+
+// One version's row, as pg gives it back.
+type ControlRow = {
+  id: string;
+  version: number;
+  status: string;
+  rule: Record<string, unknown>;
+  compiled_by: string;
+  reviewed_by: string | null;
+  effective_from: Date | null;
+};
+const CONTROL_COLUMNS = "id, version, status, rule, compiled_by, reviewed_by, effective_from";
+
+// A rule's lock is a PostgreSQL advisory lock, as a brake's is: one number for each rule of each
+// company, made from this text. A change takes it alone, until its transaction ends, so two
+// changes to one rule wait for each other (decision D15).
+function ruleKey(tenant: string, id: string): string {
+  return `dsor.rule/${tenant}/${id}`;
+}
+
+/** A version in the shape control.schema.json gives it, from its row. */
+function versionOf(row: ControlRow): Control {
+  return {
+    id: row.id,
+    version: row.version,
+    status: row.status,
+    ...(row.rule as Omit<Control, "id" | "version" | "status">),
+    compiled_by: row.compiled_by,
+    ...(row.reviewed_by === null ? {} : { reviewed_by: row.reviewed_by }),
+    ...(row.effective_from === null ? {} : { effective_from: writable(row.effective_from) }),
+  };
+}
+
+function controlsThrough(run: Runner): ControlStore {
+  // DSoR's own WHERE, the company first, with row-level security behind it (DSOR-TEN-01b).
+  const versions = async (tenant: string, id?: string): Promise<Control[]> =>
+    run(tenant, async (client) => {
+      const { rows } = await client.query<ControlRow>(
+        `SELECT ${CONTROL_COLUMNS} FROM dsor.controls
+          WHERE tenant_id = $1 AND ($2::text IS NULL OR id = $2::text) ORDER BY id, version`,
+        [tenant, id ?? null],
+      );
+      return rows.map(versionOf);
+    });
+  return Object.freeze({
+    where: "dsor.controls",
+    active: async (tenant: string, operation: string): Promise<Control[]> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<ControlRow>(
+          `SELECT ${CONTROL_COLUMNS} FROM dsor.controls
+            WHERE tenant_id = $1 AND status = 'active' AND rule->>'operation' = $2
+            ORDER BY id, version`,
+          [tenant, operation],
+        );
+        return rows.map(versionOf);
+      }),
+    versions,
+    // The rule's lock first, alone, until the transaction ends. Then its versions.
+    hold: async (tenant: string, id: string): Promise<Control[]> =>
+      run(tenant, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          ruleKey(tenant, id),
+        ]);
+        const { rows } = await client.query<ControlRow>(
+          `SELECT ${CONTROL_COLUMNS} FROM dsor.controls
+            WHERE tenant_id = $1 AND id = $2 ORDER BY version`,
+          [tenant, id],
+        );
+        return rows.map(versionOf);
+      }),
+    // The draft and its record, in one transaction: both, or neither. The six fields the row
+    // keeps in columns of its own leave the rule's text.
+    add: async (tenant: string, draft: Control, by: RuleBy): Promise<void> =>
+      run(tenant, async (client) => {
+        const { id, version, status, compiled_by, reviewed_by, effective_from, ...rule } = draft;
+        await client.query(
+          `INSERT INTO dsor.controls (tenant_id, id, version, status, rule, compiled_by)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [tenant, id, version, status, rule, compiled_by ?? null],
+        );
+        await recordRuleChange(
+          client,
+          controlChangeOf(tenant, id, version, undefined, "draft", by),
+        );
+      }),
+    // The move and its record, in one transaction: both, or neither. Only from the status the
+    // version is in now. A version switched on names the person as its reviewer, and the
+    // database's own time.
+    move: async (
+      tenant: string,
+      id: string,
+      version: number,
+      from: RuleStatus,
+      to: RuleStatus,
+      by: RuleBy,
+    ): Promise<boolean> => {
+      if (!movable(from, to)) return false;
+      return run(tenant, async (client) => {
+        const { rowCount } = await client.query(
+          `UPDATE dsor.controls
+              SET status = $5,
+                  reviewed_by = CASE WHEN $5 = 'active' THEN $6 ELSE reviewed_by END,
+                  effective_from = CASE WHEN $5 = 'active' THEN clock_timestamp()
+                                        ELSE effective_from END
+            WHERE tenant_id = $1 AND id = $2 AND version = $3 AND status = $4`,
+          [tenant, id, version, from, to, by.person],
+        );
+        if (rowCount === 0) return false;
+        if (rowCount !== 1) throw new Error(`one move changed ${rowCount ?? 0} versions, not 1`);
+        await recordRuleChange(client, controlChangeOf(tenant, id, version, from, to, by));
+        return true;
+      });
+    },
+  });
+}
+
+// One change to a rule, in the log, inside the change's own transaction, with the rule in
+// resources and its version under extensions (step 28's README, decision D14).
+async function recordRuleChange(client: pg.PoolClient, record: ControlChange): Promise<void> {
+  const { rowCount } = await client.query(
+    `INSERT INTO dsor.audit
+       (record_id, kind, result, reason, correlation, tenant, identity, resources, extensions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      `aud_${randomUUID()}`,
+      record.kind,
+      record.result,
+      record.reason,
+      record.correlation,
+      record.tenant,
+      record.identity,
+      record.resources,
+      record.extensions,
+    ],
+  );
+  // As for the log's own INSERT: a record is kept only when one row was written.
+  if (rowCount !== 1) throw new Error(`the log kept ${rowCount ?? 0} rows, not 1`);
 }
 
 // The day's totals and the reservations, in dsor.limit_counters and

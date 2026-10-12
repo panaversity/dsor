@@ -37,7 +37,8 @@ describe("the shipped map", () => {
   // Nine, with the day's totals and the reservations (step 24's README, decision 13).
   // Ten, with the brakes (step 25b's README, decision D5).
   // Eleven, with the sheets of rates (step 26's README, decisions L1 and D6).
-  it("step 16's decision 1: it names three schemas and eleven tables", () => {
+  // Changed in step 28: twelve, with dsor.controls (step 28's README, decision D2).
+  it("step 16's decision 1: it names three schemas and twelve tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -51,8 +52,29 @@ describe("the shipped map", () => {
       "dsor.reservations",
       "dsor.brakes",
       "dsor.rates",
+      "dsor.controls",
       "dsor.migrations",
     ]);
+  });
+
+  // NEW IN STEP 28: a version of a rule is read inside its company, added as a draft through six
+  // named columns, and moved through three. Nothing deletes one, and nothing changes its text or
+  // who wrote it (step 28's README, decisions D2 and D11).
+  it("step 28's decision D2: dsor.controls is read inside its company, added through named columns, and moved through named columns", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.controls")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["tenant_id", "id", "version", "status", "rule", "compiled_by"],
+          UPDATE: ["status", "reviewed_by", "effective_from"],
+        },
+      },
+      // And no trigger: the database's policies and checks guard each move.
+      triggers: [],
+    });
   });
 
   // A sheet of rates is read inside its company and added through six named columns.

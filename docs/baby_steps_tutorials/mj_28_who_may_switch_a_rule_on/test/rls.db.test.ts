@@ -107,7 +107,8 @@ describe("C1: every table with a company column has its lock", () => {
   // decision 12).
   // And dsor.proposals (step 22's README).
   // And dsor.rates, each company's sheets (step 26's README, decision D2).
-  it("DSOR-RP-01b: app.invoices, app.payments, dsor.audit, dsor.brakes, dsor.delegations, dsor.idempotency, dsor.limit_counters, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  // NEW IN STEP 28: and dsor.controls, each company's rules (step 28's README, decision D2).
+  it("DSOR-RP-01b: app.invoices, app.payments, dsor.audit, dsor.brakes, dsor.controls, dsor.delegations, dsor.idempotency, dsor.limit_counters, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -115,6 +116,8 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.audit", enabled: true, forced: true, policies: 2 },
       // The brakes, with starts_on and lifts_once (step 25b's README, decision D9).
       { table: "dsor.brakes", enabled: true, forced: true, policies: 3 },
+      // The rules, with starts_as_draft and moves_on (step 28's README, decisions D11 and D13).
+      { table: "dsor.controls", enabled: true, forced: true, policies: 3 },
       // And suspend_only (step 19b's README, decision 13), slip_moves since step 25.
       { table: "dsor.delegations", enabled: true, forced: true, policies: 2 },
       // The company's rule, and answer_once (step 20's README, decision 12).
@@ -199,6 +202,36 @@ describe("C1: every table with a company column has its lock", () => {
       },
       {
         table: "dsor.brakes",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      // NEW IN STEP 28: a version moves on, never out of retired and never back to draft, and it
+      //   starts as a draft, never switched on. Both restrictive, beside the company's rule (step
+      //   28's README, decisions D11 and D13).
+      {
+        table: "dsor.controls",
+        name: "moves_on",
+        command: "UPDATE",
+        roles: ["dsor_runtime"],
+        using: "(status <> 'retired'::text)",
+        check: "(status <> 'draft'::text)",
+        kind: "RESTRICTIVE",
+      },
+      {
+        table: "dsor.controls",
+        name: "starts_as_draft",
+        command: "INSERT",
+        roles: ["dsor_runtime"],
+        using: null,
+        check: "((status = 'draft'::text) AND (reviewed_by IS NULL) AND (effective_from IS NULL))",
+        kind: "RESTRICTIVE",
+      },
+      {
+        table: "dsor.controls",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],
