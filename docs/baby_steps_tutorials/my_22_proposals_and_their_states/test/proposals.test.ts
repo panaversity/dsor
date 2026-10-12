@@ -711,7 +711,9 @@ describe("the door makes a proposal for every command and moves it", () => {
     expect(await stateOf("org_456", "prop_1")).toBe("COMMITTED");
   });
 
-  it("DSOR-EXE-04b: a last move that cannot be written leaves the proposal EXECUTING, and the caller is still told", async () => {
+  it("a last move that cannot be written leaves the proposal EXECUTING, and the caller is still told", async () => {
+    // Decision 153: not titled DSOR-EXE-04b, which asks that such a proposal be treated as
+    // OUTCOME_UNKNOWN. Nothing here does that yet; it arrives with intent records, in step 36.
     failingMovesInto(["COMMITTED"]);
 
     const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);

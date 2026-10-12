@@ -2596,8 +2596,9 @@ interface Progress {
  * STEP 22: the proposal's last move, from EXECUTING unless said otherwise, tried twice.
  *
  * If it cannot be written, the proposal stays where it was, and the caller is still told what
- * happened: a proposal left EXECUTING is one whose outcome nobody recorded, which is
- * OUTCOME_UNKNOWN by DSOR-EXE-04b, and reconciliation is step 37's.
+ * happened: a proposal left EXECUTING is one whose outcome nobody recorded. DSOR-EXE-04b will have
+ * such a record treated as OUTCOME_UNKNOWN, and nothing here does that yet: it arrives with intent
+ * records in step 36, and reconciliation in step 38 (decision 153).
  */
 async function finishTheProposal(
   tenant: string,
