@@ -289,6 +289,26 @@ describe("what was waiting under the slip", () => {
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
 
+  it("DSOR-DEL-06d: a cancelled proposal's reservation is released even when the first try fails", async () => {
+    // Decision 156: the door tries a settlement twice (decision 140). The revocation tried once,
+    // under a comment that said it settled as the door does, and one failure kept the amount held.
+    const waiting = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+
+    await reserve(
+      "org_456",
+      waiting,
+      "del_100",
+      money("40000.00", "USD"),
+      money("200000.00", "USD"),
+    );
+    await whileFailing("UPDATE dsor.reservations", 1, () =>
+      callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "stop" }),
+    );
+
+    expect(await stateOf("org_456", waiting)).toBe("CANCELLED");
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+  });
+
   it("DSOR-DEL-04c: proposals under another slip, or asked for directly, are left as they are", async () => {
     // Decision 156: one line of the statement keeps the cancelling to the revoked slip, and no test
     // held it. Without it, user_123 revoking del_100 cancelled a payment approved under del_200,

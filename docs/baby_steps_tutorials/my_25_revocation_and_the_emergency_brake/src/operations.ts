@@ -692,9 +692,10 @@ const handlers: Readonly<Record<string, Handler>> = {
     }
 
     for (const cancelled of revoked.cancelled) {
-      // As the door settles its own: one that cannot be released stays held, which errs toward
-      // refusing (decision 141).
-      await settleReservation(tenant, cancelled, "released").catch(() => undefined);
+      // As the door settles its own, tried twice (decision 140): one that cannot be released stays
+      // held, which errs toward refusing (decision 141). Decision 156: it was tried once, under this
+      // comment, and one failure kept the amount held.
+      await settleQuietly(tenant, cancelled, "released");
     }
 
     return {
