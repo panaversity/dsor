@@ -75,9 +75,13 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_23
 | `src/operations.ts` | §21.10 books each payment against the day after its limit per payment, and a dry run only reads the room; the door settles the reservation as the proposal ends |
 | `src/database.ts` | start-up knows ten tenant tables, asks for the second policy, and refuses an application that may delete a total or a reservation |
 | `src/main.ts` | ten payments of 25,000.00 against the day, one after another |
-| `test/limits.test.ts` | new — the limit, booking, the race of fifty reservations, settling with the history, the door's payments and their reservations |
+| `test/limits.test.ts` | new — the limit, booking, the race of fifty reservations, settling with the history, the door's payments and their reservations, and a booking the store refuses |
 | `test/limits.db.test.ts` | new — fifty reservations at once on a real server, and fifty payments through the door racing for room for one |
 | `test/main.test.ts` | ten more decisions in the demo's log, and what a second run the same day changes |
+| `test/database.test.ts` | start-up refuses an application that may delete a total or a reservation, or write one settled, and the reservations without the policy that keeps a settled one |
+| `test/control-plane-store.test.ts` | the day totals and the reservations are in DSoR's own schema |
+| `test/support/story.ts` | putting the story back empties the day totals and the reservations, and gives del_100 its daily limit again |
+| `test/support/one-day.ts` | new — a test that counts one day's bookings is skipped, not failed, when midnight UTC falls while it runs |
 
 ## Run it
 
