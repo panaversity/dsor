@@ -272,11 +272,13 @@ Copy `my_18_delegations` to a new folder and ask:
   ([§13.2](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire))
 - **[DSOR-DEL-08 · L2]** In `unattended` mode DSoR MUST take the subject from the delegation
   record, never from the request.
-- **[DSOR-IDN-05 · L2]** Each tenant MUST configure a role source from which DSoR can read the
+- **[DSOR-IDN-05 · L2]** Each tenant MUST configure a role source — directory synchronization such
+  as SCIM, identity-provider lookup, or DSoR-held role assignments — from which DSoR can read the
   current roles of a principal who is not present in the request.
   ([§12.1](../../../specs/dsor/02-security.md#121-role-source))
 - **[DSOR-IDN-06 · L2]** When the delegator's current authority cannot be established within the
-  staleness bound, DSoR MUST deny the command.
+  staleness bound of [§44](../../../specs/dsor/06-conformance.md#44-operational-bounds), DSoR MUST
+  deny the command.
 
 **What this step leaves, said plainly.** The directory is a fake in memory; a real one is a
 directory sync or an identity provider, and connecting one is outside this tutorial. When the
