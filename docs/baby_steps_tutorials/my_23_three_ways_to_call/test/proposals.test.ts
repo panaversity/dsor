@@ -629,7 +629,31 @@ describe("the door makes a proposal for every command and moves it", () => {
     expect((await proposalsOf456()).map((p) => p.id)).toStrictEqual(["prop_1"]);
   });
 
-  it("DSOR-APR-01a: READY and EXECUTING are written together or not at all, so no proposal is left READY", async () => {
+  it("DSOR-APR-01a: a move to EXECUTING that cannot be written leaves the proposal DENIED, never READY, and the key may be sent again", async () => {
+    // Decision 153: the door writes READY and EXECUTING in one statement (decision 137), and only the
+    // helper was tested. A door that went back to two moves passed every test, and left this
+    // proposal READY for good beside the retry's, a review measured.
+    const request = { idempotencyKey: "issue-1009-executing-down" };
+
+    failingMovesInto(["EXECUTING"]);
+
+    const refused = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(refused.kind === "error" && refused.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+    expect(await stateOf("org_456", "prop_1")).toBe("DENIED");
+
+    useDatabase(overPGlite(db));
+
+    const sentAgain = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(sentAgain.kind === "result" && sentAgain.envelope.proposal).toBe(
+      "dsor://org_456/proposal/prop_2",
+    );
+    expect(await stateOf("org_456", "prop_1")).toBe("DENIED");
+  });
+
+  it("DSOR-APR-01a: moveProposalThrough writes READY and EXECUTING together, or neither", async () => {
     // Decision 137: a review failed the move to EXECUTING alone and measured a proposal READY for
     // good. A move off the map in the second place leaves the first unwritten too.
     const id = await aProposal();
