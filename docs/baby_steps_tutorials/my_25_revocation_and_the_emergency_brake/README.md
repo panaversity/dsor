@@ -69,7 +69,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
 | `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on slips and brakes than revoking and braking need |
 | `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze |
-| `test/brake.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it; revoking, what it cancels, who may revoke |
+| `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke |
 | the tests that pin the pipeline | twelve stages, and the stage-order proof by its parts |
 
 ## Run it
