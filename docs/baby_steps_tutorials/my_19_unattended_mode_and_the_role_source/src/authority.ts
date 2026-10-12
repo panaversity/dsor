@@ -107,14 +107,17 @@ export function authorityNow(person: string, tenant: string): Authority {
 
   // Copied first, then checked: what is checked is what is used. It was checked and then copied, and
   // a list that answered differently the second time was checked as one list and used as another
-  // (decision 130).
+  // (decision 130). And each field is read once: `permissions` was still read twice, once to ask
+  // whether it was a list and once to copy it, and a list the first time and text the second was
+  // taken as a list of single letters (decision 150).
   let permissions: unknown;
   let asOf: unknown;
 
   try {
     const given = (answer ?? {}) as { readonly permissions?: unknown; readonly asOf?: unknown };
+    const listed = given.permissions;
 
-    permissions = Array.isArray(given.permissions) ? [...given.permissions] : given.permissions;
+    permissions = Array.isArray(listed) ? [...listed] : listed;
     asOf = given.asOf;
   } catch {
     throw saysNothing;

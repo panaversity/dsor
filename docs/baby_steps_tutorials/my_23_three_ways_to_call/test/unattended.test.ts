@@ -240,6 +240,41 @@ describe("the company directory", () => {
     }
   });
 
+  it("the directory's answer is read once, so the list that is checked is the list that is used", async () => {
+    // Decision 150: decision 130 copied the answer before checking it, and no test held it there.
+    // Here the answer's list says what it holds when first read and something else after: its one
+    // permission is "payment:cancel", then 42, and the field is the list, then text. Checked first
+    // and copied after, the 42 is used unchecked. And `permissions` was still read twice, once to
+    // ask whether it was a list and once to copy it, so the text was taken as single letters.
+    let fieldReads = 0;
+    let itemReads = 0;
+    const list: unknown[] = [];
+
+    Object.defineProperty(list, 0, {
+      enumerable: true,
+      get: () => {
+        itemReads += 1;
+
+        return itemReads === 1 ? "payment:cancel" : 42;
+      },
+    });
+
+    useDirectory("org_456", {
+      lookup: () =>
+        ({
+          asOf: hoursAgo(1),
+          get permissions() {
+            fieldReads += 1;
+
+            return fieldReads === 1 ? list : "payment:cancel";
+          },
+        }) as never,
+    });
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+    expect({ fieldReads, itemReads }).toStrictEqual({ fieldReads: 1, itemReads: 1 });
+  });
+
   it("DSOR-IDN-06: an answer from 23 hours ago still counts", async () => {
     useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(23) }));
 
