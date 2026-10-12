@@ -14,6 +14,7 @@ import { checkCondition, evaluateCondition, NO_RATE, tenantOf, type Facts } from
 import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
+import type { Roles } from "./permissions.ts";
 import type { MoneyPolicy } from "./policies.ts";
 import { principalNamed } from "./principals.ts";
 import { isTenantId } from "./uri.ts";
@@ -103,6 +104,8 @@ const RULE_ID = /^[a-z](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 // NEW IN STEP 28: nor is a control in review built. The owner's switch-on is the review (step 28's
 // README, decision D17).
 const IN_REVIEW = "in_review";
+// NEW IN STEP 28: the most approvals one rule may ask for (step 28's README, decision D21).
+const MOST_APPROVERS = 5;
 // The effects this step builds (decision D8).
 const BUILT = new Set(["deny", "require_approval"]);
 
@@ -286,6 +289,9 @@ export type RuleContext = {
   governable: Governable;
   riskOf: (operation: string) => string;
   policy: MoneyPolicy;
+  // NEW IN STEP 28: and the role table, whose roles an approval may name (step 28's README,
+  // decision D21).
+  roles: Roles;
 };
 
 /** The name of a control in a problem: its company, and its id, or its place in a list. */
@@ -324,6 +330,22 @@ export function ruleProblems(
   const effect = Object.keys(control.effect)[0] ?? "";
   if (!BUILT.has(effect)) {
     return [`${name} has the effect ${effect}, which this step does not build`];
+  }
+  // NEW IN STEP 28: an approval names a role of the role table, and at most five people. The role
+  // reaches the agent's answer, so it is never free text, and a quorum nobody can meet holds every
+  // payment for ever. Found by step 28's review, finding L15 (step 28's README, decision D21).
+  if ("require_approval" in control.effect) {
+    const { role, quorum } = control.effect.require_approval;
+    if (!context.roles.has(role)) {
+      const asked = JSON.stringify(role.slice(0, 60));
+      return [
+        `${name}: its effect asks for an approval by ${asked}, which is no role of the role table`,
+      ];
+    }
+    if (quorum > MOST_APPROVERS) {
+      const most = `this step allows at most ${MOST_APPROVERS}`;
+      return [`${name}: its effect asks for ${quorum} approvals, and ${most}`];
+    }
   }
   if (control.status === STALE) {
     return [`${name} has the status ${STALE}, whose on_stale this step does not build`];

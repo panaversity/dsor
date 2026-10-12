@@ -312,7 +312,7 @@ export function buildRegistry(
     const policy = moneyPolicies.get(tenant);
     if (policy === undefined)
       return [`${tenant} has controls, and no money policy to count them in`];
-    const context = { governable, riskOf, policy };
+    const context = { governable, riskOf, policy, roles };
     return ruleProblems(ruleName(tenant, raw, place), raw, tenant, context, tests);
   };
   // And each contract's predicates are CEL in Appendix B's environment, as a

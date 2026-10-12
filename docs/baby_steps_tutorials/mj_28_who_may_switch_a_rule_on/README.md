@@ -140,6 +140,10 @@ decision below is Claude Code's, for the learner to review, and each one says wh
   wrote, which said `false`. *Downside:* a version that someone else wrote must be written again by
   the owner. A read of a version, and a fingerprint that ties a switch-on to the text it names,
   wait for step 28b, whose policy compiler will write drafts for owners.
+- **D21. An approval names a role of the role table, and at most five people.** The role reaches
+  the agent's answer, so it is never free text, and a rule that asks for a million approvals holds
+  every payment for ever. Found by the hostile review (finding L15). *Downside:* a role that the
+  role table does not list, or a board of six, cannot be written into a rule in this step.
 
 ### The story's numbers
 
