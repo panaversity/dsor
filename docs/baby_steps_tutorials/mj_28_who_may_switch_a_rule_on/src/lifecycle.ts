@@ -12,7 +12,7 @@ import { Refusal } from "./envelope.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import type { Principal } from "./principals.ts";
 import { preview } from "./registry.ts";
-import type { RuleBy, RuleStatus } from "./rulebook.ts";
+import type { Live, RuleBy, RuleStatus } from "./rulebook.ts";
 import { parseUri } from "./uri.ts";
 
 // The most a draft's text may hold, as JSON: a rule with its tests is a few kilobytes. A larger
@@ -152,28 +152,31 @@ async function mayActivate(input: unknown, look: OwnLook): Promise<void> {
 
 /**
  * The switch-on's work, after line ⑩: under the rule's lock, the same checks again, then the live
- * version retired and this one switched on, each with its record. One live version for each rule
- * (decision D4). The tests ran at line ⑨: a version's text never changes.
+ * version retired and this one switched on, in one step of the store, each with its record. One
+ * live version for each rule (step 28's README, decision D4). The tests ran at line ⑨: a
+ * version's text never changes.
  */
 async function activate(input: unknown, work: OwnStores): Promise<unknown> {
   const { tenant, caller, stores } = work;
   const id = ruleIdOf(input);
   const versions = await stores.controls.hold(tenant, id);
   const version = decide(ACTIVATE, versions, input, caller);
-  const by = byOf(input, work);
   const live = versions.find(
     (v) => v.version !== version.version && (v.status === "active" || v.status === "suspended"),
   );
-  if (live !== undefined) {
-    const from = live.status as RuleStatus;
-    if (!(await stores.controls.move(tenant, id, live.version, from, "retired", by))) {
-      throw changedMeanwhile(id);
-    }
-  }
+  const retiring = live === undefined ? undefined : { version: live.version, from: live.status };
   const from = version.status as RuleStatus;
-  if (!(await stores.controls.move(tenant, id, version.version, from, "active", by))) {
-    throw changedMeanwhile(id);
-  }
+  // One step of the store: the live version retired and this one switched on, or neither. Found by
+  // step 28's review, finding H1.
+  const done = await stores.controls.switchOn(
+    tenant,
+    id,
+    version.version,
+    from,
+    retiring as Live | undefined,
+    byOf(input, work),
+  );
+  if (!done) throw changedMeanwhile(id);
   const retired = live === undefined ? {} : { retired: live.version };
   return { tenant_id: tenant, id, version: version.version, status: "active", ...retired };
 }

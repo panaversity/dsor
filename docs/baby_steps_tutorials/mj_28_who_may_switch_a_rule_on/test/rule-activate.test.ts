@@ -344,28 +344,53 @@ describe("C7: a switch-on and its records (step 28's README, decisions D14 and D
 });
 
 // Found by step 28's sweep, L18 and L19: with a failed move ignored, every test passed, because no
-// move fails under the rule's lock. A store that refuses a move shows what the change does then.
-describe("C7: a move the store refuses ends the switch-on (step 28's README, decision D15)", () => {
-  it.each([
-    ["the retirement of version 8", 8],
-    ["the switch-on of version 9", 9],
-  ])(
-    "Step 28: when the store refuses %s, the switch-on is refused CONFLICT, and version 9 is not switched on",
-    async (_what, refused) => {
-      const w = await ruleWorldOnTuesday(undefined, [], undefined, undefined, (store) => ({
-        ...store,
-        move: async (tenant, id, version, from, to, by) =>
-          version === refused ? false : store.move(tenant, id, version, from, to, by),
-      }));
-      const v9 = await drafted(w);
-      expect(await activate(w, v9)).toMatchObject({
-        code: "CONFLICT",
-        message: "rule high-value-payment changed while it was being changed",
-      });
-      const [, after] = await w.rules.versions("org_456", "high-value-payment");
-      expect(after?.status).toBe("draft");
-    },
-  );
+// move fails under the rule's lock. A store that refuses the switch-on shows what the change does
+// then. Changed by step 28's review, finding H1: the switch-on is one step of the store, so a
+// refusal leaves version 8 as it was too.
+describe("C7: a switch-on the store refuses ends the call (step 28's README, decision D15)", () => {
+  it("Step 28: when the store refuses the switch-on, the answer is CONFLICT, and nothing moved: version 8 still active, version 9 a draft", async () => {
+    const w = await ruleWorldOnTuesday(undefined, [], undefined, undefined, (store) => ({
+      ...store,
+      switchOn: async () => false,
+    }));
+    const v9 = await drafted(w);
+    expect(await activate(w, v9)).toMatchObject({
+      code: "CONFLICT",
+      message: "rule high-value-payment changed while it was being changed",
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+  });
+});
+
+// Found by step 28's review, finding H1: in memory a switch-on was two moves, with a wait between
+// them. A retirement at the same moment left both versions retired, and a payment read the rules
+// between the two moves and met no rule at all. The switch-on is one step of the store now.
+describe("C4: a switch-on is one change, even in memory (step 28's README, decision D4)", () => {
+  it("Step 28: cfo_100 switches version 9 on and retires it at the same moment: one of the two wins, and the rule still has a live version", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const [on, off] = await Promise.all([
+      activate(w, v9),
+      ruleCall(w, CFO, "rule.retire", { version: v9 }),
+    ]);
+    expect([heard(on), heard(off)].sort()).toStrictEqual(["COMMITTED", "CONFLICT"]);
+    const live = (await w.rules.versions("org_456", "high-value-payment")).filter(
+      (v) => v.status === "active",
+    );
+    expect(live).toHaveLength(1);
+    expect(heard(await w.draft("INV-1008"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("Step 28: the agent's draft of INV-1008, 31,400.00 USD, at the same moment as the switch-on of version 9, meets version 8 or version 9, never no rule", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const [on, paid] = await Promise.all([activate(w, v9), w.draft("INV-1008")]);
+    expect(heard(on)).toBe("COMMITTED");
+    expect(heard(paid)).toBe("PENDING_APPROVAL");
+  });
 });
 
 /** cfo_100, on another call. */

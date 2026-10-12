@@ -32,7 +32,7 @@ import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
 import type { RateSheet } from "./exchange.ts";
 import type { Loaded, Newest, RateStore } from "./rates.ts";
-import { movable, type ControlStore, type RuleBy, type RuleStatus } from "./rulebook.ts";
+import { movable, type ControlStore, type Live, type RuleBy, type RuleStatus } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import {
@@ -1267,6 +1267,53 @@ function controlsThrough(run: Runner): ControlStore {
           controlChangeOf(tenant, id, version, undefined, "draft", by),
         );
       }),
+    // The switch-on in one step, under a savepoint inside the transaction: the live version
+    // retired, and this one switched on, by the database's own clock, each with its record, or
+    // nothing (step 28's README, decisions D4 and D15; step 28's review, finding H1).
+    switchOn: async (
+      tenant: string,
+      id: string,
+      version: number,
+      from: RuleStatus,
+      live: Live | undefined,
+      by: RuleBy,
+    ): Promise<boolean> => {
+      if (!movable(from, "active")) return false;
+      return run(tenant, async (client) => {
+        await client.query("SAVEPOINT switch_on");
+        const undo = async (): Promise<false> => {
+          await client.query("ROLLBACK TO SAVEPOINT switch_on");
+          return false;
+        };
+        try {
+          if (live !== undefined) {
+            const retired = await client.query(
+              `UPDATE dsor.controls SET status = 'retired'
+                WHERE tenant_id = $1 AND id = $2 AND version = $3 AND status = $4`,
+              [tenant, id, live.version, live.from],
+            );
+            if (retired.rowCount !== 1) return await undo();
+            const record = controlChangeOf(tenant, id, live.version, live.from, "retired", by);
+            await recordRuleChange(client, record);
+          }
+          const on = await client.query(
+            `UPDATE dsor.controls
+                SET status = 'active', reviewed_by = $5, effective_from = clock_timestamp()
+              WHERE tenant_id = $1 AND id = $2 AND version = $3 AND status = $4`,
+            [tenant, id, version, from, by.person],
+          );
+          if (on.rowCount !== 1) return await undo();
+          await recordRuleChange(client, controlChangeOf(tenant, id, version, from, "active", by));
+        } catch (thrown) {
+          await client.query("ROLLBACK TO SAVEPOINT switch_on");
+          // Another live version took the index's place meanwhile: nothing was switched on.
+          if ((thrown as { code?: string }).code === "23505") return false;
+          throw thrown;
+        }
+        await client.query("RELEASE SAVEPOINT switch_on");
+        return true;
+      });
+    },
     // The move and its record, in one transaction: both, or neither. Only from the status the
     // version is in now. A version switched on names the person as its reviewer, and the
     // database's own time.

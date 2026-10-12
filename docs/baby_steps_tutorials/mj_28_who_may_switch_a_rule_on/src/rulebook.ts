@@ -19,6 +19,9 @@ const LIVE: ReadonlySet<string> = new Set(["active", "suspended"]);
 /** Who changes a rule: the person, as of when, their own words, and their call. */
 export type RuleBy = { person: string; as_of: string; words: string; correlation: Correlation };
 
+/** The live version that a switch-on retires: its number, and the status it is in. */
+export type Live = { version: number; from: RuleStatus };
+
 /** Where DSoR keeps each company's rules. */
 export type ControlStore = {
   // Where the rules are kept, as start-up names it in a problem: a file, or a table.
@@ -34,10 +37,23 @@ export type ControlStore = {
   hold: (tenant: string, id: string) => Promise<Control[]>;
   // rule.draft's work: adds one version, a draft, with its record, both or neither.
   add: (tenant: string, draft: Control, by: RuleBy) => Promise<void>;
-  // The work of the other three: moves one version from one status to another, with its record,
-  // both or neither. A version switched on names the person as its reviewer, and the time it took
-  // effect. False when the version is not in that status, or when the picture of moves below draws
-  // no such move.
+  // The switch-on's work, in one step: the live version, when there is one, retired, and this
+  // version switched on, naming the person as its reviewer and the time it took effect, each with
+  // its record, all or none. False when the versions moved since the change read them: this one
+  // left its status, or the live version is not the one named (step 28's README, decisions D4 and
+  // D15). Found by step 28's review, finding H1: as two moves, in memory, a retirement at the same
+  // moment left no live version, and a payment between the two moves met no rule.
+  switchOn: (
+    tenant: string,
+    id: string,
+    version: number,
+    from: RuleStatus,
+    live: Live | undefined,
+    by: RuleBy,
+  ) => Promise<boolean>;
+  // The work of a suspension and a retirement: moves one version from one status to another, with
+  // its record, both or neither. False when the version is not in that status, or when the picture
+  // of moves below draws no such move.
   move: (
     tenant: string,
     id: string,
@@ -70,6 +86,9 @@ export const NO_CONTROLS: ControlStore = Object.freeze({
   versions: async () => [],
   hold: async () => [],
   add: async (): Promise<never> => {
+    throw new Error("this world keeps no rules");
+  },
+  switchOn: async (): Promise<never> => {
     throw new Error("this world keeps no rules");
   },
   move: async (): Promise<never> => {
@@ -126,6 +145,36 @@ export function memoryControls(source: ControlsSource): MemoryControls {
       }
       into(tenant).push(structuredClone(draft));
       records.push(controlChangeOf(tenant, draft.id, draft.version, undefined, "draft", by));
+    },
+    // One step, with no wait inside it: no other call runs between the checks and the changes.
+    switchOn: async (
+      tenant: string,
+      id: string,
+      version: number,
+      from: RuleStatus,
+      live: Live | undefined,
+      by: RuleBy,
+    ) => {
+      const list = of(tenant);
+      const target = list.find((c) => c.id === id && c.version === version && c.status === from);
+      const others = list.filter((c) => c.id === id && c.version !== version && LIVE.has(c.status));
+      const same =
+        live === undefined
+          ? others.length === 0
+          : others.length === 1 &&
+            others[0]!.version === live.version &&
+            others[0]!.status === live.from;
+      if (target === undefined || !same || !movable(from, "active")) return false;
+      const [old] = others;
+      if (old !== undefined && live !== undefined) {
+        old.status = "retired";
+        records.push(controlChangeOf(tenant, id, old.version, live.from, "retired", by));
+      }
+      target.status = "active";
+      target.reviewed_by = by.person;
+      target.effective_from = by.as_of;
+      records.push(controlChangeOf(tenant, id, version, from, "active", by));
+      return true;
     },
     move: async (
       tenant: string,

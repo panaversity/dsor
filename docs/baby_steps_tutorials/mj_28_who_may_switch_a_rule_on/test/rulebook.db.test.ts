@@ -286,6 +286,68 @@ describe("C7: each change and its record, in one transaction (step 28's README, 
   });
 });
 
+// Found by step 28's review, finding H1: a switch-on is one step of the store. On the database it
+// runs under a savepoint, so a record that fails undoes the retirement before it too.
+describe("C7: a switch-on on the database is one step (step 28's README, decisions D4 and D14)", () => {
+  it("Step 28: a switch-on whose second record cannot be written leaves both versions as they were: version 1 still active, version 2 still a draft", async () => {
+    const id = `test-${randomUUID()}`;
+    await rules.add("org_456", refusing9001(id), byCfo("one"));
+    const live = byCfo("on");
+    expect(await rules.switchOn("org_456", id, 1, "draft", undefined, live)).toBe(true);
+    await rules.add("org_456", { ...refusing9001(id), version: 2 }, byCfo("two"));
+    // A pool whose second record of a change fails, as a full disk would, after the retirement
+    // and its record are written: fault injection around the real client (§47).
+    const odd = newPool();
+    let records = 0;
+    odd.on("connect", (client) => {
+      const query = client.query.bind(client) as (...a: unknown[]) => Promise<unknown>;
+      client.query = ((...a: unknown[]) => {
+        if (
+          typeof a[0] === "string" &&
+          a[0].includes("INSERT INTO dsor.audit") &&
+          ++records === 2
+        ) {
+          return Promise.reject(new Error("the log is broken"));
+        }
+        return query(...a);
+      }) as typeof client.query;
+    });
+    try {
+      const broken = createDbControls(odd);
+      const retiring = { version: 1, from: "active" as const };
+      await expect(
+        broken.switchOn("org_456", id, 2, "draft", retiring, byCfo("two on")),
+      ).rejects.toThrow("the log is broken");
+    } finally {
+      await odd.end();
+    }
+    const kept = await rules.versions("org_456", id);
+    expect(kept.map((v) => [v.version, v.status])).toStrictEqual([
+      [1, "active"],
+      [2, "draft"],
+    ]);
+  });
+
+  it("Step 28: a switch-on that names the wrong live version, or the wrong status, does nothing on the database", async () => {
+    const id = `test-${randomUUID()}`;
+    await rules.add("org_456", refusing9001(id), byCfo("one"));
+    await rules.switchOn("org_456", id, 1, "draft", undefined, byCfo("on"));
+    await rules.add("org_456", { ...refusing9001(id), version: 2 }, byCfo("two"));
+    const wrong = { version: 1, from: "suspended" as const };
+    expect(await rules.switchOn("org_456", id, 2, "draft", wrong, byCfo("x"))).toBe(false);
+    expect(await rules.switchOn("org_456", id, 2, "draft", undefined, byCfo("x"))).toBe(false);
+    // The live version named right, and version 2 not in the status named: the retirement that
+    // came first is undone.
+    const right = { version: 1, from: "active" as const };
+    expect(await rules.switchOn("org_456", id, 2, "suspended", right, byCfo("x"))).toBe(false);
+    const kept = await rules.versions("org_456", id);
+    expect(kept.map((v) => [v.version, v.status])).toStrictEqual([
+      [1, "active"],
+      [2, "draft"],
+    ]);
+  });
+});
+
 describe("C2: line ⑩ reads dsor.controls at every call (step 28's README, decision D5)", () => {
   it("Step 28: on the database, intake-fte's payment of INV-9001, 31,400.00 USD, waits for the CFO under version 8; a rule switched on in dsor.controls that refuses INV-9001 applies to the next call; and once it is suspended, the payment waits for the CFO again", async () => {
     ownerLimits("reset");
