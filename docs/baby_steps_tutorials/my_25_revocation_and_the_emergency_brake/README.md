@@ -243,9 +243,9 @@ who could revoke anyone's, is nobody in the story's cast, so `DSOR-DEL-04a` is m
 `DSOR-DEL-04c` asks the same cancellation on a slip's expiry, and nothing watches the clock for it.
 DSoR reads a slip once, at §21.3. A revocation is seen by every command that reaches §21.3 after it,
 and by no command already past it: that command is decided under the slip as if nothing had happened.
-Its ALLOW is recorded under the slip, even when the record is written after the revocation; a
-payment's amount is booked against the slip's day; and the command runs. Unlike the brake, nothing
-asks the slip again. A brake that commits while a move to EXECUTING is running is not seen by that
+If it is allowed, the ALLOW is recorded under the slip, even when the record is written after the
+revocation; a payment's amount is booked against the slip's day; and the command runs. Unlike the
+brake, nothing asks the slip again. A brake that commits while a move to EXECUTING is running is not seen by that
 move, which reads the brakes as they were when its statement began; no test races the two on a real
 server. "A person" is whoever logged in: logins are believed until steps 43 and 44. And a question for
 the specification: `DSOR-SRC-02b` refuses a principal or delegation identifier in the arguments that
