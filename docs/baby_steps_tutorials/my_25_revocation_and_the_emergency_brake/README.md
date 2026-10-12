@@ -69,7 +69,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` and `delegation:revoke` for `user_123` and `cfo_100`; the two receipts' labels; the two contracts |
 | `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
 | `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on the slips' and the brakes' tables than revoking and braking need |
-| `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze |
+| `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze; the finished proposal is now asked to move into FAILED, a move only the database refuses (decision 156) |
 | `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke |
 | `test/pipeline.test.ts` | twelve stages, and the stage-order proof by its parts |
 | `test/database.test.ts` | the start-up refusals above, tested: a brake or a slip without its second policy, and rights on either beyond braking and revoking |
@@ -260,10 +260,10 @@ The agent's own traffic can make the brake fail, written down in decision 156. P
 revoking a slip, is a decision in the company's log like any request, and the log refuses the loser
 of a race for its next place (step 09). So an agent that keeps sending requests, even ones that are
 refused, can make a person's `control.suspend` come back `EVIDENCE_STORE_UNAVAILABLE` with nothing
-done, and the person must send it again. On the in-process database, against an agent that sent
-without a pause, a resend with a new key landed on the second try; resends with the same key did not
-land in thirty tries. Nothing limits how many requests an agent sends: `DSOR-OPS-02` asks for that,
-and no step on the map builds it yet.
+done, and the person must send it again. On PGlite, the database the tests use, against an agent
+that sent without a pause, a resend with a new key landed on the second try; resends with the same
+key did not land in thirty tries. Nothing limits how many requests an agent sends: `DSOR-OPS-02`
+asks for that, and no step on the map builds it yet.
 
 Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
 the application may read a view or a table beside the tenant tables, because a view runs with its
