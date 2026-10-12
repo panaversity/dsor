@@ -23,7 +23,8 @@ export type FreshnessMode = "current" | "bounded_staleness" | "observational" | 
 /**
  * What an answer says about its data. There is no `resource_version` here: the rule asks for one
  * where one exists, and since step 21 an invoice has one, in the row itself, beside its other
- * fields; the label does not repeat it, so DSOR-FRS-01a is met in part (decisions 120 and 134).
+ * fields. Each row states its own version, which is the `resource_version` DSOR-FRS-01a asks for,
+ * so the label does not repeat it (decisions 120, 133 and 152).
  */
 export interface Freshness {
   readonly mode: FreshnessMode;

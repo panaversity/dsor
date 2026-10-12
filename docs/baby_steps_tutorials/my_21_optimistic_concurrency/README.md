@@ -208,14 +208,14 @@ Copy `my_20_idempotency_keys` to a new folder and ask:
 a row by hand leaves its version where it was, and a decision on the old version still matches. A
 row deleted and written again starts at 1, so an old decision on version 1 matches a different
 record. Every new record starts at 1, so `expected_version: 1` does not prove the caller read
-anything. The read label still has no `resource_version` beside its time, so `DSOR-FRS-01a` is met
-in part. Payments have no read operation, so the agent knows a payment's version only from a
-receipt. `payment.create` reads the invoice it pays and does not check that invoice's version, so a
-payment can be made for an invoice that changed after the caller read it. The strategies
-`pessimistic` and `connector_managed` are refused at load rather than carried out. The log records
-the decision and not what happened after, so a stale command shows as `ALLOW`. Two decisions in one
-company at the same moment race for the next place in its log, and the database tier races the
-change itself, not the log.
+anything. The read label does not repeat the version. Each row states its own, and that is the
+`resource_version` `DSOR-FRS-01a` asks for. Payments have no read operation, so the agent knows a
+payment's version only from a receipt. `payment.create` reads the invoice it pays and does not
+check that invoice's version, so a payment can be made for an invoice that changed after the caller
+read it. The strategies `pessimistic` and `connector_managed` are refused at load rather than
+carried out. The log records the decision and not what happened after, so a stale command shows as
+`ALLOW`. Two decisions in one company at the same moment race for the next place in its log, and
+the database tier races the change itself, not the log.
 
 Everything earlier steps claimed still holds.
 

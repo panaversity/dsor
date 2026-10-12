@@ -52,6 +52,19 @@ describe("every invoice and payment has a version", () => {
     expect((await paymentsOf("org_456")).map((p) => `${p.id} ${p.version}`)).toStrictEqual([
       "PAY-901 1",
     ]);
+
+    // Decision 152: and so does every row of a page, the other read this program has. The label
+    // does not repeat the version: each row states its own, which is what the rule asks for.
+    const page = await callOperation(AGENT, "invoice.list", {});
+
+    if (page.kind !== "page") {
+      throw new Error(`expected a page, got ${JSON.stringify(page)}`);
+    }
+
+    expect(page.page.invoices.map((i) => `${i.id} ${i.version}`)).toStrictEqual([
+      "INV-1008 1",
+      "INV-1009 1",
+    ]);
   });
 
   it("DSOR-CON-01b: every change raises the version by one, in the same statement", async () => {
