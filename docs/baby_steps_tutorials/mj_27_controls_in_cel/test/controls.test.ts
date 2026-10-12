@@ -306,7 +306,7 @@ function factsFor(open: Money): Facts {
     principal: { id: "user_123", type: "human", roles: ["ap_supervisor"] },
     actor_chain: ["accounts-payable-fte"],
     delegation: { id: "del_100" },
-    tenant: { id: "org_456" },
+    tenant: { id: "org_456", policy: {} },
     risk: "medium",
     now: new Date("2026-10-06T15:05:00.000Z"),
   };

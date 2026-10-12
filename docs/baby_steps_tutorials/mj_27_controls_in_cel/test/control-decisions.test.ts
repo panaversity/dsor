@@ -376,6 +376,28 @@ describe("one sheet for one decision (step 27's review, finding H2)", () => {
   });
 });
 
+describe("what a condition reads", () => {
+  // Found by step 27's review, finding L7: Appendix B gives tenant as "Tenant id and policy", and a
+  // condition saw the id only. This tutorial's tenant policy is its money part (step 26).
+  it("Step 27: a condition reads the company's id and its money policy, as Appendix B gives tenant: a control that asks for the CFO unless org_456 counts in USD allows INV-2002, at line ⑩ and in its own test", async () => {
+    const shippedControls = JSON.parse(readControls().text) as {
+      org_456: Record<string, unknown>[];
+    };
+    // Without the policy, the condition could not be evaluated, and the control would ask for the
+    // CFO: an error applies the effect (DSOR-CTL-07).
+    const notInUsd = {
+      ...shippedControls.org_456[0]!,
+      id: "not-in-usd",
+      version: 1,
+      condition: 'tenant.id != "org_456" || tenant.policy.money.control_currency != "USD"',
+      tests: [{ expect: "ALLOW" }],
+    };
+    const controls = { file: "controls.json", text: JSON.stringify({ org_456: [notInUsd] }) };
+    const w = await withTuesday(controls);
+    expect(await draft(w, "INV-2002")).toMatchObject({ outcome: "COMMITTED" });
+  });
+});
+
 describe("C7: the decision's record names each control evaluated", () => {
   it("DSOR-EXE-02: an allowed payment's record names the control, its version, its outcome, and the policy it came from; a read's record names none", async () => {
     const w = await withTuesday();

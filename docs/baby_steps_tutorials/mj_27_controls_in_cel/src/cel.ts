@@ -7,6 +7,7 @@
 import { Environment } from "@marcbachmann/cel-js";
 import { compareAcross, isReadable, type RateSheet } from "./exchange.ts";
 import { money, type Money } from "./money.ts";
+import type { MoneyPolicy } from "./policies.ts";
 
 /** What a condition may read: Appendix B's eight variables, for one call. */
 export type Facts = {
@@ -18,12 +19,26 @@ export type Facts = {
   actor_chain: readonly string[];
   // The slip the call runs under, or null for a person's own call.
   delegation: Record<string, unknown> | null;
-  tenant: { id: string };
+  // The company, and its policy: in this tutorial, its money policy (step 26).
+  tenant: { id: string; policy: { money?: Record<string, string> } };
   // The operation's risk level, from its contract.
   risk: string;
   // The decision's time, from DSoR's clock.
   now: Date;
 };
+
+// Appendix B's tenant is "Tenant id and policy". Found by step 27's review, finding L7: a condition
+// saw the id only. The money policy goes in as its file writes it, without the age in milliseconds
+// that DSoR works out from it.
+/** The company as a condition reads it: its id, and its policy. */
+export function tenantOf(id: string, policy: MoneyPolicy | undefined): Facts["tenant"] {
+  if (policy === undefined) return { id, policy: {} };
+  const { control_currency, rate_source, max_rate_age, on_unconvertible } = policy;
+  return {
+    id,
+    policy: { money: { control_currency, rate_source, max_rate_age, on_unconvertible } },
+  };
+}
 
 /** A condition's answer: it holds or not, or it could not be evaluated, and why. */
 export type Evaluated = { holds: boolean } | { error: string };

@@ -19,13 +19,26 @@ const CFO = 'dsor_exceeds(state.invoice.open_amount, dsor_money("25000", "USD"))
 
 /** The facts of the agent's draft of a bill with this open amount, on Tuesday. */
 function factsFor(open: Money): Facts {
+  // The principal is the subject: user_123, who signed del_100, with the roles held now, as
+  // Appendix B says and line ⑩ gives. The agent is in the actor chain. Found by step 27's review,
+  // finding L11: this test gave the agent as the principal.
   return {
     input: { invoice: "dsor://org_456/invoice/INV-1008", expected_version: 1 },
     state: { invoice: { id: "INV-1008", vendor_id: "VENDOR-44", open_amount: open } },
-    principal: { id: "accounts-payable-fte", type: "agent", roles: [] },
+    principal: { id: "user_123", type: "human", roles: ["ap_supervisor"] },
     actor_chain: ["accounts-payable-fte"],
     delegation: { id: "del_100", delegator: "user_123" },
-    tenant: { id: "org_456" },
+    tenant: {
+      id: "org_456",
+      policy: {
+        money: {
+          control_currency: "USD",
+          rate_source: "ecb-daily",
+          max_rate_age: "P3D",
+          on_unconvertible: "restrictive",
+        },
+      },
+    },
     risk: "high",
     now: new Date("2026-10-06T15:05:00.000Z"),
   };
@@ -34,7 +47,7 @@ function factsFor(open: Money): Facts {
 describe("C2: a condition, checked before it runs", () => {
   it("DSOR-CTL-05: the story's condition is CEL that answers true or false, in Appendix B's environment", () => {
     expect(checkCondition(CFO)).toBeUndefined();
-    expect(checkCondition('principal.type == "agent" && size(actor_chain) > 0')).toBeUndefined();
+    expect(checkCondition('principal.type == "human" && size(actor_chain) > 0')).toBeUndefined();
     expect(checkCondition('now > timestamp("2026-01-01T00:00:00Z")')).toBeUndefined();
   });
 

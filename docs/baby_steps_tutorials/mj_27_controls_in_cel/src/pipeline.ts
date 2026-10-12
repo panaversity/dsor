@@ -8,7 +8,7 @@ import { payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { checkAnswerInTenant, companyOf } from "./company.ts";
 import { checkDelegation, checkNamedSlips, holdSlip } from "./delegation.ts";
-import type { Facts } from "./cel.ts";
+import { tenantOf, type Facts } from "./cel.ts";
 import {
   denialsOf,
   evaluateControls,
@@ -344,7 +344,7 @@ export async function call(
         actor_chain: [...requester.actor_chain],
         delegation:
           found === undefined ? null : (structuredClone(found.slip) as Record<string, unknown>),
-        tenant: { id: tenant },
+        tenant: tenantOf(tenant, registry.moneyPolicies.get(tenant)),
         risk: String(level ?? ""),
         now: new Date(),
       };

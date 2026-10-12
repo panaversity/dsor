@@ -7,11 +7,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { checkCondition, evaluateCondition, NO_RATE, type Facts } from "./cel.ts";
+import { checkCondition, evaluateCondition, NO_RATE, tenantOf, type Facts } from "./cel.ts";
 import type { Requirement } from "./envelope.ts";
 import type { RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
-import type { MoneyPolicies } from "./policies.ts";
+import type { MoneyPolicies, MoneyPolicy } from "./policies.ts";
 import { isTenantId } from "./uri.ts";
 
 /** What a control can answer: its effect, or ALLOW (DSOR-AUT-02a). */
@@ -186,7 +186,13 @@ export function denialsOf(
 }
 
 /** Each failing test of a control, numbered from 1, run with the rates it pins (DSOR-CTL-02c). */
-function failedTests(control: Control, tenant: string, currency: string, risk: string): string[] {
+function failedTests(
+  control: Control,
+  tenant: string,
+  policy: MoneyPolicy,
+  risk: string,
+): string[] {
+  const currency = policy.control_currency;
   const failed: string[] = [];
   control.tests.forEach((test, index) => {
     // A test gives its input and its state. It is no caller's call, so it names no one.
@@ -196,7 +202,7 @@ function failedTests(control: Control, tenant: string, currency: string, risk: s
       principal: { id: "", type: "", roles: [] },
       actor_chain: [],
       delegation: null,
-      tenant: { id: tenant },
+      tenant: tenantOf(tenant, policy),
       risk,
       now: new Date(),
     };
@@ -305,7 +311,7 @@ export function checkControls(
       if (!EVALUATED.has(control.status)) return;
       // Switching a control on runs its tests, and fails when one fails (DSOR-CTL-02c).
       const risk = riskOf(control.operation);
-      const failed = failedTests(control, tenant, policy.control_currency, risk);
+      const failed = failedTests(control, tenant, policy, risk);
       if (failed.length > 0) {
         for (const test of failed) {
           problems.push(`${file}: ${name} v${control.version} fails its test ${test}`);
