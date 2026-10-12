@@ -811,8 +811,11 @@ export async function call(
     if (allowed && keyOfRecord !== undefined) {
       // A propose_only call ran no code. Its claim keeps the waiting proposal, so a
       // retry with the same key names that one.
+      // NEW IN STEP 27: and neither did a call that waits for an approval. Found by step 27's
+      //   review, finding M1: its words said that the command ran.
+      const waits = "outcome" in answer && answer.outcome === "PENDING_APPROVAL";
       const ran =
-        modeOfRecord === "propose_only"
+        modeOfRecord === "propose_only" || waits
           ? "DSoR could not record its decision after the proposal was made, and a retry with the same idempotency_key cannot make a second one"
           : "DSoR could not record its decision after the command ran, and a retry with the same idempotency_key cannot run it twice";
       return toEnvelope(new Refusal("EVIDENCE_STORE_UNAVAILABLE", ran), answer.correlation);

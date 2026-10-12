@@ -13,7 +13,7 @@ import type { Answer } from "../src/envelope.ts";
 import { invoices, memoryInvoices, type Invoice } from "../src/invoice.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
 import { memoryReservations } from "../src/limits.ts";
-import { createLog } from "../src/log.ts";
+import { createLog, type DecisionLog } from "../src/log.ts";
 import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
@@ -97,7 +97,7 @@ function world(
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
     call(registry, log, who, name, input);
-  return { clock, proposals, reservations, rates, drafted, ask, log };
+  return { clock, proposals, reservations, rates, drafted, ask, log, registry };
 }
 type World = ReturnType<typeof world>;
 
@@ -215,6 +215,28 @@ describe("C4, C6: a payment that needs the CFO waits", () => {
     const { correlation: _b, ...againRest } = again;
     expect(againRest).toStrictEqual(firstRest);
     expect(await w.proposals.all()).toHaveLength(1);
+  });
+
+  // Found by step 27's review, finding M1: the words said that the command ran, and nothing ran.
+  it("DSOR-EXE-03b: when the record of a payment that waits for the CFO cannot be written, the agent hears that the proposal was made, never that the command ran; a retry with the same key gives the waiting answer back, and nothing is drafted", async () => {
+    const w = await withTuesday();
+    const full: DecisionLog = {
+      add: async () => {
+        throw new Error("disk full");
+      },
+    };
+    const envelope = keyed(AGENT);
+    const input = { invoice: "dsor://org_456/invoice/INV-1008", expected_version: 1 };
+    expect(await call(w.registry, full, envelope, "payment.create", input)).toMatchObject({
+      code: "EVIDENCE_STORE_UNAVAILABLE",
+      message:
+        "DSoR could not record its decision after the proposal was made, and a retry with the same idempotency_key cannot make a second one",
+      retry: "safe_same_key",
+    });
+    expect(await w.ask(envelope, "payment.create", input)).toMatchObject({
+      outcome: "PENDING_APPROVAL",
+    });
+    expect(w.drafted).toHaveLength(0);
   });
 
   it("DSOR-OPR-06: a dry run answers VALIDATED with the decision the real call would get: REQUIRE_APPROVAL for INV-1008, ALLOW for INV-2002; it books nothing and makes no proposal (step 27's README, decision D12)", async () => {
