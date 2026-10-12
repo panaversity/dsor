@@ -3,6 +3,7 @@
 // Only the owner of record, in person. A suspended version can be switched on again; a retired
 // one never comes back. Each move applies to the next call, and leaves its record.
 import { describe, expect, it } from "vitest";
+import type { ControlStore } from "../src/rulebook.ts";
 import { ADMIN, CFO, DEL_101, FIRM_IN_456, keyed, OUR_EXTENSIONS } from "./helpers.ts";
 import {
   heard,
@@ -178,6 +179,28 @@ describe("C6: an agent suspends nothing, and retires nothing (DSOR-CTL-02b; step
       expect(await statuses(w)).toStrictEqual([[8, "active"]]);
     },
   );
+});
+
+// Found by step 28's sweep, L21: with the suspension's change trusting line ⑨'s look, every test
+// passed. The store still refused the move, with less to say.
+describe("C7: a suspension checks again under the rule's lock (step 28's README, decision D15)", () => {
+  it("Step 28: a version suspended by another call after line ⑨ looked is refused CONFLICT by the change's own check, which says why", async () => {
+    const w = await withVersion9On();
+    const before = await w.rules.versions("org_456", "high-value-payment");
+    const late: ControlStore = { ...w.rules, versions: async () => structuredClone(before) };
+    const other = {
+      person: "cfo_100",
+      as_of: new Date().toISOString(),
+      words: "another call",
+      correlation: { request_id: "req_other", principal_id: "cfo_100" },
+    };
+    await w.rules.move("org_456", "high-value-payment", 9, "active", "suspended", other);
+    (w.registry as { controls: ControlStore }).controls = late;
+    expect(await move(w, "rule.suspend", 9)).toMatchObject({
+      code: "CONFLICT",
+      message: "version 9 of rule high-value-payment is suspended, so it cannot be suspended",
+    });
+  });
 });
 
 describe("C7: a suspension and a retirement leave their records (step 28's README, decision D14)", () => {

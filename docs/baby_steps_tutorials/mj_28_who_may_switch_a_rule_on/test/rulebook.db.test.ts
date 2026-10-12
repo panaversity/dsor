@@ -135,6 +135,9 @@ describe("C1: dsor.controls keeps each version with its status (step 28's README
     const id = `test-${randomUUID()}`;
     await rules.add("org_456", refusing9001(id), byCfo("a draft"));
     expect(await rules.move("org_456", id, 1, "active", "retired", byCfo("x"))).toBe(false);
+    // A draft is never suspended: the store says no, as the database's check would. Found by step
+    // 28's sweep, P05: with the store's picture of moves gone, every test passed.
+    expect(await rules.move("org_456", id, 1, "draft", "suspended", byCfo("x"))).toBe(false);
     const before = Date.now();
     expect(await rules.move("org_456", id, 1, "draft", "active", byCfo("on"))).toBe(true);
     const [v1] = await rules.hold("org_456", id);

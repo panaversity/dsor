@@ -20,7 +20,12 @@ import { memoryRates, type MemoryRates } from "../src/rates.ts";
 import { buildRegistry, type ContractSource, type Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
-import { checkRules, memoryControls, type MemoryControls } from "../src/rulebook.ts";
+import {
+  checkRules,
+  memoryControls,
+  type ControlStore,
+  type MemoryControls,
+} from "../src/rulebook.ts";
 import { memorySlips } from "../src/slips.ts";
 import {
   AGENT,
@@ -79,6 +84,9 @@ export function ruleWorld(
   inputs: ContractSource[] = shippedInputs,
   // And these contracts, the shipped ones unless a test changes one.
   contracts: ContractSource[] = shipped,
+  // And the store that the registry and the claims are given, around the world's own, when a test
+  // changes how it answers.
+  around: (rules: MemoryControls) => ControlStore = (rules) => rules,
 ): RuleWorld {
   const clock = { now: T0 };
   const store = memoryInvoices([...structuredClone(invoices), ...structuredClone(BILLS)]);
@@ -97,6 +105,7 @@ export function ruleWorld(
   const slips = memorySlips([...kept, ...more]);
   const brakes = memoryBrakes();
   const rules = memoryControls(controls);
+  const given = around(rules);
   const registry = buildRegistry(
     contracts,
     handlersFor(),
@@ -108,12 +117,12 @@ export function ruleWorld(
     slips,
     storyDirectories(),
     readRoleSettings(),
-    memoryClaims(store, payments, proposals, reservations, slips, brakes, rates, rules),
+    memoryClaims(store, payments, proposals, reservations, slips, brakes, rates, given),
     ownWorkFor(),
     brakes,
     readLifetimes(),
     readMoneyPolicies(),
-    rules,
+    given,
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -133,8 +142,9 @@ export async function ruleWorldOnTuesday(
   more?: readonly StorySlip[],
   inputs?: ContractSource[],
   contracts?: ContractSource[],
+  around?: (rules: MemoryControls) => ControlStore,
 ): Promise<RuleWorld> {
-  const w = ruleWorld(controls, more, inputs, contracts);
+  const w = ruleWorld(controls, more, inputs, contracts, around);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",
@@ -174,6 +184,34 @@ export function version9(): Control {
 
 // The story's rule, by its address (step 28's README, decision D7).
 export const RULE = "dsor://org_456/rule/high-value-payment";
+
+// org_789's tenant administrator, who may draft and manage org_789's rules (step 28's README,
+// decision D19).
+export const ADMIN_700: RequestEnvelope = { token: "tok_a700", tenant: "org_789" };
+
+// A rule of org_789's own, counted in its control currency, EUR: above 10,000.00 EUR, the CFO. Its
+// tests pin USD per one EUR, as org_789's money policy counts: 11,000.00 USD at 1.08 is 10,185.19
+// EUR, above the line, and 10,000.00 USD is 9,259.26 EUR, below it.
+/** The text of org_789's own rule, owned by admin_700, as rule.draft takes it. */
+export function text789(): Record<string, unknown> {
+  const eur = (value: string) => ({ invoice: { open_amount: { value, currency: "EUR" } } });
+  const usd = (value: string) => ({ invoice: { open_amount: { value, currency: "USD" } } });
+  return {
+    operation: "payment.create",
+    condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("10000", "EUR"))',
+    effect: { require_approval: { role: "CFO", quorum: 1 } },
+    authority: { system: "local", rule: "board-above-10000" },
+    owner: "admin_700",
+    on_stale: "require_approval",
+    stale_grace: "P7D",
+    tests: [
+      { state: eur("10000.00"), expect: "ALLOW" },
+      { state: eur("10000.01"), expect: "REQUIRE_APPROVAL" },
+      { state: usd("11000.00"), rates: { USD: "1.0800" }, expect: "REQUIRE_APPROVAL" },
+      { state: usd("10000.00"), rates: { USD: "1.0800" }, expect: "ALLOW" },
+    ],
+  };
+}
 
 /** The text of a version, as rule.draft takes it: without the six fields DSoR sets itself. */
 export function textOf(control: Control): Record<string, unknown> {

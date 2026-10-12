@@ -212,6 +212,19 @@ describe("C7: a draft leaves its record (step 28's README, decision D14)", () =>
   });
 });
 
+// Found by step 28's sweep, L05 and L23: with compiled_by naming the owner, or the record naming
+// cfo_100 whoever acted, every test passed, because cfo_100 wrote and owned each draft they read.
+describe("C3, C7: the person who drafts is not always the owner (step 28's README, decisions D11 and D14)", () => {
+  it("Step 28: admin_100 drafts a version that names cfo_100 its owner: compiled_by is admin_100, and the record names admin_100", async () => {
+    const w = await ruleWorldOnTuesday();
+    expect(await draft(w, ADMIN)).toMatchObject({ data: { version: 9, status: "draft" } });
+    const [, v9] = await w.rules.versions("org_456", "high-value-payment");
+    expect(v9).toMatchObject({ owner: "cfo_100", compiled_by: "admin_100" });
+    const [change] = await w.rules.records();
+    expect(change?.identity.subject).toBe("admin_100");
+  });
+});
+
 describe("C8: start-up checks a version's owner and its id (step 28's README, decisions D6, D7, and D11)", () => {
   /** A controls file with org_456's rule, these fields changed. */
   function withRule(fields: Partial<Control> & Record<string, unknown>) {

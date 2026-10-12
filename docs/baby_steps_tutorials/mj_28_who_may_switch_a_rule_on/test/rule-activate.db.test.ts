@@ -170,3 +170,46 @@ describe("C7: two switch-ons of one rule wait for each other (step 28's README, 
     ]);
   });
 });
+
+// Found by step 28's sweep, L22: with the draft's change reading the versions without the rule's
+// lock, every test passed, because no test drafted twice at once.
+describe("C3: two drafts of one rule wait for each other (step 28's README, decision D15)", () => {
+  it("Step 28: cfo_100 and admin_100 draft one rule at once, on the database: the second waits for the rule's lock, and the two drafts take versions 1 and 2", async () => {
+    const id = `test-${randomUUID()}`;
+    const rule = `dsor://org_456/rule/${id}`;
+    const first = newPool();
+    const second = newPool();
+    let theirs: Promise<Answer> | undefined;
+    first.on("connect", (client) => {
+      const query = client.query.bind(client) as (...a: unknown[]) => Promise<unknown>;
+      let held = false;
+      client.query = ((...a: unknown[]) => {
+        if (!held && typeof a[0] === "string" && a[0].includes("INSERT INTO dsor.controls")) {
+          held = true;
+          const draft = { draft: holdOn9001("cfo_100") };
+          theirs = ruleCall(ADMIN, "rule.draft", rule, draft, on(second));
+          return waitForTheLock().then(() => query(...a));
+        }
+        return query(...a);
+      }) as typeof client.query;
+    });
+    try {
+      const mine = await ruleCall(
+        CFO,
+        "rule.draft",
+        rule,
+        { draft: holdOn9001("cfo_100") },
+        on(first),
+      );
+      expect(mine).toMatchObject({ outcome: "COMMITTED", data: { version: 1 } });
+      expect(await theirs).toMatchObject({ outcome: "COMMITTED", data: { version: 2 } });
+    } finally {
+      await first.end();
+      await second.end();
+    }
+    expect(await statuses(id)).toStrictEqual([
+      [1, "draft"],
+      [2, "draft"],
+    ]);
+  });
+});

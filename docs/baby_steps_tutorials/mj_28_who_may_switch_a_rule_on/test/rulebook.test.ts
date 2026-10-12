@@ -13,6 +13,7 @@ import {
   ruleWorldOnTuesday,
   shippedRule,
   startWith,
+  text789,
   version9,
 } from "./rule-world.ts";
 
@@ -101,6 +102,22 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
     await store.add("org_456", added, byCfo("version 9"));
     added.condition = "false";
     expect((await store.versions("org_456"))[1]?.condition).toBe(version9().condition);
+  });
+
+  // Found by step 28's sweep, R03, R04, and R15: with each of these gone, every test passed. The
+  // database refuses the first two, so a store in memory must too.
+  it("Step 28: a store in memory adds only a draft, and each version once, and its reads give copies", async () => {
+    const store = memoryControls(readControls());
+    await expect(
+      store.add("org_456", { ...version9(), status: "active" }, byCfo("x")),
+    ).rejects.toThrow("a version is added as a draft");
+    await store.add("org_456", version9(), byCfo("version 9"));
+    await expect(store.add("org_456", version9(), byCfo("again"))).rejects.toThrow(
+      "version 9 of high-value-payment is kept already",
+    );
+    const [read] = await store.versions("org_456");
+    read!.status = "retired";
+    expect((await store.versions("org_456"))[0]?.status).toBe("active");
   });
 
   it("Step 28: no store, NO_CONTROLS: it holds no rule, and keeps none (step 28's README, decision D18)", async () => {
@@ -201,6 +218,15 @@ describe("C8: start-up checks every version in the store (step 28's README, deci
     ).toContain(
       "controls.json: org_456 has two live versions of high-value-payment: one at a time may be active or suspended",
     );
+  });
+
+  // Found by step 28's sweep, G01: with org_456's policy used for every company, every test passed,
+  // because no test started with a rule of org_789's own.
+  it("Step 28: start-up counts each company's tests in its own control currency: org_789's rule, in EUR, passes its tests, which pin USD per one EUR", async () => {
+    const rule = { ...text789(), id: "board-above-10000", version: 1, status: "draft" };
+    const file = controlsOf({ org_456: [shippedRule()], org_789: [rule] });
+    const registry = await startWith(file);
+    expect(registry.checkRule("org_789", rule, true)).toStrictEqual([]);
   });
 
   it("Step 28: one version written twice stops start-up", async () => {

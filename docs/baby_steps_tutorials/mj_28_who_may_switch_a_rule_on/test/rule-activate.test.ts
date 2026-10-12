@@ -16,10 +16,13 @@ import {
   SUPERVISOR,
 } from "./helpers.ts";
 import {
+  ADMIN_700,
   heard,
   RULE,
   ruleCall,
   ruleWorldOnTuesday,
+  shippedRule,
+  text789,
   textOf,
   version9,
   type RuleWorld,
@@ -119,6 +122,47 @@ describe("C4: the owner switches a version on (step 28's README, decisions D10 a
     expect(await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule)).toMatchObject({
       data: { id: "board-above-45000", version: 1, status: "active" },
     });
+  });
+});
+
+// Found by step 28's sweep, L08: with the owner of record taken from the first version ever
+// switched on, every test passed, because every version switched on named cfo_100.
+describe("C4: the owner of record is the owner of the newest version ever switched on (step 28's README, decision D10)", () => {
+  it("DSOR-CTL-02a: a rule whose retired version 7 named admin_100 and whose active version 8 names cfo_100: cfo_100 decides now, and admin_100 no longer does", async () => {
+    const v7 = {
+      ...shippedRule(),
+      version: 7,
+      status: "retired",
+      owner: "admin_100",
+      reviewed_by: "admin_100",
+      effective_from: "2026-08-01T00:00:00Z",
+    };
+    const file = { file: "controls.json", text: JSON.stringify({ org_456: [v7, shippedRule()] }) };
+    const w = await ruleWorldOnTuesday(file);
+    const text = { ...textOf(version9()), owner: "admin_100" };
+    const v10 = await drafted(w, ADMIN, text);
+    expect(heard(await activate(w, v10, ADMIN))).toBe("AUTHORIZATION_DENIED");
+    const v11 = await drafted(w);
+    expect(await activate(w, v11)).toMatchObject({ data: { version: v11, status: "active" } });
+  });
+});
+
+// Found by step 28's sweep, G03: with line ⑨'s look reading org_456's rules in every company, every
+// test passed, because no test changed a rule of org_789.
+describe("C4: each company's rules are its own (DSOR-TEN-01b)", () => {
+  it("DSOR-TEN-01b: admin_700 drafts and switches on a rule of org_789's own, in org_789: it is active there, and org_456's rules do not move", async () => {
+    const w = await ruleWorldOnTuesday();
+    const rule = "dsor://org_789/rule/board-above-10000";
+    expect(await ruleCall(w, ADMIN_700, "rule.draft", { draft: text789() }, rule)).toMatchObject({
+      data: { tenant_id: "org_789", id: "board-above-10000", version: 1, status: "draft" },
+    });
+    expect(await ruleCall(w, ADMIN_700, "rule.activate", { version: 1 }, rule)).toMatchObject({
+      data: { tenant_id: "org_789", version: 1, status: "active" },
+    });
+    expect((await w.rules.active("org_789", "payment.create")).map((v) => v.id)).toStrictEqual([
+      "board-above-10000",
+    ]);
+    expect(await statuses(w)).toStrictEqual([[8, "active"]]);
   });
 });
 
@@ -297,6 +341,31 @@ describe("C7: a switch-on and its records (step 28's README, decisions D14 and D
     ]);
     expect((await store.records()).filter((r) => r.result === "active")).toHaveLength(1);
   });
+});
+
+// Found by step 28's sweep, L18 and L19: with a failed move ignored, every test passed, because no
+// move fails under the rule's lock. A store that refuses a move shows what the change does then.
+describe("C7: a move the store refuses ends the switch-on (step 28's README, decision D15)", () => {
+  it.each([
+    ["the retirement of version 8", 8],
+    ["the switch-on of version 9", 9],
+  ])(
+    "Step 28: when the store refuses %s, the switch-on is refused CONFLICT, and version 9 is not switched on",
+    async (_what, refused) => {
+      const w = await ruleWorldOnTuesday(undefined, [], undefined, undefined, (store) => ({
+        ...store,
+        move: async (tenant, id, version, from, to, by) =>
+          version === refused ? false : store.move(tenant, id, version, from, to, by),
+      }));
+      const v9 = await drafted(w);
+      expect(await activate(w, v9)).toMatchObject({
+        code: "CONFLICT",
+        message: "rule high-value-payment changed while it was being changed",
+      });
+      const [, after] = await w.rules.versions("org_456", "high-value-payment");
+      expect(after?.status).toBe("draft");
+    },
+  );
 });
 
 /** cfo_100, on another call. */
