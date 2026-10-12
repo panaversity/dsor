@@ -81,6 +81,12 @@ describe("C4: the owner switches a version on (step 28's README, decisions D10 a
       [10, "draft"],
     ]);
     expect(heard(await w.draft("INV-1008"))).toBe("PENDING_APPROVAL");
+    // At line ⑨, before any work: the proposal ends DENIED.
+    const refused = await activate(w, v10, ADMIN);
+    const id = String("proposal" in refused ? refused.proposal : "")
+      .split("/")
+      .at(-1)!;
+    expect((await w.proposals.get("org_456", id))?.state).toBe("DENIED");
   });
 
   it("DSOR-CTL-02a: cfo_100, the owner of record, may not switch on version 10 either: it names admin_100, and a rule never passes to a new owner in this step", async () => {

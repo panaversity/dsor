@@ -1,7 +1,8 @@
-// NEW IN STEP 28: who may switch a rule on. Commands of DSoR's own, for people only: rule.draft
-// writes a new version of a rule, and rule.activate switches one on (DSOR-CTL-02a, DSOR-CTL-02b,
-// and DSOR-CTL-02c in specs/dsor/02-security.md, section 17.4; step 28's README, decisions D7 to
-// D12). Each has two parts, as DSoR's own work does (revocation.ts). The check is line ⑨'s look,
+// NEW IN STEP 28: who may switch a rule on. Four commands of DSoR's own, for people only:
+// rule.draft writes a new version of a rule, rule.activate switches one on, rule.suspend switches
+// the active one off, and rule.retire ends one for good (DSOR-CTL-02a, DSOR-CTL-02b, and
+// DSOR-CTL-02c in specs/dsor/02-security.md, section 17.4; step 28's README, decisions D7 to
+// D13). Each has two parts, as DSoR's own work does (revocation.ts). The check is line ⑨'s look,
 // before any work: who may, which version, its status, and, for a switch-on, the version's own
 // checks and its tests. The change runs after line ⑩, inside the claim's transaction. It takes
 // the rule's lock, reads the versions again, makes the same checks, and writes each change with
@@ -93,6 +94,9 @@ export function ownerOfRecord(versions: readonly Control[]): string | undefined 
 /** One move a command makes: its name, from which statuses, and to which. */
 type Move = { name: string; from: readonly RuleStatus[]; to: RuleStatus };
 const ACTIVATE: Move = { name: "rule.activate", from: ["draft", "suspended"], to: "active" };
+// A suspended version can be switched on again. A retired one never comes back (decision D13).
+const SUSPEND: Move = { name: "rule.suspend", from: ["active"], to: "suspended" };
+const RETIRE: Move = { name: "rule.retire", from: ["draft", "active", "suspended"], to: "retired" };
 
 /**
  * The version a move may change, after its checks, in this order: who, which version, and its
@@ -174,10 +178,34 @@ async function activate(input: unknown, work: OwnStores): Promise<unknown> {
   return { tenant_id: tenant, id, version: version.version, status: "active", ...retired };
 }
 
-/** The commands of a rule's life, as DSoR's own work. */
+/** Line ⑨, for a move that runs no test: who, which version, and its status. */
+function mayMove(move: Move): OwnWork["check"] {
+  return async (input, look) => {
+    decide(move, await look.controls.versions(look.tenant, ruleIdOf(input)), input, look.caller);
+  };
+}
+
+/** The work of a suspension or a retirement, after line ⑩: the same checks under the rule's lock, then the move, with its record. */
+function moveWork(move: Move): OwnWork["change"] {
+  return async (input, work) => {
+    const { tenant, caller, stores } = work;
+    const id = ruleIdOf(input);
+    const version = decide(move, await stores.controls.hold(tenant, id), input, caller);
+    const from = version.status as RuleStatus;
+    const by = byOf(input, work);
+    if (!(await stores.controls.move(tenant, id, version.version, from, move.to, by))) {
+      throw changedMeanwhile(id);
+    }
+    return { tenant_id: tenant, id, version: version.version, status: move.to };
+  };
+}
+
+/** The four commands of a rule's life, as DSoR's own work. */
 export function ruleWorkFor(): Record<string, OwnWork> {
   return {
     "rule.draft": { check: mayDraft, change: writeDraft },
     "rule.activate": { check: mayActivate, change: activate },
+    "rule.suspend": { check: mayMove(SUSPEND), change: moveWork(SUSPEND) },
+    "rule.retire": { check: mayMove(RETIRE), change: moveWork(RETIRE) },
   };
 }

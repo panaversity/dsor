@@ -63,6 +63,34 @@ describe("C1: the store keeps each version of a rule with its status (step 28's 
     expect(await store.versions("org_456", "no-such-rule")).toStrictEqual([]);
   });
 
+  // Found by step 28's own break: with a retired version allowed back, every command test passed,
+  // because each command checks the status first. The store draws the moves too, as the database's
+  // policies do (step 28's README, decision D13).
+  it("Step 28: the store makes only the moves of a version's life: a retired version never moves, a draft is never suspended, and nothing moves back to draft", async () => {
+    const store = memoryControls(readControls());
+    await store.add("org_456", version9(), byCfo("version 9"));
+    expect(
+      await store.move("org_456", "high-value-payment", 9, "draft", "suspended", byCfo("x")),
+    ).toBe(false);
+    expect(
+      await store.move("org_456", "high-value-payment", 8, "active", "draft", byCfo("x")),
+    ).toBe(false);
+    expect(
+      await store.move("org_456", "high-value-payment", 8, "active", "retired", byCfo("x")),
+    ).toBe(true);
+    expect(
+      await store.move("org_456", "high-value-payment", 8, "retired", "active", byCfo("x")),
+    ).toBe(false);
+    expect(
+      await store.move("org_456", "high-value-payment", 8, "retired", "suspended", byCfo("x")),
+    ).toBe(false);
+    const versions = await store.versions("org_456", "high-value-payment");
+    expect(versions.map((v) => [v.version, v.status])).toStrictEqual([
+      [8, "retired"],
+      [9, "draft"],
+    ]);
+  });
+
   it("Step 28: the store gives back copies: a caller that changes what it read changes nothing in the store", async () => {
     const store = memoryControls(readControls());
     const [read] = await store.active("org_456", "payment.create");
