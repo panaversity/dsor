@@ -5,7 +5,7 @@
 // a proposal.* command never itself waits for an approval (DSOR-APR-08).
 import { describe, expect, it } from "vitest";
 import type { Control } from "../src/controls.ts";
-import { CFO, contract, shippedWith } from "./helpers.ts";
+import { CFO, contract, rolesFile, shippedWith, STARTING_ROLES } from "./helpers.ts";
 import {
   refusalAtStart,
   ruleCall,
@@ -38,6 +38,34 @@ describe("C8: a rule asks only for an approval that someone can give (step 29's 
       "its effect asks for an approval by ap_supervisor, which does not hold payment.create's approve_permission, payment:approve",
     );
   });
+
+  // Found by step 29's review, finding M2: a role needs two permissions to approve, and the check
+  // asked for one. A role holding only the one checked passed every test.
+  it.each([
+    [
+      "only proposal:approve",
+      ["proposal:approve"],
+      "which does not hold payment.create's approve_permission, payment:approve",
+    ],
+    [
+      "only payment:approve",
+      ["payment:approve"],
+      "which does not hold proposal:approve, the permission to call proposal.approve",
+    ],
+  ])(
+    "Step 29: a draft that asks for an approval by a role holding %s is refused: nobody holding it could give the approval",
+    async (_what, permissions, problem) => {
+      const roles = rolesFile({ ...STARTING_ROLES, approver_clerk: permissions });
+      const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, undefined, roles);
+      const answer = await draft(w, {
+        effect: { require_approval: { role: "approver_clerk", quorum: 1 } },
+      });
+      expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+      expect("message" in answer && answer.message).toContain(
+        `its effect asks for an approval by approver_clerk, ${problem}`,
+      );
+    },
+  );
 
   it("Step 29: start-up refuses a rule that asks for an approval by a role that cannot give it", async () => {
     const byClerk = {

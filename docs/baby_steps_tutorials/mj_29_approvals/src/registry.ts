@@ -327,10 +327,15 @@ export function buildRegistry(
     const policy = moneyPolicies.get(tenant);
     if (policy === undefined)
       return [`${tenant} has controls, and no money policy to count them in`];
-    // NEW IN STEP 29: and who approves each operation (step 29's README, decision D13).
+    // NEW IN STEP 29: and who approves each operation, and who may call proposal.approve at all
+    // (step 29's README, decision D13).
     const approvePermission = (operation: string): string | undefined =>
       approvePermissionOf(contracts.get(operation));
-    const context = { governable, riskOf, policy, roles, approvePermission };
+    const approving = contracts.get("proposal.approve")?.["authorization"] as
+      | { permission?: unknown }
+      | undefined;
+    const approveCall = typeof approving?.permission === "string" ? approving.permission : undefined;
+    const context = { governable, riskOf, policy, roles, approvePermission, approveCall };
     return ruleProblems(ruleName(tenant, raw, place), raw, tenant, context, tests);
   };
   // And each contract's predicates are CEL in Appendix B's environment, as a

@@ -406,8 +406,10 @@ export type RuleContext = {
   // decision D21).
   roles: Roles;
   // NEW IN STEP 29: and the permission that decides who approves an operation, its contract's
-  // approve_permission (step 29's README, decision D13).
+  // approve_permission, and the permission that calls proposal.approve at all, its contract's own
+  // (step 29's README, decision D13).
   approvePermission: (operation: string) => string | undefined;
+  approveCall: string | undefined;
 };
 
 /** The name of a control in a problem: its company, and its id, or its place in a list. */
@@ -485,8 +487,20 @@ export function ruleProblems(
       const none = `${control.operation}, which names no approve_permission, so no one could give it`;
       return [`${name}: its effect asks for an approval of ${none}`];
     }
-    if (context.roles.get(role)?.has(needed) !== true) {
+    const held = context.roles.get(role);
+    if (held?.has(needed) !== true) {
       const holds = `${control.operation}'s approve_permission, ${needed}`;
+      return [`${name}: its effect asks for an approval by ${role}, which does not hold ${holds}`];
+    }
+    // And the permission to call proposal.approve, which line ⑤ checks first. Found by step 29's
+    // review, finding M2: a role holding only the approve_permission passed, and could approve
+    // nothing.
+    const call = context.approveCall;
+    if (call === undefined) {
+      return [`${name}: its effect asks for an approval, and no contract of proposal.approve gives one`];
+    }
+    if (held.has(call) !== true) {
+      const holds = `${call}, the permission to call proposal.approve`;
       return [`${name}: its effect asks for an approval by ${role}, which does not hold ${holds}`];
     }
   }

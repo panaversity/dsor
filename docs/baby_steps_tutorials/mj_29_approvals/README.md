@@ -141,9 +141,13 @@ for the learner to review, and each one says what it costs. This folder is a cop
 - **D12. An approved proposal waits.** Nothing executes it until step 31's `proposal.execute`.
   *Downside:* in this step an approval moves a state and nothing more. The payment is not drafted.
 - **D13. A rule asks only for an approval that someone can give.** A draft and start-up refuse a
-  rule whose effect asks for an approval on an operation that names no `approve_permission`, or by
-  a role that does not hold it. Otherwise the payment would wait for an approval nobody can give.
-  *Downside:* a company grants the permission before it writes such a rule.
+  rule whose effect asks for an approval on an operation that names no `approve_permission`. They
+  also refuse one that asks for a role without both permissions an approver needs: that
+  `approve_permission`, and `proposal:approve`, which lets a person call `proposal.approve` at
+  all. Otherwise the payment would wait for an approval nobody can give. *Downside:* a company
+  grants both permissions before it writes such a rule. And nothing checks that enough people hold
+  the role: a rule that asks for two CFOs, in a company with one, holds each payment until it
+  expires.
 - **D14. The answer:** `{ tenant_id, id, proposal, state, waits_for, expires_at }`: the approval's
   id, the proposal's state after it, and what it still waits for, empty once it is `APPROVED`. Each
   field is labelled `internal`. *Downside:* the approver learns which other roles must still
