@@ -483,6 +483,13 @@ export async function call(
             unconvertibleOfRecord = cause;
           },
         });
+        // NEW IN STEP 29: DSoR's own work never waits for an approval. No rule may govern it,
+        //   which a draft and start-up check, so a proposal.* command never yields
+        //   REQUIRE_APPROVAL (DSOR-APR-08). If a rule ever reached this line, the call fails closed.
+        //   Found by step 29's review, finding L3.
+        if (answer === "REQUIRE_APPROVAL" && own !== undefined) {
+          throw new Error(`a rule asks for an approval of ${contract.id}, which is DSoR's own work`);
+        }
         // A control that asks for an approval stops the call at PENDING_APPROVAL,
         //   with its booking (step 27's README, decisions D9 and D10).
         return answer === "REQUIRE_APPROVAL" ? requirementsOf(book, outcomes) : undefined;

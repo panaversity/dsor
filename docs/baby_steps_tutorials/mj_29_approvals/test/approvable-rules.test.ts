@@ -5,7 +5,8 @@
 // a proposal.* command never itself waits for an approval (DSOR-APR-08).
 import { describe, expect, it } from "vitest";
 import type { Control } from "../src/controls.ts";
-import { CFO, contract, rolesFile, shippedWith, STARTING_ROLES } from "./helpers.ts";
+import { CFO, contract, keyed, rolesFile, shippedWith, STARTING_ROLES } from "./helpers.ts";
+import type { ControlStore } from "../src/rulebook.ts";
 import {
   refusalAtStart,
   ruleCall,
@@ -94,5 +95,38 @@ describe("C8: a rule asks only for an approval that someone can give (step 29's 
     expect("message" in answer && answer.message).toContain(
       "governs proposal.approve, which is DSoR's own: it must answer at once",
     );
+  });
+});
+
+describe("From step 29's review: a proposal.* command never waits for an approval, at run time too", () => {
+  // Found by the review, finding L3: only a draft and start-up kept a rule off DSoR's own work. A
+  // store that let one through at line ⑩ would have made cfo_100's approval wait for an approval.
+  it("DSOR-APR-08: if a rule asking for an approval of proposal.approve ever reached line ⑩, cfo_100's approval fails closed: INTERNAL_ERROR, nothing is approved, and nothing waits", async () => {
+    const onApprovals = {
+      ...shippedRule(),
+      id: "approve-the-approvals",
+      operation: "proposal.approve",
+      condition: "true",
+    };
+    const around = (rules: ControlStore): ControlStore => ({
+      ...rules,
+      inForce: async (tenant: string, operation?: string) =>
+        operation === "proposal.approve" ? [onApprovals] : rules.inForce(tenant, operation),
+    });
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, around);
+    const drafted = await w.draft("INV-1008");
+    const id = String("proposal" in drafted ? drafted.proposal : "").split("/").at(-1)!;
+    const kept = await w.proposals.get("org_456", id);
+    const answer = await w.ask(keyed(CFO), "proposal.approve", {
+      proposal: kept!.uri,
+      payload_hash: kept!.payload_hash,
+    });
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect((await w.proposals.get("org_456", id))?.state).toBe("PENDING_APPROVAL");
+    expect(await w.proposals.approvals("org_456", id)).toStrictEqual([]);
+    const waiting = (await w.proposals.all()).filter(
+      (p) => p.operation === "proposal.approve@1" && p.state === "PENDING_APPROVAL",
+    );
+    expect(waiting).toStrictEqual([]);
   });
 });
