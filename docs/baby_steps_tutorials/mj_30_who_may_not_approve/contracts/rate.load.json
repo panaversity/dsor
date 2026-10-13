@@ -1,0 +1,46 @@
+{
+  "id": "rate.load",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "RateLoadRequest"
+  },
+  "output": {
+    "schema": "RateSheetLoaded"
+  },
+  "authorization": {
+    "permission": "rate:load"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "system_only": true
+    }
+  }
+}
