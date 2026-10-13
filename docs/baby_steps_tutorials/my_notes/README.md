@@ -32,32 +32,26 @@ Started 2026-09-25, covering work done from 2026-09-22 onward.
 | [step-12-cross-tenant-test-suite.md](step-12-cross-tenant-test-suite.md) | One generated test that calls every operation with another company's address |
 | [step-13-bounded-queries.md](step-13-bounded-queries.md) | A list whose size is the server's: one page, a cursor that is an address, a door that measures |
 | [step-14-classification-and-masking.md](step-14-classification-and-masking.md) | Every field labelled, the agent cleared, what is above it left out and listed, and every confidential read written down |
+| [step-15-freshness-labels.md](step-15-freshness-labels.md) | Every answer says how fresh it is, and a saved copy may not call itself current |
+| [step-16-the-control-plane-store.md](step-16-the-control-plane-store.md) | DSoR's own schema beside the business's, and the log moved into it |
+| [step-17-vendors-and-payments.md](step-17-vendors-and-payments.md) | Vendors and payments, and every command says whether it can be undone |
+| [step-18-delegations.md](step-18-delegations.md) | The permission slip: the agent acts only under one, cut down to what its signer holds now |
+| [step-19-unattended-mode-and-the-role-source.md](step-19-unattended-mode-and-the-role-source.md) | The agent at night under a slip, the signer's authority asked of the company's directory |
+| [step-20-idempotency-keys.md](step-20-idempotency-keys.md) | Every command carries a key, so a retry never pays twice |
+| [step-21-optimistic-concurrency.md](step-21-optimistic-concurrency.md) | A command says which version it decided on, and a record that moved on is refused |
+| [step-22-proposals-and-their-states.md](step-22-proposals-and-their-states.md) | Every command becomes a proposal whose state moves only forward |
+| [step-23-three-ways-to-call.md](step-23-three-ways-to-call.md) | Execute, prepare for later, or a dry run that changes nothing |
+| [step-24-limits-with-reservations.md](step-24-limits-with-reservations.md) | A daily limit, booked in one statement, so racing payments never spend past it |
+| [step-25-revocation-and-the-emergency-brake.md](step-25-revocation-and-the-emergency-brake.md) | A brake on one agent or every agent, and a slip that can be torn up |
 
 Step 00 came with the repository and was not built here. It is a tiny TypeScript project
 with one pure function and two tests, and every later step begins as a copy of it.
 
 ## Where things stand
 
-| | Tests | State |
-| --- | --- | --- |
-| `00_foundation` | 4 | came with the repository |
-| `my_01_one_invoice_in_memory` | 19 | done |
-| `my_02_canonical_uris` | 36 | done |
-| `my_03_operations_and_contracts` | 71 | done |
-| `my_04_result_and_error_envelopes` | 104 | done |
-| `my_05_who_is_calling` | 132 | done |
-| `my_06_permissions_deny_by_default` | 156 | done, built a piece at a time |
-| `my_07_the_pipeline_skeleton` | 179 | done |
-| `my_08_write_the_decision_first` | 232 | done, and 31 of those tests came from reviews and two deep passes |
-| `my_09_postgres_on_neon` | 278 | done, plus 4 in the database tier that need a real server |
-
-Each count includes everything inherited from the steps before it, because a step is a
-copy of the step before plus one new idea.
-
-Next is step 09, `postgres_on_neon`: the invoices and the audit log move into a real database, with an
-application user that may insert log rows and may not change or delete them. Three things step 08 left
-as comments become the database's job there — the log surviving a restart, the clock that stamps the
-row, and the read-then-write that claims a sequence becoming one atomic statement.
+This section held a table of counts, and it stopped at step 09.
+[`docs/status.md`](../../status.md) lists every `my_` build with its tests, and is kept true with
+each step; each step's own note, listed above, says what was built and what its reviews found.
 
 Step 08 turned out to be §21.11 only. §21.13, the intent record, is step 36's: it needs a proposal id,
 an idempotency key and a connector, none of which exist yet
@@ -76,15 +70,15 @@ they are listed here where the next session will see them.
 | ~~08~~ | ~~`DSOR-EXE-02`: §21.11~~ — paid, 2026-09-30 | step 07's README |
 | ~~09~~ | ~~The log must survive a restart, the database must stamp the time, and the read-then-write that claims a sequence must become one atomic statement with a unique constraint on `(chain, sequence)`~~ — paid, 2026-10-04, proven by a real parallel `*.db.test.ts` | step 08's `audit.ts`, `// found live 2026-09-30` |
 | ~~09~~ | ~~`DSOR-AUD-04a`: an application database user with no `UPDATE` and no `DELETE` on the log~~ — paid, 2026-10-04, and the program refuses to start if its account could rewrite the log (decision 75) | [decision 65](decisions.md), step 08's README |
-| 19 | A query's success has no envelope, so the caller never learns the `request_id` of the record its read produced. Ten of twelve records in step 08's demo are reads | step 08's README, "The gap a query leaves" |
+| — | A query's success has no envelope, so the caller never learns the `request_id` of the record its read produced. Ten of twelve records in step 08's demo are reads. This is [open question 19](../../../research/open-questions.md), not a debt of step 19 | step 08's README, "The gap a query leaves" |
 | 27 | `DSOR-EXE-02` says the decision record holds the **controls evaluated**. Nothing evaluates a control until then, so step 08's records have no `controls` array | step 08's README |
 | 36 | `DSOR-EXE-03a` and the intent-record half of `DSOR-EXE-03b`: §21.13. It needs a proposal id, an idempotency key and a connector, so four of its six fields do not exist yet | [decision 54](decisions.md#54--the-intent-record-is-step-36s-not-step-08s-2026-09-30) |
 | 36, 37 | A record says what was **decided**, never what happened. §21.15 `FINALIZE` — `COMMITTED`, `FAILED`, `OUTCOME_UNKNOWN` — is what makes the outcome evidence, and step 08 records a call as `ALLOW` even when it then fails | [decision 58](decisions.md) |
 | ~~10~~ | ~~Resolve the company from the caller's `memberships`, which step 05 created and never reads, instead of comparing against one hard-coded value~~ — paid, 2026-10-05 | [decision 22](decisions.md) |
-| 18 | The delegation, so an agent can act *for* a person — the running example's normal case, which no step before it can build | [decision 23](decisions.md) |
-| 18, 19 | A **role source**. Step 06's roles are in the source code, so `DSOR-IDN-04a` is not met | step 06's README |
-| 20 | The idempotency claim, §21.7 — the first stage that applies to commands only, which is what step 07's `applies` flag exists for | step 07's README |
-| 22 | `REQUIRE_APPROVAL`, the third authorization outcome (`DSOR-AUT-02a`). Step 06 has only yes and no | step 06's README |
+| ~~18~~ | ~~The delegation, so an agent can act *for* a person~~ — paid, 2026-10-11 | [decision 23](decisions.md) |
+| ~~18, 19~~ | ~~A **role source**~~ — paid, 2026-10-11: step 19 asks the company's directory | step 06's README |
+| ~~20~~ | ~~The idempotency claim, §21.7~~ — paid, 2026-10-11 | step 07's README |
+| 29 | `REQUIRE_APPROVAL`, the third authorization outcome (`DSOR-AUT-02a`). Step 06 has only yes and no; the map puts approvals at step 29 | step 06's README |
 | 27 | Controls in CEL, so more than one rule can apply to a request and the strictest wins (`DSOR-AUT-02b`, `02c`) | step 06's README |
 | 30 | Segregation of duties (`DSOR-SOD-01a`). Step 06's break 3 shows the hole: one word in a table lets the person who approves a payment also create it | step 06's README |
 | 42 | Copy and validate `security-context.schema.json`: the shape identity arrives in, `direct` mode, with the three modes as the lesson | [decision 32](decisions.md) |

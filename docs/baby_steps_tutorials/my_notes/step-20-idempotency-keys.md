@@ -5,7 +5,7 @@ in the database tier
 Spec: [§22](../../../specs/dsor/03-execution.md#22-idempotency) · `DSOR-IDM-01a`, `DSOR-IDM-01b`,
 `DSOR-IDM-01c`, `DSOR-IDM-01d`, and `DSOR-TEN-02a` for the claims' table
 The database tier, 52 tests, passes on a local PostgreSQL 17 set up like Neon, eighteen migrations
-applied, on the final code, with the step's race run five more times on its own; on Neon,
+applied, on the final code, with the step's race run eight more times on its own; on Neon,
 `dsor_step20` waits for this folder's `.env`. Decisions [131](decisions.md) and
 [132](decisions.md).
 
@@ -56,7 +56,7 @@ settings do not reach, and the root check found it.
 
 - Claims are kept for ever; `DSOR-IDM-02` asks for at least 24 hours, and clearing old ones is later.
 - A claim left with no answer, a handler that threw, a lost reply, a store that failed after the
-  request ran, is a key no retry can use until reconciliation, step 37.
+  request ran, is a key no retry can use until reconciliation, step 38.
 - A replay records nothing; whether §29 asks it to is a question for the specification.
 - The fingerprint depends on the order of the request's fields until canonical JSON, step 29.
 - One mode, execute; `propose_only` and the proposal as its own key (`DSOR-IDM-04`) are steps 22 and
@@ -78,7 +78,7 @@ the recommended option, as [decision 132](decisions.md), each red first and in a
   checked against its caller.
 - **A claim whose reply was lost left a key no retry could use**, with two messages that said more
   than DSoR knew. The messages say what is known, a failed settle is tried again, and the dead key
-  is written down for step 37's reconciliation.
+  is written down for step 38's reconciliation.
 
 And: the key read as the request's own field, a wait that looks less often, eleven tests for what
 nothing tested, and comments that said what the grants and the steps did not hold.

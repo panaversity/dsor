@@ -16,7 +16,7 @@ that mode, the decision's subject is the slip's signer, taken from the slip and 
 request, the agent is in the actor chain, and the slip is named on the record, inside the hash. What
 the signer holds is asked of the company's directory at every decision, a fake one per company. A
 directory that does not answer, or none at all, refuses the command with `DEPENDENCY_TIMEOUT`; an
-answer more than 24 hours old, dated in the future, or without a time zone, with
+answer more than 24 hours old, dated more than five minutes in the future, or without a time zone, with
 `FRESHNESS_UNSATISFIABLE`.
 
 ## How it was built

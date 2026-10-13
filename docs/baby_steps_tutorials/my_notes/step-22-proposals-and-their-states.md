@@ -12,7 +12,7 @@ applied, on the final code; on Neon, `dsor_step22` waits for this folder's `.env
 
 Every command that gets past its key's claim becomes a proposal at §21.8: its payload as the text
 that was hashed, who asked, its key. Its history is a list of moves, each with an actor and a cause,
-and its state is its last move. The map of §26.2 is a table, every move must be on it, and the
+and its state is its last move. The map of §26.2, without its compensation line, is a table, every move must be on it, and the
 history is one line: a state is entered once and left once, and a move out needs the move in. So a
 finished proposal cannot move, and one proposal cannot run twice, and both are the database's rules,
 not the code's. The door moves each proposal: DENIED when a later stage refuses, READY and
@@ -52,7 +52,7 @@ and still checked against the company.
 
 ## The hostile review
 
-One reviewer, read-only, with probes in its own copy. It found the map equal to §26.2's, the history
+One reviewer, read-only, with probes in its own copy. It found the map equal to §26.2's, but for the compensation line no step builds, the history
 one line, a finished proposal refused even to raw SQL, the rights narrow, the tenants apart. It found,
 measured, and fixed as [decision 137](decisions.md):
 
@@ -66,5 +66,6 @@ measured, and fixed as [decision 137](decisions.md):
 
 Five were written down instead; they are the limits above.
 
-Decision 137's three fixes were broken once each and failed exactly their one test; the README's
+Decision 137's three fixes were broken once each and failed exactly their one test, though the
+one-statement half of the first was first broken by decision 153; the README's
 three breaks were measured twice, agreeing: 4, 1 and 9 failing.

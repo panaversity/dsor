@@ -49,7 +49,8 @@ payment was still stopped, after an ALLOW was on the record.
 
 - A tenant administrator who could revoke any slip is nobody in the cast.
 - Nothing cancels what waits under a slip that expired.
-- A command already decided under a slip runs after it is revoked.
+- A command already past §21.3 when its slip is revoked is still decided under it, and runs
+  (decision 156).
 - A brake committing during the move to EXECUTING is not seen by that move.
 - "A person" is whoever logged in, until steps 43 and 44.
 
@@ -68,7 +69,7 @@ application's reach once not active; and revoking and cancelling in one statemen
   queries, and the ordering proof's cycles of three.
 
 Written down: `DSOR-SRC-02b` read literally against `DSOR-DEL-04a`, a question for the editor; the
-expiry half of `DSOR-DEL-04c`; a decided command after revocation; the race of one statement; the
+expiry half of `DSOR-DEL-04c`; a command past §21.3 when its slip is revoked; the race of one statement; the
 login believed.
 
 Every fix was broken once and failed as predicted; the README's three breaks were measured twice,

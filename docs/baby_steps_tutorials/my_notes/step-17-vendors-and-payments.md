@@ -56,8 +56,8 @@ right for every operation, until `payment.create` took an invoice's address.
 **A question that meant nothing.** The cross-tenant suite asked, of every command, that the other
 company's row be in the same state as yours. For `payment.create` that is INV-1008, issued in
 org_456 and a draft in org_789, and a careless `payment.create` would not change the invoice at all:
-it would add a payment, which the suite's "rows untouched" sees. The question is asked of commands
-that change a row.
+it would add a payment, which the suite's "rows untouched" sees. The build asked the question only
+of commands that change a row; the review reversed that (below).
 
 **A durability test that asked for too little to stay true.** It said a second run of the demo holds
 no `COMMITTED` line at all, meaning the invoice was not issued twice. The agent's payment is

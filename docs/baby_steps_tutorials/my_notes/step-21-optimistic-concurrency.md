@@ -43,7 +43,8 @@ places.** The tests still passed, because the second copy had the same value; it
 - Only the application raises the version, so an owner who edits a row by hand leaves it as it was.
 - A row deleted and written again starts at 1, and so does every new record, so
   `expected_version: 1` proves nothing was read.
-- The read label still has no `resource_version`, so `DSOR-FRS-01a` is met in part.
+- The read label does not repeat the version: each row states its own, which is the
+  `resource_version` `DSOR-FRS-01a` asks for (decision 152, where this note had said "met in part").
 - Payments have no read operation; the agent knows a payment's version from a receipt.
 - `pessimistic` and `connector_managed` are refused at load, not carried out.
 - The log records the decision, so a stale command shows as `ALLOW`.
