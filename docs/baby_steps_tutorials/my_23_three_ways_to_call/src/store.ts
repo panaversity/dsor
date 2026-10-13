@@ -77,8 +77,9 @@ export function theDatabase(tenant: string): Statements {
   }
 
   // Captured now, not looked up per statement: one write runs on one connection from its tail
-  // read to its INSERT. No test today swaps the handle in that gap; the capture is a property
-  // worth having rather than one anything relies on.
+  // read to its INSERT. STEP 22, decision 157: tests swap the handle in that gap now, to
+  // write another request's record at the place this write chose; they swap it back before this
+  // write goes on, so the capture is still a property worth having rather than one anything relies on.
   const connection = database;
 
   return {

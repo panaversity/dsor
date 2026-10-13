@@ -237,6 +237,62 @@ describe("an INSERT whose reply is lost", () => {
     expect(ours?.record_hash).toBe(log[1]?.record_hash);
     expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
+
+  it("DSOR-UNK-01b: a write that ran and came back with a server's error is found by its record, and is not told it failed", async () => {
+    // NEW IN STEP 22, decision 157, found by a review: an error with a SQLSTATE is not always proof
+    // that nothing was written. A server that is shutting down can send 57P01 after the statement
+    // committed. Step 09 looked for the record after any failure; decision 157 stopped looking after
+    // a server's error, and told this write it had failed while the log held it.
+    let used = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        const rows = await connection.query<T>(sql, params, tenant);
+
+        if (!used && sql.includes("INSERT")) {
+          used = true;
+
+          throw Object.assign(new Error("terminating connection due to administrator command"), {
+            code: "57P01",
+          });
+        }
+
+        return rows;
+      },
+    });
+
+    const record = await audit(aDecision("req_1"));
+
+    useDatabase(connection);
+
+    const log = await theLog("org_456");
+
+    expect(log).toHaveLength(1);
+    expect(record?.record_id).toBe(log[0]?.record_id);
+    expect(record?.record_hash).toBe(log[0]?.record_hash);
+  });
+
+  it("DSOR-UNK-01b: an error of SQLSTATE class 08 is the connection's, not the server's: not there yet is unknown", async () => {
+    // NEW IN STEP 22, decision 157, found by a review: a pooler between DSoR and PostgreSQL, such as
+    // PgBouncer behind Neon's pooled address, reports a server connection it lost in the middle of a
+    // statement as 08P01. The statement may have committed, or may still: the server's own session
+    // can outlive the pooler's. Taken for the server's refusal, it was "nothing was written".
+    let used = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (!used && sql.includes("INSERT")) {
+          used = true;
+
+          throw Object.assign(new Error("server conn crashed?"), { code: "08P01" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    await expect(audit(aDecision("req_1"))).rejects.toBeInstanceOf(OutcomeUnknown);
+  });
 });
 
 describe("an INSERT whose reply is lost on a connection that then stays dead", () => {
@@ -411,7 +467,7 @@ describe("an INSERT refused because the row is already there", () => {
     expect(mine?.record_hash).not.toBe(theirs?.record_hash);
   });
 
-  it("DSOR-EXE-03b: another writer's row at my position is a failed write, not an unknown one", async () => {
+  it("DSOR-EXE-03b: another writer's row at my position is a write that did not happen, not an unknown one, and the next place is tried", async () => {
     // The case that keeps the record_hash comparison killable. Decision 78 said narrowing it to
     // "is there a row" failed a test; once 23505 is short-circuited that test no longer reaches the
     // comparison. This one does: a connection error (no SQLSTATE) while a different writer's row

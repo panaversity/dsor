@@ -629,13 +629,14 @@ export async function recordTogether<Row>(
       // and nobody on this side knows what the server did with the statement. It may have committed.
       // It may still be running. A review found the first version treating both the same.
       //
-      // STEP 22, decision 157: so a server's refusal is thrown at once, with nothing to look
-      // for. Step 09 looked anyway, and could only ever find nothing, or another writer's record.
-      if (isServerError(failure)) {
-        throw failure;
-      }
-
-      // A type guard in this step: every statement here carries at least one record.
+      // Either way, the record is looked for first, as step 09 did. Decision 157 stopped looking
+      // after a server's error, and a review of it found the reason step 09 had not: an error with a
+      // SQLSTATE can arrive after the statement committed. A server shutting down sends 57P01, and a
+      // pooler reports a server connection it lost as 08P01.
+      //
+      // A statement that writes no record has nothing to look for, and its failure goes on as it
+      // came. NEW IN STEP 25, decision 157: a revocation of a slip with nothing waiting under it is
+      // one, and its failure reaches the handler as a throw, as it did before this decision.
       const first = records[0];
 
       if (first === undefined) {
@@ -644,7 +645,7 @@ export async function recordTogether<Row>(
 
       const found = await isItMine(db, first);
 
-      // Three outcomes, in the order that makes each one a true statement.
+      // Four outcomes, in the order that makes each one a true statement.
       //
       // Mine is there: the reply was lost, not the record. Equal hashes mean THIS attempt, because
       // `correlation.trace_id` is a fresh UUID per attempt and is inside the hash — without it a
@@ -664,6 +665,11 @@ export async function recordTogether<Row>(
           continue;
         }
 
+        throw failure;
+      }
+
+      // Not there, and the server said no. Definitive: nothing of it was written.
+      if (isServerError(failure)) {
         throw failure;
       }
 
@@ -1084,11 +1090,21 @@ export class OutcomeUnknown extends Error {
  * one digit; `pg` and PGlite put one on every error the server itself produced. A connection that
  * dropped carries a Node errno (`ECONNRESET`, `EPIPE`) or no code at all, and Node's errno names
  * are letters only — so one digit is the tell. Measured 2026-10-04 against both.
+ *
+ * STEP 22, decision 157, found by a review: except class 08, "connection exception". Those
+ * codes are the connection's word, not the server's verdict on the statement: a pooler such as
+ * PgBouncer, behind Neon's pooled address, reports a server connection it lost mid-statement as
+ * 08P01, and the statement may have committed, or may still.
  */
 function isServerError(error: unknown): boolean {
   const code = (error as { code?: unknown } | null | undefined)?.code;
 
-  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) && /[0-9]/.test(code);
+  return (
+    typeof code === "string" &&
+    /^[0-9A-Z]{5}$/.test(code) &&
+    /[0-9]/.test(code) &&
+    !code.startsWith("08")
+  );
 }
 
 /**
