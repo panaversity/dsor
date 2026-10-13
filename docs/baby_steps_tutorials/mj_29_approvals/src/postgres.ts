@@ -1854,7 +1854,7 @@ function proposalsThrough(run: Runner): ProposalStore {
         // DSoR's own WHERE, the company first, with row-level security behind it (DSOR-TEN-01b).
         const { rows } = await client.query<LockedRow>(
           `SELECT state, operation, resources, payload_hash, expires_at, requires,
-                  expires_at <= now() AS due
+                  expires_at <= clock_timestamp() AS due
              FROM dsor.proposals WHERE tenant_id = $1 AND id = $2`,
           [tenant, id],
         );
@@ -1866,7 +1866,9 @@ function proposalsThrough(run: Runner): ProposalStore {
         if (row.state !== "PENDING_APPROVAL") return { refused: "moved", state: row.state };
         // The move to PENDING_APPROVAL wrote it, and the trigger lets nothing clear it.
         if (row.requires === null) throw new Error("a waiting proposal names what it waits for");
-        // Its time has come, by the database's clock, though no sweep has moved it yet.
+        // Its time has come, by the database's clock, though no sweep has moved it yet. The clock as
+        // it reads now, after the wait for the lock: now() is the time the transaction began. Found
+        // by step 29's review, finding M1.
         if (row.due) return { refused: "expired" };
         const before = await approvalsIn(client, tenant, id);
         const { operation, resources, payload_hash, requires } = row;

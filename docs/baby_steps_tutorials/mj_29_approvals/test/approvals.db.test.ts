@@ -319,6 +319,28 @@ describe("D9: on the database, two approvals at once (step 29's README, decision
     expect(await proposals.approvals("org_456", id)).toHaveLength(1);
   });
 
+  // Found by step 29's review, finding M1: now() is the time the approval's transaction began,
+  // before its wait for the ending lock. The approval must read the clock after the wait.
+  it("DSOR-APR-04a: on the database, an approval that waited for the ending lock past the proposal's expiry is not given: the store reads the clock after the wait, not when the transaction began", async () => {
+    const id = await waitingFor([CFO_BY_8], "PT3S");
+    const expiresAt = Date.parse((await proposals.get("org_456", id))!.expires_at);
+    const client = await observer.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('dsor.ending/org_456', 0))");
+      const approving = cfoApproves(id);
+      await callsWaiting(observer, 1);
+      // The approval's transaction began before the expiry. Its step runs after it.
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, expiresAt - Date.now()) + 300));
+      await client.query("COMMIT");
+      expect(await approving).toStrictEqual({ refused: "expired" });
+    } finally {
+      client.release();
+    }
+    expect(await proposals.approvals("org_456", id)).toStrictEqual([]);
+  });
+
   it("Step 29: on the database, an approval waits for a tear-up that listed the proposal, and then finds it CANCELLED: the tear-up never misses an approval", async () => {
     const id = await waitingFor([CFO_BY_8]);
     // The tear-up's own first step, by hand: the company's ending lock, then its move.
