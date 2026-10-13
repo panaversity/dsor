@@ -133,13 +133,14 @@ describe("C2: only a person, in person, approves (step 29's README, decisions D2
   });
 
   // Changed in step 30: an AP supervisor may call proposal.approve now, so line ⑤ lets user_123
-  // through (step 30's README, decision D5).
-  it("Step 30: user_123, an AP supervisor, passes line ⑤ now, and INV-1008 waits for the CFO: line ⑨ refuses, AUTHORIZATION_DENIED, and it still waits", async () => {
+  // through, and line ⑨ asks who is in the request's chain before it asks for the CFO (step 30's
+  // README, decisions D3 and D5).
+  it("DSOR-SOD-02: user_123, an AP supervisor, passes line ⑤ now, and cannot approve the agent's INV-1008: user_123 signed del_100, SOD_VIOLATION before the CFO is asked for, and it still waits", async () => {
     const w = await ruleWorldOnTuesday();
     const { id, uri, payload_hash } = await drafted(w, "INV-1008");
     expect(await approves(w, SUPERVISOR, uri, payload_hash)).toMatchObject({
-      code: "AUTHORIZATION_DENIED",
-      message: `user_123 holds none of the roles proposal ${id} waits for: CFO`,
+      code: "SOD_VIOLATION",
+      message: `user_123 may not approve proposal ${id}: user_123 signed slip del_100, which the agent that asked works under`,
     });
     expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
   });

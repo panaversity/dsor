@@ -1,7 +1,7 @@
 // proposal.approve, DSoR's own command for a person's approval of a waiting proposal
 // (§26.1; step 29's README, decisions D1 to D14). Line ⑨ looks first, and changes nothing: which
-// proposal, whether this person may approve its operation, its state, their roles and their earlier
-// approval, and last the fingerprint. The work after line ⑩ asks the store for one step: the
+// proposal, whether this person may approve its operation, whether they are in its requesting chain
+// (step 30), its state, their roles and their earlier approval, and last the fingerprint. The work after line ⑩ asks the store for one step: the
 // approval, and the move to APPROVED when it is the last one the proposal waits for.
 import { randomUUID } from "node:crypto";
 import { stillOpen, type Approving, type Offer, type Risk } from "./approvals.ts";
@@ -11,6 +11,7 @@ import { approvePermissionOf } from "./permissions.ts";
 import { isProposalOf, proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
 import { preview, type Contract } from "./registry.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
+import { inChain } from "./segregation.ts";
 import { formatUri } from "./uri.ts";
 
 /** The input that line ⑥ checked: the proposal's URI, and the fingerprint the approver saw. */
@@ -67,6 +68,15 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
   if (!look.permissions.has(needed)) {
     const why = `${caller.id} may not approve ${found.operation}: it needs ${needed}`;
     throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  // NEW IN STEP 30: DSOR-SOD-02: no one in the requesting chain approves: not the person who asked,
+  // not the person who signed the slip of the agent that asked, not an actor. Owner-approval mode is
+  // not built, so this always applies. A no here comes before any work (step 30's README, decisions
+  // D3 and D9).
+  const chain = await inChain(found.requester, caller.id, look.slips, tenant);
+  if (chain !== undefined) {
+    const why = `${caller.id} may not approve proposal ${id}: ${chain}`;
+    throw new Refusal("SOD_VIOLATION", why, "internal");
   }
   if (found.state !== "PENDING_APPROVAL" || found.requires === undefined) {
     const why = `proposal ${id} is ${found.state}, and only a PENDING_APPROVAL proposal is approved`;
