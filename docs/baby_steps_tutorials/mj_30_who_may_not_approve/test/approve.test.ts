@@ -132,12 +132,16 @@ describe("C2: only a person, in person, approves (step 29's README, decisions D2
     });
   });
 
-  it("Step 29: user_123, the supervisor, holds no proposal:approve, so line ⑤ refuses her", async () => {
+  // Changed in step 30: an AP supervisor may call proposal.approve now, so line ⑤ lets user_123
+  // through (step 30's README, decision D5).
+  it("Step 30: user_123, an AP supervisor, passes line ⑤ now, and INV-1008 waits for the CFO: line ⑨ refuses, AUTHORIZATION_DENIED, and it still waits", async () => {
     const w = await ruleWorldOnTuesday();
-    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
     expect(await approves(w, SUPERVISOR, uri, payload_hash)).toMatchObject({
       code: "AUTHORIZATION_DENIED",
+      message: `user_123 holds none of the roles proposal ${id} waits for: CFO`,
     });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
   });
 
   it("Step 29: admin_100 may approve payments, and INV-1008 waits for the CFO: AUTHORIZATION_DENIED, and it still waits", async () => {

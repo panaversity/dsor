@@ -308,3 +308,30 @@ export async function refusalAtStart(start: () => Promise<unknown>): Promise<str
 export async function activeIn(registry: Registry, tenant: string): Promise<Control[]> {
   return (await registry.controls.versions(tenant)).filter((c) => c.status === "active");
 }
+
+// NEW IN STEP 30: cfo_100's rule of org_456's own, with no policy in KSoR behind it: above 10,000
+// USD, one AP supervisor approves (step 30's README, decision D6). Its tests move with its line:
+// 3,000,000.00 PKR at 280 is 10,714.29 USD, above it, and 2,800,000.00 PKR is 10,000.00 USD.
+/** org_456's supervisor-above-10000, version 1, switched on, as a test may change it. */
+export function supervisorRule(): Control {
+  const rule = shippedRule();
+  rule.id = "supervisor-above-10000";
+  rule.version = 1;
+  rule.condition = 'dsor_exceeds(state.invoice.open_amount, dsor_money("10000", "USD"))';
+  rule.effect = { require_approval: { role: "ap_supervisor", quorum: 1 } };
+  rule.authority = { system: "local" };
+  rule.compiled_by = "cfo_100";
+  const usd = (value: string) => ({ invoice: { open_amount: { value, currency: "USD" } } });
+  const pkr = (value: string) => ({ invoice: { open_amount: { value, currency: "PKR" } } });
+  rule.tests = [
+    { state: usd("10000.00"), expect: "ALLOW" },
+    { state: usd("10000.01"), expect: "REQUIRE_APPROVAL" },
+    { state: pkr("3000000.00"), rates: { PKR: "280" }, expect: "REQUIRE_APPROVAL" },
+    { state: pkr("2800000.00"), rates: { PKR: "280" }, expect: "ALLOW" },
+    rule.tests[4]!,
+  ];
+  return rule;
+}
+
+// NEW IN STEP 30: the supervisor rule, by its address.
+export const SUPERVISOR_RULE = "dsor://org_456/rule/supervisor-above-10000";

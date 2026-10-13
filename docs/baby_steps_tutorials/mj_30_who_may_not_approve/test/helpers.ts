@@ -119,6 +119,9 @@ export function notValid(name: string, problem: string): string {
 // And the rate loader loads each company's sheets of rates, and does nothing else
 // (step 26's README, decision D1).
 export const STARTING_ROLES: Record<string, string[]> = {
+  // Changed in step 30: an AP supervisor may approve a payment too, as the CFO may. Segregation of
+  // duties decides which payments: never one they asked for, or one an agent asked for under a
+  // slip they signed (step 30's README, decision D5).
   ap_supervisor: [
     "invoice:read",
     "invoice:issue",
@@ -126,6 +129,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "payment:cancel",
     "delegation:revoke",
     "control:suspend",
+    "proposal:approve",
+    "payment:approve",
   ],
   // The CFO and the tenant administrator may ask to draft and to manage a rule.
   // Line ⑨ decides whose rule (step 28's README, decision D8).

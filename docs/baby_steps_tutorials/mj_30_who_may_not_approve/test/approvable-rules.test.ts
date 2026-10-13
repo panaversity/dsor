@@ -29,14 +29,16 @@ function controlsOf(...rules: Control[]) {
 }
 
 describe("C8: a rule asks only for an approval that someone can give (step 29's README, decision D13)", () => {
-  it("Step 29: cfo_100's draft that asks for an approval by ap_supervisor is refused VALIDATION_FAILED: ap_supervisor does not hold payment:approve, so nobody could give it", async () => {
+  // Changed in step 30: ap_clerk, since ap_supervisor may approve now (step 30's README, decision
+  // D5).
+  it("Step 29: cfo_100's draft that asks for an approval by ap_clerk is refused VALIDATION_FAILED: ap_clerk does not hold payment:approve, so nobody could give it", async () => {
     const w = await ruleWorldOnTuesday();
     const answer = await draft(w, {
-      effect: { require_approval: { role: "ap_supervisor", quorum: 1 } },
+      effect: { require_approval: { role: "ap_clerk", quorum: 1 } },
     });
     expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
     expect("message" in answer && answer.message).toContain(
-      "its effect asks for an approval by ap_supervisor, which does not hold payment.create's approve_permission, payment:approve",
+      "its effect asks for an approval by ap_clerk, which does not hold payment.create's approve_permission, payment:approve",
     );
   });
 

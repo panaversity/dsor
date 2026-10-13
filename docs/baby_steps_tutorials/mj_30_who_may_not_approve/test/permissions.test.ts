@@ -306,13 +306,16 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       "user_123",
       "tok_2c91",
       // And the brake (step 25b's README, decision L3).
+      // Changed in step 30: and approve, as an AP supervisor (step 30's README, decision D5).
       [
         "control:suspend",
         "delegation:revoke",
         "invoice:issue",
         "invoice:read",
+        "payment:approve",
         "payment:cancel",
         "payment:create",
+        "proposal:approve",
       ],
     ],
     // Since step 25 every role may ask to tear up a slip. Line ⑨ decides whose (step 25's README,
@@ -408,11 +411,14 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   // Found by the review: every principal in the story holds one role, so code that read
   // only the first role, or only the last, passed every test.
   it("DSOR-AUT-01a: a caller with two roles holds what each of them grants", async () => {
-    const cfoApproves = { ...STARTING_ROLES, CFO: ["invoice:read", "payment:approve"] };
-    const { roles } = checkRoles(rolesFile(cfoApproves), []);
+    // Changed in step 30: the CFO here grants rule:draft, which ap_supervisor does not hold. Its
+    // payment:approve, which ap_supervisor holds now, would let code that read only the first role
+    // pass (step 30's README, decision D5).
+    const cfoDrafts = { ...STARTING_ROLES, CFO: ["invoice:read", "rule:draft"] };
+    const { roles } = checkRoles(rolesFile(cfoDrafts), []);
     const twoRoles = person([{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }]);
     // ap_supervisor's payment permissions are step 17's decision 6, and its tear-up step 25's.
-    // And since step 25b, the brake.
+    // And since step 25b, the brake, and since step 30, the approval.
     expect([...permissionsOf(twoRoles, roles, "org_456")].sort()).toEqual([
       "control:suspend",
       "delegation:revoke",
@@ -421,6 +427,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       "payment:approve",
       "payment:cancel",
       "payment:create",
+      "proposal:approve",
+      "rule:draft",
     ]);
   });
 

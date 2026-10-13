@@ -5,7 +5,9 @@
     "payment:create",
     "payment:cancel",
     "delegation:revoke",
-    "control:suspend"
+    "control:suspend",
+    "proposal:approve",
+    "payment:approve"
   ],
   "CFO": [
     "invoice:read",
