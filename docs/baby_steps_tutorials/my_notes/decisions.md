@@ -3399,6 +3399,10 @@ a fresh read labelled `observational` fails 4, because one stand-in counts on `r
 "copied from" as a marker for a pattern copied from a schema. The comment is reworded, folded into
 the commit that wrote it, and the guard ran after each commit that followed.
 
+> **Corrected 2026-10-13 — see decision 146.** The break "a second of slack before the request
+> began" was slack inside the comparison. The same slack in the door, where the request's start is
+> taken, failed nothing until decision 146's test.
+
 ## 122 · Step 16's three decisions, taken by the learner before any code (2026-10-10)
 
 The problem was shown first, on step 15 as copied. `DSOR-MOD-01` asks DSoR to own its paperwork,
@@ -3929,6 +3933,8 @@ beside the README's eight, which were measured twice:
 | a person's scopes are ignored | 1 | 1, that test |
 | a suspended slip counts as active | 2: the suspended slip, the revoked one | those 2 |
 
+> **2026-10-13:** the question about `LIMIT_EXCEEDED`'s retry class is open question 76.
+
 ## 129 · Step 19's decisions, taken on the learner's instruction before any code (2026-10-11)
 
 **Decided by:** Claude, on the learner's standing instruction of this date, "go with your
@@ -3977,6 +3983,10 @@ within 24 hours, and `DSOR-DEL-07` that a slip say whether it may be used with n
    answer DSoR saw, which is exactly the months-old answer the rule exists for.
 6. **The record keeps the slip.** `dsor.audit` gains a `delegation` column for the schema's field,
    the application may write it, and the chain's hash covers it, like every field.
+
+> **Corrected 2026-10-13.** Items 2 and 5 were changed by decision 130, as items 1 and 4 say: the
+> modes column's default is `on_behalf_of`, and an answer older than 24 hours is
+> `FRESHNESS_UNSATISFIABLE`, retry `after_delay`.
 
 ## 130 · What step 19's review found, and what was chosen (2026-10-11)
 
@@ -4063,6 +4073,10 @@ beside the README's six, which were measured twice:
 | a slip that names no modes allows unattended | 1 | 1, that test |
 | a slip may be signed by its own agent | 1 | 1, that test |
 | the story forgets del_100's mode | dozens | 32: every agent command refused |
+
+> **Corrected 2026-10-13 — see decision 150.** Item 1 closed the upper end only: a year 0000 with a
+> `+` offset still broke the record, and a day that does not exist, such as 31 September, was read
+> as the next one. The question about `subject_authority.as_of` is open question 77.
 
 ## 131 · Step 20's decisions, taken on the learner's instruction before any code (2026-10-11)
 
@@ -4186,6 +4200,11 @@ beside the README's five, which were measured twice:
 | an inherited key is a key | 1: the own-key test | 1, that test |
 | a released claim is taken back by any request | 1: released, then different | 1, that test |
 
+> **Corrected 2026-10-13 — see decision 151.** Item 3's retry of every failed write of an answer
+> could release a claim another request had taken back, so one key made two payments. A release is
+> written once now; only a kept answer is tried again. The question about a replay's record is open
+> question 78.
+
 ## 133 · Step 21's decisions, taken on the learner's instruction before any code (2026-10-11)
 
 **Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
@@ -4221,6 +4240,9 @@ on.
 6. **The demo reads before it decides.** The agent reads INV-1009 and issues it on the version it
    read, so the demo's second run, where INV-1009 is already issued, is `CONFLICT` on the version it
    read, and a stale version is shown on purpose.
+
+> **Corrected 2026-10-13 — see decision 152.** The demo's agent did not read INV-1009 through the
+> door, as the sixth choice says; `main.ts` read the store. It reads it through the door now.
 
 ## 134 · What step 21's review found, and what was chosen (2026-10-11)
 
@@ -4261,6 +4283,10 @@ row leaves it where it was; a row deleted and written again starts at 1, so an o
 matches a different record; and every new record is at 1, so `expected_version: 1` proves nothing
 was read. Two decisions in one company at one moment race for the next place in its log, the log's
 to settle; the database tier races the change itself.
+
+> **Superseded in part by decision 152, 2026-10-13.** Item 6's "`DSOR-FRS-01a` is met in part" was
+> the false half: §27 asks a query result to state the `resource_version`, not the label, and both
+> reads state each row's version.
 
 ## 135 · What breaking step 21 on purpose found (2026-10-11)
 
@@ -4385,6 +4411,11 @@ failed exactly its one test, as predicted. The README's three breaks were measur
 runs agreed: a way out of COMMITTED fails 4, a state left twice fails 1, and a handler run without
 the move to EXECUTING fails 9.
 
+> **Corrected 2026-10-13 — see decision 153.** The map is §26.2's without its compensation line
+> (open question 80). "The first is finished as DENIED" holds only once DENIED is written: a
+> refused request's proposal can stay PROPOSED. And the one-statement half of the first fix was
+> never broken on purpose; decision 153 broke it, and it failed its new test.
+
 ## 138 · Step 23's decisions, taken on the learner's instruction before any code (2026-10-11)
 
 **Decided by:** Claude, on the learner's standing instruction of this date, "start step 21 till 25
@@ -4420,6 +4451,9 @@ effect.
 6. **Every command supports all three**, as `DSOR-OPR-05` says; nothing in a contract turns one
    off. Rejected for now: the `.propose` permission of §7.3, an agent allowed to prepare and not to
    execute, because what it prepares can only be released from step 31.
+
+> **Corrected 2026-10-13 — see decision 154.** "The same refusal execute would get" holds only for
+> the checks a dry run makes: not for the key's claim, and not for the handlers' own checks.
 
 ## 139 · What step 23's review found, and what was chosen (2026-10-11)
 
@@ -4460,6 +4494,11 @@ broken once, in a copy, on the whole suite, and each failed exactly its one test
 README's three breaks were measured twice and the runs agreed: a dry run that claims its key fails
 8, where 5 were predicted, because a dry run without a key is then refused for want of one; a dry
 run recorded as ALLOWED fails 1; a prepared command carried out fails 6.
+
+> **Corrected 2026-10-13 — see decisions 153 and 154.** "Only a read-back that finds the proposal
+> where it was says nothing was done" did not hold: a write whose reply was lost can land after the
+> read. Only a written DENIED says so now. And "every check before the handler" holds only for the
+> checks a dry run makes.
 
 ## 140 · Step 24's decisions, taken on the learner's instruction before any code (2026-10-11)
 
@@ -4522,6 +4561,9 @@ fail, fifty reservations at once, forty booked. And it showed a second thing: an
 the log race count against the day, and one payment in each real-server run was refused
 `LIMIT_EXCEEDED` with room left once they were given back. The limit erred toward refusing, which is
 the direction decision 140 chose, and the day's total ended exactly what was made.
+
+> **Corrected 2026-10-13 — see decision 155.** Item 3's sketch has no condition on the day's first
+> booking. The code had one; the README's sketch has it now.
 
 ## 141 · What step 24's review found, and what was chosen (2026-10-11)
 
@@ -4686,6 +4728,11 @@ one move allowed into EXECUTING, 1; a prepared command forgetting the brake, 1; 
 slips' policy without `revoked_by` and start-up expecting it so, 1. The README's three breaks were
 measured twice and the runs agreed: §21.4 asking nothing fails 5, the move to EXECUTING forgetting
 the brake 1, and a revocation cancelling nothing 2.
+
+> **Corrected 2026-10-13 — see decision 156.** "Revocation stops new decisions" understated it: a
+> command already past §21.3 when the slip is revoked is still decided under it, recorded as ALLOW
+> after the revocation, and run. The question for the editor is open question 79, and it names
+> `control.suspend`'s target too.
 
 ## 144 · Steps 22 to 24's ordering walk gets two minutes of its own, found when CI gave every folder its own machine (2026-10-12)
 
