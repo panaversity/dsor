@@ -7,6 +7,7 @@
 // The program keeps proposals in dsor.proposals (postgres.ts); the unit tests keep them in memory
 // (memoryProposals below).
 import { randomUUID } from "node:crypto";
+import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
 import { millisecondsOf } from "./authority.ts";
 import type { Correlation, Refusal, Requirement } from "./envelope.ts";
 import { transitionOf, type Authority, type Mover, type ProposalTransition } from "./log.ts";
@@ -118,6 +119,9 @@ export type Proposal = ProposalDraft & {
   // NEW IN STEP 29: what it waits for, once line ⑩ stopped it at PENDING_APPROVAL: the schema's
   // own requires (step 29's README, decision D4).
   requires?: Requirement[];
+  // NEW IN STEP 29: and the ids of its approvals, once it has one: the schema's own approvals
+  // (decision D8).
+  approvals?: string[];
   created_at: string;
   // When a READY proposal stops waiting: created_at plus its company's lifetime,
   // by the store's clock (step 25c's README, decisions L2 and D6).
@@ -165,6 +169,13 @@ export type ProposalStore = {
   // PENDING_APPROVAL ones, each with its state, which the sweep's move starts from (step 27's
   // README, decision D11).
   due: (tenant: string) => Promise<Due[]>;
+  // NEW IN STEP 29: one approval and, when it is the last one the proposal waits for, the move to
+  // APPROVED, with its record: one step, while no other approval, tear-up, or sweep of the company
+  // runs. It approves only a PENDING_APPROVAL proposal whose time has not come (step 29's README,
+  // decisions D8, D9, and D11).
+  approve: (tenant: string, id: string, offer: Offer, by: MoveBy) => Promise<Approving>;
+  // And every approval of one proposal, in the order they were given.
+  approvals: (tenant: string, id: string) => Promise<Approval[]>;
 };
 
 // A proposal whose time has come, and the state it waited in (step 27's README,
@@ -256,6 +267,11 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   waiting: async () => [],
   // And none that is due.
   due: async () => [],
+  // NEW IN STEP 29: and approves none.
+  approve: async (): Promise<never> => {
+    throw new Error("this call approves no proposal");
+  },
+  approvals: async () => [],
 });
 
 /** A record kept in memory: the record, its id, its place in the log, and its time. */
@@ -288,6 +304,10 @@ type Row = ProposalDraft & {
 export function memoryProposals(now: () => number = Date.now): MemoryProposals {
   const rows = new Map<string, Row>();
   const records: KeptTransition[] = [];
+  // NEW IN STEP 29: every approval, in the order they were given.
+  const given: Approval[] = [];
+  const approvalsOf = (tenant: string, uri: string): Approval[] =>
+    given.filter((approval) => approval.tenant === tenant && approval.proposal === uri);
   const keyOf = (tenant: string, id: string): string => JSON.stringify([tenant, id]);
   const record = (made: ProposalTransition): void => {
     records.push({
@@ -303,7 +323,9 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     const transitions = records
       .filter((kept) => kept.tenant === tenant && kept.resources[0] === uri)
       .map(transitionFrom);
-    return { uri, tenant, ...draft, transitions };
+    // NEW IN STEP 29: and the ids of its approvals, once it has one.
+    const ids = approvalsOf(tenant, uri).map((approval) => approval.id);
+    return { uri, tenant, ...draft, ...(ids.length > 0 ? { approvals: ids } : {}), transitions };
   };
   return Object.freeze({
     create: async (
@@ -404,6 +426,46 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       }
       return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },
+    // NEW IN STEP 29: the approval and the move, with no await between them, so no other call
+    // runs in between, as the database's ending lock keeps them apart (step 29's README, decision
+    // D9).
+    approve: async (tenant: string, id: string, offer: Offer, by: MoveBy): Promise<Approving> => {
+      checkMove("PENDING_APPROVAL", "APPROVED", by);
+      const row = rows.get(keyOf(tenant, id));
+      if (row === undefined) return { refused: "moved" };
+      if (row.state !== "PENDING_APPROVAL") return { refused: "moved", state: row.state };
+      // The move to PENDING_APPROVAL wrote it, and nothing clears it (step 29's README, decision D4).
+      if (row.requires === undefined) throw new Error("a waiting proposal names what it waits for");
+      // Its time has come, by the store's clock, though no sweep has moved it yet.
+      if (Date.parse(row.expires_at) <= now()) return { refused: "expired" };
+      const uri = proposalUri(tenant, id);
+      const before = approvalsOf(tenant, uri);
+      const { operation, resources, payload_hash, expires_at, requires } = row;
+      const bindable = { uri, tenant, operation, resources, payload_hash, expires_at, requires };
+      const made = approvalOf(bindable, before, offer);
+      if (typeof made === "string") return { refused: made };
+      given.push(made);
+      const waits_for = stillOpen(requires, [...before, made]);
+      if (waits_for.length > 0) {
+        return { approval: structuredClone(made), state: "PENDING_APPROVAL", waits_for };
+      }
+      row.state = "APPROVED";
+      record(
+        transitionOf(
+          tenant,
+          uri,
+          operation,
+          "PENDING_APPROVAL",
+          "APPROVED",
+          by.mover,
+          by.cause,
+          by.correlation,
+        ),
+      );
+      return { approval: structuredClone(made), state: "APPROVED", waits_for };
+    },
+    approvals: async (tenant: string, id: string): Promise<Approval[]> =>
+      structuredClone(approvalsOf(tenant, proposalUri(tenant, id))),
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),
   });

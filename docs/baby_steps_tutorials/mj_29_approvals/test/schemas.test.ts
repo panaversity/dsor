@@ -78,4 +78,14 @@ describe("the schema copies", () => {
       expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
     },
   );
+
+  // NEW IN STEP 29: the approval's schema is a copy too. The tests check every approval DSoR keeps
+  // against it (step 29's README, decision D7).
+  it.skipIf(!existsSync(ORIGINALS))(
+    "DSOR-APR-02a: schemas/approval.schema.json equals the specification's own",
+    () => {
+      const file = "approval.schema.json";
+      expect(readFileSync(COPIES + file, "utf8")).toBe(readFileSync(ORIGINALS + file, "utf8"));
+    },
+  );
 });

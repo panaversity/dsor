@@ -209,6 +209,16 @@
         }
       }
     },
+    "dsor.approvals": {
+      "kind": "append-only",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "id", "proposal_id", "approver", "approval"]
+        }
+      }
+    },
     "dsor.migrations": {
       "kind": "bookkeeping",
       "tenant": null,

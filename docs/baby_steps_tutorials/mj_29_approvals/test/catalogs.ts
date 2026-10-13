@@ -173,6 +173,11 @@ const CONTROL_COLUMNS = [
 const CONTROL_ADDED = ["tenant_id", "id", "version", "status", "rule", "compiled_by"];
 const CONTROL_MOVED = ["status", "reviewed_by", "effective_from", "in_force"];
 
+// NEW IN STEP 29: dsor.approvals, as migration 026 makes it. dsor_runtime reads every column and adds
+// an approval through five. given_at is the database's to fill, and nothing changes or removes an
+// approval (step 29's README, decision D8).
+const APPROVAL_COLUMNS = ["tenant_id", "id", "proposal_id", "approver", "approval", "given_at"];
+
 // Dsor.notices, as migration 024 makes it. dsor_runtime reads every column and adds a notice
 // through seven. at is the database's to fill, and nothing changes or removes a notice (step
 // 28b's README, decision D5).
@@ -250,6 +255,19 @@ export function today(): Catalog {
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [PAYMENT_TRIGGER],
+      },
+      // NEW IN STEP 29: the approvals, behind the company's lock, written once.
+      {
+        name: "dsor.approvals",
+        kind: "table",
+        held: ["SELECT"],
+        columns: APPROVAL_COLUMNS.map((name) => {
+          const filled = name === "given_at";
+          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
       },
       {
         name: "dsor.audit",

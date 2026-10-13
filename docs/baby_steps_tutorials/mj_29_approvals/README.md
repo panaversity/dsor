@@ -121,9 +121,10 @@ for the learner to review, and each one says what it costs. This folder is a cop
 - **D9. Every rule that asked must be satisfied (DSOR-AUT-02c).** The proposal moves to `APPROVED`
   only when each requirement it waits for has its quorum of approvers. Until then it stays
   `PENDING_APPROVAL`, and the answer says what it still waits for. The approval and that move are
-  one step of the store, while no other approval of the proposal can run, so two approvers at once
-  never both leave it waiting. *Downside:* an approver waits for another approver of the same
-  proposal, for a moment.
+  one step of the store, under the company's *ending lock*: the lock that a tear-up and a sweep
+  already take before they list the waiting proposals (step 25c). So two approvers at once never
+  both leave it waiting, and a tear-up or a sweep never misses an approval. *Downside:* an approver
+  waits for any other approval, tear-up, or sweep of the same company, for a moment.
 - **D10. In person (DSOR-APR-05a, DSOR-APR-05b).** `proposal.approve` is for people only, so line ⑤
   refuses an agent, an application, or a system login, whatever its slip lists. In this tutorial
   only an agent works under a slip, so a person's call is always direct, on the person's own login.

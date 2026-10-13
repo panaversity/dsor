@@ -47,6 +47,13 @@ import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import type { Requirement } from "./envelope.ts";
 import {
+  approvalOf,
+  stillOpen,
+  type Approval,
+  type Approving,
+  type Offer,
+} from "./approvals.ts";
+import {
   checkMove,
   checkRequires,
   isProposalOf,
@@ -1698,6 +1705,9 @@ export function createDbProposals(pool: pg.Pool): ProposalStore {
 // PostgreSQL would fail one of them. So each takes the company's ending lock, alone, before it
 // lists its work, until its transaction ends. Found by step 25c's review (finding M1; step 25c's
 // README, decision D13).
+// NEW IN STEP 29: and an approval takes it too, before it locks the proposal. A tear-up or a sweep
+// that listed a proposal as PENDING_APPROVAL would otherwise find it APPROVED a moment later, and
+// leave it so: its move starts from the state it listed (step 29's README, decision D9).
 function endingKey(tenant: string): string {
   return `dsor.ending/${tenant}`;
 }
@@ -1769,37 +1779,7 @@ function proposalsThrough(run: Runner): ProposalStore {
       checkMove(from, to, by);
       // NEW IN STEP 29: and what it waits for, on the move to PENDING_APPROVAL only.
       checkRequires(from, to, requires);
-      return run(tenant, async (client) => {
-        // Only while it is still in `from`: the check and the write are one statement, so a
-        // second mover that read the same state changes nothing (decision 6). DSoR's own WHERE,
-        // the company first, with row-level security behind it (DSOR-TEN-01b).
-        // And what it waits for, named only on the move that starts the wait.
-        const named = requires === undefined ? "" : ", requires = $5::jsonb";
-        const values: unknown[] = [tenant, id, to, from];
-        if (requires !== undefined) values.push(JSON.stringify(requires));
-        const { rows } = await client.query<{ operation: string }>(
-          `UPDATE dsor.proposals SET state = $3${named}
-            WHERE tenant_id = $1 AND id = $2 AND state = $4 RETURNING operation`,
-          values,
-        );
-        if (rows.length === 0) return false;
-        if (rows.length !== 1) throw new Error(`one move changed ${rows.length} proposals, not 1`);
-        const uri = proposalUri(tenant, id);
-        await recordMove(
-          client,
-          transitionOf(
-            tenant,
-            uri,
-            rows[0]!.operation,
-            from,
-            to,
-            by.mover,
-            by.cause,
-            by.correlation,
-          ),
-        );
-        return true;
-      });
+      return run(tenant, (client) => moveWith(client, tenant, id, from, to, by, requires));
     },
     get: async (tenant: string, id: string): Promise<Proposal | undefined> =>
       run(tenant, async (client) => {
@@ -1819,7 +1799,9 @@ function proposalsThrough(run: Runner): ProposalStore {
             ORDER BY sequence`,
           [tenant, uri],
         );
-        return proposalOf(rows[0]!, moves.rows);
+        // NEW IN STEP 29: and the ids of its approvals, in the order they were given.
+        const given = await approvalsIn(client, tenant, id);
+        return proposalOf(rows[0]!, moves.rows, given.map((approval) => approval.id));
       }),
     // The proposals made under one slip that still wait: the slip their requester names (step
     // 22's README, decision 11). DSoR's own WHERE, the company first, with row-level security
@@ -1856,7 +1838,114 @@ function proposalsThrough(run: Runner): ProposalStore {
         );
         return rows;
       }),
+    // NEW IN STEP 29: the approval's one step, inside one transaction: the claim's, on the call's
+    // path. The company's ending lock first, which every mover of a waiting proposal takes: an
+    // approval, a tear-up, and a sweep. So two approvals of one proposal run one after the other,
+    // and the count sees every approval before it (step 29's README, decision D9). Found by the
+    // step's own breaks: a lock of the proposal's row as well changed nothing, so there is none.
+    approve: async (tenant: string, id: string, offer: Offer, by: MoveBy): Promise<Approving> => {
+      checkMove("PENDING_APPROVAL", "APPROVED", by);
+      return run(tenant, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          endingKey(tenant),
+        ]);
+        // DSoR's own WHERE, the company first, with row-level security behind it (DSOR-TEN-01b).
+        const { rows } = await client.query<LockedRow>(
+          `SELECT state, operation, resources, payload_hash, expires_at, requires,
+                  expires_at <= now() AS due
+             FROM dsor.proposals WHERE tenant_id = $1 AND id = $2`,
+          [tenant, id],
+        );
+        // Found by the step's own breaks: with the company gone from this WHERE, row-level security
+        // hid it. As get does, one id names one proposal, or the store has a bug.
+        if (rows.length > 1) throw new Error(`one id names ${rows.length} proposals, not 1`);
+        const row = rows[0];
+        if (row === undefined) return { refused: "moved" };
+        if (row.state !== "PENDING_APPROVAL") return { refused: "moved", state: row.state };
+        // The move to PENDING_APPROVAL wrote it, and the trigger lets nothing clear it.
+        if (row.requires === null) throw new Error("a waiting proposal names what it waits for");
+        // Its time has come, by the database's clock, though no sweep has moved it yet.
+        if (row.due) return { refused: "expired" };
+        const before = await approvalsIn(client, tenant, id);
+        const { operation, resources, payload_hash, requires } = row;
+        const uri = proposalUri(tenant, id);
+        const expires_at = row.expires_at.toISOString();
+        const bindable = { uri, tenant, operation, resources, payload_hash, expires_at, requires };
+        const made = approvalOf(bindable, before, offer);
+        if (typeof made === "string") return { refused: made };
+        const added = await client.query(
+          `INSERT INTO dsor.approvals (tenant_id, id, proposal_id, approver, approval)
+           VALUES ($1, $2, $3, $4, $5::jsonb)`,
+          [tenant, made.id, id, offer.approver, JSON.stringify(made)],
+        );
+        if (added.rowCount !== 1) throw new Error(`the approval was added ${added.rowCount ?? 0} times, not once`);
+        const waits_for = stillOpen(requires, [...before, made]);
+        if (waits_for.length > 0) return { approval: made, state: "PENDING_APPROVAL", waits_for };
+        // The last one it waited for: the move, under the same lock, with its record.
+        if (!(await moveWith(client, tenant, id, "PENDING_APPROVAL", "APPROVED", by))) {
+          throw new Error("a locked proposal did not move");
+        }
+        return { approval: made, state: "APPROVED", waits_for };
+      });
+    },
+    approvals: async (tenant: string, id: string): Promise<Approval[]> =>
+      run(tenant, (client) => approvalsIn(client, tenant, id)),
   });
+}
+
+// NEW IN STEP 29: a proposal's row, as the approval's step reads it under the ending lock.
+type LockedRow = {
+  state: State;
+  operation: string;
+  resources: string[];
+  payload_hash: string;
+  expires_at: Date;
+  requires: Requirement[] | null;
+  due: boolean;
+};
+
+/** One move of a proposal still in `from`, with its record, inside the caller's transaction. */
+async function moveWith(
+  client: pg.PoolClient,
+  tenant: string,
+  id: string,
+  from: State,
+  to: State,
+  by: MoveBy,
+  requires?: Requirement[],
+): Promise<boolean> {
+  // Only while it is still in `from`: the check and the write are one statement, so a second mover
+  // that read the same state changes nothing (step 22's README, decision 6). DSoR's own WHERE, the
+  // company first, with row-level security behind it (DSOR-TEN-01b).
+  // And what it waits for, named only on the move that starts the wait (step 29's README, decision
+  // D4).
+  const named = requires === undefined ? "" : ", requires = $5::jsonb";
+  const values: unknown[] = [tenant, id, to, from];
+  if (requires !== undefined) values.push(JSON.stringify(requires));
+  const { rows } = await client.query<{ operation: string }>(
+    `UPDATE dsor.proposals SET state = $3${named}
+      WHERE tenant_id = $1 AND id = $2 AND state = $4 RETURNING operation`,
+    values,
+  );
+  if (rows.length === 0) return false;
+  if (rows.length !== 1) throw new Error(`one move changed ${rows.length} proposals, not 1`);
+  const uri = proposalUri(tenant, id);
+  await recordMove(
+    client,
+    transitionOf(tenant, uri, rows[0]!.operation, from, to, by.mover, by.cause, by.correlation),
+  );
+  return true;
+}
+
+/** NEW IN STEP 29: every approval of one proposal, in the order they were given. */
+async function approvalsIn(client: pg.PoolClient, tenant: string, id: string): Promise<Approval[]> {
+  // DSoR's own WHERE, the company first, with row-level security behind it (DSOR-TEN-01b).
+  const { rows } = await client.query<{ approval: Approval }>(
+    `SELECT approval FROM dsor.approvals WHERE tenant_id = $1 AND proposal_id = $2
+      ORDER BY given_at, id`,
+    [tenant, id],
+  );
+  return rows.map((row) => row.approval);
 }
 
 // One move's record, in the log, inside the move's own transaction. As for every other record,
@@ -1884,7 +1973,8 @@ async function recordMove(client: pg.PoolClient, made: ProposalTransition): Prom
 }
 
 // A proposal in the specification's shape, with its history from the log.
-function proposalOf(row: ProposalRow, moves: MoveRow[]): Proposal {
+// NEW IN STEP 29: and the ids of its approvals.
+function proposalOf(row: ProposalRow, moves: MoveRow[], approvals: string[]): Proposal {
   return {
     uri: proposalUri(row.tenant_id, row.id),
     tenant: row.tenant_id,
@@ -1893,6 +1983,8 @@ function proposalOf(row: ProposalRow, moves: MoveRow[]): Proposal {
     state: row.state,
     // NEW IN STEP 29: and what it waits for, once it waits.
     ...(row.requires === null ? {} : { requires: row.requires }),
+    // NEW IN STEP 29: and its approvals, once it has one.
+    ...(approvals.length === 0 ? {} : { approvals }),
     payload: row.payload,
     payload_hash: row.payload_hash,
     resources: row.resources,

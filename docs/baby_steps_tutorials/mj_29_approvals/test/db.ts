@@ -262,6 +262,12 @@ export function ownerProposalStore(): unknown {
   return asOwner("owner-store.ts", ["proposals"]);
 }
 
+// NEW IN STEP 29: the approvals' own SQL, with no policy behind it (step 29's README, decision D8).
+/** What org_456's approvals are to the owner, whom no policy stops, beside org_789's approval of a twin proposal. */
+export function ownerApprovals(): unknown {
+  return asOwner("owner-store.ts", ["approvals"]);
+}
+
 // The rates store's own SQL, with no policy behind it (step 26's sweep).
 /** org_456's newest sheet, as DSoR's store gives it to the owner, whom no policy stops, beside org_789's sheets. */
 export function ownerRates(): unknown {

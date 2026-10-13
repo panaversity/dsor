@@ -18,6 +18,10 @@
 // org_789 from one source, and asks the rates store for org_456's newest sheet. Found by step 26's
 // sweep: with tenant_id dropped from the newest sheet's SQL, every test stayed green. And it asks
 // what a load of a sheet at org_789's time would do in org_456.
+// Or as  node test/owner-store.ts approvals,  which makes a waiting proposal in org_456 and a twin
+// with the same id in org_789, approves the twin, and asks org_456's store for its approvals, then
+// approves org_456's own. Only DSoR's own WHERE keeps org_789's approval out of org_456's count
+// (step 29's README, decision D8).
 import {
   createDbInvoices,
   createDbLog,
@@ -106,6 +110,61 @@ try {
       id,
     ]);
     result = { bypassrls, history, crossGet, crossMove, stateAfter: after[0]?.["state"] ?? null };
+  } else if (process.argv[2] === "approvals") {
+    const proposals = createDbProposals(pool);
+    const id = `prop_${randomUUID()}`;
+    const authority = { source: "token" as const, as_of: new Date().toISOString() };
+    const by = (subject: string): MoveBy => ({
+      mover: { mode: "direct", subject, actor_chain: [], subject_authority: authority },
+      cause: "the owner's test of DSoR's own lock",
+      correlation: { request_id: "req_owner_store", principal_id: subject },
+    });
+    const cfo = [{ approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 }];
+    // The same proposal id, waiting for one CFO, in each company.
+    for (const tenant of ["org_456", "org_789"]) {
+      const invoice = `dsor://${tenant}/invoice/INV-1008`;
+      await proposals.create(
+        tenant,
+        id,
+        {
+          operation: "payment.create@1",
+          mode: "execute",
+          payload: { invoice, expected_version: 1 },
+          payload_hash: `sha256:${"e".repeat(64)}`,
+          resources: [invoice],
+          requester: {
+            identity_mode: "direct",
+            subject: "user_123",
+            subject_type: "human",
+            actor_chain: [],
+            active_tenant: tenant,
+            subject_authority: authority,
+          },
+          idempotency_key: "k-owner-approvals",
+        },
+        by("user_123"),
+        "P7D",
+      );
+      await proposals.move(tenant, id, "PROPOSED", "PENDING_APPROVAL", by("dsor"), cfo);
+    }
+    const offer = (approver: string) => ({
+      id: `apr_${randomUUID()}`,
+      risk: "medium" as const,
+      bound_state: { mode: "predicate" as const, versions: {} },
+      approver,
+      roles: ["CFO"],
+      at: new Date().toISOString(),
+    });
+    await proposals.approve("org_789", id, offer("cfo_789"), by("cfo_789"));
+    const before = (await proposals.approvals("org_456", id)).map((a) => a.approvers[0]?.principal);
+    const approved = await proposals.approve("org_456", id, offer("cfo_100"), by("cfo_100"));
+    const kept = (await proposals.get("org_456", id))?.approvals?.length ?? 0;
+    result = {
+      bypassrls,
+      before,
+      approved: "approval" in approved ? approved.state : approved.refused,
+      kept,
+    };
   } else if (process.argv[2] === "rates") {
     // Org_456's sheet, and two of org_789 from the same source, one at the same
     // time and one newer. Only DSoR's own WHERE keeps org_789's out of org_456's newest sheet: out
