@@ -1770,6 +1770,9 @@ first, and to talk through steps 28, 28b, and 29 together after.
   - Run first, then write the commit. One message named a count before the run printed it, and the
     count was wrong. Another said the formatter changed no token, and it adds trailing commas. Both
     messages were corrected before the next commit.
+- **The visual story:** "When the CFO Rule Changes", version 2, adds Act 3, the approvals, six
+  scenes from real runs, and step 29's breaks and review, at the same address,
+  https://claude.ai/artifact/XSRMSYFiSjsvxte2XbfGEg (private to the learner).
 - **For the learner's session:** steps 28, 28b, and 29 together: the visual story, now with a third
   act; step 28's D1 to D21, step 28b's D1 to D15, and step 29's D1 to D15; the twelve breaks to
   predict; and open questions 113 to 122.
