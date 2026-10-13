@@ -80,7 +80,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_23
 | `src/main.ts` | ten payments of 25,000.00 against the day, one after another |
 | `test/limits.test.ts` | new — the limit, booking, the race of fifty reservations, settling with the history, the door's payments and their reservations, and a booking the store refuses |
 | `test/limits.db.test.ts` | new — fifty reservations at once on a real server, and fifty payments through the door racing for room for one |
-| `test/main.test.ts` | ten more decisions in the demo's log, and what a second run the same day changes |
+| `test/main.test.ts` | ten more decisions in the demo's log, and the records of thirty-two more moves, and what a second run the same day changes |
 | `test/database.test.ts` | start-up refuses an application that may delete a total or a reservation, or write one settled, and the reservations without the policy that keeps a settled one |
 | `test/control-plane-store.test.ts` | the day totals and the reservations are in DSoR's own schema |
 | `test/support/story.ts` | putting the story back empties the day totals and the reservations, and gives del_100 its daily limit again |
@@ -109,10 +109,8 @@ since cancelled, and the 400.00 prepared in step 23's section, whose reservation
 waits at READY. Cancelling a payment does not give its amount back to the day. Six of the ten fit,
 and the seventh would pass 200,000.00.
 
-They go one after another on purpose. Sent at once, almost all of them would be refused for a
-reason that is not the limit: decisions in one company at one moment race for the next place in its
-log, and the log refuses the loser, `EVIDENCE_STORE_UNAVAILABLE`, safe to send again. The race on
-the limit itself is the database tier's.
+They go one after another so that they print in the order they were sent, and the refused ones
+come last. The race on the limit itself is the database tier's.
 
 The day's total is kept between runs. Run the demo a second time on the same day, and the day is
 nearly full from the first run, 184,500.00: the second run's 31,400.00 payment is refused
@@ -199,7 +197,7 @@ Copy `my_23_three_ways_to_call` to a new folder and ask:
 3. The agent's payment is refused because its handler finds no such invoice. What happens to its
    reservation? And a payment whose handler crashed half way?
 4. A prepared payment, `propose_only`, waits at READY. Does its amount count against the day?
-5. Fifty payments sent at once: why are most of them refused, and is it the limit that refuses them?
+5. Fifty payments are sent at once, with room left for one. What refuses the other forty-nine?
 
 <details>
 <summary>Answers</summary>
@@ -211,8 +209,11 @@ Copy `my_23_three_ways_to_call` to a new folder and ask:
 3. It is released, and its amount given back: FAILED says nothing was done. A crashed one is
    OUTCOME_UNKNOWN, and its reservation stays held, because nobody knows whether it ran.
 4. Yes. It may still run, so it holds its reservation.
-5. Most lose the race for the company's log and are refused `EVIDENCE_STORE_UNAVAILABLE`, safe to
-   send again. The limit refuses only what would pass it; with room for one, at most one is made.
+5. The limit, `LIMIT_EXCEEDED`: each books its amount at §21.10, and only one fits. Their records
+   race for the end of the company's log too, but a record that loses its place tries the next one
+   (step 22). Measured on a local PostgreSQL 17, four runs: one made, forty-nine `LIMIT_EXCEEDED`,
+   each time. A request that lost ten places would be refused `EVIDENCE_STORE_UNAVAILABLE`, with
+   nothing done.
 
 </details>
 
@@ -235,11 +236,12 @@ that booked nothing, then released, gives back what it never took. It could as w
 past the limit, because a payment is not tied to its reservation; that tie, which would make the
 limit the database's and not only the pipeline's, is a later step's. What the database keeps is the
 race and the settled reservation. Cancelling a payment does not give its amount back to the day.
-Requests at once in one company mostly lose the race for its log, and a request that books and then
-loses it holds its amount for a moment, so another can be refused `LIMIT_EXCEEDED` with room that is
-given back a moment later: the limit errs toward refusing. One window, a day in UTC; the schema's
-other windows, and the company's own time zone, are not built. An amount in another currency is
-refused until step 26. The states of approval, and their holds and releases, come with step 29.
+A request that books and then cannot write its decision, because it lost ten places at the end of
+the company's log, holds its amount for a moment, so another can be refused `LIMIT_EXCEEDED` with
+room that is given back a moment later: the limit errs toward refusing. One window, a day in UTC;
+the schema's other windows, and the company's own time zone, are not built. An amount in another
+currency is refused until step 26. The states of approval, and their holds and releases, come with
+step 29.
 
 Everything earlier steps claimed still holds.
 

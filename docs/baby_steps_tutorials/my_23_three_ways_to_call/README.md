@@ -74,17 +74,17 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_22
 | File | What |
 | --- | --- |
 | `migrations/021_the_claim_keeps_its_mode.sql` | new — the claim keeps the mode it was made in, written with the claim and never changed |
-| `src/operations.ts` | the door reads the mode beside the key; §21.6 checks it; the claim and the proposal step aside for a dry run; §21.11 records a dry run as `VALIDATED`; the door answers a dry run, prepares a `propose_only` command to READY, and reads a lost reply back before it says nothing was done |
+| `src/operations.ts` | the door reads the mode beside the key; §21.6 checks it; the claim and the proposal step aside for a dry run; §21.11 records a dry run as `VALIDATED`; the door answers a dry run, prepares a `propose_only` command to READY, with the move's record in the request's name, and reads a lost reply back before it says nothing was done, but not a move that can never land |
 | `src/pipeline.ts` | the three modes, and the mode in the context |
 | `src/envelopes.ts` | the result envelope has room for `READY` and `VALIDATED`, which carry no data, and their builders; both say the command's semantics |
 | `src/idempotency.ts` | the claim compares the mode as it compares the fingerprint |
 | `src/database.ts` | start-up refuses an application that may change a claim's mode |
 | `src/main.ts` | one payment called three ways, and the payments each made |
-| `test/modes.test.ts` | new — the modes, the dry run, the prepared command, a lost reply read back, how the mode is read, a released key never taken back in the other mode, and every command in the registry called all three ways |
+| `test/modes.test.ts` | new — the modes, the dry run, the prepared command, a lost reply read back, how the mode is read, a released key never taken back in the other mode, and every command in the registry called all three ways; a prepared command leaves the records of PROPOSED and READY and none after them, and a dry run its decision and no record of any move; a move to READY the server refused is DENIED and nothing done, even when it cannot be read back |
 | `test/pipeline.test.ts` | a dry run and a prepared command without the record of the decision are refused, as a command carried out is |
 | `test/database.test.ts` | start-up refuses an application that may change a claim's mode, tested |
 | `test/model-boundary.test.ts`, `test/versions.test.ts` | a receipt's `data` is read as optional, because a `READY` or `VALIDATED` answer has none |
-| `test/main.test.ts` | three more decisions in the demo's log |
+| `test/main.test.ts` | three more decisions in the demo's log, and the records of six more moves |
 
 ## Run it
 
@@ -107,10 +107,19 @@ accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-906  d
 
 The same request three times. The dry run is decided and answered; the prepared one becomes
 prop_11, waiting at READY; only the third makes a payment. All three are in the log printed below
-them, and the dry run says so:
+them. The dry run is one line, its decision, and it says so. The prepared one has the records of its
+moves to PROPOSED and READY, and nothing after them. The third, prop_12, has all four:
 
 ```text
-42  ALLOW  payment.create@1     user_123               VALIDATED               sha256:a5b5f82...  unattended: by accounts-payable-fte under del_100
+80  ALLOW  payment.create@1     user_123               VALIDATED               sha256:835e397...  unattended: by accounts-payable-fte under del_100
+81  move   payment.create@1     user_123               PROPOSED prop_11        sha256:9ebd504...  unattended: by accounts-payable-fte under del_100
+82  ALLOW  payment.create@1     user_123               ALLOWED                 sha256:b832434...  unattended: by accounts-payable-fte under del_100
+83  move   payment.create@1     user_123               READY prop_11           sha256:9ec42f1...  unattended: by accounts-payable-fte under del_100
+84  move   payment.create@1     user_123               PROPOSED prop_12        sha256:adc39ed...  unattended: by accounts-payable-fte under del_100
+85  ALLOW  payment.create@1     user_123               ALLOWED                 sha256:d0e0ccd...  unattended: by accounts-payable-fte under del_100
+86  move   payment.create@1     user_123               READY prop_12           sha256:a98a57f...  unattended: by accounts-payable-fte under del_100
+87  move   payment.create@1     user_123               EXECUTING prop_12       sha256:d1f6977...  unattended: by accounts-payable-fte under del_100
+88  move   payment.create@1     user_123               COMMITTED prop_12       sha256:aafa080...  unattended: by accounts-payable-fte under del_100
 ```
 
 ### The database tier

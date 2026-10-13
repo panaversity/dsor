@@ -27,14 +27,22 @@ reads that table and nothing it sends can change it.
 **Tearing up a slip.** `delegation.revoke` marks a slip revoked, with who and why. Its signer may: for
 del_100, `user_123`. After that the agent has no slip, and every command it sends is refused. In the
 same statement, every proposal under the slip that was waiting for approval, or approved, is
-cancelled. Then the amount each one held against the day is given back. An amount that cannot be
-given back stays held, which errs toward refusing.
+cancelled, and each cancellation has its record in the company's audit log, in the name of the
+request that revoked. Then the amount each one held against the day is given back. An amount that
+cannot be given back stays held, which errs toward refusing.
+
+The records are made from what DSoR read just before: which proposals wait, and in which state. So
+the statement revokes the slip only if what waits is still what was read. A proposal that started
+waiting in between has no record ready, and would be left waiting under a revoked slip. If what
+waits changed, nothing is written, and DSoR reads again, at most five times. After five, the answer
+is `CONFLICT`, and nothing was revoked. Nothing can wait for approval before step 29, so today only
+a test reaches this.
 
 **Two locks, not one.** §21.4 refuses a stopped agent's command before anything is decided. But a
 person can pull the brake while one of the agent's commands is already past §21.4, on its way to its
 handler. So the statement that moves a proposal to EXECUTING asks again, in the same statement: if a
-brake is on the agent now, nothing is written, the proposal is DENIED, and the handler never runs. A
-prepared command's move to READY asks too.
+brake is on the agent now, nothing is written, neither the moves nor their records in the log, the
+proposal is DENIED, and the handler never runs. A prepared command's move to READY asks too.
 
 **Who may, decided before it is recorded.** Only a slip's signer may revoke it, and only a person may
 release a brake. Both are decided at §21.9, a stage that reads the validated arguments, before §21.11
@@ -62,15 +70,16 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `migrations/025_a_slip_can_be_revoked.sql` | new — a slip can be marked revoked with who, when and why, and nothing else; a second policy keeps it so |
 | `migrations/026_org_789_has_a_slip_too.sql` | new — org_789's own del_100, so the cross-tenant suite has a slip of the same number in both companies |
 | `src/controls.ts` | new — pull the brake, release it, and say what stops an agent now |
-| `src/delegation.ts` | read one slip by its id; revoke it and cancel what waited under it, in one statement |
-| `src/operations.ts` | §21.4 asks the brake; §21.9 asks who may act on the target; the door's move to EXECUTING, and a prepared command's to READY, ask the brake again; the handlers of `control.suspend` and `delegation.revoke` |
-| `src/proposal.ts` | the path into EXECUTING must be told the agent, and asks the brake; nothing enters EXECUTING one move at a time |
+| `src/delegation.ts` | read one slip by its id; revoke it and cancel what waited under it, in one statement, with the record of each cancellation, and only if what waits is still what was read; read again, five times at most; a slip that has ended is told so at once |
+| `src/operations.ts` | §21.4 asks the brake; §21.9 asks who may act on the target; the door's move to EXECUTING, and a prepared command's to READY, ask the brake again; the handlers of `control.suspend` and `delegation.revoke`, which answers `CONFLICT` when what waits kept changing |
+| `src/proposal.ts` | the path into EXECUTING must be told the agent, and asks the brake; nothing enters EXECUTING one move at a time; the records of the moves are written only if the moves are |
+| `src/audit.ts` | `recordInsertIf`: a record written only if a condition holds, in the statement that writes the moves |
 | `src/pipeline.ts` | twelve stages, the two new ones required by name |
 | `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` and `delegation:revoke` for `user_123` and `cfo_100`; the two receipts' labels; the two contracts |
 | `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
 | `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on the slips' and the brakes' tables than revoking and braking need |
 | `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze; the finished proposal is now asked to move into FAILED, a move only the database refuses (decision 156) |
-| `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke |
+| `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke; a brake pulled after the decision leaves no record of the moves it stopped; each cancellation's record, a proposal that starts or stops waiting while the slip is revoked, a revocation that keeps finding new work, and a slip that has ended while new work arrives |
 | `test/pipeline.test.ts` | twelve stages, and the stage-order proof by its parts |
 | `test/database.test.ts` | the start-up refusals above, tested: a brake or a slip without its second policy, and rights on either beyond braking and revoking |
 | `test/delegations.test.ts` | the test that reads del_100 reads org_456's only, now that org_789 has one too; a revocation the application writes says who, when and why, or is refused |
@@ -245,7 +254,13 @@ DSoR reads a slip once, at §21.3. A revocation is seen by every command that re
 and by no command already past it: that command is decided under the slip as if nothing had happened.
 If it is allowed, the ALLOW is recorded under the slip, even when the record is written after the
 revocation; a payment's amount is booked against the slip's day; and the command runs. Unlike the
-brake, nothing asks the slip again. A brake that commits while a move to EXECUTING is running is not seen by that
+brake, nothing asks the slip again. A revocation that finds what waits changed five times in a row
+revokes nothing and answers `CONFLICT`, whose retry class is `never`, though a later try would
+likely work; nothing can wait before step 29, so only a test reaches it. One moment is left for step
+29 as well: the revocation checks what waits as its own statement saw it when it began, so a
+proposal that starts waiting while that statement runs is not seen, and would wait under a revoked
+slip. Step 29's move into waiting must lock the slip's row first, so that it waits for a revocation
+that is running. A brake that commits while a move to EXECUTING is running is not seen by that
 move, which reads the brakes as they were when its statement began; no test races the two on a real
 server. "A person" is whoever logged in: logins are believed until steps 43 and 44. And a question for
 the specification: `DSOR-SRC-02b` refuses a principal or delegation identifier in the arguments that
@@ -256,14 +271,15 @@ only by its name: `principal` or `delegation`, alone or with `_id`. Both command
 `target`. That is a reading of the rule and not a change to it, written down for the editor in
 decision 143, and the brake's half in decision 156.
 
-The agent's own traffic can make the brake fail, written down in decision 156. Pulling a brake, or
-revoking a slip, is a decision in the company's log like any request, and the log refuses the loser
-of a race for its next place (step 09). So an agent that keeps sending requests, even ones that are
-refused, can make a person's `control.suspend` come back `EVIDENCE_STORE_UNAVAILABLE` with nothing
-done, and the person must send it again. On PGlite, the database the tests use, against an agent
-that sent without a pause, a resend with a new key landed on the second try; resends with the same
-key did not land in thirty tries. Nothing limits how many requests an agent sends: `DSOR-OPS-02`
-asks for that, and no step on the map builds it yet.
+The agent's own traffic can still make the brake fail, written down in decision 156. Pulling a
+brake, or revoking a slip, is a decision in the company's log like any request, and its record
+races the agent's records for the log's next place. Since step 22, a record that loses its place
+tries the next one, up to ten. So only an agent that takes ten places in a row from one of the
+person's records can make `control.suspend` come back `EVIDENCE_STORE_UNAVAILABLE`, with nothing
+done, and the person must send it again. Measured on a local PostgreSQL 17, with one and with five
+agents sending payments without a pause: the person's `control.suspend` landed on its first try in
+each of twenty runs, ten with a new key each try and ten with the same key. Nothing limits how many
+requests an agent sends: `DSOR-OPS-02` asks for that, and no step on the map builds it yet.
 
 Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
 the application may read a view or a table beside the tenant tables, because a view runs with its
