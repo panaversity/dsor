@@ -1,16 +1,29 @@
-// Who may approve, and who may not (step 30's README, claims C1 to C3 and C6, decisions D1 to D6,
-// and D10). No one in a proposal's requesting chain approves it: not the person who asked, not the
+// Who may approve, and who may not (step 30's README, claims C1 to C6, decisions D1 to D8, and
+// D10). No one in a proposal's requesting chain approves it: not the person who asked, not the
 // person who signed the slip of the agent that asked, and not an actor (DSOR-SOD-02). An AP
 // supervisor may approve a payment now, and a rule of org_456's own sends payments above 10,000
 // USD to one. user_123, an AP supervisor, signed del_100, the slip of accounts-payable-fte.
-// user_124, a second AP supervisor, lives in these tests only.
+// user_124, a second AP supervisor, lives in these tests only. And what step 29 built, held here by
+// the rules' own ids: an agent never approves, every approver is a person, and a quorum counts
+// distinct people (DSOR-SOD-01a, DSOR-SOD-01b, DSOR-SOD-04c).
 import { describe, expect, it } from "vitest";
 import type { Control, ControlsSource } from "../src/controls.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { Principal } from "../src/principals.ts";
 import type { MoveBy, ProposalDraft, Requester } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, keyed, SUPERVISOR, withPlanted } from "./helpers.ts";
+import {
+  AGENT,
+  CFO,
+  contract,
+  DEL_101,
+  FIRM_IN_456,
+  FIRM_IN_789,
+  keyed,
+  shippedWith,
+  SUPERVISOR,
+  withPlanted,
+} from "./helpers.ts";
 import {
   heard,
   ruleCall,
@@ -242,5 +255,158 @@ describe("C1: every part of the chain, read from DSoR's own records (step 30's R
       code: "SOD_VIOLATION",
       message: `user_124 may not approve proposal ${id}: the request is user_124's, through slip del_100`,
     });
+  });
+});
+
+describe("C4: an agent never approves, and every approver is a person (step 30's README, decision D7)", () => {
+  // A rule of org_789's own, so that org_789's agent has a waiting payment of its company to try.
+  const RULE_789: Control = {
+    ...shippedRule(),
+    id: "admin-above-1000",
+    version: 1,
+    owner: "admin_700",
+    reviewed_by: "admin_700",
+    authority: { system: "local" },
+    condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("1000", "USD"))',
+    effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+  };
+  const BOTH_COMPANIES: ControlsSource = {
+    file: "controls.json",
+    text: JSON.stringify({ org_456: [shippedRule()], org_789: [RULE_789] }),
+  };
+
+  /** A waiting payment in this company: INV-1008 in org_456, INV-2002 in org_789. */
+  async function waitingIn(w: RuleWorld, tenant: string) {
+    const [who, invoice] = tenant === "org_456" ? [AGENT, "INV-1008"] : [FIRM_IN_789, "INV-2002"];
+    const answer = await w.ask(keyed(who), "payment.create", {
+      invoice: `dsor://${tenant}/invoice/${invoice}`,
+      expected_version: 1,
+    });
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const id = idOf(answer);
+    const kept = (await w.proposals.get(tenant, id))!;
+    return { id, uri: kept.uri, payload_hash: kept.payload_hash };
+  }
+
+  it.each([
+    ["accounts-payable-fte", "org_456", AGENT],
+    ["firm-ap-fte", "org_456", FIRM_IN_456],
+    ["firm-ap-fte", "org_789", FIRM_IN_789],
+  ] as const)(
+    "DSOR-SOD-01a: %s, an agent, cannot approve a waiting payment in %s: line ⑤ refuses it, for people only, and nothing is approved",
+    async (agent, tenant, who) => {
+      const w = await ruleWorldOnTuesday(BOTH_COMPANIES);
+      const { id, uri, payload_hash } = await waitingIn(w, tenant);
+      expect(await approves(w, who, uri, payload_hash)).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: `"proposal.approve" is for people only, and ${agent} is not a person`,
+      });
+      expect(await w.proposals.approvals(tenant, id)).toStrictEqual([]);
+    },
+  );
+
+  // Line ⑤ refuses every agent by the contract's people_only, so line ⑨'s own look is reached only
+  // by a contract that lost that flag. firm-ap-fte is outside the chain of accounts-payable-fte's
+  // request, so DSOR-SOD-02 would not stop it: only line ⑨'s check of who may approve does.
+  it("DSOR-SOD-01a: with people_only gone from the contract, firm-ap-fte, under a slip that cfo_100 signed listing both approval permissions, cannot approve accounts-payable-fte's INV-1008: line ⑨ refuses it", async () => {
+    const { extensions: _gone, ...approve } = contract("proposal.approve");
+    const permissions = ["proposal:approve", "payment:approve"];
+    const bySigner = { ...DEL_101, delegator: "cfo_100", permissions };
+    const w = await ruleWorldOnTuesday(undefined, [bySigner], undefined, shippedWith(approve));
+    const { id, uri, payload_hash } = await waitingIn(w, "org_456");
+    expect(await approves(w, FIRM_IN_456, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"proposal.approve" is accepted only in direct identity mode, on the approver\'s own login',
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  // An application, planted as step 25b's tests plant one.
+  const OPS: RequestEnvelope = { token: "tok_ops", tenant: "org_456" };
+  const ops = {
+    id: "ops-console",
+    type: "application",
+    memberships: [{ tenant_id: "org_456", roles: ["tenant_admin"] }],
+  } as unknown as Principal;
+
+  it.each([
+    ["dsor-scheduler", "system", "tok_5c4e"],
+    ["dsor-rates", "system", "tok_3b8f"],
+    ["ops-console", "application", OPS.token],
+  ])(
+    "DSOR-SOD-01b: %s, a login of type %s, cannot approve INV-1008: line ⑤ refuses it, for people only",
+    async (login, _type, token) => {
+      const who: RequestEnvelope = { token, tenant: "org_456" };
+      const w = await ruleWorldOnTuesday();
+      const { id, uri, payload_hash } = await waitingIn(w, "org_456");
+      const answer = await withPlanted("tok_ops", ops, () => approves(w, who, uri, payload_hash));
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: `"proposal.approve" is for people only, and ${login} is not a person`,
+      });
+      expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+    },
+  );
+
+  it.each(["system", "application"])(
+    "DSOR-SOD-01b: with people_only gone from the contract, a login of type %s that holds the CFO's role passes line ⑤, and line ⑨ refuses it: not a person",
+    async (type) => {
+      const { extensions: _gone, ...approve } = contract("proposal.approve");
+      const w = await ruleWorldOnTuesday(undefined, undefined, undefined, shippedWith(approve));
+      const { id, uri, payload_hash } = await waitingIn(w, "org_456");
+      const login = {
+        id: `cfo-${type}`,
+        type,
+        memberships: [{ tenant_id: "org_456", roles: ["CFO"] }],
+      } as unknown as Principal;
+      const LOGIN: RequestEnvelope = { token: "tok_cfo_login", tenant: "org_456" };
+      const answer = await withPlanted("tok_cfo_login", login, () =>
+        approves(w, LOGIN, uri, payload_hash),
+      );
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: '"proposal.approve" is accepted only from a person, on their own login',
+      });
+      expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+    },
+  );
+});
+
+describe("C5: a quorum counts distinct people (step 30's README, decision D8)", () => {
+  // Above 25,000 USD, two CFOs: a rule a test writes, as the store keeps it.
+  const TWO_CFOS: Control = {
+    ...shippedRule(),
+    effect: { require_approval: { role: "CFO", quorum: 2 } },
+  };
+  // A second CFO of org_456, planted as step 29's tests plant one.
+  const CFO_200: RequestEnvelope = { token: "tok_cfo200", tenant: "org_456" };
+  const cfo200 = {
+    id: "cfo_200",
+    type: "human",
+    memberships: [{ tenant_id: "org_456", roles: ["CFO"] }],
+  } as unknown as Principal;
+
+  it("DSOR-SOD-04c: INV-1008 waits for two CFOs: cfo_100's second approval counts for nothing, CONFLICT, and only cfo_200's makes it APPROVED, with two approvals by two people", async () => {
+    const w = await ruleWorldOnTuesday(controlsOf(TWO_CFOS));
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
+      outcome: "COMMITTED",
+      data: { state: "PENDING_APPROVAL" },
+    });
+    expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
+      code: "CONFLICT",
+      message: `cfo_100 approved proposal ${id} already`,
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 1 });
+    const second = await withPlanted("tok_cfo200", cfo200, () =>
+      approves(w, CFO_200, uri, payload_hash),
+    );
+    expect(second).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
+    const given = await w.proposals.approvals("org_456", id);
+    expect(given.flatMap((a) => a.approvers.map((p) => p.principal))).toStrictEqual([
+      "cfo_100",
+      "cfo_200",
+    ]);
   });
 });

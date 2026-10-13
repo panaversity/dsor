@@ -1,14 +1,18 @@
-// Who may not approve, on the database (step 30's README, claims C1 and C3, decisions D1 to D4).
-// intake-fte drafts INV-9001, 31,400.00 USD, under del_190, which user_123 signed, and it waits for
-// the CFO, by version 8 of high-value-payment, in a world that reads dsor.controls. user_123 is an
-// AP supervisor, and may approve payments since this step. A real PostgreSQL, never a mock.
+// Who may not approve, on the database (step 30's README, claims C1 and C3 to C5, decisions D1 to
+// D4, D7, and D8). intake-fte drafts INV-9001, 31,400.00 USD, under del_190, which user_123 signed,
+// and it waits for the CFO, by version 8 of high-value-payment, in a world that reads dsor.controls.
+// user_123 is an AP supervisor, and may approve payments since this step. A real PostgreSQL, never
+// a mock.
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Answer } from "../src/envelope.ts";
+import type { Approving, Offer } from "../src/approvals.ts";
+import type { Answer, Requirement } from "../src/envelope.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog, createDbProposals } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
+import type { MoveBy, ProposalDraft } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
 import {
@@ -92,7 +96,7 @@ async function decisionOf(answer: Answer): Promise<Record<string, unknown>[]> {
 async function approvalRows(id: string): Promise<Record<string, unknown>[]> {
   const { rows } = await tryThenRollBack(
     pool,
-    "SELECT approver FROM dsor.approvals WHERE proposal_id = $1",
+    "SELECT approver FROM dsor.approvals WHERE proposal_id = $1 ORDER BY approver",
     "org_456",
     [id],
   );
@@ -123,5 +127,97 @@ describe("C1 and C3: on the database, no one in the requesting chain approves (s
       data: { state: "APPROVED" },
     });
     expect(await approvalRows(id)).toStrictEqual([{ approver: "cfo_100" }]);
+  });
+});
+
+describe("C4 and C5: on the database, an agent never approves, and a quorum counts distinct people (step 30's README, decisions D7 and D8)", () => {
+  it("DSOR-SOD-01a: on the database, intake-fte cannot approve the payment it drafted: for people only, dsor.audit says DENY, and dsor.approvals keeps nothing", async () => {
+    const { id, uri, payload_hash } = await waiting();
+    const answer = await withPlanted("tok_intake", intake, () =>
+      approves(INTAKE, uri, payload_hash),
+    );
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: '"proposal.approve" is for people only, and intake-fte is not a person',
+    });
+    expect(await decisionOf(answer)).toMatchObject([
+      { authorization: "DENY", result: "AUTHORIZATION_DENIED" },
+    ]);
+    expect(await approvalRows(id)).toStrictEqual([]);
+  });
+
+  // The store's own step, below line ⑨: the last place a second approval by one person could
+  // count. Two CFOs are asked for, and cfo_100 tries to be both.
+  const TWO_CFOS: Requirement = {
+    approval: { role: "CFO", quorum: 2 },
+    control: "high-value-payment",
+    control_version: 8,
+  };
+  const INV_9001 = "dsor://org_456/invoice/INV-9001";
+  const AS_OF = { source: "role_source" as const, as_of: "2026-10-13T09:00:00.000Z" };
+  const DRAFT: ProposalDraft = {
+    operation: "payment.create@1",
+    mode: "execute",
+    payload: { invoice: INV_9001, expected_version: 1 },
+    payload_hash: `sha256:${"d".repeat(64)}`,
+    resources: [INV_9001],
+    requester: {
+      identity_mode: "unattended",
+      subject: "user_123",
+      subject_type: "human",
+      actor_chain: ["intake-fte"],
+      active_tenant: "org_456",
+      delegation: "del_190",
+      subject_authority: AS_OF,
+    },
+    idempotency_key: "k-s30-quorum",
+  };
+  const BY_AGENT: MoveBy = {
+    mover: {
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["intake-fte"],
+      subject_authority: AS_OF,
+    },
+    cause: "a control asked for an approval",
+    correlation: { request_id: "req_s30_quorum" },
+  };
+
+  /** One CFO's approval, through the store's own step, as the work after line ⑩ asks for it. */
+  function storeApproves(id: string, person: string): Promise<Approving> {
+    const now = new Date().toISOString();
+    const offer: Offer = {
+      id: `apr_${randomUUID()}`,
+      risk: "medium",
+      bound_state: { mode: "predicate", versions: { [INV_9001]: 1 } },
+      approver: person,
+      roles: ["CFO"],
+      at: now,
+    };
+    const by: MoveBy = {
+      mover: {
+        mode: "direct",
+        subject: person,
+        actor_chain: [],
+        subject_authority: { source: "token", as_of: now },
+      },
+      cause: `approved by ${person}`,
+      correlation: { request_id: `req_${randomUUID()}` },
+    };
+    return proposals.approve("org_456", id, offer, by);
+  }
+
+  it("DSOR-SOD-04c: on the database, a proposal that waits for two CFOs: the store keeps no second approval by cfo_100, and only cfo_200's makes it APPROVED, with two rows by two people", async () => {
+    const id = `prop_${randomUUID()}`;
+    await proposals.create("org_456", id, DRAFT, BY_AGENT, "P7D");
+    await proposals.move("org_456", id, "PROPOSED", "PENDING_APPROVAL", BY_AGENT, [TWO_CFOS]);
+    expect(await storeApproves(id, "cfo_100")).toMatchObject({ state: "PENDING_APPROVAL" });
+    expect(await storeApproves(id, "cfo_100")).toMatchObject({ refused: "twice" });
+    expect(await approvalRows(id)).toStrictEqual([{ approver: "cfo_100" }]);
+    expect(await storeApproves(id, "cfo_200")).toMatchObject({ state: "APPROVED", waits_for: [] });
+    expect(await approvalRows(id)).toStrictEqual([
+      { approver: "cfo_100" },
+      { approver: "cfo_200" },
+    ]);
   });
 });
