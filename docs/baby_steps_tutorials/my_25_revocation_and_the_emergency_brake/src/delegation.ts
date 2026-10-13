@@ -286,6 +286,12 @@ export const LOOKS_AT_WHAT_WAITS: number = 5;
  * what was read: a proposal that started waiting in between has no record ready, and would be left
  * waiting under a revoked slip. If it changed, nothing is written, and it is read again, at most
  * `LOOKS_AT_WHAT_WAITS` times: then the answer is that it kept changing, and nothing was revoked.
+ *
+ * One moment is left, found by a review, and nothing before step 29 can reach it. The statement
+ * reads what waits as its snapshot saw it, and PostgreSQL holds only the slip's row while it runs:
+ * a move into waiting that commits after that snapshot, and before this statement commits, is not
+ * seen, and its proposal waits under a revoked slip. Step 29's move into waiting must lock the
+ * slip's row first, `FOR SHARE`, so that it waits for a revocation that is running.
  */
 export async function revokeSlip(
   tenant: string,
@@ -309,6 +315,7 @@ export async function revokeSlip(
       revoked: number;
       same: boolean;
       theirs: boolean;
+      ended: boolean;
       cancelled: string[];
     }>(
       tenant,
@@ -381,6 +388,9 @@ export async function revokeSlip(
                        (SELECT ok FROM same) AS same,
                        EXISTS (SELECT 1 FROM dsor.delegations
                                 WHERE tenant = $1 AND id = $2 AND delegator = $3) AS theirs,
+                       EXISTS (SELECT 1 FROM dsor.delegations
+                                WHERE tenant = $1 AND id = $2
+                                  AND status NOT IN ('active', 'suspended')) AS ended,
                        ${cancelled} AS cancelled`,
           params,
         };
@@ -403,8 +413,10 @@ export async function revokeSlip(
       return Object.freeze({ kind: "not_theirs" });
     }
 
-    // Revoked nothing, though the slip is the signer's: it had ended, or what waits changed.
-    if (row.same) {
+    // Revoked nothing, though the slip is the signer's: it had ended, or what waits changed. Found
+    // by a review: asked in the statement, and no longer read off "what waits is the same", so a
+    // slip that has ended is told so at once, however often what waits under it changes.
+    if (row.ended) {
       return Object.freeze({ kind: "ended" });
     }
   }

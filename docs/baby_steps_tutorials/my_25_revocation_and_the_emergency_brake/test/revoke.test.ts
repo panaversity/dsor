@@ -324,10 +324,13 @@ describe("what was waiting under the slip", () => {
   });
 
   /**
-   * NEW IN STEP 25, decision 157: the store, with a new proposal made to wait under del_100 just
-   * after each of the first `times` reads of what waits under it, as approvals one day will.
+   * NEW IN STEP 25, decision 157: the store, running `meanwhile` just after each of the first
+   * `times` reads of what waits under del_100, as approvals one day will, and counting every read.
    */
-  function newWorkAfterEachRead(times: number): { readonly reads: () => number } {
+  function afterEachRead(
+    times: number,
+    meanwhile: () => Promise<unknown>,
+  ): { readonly reads: () => number } {
     const connection = overPGlite(db);
     let reads = 0;
     const wrapped = {
@@ -336,16 +339,18 @@ describe("what was waiting under the slip", () => {
 
         if (
           sql.includes("(p.requester::jsonb ->> 'delegation') = $2") &&
-          !sql.includes("WITH waiting") &&
-          reads < times
+          !sql.includes("WITH waiting")
         ) {
           reads += 1;
-          useDatabase(connection);
 
-          try {
-            await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
-          } finally {
-            useDatabase(wrapped);
+          if (reads <= times) {
+            useDatabase(connection);
+
+            try {
+              await meanwhile();
+            } finally {
+              useDatabase(wrapped);
+            }
           }
         }
 
@@ -357,6 +362,10 @@ describe("what was waiting under the slip", () => {
 
     return { reads: () => reads };
   }
+
+  /** NEW IN STEP 25, decision 157: a new proposal starts waiting under del_100 after each read. */
+  const newWorkAfterEachRead = (times: number): { readonly reads: () => number } =>
+    afterEachRead(times, () => underDel100(["PROPOSED", "PENDING_APPROVAL"]));
 
   it("DSOR-DEL-04c: a proposal that starts waiting while the slip is revoked is cancelled too, with its record", async () => {
     // NEW IN STEP 25, decision 157: the revocation reads what waits, to write each cancellation's
@@ -381,7 +390,7 @@ describe("what was waiting under the slip", () => {
     }
 
     // Read twice: the second time, the late one was there too.
-    expect(store.reads()).toBe(1);
+    expect(store.reads()).toBe(2);
     // Both payments waiting under del_100 are cancelled, the one that started late included.
     expect(
       (await proposalsOf("org_456"))
@@ -397,6 +406,68 @@ describe("what was waiting under the slip", () => {
           r.correlation.request_id === answer.envelope.correlation.request_id,
       ),
     ).toHaveLength(2);
+  });
+
+  it("DSOR-DEL-04c: a proposal that stops waiting while the slip is revoked is left as it went, and the rest are cancelled", async () => {
+    // NEW IN STEP 25, decision 157, found by a review: the other half of "still what was read". A
+    // proposal that left PENDING_APPROVAL after the read is in what was read and no longer waits:
+    // its move to CANCELLED would be its second move out of PENDING_APPROVAL, which the database
+    // refuses, and the revocation would fail whole. So it reads again.
+    const rejected = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+    const approved = await underDel100(["PROPOSED", "PENDING_APPROVAL", "APPROVED"]);
+    const store = afterEachRead(1, () =>
+      moveProposalThrough(
+        "org_456",
+        rejected,
+        [["PENDING_APPROVAL", "REJECTED", "rejected by cfo_100"]],
+        "dsor",
+        null,
+        BY_A_TEST,
+      ),
+    );
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+        target: DEL_100,
+        reason: "stop",
+      });
+    } finally {
+      useDatabase(overPGlite(db));
+    }
+
+    expect(answer.kind).toBe("result");
+    expect(store.reads()).toBe(2);
+    expect(await statusOfDel100()).toBe("revoked");
+    expect(await stateOf("org_456", rejected)).toBe("REJECTED");
+    expect(await stateOf("org_456", approved)).toBe("CANCELLED");
+  });
+
+  it("DSOR-DEL-04c: a slip that has ended is told so at once, even while what waits under it changes", async () => {
+    // NEW IN STEP 25, decision 157, found by a review: "it had ended" was read off "what waits is
+    // the same", so a slip that had ended while new work kept arriving was read five times, and
+    // answered "it kept changing". Called directly: through the door, §21.9 refuses first.
+    await revokeSlip("org_456", "del_100", "user_123", "the first", {
+      subject: "user_123",
+      requestId: "req_the_first",
+    });
+    // Waiting under a slip already revoked, as only a test can make one before step 29.
+    await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+
+    const store = newWorkAfterEachRead(Number.POSITIVE_INFINITY);
+    let revoked;
+
+    try {
+      revoked = await revokeSlip("org_456", "del_100", "user_123", "the second", {
+        subject: "user_123",
+        requestId: "req_the_second",
+      });
+    } finally {
+      useDatabase(overPGlite(db));
+    }
+
+    expect(revoked).toStrictEqual({ kind: "ended" });
+    expect(store.reads()).toBe(1);
   });
 
   it("DSOR-DEL-04c: a revocation that keeps finding new work waiting revokes nothing, and answers CONFLICT", async () => {
