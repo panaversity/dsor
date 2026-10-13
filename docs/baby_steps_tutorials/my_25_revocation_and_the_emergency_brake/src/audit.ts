@@ -441,9 +441,13 @@ function hashOf(record: Readonly<Record<string, unknown>>): string {
  * A record that the schema refuses is a bug in this function, so it throws and the log does not
  * grow. §21.11's rule is the other half, and it lands in the pipeline: if the evidence cannot be
  * written, the command does not run.
+ *
+ * STEP 22, decision 157: the parts of writing a record have names now (`copyOf`, `theEndOf`,
+ * `theTimeNow`, `sealAt`, `theRecordsAlone`, `isItMine`, below), because a proposal's moves write
+ * their records with the same parts, in the statement that makes the move.
  */
 export async function audit(decision: DecisionToRecord): Promise<AuditRecord | undefined> {
-  // Read **once**, into locals, before anything is decided. A review read `decision.subject` three
+  // Read **once**, into a copy, before anything is decided. A review read `decision.subject` three
   // times — once to choose record-or-count, once for `identity.subject`, once for
   // `correlation.principal_id` — and a getter answered differently each time: the gate saw
   // `user_123` so a record was written, and the record blamed `cfo_100`. Schema-valid, chain
@@ -451,19 +455,8 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   //
   // This is lesson 16 in the learner's notes for the third time: "read the caller's data once" is a
   // rule about **every** function the data reaches, and `audit` was the one that had not applied it.
-  const subject = decision.subject;
-  const tenant = decision.tenant;
-  const kind = decision.kind;
-  const requestId = clip(decision.requestId);
-  const result = clip(decision.result);
-  const operation = decision.operation;
-  const authorization = decision.authorization;
-  const payloadHashGiven = decision.payloadHash;
-  const reason = decision.reason === undefined ? undefined : clip(decision.reason);
-  const resources = decision.resources === undefined ? undefined : [...decision.resources];
-  const rowCount = decision.rowCount;
-  // STEP 19: copied once, like everything above.
-  const underSlip = decision.underSlip === undefined ? undefined : { ...decision.underSlip };
+  const copy = copyOf(decision);
+  const { subject, tenant } = copy;
 
   // No subject, or no company: counted, not recorded. The second is new in step 10, and it is rare
   // by construction — `recordTheDecision` writes a no-company refusal to every company the caller
@@ -508,6 +501,133 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
   // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
   // STEP 11: for this chain's company, and every statement below says so to PostgreSQL.
   const db = theDatabase(tenant);
+  const end = await theEndOf(db, chain);
+
+  // The clock is read **after** the tail, and the order is the guarantee, not a detail. Why is
+  // `theTimeNow`'s to say, below.
+  const at = theTimeNow();
+  const written = sealAt(copy, tenant, chain, end.sequence, end.previous, at);
+
+  // One INSERT, with every value as a parameter rather than pasted into the SQL. Not politeness:
+  // `reason` holds a caller's own words, and a caller's words in a SQL string is how an audit log
+  // ends up executing them.
+  //
+  // STEP 09: and a failure here is not the same thing as a failure to write.
+  //
+  // Step 08's store was a JavaScript array. An array either takes the record or throws, and there is
+  // no third answer. A database on the other side of a network has one: the INSERT commits and the
+  // **reply** is lost. Measured, by dropping the reply of a committed INSERT:
+  //
+  //     the caller is told: EVIDENCE_STORE_UNAVAILABLE  retry: safe_same_key
+  //                         "could not be written down, so it was not carried out"
+  //     the log holds 1 record(s):
+  //        seq 0  ALLOW  ALLOWED  req_1
+  //
+  // Both halves of what the caller was told are false. It *was* written down. And retrying on
+  // `safe_same_key` writes a second ALLOWED record for the same request. Worse than either: an
+  // auditor reconstructing that request finds ALLOWED, while the caller holds a refusal — the log
+  // and the answer disagree, which is the one thing a decision record exists to prevent.
+  //
+  // `DSOR-UNK-01b` is the rule and it is about exactly this: an unknown outcome is reported as
+  // unknown, never as a retryable error. So this does not guess. It looks — and when it cannot
+  // look, it says so, with `OutcomeUnknown`, which the pipeline turns into `OUTCOME_UNKNOWN`.
+  const { sql, params } = theRecordsAlone([written]);
+
+  try {
+    await db.query(sql, params);
+  } catch (failure) {
+    // A unique violation is PostgreSQL *telling* us the INSERT did not commit: the position is
+    // taken. Nothing to look for, and the caller may safely be told the write failed.
+    if (isUniqueViolation(failure)) {
+      throw failure;
+    }
+
+    // Two kinds of failure, and they mean different things. A **server** error carries a SQLSTATE:
+    // the server received the statement and refused it, so the row is not there and never will be.
+    // Anything else is a **connection** that went quiet — a reply lost, a socket reset, a timeout —
+    // and nobody on this side knows what the server did with the statement. It may have committed.
+    // It may still be running. A review found the first version treating both the same.
+    const theServerDecided = isServerError(failure);
+    const found = await isItMine(db, written);
+
+    // Four outcomes, in the order that makes each one a true statement.
+    //
+    // Mine is there: the reply was lost, not the record. Equal hashes mean THIS attempt, because
+    // `correlation.trace_id` is a fresh UUID per attempt and is inside the hash — without it a
+    // byte-identical record from another writer passed this test and two decisions became one row.
+    if (found === "mine") {
+      // Returning it keeps the log and the answer agreeing: the decision is recorded, so the
+      // command may proceed. Falls through to `return written`.
+    } else if (found === "someone else's") {
+      // Someone else's row holds my position. Mine cannot commit now — the primary key will refuse
+      // it even if the statement is still in flight — so "nothing was written" is true, and
+      // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is the right answer.
+      throw failure;
+    } else if (theServerDecided) {
+      // Not there, and the server said no. Definitive. Same answer.
+      throw failure;
+    } else {
+      // Not there, and the server never answered. The statement may still be executing on a
+      // connection we no longer hold, and the row may land after this line. "Not found" is a
+      // snapshot, not a proof — a hostile review pointed at exactly this window. Unknown.
+      throw new OutcomeUnknown(
+        `the decision ${written.record_id} may or may not have been recorded: the connection ` +
+          `failed before the server answered, and the record is not there yet`,
+        failure,
+      );
+    }
+  }
+
+  return written;
+}
+
+/**
+ * STEP 22, decision 157: everything a caller said, read once (lesson 16), the caller's text
+ * made storable and capped. Each field is read exactly once, by destructuring: `audit` used to read
+ * `reason`, `resources` and `underSlip` twice each, once to ask whether they were there and once to
+ * copy them, and a getter could answer the two differently.
+ */
+function copyOf(decision: DecisionToRecord): DecisionToRecord {
+  const {
+    kind,
+    subject,
+    tenant,
+    requestId,
+    result,
+    operation,
+    authorization,
+    payloadHash,
+    reason,
+    resources,
+    rowCount,
+    // STEP 19: copied once, like everything above.
+    underSlip,
+  } = decision;
+
+  return Object.freeze({
+    kind,
+    subject,
+    tenant,
+    requestId: clip(requestId),
+    result: clip(result),
+    operation,
+    authorization,
+    payloadHash,
+    reason: reason === undefined ? undefined : clip(reason),
+    resources: resources === undefined ? undefined : Object.freeze([...resources]),
+    rowCount,
+    underSlip: underSlip === undefined ? undefined : Object.freeze({ ...underSlip }),
+  });
+}
+
+/**
+ * STEP 22, decision 157: where the next record of a chain goes: its place, and the hash of
+ * the record before it. Step 09's read, word for word.
+ */
+async function theEndOf(
+  db: Statements,
+  chain: string,
+): Promise<{ readonly sequence: number; readonly previous: string }> {
   // `AS at_position`, and the alias is load-bearing. `SELECT sequence::text` names its output column
   // `sequence`, and PostgreSQL resolves a bare name in ORDER BY to an **output** column first — so
   // `ORDER BY sequence DESC` ordered by the text, where "9" sorts after "10". The tail froze at 9 and
@@ -521,9 +641,18 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     [chain],
   );
   const last = tail[0];
-  const sequence = last === undefined ? 0 : Number(last.at_position) + 1;
-  const previous = last?.record_hash ?? GENESIS;
 
+  return {
+    sequence: last === undefined ? 0 : Number(last.at_position) + 1,
+    previous: last?.record_hash ?? GENESIS,
+  };
+}
+
+/**
+ * STEP 22, decision 157: the time for a record, from the clock, read after the end of the
+ * chain. Step 09's lines, word for word.
+ */
+function theTimeNow(): string {
   // The clock is read **after** the tail, and the order is the guarantee, not a detail.
   //
   // It used to be read before, one line above `await db.query`, and that let a benign race leave
@@ -571,8 +700,23 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     );
   }
 
-  const at = new Date(instant).toISOString();
+  return new Date(instant).toISOString();
+}
 
+/**
+ * STEP 22, decision 157: one record at one place in `tenant`'s chain, hashed, frozen and
+ * checked against the schema. Step 09's lines, which `audit` ran in its own body. A copy with nobody
+ * to name is refused by the schema, like any other record it refuses: thrown, and never written.
+ */
+function sealAt(
+  copy: DecisionToRecord,
+  tenant: string,
+  chain: string,
+  sequence: number,
+  previous: string,
+  at: string,
+): AuditRecord {
+  const { subject, underSlip } = copy;
   const body: Record<string, unknown> = {
     record_id: `${chain}:${sequence}`,
     chain,
@@ -580,7 +724,7 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     previous_hash: previous,
     at,
     tenant,
-    kind,
+    kind: copy.kind,
     // STEP 19: an agent's command under a slip is the signer's authority, used by the agent:
     // `unattended`, the signer its subject, the agent its actor chain, and the directory's time
     // for the signer's authority (DSOR-DEL-08, DSOR-DEL-10, decision 129). Everything else is
@@ -601,9 +745,9 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
             actor_chain: [subject],
             subject_authority: { source: "role_source", as_of: underSlip.asOf ?? at },
           },
-    result,
+    result: copy.result,
     correlation: {
-      request_id: requestId,
+      request_id: copy.requestId,
       tenant_id: tenant,
       principal_id: subject,
       // A fresh id for THIS attempt, and it is inside the hash. A refusal fanned out to two
@@ -619,30 +763,30 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
 
   // Only the fields that have a value. The schema sets `additionalProperties: false`, so a field
   // is either right or absent; there is no room for a placeholder.
-  if (operation !== undefined) {
-    body.operation = operation;
+  if (copy.operation !== undefined) {
+    body.operation = copy.operation;
   }
 
-  if (authorization !== undefined) {
-    body.authorization = authorization;
+  if (copy.authorization !== undefined) {
+    body.authorization = copy.authorization;
   }
 
-  if (payloadHashGiven !== undefined) {
-    body.payload_hash = payloadHashGiven;
+  if (copy.payloadHash !== undefined) {
+    body.payload_hash = copy.payloadHash;
   }
 
-  if (reason !== undefined) {
-    body.reason = reason;
+  if (copy.reason !== undefined) {
+    body.reason = copy.reason;
   }
 
   // STEP 14: inside the hash like everything else, so a record of a read that names fewer
   // rows than it returned is a record that does not verify.
-  if (resources !== undefined) {
-    body.resources = resources;
+  if (copy.resources !== undefined) {
+    body.resources = copy.resources;
   }
 
-  if (rowCount !== undefined) {
-    body.row_count = rowCount;
+  if (copy.rowCount !== undefined) {
+    body.row_count = copy.rowCount;
   }
 
   // STEP 19: inside the hash, so a record whose slip is changed afterwards does not verify.
@@ -680,99 +824,114 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     );
   }
 
-  // One INSERT, with every value as a parameter rather than pasted into the SQL. Not politeness:
-  // `reason` holds a caller's own words, and a caller's words in a SQL string is how an audit log
-  // ends up executing them.
-  //
-  // STEP 09: and a failure here is not the same thing as a failure to write.
-  //
-  // Step 08's store was a JavaScript array. An array either takes the record or throws, and there is
-  // no third answer. A database on the other side of a network has one: the INSERT commits and the
-  // **reply** is lost. Measured, by dropping the reply of a committed INSERT:
-  //
-  //     the caller is told: EVIDENCE_STORE_UNAVAILABLE  retry: safe_same_key
-  //                         "could not be written down, so it was not carried out"
-  //     the log holds 1 record(s):
-  //        seq 0  ALLOW  ALLOWED  req_1
-  //
-  // Both halves of what the caller was told are false. It *was* written down. And retrying on
-  // `safe_same_key` writes a second ALLOWED record for the same request. Worse than either: an
-  // auditor reconstructing that request finds ALLOWED, while the caller holds a refusal — the log
-  // and the answer disagree, which is the one thing a decision record exists to prevent.
-  //
-  // `DSOR-UNK-01b` is the rule and it is about exactly this: an unknown outcome is reported as
-  // unknown, never as a retryable error. So this does not guess. It looks — and when it cannot
-  // look, it says so, with `OutcomeUnknown`, which the pipeline turns into `OUTCOME_UNKNOWN`.
+  return written;
+}
+
+/** STEP 22, decision 157: the log's columns, in the order every INSERT of a record names them. */
+const COLUMNS = `record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
+       identity, correlation, operation, payload_hash, "authorization", result, reason,
+       resources, row_count, delegation`;
+
+/**
+ * STEP 22, decision 157: one record's values, added to `params` in the order of `COLUMNS`,
+ * and their placeholders. Today's eighteen, in today's order: a test that fails the write of a read
+ * finds the record's `kind` at `params[7]`.
+ */
+function valuesOf(written: AuditRecord, params: unknown[]): string {
+  const values: unknown[] = [
+    written.record_id,
+    written.chain,
+    written.sequence,
+    written.previous_hash,
+    written.record_hash,
+    written.at,
+    written.tenant,
+    written.kind,
+    JSON.stringify(written.identity),
+    JSON.stringify(written.correlation),
+    written.operation ?? null,
+    written.payload_hash ?? null,
+    written.authorization ?? null,
+    written.result,
+    written.reason ?? null,
+    // STEP 14. The addresses as JSON text, like identity and correlation; the count as
+    // the whole number it is (migration 007, decision 109).
+    written.resources === undefined ? null : JSON.stringify(written.resources),
+    written.row_count ?? null,
+    // STEP 19: migration 016's column, for the schema's field.
+    written.delegation ?? null,
+  ];
+
+  return values
+    .map((value) => {
+      params.push(value);
+
+      return `$${params.length}`;
+    })
+    .join(", ");
+}
+
+/** STEP 22, decision 157: one SQL statement, and the values it is sent with. */
+export interface StatementToSend {
+  readonly sql: string;
+  readonly params: unknown[];
+}
+
+/**
+ * STEP 22, decision 157: records in a statement that writes nothing else: one INSERT, with a
+ * row of values for each. A decision is one record, so this is the INSERT step 09 sent. It was
+ * `insert`, a function that ran it; it is the statement now, so that whoever sends it can try again.
+ *
+ * Every value is a parameter rather than pasted into the SQL. Not politeness: `reason` holds a
+ * caller's own words, and a caller's words in a SQL string is how an audit log ends up executing
+ * them.
+ */
+function theRecordsAlone(records: readonly AuditRecord[]): StatementToSend {
+  const params: unknown[] = [];
+  const rows = records.map((written) => `(${valuesOf(written, params)})`);
+
+  // STEP 16: the log is `dsor.audit`, in DSoR's own schema, since migration 008 moved it
+  // out of the business's `public` (DSOR-MOD-01, decision 122). Every statement here names it so.
+  return { sql: `INSERT INTO dsor.audit (${COLUMNS}) VALUES ${rows.join(", ")}`, params };
+}
+
+/**
+ * STEP 22, decision 157: after a write failed, is its record there? Asked by `record_id`, and
+ * checked by `record_hash`. Step 09's look-up, which `audit` ran in its own body.
+ *
+ * On the connection that just failed, which is usually a connection that is gone. So this read
+ * can fail too, and the first version let that error escape and become
+ * `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` — the exact pre-fix behaviour, on the
+ * exact case that happens when a server restarts. Here the honest answer is that nobody knows,
+ * and the retry class that says so is `after_reconciliation`, which does not permit a fresh
+ * attempt.
+ */
+async function isItMine(
+  db: Statements,
+  written: AuditRecord,
+): Promise<"mine" | "someone else's" | "not there"> {
+  let found: { record_hash: string } | undefined;
+
   try {
-    await insert(db, written);
-  } catch (failure) {
-    // A unique violation is PostgreSQL *telling* us the INSERT did not commit: the position is
-    // taken. Nothing to look for, and the caller may safely be told the write failed.
-    if (isUniqueViolation(failure)) {
-      throw failure;
-    }
+    const { rows } = await db.query<{ record_hash: string }>(
+      "SELECT record_hash FROM dsor.audit WHERE record_id = $1",
+      [written.record_id],
+    );
 
-    // Two kinds of failure, and they mean different things. A **server** error carries a SQLSTATE:
-    // the server received the statement and refused it, so the row is not there and never will be.
-    // Anything else is a **connection** that went quiet — a reply lost, a socket reset, a timeout —
-    // and nobody on this side knows what the server did with the statement. It may have committed.
-    // It may still be running. A review found the first version treating both the same.
-    const theServerDecided = isServerError(failure);
-
-    // Is the record there? Asked by `record_id`, and checked by `record_hash`.
-    //
-    // On the connection that just failed, which is usually a connection that is gone. So this read
-    // can fail too, and the first version let that error escape and become
-    // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` — the exact pre-fix behaviour, on the
-    // exact case that happens when a server restarts. Here the honest answer is that nobody knows,
-    // and the retry class that says so is `after_reconciliation`, which does not permit a fresh
-    // attempt.
-    let found: { record_hash: string } | undefined;
-
-    try {
-      const { rows } = await db.query<{ record_hash: string }>(
-        "SELECT record_hash FROM dsor.audit WHERE record_id = $1",
-        [written.record_id],
-      );
-
-      found = rows[0];
-    } catch (cannotLook) {
-      throw new OutcomeUnknown(
-        `the decision ${written.record_id} may or may not have been recorded: the write failed ` +
-          `and the store could not be asked`,
-        cannotLook,
-      );
-    }
-
-    // Four outcomes, in the order that makes each one a true statement.
-    //
-    // Mine is there: the reply was lost, not the record. Equal hashes mean THIS attempt, because
-    // `correlation.trace_id` is a fresh UUID per attempt and is inside the hash — without it a
-    // byte-identical record from another writer passed this test and two decisions became one row.
-    if (found !== undefined && found.record_hash === written.record_hash) {
-      // Returning it keeps the log and the answer agreeing: the decision is recorded, so the
-      // command may proceed. Falls through to `return written`.
-    } else if (found !== undefined) {
-      // Someone else's row holds my position. Mine cannot commit now — the primary key will refuse
-      // it even if the statement is still in flight — so "nothing was written" is true, and
-      // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is the right answer.
-      throw failure;
-    } else if (theServerDecided) {
-      // Not there, and the server said no. Definitive. Same answer.
-      throw failure;
-    } else {
-      // Not there, and the server never answered. The statement may still be executing on a
-      // connection we no longer hold, and the row may land after this line. "Not found" is a
-      // snapshot, not a proof — a hostile review pointed at exactly this window. Unknown.
-      throw new OutcomeUnknown(
-        `the decision ${written.record_id} may or may not have been recorded: the connection ` +
-          `failed before the server answered, and the record is not there yet`,
-        failure,
-      );
-    }
+    found = rows[0];
+  } catch (cannotLook) {
+    throw new OutcomeUnknown(
+      `the decision ${written.record_id} may or may not have been recorded: the write failed ` +
+        `and the store could not be asked`,
+      cannotLook,
+    );
   }
 
-  return written;
+  return found === undefined
+    ? "not there"
+    : found.record_hash === written.record_hash
+      ? "mine"
+      : "someone else's";
 }
 
 /**
@@ -806,48 +965,6 @@ function isServerError(error: unknown): boolean {
 function isUniqueViolation(error: unknown): boolean {
   return (
     error !== null && typeof error === "object" && (error as { code?: unknown }).code === "23505"
-  );
-}
-
-/**
- * The INSERT, on its own so that the recovery above has something to call.
- *
- * Every value is a parameter rather than pasted into the SQL. Not politeness: `reason` holds a
- * caller's own words, and a caller's words in a SQL string is how an audit log ends up executing
- * them.
- */
-async function insert(db: Statements, written: AuditRecord): Promise<void> {
-  // STEP 16: the log is `dsor.audit`, in DSoR's own schema, since migration 008 moved it
-  // out of the business's `public` (DSOR-MOD-01, decision 122). Every statement here names it so.
-  await db.query(
-    `INSERT INTO dsor.audit (
-       record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
-       identity, correlation, operation, payload_hash, "authorization", result, reason,
-       resources, row_count, delegation
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-    [
-      written.record_id,
-      written.chain,
-      written.sequence,
-      written.previous_hash,
-      written.record_hash,
-      written.at,
-      written.tenant,
-      written.kind,
-      JSON.stringify(written.identity),
-      JSON.stringify(written.correlation),
-      written.operation ?? null,
-      written.payload_hash ?? null,
-      written.authorization ?? null,
-      written.result,
-      written.reason ?? null,
-      // STEP 14. The addresses as JSON text, like identity and correlation; the count as
-      // the whole number it is (migration 007, decision 109).
-      written.resources === undefined ? null : JSON.stringify(written.resources),
-      written.row_count ?? null,
-      // STEP 19: migration 016's column, for the schema's field.
-      written.delegation ?? null,
-    ],
   );
 }
 
