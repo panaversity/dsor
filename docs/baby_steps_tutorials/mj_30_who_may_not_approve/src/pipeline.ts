@@ -797,10 +797,10 @@ export async function call(
     // A command's answer passes here too: one draft is far below the limit, so only a bug
     // reaches it.
     checkResultSize(shown.data, shown.redactions);
-    // ⑩ Evaluate controls, separation of duties, and limits. Separation of duties between a request
+    // ⑩ Evaluate controls, segregation of duties, and limits. Segregation of duties between a request
     //   and its approval runs at line ⑨ of proposal.approve, since step 30 (step 30's README, decision
     //   D3). Incompatible operations by one person (DSOR-SOD-03a) are not built. Found by step 30's
-    //   review, finding L1: this said separation of duties was not built.
+    //   review, finding L1: this said segregation of duties was not built.
     // The controls and the limits are built. They run above, before the work, where §21 puts them
     //   (step 27's README, decision D9). Found by step 27's review: this said the controls were not
     //   built.
