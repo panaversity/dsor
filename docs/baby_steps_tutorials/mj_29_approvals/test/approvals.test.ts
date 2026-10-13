@@ -132,6 +132,15 @@ describe("C5: the count of approvals (step 29's README, decisions D3 and D9)", (
     expect(stillOpen([CFO_BY_8], [by7 as Approval])).toStrictEqual([CFO_BY_8]);
   });
 
+  // Found by step 29's review, finding M4: an approval matched its requirement by version alone,
+  // and every test passed, since no two rules shared a version.
+  it("DSOR-AUT-02c: an approval counts for the rule it names: with two rules both at version 8, the CFO's approval leaves the tenant administrator's open", () => {
+    const admin8 = { ...ADMIN_BY_1, control_version: 8 };
+    const proposal = { ...BINDABLE, requires: [admin8, CFO_BY_8] };
+    const cfo = approvalOf(proposal, [], offerBy("cfo_100", ["CFO"])) as Approval;
+    expect(stillOpen([admin8, CFO_BY_8], [cfo])).toStrictEqual([admin8]);
+  });
+
   it("DSOR-AUT-02c: a quorum of two needs two approvers: one CFO leaves it open", () => {
     const two = { ...CFO_BY_8, approval: { role: "CFO", quorum: 2 } };
     const proposal = { ...BINDABLE, requires: [two] };
@@ -303,6 +312,22 @@ describe("C5: the store's one step: the approval, and the move to APPROVED when 
     ).toStrictEqual({ refused: "moved" });
     await store.approve("org_456", "prop_1008", offerBy("cfo_100", ["CFO"]), byPerson("cfo_100"));
     expect(await store.approvals("org_789", "prop_1008")).toStrictEqual([]);
+  });
+
+  // Found by step 29's review, finding L6: the move's own check of its actor and cause was dropped,
+  // and no test noticed.
+  it("DSOR-APR-01b: the store's step refuses a move with no cause or no actor, and keeps nothing", async () => {
+    const { store } = await waitingFor(CFO_BY_8);
+    const offer = offerBy("cfo_100", ["CFO"]);
+    await expect(
+      store.approve("org_456", "prop_1008", offer, { ...byPerson("cfo_100"), cause: " " }),
+    ).rejects.toThrow("a move needs a cause");
+    const nobody = byPerson("cfo_100");
+    nobody.mover = { ...nobody.mover, subject: "" };
+    await expect(store.approve("org_456", "prop_1008", offer, nobody)).rejects.toThrow(
+      "a move needs an actor",
+    );
+    expect(await store.approvals("org_456", "prop_1008")).toStrictEqual([]);
   });
 
   it("Step 29: the store keeps its own copy: a caller that changes the approval afterwards changes nothing", async () => {

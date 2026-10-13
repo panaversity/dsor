@@ -16,13 +16,23 @@ import {
   contract,
   DEL_101,
   FIRM_IN_456,
+  FIRM_IN_789,
   FOREIGN_URI,
   keyed,
+  rolesFile,
   shippedWith,
+  STARTING_ROLES,
   SUPERVISOR,
   withPlanted,
 } from "./helpers.ts";
-import { heard, ruleWorldOnTuesday, shippedRule, T0, type RuleWorld } from "./rule-world.ts";
+import {
+  ADMIN_700,
+  heard,
+  ruleWorldOnTuesday,
+  shippedRule,
+  T0,
+  type RuleWorld,
+} from "./rule-world.ts";
 
 const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
 
@@ -417,5 +427,115 @@ describe("From step 29's review: line ⑨ says no before any work, and the store
       }),
     );
     expect(await stateOf(w, id)).toStrictEqual({ state: "APPROVED", approvals: 1 });
+  });
+});
+
+// A person of two companies, planted for the tests of which company's roles count.
+const TWO_COMPANIES: RequestEnvelope = { token: "tok_two", tenant: "org_456" };
+function inTwo(in456: string[]): Principal {
+  return {
+    id: "two_100",
+    type: "human",
+    memberships: [
+      { tenant_id: "org_456", roles: in456 },
+      { tenant_id: "org_789", roles: ["CFO"] },
+    ],
+  } as unknown as Principal;
+}
+
+describe("From step 29's review: only the call's own company counts, and each field of an approval has its source", () => {
+  // Found by the review, finding M5: roles from every company, in the work, passed every test.
+  it("Step 29: a tenant administrator of org_456 who is CFO in org_789 approves INV-1008, which waits for both: only org_456's role counts, and it still waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday(controlsOf(shippedRule(), ADMIN_ABOVE_30000));
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const answer = await withPlanted("tok_two", inTwo(["tenant_admin"]), () =>
+      approves(w, TWO_COMPANIES, uri, payload_hash),
+    );
+    expect(answer).toMatchObject({
+      outcome: "COMMITTED",
+      data: {
+        state: "PENDING_APPROVAL",
+        waits_for: [
+          { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
+        ],
+      },
+    });
+    const [approval] = await w.proposals.approvals("org_456", id);
+    expect(approval?.approvers).toMatchObject([{ principal: "two_100", basis: "role:tenant_admin" }]);
+  });
+
+  // Found by the review, finding M5: the look's permissions from every company passed every test.
+  it("DSOR-APR-07: a person whose org_456 role may call proposal.approve and who is CFO in org_789 cannot approve in org_456: org_456's permissions lack payment:approve", async () => {
+    const roles = rolesFile({ ...STARTING_ROLES, approver_clerk: ["proposal:approve"] });
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, undefined, roles);
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    const answer = await withPlanted("tok_two", inTwo(["approver_clerk"]), () =>
+      approves(w, TWO_COMPANIES, uri, payload_hash),
+    );
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "two_100 may not approve payment.create@1: it needs payment:approve",
+    });
+  });
+
+  // Found by the review, finding M5: no approval ran in org_789, so the look's permissions read
+  // from org_456 always passed every test.
+  it("Step 29: in org_789, firm-ap-fte's payment of INV-2002, 3,300.00 USD, waits for a tenant administrator of a rule of org_789's own, and admin_700 approves it", async () => {
+    const rule789: Control = {
+      ...shippedRule(),
+      id: "admin-above-1000",
+      version: 1,
+      owner: "admin_700",
+      reviewed_by: "admin_700",
+      authority: { system: "local" },
+      condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("1000", "USD"))',
+      effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+    };
+    const controls = {
+      file: "controls.json",
+      text: JSON.stringify({ org_456: [shippedRule()], org_789: [rule789] }),
+    };
+    const w = await ruleWorldOnTuesday(controls);
+    const answer = await w.ask(keyed(FIRM_IN_789), "payment.create", {
+      invoice: "dsor://org_789/invoice/INV-2002",
+      expected_version: 1,
+    });
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const id = idOf(answer);
+    const kept = await w.proposals.get("org_789", id);
+    expect(
+      await w.ask(keyed(ADMIN_700), "proposal.approve", {
+        proposal: kept!.uri,
+        payload_hash: kept!.payload_hash,
+      }),
+    ).toMatchObject({ outcome: "COMMITTED", data: { tenant_id: "org_789", state: "APPROVED" } });
+  });
+
+  // Found by the review, finding L5: the approval's risk, its binding mode, and its time had no
+  // test of where they come from.
+  it.each([
+    ["high", "predicate"],
+    ["critical", "strict_version"],
+  ])(
+    "DSOR-APR-02a: on a %s-risk payment.create, the approval names that risk, and binds the state in %s mode",
+    async (level, mode) => {
+      const rated = { ...contract("payment.create"), risk: { level } };
+      const w = await ruleWorldOnTuesday(undefined, undefined, undefined, shippedWith(rated));
+      const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+      await approves(w, CFO, uri, payload_hash);
+      const [approval] = await w.proposals.approvals("org_456", id);
+      expect([approval?.risk, approval?.bound_state.mode]).toStrictEqual([level, mode]);
+    },
+  );
+
+  it("DSOR-APR-02a: the approver's authn.at is the time of the call", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const before = Date.now();
+    await approves(w, CFO, uri, payload_hash);
+    const after = Date.now();
+    const [approval] = await w.proposals.approvals("org_456", id);
+    const at = Date.parse(approval!.approvers[0]!.authn.at);
+    expect(at >= before && at <= after).toBe(true);
   });
 });

@@ -268,7 +268,12 @@ describe("D8: on the database, an approval once given says what it said (step 29
   });
 
   /** An approval row, as dsor_runtime would add it by hand, with this approver. */
-  function row(id: string, approver: string, named = approver): unknown[] {
+  function row(
+    id: string,
+    approver: string,
+    named = approver,
+    change: (approval: Record<string, unknown>) => unknown = (approval) => approval,
+  ): unknown[] {
     const apr = `apr_${randomUUID()}`;
     const approval = {
       id: apr,
@@ -276,7 +281,7 @@ describe("D8: on the database, an approval once given says what it said (step 29
       proposal: `dsor://org_456/proposal/${id}`,
       approvers: [{ principal: named, basis: "role:CFO", authn: { at: new Date().toISOString() } }],
     };
-    return [apr, id, approver, JSON.stringify(approval)];
+    return [apr, id, approver, JSON.stringify(change(approval))];
   }
   const ADD = `INSERT INTO dsor.approvals (tenant_id, id, proposal_id, approver, approval)
                VALUES ('org_456', $1, $2, $3, $4::jsonb)`;
@@ -291,6 +296,33 @@ describe("D8: on the database, an approval once given says what it said (step 29
     const id = await waitingFor([CFO_BY_8]);
     expect(await asRuntime(ADD, row(id, "cfo_100", "intake-fte"))).toContain("approvals_keys");
   });
+
+  // Found by step 29's review, finding L10: the CHECK has seven clauses, and one was tried.
+  it.each([
+    ["an id that is not the row's", (a: Record<string, unknown>) => ({ ...a, id: "apr_other" })],
+    ["another company", (a: Record<string, unknown>) => ({ ...a, tenant: "org_789" })],
+    [
+      "another proposal",
+      (a: Record<string, unknown>) => ({ ...a, proposal: "dsor://org_456/proposal/prop_other" }),
+    ],
+    [
+      "two approvers",
+      (a: Record<string, unknown>) => ({
+        ...a,
+        approvers: [...(a["approvers"] as unknown[]), ...(a["approvers"] as unknown[])],
+      }),
+    ],
+    ["approvers that are not a list", (a: Record<string, unknown>) => ({ ...a, approvers: {} })],
+    ["a record that is a list", (a: Record<string, unknown>) => [a]],
+  ])(
+    "Step 29: the columns say what the approval says: a row whose approval names %s is refused by approvals_keys",
+    async (_what, change) => {
+      const id = await waitingFor([CFO_BY_8]);
+      expect(await asRuntime(ADD, row(id, "cfo_100", "cfo_100", change))).toContain(
+        "approvals_keys",
+      );
+    },
+  );
 
   it("Step 29: an approval names a proposal of its own company: one for a proposal that is not there is refused", async () => {
     expect(await asRuntime(ADD, row(`prop_${randomUUID()}`, "cfo_100"))).toContain(
