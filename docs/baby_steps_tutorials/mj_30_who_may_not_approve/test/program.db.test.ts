@@ -203,7 +203,8 @@ describe("the program", () => {
         "user_123 approves it: SOD_VIOLATION: user_123 may not approve proposal prop_",
         ": user_123 asked for it",
         'the agent approves INV-1012: AUTHORIZATION_DENIED: "proposal.approve" is for people only, and accounts-payable-fte is not a person',
-        "both wait: org_456 has no AP supervisor outside their chains",
+        // Changed by step 30's review, finding L6: the states, as DSoR keeps them.
+        "INV-1012's proposal: PENDING_APPROVAL, INV-2013's: PENDING_APPROVAL; org_456 has no AP supervisor outside their chains",
       ]) {
         expect(sod).toMatch(line);
       }

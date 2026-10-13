@@ -1730,7 +1730,20 @@ console.log(
   "  the agent approves INV-1012:",
   await approveAs(AGENT, agentsScreen.uri, agentsScreen.payload_hash),
 );
-console.log("  both wait: org_456 has no AP supervisor outside their chains");
+/** The state of the proposal an answer names, as DSoR keeps it. */
+async function stateOfAnswer(answer: Answer): Promise<string> {
+  const id =
+    String("proposal" in answer ? answer.proposal : "")
+      .split("/")
+      .at(-1) ?? "";
+  return (await approvalProposals.get("org_456", id))?.state ?? "not there";
+}
+// Found by step 30's review, finding L6: this line was a fixed sentence, and a break of segregation
+// of duties would have left it as it was. The states come from DSoR's store now.
+console.log(
+  `  INV-1012's proposal: ${await stateOfAnswer(agents)}, INV-2013's: ${await stateOfAnswer(own)};` +
+    " org_456 has no AP supervisor outside their chains",
+);
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
