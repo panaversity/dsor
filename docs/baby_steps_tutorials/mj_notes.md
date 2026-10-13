@@ -1733,6 +1733,47 @@ learner's choice of 2026-10-12, to build first and understand after, covered bot
 - **For the learner's session:** the visual story of both halves, step 28's D1 to D21 and step
   28b's D1 to D15, the eight breaks to predict, and open questions 113 to 119.
 
+### Step 29, approvals, built first by the learner's choice (2026-10-13)
+
+Copied from step 28b, with a database of its own. On 2026-10-13 the learner asked to build step 29
+first, and to talk through steps 28, 28b, and 29 together after.
+
+- **The decisions:** D1 to D15 are Claude Code's, written before any code, each with its downside.
+  The build changed the words of D4 (the schema's own field, `requires`), D5 (the state before the
+  role), and D9 (the company's ending lock, not a lock of the proposal's row). The review changed
+  D5, D7, D10, and D13 again. All of them are for the learner to review.
+- **The pieces:** A, canonical JSON in full; B, a waiting proposal keeps what it waits for
+  (migration 025); C, DSoR keeps each approval (migration 026); D, `proposal.approve`; E, an
+  approval expires with its proposal; F, a rule asks only for an approval someone can give; G, the
+  program. One commit each, each test red first, each piece broken on purpose.
+- **The breaks:** B1 and B3 went as the design expected. B2 and B4 did not: a second check stopped
+  each, line ⑨'s own look at the identity mode, and the next check of the roles. Each piece's own
+  breaks, about 60 in all, found four survivors, and each changed the code or added a test.
+- **The review:** no high finding, seven medium, eleven low, and 59 breaks of the reviewer's own,
+  14 of which survived. The medium ones: an approval given after the expiry, when it waited for a
+  sweep's lock, since `now()` is the time a transaction began; a rule that asks for a role without
+  `proposal:approve`; a README that said the fingerprint alone protects the approver; and four
+  places where code was right and no test held it. All were fixed, each test red first; L8 and L11
+  were recorded, with open question 122.
+- **Lessons for the next builds:**
+  - A refusal can carry a `state` too. A test that told success from refusal by `state` read a
+    refusal as an approval; tell them apart by a field only success has.
+  - A list in an answer needs labels of its own, field by field, or the masking step refuses the
+    whole answer, `INTERNAL_ERROR`.
+  - A draft in the step folder is part of the step. Piece D's draft of `src/approve.ts` failed the
+    typecheck of piece C's check. Drafts belong in the scratchpad until their piece starts.
+  - `now()` in PostgreSQL is the time the transaction began. A check of time after a lock wait reads
+    `clock_timestamp()`.
+  - The cross-tenant suite sends another company's address with a made-up id, and expects
+    `TENANT_MISMATCH`. An input pattern stricter than the specification's breaks it; refuse the
+    form of an id in line ⑨'s look instead.
+  - Run first, then write the commit. One message named a count before the run printed it, and the
+    count was wrong. Another said the formatter changed no token, and it adds trailing commas. Both
+    messages were corrected before the next commit.
+- **For the learner's session:** steps 28, 28b, and 29 together: the visual story, now with a third
+  act; step 28's D1 to D21, step 28b's D1 to D15, and step 29's D1 to D15; the twelve breaks to
+  predict; and open questions 113 to 122.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

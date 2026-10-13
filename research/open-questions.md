@@ -794,3 +794,27 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `local`, and no sweep ever asks about it again: the drift check is gone, with a record but
     with no second person. Should a control that cited a governed source keep one, or should moving
     to `local` need another person's approval?
+
+120. **Does one person's approval satisfy two requirements of different roles?** DSOR-AUT-02c says
+    that when several `REQUIRE_*` outcomes apply, all of them must be satisfied, and DSOR-SOD-04c
+    (L3) counts distinct people within one requirement's quorum. Neither says whether one person
+    who holds two roles, a CFO who is also a tenant administrator, satisfies a rule that asks for
+    the CFO and another that asks for a tenant administrator with one approval. Step 29's learner
+    build lets one approval satisfy every open requirement whose role the approver holds, so two
+    rules written to ask for two people may be met by one. Should two requirements need two people?
+
+121. **What does an approval's `status` say once its proposal expires?** `approval.schema.json`
+    lists `active`, `revoked`, `expired`, and `consumed`, and DSOR-APR-04a makes an approval expire.
+    Step 29's learner build keeps an approval as it was given, `active`, with the `expires_at` of
+    its proposal, and nothing changes it. Past that time it counts for nothing, and the sweep
+    expires the proposal, but the kept record still says `active`. Is `status` meant to be stored
+    and moved, so that an approval record changes after it is given, or computed when it is read?
+
+122. **Whose approval is a prepared approval that someone else releases?** DSOR-OPR-05 lets every
+    command run in `propose_only` mode, and DSOR-APR-05a accepts `proposal.approve` only from the
+    approver's own direct call. In step 29's learner build, cfo_100's `proposal.approve` in
+    `propose_only` mode ends as a `READY` proposal of the approval itself, which step 31's
+    `proposal.execute` could release later, perhaps by another person who may release it. The
+    approval would then be given at the release, by the releaser's call, in cfo_100's name. Should
+    `proposal.approve` refuse `propose_only`, or should a release of it count only from the
+    approver?
