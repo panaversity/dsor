@@ -20,7 +20,9 @@ import {
   FIRM_IN_456,
   FIRM_IN_789,
   keyed,
+  rolesFile,
   shippedWith,
+  STARTING_ROLES,
   SUPERVISOR,
   withPlanted,
 } from "./helpers.ts";
@@ -56,6 +58,9 @@ const user124 = {
 } as unknown as Principal;
 
 // What a payment that the supervisor rule stops waits for.
+// org_789's AP supervisor, who signed del_102, the slip of firm-ap-fte in org_789.
+const USER_700: RequestEnvelope = { token: "tok_e1a7", tenant: "org_789" };
+
 const ONE_SUPERVISOR = {
   approval: { role: "ap_supervisor", quorum: 1 },
   control: "supervisor-above-10000",
@@ -81,6 +86,35 @@ async function drafted(w: RuleWorld, invoice: string, who: RequestEnvelope = AGE
 /** One approval call, with a fresh key. */
 function approves(w: RuleWorld, who: RequestEnvelope, uri: string, payload_hash: string) {
   return w.ask(keyed(who), "proposal.approve", { proposal: uri, payload_hash });
+}
+
+// A rule of org_789's own, so that org_789's agent has a waiting payment of its company to try.
+const RULE_789: Control = {
+  ...shippedRule(),
+  id: "admin-above-1000",
+  version: 1,
+  owner: "admin_700",
+  reviewed_by: "admin_700",
+  authority: { system: "local" },
+  condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("1000", "USD"))',
+  effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+};
+const BOTH_COMPANIES: ControlsSource = {
+  file: "controls.json",
+  text: JSON.stringify({ org_456: [shippedRule()], org_789: [RULE_789] }),
+};
+
+/** A waiting payment in this company: INV-1008 in org_456, INV-2002 in org_789. */
+async function waitingIn(w: RuleWorld, tenant: string) {
+  const [who, invoice] = tenant === "org_456" ? [AGENT, "INV-1008"] : [FIRM_IN_789, "INV-2002"];
+  const answer = await w.ask(keyed(who), "payment.create", {
+    invoice: `dsor://${tenant}/invoice/${invoice}`,
+    expected_version: 1,
+  });
+  expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+  const id = idOf(answer);
+  const kept = (await w.proposals.get(tenant, id))!;
+  return { id, uri: kept.uri, payload_hash: kept.payload_hash };
 }
 
 /** The proposal's state, and how many approvals it has. */
@@ -134,6 +168,11 @@ describe("C2: someone outside the chain who holds the role approves (step 30's R
   });
 });
 
+/** A refusal's code and words, without the call's own correlation, or nothing for a yes. */
+function refusalOf(answer: Answer): { code?: string; message?: string } {
+  return "code" in answer ? { code: answer.code, message: answer.message } : {};
+}
+
 /** The decision record of the call that gave this answer. */
 async function recordOf(w: RuleWorld, answer: Answer) {
   const records = await w.log.records();
@@ -169,14 +208,43 @@ describe("C1 and C3: no one in the requesting chain approves, and the no comes b
     expect(other).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
   });
 
-  it("DSOR-SOD-02: a dry run of user_123's approval hears what the real call hears: SOD_VIOLATION, and nothing is approved", async () => {
+  // Changed by step 30's review, finding L2: the test compared only the code, so a dry run that
+  // refused for another reason passed.
+  it("DSOR-SOD-02: a dry run of user_123's approval hears what the real call hears, word for word: SOD_VIOLATION, and nothing is approved", async () => {
     const w = await withSupervisors();
     const { id, uri, payload_hash } = await drafted(w, "INV-1012");
     const dry = { ...SUPERVISOR, mode: "validate_only" as const };
     const answer = await w.ask(dry, "proposal.approve", { proposal: uri, payload_hash });
-    expect(answer).toMatchObject({ code: "SOD_VIOLATION" });
     expect((await recordOf(w, answer))?.authorization).toBe("DENY");
+    const real = await approves(w, SUPERVISOR, uri, payload_hash);
+    expect(refusalOf(answer)).toStrictEqual(refusalOf(real));
+    expect(refusalOf(answer)).toMatchObject({ code: "SOD_VIOLATION" });
     expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  // Found by step 30's review, finding L2: no test held decision D3's order, so the check could move
+  // after the proposal's state, or before the operation's own permission, and every test passed.
+  it("DSOR-SOD-02: the chain is asked before the proposal's state: after user_124 approved INV-1012, user_123 still hears SOD_VIOLATION, not CONFLICT", async () => {
+    const w = await withSupervisors();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1012");
+    await withPlanted("tok_user_124", user124, () => approves(w, USER_124, uri, payload_hash));
+    expect(await stateOf(w, id)).toStrictEqual({ state: "APPROVED", approvals: 1 });
+    expect(await approves(w, SUPERVISOR, uri, payload_hash)).toMatchObject({
+      code: "SOD_VIOLATION",
+      message: `user_123 may not approve proposal ${id}: user_123 signed slip del_100, which the agent that asked works under`,
+    });
+  });
+
+  it("DSOR-SOD-02: who may approve the operation at all is asked before the chain: with payment:approve gone from ap_supervisor, user_123 hears AUTHORIZATION_DENIED for the payment, not SOD_VIOLATION", async () => {
+    const supervisor = STARTING_ROLES["ap_supervisor"]!.filter((p) => p !== "payment:approve");
+    const roles = rolesFile({ ...STARTING_ROLES, ap_supervisor: supervisor });
+    const rules = controlsOf(shippedRule(), supervisorRule());
+    const w = await ruleWorldOnTuesday(rules, undefined, undefined, undefined, undefined, roles);
+    const { uri, payload_hash } = await drafted(w, "INV-1012");
+    expect(await approves(w, SUPERVISOR, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "user_123 may not approve payment.create@1: it needs payment:approve",
+    });
   });
 });
 
@@ -212,14 +280,16 @@ describe("C1: every part of the chain, read from DSoR's own records (step 30's R
     return (await w.proposals.get("org_456", id))!;
   }
 
-  it("DSOR-SOD-02: a person who acted in the request cannot approve it: user_124, in the actor chain of a request for user_123, hears SOD_VIOLATION", async () => {
+  // Changed by step 30's review, finding L3: with one actor in the chain, a check of only the first
+  // actor passed.
+  it("DSOR-SOD-02: no actor in the request approves it: user_124, the second of two actors in a request for user_123, hears SOD_VIOLATION", async () => {
     const w = await withSupervisors();
     const id = "prop_00000000-0000-4000-8000-000000000301";
     const kept = await planted(w, id, {
       identity_mode: "unattended",
       subject: "user_123",
       subject_type: "human",
-      actor_chain: ["user_124"],
+      actor_chain: ["accounts-payable-fte", "user_124"],
       active_tenant: "org_456",
       subject_authority: AS_OF,
     });
@@ -256,38 +326,21 @@ describe("C1: every part of the chain, read from DSoR's own records (step 30's R
       message: `user_124 may not approve proposal ${id}: the request is user_124's, through slip del_100`,
     });
   });
+
+  // Found by step 30's own breaks: with the slip read in org_456 whatever the call's company, every
+  // test passed, because every test of the chain ran in org_456.
+  it("DSOR-SOD-02: in org_789, the slip is read in the call's own company: user_700 signed del_102, so user_700 cannot approve firm-ap-fte's INV-2002", async () => {
+    const w = await ruleWorldOnTuesday(BOTH_COMPANIES);
+    const { id, uri, payload_hash } = await waitingIn(w, "org_789");
+    expect(await approves(w, USER_700, uri, payload_hash)).toMatchObject({
+      code: "SOD_VIOLATION",
+      message: `user_700 may not approve proposal ${id}: user_700 signed slip del_102, which the agent that asked works under`,
+    });
+    expect(await w.proposals.approvals("org_789", id)).toStrictEqual([]);
+  });
 });
 
 describe("C4: an agent never approves, and every approver is a person (step 30's README, decision D7)", () => {
-  // A rule of org_789's own, so that org_789's agent has a waiting payment of its company to try.
-  const RULE_789: Control = {
-    ...shippedRule(),
-    id: "admin-above-1000",
-    version: 1,
-    owner: "admin_700",
-    reviewed_by: "admin_700",
-    authority: { system: "local" },
-    condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("1000", "USD"))',
-    effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
-  };
-  const BOTH_COMPANIES: ControlsSource = {
-    file: "controls.json",
-    text: JSON.stringify({ org_456: [shippedRule()], org_789: [RULE_789] }),
-  };
-
-  /** A waiting payment in this company: INV-1008 in org_456, INV-2002 in org_789. */
-  async function waitingIn(w: RuleWorld, tenant: string) {
-    const [who, invoice] = tenant === "org_456" ? [AGENT, "INV-1008"] : [FIRM_IN_789, "INV-2002"];
-    const answer = await w.ask(keyed(who), "payment.create", {
-      invoice: `dsor://${tenant}/invoice/${invoice}`,
-      expected_version: 1,
-    });
-    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
-    const id = idOf(answer);
-    const kept = (await w.proposals.get(tenant, id))!;
-    return { id, uri: kept.uri, payload_hash: kept.payload_hash };
-  }
-
   it.each([
     ["accounts-payable-fte", "org_456", AGENT],
     ["firm-ap-fte", "org_456", FIRM_IN_456],
