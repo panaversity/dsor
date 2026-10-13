@@ -2432,12 +2432,17 @@ async function recordTheRead(
  * finish a proposal as FAILED. A careless handler that made the payment and then answered
  * TRANSACTION_FAILED left its proposal FAILED, a review measured; any code not here is
  * OUTCOME_UNKNOWN, because the door cannot tell what happened.
+ *
+ * NEW IN STEP 25, decision 156: AUTHORIZATION_DENIED too. delegation.revoke answers it when its
+ * one statement, which names the signer, matched no slip: nothing was written. Without it, a door
+ * that lost §21.9 told the caller OUTCOME_UNKNOWN about a revocation that never happened.
  */
 const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
   "CONFLICT",
   "STALE_STATE",
   "RESOURCE_NOT_FOUND",
   "VALIDATION_FAILED",
+  "AUTHORIZATION_DENIED",
 ]);
 
 /**

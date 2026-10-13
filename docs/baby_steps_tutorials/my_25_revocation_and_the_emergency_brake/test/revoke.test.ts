@@ -385,7 +385,7 @@ describe("what the application may do to a slip", () => {
 
   it("DSOR-DEL-04a: a suspended slip may become revoked, and never active again, even writing the SQL itself", async () => {
     // Decision 156: the policy lets the application reach a suspended slip now, to revoke it. Its
-    // second half still lets it leave only revoked, with who revoked it.
+    // second half still lets it leave only revoked, with who revoked it, when and why.
     await asTheOwner(() =>
       db.exec(
         "UPDATE dsor.delegations SET status = 'suspended' WHERE tenant = 'org_456' AND id = 'del_100'",
@@ -400,7 +400,7 @@ describe("what the application may do to a slip", () => {
     expect(await statusOfDel100()).toBe("suspended");
 
     const { rows } = await theDatabase("org_456").query(
-      "UPDATE dsor.delegations SET status = 'revoked', revoked_by = 'user_123' WHERE tenant = 'org_456' AND id = 'del_100' RETURNING id",
+      "UPDATE dsor.delegations SET status = 'revoked', revoked_by = 'user_123', revoked_at = clock_timestamp(), revoked_reason = 'suspended, and torn up' WHERE tenant = 'org_456' AND id = 'del_100' RETURNING id",
     );
 
     expect(rows).toHaveLength(1);
