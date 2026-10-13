@@ -175,7 +175,8 @@ const WAITS_FOR = [
   { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
 ];
 /** A proposal of the agent's under del_100, planted by the test and moved along the picture, with
- * its booking. Approvals arrive in step 29, so no call reaches PENDING_APPROVAL or APPROVED yet. */
+ * its booking. Changed in step 29: a call reaches APPROVED now, through proposal.approve. The test
+ * plants one, to keep its world small. */
 async function planted(w: World, path: ("PENDING_APPROVAL" | "APPROVED")[]): Promise<string> {
   const id = `prop_${randomUUID()}`;
   const as_of = new Date(w.clock.now).toISOString();

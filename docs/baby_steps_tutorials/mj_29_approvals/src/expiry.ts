@@ -1,6 +1,7 @@
 // The sweep, DSoR's own command proposal.expire_due (step 25c's README, decisions
 // L3, D1, D4, D8, and D9). It moves each of the company's READY proposals whose expires_at has come
-// to EXPIRED, and each PENDING_APPROVAL one (step 27's README, decision D11), with
+// to EXPIRED, and each PENDING_APPROVAL one (step 27's README, decision D11), and, since step 29,
+// each APPROVED one, whose approvals expire with it (step 29's README, decision D11), with
 // a record that names the sweep's caller, and gives each one's booking back to the day
 // (DSOR-DEL-06d in specs/dsor/02-security.md, section 13.4). All of it happens inside the claim's
 // transaction, so every due proposal expires, or none does. Only a system login holding the
@@ -46,7 +47,7 @@ async function expireDue(_input: unknown, work: OwnStores): Promise<unknown> {
     // A move that finds the proposal moved on already, by a tear-up a moment before, changes
     // nothing, so its booking is not given back twice, and it is not counted.
     // From the state it waited in, READY or PENDING_APPROVAL (step 27's README,
-    // decision D11).
+    // decision D11), or APPROVED (step 29's README, decision D11).
     if (await stores.proposals.move(tenant, id, state, "EXPIRED", by)) {
       await stores.reservations.release(tenant, id);
       expired += 1;

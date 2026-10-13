@@ -167,7 +167,7 @@ export type ProposalStore = {
   // This company's READY proposals whose expires_at has come, by the store's clock, in the order
   // of their ids. The sweep expires these (step 25c's README, claim C4). And its
   // PENDING_APPROVAL ones, each with its state, which the sweep's move starts from (step 27's
-  // README, decision D11).
+  // README, decision D11). NEW IN STEP 29: and its APPROVED ones (step 29's README, decision D11).
   due: (tenant: string) => Promise<Due[]>;
   // NEW IN STEP 29: one approval and, when it is the last one the proposal waits for, the move to
   // APPROVED, with its record: one step, while no other approval, tear-up, or sweep of the company
@@ -179,9 +179,11 @@ export type ProposalStore = {
 };
 
 // A proposal whose time has come, and the state it waited in (step 27's README,
-// decision D11). An APPROVED one waits for step 29, which builds the approval.
+// decision D11).
+// NEW IN STEP 29: and an APPROVED one, which waits for step 31's proposal.execute. Its approval
+// expires with it (DSOR-APR-04a; step 29's README, decision D11).
 /** A proposal the sweep expires: its id, and the state it waited in. */
-export type Due = { id: string; state: "PENDING_APPROVAL" | "READY" };
+export type Due = { id: string; state: "PENDING_APPROVAL" | "READY" | "APPROVED" };
 
 // The three states the learner's DSOR-DEL-04c names, each of which the picture now
 // lets move to CANCELLED. Step 25 left a READY proposal waiting, because the picture drew no move
@@ -414,13 +416,13 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },
     // As the database's SELECT does it: this company, READY or, since step 27, PENDING_APPROVAL,
-    // and its time come.
+    // and its time come. NEW IN STEP 29: or APPROVED.
     due: async (tenant: string): Promise<Due[]> => {
       const at = now();
       const found: Due[] = [];
       for (const row of rows.values()) {
         if (row.tenant !== tenant || Date.parse(row.expires_at) > at) continue;
-        if (row.state === "READY" || row.state === "PENDING_APPROVAL") {
+        if (row.state === "READY" || row.state === "PENDING_APPROVAL" || row.state === "APPROVED") {
           found.push({ id: row.id, state: row.state });
         }
       }
