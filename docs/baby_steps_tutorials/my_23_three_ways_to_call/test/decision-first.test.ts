@@ -20,9 +20,11 @@ import {
   verifyChain,
   type AuditRecord,
 } from "../src/audit.ts";
+import { overPGlite } from "../src/database.ts";
 import { resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
 import { PIPELINE } from "../src/operations.ts";
+import { useDatabase } from "../src/store.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 import { assertPipeline, type Context, type Stage } from "../src/pipeline.ts";
 import { aDatabase, forgetTheLog, resetTheStory } from "./support/database.ts";
@@ -347,6 +349,48 @@ describe("the decision is written down first", () => {
       "proposal_transition",
       "proposal_transition",
       "proposal_transition",
+    ]);
+  });
+
+  it("DSOR-EXE-03b: if a command's decision cannot be written after its proposal is made, nothing is carried out", async () => {
+    // STEP 22, decision 157, found by a review: the test above stops at §21.8 now, so §21.11's
+    // own write was never the one that failed for a command. Here only the decision's INSERT is
+    // refused: the proposal's records are written by statements that begin with WITH.
+    await fresh();
+
+    const connection = overPGlite(db);
+    let refused = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (!refused && sql.trimStart().startsWith("INSERT INTO dsor.audit")) {
+          refused = true;
+
+          throw Object.assign(new Error("the server refused it"), { code: "53100" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", {
+        invoice: INV_1009,
+        expected_version: 1,
+      });
+    } finally {
+      useDatabase(connection);
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("safe_same_key");
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+    // No decision on the record: the proposal's creation, and its DENIED.
+    expect((await theLog("org_456")).map((r) => `${r.kind} ${r.result}`)).toStrictEqual([
+      "proposal_transition PROPOSED",
+      "proposal_transition DENIED",
     ]);
   });
 

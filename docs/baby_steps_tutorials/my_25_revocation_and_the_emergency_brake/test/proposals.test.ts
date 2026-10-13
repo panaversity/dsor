@@ -468,11 +468,22 @@ const historyOf = async (id: string): Promise<unknown[][]> =>
  * back, or only the first `times` of them. With `replyLost`, the write happens and only its reply
  * is lost (decision 137). With `readBackFails`, once a write has failed, every read of a proposal's
  * state fails too (decision 153), and STEP 22, decision 157, every look for a record by its id: the
- * door would otherwise find the move's own record, and know the move was written.
+ * door would otherwise find the move's own record, and know the move was written. With
+ * `lookFails`, only that look fails, so the door reads the proposal back to know.
  */
 function failingMovesInto(
   states: readonly ProposalState[],
-  { replyLost = false, times = Number.POSITIVE_INFINITY, readBackFails = false } = {},
+  {
+    replyLost = false,
+    times = Number.POSITIVE_INFINITY,
+    readBackFails = false,
+    lookFails = readBackFails,
+  }: {
+    readonly replyLost?: boolean;
+    readonly times?: number;
+    readonly readBackFails?: boolean;
+    readonly lookFails?: boolean;
+  } = {},
 ): void {
   const connection = overPGlite(db);
   let left = times;
@@ -496,10 +507,9 @@ function failingMovesInto(
       }
 
       if (
-        readBackFails &&
         failed &&
-        (sql.includes("SELECT m.to_state FROM dsor.proposal_moves") ||
-          sql.includes("SELECT record_hash FROM dsor.audit WHERE record_id"))
+        ((readBackFails && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) ||
+          (lookFails && sql.includes("SELECT record_hash FROM dsor.audit WHERE record_id")))
       ) {
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
@@ -858,8 +868,10 @@ describe("the door makes a proposal for every command and moves it", () => {
 
   it("DSOR-APR-01a: a move to EXECUTING whose reply is lost is read back, found to be the door's own, and carried out", async () => {
     // Decision 137: written one at a time, a lost reply here left a proposal EXECUTING whose handler
-    // never ran, and the retry made a second proposal.
-    failingMovesInto(["EXECUTING"], { replyLost: true, times: 1 });
+    // never ran, and the retry made a second proposal. STEP 22, decision 157, found by a
+    // review: the move's own record settles it first now, so the look for it fails here, and the
+    // proposal is read back; no test reached the read-back once the record could answer.
+    failingMovesInto(["EXECUTING"], { replyLost: true, times: 1, lookFails: true });
 
     const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
 

@@ -450,9 +450,10 @@ describe("propose_only prepares a command and stops at READY", () => {
 /**
  * The store, for one write of moves naming `state`: the write happens and its reply is lost; with
  * `readsFail`, reading a proposal's state back fails too, and STEP 22, decision 157, so does every
- * look for a record by its id: the door would otherwise find the move's own record, and know.
+ * look for a record by its id: the door would otherwise find the move's own record, and know. With
+ * `looksFail` alone, only that look fails, so the door reads the proposal back to know.
  */
-function aLostReply(state: string, readsFail: boolean): () => void {
+function aLostReply(state: string, readsFail: boolean, looksFail = readsFail): () => void {
   const connection = overPGlite(db);
   let lost = false;
 
@@ -466,10 +467,9 @@ function aLostReply(state: string, readsFail: boolean): () => void {
       }
 
       if (
-        readsFail &&
         lost &&
-        (sql.includes("SELECT m.to_state FROM dsor.proposal_moves") ||
-          sql.includes("SELECT record_hash FROM dsor.audit WHERE record_id"))
+        ((readsFail && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) ||
+          (looksFail && sql.includes("SELECT record_hash FROM dsor.audit WHERE record_id")))
       ) {
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
@@ -528,7 +528,10 @@ function aWriteThatLandsLate(
 
 describe("a lost reply, read back", () => {
   it("DSOR-OPR-05: a move to READY whose reply is lost is read back, and the command is prepared", async () => {
-    const putBack = aLostReply("READY", false);
+    // STEP 22, decision 157, found by a review: the move's own record settles it first now, so the
+    // look for it fails here, and the proposal is read back; no test reached the read-back once the
+    // record could answer.
+    const putBack = aLostReply("READY", false, true);
 
     try {
       const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {

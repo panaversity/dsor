@@ -532,6 +532,46 @@ describe("a reply that is lost", () => {
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
   });
 
+  it("DSOR-UNK-01b: a creation whose reply is lost, found by its record and not read back, is OUTCOME_UNKNOWN, and its key stays taken", async () => {
+    // Found by a review: no test reached this branch. The proposal is there, and nobody can say
+    // which it is. Told "nothing was done", the retry would make a second proposal beside it.
+    const request = { idempotencyKey: "issue-1009-found-unread" };
+    const connection = overPGlite(db);
+    let lost = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (!lost && theCreation(sql)) {
+          lost = true;
+          await connection.query(sql, params, tenant);
+
+          throw aLostConnection();
+        }
+
+        if (lost && sql.includes("WHERE tenant = $1 AND record = $2")) {
+          throw aLostConnection();
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+
+    useDatabase(overPGlite(db));
+
+    expect(await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request)).toStrictEqual(
+      answer,
+    );
+    // The one proposal, left PROPOSED for reconciliation, and nothing carried out.
+    expect(await stateOf("org_456", "prop_1")).toBe("PROPOSED");
+    expect(await stateOf("org_456", "prop_2")).toBeUndefined();
+    expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
+  });
+
   it("DSOR-UNK-01b: a creation nobody can confirm stays OUTCOME_UNKNOWN when its decision cannot be written either, and no second proposal is made", async () => {
     // Found by a review. §21.11 runs after a refusal, to write it down, and when the log refused that
     // record too, its own refusal won: EVIDENCE_STORE_UNAVAILABLE, safe to send again. The key was

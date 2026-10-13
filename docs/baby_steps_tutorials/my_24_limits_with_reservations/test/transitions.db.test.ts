@@ -77,8 +77,16 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
 
     // As the owner, the company's moves beside the records they name, and the records of moves
     // that no move names.
-    const { rows: pairs } = await owner.query<{ to_state: string; result: string; kind: string }>(
-      `SELECT m.to_state, a.result, a.kind
+    const { rows: pairs } = await owner.query<{
+      proposal: string;
+      to_state: string;
+      result: string;
+      kind: string;
+      resources: readonly string[] | null;
+      request: string;
+    }>(
+      `SELECT m.proposal, m.to_state, a.result, a.kind, a.resources,
+              a.correlation ->> 'request_id' AS request
          FROM dsor.proposal_moves m JOIN dsor.audit a ON a.record_id = m.record
         WHERE m.tenant = 'org_456'`,
     );
@@ -99,6 +107,23 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
     // And every record of a move has its move.
     expect(unnamed[0]?.n).toBe(0);
     expect(verifyChain(await theLog("org_456"), await theHead("org_456"))).toBe(true);
+
+    // Found by a review: the foreign key says only that a move's record exists, so a move given
+    // another request's record passed every check above. Each record names its move's proposal, all
+    // but the creation's, which cannot, and the records of one proposal's moves are one request's.
+    for (const pair of pairs) {
+      expect(pair.resources).toStrictEqual(
+        pair.to_state === "PROPOSED" ? null : [`dsor://org_456/proposal/${pair.proposal}`],
+      );
+    }
+
+    const requestsOf = new Map<string, Set<string>>();
+
+    for (const pair of pairs) {
+      requestsOf.set(pair.proposal, (requestsOf.get(pair.proposal) ?? new Set()).add(pair.request));
+    }
+
+    expect([...requestsOf.values()].every((requests) => requests.size === 1)).toBe(true);
   });
 
   it("DSOR-AUD-01: most of twenty commands at once are carried out, because a lost place is tried again after a random pause", async () => {
