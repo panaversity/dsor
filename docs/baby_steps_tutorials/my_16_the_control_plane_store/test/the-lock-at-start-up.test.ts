@@ -222,9 +222,7 @@ describe("a window past the lock", () => {
         await db.exec("ALTER FUNCTION drop_the_table() OWNER TO folder_keeper");
       });
 
-      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        /SECURITY DEFINER/,
-      );
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
 
       // And the route is real: as the application, one call, and the table is gone.
       await db.exec("SELECT drop_the_table()");
@@ -252,9 +250,7 @@ describe("a window past the lock", () => {
         await db.exec("ALTER FUNCTION make_proposals() OWNER TO a_builder");
       });
 
-      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        /SECURITY DEFINER/,
-      );
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
 
       // And the route is real: as the application, one call, and a table stands in the schema.
       await db.exec("SELECT make_proposals()");
