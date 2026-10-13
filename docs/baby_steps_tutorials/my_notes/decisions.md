@@ -5456,9 +5456,11 @@ database then refuses.
    Told, not asked: the record of a new proposal cannot name it, because PostgreSQL numbers the
    proposal inside the same statement, so the first move names its record instead.
 3. **A record that loses its place waits a short random time, longer after each loss, and tries the
-   next place, up to ten** (Q3, c). Measured on PostgreSQL 17 with a pool of twenty: 20 of 20 made, and
-   50 of 50, in each of four runs, every move with its record and the chain verifying; before, 3 of
-   20 and 2 of 50. With no pause between tries, 3 or 4 of 20; refused at once, as in step 09, none.
+   next place, up to ten** (Q3, c). Measured on a PostgreSQL 17 on this machine, with a pool of twenty:
+   20 of 20 made, and 50 of 50, in each of four runs, every move with its record and the chain verifying; before, 3 of
+   20 and 2 of 50. With no pause between tries, 3 or 4 of 20; refused at once, as in step 09, none. Over a link with
+   delays added on purpose, as Neon's would add them, 8 to 18 of 20, so the database tier asks "most
+   of twenty" only of a server on this machine.
 4. **Decision records and read records follow the same rule** (Q4, a). Four of step 09's tests in each
    of steps 22 to 25 now expect the next place; steps 09 to 21 still refuse. One result: a person's
    `control.suspend` sent while agents pay without a pause landed on its first try in 20 runs of 20,
@@ -5484,10 +5486,30 @@ of another company could be written into this chain; and five branches had no te
 - A new proposal's record does not name its proposal, and the database checks that a move's record
   exists, not that it is the move's own.
 - The owner can still delete a record, as before (`DSOR-AUD-04b` detects it against a checkpoint).
-- Each company's log has one end: a request that loses ten places is refused, measured on a local
-  server, not on Neon. In a crowd a request can wait about a second for each record it writes, and a
+- Each company's log has one end. A request that loses ten places before its handler runs is
+  refused, with nothing done; a last move that loses them on both its tries leaves its proposal
+  EXECUTING, in its history and in the log, though the caller was told the payment stands, until
+  reconciliation, step 38. In a crowd a request can wait about a second for each record it writes, and a
   same-key retry that waits two seconds can be told `OUTCOME_UNKNOWN`.
 - Proposal numbers can skip, when a creation that lost its place had already taken a number.
+- A revocation's one statement carries six parameters, and twenty-one more for each proposal waiting
+  under the slip; PostgreSQL allows 65,535. From about 3,120 waiting proposals a slip cannot be
+  revoked, and PostgreSQL's refusal, a protocol error of class 08, is read as a lost connection and
+  answered `OUTCOME_UNKNOWN`. Nothing waits before step 29, which should send the moves as one
+  parameter. In step 29, too, an agent that keeps adding proposals under its slip can make the
+  revocation answer `CONFLICT` five times over; pulling the brake first, or locking the slip's row,
+  is the way out.
+- A move can name another company's record: the foreign key does not ask the record's company. A key
+  on both columns, the company and the record, would close it.
+- Through the door, the turns at the log now keep step 24's broken booking from showing: with the
+  booking read and then written, fifty payments at once made one, three runs of three, where they
+  made three before. The store's test of fifty reservations still sees it.
+- The crowd test's "every refusal is DENIED" held in every run, and is likely rather than
+  promised: a door that cannot write DENIED leaves the proposal PROPOSED (decision 153). The random
+  pause has no test off this machine, and "this machine" is read from the server's address.
+- Two comments in older steps say more than the code, as two did here: `store.ts` in steps 11 to 25
+  says one write runs on one connection from its read of the log's end to its INSERT, and
+  `audit.ts` in steps 09 to 21 says a lost write is looked up on the connection that failed.
 - The audit record's schema has no fields for a move's from-state, actor or cause; they are in its
   reason (open question 81). A move's time and its record's time come from two clocks.
 - Start-up does not ask whether a move must still name its record. Step 25's `CONFLICT` carries the
@@ -5503,6 +5525,15 @@ nullable, its foreign key removed, the records written before the moves, one pla
 read of the log's end, no bound on the tries, and step 25's records not gated on their moves. The
 README's two new breaks were measured twice, on the whole suite: the records written just before
 the moves, and a lost place not tried again (step 22's README).
+
+**A second review, of the build as merged,** found the crowd test likely to fail on Neon, two
+sentences that said more than the code, and two guarantees no test held. Each is fixed. The records
+of DENIED, of a prepared READY, and of the `OUTCOME_UNKNOWN` written when a handler throws are
+compared with their request's decision record, for the agent and for a person: written in DSoR's
+name instead, 2 failed in each of steps 22 to 25. A revocation whose reply is lost after it
+committed is tested: read as a refusal, it answered `AUTHORIZATION_DENIED`, left its proposal FAILED
+and 40,000.00 USD held, and the test fails (1 failed). The crowd test asks on every server that
+every move has its record and every refusal is DENIED, and "most of twenty" only on this machine.
 
 Two of the build's commits failed a check at their own point and were fixed in the commit that
 needed it, so every commit on the branch passes by itself: a formatting fix, and the type a test

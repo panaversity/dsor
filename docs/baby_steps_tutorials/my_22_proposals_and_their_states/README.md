@@ -145,7 +145,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, even one with no "from", the race, the rights, and the door's moves on every path, a lost reply that lands late or cannot be read back among them |
 | `test/proposals.db.test.ts` | new — twenty moves out of READY at once on a real server, and twenty out of COMMITTED, each leaving no record of a move that was refused |
 | `test/transitions.test.ts` | new — every move's record, what it says and in whose name; no record for a refused move; a move without a record refused by the database; the record of the move to EXECUTING that cannot be written; a place in the log taken once, and every time; lost replies, of a move and of a creation; every path of the door |
-| `test/transitions.db.test.ts` | new — twenty payments at once on a real server: every move with its record, and most of them carried out |
+| `test/transitions.db.test.ts` | new — twenty payments at once on a real server: every move with its record, every refusal DENIED, and, on a server on this machine, most of them carried out |
 | `test/audit-lost-reply.test.ts` | a decision that loses its place is written at the next one, and one that loses every place is given up after ten; four of step 09's tests now see ours written at the next place, theirs untouched; a write that ran and came back with a server's error is found by its record, and an error of class 08 is unknown |
 | `test/audit-per-tenant.test.ts` | a record of another company's is never written in this company's chain |
 | `test/decision-first.test.ts`, `test/pipeline.test.ts`, `test/audit-permissions.test.ts` | the log has records of moves now: they read its decisions, or count the moves; TRUNCATE takes the moves with the log; a command whose decision alone cannot be written is carried out by nobody |
@@ -224,8 +224,11 @@ applied". Make `dsor_step22` again.
 Four of the tests race on a real pool. Twenty requests try to move one proposal out of READY at the
 same moment: exactly one is written, with one record of EXECUTING. Twenty try to move a COMMITTED
 proposal anywhere: none is, and no record says one was. Twenty payments are sent at once: every move
-has its record, and every record of a move has its move. And at least fifteen of those twenty are
-carried out, because a request that loses its place at the end of the log tries the next one. Only a
+has its record, every record of a move has its move, and every refusal leaves its proposal DENIED.
+And, on a server on this machine, at least fifteen of those twenty are carried out, because a
+request that loses its place at the end of the log tries the next one. On a server further away,
+such as Neon, each statement waits longer and fewer get through: with delays added on purpose,
+8 to 18 of twenty, so that number is asked only of a local server. Only a
 real server can show that: PGlite runs one statement at a time, so nothing in the unit tier ever
 reaches the end of the log together. Measured on a local PostgreSQL 17 with a pool of twenty: twenty
 of twenty were carried out in each of four runs, and fifty of fifty in each of four runs of fifty.
@@ -340,8 +343,8 @@ A request whose place at the end of the log is taken is refused again, as in ste
 written. The unit tier sees it only where a test takes a place on purpose: six tests in
 `test/audit-lost-reply.test.ts`, and three in `test/transitions.test.ts`. On a real server it is the
 crowd that pays. A payment now writes four statements into the log, each of which must win its
-place the first time: twenty payments sent at once made none, in each of three runs, and the
-database tier's test of twenty at once fails.
+place the first time: twenty payments sent at once made none, in each of three runs, and on a local
+server the database tier's test of twenty at once fails.
 
 ## Build it yourself with Claude Code
 

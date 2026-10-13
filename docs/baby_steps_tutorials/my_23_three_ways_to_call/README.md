@@ -85,6 +85,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_22
 | `test/database.test.ts` | start-up refuses an application that may change a claim's mode, tested |
 | `test/model-boundary.test.ts`, `test/versions.test.ts` | a receipt's `data` is read as optional, because a `READY` or `VALIDATED` answer has none |
 | `test/main.test.ts` | three more decisions in the demo's log, and the records of six more moves |
+| `test/transitions.test.ts` | a prepared command's record of READY carries its request's identity, as its decision's does |
 
 ## Run it
 
