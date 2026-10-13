@@ -119,7 +119,9 @@ try {
       cause: "the owner's test of DSoR's own lock",
       correlation: { request_id: "req_owner_store", principal_id: subject },
     });
-    const cfo = [{ approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 }];
+    const cfo = [
+      { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
+    ];
     // The same proposal id, waiting for one CFO, in each company.
     for (const tenant of ["org_456", "org_789"]) {
       const invoice = `dsor://${tenant}/invoice/INV-1008`;

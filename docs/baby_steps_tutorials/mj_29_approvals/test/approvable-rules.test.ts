@@ -40,7 +40,10 @@ describe("C8: a rule asks only for an approval that someone can give (step 29's 
   });
 
   it("Step 29: start-up refuses a rule that asks for an approval by a role that cannot give it", async () => {
-    const byClerk = { ...shippedRule(), effect: { require_approval: { role: "ap_clerk", quorum: 1 } } };
+    const byClerk = {
+      ...shippedRule(),
+      effect: { require_approval: { role: "ap_clerk", quorum: 1 } },
+    };
     expect(await refusalAtStart(() => startWith(controlsOf(byClerk)))).toContain(
       "org_456's control high-value-payment: its effect asks for an approval by ap_clerk, which does not hold payment.create's approve_permission, payment:approve",
     );

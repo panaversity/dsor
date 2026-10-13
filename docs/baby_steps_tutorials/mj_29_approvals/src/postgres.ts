@@ -46,13 +46,7 @@ import {
 import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import type { Requirement } from "./envelope.ts";
-import {
-  approvalOf,
-  stillOpen,
-  type Approval,
-  type Approving,
-  type Offer,
-} from "./approvals.ts";
+import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
 import {
   checkMove,
   checkRequires,
@@ -1803,7 +1797,11 @@ function proposalsThrough(run: Runner): ProposalStore {
         );
         // NEW IN STEP 29: and the ids of its approvals, in the order they were given.
         const given = await approvalsIn(client, tenant, id);
-        return proposalOf(rows[0]!, moves.rows, given.map((approval) => approval.id));
+        return proposalOf(
+          rows[0]!,
+          moves.rows,
+          given.map((approval) => approval.id),
+        );
       }),
     // The proposals made under one slip that still wait: the slip their requester names (step
     // 22's README, decision 11). DSoR's own WHERE, the company first, with row-level security
@@ -1882,7 +1880,8 @@ function proposalsThrough(run: Runner): ProposalStore {
            VALUES ($1, $2, $3, $4, $5::jsonb)`,
           [tenant, made.id, id, offer.approver, JSON.stringify(made)],
         );
-        if (added.rowCount !== 1) throw new Error(`the approval was added ${added.rowCount ?? 0} times, not once`);
+        if (added.rowCount !== 1)
+          throw new Error(`the approval was added ${added.rowCount ?? 0} times, not once`);
         const waits_for = stillOpen(requires, [...before, made]);
         if (waits_for.length > 0) return { approval: made, state: "PENDING_APPROVAL", waits_for };
         // The last one it waited for: the move, under the same lock, with its record.

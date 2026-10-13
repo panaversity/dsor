@@ -19,7 +19,10 @@ type ApproveInput = { proposal: string; payload_hash: string };
 const NAME = JSON.stringify("proposal.approve");
 
 /** The contract of the operation a proposal names, without its version. */
-function targetOf(contracts: ReadonlyMap<string, Contract>, proposal: Proposal): Contract | undefined {
+function targetOf(
+  contracts: ReadonlyMap<string, Contract>,
+  proposal: Proposal,
+): Contract | undefined {
   return contracts.get(proposal.operation.split("@")[0] ?? proposal.operation);
 }
 
@@ -86,7 +89,11 @@ function riskOf(contract: Contract): Risk {
 }
 
 /** The words of a refusal of the store's step, which ran after line ⑨'s look. */
-function wordsOf(id: string, person: string, done: Extract<Approving, { refused: string }>): string {
+function wordsOf(
+  id: string,
+  person: string,
+  done: Extract<Approving, { refused: string }>,
+): string {
   if (done.refused === "moved") {
     return `proposal ${id} moved on to ${done.state ?? "another state"} while it was being approved`;
   }
@@ -107,7 +114,8 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
   const found = await stores.proposals.get(tenant, id);
   const target = found === undefined ? undefined : targetOf(contracts, found);
   // Line ⑨ found both a moment ago, and neither goes away.
-  if (found === undefined || target === undefined) throw new Error("the proposal line ⑨ found is gone");
+  if (found === undefined || target === undefined)
+    throw new Error("the proposal line ⑨ found is gone");
   // Decision D7: the state that the target's contract binds, as DSoR reads it now: the version of
   // each invoice the proposal names. A critical operation's approval binds it strictly, as
   // approval.schema.json asks.

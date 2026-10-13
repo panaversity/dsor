@@ -116,9 +116,9 @@ describe("C7: what a proposal waits for is written once (step 29's README, decis
   it("Step 29: the move to PENDING_APPROVAL names what the proposal waits for, and only that move may", async () => {
     const store = memoryProposals();
     await store.create("org_456", "prop_a", draft, by, "P7D");
-    await expect(store.move("org_456", "prop_a", "PROPOSED", "PENDING_APPROVAL", by)).rejects.toThrow(
-      "a proposal that waits for an approval names what it waits for",
-    );
+    await expect(
+      store.move("org_456", "prop_a", "PROPOSED", "PENDING_APPROVAL", by),
+    ).rejects.toThrow("a proposal that waits for an approval names what it waits for");
     expect(
       await store.move("org_456", "prop_a", "PROPOSED", "PENDING_APPROVAL", by, [CFO_BY_8]),
     ).toBe(true);

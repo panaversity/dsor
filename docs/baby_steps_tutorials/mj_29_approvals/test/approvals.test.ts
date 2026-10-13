@@ -7,7 +7,13 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import { approvalOf, stillOpen, type Approval, type Bindable, type Offer } from "../src/approvals.ts";
+import {
+  approvalOf,
+  stillOpen,
+  type Approval,
+  type Bindable,
+  type Offer,
+} from "../src/approvals.ts";
 import type { Requirement } from "../src/envelope.ts";
 import { memoryProposals, type MoveBy, type ProposalDraft } from "../src/proposals.ts";
 
@@ -118,7 +124,11 @@ describe("C5: the count of approvals (step 29's README, decisions D3 and D9)", (
   });
 
   it("Step 29: an approval counts for the rule's version it names: one for version 7 leaves version 8's requirement open", () => {
-    const by7 = approvalOf({ ...BINDABLE, requires: [{ ...CFO_BY_8, control_version: 7 }] }, [], offerBy("cfo_100", ["CFO"]));
+    const by7 = approvalOf(
+      { ...BINDABLE, requires: [{ ...CFO_BY_8, control_version: 7 }] },
+      [],
+      offerBy("cfo_100", ["CFO"]),
+    );
     expect(stillOpen([CFO_BY_8], [by7 as Approval])).toStrictEqual([CFO_BY_8]);
   });
 
@@ -135,11 +145,19 @@ describe("C5: the count of approvals (step 29's README, decisions D3 and D9)", (
     const both = approvalOf(BINDABLE, [], offerBy("boss_1", ["CFO", "tenant_admin", "ap_clerk"]));
     expect(both).toMatchObject({
       satisfies: [
-        { control: "admin-above-30000", version: 1, requirement: { role: "tenant_admin", quorum: 1 } },
+        {
+          control: "admin-above-30000",
+          version: 1,
+          requirement: { role: "tenant_admin", quorum: 1 },
+        },
         { control: "high-value-payment", version: 8, requirement: { role: "CFO", quorum: 1 } },
       ],
       approvers: [
-        { principal: "boss_1", basis: "role:tenant_admin, role:CFO", authn: { at: "2026-10-13T09:05:00.000Z" } },
+        {
+          principal: "boss_1",
+          basis: "role:tenant_admin, role:CFO",
+          authn: { at: "2026-10-13T09:05:00.000Z" },
+        },
       ],
     });
   });
@@ -225,9 +243,15 @@ describe("C5: the store's one step: the approval, and the move to APPROVED when 
     "Step 29: a proposal that no longer waits is not approved: one that is %s keeps no new approval",
     async (state, path) => {
       const { store } = await waitingFor(CFO_BY_8);
-      for (const to of path) await store.move("org_456", "prop_1008", "PENDING_APPROVAL", to, BY_AGENT);
+      for (const to of path)
+        await store.move("org_456", "prop_1008", "PENDING_APPROVAL", to, BY_AGENT);
       expect(
-        await store.approve("org_456", "prop_1008", offerBy("cfo_100", ["CFO"]), byPerson("cfo_100")),
+        await store.approve(
+          "org_456",
+          "prop_1008",
+          offerBy("cfo_100", ["CFO"]),
+          byPerson("cfo_100"),
+        ),
       ).toStrictEqual({ refused: "moved", state });
       expect(await store.approvals("org_456", "prop_1008")).toStrictEqual([]);
     },
@@ -259,7 +283,12 @@ describe("C5: the store's one step: the approval, and the move to APPROVED when 
 
   it("DSOR-APR-04a: an approval expires with its proposal, no later than 30 days after it was given", async () => {
     const { store } = await waitingFor(CFO_BY_8);
-    const done = await store.approve("org_456", "prop_1008", offerBy("cfo_100", ["CFO"]), byPerson("cfo_100"));
+    const done = await store.approve(
+      "org_456",
+      "prop_1008",
+      offerBy("cfo_100", ["CFO"]),
+      byPerson("cfo_100"),
+    );
     const approval = (done as { approval: Approval }).approval;
     const proposal = await store.get("org_456", "prop_1008");
     expect(approval.expires_at).toBe(proposal?.expires_at);
@@ -278,7 +307,12 @@ describe("C5: the store's one step: the approval, and the move to APPROVED when 
 
   it("Step 29: the store keeps its own copy: a caller that changes the approval afterwards changes nothing", async () => {
     const { store } = await waitingFor(CFO_BY_8);
-    const done = await store.approve("org_456", "prop_1008", offerBy("cfo_100", ["CFO"]), byPerson("cfo_100"));
+    const done = await store.approve(
+      "org_456",
+      "prop_1008",
+      offerBy("cfo_100", ["CFO"]),
+      byPerson("cfo_100"),
+    );
     (done as { approval: Approval }).approval.approvers[0]!.principal = "agent";
     const [kept] = await store.approvals("org_456", "prop_1008");
     expect(kept?.approvers[0]?.principal).toBe("cfo_100");

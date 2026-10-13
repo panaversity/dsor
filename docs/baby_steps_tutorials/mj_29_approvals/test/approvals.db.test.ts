@@ -104,7 +104,11 @@ function cfoApproves(id: string, store = proposals): Promise<Approving> {
 }
 
 /** One statement as dsor_runtime, in this company, always rolled back: its error, or "". */
-async function asRuntime(sql: string, values: unknown[] = [], company = "org_456"): Promise<string> {
+async function asRuntime(
+  sql: string,
+  values: unknown[] = [],
+  company = "org_456",
+): Promise<string> {
   try {
     await tryThenRollBack(observer, sql, company, values);
     return "";
@@ -159,7 +163,9 @@ describe("C4 and C5: on the database, DSoR keeps each approval (step 29's README
       tenant: "org_456",
       resources: [INV_9001],
       payload_hash: DRAFT.payload_hash,
-      satisfies: [{ control: "high-value-payment", version: 8, requirement: { role: "CFO", quorum: 1 } }],
+      satisfies: [
+        { control: "high-value-payment", version: 8, requirement: { role: "CFO", quorum: 1 } },
+      ],
       approvers: [{ principal: "cfo_100", basis: "role:CFO" }],
       expires_at: (await proposals.get("org_456", id))?.expires_at,
     });
@@ -167,7 +173,10 @@ describe("C4 and C5: on the database, DSoR keeps each approval (step 29's README
 
   it("DSOR-AUT-02c: on the database, a proposal that waits for the CFO and a tenant administrator still waits after cfo_100, and is APPROVED after admin_100", async () => {
     const id = await waitingFor([ADMIN_BY_1, CFO_BY_8]);
-    expect(await cfoApproves(id)).toMatchObject({ state: "PENDING_APPROVAL", waits_for: [ADMIN_BY_1] });
+    expect(await cfoApproves(id)).toMatchObject({
+      state: "PENDING_APPROVAL",
+      waits_for: [ADMIN_BY_1],
+    });
     expect((await proposals.get("org_456", id))?.state).toBe("PENDING_APPROVAL");
     const admin = offerBy("admin_100", ["tenant_admin"]);
     expect(await proposals.approve("org_456", id, admin, byPerson("admin_100"))).toMatchObject({
@@ -242,9 +251,9 @@ describe("D8: on the database, an approval once given says what it said (step 29
   });
 
   it("Step 29: dsor_runtime may not empty dsor.approvals", async () => {
-    await expect(tryThenRollBack(observer, "TRUNCATE dsor.approvals", "org_456")).rejects.toMatchObject(
-      NO_PRIVILEGE,
-    );
+    await expect(
+      tryThenRollBack(observer, "TRUNCATE dsor.approvals", "org_456"),
+    ).rejects.toMatchObject(NO_PRIVILEGE);
   });
 
   /** An approval row, as dsor_runtime would add it by hand, with this approver. */
@@ -317,7 +326,9 @@ describe("D9: on the database, two approvals at once (step 29's README, decision
     try {
       await client.query("BEGIN");
       await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
-      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('dsor.ending/org_456', 0))");
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('dsor.ending/org_456', 0))",
+      );
       const approving = cfoApproves(id);
       await callsWaiting(observer, 1);
       await client.query(

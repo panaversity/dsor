@@ -166,7 +166,8 @@ describe("C7: on the database, a waiting proposal keeps what it waits for (step 
     ],
   ])("Step 29: dsor_runtime may not %s", async (_what, sql, waiting, refusal) => {
     const id = await proposed();
-    if (waiting) await proposals.move("org_456", id, "PROPOSED", "PENDING_APPROVAL", BY, [CFO_BY_8]);
+    if (waiting)
+      await proposals.move("org_456", id, "PROPOSED", "PENDING_APPROVAL", BY, [CFO_BY_8]);
     expect(await asRuntime(sql, [id])).toContain(refusal);
   });
 

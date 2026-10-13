@@ -1593,7 +1593,10 @@ const approvalPay = (id: string): Promise<Answer> =>
   });
 /** The proposal an answer names, as an approval screen reads it from DSoR's own store. */
 async function screenOf(answer: Answer): Promise<{ uri: string; payload_hash: string }> {
-  const id = String("proposal" in answer ? answer.proposal : "").split("/").at(-1) ?? "";
+  const id =
+    String("proposal" in answer ? answer.proposal : "")
+      .split("/")
+      .at(-1) ?? "";
   const kept = await approvalProposals.get("org_456", id);
   if (kept === undefined) throw new Error("the story's proposal is not there");
   return { uri: kept.uri, payload_hash: kept.payload_hash };

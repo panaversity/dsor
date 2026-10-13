@@ -139,19 +139,14 @@ describe("C2: only a person, in person, approves (step 29's README, decisions D2
   });
 
   it("DSOR-APR-07: the permission that decides is payment.create's approve_permission: a CFO role without payment:approve cannot approve, though it holds proposal:approve", async () => {
-    const roles = JSON.parse(readFileSync(new URL("../roles.json", import.meta.url), "utf8")) as Record<
-      string,
-      string[]
-    >;
+    const roles = JSON.parse(
+      readFileSync(new URL("../roles.json", import.meta.url), "utf8"),
+    ) as Record<string, string[]>;
     roles["CFO"] = roles["CFO"]!.filter((permission) => permission !== "payment:approve");
-    const w = await ruleWorldOnTuesday(
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      { file: "roles.json", text: JSON.stringify(roles) },
-    );
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, undefined, {
+      file: "roles.json",
+      text: JSON.stringify(roles),
+    });
     const { uri, payload_hash } = await drafted(w, "INV-1008");
     expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
       code: "AUTHORIZATION_DENIED",
@@ -323,9 +318,9 @@ describe("C3: only the request with that fingerprint, only a waiting proposal, o
       decision: "ALLOW",
     });
     const other = `sha256:${"0".repeat(64)}`;
-    expect(await w.ask(dry, "proposal.approve", { proposal: uri, payload_hash: other })).toMatchObject(
-      { code: "APPROVAL_MISMATCH" },
-    );
+    expect(
+      await w.ask(dry, "proposal.approve", { proposal: uri, payload_hash: other }),
+    ).toMatchObject({ code: "APPROVAL_MISMATCH" });
     expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
   });
 
