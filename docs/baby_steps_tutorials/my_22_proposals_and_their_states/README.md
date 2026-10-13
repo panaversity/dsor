@@ -155,7 +155,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | `test/envelopes.test.ts` | a receipt names a real proposal, and one naming another company's proposal is never built |
 | `test/main.test.ts` | the demo's list of where each command went, one proposal move by move |
 | `test/payments.test.ts` | the careless handlers pass the proposal on |
-| `test/the-lock-at-start-up.test.ts` | the table a helper builds in the lock's way is `dsor.approvals` now, since `dsor.proposals` is real |
+| `test/the-lock-at-start-up.test.ts` | the table a helper builds in the lock's way is `dsor.approvals` now, since `dsor.proposals` is real; an account one `SET ROLE` from owning the proposals is refused; and the lock's refusals are asked of the proposals and their moves too |
 | `test/support/story.ts` | the reset empties the proposals and their moves, and numbers them from 1 again |
 | `test/arguments.test.ts`, `test/cross-tenant.test.ts`, `test/decision-first.test.ts`, `test/freshness.test.ts`, `test/model-boundary.test.ts`, `test/operations.test.ts`, `test/request-id.test.ts` | no proposal counter to reset: a receipt names `prop_1`, or any real proposal |
 
@@ -205,7 +205,7 @@ database refuses.
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-five tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The fifty-seven tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -233,7 +233,7 @@ With no pause before the next place, 3 or 4 of twenty. With one place and no sec
 
 Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `753` with `1 skipped`; in the repository it is `753 passed`.
+is not beside it, so the total reads `829` with `1 skipped`; in the repository it is `829 passed`.
 
 ### Break 1 · the map gets a way out of COMMITTED
 
@@ -241,41 +241,47 @@ The map's "break it". In `migrations/020_proposals.sql`, add one more move to th
 `('COMMITTED', 'FAILED')`.
 
 ```text
- Tests  4 failed | 748 passed | 1 skipped (753)
+ Tests  5 failed | 823 passed | 1 skipped (829)
 ```
 
 The map test, the two tests that try every move out of a COMMITTED proposal, and the one that writes
-the SQL itself: a payment that was made can now be recorded as one that failed. Notice what a way
-out of COMMITTED back to EXECUTING would have done: almost nothing, because a proposal enters each
-state once, and it has already been EXECUTING. The two rules guard each other.
+the SQL itself: a payment that was made can now be recorded as one that failed. And the test that a
+move the map refuses writes no record: it tries this very move, and now the move is written, with
+its record in the log. Notice what a way out of COMMITTED back to EXECUTING would have done: almost
+nothing, because a proposal enters each state once, and it has already been EXECUTING. The two
+rules guard each other.
 
 ### Break 2 · a state may be left twice
 
 In `migrations/020_proposals.sql`, delete `UNIQUE (tenant, proposal, from_state),`.
 
 ```text
- Tests  1 failed | 751 passed | 1 skipped (753)
+ Tests  3 failed | 825 passed | 1 skipped (829)
 ```
 
 The test of two different moves out of one state at once fails: approved and rejected together,
 and both written. So does the test of a move whose reply was lost and that lands late: "left once"
 is what makes a written DENIED proof that the lost move can never land, so without it DENIED is
 written beside the late move, the history forks into DENIED and EXECUTING, and the claim is
-released. Two moves into the same state, the race out of READY, are still caught, by "entered
-once".
+released. And so does the test that a move the map refuses writes no record: in it, a proposal
+already READY leaves PROPOSED a second time, into DENIED, and that move is now written, with its
+record. Two moves into the same state, the race out of READY, are still caught, by "entered once".
 
 ### Break 3 · the handler runs without the move to EXECUTING
 
 In `src/operations.ts`, delete the line ``["READY", "EXECUTING", `handed to ${contract.id}`],``.
 
 ```text
- Tests  9 failed | 743 passed | 1 skipped (753)
+ Tests  37 failed | 791 passed | 1 skipped (829)
 ```
 
 The handler runs on a proposal that is only READY, and its last move, out of EXECUTING, has nothing
-to point at, so every proposal the door carries out is left READY: the demo's list, and eight tests
-of the door's moves. The handler still ran, and the payment was still made. Nothing in the history
-says so.
+to point at, so every proposal the door carries out is left READY. The handler still ran, and the
+payment was still made. Nothing in the history says so, and nothing in the log either: for each
+command carried out, the log is two records short, with no EXECUTING and no ending. So thirty-seven
+tests that follow a command to its end fail: fourteen of the door's moves, eleven of the moves'
+records, the demo's list and five tests of its log, and six more that read the log, five in
+`test/decision-first.test.ts` and one in `test/pipeline.test.ts`.
 
 ### Break 4 · the records are written just before the moves
 
@@ -309,7 +315,7 @@ the moves in a second one. Replace the `try` block's `await recordTogether(...)`
 ```
 
 ```text
- Tests  16 failed | 811 passed | 1 skipped (828)
+ Tests  16 failed | 812 passed | 1 skipped (829)
 ```
 
 Every move the database refuses now leaves a record that says it happened. The demo's last line
@@ -325,7 +331,7 @@ In `src/audit.ts`, change `export const PLACES_TO_TRY: number = 10;` to
 `export const PLACES_TO_TRY: number = 1;`.
 
 ```text
- Tests  9 failed | 818 passed | 1 skipped (828)
+ Tests  9 failed | 819 passed | 1 skipped (829)
 ```
 
 A request whose place at the end of the log is taken is refused again, as in step 09, with nothing

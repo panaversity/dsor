@@ -1,11 +1,11 @@
 # Step 25 · Revocation and the emergency brake
 
 Folder: [`my_25_revocation_and_the_emergency_brake`](../my_25_revocation_and_the_emergency_brake/README.md)
-· 876 tests, plus 69 in the database tier
+· 1007 tests, plus 72 in the database tier
 Spec: [§13.3](../../../specs/dsor/02-security.md#133-revocation-and-subdelegation),
 [§18](../../../specs/dsor/02-security.md#18-operational-controls) · `DSOR-OPS-01a`,
 `DSOR-OPS-01c`, `DSOR-OPS-01d`, and `DSOR-DEL-04a` and `DSOR-DEL-04c` in part
-The database tier, 69 tests, passes on a local PostgreSQL 17 set up like Neon, twenty-six migrations
+The database tier, 72 tests, passes on a local PostgreSQL 17 set up like Neon, twenty-six migrations
 applied, on the final code; on Neon, `dsor_step25` waits for this folder's `.env`. Decisions
 [142](decisions.md) and [143](decisions.md). Stage 3 of the learning path is complete.
 
@@ -72,5 +72,5 @@ Written down: `DSOR-SRC-02b` read literally against `DSOR-DEL-04a`, a question f
 expiry half of `DSOR-DEL-04c`; a command past §21.3 when its slip is revoked; the race of one statement; the
 login believed.
 
-Every fix was broken once and failed as predicted; the README's three breaks were measured twice,
-agreeing: 5, 1 and 2 failing.
+Every fix was broken once and failed as predicted; the README's three breaks were measured twice on
+the final code, agreeing: 11, 3 and 7 failing.

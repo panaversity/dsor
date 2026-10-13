@@ -1,9 +1,9 @@
 # Step 23 · Three ways to call
 
-Folder: [`my_23_three_ways_to_call`](../my_23_three_ways_to_call/README.md) · 779 tests, plus 55 in
+Folder: [`my_23_three_ways_to_call`](../my_23_three_ways_to_call/README.md) · 868 tests, plus 57 in
 the database tier
 Spec: [§7.3](../../../specs/dsor/01-model.md#73-invocation-modes) · `DSOR-OPR-05`, `DSOR-OPR-06`
-The database tier, 55 tests, passes on a local PostgreSQL 17 set up like Neon, twenty-one migrations
+The database tier, 57 tests, passes on a local PostgreSQL 17 set up like Neon, twenty-one migrations
 applied, on the final code; on Neon, `dsor_step23` waits for this folder's `.env`. Decisions
 [138](decisions.md) and [139](decisions.md).
 
@@ -54,4 +54,5 @@ change it, and no path from a prepared command to a handler. It found, measured,
 Written down: a dry run skips the handlers' preconditions, pinned by a test until step 32.
 
 Decision 139's three fixes were broken once each and failed exactly their one test; the README's
-three breaks were measured twice, agreeing: 8, 1 and 6 failing, the first more than predicted.
+three breaks were measured twice on the final code, agreeing: 14, 2 and 17 failing, the first more
+than predicted.

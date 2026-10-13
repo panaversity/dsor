@@ -124,7 +124,7 @@ moves to PROPOSED and READY, and nothing after them. The third, prop_12, has all
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-five tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The fifty-seven tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -140,7 +140,7 @@ twenty, it applies 021. This step adds no test of its own to this tier: nothing 
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `779` with `1 skipped`; in the repository it is `779 passed`.
+is not beside it, so the total reads `868` with `1 skipped`; in the repository it is `868 passed`.
 
 ### Break 1 · a dry run claims its key
 
@@ -149,24 +149,28 @@ The map's "break it" in spirit: a dry run that leaves something behind. In `src/
 `if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  8 failed | 770 passed | 1 skipped (779)
+ Tests  14 failed | 853 passed | 1 skipped (868)
 ```
 
 More than the five predicted, and for one reason: a dry run sent without a key, as most of them are,
-is now refused for not having one, because the claim wants a key to claim. So every dry run in the
-tests and the demo fails, the one with a key leaves a claim behind, and the log's count changes.
+is now refused for not having one, because the claim wants a key to claim. That fails ten tests in
+`test/modes.test.ts`, three of them the tests that call every command in the registry; the test of
+a dry run with no record of its decision, which is now refused for its key first; and two of the
+demo's, the three ways and the counts in its log. And the one test that sends a dry run with a key,
+and then counts the claims, finds one left behind.
 
 ### Break 2 · a dry run is recorded as ALLOWED
 
 In `src/operations.ts`, change `? "VALIDATED"` to `? "ALLOWED"`.
 
 ```text
- Tests  1 failed | 777 passed | 1 skipped (779)
+ Tests  2 failed | 865 passed | 1 skipped (868)
 ```
 
-The one test that reads the log after a dry run. Nothing else notices, which is the point of the
-test: a log that says ALLOWED for a payment that was never made reads like a payment that went
-missing, and only someone reading the log would find out.
+The two tests that read the log after a dry run: one looks for VALIDATED, and the other for the dry
+run's decision and no record of any move. Nothing else notices, which is the point of those tests:
+a log that says ALLOWED for a payment that was never made reads like a payment that went missing,
+and only someone reading the log would find out.
 
 ### Break 3 · a prepared command is carried out
 
@@ -174,12 +178,15 @@ In `src/operations.ts`, change `? await prepare(walked.context, progress)` to
 `? await carryOut(walked.context, startedAt, progress)`.
 
 ```text
- Tests  6 failed | 772 passed | 1 skipped (779)
+ Tests  17 failed | 850 passed | 1 skipped (868)
 ```
 
-The caller asked to prepare a payment, and it was made. The tests of a READY answer, of the payment
-not made, of the replay, of the two moves to READY that fail, of the one whose lost write lands
-late, and the demo's count of payments.
+The caller asked to prepare a payment, and it was made. Twelve tests in `test/modes.test.ts`: the
+READY answer, the payment not made, the replay, the records of PROPOSED and READY and none after
+them, the two moves to READY that fail, two of those whose reply is lost, the key a prepared command
+released, and the three that prepare every command in the registry. And five of the demo's: its
+count of payments, and four tests of its log, where the prepared payment's moves no longer stop at
+READY.
 
 ## Build it yourself with Claude Code
 

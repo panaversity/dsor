@@ -81,7 +81,9 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_23
 | `test/limits.test.ts` | new — the limit, booking, the race of fifty reservations, settling with the history, the door's payments and their reservations, and a booking the store refuses |
 | `test/limits.db.test.ts` | new — fifty reservations at once on a real server, and fifty payments through the door racing for room for one |
 | `test/main.test.ts` | ten more decisions in the demo's log, and the records of thirty-two more moves, and what a second run the same day changes |
+| `test/modes.test.ts` | calling every command all three ways checks the day's reservations and totals too, beside the invoices, payments and slips |
 | `test/database.test.ts` | start-up refuses an application that may delete a total or a reservation, or write one settled, and the reservations without the policy that keeps a settled one |
+| `test/the-lock-at-start-up.test.ts` | an account one `SET ROLE` from owning the reservations is refused; and the lock's refusals are asked of the day totals and the reservations too |
 | `test/control-plane-store.test.ts` | the day totals and the reservations are in DSoR's own schema |
 | `test/support/story.ts` | putting the story back empties the day totals and the reservations, and gives del_100 its daily limit again |
 | `test/support/one-day.ts` | new — a test that counts one day's bookings is skipped, not failed, when midnight UTC falls while it runs |
@@ -119,7 +121,7 @@ of 25,000.00 are refused. Tomorrow, in UTC, the day starts again.
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-seven tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The fifty-nine tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -133,13 +135,15 @@ twenty-one, it applies 022 and 023. The two new tests are the step's "done when"
 fifty reservations of 5,000.00 at once over a pool of twenty connections book exactly forty, and the
 day stops at 200,000.00; and with 195,000.00 booked first, fifty payments at once through the door
 race for room for one, and at most one is made. Broken on purpose, reading the total and then
-writing it, the first booked all fifty and the second made three.
+writing it, the first booked all fifty and the second made three. Both were measured on
+2026-10-11, before a request that lost its place at the end of the company's log tried the next
+one.
 
 ## Break it
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `806` with `1 skipped`; in the repository it is `806 passed`.
+is not beside it, so the total reads `910` with `1 skipped`; in the repository it is `910 passed`.
 
 ### Break 1 · read the total, check it, then write it
 
@@ -148,25 +152,28 @@ statement with two: a SELECT of the day's total, a check in TypeScript that the 
 then the INSERT that adds it, with no condition.
 
 ```text
- Tests  1 failed | 804 passed | 1 skipped (806)
+ Tests  1 failed | 908 passed | 1 skipped (910)
 ```
 
-One: the fifty reservations at once. Every other test books one payment at a time, and every one of
-them still passes, which is exactly why the mistake is so easy to make. On a real server, in the
-database tier, the same break booked all fifty, 250,000.00, and through the door made three payments
-where there was room for one.
+One: the fifty reservations at once. Every other test books one payment at a time, or the same
+payment twice, which its key still stops, and every one of them still passes, which is exactly why
+the mistake is so easy to make. On a real server, in the database tier, the same break booked all
+fifty, 250,000.00, and through the door made three payments where there was room for one. Both
+were measured on 2026-10-11, before a request that lost its place at the end of the company's log
+tried the next one.
 
 ### Break 2 · a release keeps its amount on the day
 
 In `src/reservation.ts`, change `WHERE $3 = 'released' AND` to `WHERE $3 = 'never' AND`.
 
 ```text
- Tests  4 failed | 801 passed | 1 skipped (806)
+ Tests  8 failed | 901 passed | 1 skipped (910)
 ```
 
 A refused payment is marked released, and its amount still counts against the day: each refusal
-takes room from the day for nothing. The tests of a release, of a handler's refusal, of a decision
-that could not be recorded, and of a settled reservation.
+takes room from the day for nothing. Eight tests, all in `test/limits.test.ts`: the three of a
+release, and the tests of a handler's refusal, of a decision that could not be recorded, of a
+booking whose reply was lost, and of a settled reservation, at the store and at §21.10.
 
 ### Break 3 · a dry run books
 
@@ -174,12 +181,13 @@ In `src/operations.ts`, in the daily limit's part of `checkTheSlipsLimit`, chang
 `if (context.mode === "validate_only") {` to `if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  4 failed | 801 passed | 1 skipped (806)
+ Tests  6 failed | 903 passed | 1 skipped (910)
 ```
 
 A dry run has no proposal to book for, so it is refused for that: the agent can no longer ask "would
-this payment be allowed?". The tests of a dry run in this step and in step 23, and the demo's three
-ways, whose dry run is now refused.
+this payment be allowed?". The two tests of a dry run in this step, one of them a dry run whose
+read of the day fails; the two of step 23's tests in which the agent dry-runs a payment; and two of
+the demo's, its three ways, whose dry run is now refused, and its log.
 
 ## Build it yourself with Claude Code
 

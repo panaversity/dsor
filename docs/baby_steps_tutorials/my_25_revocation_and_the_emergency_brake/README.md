@@ -82,8 +82,10 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24
 | `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke; a brake pulled after the decision leaves no record of the moves it stopped; each cancellation's record, a proposal that starts or stops waiting while the slip is revoked, a revocation that keeps finding new work, and a slip that has ended while new work arrives |
 | `test/pipeline.test.ts` | twelve stages, and the stage-order proof by its parts |
 | `test/database.test.ts` | the start-up refusals above, tested: a brake or a slip without its second policy, and rights on either beyond braking and revoking |
+| `test/the-lock-at-start-up.test.ts` | an account one `SET ROLE` from owning the brake's table is refused; and the lock's refusals are asked of that table too |
 | `test/delegations.test.ts` | the test that reads del_100 reads org_456's only, now that org_789 has one too; a revocation the application writes says who, when and why, or is refused |
 | `test/main.test.ts` | the demo's brake and freeze, the log's new totals, and a finished proposal asked to move into FAILED |
+| `test/modes.test.ts` | calling every command all three ways checks the brakes too, so a dry run of `control.suspend` that pulled one would fail |
 | `test/proposals.test.ts`, `test/proposals.db.test.ts`, `test/limits.test.ts` | into EXECUTING only through the path, told who the moves are for; a step-24 title the wider release made false, retitled |
 | `test/operations.test.ts`, `test/registry.test.ts`, `test/permissions.test.ts`, `test/payments.test.ts`, `test/versions.test.ts` | the two new operations, in each list of operations, contracts, permissions, semantics and concurrency |
 | `test/control-plane-store.test.ts`, `test/support/story.ts`, `test/support/cross-tenant-suite.ts` | the brake's table among DSoR's, no brake on when a test starts, org_789's slip, and the rows a careless brake or revocation could change |
@@ -129,7 +131,7 @@ needs del_100; revoking is shown in `test/revoke.test.ts` instead.
 
 ### The database tier
 
-`pnpm check` needs no server. The seventy tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The seventy-two tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -142,14 +144,14 @@ login. `pnpm migrate` applies the twenty-six migrations; on a server that alread
 twenty-three, it applies 024, 025 and 026. This step adds one test of its own to the tier, in
 `test/brake.db.test.ts`: twenty people pull the same brake at once, over twenty connections, and
 one record is written. Its two commands also join the cross-tenant suite there, with six tests
-each. That is why the count rose from fifty-seven. No test races a brake against a move to
+each. That is why the count rose from fifty-nine. No test races a brake against a move to
 EXECUTING on a real server; see what this step leaves, below.
 
 ## Break it
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `891` with `1 skipped`; in the repository it is `891 passed`.
+is not beside it, so the total reads `1007` with `1 skipped`; in the repository it is `1007 passed`.
 
 ### Break 1 · §21.4 asks nothing
 
@@ -159,15 +161,17 @@ The map's "break it" turned round: take the brake out of the checklist. In `src/
 `|| true` before its `)`.
 
 ```text
- Tests  8 failed | 882 passed | 1 skipped (891)
+ Tests  11 failed | 995 passed | 1 skipped (1007)
 ```
 
 Fewer than you might think, and that is the second lock. A stopped agent's payment is still stopped,
 by the move to EXECUTING, but after an ALLOW is on the record and a proposal made, and in other words:
 the test that reads the log, the one that names who pulled the brake, the two that hold two brakes
-at once and read whose brake the refusal names, and the demo's lines. The test of a read that fails
-goes too: §21.4 no longer reads the brake at all, so nothing fails, and the payment is made. And a
-stopped agent's dry run, which reaches no move at all, is now answered "allowed".
+at once and read whose brake the refusal names, and the demo's lines. Four tests of the demo's log
+go with them: for each payment the brake stopped, the log now holds an ALLOW and the records of the
+proposal's moves. The test of a read that fails goes too: §21.4 no longer reads the brake at all, so
+nothing fails, and the payment is made. And a stopped agent's dry run, which reaches no move at all,
+is now answered "allowed".
 
 ### Break 2 · the move to EXECUTING forgets the brake
 
@@ -176,12 +180,13 @@ In `src/operations.ts`, in the door, after the comment
 `principal.type === "agent" ? principal.id : null,` to `null,`.
 
 ```text
- Tests  2 failed | 888 passed | 1 skipped (891)
+ Tests  3 failed | 1003 passed | 1 skipped (1007)
 ```
 
-Two: a suspension and a freeze, each pulled between the decision and the handler. Every other test
-pulls the brake before the request starts, and §21.4 catches those. The handler runs, and the payment
-a person stopped is made.
+Three: a suspension and a freeze, each pulled between the decision and the handler, and the test
+that such a brake leaves no record of a move to READY or EXECUTING. Every other test pulls the brake
+before the request starts, where §21.4 catches it, or while a prepared command is on its way, where
+the move to READY catches it. The handler runs, and the payment a person stopped is made.
 
 ### Break 3 · tearing up a slip cancels nothing waiting under it
 
@@ -189,12 +194,14 @@ In `src/delegation.ts`, in `revokeSlip`, change `WHERE EXISTS (SELECT 1 FROM rev
 `WHERE false AND EXISTS (SELECT 1 FROM revoked)`.
 
 ```text
- Tests  4 failed | 886 passed | 1 skipped (891)
+ Tests  7 failed | 999 passed | 1 skipped (1007)
 ```
 
 The slip is revoked, and the payments that were waiting for approval under it, or approved, stay
-where they were, ready to run once released, with their amounts still held against the day. The four
-tests of what waited: each expects a proposal cancelled, or its amount given back.
+where they were, ready to run once released, with their amounts still held against the day. Seven
+tests in `test/revoke.test.ts` notice. Each expects a proposal under del_100 cancelled, the record
+of that move, or its amount given back, including the two where what waits changes while the slip
+is revoked, and the one that checks that another slip's proposals are left alone.
 
 ## Build it yourself with Claude Code
 

@@ -1,13 +1,13 @@
 # Step 24 · Limits with reservations
 
-Folder: [`my_24_limits_with_reservations`](../my_24_limits_with_reservations/README.md) · 806 tests,
-plus 57 in the database tier
+Folder: [`my_24_limits_with_reservations`](../my_24_limits_with_reservations/README.md) · 910 tests,
+plus 59 in the database tier
 Spec: [§13.4](../../../specs/dsor/02-security.md#134-cumulative-limits) · `DSOR-DEL-06a`,
 `DSOR-DEL-06b`, `DSOR-DEL-06c`, `DSOR-DEL-06d` and `DSOR-DEL-06e`, the approval states of `06c` and
 `06d` waiting for approvals
-The database tier, 57 tests, passes on a local PostgreSQL 17 set up like Neon, twenty-three
-migrations applied, on the final code, five runs in a row; on Neon, `dsor_step24` waits for this
-folder's `.env`. Decisions [140](decisions.md) and [141](decisions.md).
+The database tier, 59 tests, passes on a local PostgreSQL 17 set up like Neon, twenty-three
+migrations applied, on the final code; on Neon, `dsor_step24` waits for this folder's `.env`.
+Decisions [140](decisions.md) and [141](decisions.md).
 
 ## What the step is
 
@@ -65,5 +65,5 @@ tenants apart, and no way for the agent alone past the limit. It found, as
   stage's currency refusal and an answered `TRANSACTION_FAILED` tested.
 
 Broken on purpose: the settle break first failed 8 where 3 were predicted, because it changed two
-things; measured again with one change, 3. The README's three breaks were measured twice, agreeing:
-1, 4 and 4 failing.
+things; measured again with one change, 3. The README's three breaks were measured twice on the
+final code, agreeing: 1, 8 and 6 failing.
