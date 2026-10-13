@@ -279,6 +279,87 @@ describe("every move has its record, written by the statement that makes the mov
   });
 });
 
+// Decision 157, found by a review: a move's record carries the identity of the request that made
+// it, the same as that request's decision record, its slip included (Q5). Only the moves of a
+// command carried out were compared with their decision, so a record of DENIED written in dsor's
+// name left every test green.
+
+/**
+ * The one decision in org_456's log, and the record of `proposal`'s move into `state`, found by the
+ * move that names it.
+ */
+async function theDecisionAndTheRecordOfTheMoveTo(
+  proposal: string,
+  state: string,
+): Promise<{ readonly decision: AuditRecord; readonly move: AuditRecord }> {
+  const log = await theLog("org_456");
+  const decisions = log.filter((r) => r.kind === "decision");
+  const named = (await movesOf("org_456", proposal)).find((m) => m.to === state)?.record;
+  const move = log.find((r) => r.record_id === named);
+
+  expect(decisions).toHaveLength(1);
+
+  if (decisions[0] === undefined || move === undefined) {
+    throw new Error(`expected a decision, and a record of ${proposal}'s move to ${state}`);
+  }
+
+  return { decision: decisions[0], move };
+}
+
+/**
+ * The record of a move against the decision of the request that made it: the same request, asked
+ * by the same login, under the same slip, in the same name. A person's authority is as of each
+ * record's own time, so that one field is the move's own; an agent's is as of the directory's
+ * answer to the request, the same in both.
+ */
+function expectTheSameRequest(move: AuditRecord, decision: AuditRecord): void {
+  expect(move.correlation.request_id).toBe(decision.correlation.request_id);
+  expect(move.correlation.principal_id).toBe(decision.correlation.principal_id);
+  expect(move.delegation).toBe(decision.delegation);
+  expect(move.identity).toStrictEqual(
+    decision.identity.mode === "direct"
+      ? {
+          ...decision.identity,
+          subject_authority: { ...decision.identity.subject_authority, as_of: move.at },
+        }
+      : decision.identity,
+  );
+}
+
+describe("a move's record is in the name of the request that made it, never dsor's", () => {
+  it("DSOR-AUD-01: the record of a move to DENIED is in the name of the request refused: the agent's use of user_123's authority under del_100, as its decision says", async () => {
+    await callOperation(AGENT, "payment.create", {
+      ...PAY_2500,
+      amount: { value: "60000.00", currency: "USD" },
+    });
+
+    const { decision, move } = await theDecisionAndTheRecordOfTheMoveTo("prop_1", "DENIED");
+
+    expect(decision).toMatchObject({
+      result: "LIMIT_EXCEEDED",
+      identity: { mode: "unattended", subject: "user_123", actor_chain: ["accounts-payable-fte"] },
+      delegation: "del_100",
+    });
+    expectTheSameRequest(move, decision);
+  });
+
+  it("DSOR-AUD-01: the record of a move to DENIED is in the name of the request refused: a person's own, user_123's, as their decision says", async () => {
+    // The server refuses the move to READY and EXECUTING, so the door denies the proposal.
+    withAFault(aMoveNaming("EXECUTING"), "refused");
+
+    await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
+
+    const { decision, move } = await theDecisionAndTheRecordOfTheMoveTo("prop_1", "DENIED");
+
+    expect(decision).toMatchObject({
+      result: "ALLOWED",
+      identity: { mode: "direct", subject: "user_123", actor_chain: [] },
+    });
+    expect(decision.delegation).toBeUndefined();
+    expectTheSameRequest(move, decision);
+  });
+});
+
 describe("no record claims a move that did not happen", () => {
   it("DSOR-AUD-01: a move the map refuses writes no record", async () => {
     // Three refusals: a move that is not on the map, a move out of a finished state, and a state
