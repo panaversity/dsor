@@ -1,6 +1,6 @@
 # Step 18 · Delegations
 
-Folder: [`my_18_delegations`](../my_18_delegations/README.md) · 645 tests, plus 51 in
+Folder: [`my_18_delegations`](../my_18_delegations/README.md) · 663 tests, plus 51 in
 the database tier
 Spec: [§13](../../../specs/dsor/02-security.md#13-delegation),
 [§13.1](../../../specs/dsor/02-security.md#131-authority-of-the-delegation-record) · `DSOR-DEL-01a`,

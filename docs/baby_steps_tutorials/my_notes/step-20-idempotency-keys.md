@@ -1,6 +1,6 @@
 # Step 20 · Idempotency keys
 
-Folder: [`my_20_idempotency_keys`](../my_20_idempotency_keys/README.md) · 702 tests, plus 52
+Folder: [`my_20_idempotency_keys`](../my_20_idempotency_keys/README.md) · 732 tests, plus 52
 in the database tier
 Spec: [§22](../../../specs/dsor/03-execution.md#22-idempotency) · `DSOR-IDM-01a`, `DSOR-IDM-01b`,
 `DSOR-IDM-01c`, `DSOR-IDM-01d`, and `DSOR-TEN-02a` for the claims' table
@@ -89,5 +89,5 @@ running out is recorded as a `DENY`; the fingerprint depends on field order unti
 
 Six breaks, one per fix, each broken once, in a copy, on the whole suite, with the prediction written
 first ([decision 132](decisions.md) has the table). All six failed as predicted. The README's five
-were measured twice, and the two runs agreed; one, a key for every caller, failed fifteen tests where
-two were predicted, because the break also stopped every answer being found again.
+were measured twice, and the two runs agreed; one, a key for every caller, failed eighteen tests
+where two were predicted, because the break also stopped every answer being found again.

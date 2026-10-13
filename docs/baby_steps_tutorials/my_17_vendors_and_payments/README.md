@@ -106,7 +106,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_16
 | `test/cross-tenant-suite-itself.test.ts` | a payment's number is looked for among the payments, and a command that only adds rows is asked the same-state question too (decision 148) |
 | the tests that put the story back | `resetInvoices` is `resetTheStory`, and the database tier runs the same statements from `story.ts`, because they put the payments back too |
 
-608 tests, from 548; the database tier, 51, from 39, because the cross-tenant suite asks its six
+623 tests, from 557; the database tier, 51, from 39, because the cross-tenant suite asks its six
 questions of each new operation by itself.
 
 ## Run it
@@ -169,14 +169,14 @@ vendor arrive together.
 
 Ten, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `608` with `1 skipped`; in the repository it is `608 passed`.
+is not beside it, so the total reads `623` with `1 skipped`; in the repository it is `623 passed`.
 
 ### Break 1 · payment.create says it cannot be undone
 
 In `src/contracts/payment.create.json`, make the semantics `atomic` and delete `compensated_by`.
 
 ```text
- Tests  7 failed | 600 passed | 1 skipped (608)
+ Tests  8 failed | 614 passed | 1 skipped (623)
 ```
 
 The schema accepts it: an atomic command names no undo. The tests do not. The contract's own tests,
@@ -190,7 +190,7 @@ In `src/operations.ts`, hand `leaveTheDoor` the handler's answer as it came, ins
 `withTheContractsSemantics(answer, semantics)`.
 
 ```text
- Tests  1 failed | 606 passed | 1 skipped (608)
+ Tests  1 failed | 621 passed | 1 skipped (623)
 ```
 
 Only the test with a careless handler that writes `atomic` on a payment. Every handler of this step
@@ -201,7 +201,7 @@ writes the right word, so nothing else notices: the door is for the handler that
 In `src/payment.ts`, delete `AND status = 'draft'` from `cancelPayment`'s UPDATE.
 
 ```text
- Tests  2 failed | 605 passed | 1 skipped (608)
+ Tests  2 failed | 620 passed | 1 skipped (623)
 ```
 
 The test that cancels twice, and the demo's last receipt: the second cancel now "succeeds", and says
@@ -212,7 +212,7 @@ The test that cancels twice, and the demo's last receipt: the second cancel now 
 In `src/payment.ts`, let the amount's pattern take three decimal places instead of two.
 
 ```text
- Tests  1 failed | 606 passed | 1 skipped (608)
+ Tests  1 failed | 621 passed | 1 skipped (623)
 ```
 
 `31400.005` reaches PostgreSQL, which stores `31400.01` without a word. One test sends it, and the
@@ -224,7 +224,7 @@ In `src/payment.ts`, change `WHERE i.tenant_id = $1 AND i.id = $2` to
 `WHERE i.id = $2 AND $1::text IS NOT NULL`, keeping the rest of the line.
 
 ```text
- Tests  0 failed | 607 passed | 1 skipped (608)
+ Tests  1 failed | 621 passed | 1 skipped (623)
 ```
 
 The statement no longer says which company's invoice it means, and through the door nothing
@@ -240,7 +240,7 @@ and PostgreSQL cannot tell what type it is, and every payment fails for that ins
 In `migrations/009_vendors_and_payments.sql`, add `GRANT DELETE ON public.payments TO dsor_runtime;`.
 
 ```text
- Tests  29 failed | 578 passed | 1 skipped (608)
+ Tests  31 failed | 591 passed | 1 skipped (623)
 ```
 
 The program refuses to start: the application "may change a vendor, more of a payment than its
@@ -252,7 +252,7 @@ DELETE as the application. A payment the application could delete is evidence it
 In `src/database.ts`, delete `["public.payments", "tenant_id"]` from `TENANT_TABLES`.
 
 ```text
- Tests  33 failed | 574 passed | 1 skipped (608)
+ Tests  35 failed | 587 passed | 1 skipped (623)
 ```
 
 The program refuses to start, because the application may read a table that is not on the list.
@@ -263,7 +263,7 @@ One list is why: a table the start-up questions do not know about is refused, no
 In `src/contracts/payment.create.json`, make the example `INV-1008` for `31400.00`.
 
 ```text
- Tests  1 failed | 606 passed | 1 skipped (608)
+ Tests  1 failed | 621 passed | 1 skipped (623)
 ```
 
 The cross-tenant suite refuses it: org_456's INV-1008 is issued and org_789's is a draft, so a
@@ -276,7 +276,7 @@ both.
 In the same migration, point the payment's key at `(tenant_id, invoice)` alone.
 
 ```text
- Tests  1 failed | 606 passed | 1 skipped (608)
+ Tests  1 failed | 621 passed | 1 skipped (623)
 ```
 
 The test that writes VENDOR-77 against INV-1008 as the application: the database takes it. The
@@ -287,12 +287,12 @@ program copies the right vendor every time; the key is for the day something els
 In `src/registry.ts`, let a `compensatable` contract name nothing that undoes it.
 
 ```text
- Tests  1 failed | 606 passed | 1 skipped (608)
+ Tests  1 failed | 621 passed | 1 skipped (623)
 ```
 
 The schema takes `compensated_by: []`, so only the registry stands between a promised undo and none.
 
-Restore each break and confirm `pnpm check` prints `608 passed` again.
+Restore each break and confirm `pnpm check` prints `623 passed` again.
 
 ## Build it yourself with Claude Code
 

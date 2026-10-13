@@ -149,7 +149,7 @@ fourteen, it applies 015 to 017.
 
 Six, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `673` with `1 skipped`; in the repository it is `673 passed`.
+is not beside it, so the total reads `696` with `1 skipped`; in the repository it is `696 passed`.
 
 ### Break 1 · a directory that does not answer is taken as the usual answer
 
@@ -158,7 +158,7 @@ accounts-payable supervisor usually holds: replace the line that throws with
 `answer = { permissions: ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"], asOf: new Date().toISOString() };`.
 
 ```text
- Tests  6 failed | 666 passed | 1 skipped (673)
+ Tests  6 failed | 689 passed | 1 skipped (696)
 ```
 
 The map's "break it": switch the directory off, and the agent is waved through. The two tests that
@@ -172,7 +172,7 @@ In `src/authority.ts`, change `if (age > STALENESS_BOUND_MS) {` to
 `if (age > STALENESS_BOUND_MS && false) {`.
 
 ```text
- Tests  4 failed | 668 passed | 1 skipped (673)
+ Tests  4 failed | 691 passed | 1 skipped (696)
 ```
 
 The 25-hour-old answer passes: its test, the record of its refusal, and two of the demo's. The test
@@ -186,7 +186,7 @@ In `src/operations.ts`, change `if (!slip.modes.includes("unattended")) {` to
 `if (!slip.modes.includes("unattended") && false) {`.
 
 ```text
- Tests  3 failed | 669 passed | 1 skipped (673)
+ Tests  3 failed | 692 passed | 1 skipped (696)
 ```
 
 The slip for `on_behalf_of` alone, the slip that names no modes, and the record of that refusal.
@@ -198,13 +198,14 @@ In `src/operations.ts`, in `recordTheDecision`, change `...(slipFound === undefi
 `...(true`.
 
 ```text
- Tests  8 failed | 664 passed | 1 skipped (673)
+ Tests  12 failed | 683 passed | 1 skipped (696)
 ```
 
-Every record of an agent's command goes back to `direct`, subject `accounts-payable-fte`, no slip:
-the record tests, the planted-identity tests, the refusals' records, and two of the demo's. The
-payments still run. A wrong record changes nothing a caller sees, which is why it needs tests of
-its own.
+Every record of an agent's command goes back to `direct`, subject `accounts-payable-fte`, no slip.
+Twelve tests notice: three that read the record of a command under a slip signed by `user_123`,
+`cfo_100` or `user_789`; the two that plant an identity; five that read the record of a refusal
+under a slip; and two of the demo's. The payments still run. A wrong record changes nothing a
+caller sees, which is why it needs tests of its own.
 
 ### Break 5 · the subject comes from the request
 
@@ -212,7 +213,7 @@ In `src/operations.ts`, change `delegator: slipFound.delegator,` to
 `delegator: String(context.given?.["subject"] ?? slipFound.delegator),`.
 
 ```text
- Tests  2 failed | 670 passed | 1 skipped (673)
+ Tests  2 failed | 693 passed | 1 skipped (696)
 ```
 
 The two tests that plant a subject in the arguments: the record now blames `cfo_100` for the agent's
@@ -224,7 +225,7 @@ is about.
 In `migrations/016_the_record_names_the_slip.sql`, delete the `GRANT INSERT (delegation)` line.
 
 ```text
- Tests  284 failed | 388 passed | 1 skipped (673)
+ Tests  297 failed | 398 passed | 1 skipped (696)
 ```
 
 Every record names the column, even when it is empty, and step 09's grant on the log names its

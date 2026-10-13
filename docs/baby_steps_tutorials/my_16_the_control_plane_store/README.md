@@ -61,14 +61,14 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_15
 | `src/database.ts` | the start-up checks look for the log in `dsor`. "Do both tables exist?" is asked first, on its own, so a server that missed migration 008 gets the program's own words. And start-up refuses an application that owns the database or either schema, or may create things in either schema, itself or one `SET ROLE` away, and names the role and schema that let it, or `PUBLIC` when the right is every role's. A helper function whose owner owns either schema, or may create in it, is refused too |
 | `src/main.ts` | the demo's second line says where the log lives |
 | `src/envelopes.ts`, `src/operations.ts` | two comments that promised step 16 something now name the steps that will do it: 22 for proposal numbers, 36 for one transaction across two logs |
-| `test/control-plane-store.test.ts` | new — five tests: the log is in `dsor` and not in `public`; `public` holds the business's table and nothing of DSoR's; a decision recorded through the door lands in `dsor.audit`; the application may use `dsor` and create nothing in it; the same on a server that hands out rights on every new schema, which proves each `REVOKE` line in 008; and a server that already ran 001 to 007, with records in its log: 008 moves the same table with every record in it, and the chain still verifies |
-| `test/the-lock-at-start-up.test.ts` | ten new tests: a server that missed migration 008; the application owning the database, `dsor` or `public`, or one `SET ROLE` from owning the database or `dsor`; a helper whose owner owns `dsor` or `public`, or may create in either; the application able to create in `dsor` or `public`, or one `SET ROLE` from it, or through `PUBLIC`, which the refusal names. Most owner and creator cases also do the harm, to show it is real |
+| `test/control-plane-store.test.ts` | new — six tests: the log is in `dsor` and not in `public`; `public` holds the business's table and nothing of DSoR's; a decision recorded through the door lands in `dsor.audit`; the application may use `dsor` and create nothing in it; the same on a server that hands out rights on every new schema, which proves each `REVOKE` line in 008; and a server that already ran 001 to 007, with records in its log: 008 moves the same table with every record in it, and the chain still verifies |
+| `test/the-lock-at-start-up.test.ts` | fifteen new tests: a server that missed migration 008; the application owning the database, `dsor` or `public`, or one `SET ROLE` from owning the database or `dsor`; a helper whose owner owns `dsor` or `public`, or may create in either; the application able to create in `dsor` or `public`, or one `SET ROLE` from it, or through `PUBLIC` on either, which the refusal names. Most owner and creator cases also do the harm, to show it is real |
 | `test/main.test.ts` | the demo's line about the log, pinned, with no rule id: it would pass wherever the log lived |
 | `test/database.test.ts` | the `editor` test gets `USAGE` on `dsor`, without which its attack had stopped working, and now carries the attack out. A database that answers nothing is refused at the first question, and one that answers that and then nothing at the second, each in its own words. The evasive answers reach the guards they were written for |
 | the tests that name the log | say `dsor.audit`. Tests that named it bare, `audit`, worked only because the database looked in `public` first; they name the schema now. Two tests that build a small database by hand make `dsor` and its grant. The re-run of migration 002 swaps in the log's new address, and is otherwise the file that ran |
 | everything else | a `NEW IN STEP 15` marker becoming `STEP 15` |
 
-531 tests became 548. The 39 in the database tier pass on a local PostgreSQL 17 set up like Neon:
+534 tests became 557. The 39 in the database tier pass on a local PostgreSQL 17 set up like Neon:
 an owner with `BYPASSRLS`, and `dsor_runtime` made by that owner. On Neon they run in this step's own database, `dsor_step16`,
 once this folder's `.env` names it; the database exists and is empty until then.
 
@@ -113,14 +113,14 @@ with everything in it.
 
 Nine, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `548` with `1 skipped`; in the repository it is `548 passed`.
+is not beside it, so the total reads `557` with `1 skipped`; in the repository it is `557 passed`.
 
 ### Break 1 · the log is not moved
 
 In `migrations/008_the_control_plane_store.sql`, delete the line that moves the table.
 
 ```text
- Tests  300 failed | 247 passed | 1 skipped (548)
+ Tests  309 failed | 247 passed | 1 skipped (557)
 ```
 
 More than half the suite. The program writes every decision to `dsor.audit`, which is not there,
@@ -131,7 +131,7 @@ and a decision that cannot be written down is a request that is not carried out.
 In the same migration, delete the `GRANT USAGE ON SCHEMA dsor` line.
 
 ```text
- Tests  262 failed | 285 passed | 1 skipped (548)
+ Tests  271 failed | 285 passed | 1 skipped (557)
 ```
 
 The log is where it should be, and the application cannot reach it: `permission denied for schema
@@ -142,7 +142,7 @@ dsor` on every write. A folder's permission comes before its tables'.
 Grant `USAGE, CREATE` instead of `USAGE`.
 
 ```text
- Tests  35 failed | 512 passed | 1 skipped (548)
+ Tests  37 failed | 519 passed | 1 skipped (557)
 ```
 
 The program refuses to start, and every test that starts it fails: "it may create tables, views or
@@ -154,7 +154,7 @@ A table the application made in DSoR's folder would be its own, every row of it.
 In `src/database.ts`, make the question "do both tables exist?" look for `public.audit`.
 
 ```text
- Tests  55 failed | 492 passed | 1 skipped (548)
+ Tests  60 failed | 496 passed | 1 skipped (557)
 ```
 
 The program refuses to start: "a tenant table is missing". The start-up tests and the demo's tests
@@ -165,7 +165,7 @@ fail, because nothing runs. A check that looks in the wrong place fails closed, 
 In `src/main.ts`, put the demo's second line back as it was in step 15.
 
 ```text
- Tests  1 failed | 546 passed | 1 skipped (548)
+ Tests  1 failed | 555 passed | 1 skipped (557)
 ```
 
 One test, the one that pins the line.
@@ -176,7 +176,7 @@ In `src/database.ts`, add `&& false` to the condition of the refusal that says "
 the owner of, the schema".
 
 ```text
- Tests  3 failed | 544 passed | 1 skipped (548)
+ Tests  3 failed | 553 passed | 1 skipped (557)
 ```
 
 The three tests that give a schema to the application, or put it one `SET ROLE` away. Nothing else
@@ -187,7 +187,7 @@ asks, and nothing else would notice that the application could drop the log.
 In the migration, delete the `REVOKE CREATE ON SCHEMA dsor FROM dsor_runtime` line.
 
 ```text
- Tests  1 failed | 546 passed | 1 skipped (548)
+ Tests  1 failed | 555 passed | 1 skipped (557)
 ```
 
 Only the test that starts from a server handing out rights on every new schema. On a fresh server
@@ -198,23 +198,24 @@ the line takes away nothing, which is why that test builds a server that is not 
 Add `&& false` to the condition of the refusal that says "may create tables, views or functions".
 
 ```text
- Tests  3 failed | 544 passed | 1 skipped (548)
+ Tests  5 failed | 551 passed | 1 skipped (557)
 ```
 
-The three tests that grant `CREATE`, on `dsor`, on `public`, and one `SET ROLE` away.
+The five tests that grant `CREATE`: on `dsor`, on `public`, one `SET ROLE` away, and to `PUBLIC` on
+each of the two schemas.
 
 ### Break 9 · start-up no longer asks who owns the database
 
 Add `&& false` to the condition of the refusal that says "may become the owner of, the database".
 
 ```text
- Tests  1 failed | 546 passed | 1 skipped (548)
+ Tests  2 failed | 554 passed | 1 skipped (557)
 ```
 
-The one test that gives the database to the application and `public` back to its owner: the
-commonest careless setup, which would otherwise start.
+The two tests that give the database to the application, directly or one `SET ROLE` away, and
+`public` back to its owner. The first is the commonest careless setup, which would otherwise start.
 
-Restore each break and confirm `pnpm check` prints `548 passed` again.
+Restore each break and confirm `pnpm check` prints `557 passed` again.
 
 ## Build it yourself with Claude Code
 

@@ -134,7 +134,7 @@ twelve, it applies 013 and 014, and the slips arrive with del_100 in them.
 
 Eight, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `645` with `1 skipped`; in the repository it is `645 passed`.
+is not beside it, so the total reads `663` with `1 skipped`; in the repository it is `663 passed`.
 
 ### Break 1 · the agent's own role makes payments again
 
@@ -142,7 +142,7 @@ In `src/permissions.ts`, give `ap_worker` back `invoice:issue`, `payment:create`
 `payment:cancel`.
 
 ```text
- Tests  1 failed | 643 passed | 1 skipped (645)
+ Tests  1 failed | 661 passed | 1 skipped (663)
 ```
 
 Only the test that pins what each role grants. Nothing else notices, because an agent's command no
@@ -154,7 +154,7 @@ could get power nobody signed for, on the day a later step asks the role again.
 In `src/delegation.ts`, delete `signerHoldsNow.includes(permission) &&` from `effectiveAuthority`.
 
 ```text
- Tests  4 failed | 640 passed | 1 skipped (645)
+ Tests  4 failed | 658 passed | 1 skipped (663)
 ```
 
 The step's "done when": user_123 loses `payment:create`, and the agent's next payment goes through.
@@ -167,7 +167,7 @@ In `src/delegation.ts`, replace `(scopes === undefined || scopes.includes(permis
 `true,`.
 
 ```text
- Tests  2 failed | 642 passed | 1 skipped (645)
+ Tests  2 failed | 660 passed | 1 skipped (663)
 ```
 
 The test that narrows the agent with scopes, and the one that hands it an empty list: both get the
@@ -180,11 +180,11 @@ In `src/operations.ts`, change `if (!(until > Date.now())) {` to
 `if (!(until > Date.now()) && false) {`.
 
 ```text
- Tests  2 failed | 642 passed | 1 skipped (645)
+ Tests  3 failed | 659 passed | 1 skipped (663)
 ```
 
-The slip that expired in 2020, and the one whose expiry is a year after 9999, which JavaScript
-cannot read. Both pay.
+The slip that expired in 2020, the one whose expiry is a year after 9999, which JavaScript cannot
+read, and the one that expired in 4000 BC. All three pay.
 
 ### Break 5 · the limit is compared as text
 
@@ -192,7 +192,7 @@ In `src/operations.ts`, change `if (centsOf(amount) > centsOf(limit)) {` to
 `if (amount.value > limit.value) {`.
 
 ```text
- Tests  1 failed | 643 passed | 1 skipped (645)
+ Tests  1 failed | 661 passed | 1 skipped (663)
 ```
 
 As text, "50000.01" is above "50000.00", and so is "60000.00", so the demo and the first limit test
@@ -205,7 +205,7 @@ In `src/operations.ts`, change `for (const key of ["delegation", "delegation_id"
 `for (const key of [] as string[]) {`.
 
 ```text
- Tests  2 failed | 642 passed | 1 skipped (645)
+ Tests  2 failed | 660 passed | 1 skipped (663)
 ```
 
 The agent's request that names `del_999`, and the person's that names `del_100`: both run. Nothing
@@ -218,7 +218,7 @@ In `src/operations.ts`, add `&& false` to the condition that refuses an agent's 
 reaches `authorize` with no slip resolved.
 
 ```text
- Tests  1 failed | 643 passed | 1 skipped (645)
+ Tests  1 failed | 661 passed | 1 skipped (663)
 ```
 
 Only the test that makes §21.3 do nothing. Every real request has its slip resolved, so the guard
@@ -230,10 +230,10 @@ only reads, and refused for the wrong reason.
 In `migrations/013_delegations.sql`, grant `SELECT, INSERT` where it grants `SELECT`.
 
 ```text
- Tests  30 failed | 614 passed | 1 skipped (645)
+ Tests  32 failed | 630 passed | 1 skipped (663)
 ```
 
-The program refuses to start: twenty of the demo's tests, seven of the database's, two of the
+The program refuses to start: twenty of the demo's tests, seven of the database's, four of the
 start-up lock's, and one of the slip's. An application that could write a slip could sign one for
 itself.
 

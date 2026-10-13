@@ -1,6 +1,6 @@
 # Step 16 · The control-plane store
 
-Folder: [`my_16_the_control_plane_store`](../my_16_the_control_plane_store/README.md) · 548 tests,
+Folder: [`my_16_the_control_plane_store`](../my_16_the_control_plane_store/README.md) · 557 tests,
 plus 39 in the database tier
 Spec: [§1](../../../specs/dsor/01-model.md#1-definition) · `DSOR-MOD-01`, for audit evidence only
 The database tier, 39 tests, passes on a local PostgreSQL 17 set up like Neon, on the final

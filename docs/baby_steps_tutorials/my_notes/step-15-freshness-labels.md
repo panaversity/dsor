@@ -1,10 +1,10 @@
 # Step 15 · Freshness labels
 
-Folder: [`my_15_freshness_labels`](../my_15_freshness_labels/README.md) · 531 tests, plus 39 in the
+Folder: [`my_15_freshness_labels`](../my_15_freshness_labels/README.md) · 534 tests, plus 39 in the
 database tier
 Spec: [§27](../../../specs/dsor/03-execution.md#27-freshness-and-consistency) · `DSOR-FRS-01a`,
 `DSOR-FRS-01b`
-Both tiers have run: 531 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the
+Both tiers have run: 534 under `pnpm check`, and 39 under `pnpm test:db` against Neon, the
 step's own database `dsor_step15`, seven migrations applied, none new. Decisions [120 and 121](decisions.md).
 
 ## What the step is

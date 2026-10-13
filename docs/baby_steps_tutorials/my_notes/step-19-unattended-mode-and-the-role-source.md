@@ -1,7 +1,7 @@
 # Step 19 · Unattended mode and the role source
 
 Folder: [`my_19_unattended_mode_and_the_role_source`](../my_19_unattended_mode_and_the_role_source/README.md)
-· 673 tests, plus 51 in the database tier
+· 696 tests, plus 51 in the database tier
 Spec: [§12.1](../../../specs/dsor/02-security.md#121-role-source),
 [§13.2](../../../specs/dsor/02-security.md#132-identity-modes-on-the-wire) · `DSOR-DEL-07`,
 `DSOR-DEL-08`, `DSOR-IDN-05`, `DSOR-IDN-06`, and `DSOR-DEL-10` for what the record says

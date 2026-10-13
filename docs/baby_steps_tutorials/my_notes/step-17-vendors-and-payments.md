@@ -1,6 +1,6 @@
 # Step 17 · Vendors and payments
 
-Folder: [`my_17_vendors_and_payments`](../my_17_vendors_and_payments/README.md) · 608 tests,
+Folder: [`my_17_vendors_and_payments`](../my_17_vendors_and_payments/README.md) · 623 tests,
 plus 51 in the database tier
 Spec: [§24](../../../specs/dsor/03-execution.md#24-execution-semantics) · `DSOR-EXE-05a`,
 `DSOR-EXE-05b`, `DSOR-EXE-05c`

@@ -1,6 +1,6 @@
 # Step 21 · Optimistic concurrency
 
-Folder: [`my_21_optimistic_concurrency`](../my_21_optimistic_concurrency/README.md) · 718 tests,
+Folder: [`my_21_optimistic_concurrency`](../my_21_optimistic_concurrency/README.md) · 751 tests,
 plus 53 in the database tier
 Spec: [§23](../../../specs/dsor/03-execution.md#23-concurrency) · `DSOR-CON-01a`, `DSOR-CON-01b`
 The database tier, 53 tests, passes on a local PostgreSQL 17 set up like Neon, nineteen migrations
@@ -73,4 +73,4 @@ prediction written first. Three failed as predicted, and two did not, which beca
 the 20-way race included, because the status alone lets one cancel through; and `STALE_STATE` could
 say "(now 2)" past a test that looked only for "version 2". A payment decided on as the wrong version
 and a message compared word for word now fail under those breaks. The README's three breaks were
-measured twice on the final code, and the two runs agreed: 2, 6 and 1 failing.
+measured twice on the final code, and the two runs agreed: 2, 6 and 2 failing.

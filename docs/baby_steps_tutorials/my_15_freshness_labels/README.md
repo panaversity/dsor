@@ -73,12 +73,12 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_14
 | `src/operations.ts` | the two queries pass the label on; a single invoice and a page carry `freshness`, in what a handler hands the door and in what leaves; the door notes when a request begins, and refuses a read whose label is missing, is not one, or says `current` with a time from before the request began, and a query that answers with a receipt |
 | `src/boundary.ts` | `copyOnce` copies the label once, like a row, and `leaveTheDoor` keeps only its three parts in what leaves |
 | `src/main.ts` | under every read the demo prints, a line that says how old it is |
-| `test/freshness.test.ts` | new — eighteen tests: the agent's invoice and a page say how old they are; ten labels that are not labels, refused; a query that answers with a receipt, refused; the label that leaves is exactly its three parts; an old value labelled `current`, refused, and not written down as a read; the same value labelled `observational`, let out, as a single invoice and as a page; a label read once, so the label checked is the label that leaves; the line at the request's start, to the millisecond, and taken when each request begins, not when the door is built; and the time taken before the query, for a single invoice and for a page |
+| `test/freshness.test.ts` | new — twenty-one tests: the agent's invoice and a page say how old they are; eleven labels that are not labels, refused; a query that answers with a receipt, refused; the label that leaves is exactly its three parts; an old value labelled `current`, refused, and not written down as a read; the same value labelled `observational`, let out, as a single invoice and as a page; a label read once, so the label checked is the label that leaves; the line at the request's start, to the millisecond, and taken when each request begins, not when the door is built; and the time taken before the query, for a single invoice and for a page |
 | `test/main.test.ts` | the demo's label pinned by its shape, and the report two runs are compared on swaps the time for `TIME`, as it swaps hashes for `HASH` |
 | nine older test files | read the store through `.value`, and their stand-in handlers label what they hand over |
 | everything else | a `NEW IN STEP 14` marker becoming `STEP 14`. Migrations 006 and 007 keep theirs: an applied migration is never edited, because its checksum covers every byte |
 
-512 tests became 531. No new migration: the database tier is still 39.
+512 tests became 534. No new migration: the database tier is still 39.
 
 ## Run it
 
@@ -120,50 +120,52 @@ migrations. This folder's own run was on Neon: `39 passed` before the step's fir
 
 Ten, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `531` with `1 skipped`; in the repository it is `531 passed`.
+is not beside it, so the total reads `534` with `1 skipped`; in the repository it is `534 passed`.
 
 ### Break 1 · a fresh read says it is a saved copy
 
 In `src/freshness.ts`, make `readNow` say `observational`.
 
 ```text
- Tests  4 failed | 526 passed | 1 skipped (531)
+ Tests  5 failed | 528 passed | 1 skipped (534)
 ```
 
 The data is as fresh as ever; only the label is wrong, in the safe direction. The two tests that
-read a real label notice, and so does the demo's line. The fourth is a stand-in that counts on
-`readNow` saying `current`: its hour-old label now says `observational`, which is honest, so it
-leaves. A label that undersells is not dangerous, but `DSOR-FRS-01a` asks for the mode actually
-delivered.
+read a real label notice, and so does the demo's line. The other two are stand-ins that count on
+`readNow` saying `current`: one label stamped an hour before its request, one a millisecond before.
+Both now say `observational`, which is honest, so both leave. A label that undersells is not
+dangerous, but `DSOR-FRS-01a` asks for the mode actually delivered.
 
 ### Break 2 · the door drops a single invoice's label
 
 In `src/boundary.ts`, in `leaveTheDoor`, leave `freshness` out of a single invoice's answer.
 
 ```text
- Tests  19 failed | 511 passed | 1 skipped (531)
+ Tests  20 failed | 513 passed | 1 skipped (534)
 ```
 
-Nineteen, most of them in the demo's test: the demo prints the label under every read, so it
-crashes on its first one. A missing label is loud.
+Twenty, fifteen of them in the demo's test: the demo prints the label under every read, so it
+crashes on its first one. The other five read a single invoice's label after it leaves. A missing
+label is loud.
 
 ### Break 3 · the door does not insist on a label
 
 In `src/operations.ts`, make `unlabelled` always `undefined`.
 
 ```text
- Tests  12 failed | 518 passed | 1 skipped (531)
+ Tests  14 failed | 519 passed | 1 skipped (534)
 ```
 
-Every check on the label goes at once: the ten labels that are not labels leave, a query that
-answered with a receipt leaves with no label at all, and the hour-old `current` leaves too.
+Every check on the label goes at once: the eleven labels that are not labels leave, a query that
+answered with a receipt leaves with no label at all, and the hour-old `current` leaves too, and so
+does one stamped a millisecond before its request.
 
 ### Break 4 · the label leaves whole
 
 In `labelFrom`, hand the label back as it came.
 
 ```text
- Tests  1 failed | 529 passed | 1 skipped (531)
+ Tests  1 failed | 532 passed | 1 skipped (534)
 ```
 
 A label with a row riding along in it leaves with the row, and `31400.00` reaches the agent inside
@@ -174,7 +176,7 @@ A label with a row riding along in it leaves with the row, and `31400.00` reache
 In `cannotBeLabelled`, compare the mode without its case: `mode.toLowerCase()`.
 
 ```text
- Tests  1 failed | 529 passed | 1 skipped (531)
+ Tests  1 failed | 532 passed | 1 skipped (534)
 ```
 
 `CURRENT` passes as a mode. Nothing leaks, but an answer's mode can no longer be compared with a
@@ -185,29 +187,30 @@ contract's by plain equality, which is why decision 120 chose one spelling.
 In `cannotBeLabelled`, remove the comparison with `startedAt`.
 
 ```text
- Tests  2 failed | 528 passed | 1 skipped (531)
+ Tests  3 failed | 530 passed | 1 skipped (534)
 ```
 
-The hour-old `current` leaves, and so does one stamped a millisecond before the request began.
-This is `DSOR-FRS-01b`, gone.
+The hour-old `current` leaves. So does one stamped a millisecond before the request began, whether
+the check is asked directly or through the door. This is `DSOR-FRS-01b`, gone.
 
 ### Break 7 · every old label is refused, honest ones too
 
 Drop `mode === "current"` from the same check, so it refuses any label from before the request.
 
 ```text
- Tests  1 failed | 529 passed | 1 skipped (531)
+ Tests  2 failed | 531 passed | 1 skipped (534)
 ```
 
-The saved copy honestly labelled `observational` is refused. The rule is about a cached value
-called current, not about a cached value: a fix that refuses too much is caught as well.
+Two tests hand the door a saved copy honestly labelled `observational`, and in both it is refused.
+The rule is about a cached value called current, not about a cached value: a fix that refuses too
+much is caught as well.
 
 ### Break 8 · a query may answer with a receipt
 
 In `cannotBeLabelled`, make the check for a query's receipt never true.
 
 ```text
- Tests  1 failed | 529 passed | 1 skipped (531)
+ Tests  1 failed | 532 passed | 1 skipped (534)
 ```
 
 `invoice.get` answering with a command's receipt leaves with no label, and its read is not written
@@ -218,7 +221,7 @@ down.
 In `getInvoice`, take the label again after the query returns.
 
 ```text
- Tests  1 failed | 529 passed | 1 skipped (531)
+ Tests  1 failed | 532 passed | 1 skipped (534)
 ```
 
 The label claims a round trip more freshness than is true. One test, with a connection that answers
@@ -229,13 +232,13 @@ The label claims a round trip more freshness than is true. One test, with a conn
 In `src/main.ts`, make `howOld` return nothing.
 
 ```text
- Tests  1 failed | 529 passed | 1 skipped (531)
+ Tests  1 failed | 532 passed | 1 skipped (534)
 ```
 
 The demo's lines look like step 14's again. One test, the one that pins the label under the
 agent's INV-1008.
 
-Restore each break and confirm `pnpm check` prints `531 passed` again.
+Restore each break and confirm `pnpm check` prints `534 passed` again.
 
 ## Build it yourself with Claude Code
 

@@ -90,6 +90,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_19
 | `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a store that fails while a claim or an answer is written, and fifty at once |
 | `test/idempotency.db.test.ts` | new — fifty at once on a real server, over a pool of twenty connections |
 | `test/database.test.ts` | start-up refuses the claims' table without the policy that keeps an answer, and an application that may delete a claim, rewrite one, or write its answer in advance |
+| `test/the-lock-at-start-up.test.ts` | an account one `SET ROLE` from owning the claims' table is refused; and the lock's refusals are asked of that table too |
 | `test/main.test.ts` | the demo's payment sent twice, its conflict, and its fifty at once; three more decisions in the printed log |
 | `test/decision-first.test.ts` | `validate the input`, lazied, is caught by the claim on a command, and still by §21.11 on a query |
 | `test/control-plane-store.test.ts`, `test/registry.test.ts` | DSoR's own store has a third table, and every command's contract says it needs a key |
@@ -151,7 +152,7 @@ fifty requests with one key, sent at once over a pool of twenty connections, mak
 
 Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `702` with `1 skipped`; in the repository it is `702 passed`.
+is not beside it, so the total reads `732` with `1 skipped`; in the repository it is `732 passed`.
 
 ### Break 1 · check for the key, then insert it, as two steps
 
@@ -159,7 +160,7 @@ The map's "break it". In `src/idempotency.ts`, replace the claim's one INSERT wi
 asks whether the key exists, and, when it does not, an INSERT whose result is not looked at.
 
 ```text
- Tests  2 failed | 699 passed | 1 skipped (702)
+ Tests  2 failed | 729 passed | 1 skipped (732)
 ```
 
 The fifty requests at once, in the tests and in the demo: several of them each find no key before
@@ -173,19 +174,19 @@ In `src/idempotency.ts`, change `if (found.payload_hash !== payloadHash) {` to
 `if (found.payload_hash !== payloadHash && false) {`.
 
 ```text
- Tests  6 failed | 695 passed | 1 skipped (702)
+ Tests  7 failed | 724 passed | 1 skipped (732)
 ```
 
 The same key with another amount is given the first payment's receipt, and the caller believes a
-payment of 2,600.00 was made when one of 2,500.00 was. The conflict tests, and four of the demo's,
-whose conflict line and log both change.
+payment of 2,600.00 was made when one of 2,500.00 was. The three conflict tests, and four of the
+demo's, whose conflict line and log both change.
 
 ### Break 3 · one key for every caller
 
 In `src/idempotency.ts`, put `"anyone"` where the claim names its caller.
 
 ```text
- Tests  15 failed | 686 passed | 1 skipped (702)
+ Tests  18 failed | 713 passed | 1 skipped (732)
 ```
 
 More than predicted, and honestly so: this break changed two things. Keys are shared between
@@ -200,7 +201,7 @@ In `src/operations.ts`, replace the line that writes a kept answer on the claim,
 `void settleKey;`.
 
 ```text
- Tests  13 failed | 688 passed | 1 skipped (702)
+ Tests  13 failed | 718 passed | 1 skipped (732)
 ```
 
 Nothing runs twice: the claim still holds the key. But every retry waits two seconds and is told
@@ -212,11 +213,11 @@ demo's.
 In `src/operations.ts`, change `answer.envelope.retry === "safe_same_key";` to `false;`.
 
 ```text
- Tests  3 failed | 698 passed | 1 skipped (702)
+ Tests  4 failed | 727 passed | 1 skipped (732)
 ```
 
 A request refused because the decision could not be written down is answered "safe to send again",
-and the retry is given that same refusal for ever. The three tests that send it again.
+and the retry is given that same refusal for ever. The four tests that send it again.
 
 ## Build it yourself with Claude Code
 
