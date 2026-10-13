@@ -496,20 +496,25 @@ describe("a schema the application may create things in", () => {
     );
   });
 
-  it("DSOR-MOD-01: CREATE on dsor given to PUBLIC is refused, and the refusal names PUBLIC", async () => {
-    // Decision 147: PUBLIC is every role at once, and has no row of its own in pg_roles. The
-    // refusal named the application alone and said to take CREATE back from it, which changed
-    // nothing, measured. It names PUBLIC now, and doing what it says lets the program start.
-    await asTheOwner(() => db.exec("GRANT CREATE ON SCHEMA dsor TO PUBLIC"));
+  // Decision 147: PUBLIC is every role at once, and has no row of its own in pg_roles. The refusal
+  // named the application alone and said to take CREATE back from it, which changed nothing,
+  // measured. It names PUBLIC now, and doing what it says lets the program start. Both schemas, so a
+  // check that asked about one of them only would fail here.
+  for (const schema of ["dsor", "public"]) {
+    it(`DSOR-MOD-01: CREATE on ${schema} given to PUBLIC is refused, and the refusal names PUBLIC`, async () => {
+      await asTheOwner(() => db.exec(`GRANT CREATE ON SCHEMA ${schema} TO PUBLIC`));
 
-    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-      /only the migrations should, itself or one SET ROLE away: PUBLIC on dsor\. /,
-    );
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        new RegExp(
+          `only the migrations should, itself or one SET ROLE away: PUBLIC on ${schema}\\. `,
+        ),
+      );
 
-    await asTheOwner(() => db.exec("REVOKE CREATE ON SCHEMA dsor FROM PUBLIC"));
+      await asTheOwner(() => db.exec(`REVOKE CREATE ON SCHEMA ${schema} FROM PUBLIC`));
 
-    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
-  });
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
+    });
+  }
 });
 
 describe("a lock that is not there", () => {

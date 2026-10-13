@@ -171,7 +171,8 @@ describe("moving a log that already has records in it", () => {
         await server.exec(migration.sql);
       }
 
-      // Three records in org_456's chain, at the log's old address, each pointing at the one before.
+      // Three records in org_456's chain, at the log's old address, each pointing at the one before,
+      // and one in org_789's, so that the lock has something to hide (decision 147).
       await server.exec(`
         INSERT INTO public.audit (
           record_id, chain, sequence, previous_hash, record_hash, at,
@@ -188,12 +189,16 @@ describe("moving a log that already has records in it", () => {
           ('audit:org_456:2', 'audit:org_456', 2, 'sha256:second', 'sha256:third',
            '2026-10-02T09:16:00Z', 'org_456', 'decision',
            '{"mode":"direct","subject":"user_123","actor_chain":[]}', '{"request_id":"req_3"}',
-           'invoice.get@1', 'DENY', 'AUTHORIZATION_DENIED');
+           'invoice.get@1', 'DENY', 'AUTHORIZATION_DENIED'),
+          ('audit:org_789:0', 'audit:org_789', 0, 'sha256:' || repeat('0', 64), 'sha256:other',
+           '2026-10-02T09:17:00Z', 'org_789', 'decision',
+           '{"mode":"direct","subject":"user_789","actor_chain":[]}', '{"request_id":"req_4"}',
+           'invoice.get@1', 'ALLOW', 'ALLOWED');
       `);
 
       const before = await theTable("public.audit");
 
-      expect(before.rows).toHaveLength(3);
+      expect(before.rows).toHaveLength(4);
 
       // Then 008 alone, as the owner, as `pnpm migrate` runs it on that server.
       for (const migration of migrations.filter((m) => m.number === 8)) {
@@ -207,17 +212,22 @@ describe("moving a log that already has records in it", () => {
       // Every record, as it was, down to the time the database stamped on it.
       expect(after.rows).toStrictEqual(before.rows);
 
-      // And the application still reads them at the new address, with its company said: the
-      // grants and the lock moved with the table.
+      // And the application still reads them at the new address, with its company said, and sees
+      // that company's records only: the grants and the lock moved with the table. The count asks
+      // for every row, so only the lock keeps org_789's record out of org_456's answer.
       await server.exec("SET ROLE dsor_runtime");
 
-      const { rows: seen } = await overPGlite(server).query<{ n: number }>(
-        "SELECT count(*)::int AS n FROM dsor.audit",
-        [],
-        "org_456",
-      );
+      const seen = async (tenant: string): Promise<number | undefined> =>
+        (
+          await overPGlite(server).query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM dsor.audit",
+            [],
+            tenant,
+          )
+        ).rows[0]?.n;
 
-      expect(seen[0]?.n).toBe(3);
+      expect(await seen("org_456")).toBe(3);
+      expect(await seen("org_789")).toBe(1);
     } finally {
       await server.close();
     }
