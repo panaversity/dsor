@@ -567,3 +567,61 @@ describe("From step 29's review: a proposal's address that names no proposal", (
     ).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 });
+
+describe("From step 29's review: only a person's own call is approval evidence", () => {
+  // Found by the review, finding L4: line ⑨'s own look stopped agents, and a system login calls in
+  // direct mode. With the contract's people_only lost, a system login holding the CFO's role
+  // approved.
+  it("DSOR-APR-05a: with people_only gone from the contract, a system login that holds the CFO's role passes line ⑤, and line ⑨ refuses it: not a person", async () => {
+    const { extensions: _gone, ...approve } = contract("proposal.approve");
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, shippedWith(approve));
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const system = {
+      id: "dsor-approver",
+      type: "system",
+      memberships: [{ tenant_id: "org_456", roles: ["CFO"] }],
+    } as unknown as Principal;
+    const SYSTEM: RequestEnvelope = { token: "tok_system_cfo", tenant: "org_456" };
+    const answer = await withPlanted("tok_system_cfo", system, () =>
+      approves(w, SYSTEM, uri, payload_hash),
+    );
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: '"proposal.approve" is accepted only from a person, on their own login',
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  // Found by the review, finding M7: the test of DSOR-APR-05b looked at payment.create's input.
+  // These look at proposal.approve itself: the agent names cfo_100 wherever it can, in each mode,
+  // and cfo_100's own call cannot name another approver.
+  it.each(["execute", "propose_only", "validate_only"] as const)(
+    "DSOR-APR-05b: in %s mode, the agent's call of proposal.approve that names cfo_100 as approver, subject, or on_behalf_of is refused, and no approval is kept",
+    async (mode) => {
+      const w = await ruleWorldOnTuesday();
+      const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+      const envelope = mode === "validate_only" ? { ...AGENT, mode } : { ...keyed(AGENT), mode };
+      for (const named of [{ approver: "cfo_100" }, { subject: "cfo_100" }, { on_behalf_of: "cfo_100" }]) {
+        const answer = await w.ask(envelope, "proposal.approve", {
+          proposal: uri,
+          payload_hash,
+          ...named,
+        });
+        expect("code" in answer && answer.code).toBe("AUTHORIZATION_DENIED");
+      }
+      expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+    },
+  );
+
+  it("DSOR-APR-05b: a person's own call cannot name another approver: cfo_100 naming admin_100 is refused at line ⑥, and no approval is kept", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const answer = await w.ask(keyed(CFO), "proposal.approve", {
+      proposal: uri,
+      payload_hash,
+      approver: "admin_100",
+    });
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+});

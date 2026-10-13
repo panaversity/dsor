@@ -36,9 +36,15 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
   const { proposal: uri, payload_hash } = input as ApproveInput;
   // DSOR-APR-05a: a person's own call, on the login DSoR gave them. Line ⑤ refused every caller that
   // is not a person, by the contract's people_only. This is DSoR's own second look, by the call's
-  // identity mode, so an approval never rests on one flag (decision D10).
+  // identity mode and the caller's type, so an approval never rests on one flag (decision D10).
   if (look.identity !== "direct") {
     const why = `${NAME} is accepted only in direct identity mode, on the approver's own login`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  // And a person's: a system login calls in direct mode too. Found by step 29's review, finding
+  // L4: with people_only lost, a system login holding the CFO's role approved.
+  if (caller.type !== "human") {
+    const why = `${NAME} is accepted only from a person, on their own login`;
     throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
   }
   // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id
