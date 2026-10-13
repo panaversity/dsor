@@ -64,8 +64,9 @@ export type Approving =
   // approved it already, or nothing it still waits for asks for a role this person holds.
   | { refused: "moved" | "expired" | "twice" | "nothing_open"; state?: string };
 
-// apr_ and a random UUID: this tutorial's own form of an approval's id, which the database's CHECK
-// keeps too (step 29's README, decision D7).
+// not copied: apr_ and a random UUID is this tutorial's own form of an approval's id, which the
+// database's CHECK keeps too; approval.schema.json says only that an id is text (step 29's README,
+// decision D7).
 const APPROVAL_ID = /^apr_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Whether an approval's line names this requirement: the same rule, the same version. */
