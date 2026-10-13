@@ -528,6 +528,16 @@ export async function recordTogether<Row>(
   // Read once, before the first place is tried, so that every try writes what the first would have
   // (lesson 16). `audit` hands over a copy already, and `copyOf` hands a copy back as it is.
   const copies = decisions.map(copyOf);
+
+  // NEW IN STEP 22, decision 157, found by a review: and every record is this chain's company's. A
+  // record takes its company from the chain, so another company's decision would be written here
+  // as this one's. A bug in the caller, as above: it throws, and nothing is written.
+  if (copies.some((copy) => copy.tenant !== tenant)) {
+    throw new TypeError(
+      `another company's record was handed to ${tenant}'s log; no record was written`,
+    );
+  }
+
   const chain = chainOf(tenant);
   // STEP 11: for this chain's company, and every statement below says so to PostgreSQL.
   const db = theDatabase(tenant);

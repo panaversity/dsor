@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   audit,
   countedWithoutARecord,
+  recordTogether,
   theHead,
   theLog,
   useDatabase,
@@ -200,6 +201,32 @@ describe("no company is written into the audit log's code", () => {
         result: "ALLOWED",
       }),
     ).rejects.toThrow(/not a company this program serves/);
+  });
+
+  it("a record is only ever written in its own company's chain", async () => {
+    // NEW IN STEP 22, decision 157, found by a review: `recordTogether` is handed the chain's
+    // company and the decisions apart, and a record takes its company from the chain. A decision of
+    // org_789's handed to org_456's chain was written there, as org_456's. No caller does that today.
+    const before = await theLog("org_456");
+
+    await expect(
+      recordTogether(
+        "org_456",
+        [
+          {
+            kind: "decision",
+            subject: "user_123",
+            tenant: "org_789",
+            requestId: "req_1",
+            operation: "invoice.get@1",
+            authorization: "ALLOW",
+            result: "ALLOWED",
+          },
+        ],
+        () => ({ sql: "SELECT 1", params: [] }),
+      ),
+    ).rejects.toThrow(/another company's record/);
+    expect(await theLog("org_456")).toStrictEqual(before);
   });
 });
 
