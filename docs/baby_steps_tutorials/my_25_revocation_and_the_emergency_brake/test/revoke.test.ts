@@ -559,9 +559,9 @@ describe("what was waiting under the slip", () => {
   it("DSOR-DEL-04a: a revocation whose reply is lost after it committed is found by its records: its signer is told the slip is revoked, and what it cancelled gives its amount back to the day", async () => {
     // NEW IN STEP 25, decision 157, found by a review: the statement that revokes commits, and its
     // reply is lost. The records of its cancels are looked for and found, so it happened, and
-    // `revokeSlip` says so where `rows` is undefined. With that test deleted every test stayed
-    // green, and the revocation answered AUTHORIZATION_DENIED, its own proposal was recorded
-    // FAILED, and 40,000.00 USD stayed held against the day.
+    // `revokeSlip` says so when `rows` is undefined. With that half of its condition deleted, every
+    // test stayed green, and the revocation answered AUTHORIZATION_DENIED, its own proposal was
+    // recorded FAILED, and 40,000.00 USD stayed held against the day.
     const waiting = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
     const approved = await underDel100(["PROPOSED", "PENDING_APPROVAL", "APPROVED"]);
 
@@ -610,7 +610,7 @@ describe("what was waiting under the slip", () => {
     expect(await stateOf("org_456", waiting)).toBe("CANCELLED");
     expect(await stateOf("org_456", approved)).toBe("CANCELLED");
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
-    // And the revocation's own proposal is COMMITTED: the log says it was done, because it was.
+    // And the revocation's own proposal is COMMITTED, not FAILED: it was done.
     expect(
       (await proposalsOf("org_456")).find((p) => p.operation === "delegation.revoke@1")?.state,
     ).toBe("COMMITTED");
