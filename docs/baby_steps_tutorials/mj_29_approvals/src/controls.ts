@@ -405,6 +405,9 @@ export type RuleContext = {
   // And the role table, whose roles an approval may name (step 28's README,
   // decision D21).
   roles: Roles;
+  // NEW IN STEP 29: and the permission that decides who approves an operation, its contract's
+  // approve_permission (step 29's README, decision D13).
+  approvePermission: (operation: string) => string | undefined;
 };
 
 /** The name of a control in a problem: its company, and its id, or its place in a list. */
@@ -472,6 +475,21 @@ export function ruleProblems(
   }
   const why = context.governable(control.operation);
   if (why !== undefined) return [`${name} governs ${control.operation}, ${why}`];
+  // NEW IN STEP 29: and an approval it asks for is one that someone can give: the operation names
+  // an approve_permission, and the role holds it. Otherwise every call the rule stops would wait for
+  // ever (step 29's README, decision D13).
+  if ("require_approval" in control.effect) {
+    const { role } = control.effect.require_approval;
+    const needed = context.approvePermission(control.operation);
+    if (needed === undefined) {
+      const none = `${control.operation}, which names no approve_permission, so no one could give it`;
+      return [`${name}: its effect asks for an approval of ${none}`];
+    }
+    if (context.roles.get(role)?.has(needed) !== true) {
+      const holds = `${control.operation}'s approve_permission, ${needed}`;
+      return [`${name}: its effect asks for an approval by ${role}, which does not hold ${holds}`];
+    }
+  }
   // Its owner is a person who works in its company, who can switch it on in person
   // (DSOR-CTL-01a: "a named human owner"; step 28's README, decision D11).
   const owner = principalNamed(control.owner);

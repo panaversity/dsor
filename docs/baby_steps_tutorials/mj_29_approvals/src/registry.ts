@@ -43,7 +43,13 @@ import {
 } from "./policies.ts";
 import { maskingProblems } from "./masking.ts";
 import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
-import { checkRoles, proposeProblems, type RoleTableSource, type Roles } from "./permissions.ts";
+import {
+  approvePermissionOf,
+  checkRoles,
+  proposeProblems,
+  type RoleTableSource,
+  type Roles,
+} from "./permissions.ts";
 import { ownProblems, type OwnWork } from "./revocation.ts";
 import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
@@ -321,7 +327,10 @@ export function buildRegistry(
     const policy = moneyPolicies.get(tenant);
     if (policy === undefined)
       return [`${tenant} has controls, and no money policy to count them in`];
-    const context = { governable, riskOf, policy, roles };
+    // NEW IN STEP 29: and who approves each operation (step 29's README, decision D13).
+    const approvePermission = (operation: string): string | undefined =>
+      approvePermissionOf(contracts.get(operation));
+    const context = { governable, riskOf, policy, roles, approvePermission };
     return ruleProblems(ruleName(tenant, raw, place), raw, tenant, context, tests);
   };
   // And each contract's predicates are CEL in Appendix B's environment, as a
