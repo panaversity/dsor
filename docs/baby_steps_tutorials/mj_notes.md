@@ -1810,6 +1810,9 @@ together.
     shows.
   - The session's deny rules cover `.env.example` too. A copy without it fails one test in every
     run: say so, and leave that test out of the counts.
+- **The visual story:** "When the CFO Rule Changes", version 3, adds Act 4, who may not approve:
+  four scenes from real runs, the chain drawn link by link, and step 30's breaks and review, at the
+  same address, https://claude.ai/artifact/XSRMSYFiSjsvxte2XbfGEg (private to the learner).
 - **For the learner's session:** steps 28, 28b, 29, and 30 together: the visual story, now with four
   acts; step 28's D1 to D21, step 28b's D1 to D15, step 29's D1 to D15, and step 30's D1 to D10;
   the sixteen breaks to predict; and open questions 113 to 123.
