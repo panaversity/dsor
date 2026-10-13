@@ -89,8 +89,10 @@ const twentyAtOnce = (): Promise<OperationAnswer[]> =>
 describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
   it("DSOR-AUD-01: twenty commands at once on a real server: every move has its record, saying the state it entered, every record of a move has its move, and every refusal leaves its proposal DENIED or made none", async () => {
     // Decision 157, found by a review: two minutes for this test, not the tier's thirty seconds.
-    // With up to 100 ms on each round trip, twenty at once took 22 to 25 seconds, and with up to
-    // 200 ms, 43 to 57, measured. A test that runs out of time fails, whatever the server did.
+    // With a pause of up to 100 ms before and after each round trip, 100 ms a round trip on
+    // average, twenty at once took 22 to 25 seconds, and with up to 200 ms, 43 to 57, measured on
+    // this machine. Neon itself was not measured. A test that runs out of time fails, whatever the
+    // server did.
     const answers = await twentyAtOnce();
 
     // As the owner, the company's moves beside the records they name, and the records of moves
@@ -146,7 +148,9 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
     // Decision 157, found by a review: and every command refused in the crowd was refused before it
     // ran: its proposal is DENIED, or it made none. On this machine most runs refuse none. With a
     // slow link several are refused, each because it lost ten places in a row, and in every run
-    // measured, up to 200 ms on each round trip, each of them was DENIED or had made none.
+    // measured, up to 200 ms before and after each round trip, each of them was DENIED or had made
+    // none. The door promises a little less: it gives DENIED two tries of ten places, and a proposal
+    // it could not deny stays PROPOSED (decision 153). No run measured has come to that.
     const { rows: made } = await owner.query<{ request: string; state: string }>(
       `SELECT a.correlation ->> 'request_id' AS request,
               (SELECT n.to_state FROM dsor.proposal_moves n
@@ -166,6 +170,11 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
           whereItIs.get(answer.envelope.correlation.request_id),
         );
       }
+
+      // And every receipt's proposal is found by its request, so a refusal found by none made none.
+      if (answer.kind === "result") {
+        expect(whereItIs.has(answer.envelope.correlation.request_id)).toBe(true);
+      }
     }
   }, 120_000);
 
@@ -173,10 +182,11 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
   // out depends on how long each statement holds its place at the end of the log, and across a
   // network that is several round trips: more requests read the same end together, and more of them
   // lose ten places in a row. Measured on PostgreSQL 17 with a pool of twenty: on this machine, 20 of
-  // 20 every run. With a pause of up to 30 ms before and after each statement, 12 to 15. With up to
-  // 10 ms on each round trip inside a statement's transaction, as a server far away adds them, 8 to
-  // 11, and with up to 100 ms, 4 to 8. On Neon the bar would fail with nothing wrong, so it is
-  // skipped there, and the report says so. The test above holds on every server.
+  // 20 every run. With a pause of up to 30 ms before and after each statement, 12 to 15. With a
+  // pause of up to 10 ms before and after each round trip inside a statement's transaction, as a
+  // server far away adds them, 8 to 11, and with up to 100 ms, 4 to 8. On Neon the bar would fail
+  // with nothing wrong, so it is skipped there, and the report says so. The test above runs on
+  // every server.
   it.skipIf(!onThisMachine(APPLICATION))(
     "DSOR-AUD-01: most of twenty commands at once are carried out on a server on this machine, because a lost place is tried again after a random pause",
     async () => {
