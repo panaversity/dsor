@@ -6,6 +6,8 @@
 // together, and lose again. This is the tier that can see the pause has to be random.
 //
 // Runs only under `pnpm test:db`, with DSOR_DB_URL and DSOR_DB_OWNER_URL set, like pool.db.test.ts.
+// Decision 157, found by a review: and how many of the twenty are carried out is asked only of a
+// server on this machine. Why is beside that test, at the end.
 //
 // Rule DSOR-AUD-01: every command decision, every proposal transition, and every read covered by
 // DSOR-CLS-05 MUST produce a durable audit record that validates against audit-record.schema.json.
@@ -24,6 +26,19 @@ import { storyStatements } from "./support/story.ts";
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
 const haveAServer = (APPLICATION ?? "").trim() !== "" && (OWNER ?? "").trim() !== "";
+
+/**
+ * Decision 157, found by a review: is the application's server on this machine? Its address says so:
+ * 127.0.0.1, localhost or ::1. A connection string that cannot be read as an address is taken as
+ * one far away.
+ */
+function onThisMachine(url: string | undefined): boolean {
+  try {
+    return ["127.0.0.1", "localhost", "[::1]"].includes(new URL(url ?? "").hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const A_SMALL_PAYMENT = {
@@ -72,8 +87,11 @@ const twentyAtOnce = (): Promise<OperationAnswer[]> =>
   );
 
 describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
-  it("DSOR-AUD-01: twenty commands at once on a real server: every move has its record, saying the state it entered, and every record of a move has its move", async () => {
-    await twentyAtOnce();
+  it("DSOR-AUD-01: twenty commands at once on a real server: every move has its record, saying the state it entered, every record of a move has its move, and every refusal leaves its proposal DENIED or made none", async () => {
+    // Decision 157, found by a review: two minutes for this test, not the tier's thirty seconds.
+    // With up to 100 ms on each round trip, twenty at once took 22 to 25 seconds, and with up to
+    // 200 ms, 43 to 57, measured. A test that runs out of time fails, whatever the server did.
+    const answers = await twentyAtOnce();
 
     // As the owner, the company's moves beside the records they name, and the records of moves
     // that no move names.
@@ -124,13 +142,48 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
     }
 
     expect([...requestsOf.values()].every((requests) => requests.size === 1)).toBe(true);
-  });
 
-  it("DSOR-AUD-01: most of twenty commands at once are carried out, because a lost place is tried again after a random pause", async () => {
-    // Measured on a local PostgreSQL 17: 20 of 20, every run. With no pause, 4 of 20; with one try,
-    // none. The bar is lower than the measurement, because a slower link loses more places.
-    const answers = await twentyAtOnce();
+    // Decision 157, found by a review: and every command refused in the crowd was refused before it
+    // ran: its proposal is DENIED, or it made none. On this machine most runs refuse none. With a
+    // slow link several are refused, each because it lost ten places in a row, and in every run
+    // measured, up to 200 ms on each round trip, each of them was DENIED or had made none.
+    const { rows: made } = await owner.query<{ request: string; state: string }>(
+      `SELECT a.correlation ->> 'request_id' AS request,
+              (SELECT n.to_state FROM dsor.proposal_moves n
+                WHERE n.tenant = m.tenant AND n.proposal = m.proposal
+                  AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves x
+                                   WHERE x.tenant = n.tenant AND x.proposal = n.proposal
+                                     AND x.from_state = n.to_state)) AS state
+         FROM dsor.proposal_moves m JOIN dsor.audit a ON a.record_id = m.record
+        WHERE m.tenant = 'org_456' AND m.from_state IS NULL`,
+    );
+    // Each request's proposal, by the request named in the record of its first move.
+    const whereItIs = new Map(made.map((row) => [row.request, row.state]));
 
-    expect(answers.filter((a) => a.kind === "result").length).toBeGreaterThanOrEqual(15);
-  });
+    for (const answer of answers) {
+      if (answer.kind === "error") {
+        expect(["DENIED", undefined]).toContain(
+          whereItIs.get(answer.envelope.correlation.request_id),
+        );
+      }
+    }
+  }, 120_000);
+
+  // Decision 157, found by a review: asked only of a server on this machine. How many are carried
+  // out depends on how long each statement holds its place at the end of the log, and across a
+  // network that is several round trips: more requests read the same end together, and more of them
+  // lose ten places in a row. Measured on PostgreSQL 17 with a pool of twenty: on this machine, 20 of
+  // 20 every run. With a pause of up to 30 ms before and after each statement, 12 to 15. With up to
+  // 10 ms on each round trip inside a statement's transaction, as a server far away adds them, 8 to
+  // 11, and with up to 100 ms, 4 to 8. On Neon the bar would fail with nothing wrong, so it is
+  // skipped there, and the report says so. The test above holds on every server.
+  it.skipIf(!onThisMachine(APPLICATION))(
+    "DSOR-AUD-01: most of twenty commands at once are carried out on a server on this machine, because a lost place is tried again after a random pause",
+    async () => {
+      // On this machine: 20 of 20, every run. With no pause, 4 of 20; with one try, none.
+      const answers = await twentyAtOnce();
+
+      expect(answers.filter((a) => a.kind === "result").length).toBeGreaterThanOrEqual(15);
+    },
+  );
 });
