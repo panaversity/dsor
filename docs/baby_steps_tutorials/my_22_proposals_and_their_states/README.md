@@ -102,8 +102,10 @@ So DSoR reads the end of the log first, and then writes. Two requests can read t
 database keeps the first statement. It refuses the second one whole, the move with it, so nothing of
 it was written. In step 09 the second request was then refused. Now it waits a few milliseconds,
 chosen at random so that the requests that lost do not all come back at once. Then it reads the new
-end and tries the next place, up to ten places. After ten it gives up, and the request is refused,
-with nothing done. Decisions and the records of reads follow the same rule.
+end and tries the next place, up to ten places. After ten it gives up. Before the handler runs, the
+request is then refused, with nothing done. After it, the payment stands and the caller is told so,
+and the proposal stays EXECUTING, in its history and in the log, for reconciliation (below).
+Decisions and the records of reads follow the same rule.
 
 ## Why it matters
 
@@ -449,9 +451,11 @@ The records of the moves leave limits of their own:
   check the pairing; a careless new path could still point a move at another record.
 - **The owner can still delete.** It can delete a move and then its record, or the end of the log,
   and the chain shows an edit, not a deletion from the end. While a move names a record, that
-  record cannot be deleted, and the log cannot be emptied with TRUNCATE.
+  record cannot be deleted by itself, and the log cannot be emptied with TRUNCATE by itself; a
+  TRUNCATE of the log and the moves together, or with CASCADE, empties both.
 - **Each company's log has one end that all its requests share.** A request that loses ten places
-  is refused, with nothing done. Ten places, and a pause of up to 25 milliseconds more after each
+  before its handler runs is refused, with nothing done; a last move that loses them twice leaves
+  its proposal EXECUTING, as said above. Ten places, and a pause of up to 25 milliseconds more after each
   place lost, were measured on one machine against a local PostgreSQL 17, not on Neon, where each
   round trip takes longer.
 - **A request in a crowd waits**: up to about 1.1 seconds for one record, and twice that for a last

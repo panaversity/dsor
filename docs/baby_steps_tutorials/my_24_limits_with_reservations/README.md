@@ -222,8 +222,8 @@ Copy `my_23_three_ways_to_call` to a new folder and ask:
 5. The limit, `LIMIT_EXCEEDED`: each books its amount at §21.10, and only one fits. Their records
    race for the end of the company's log too, but a record that loses its place tries the next one
    (step 22). Measured on a local PostgreSQL 17, four runs: one made, forty-nine `LIMIT_EXCEEDED`,
-   each time. A request that lost ten places would be refused `EVIDENCE_STORE_UNAVAILABLE`, with
-   nothing done.
+   each time. A request that lost ten places before its payment was made would be refused
+   `EVIDENCE_STORE_UNAVAILABLE`, with nothing done.
 
 </details>
 
