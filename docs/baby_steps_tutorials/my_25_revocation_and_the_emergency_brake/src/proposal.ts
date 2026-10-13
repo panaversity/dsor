@@ -432,6 +432,20 @@ export async function stateOf(tenant: string, id: string): Promise<ProposalState
   return rows[0]?.to_state;
 }
 
+/**
+ * STEP 22, decision 157: which proposal each record of a move is about, by the move that
+ * names it. Every record of a move names its proposal but one: the record of its creation, made
+ * before the proposal had a number. Its move names it, and that is how it is found.
+ */
+export async function proposalsByRecord(tenant: string): Promise<ReadonlyMap<string, string>> {
+  const { rows } = await theDatabase(tenant).query<{ record: string; proposal: string }>(
+    "SELECT record, proposal FROM dsor.proposal_moves WHERE tenant = $1",
+    [tenant],
+  );
+
+  return new Map(rows.map((row) => [row.record, row.proposal]));
+}
+
 /** One proposal, as a list of them shows it. */
 export interface ProposalSummary {
   readonly id: string;

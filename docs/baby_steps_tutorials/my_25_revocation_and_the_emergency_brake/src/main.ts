@@ -13,7 +13,7 @@ import { contractsFromDisk, exampleRequestOf, loadRegistry } from "./registry.ts
 import { paymentsOf } from "./payment.ts";
 import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
-import { moveProposal, movesOf, proposalsOf } from "./proposal.ts";
+import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposal.ts";
 import { usedToday } from "./reservation.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -629,8 +629,10 @@ if (last !== undefined) {
   console.log();
 
   for (const move of await movesOf("org_456", last.id)) {
+    // STEP 22, decision 157: and the record of the move in the company's audit log, which
+    // the same statement wrote. The log below has each of them.
     console.log(
-      `  ${(move.from ?? "").padEnd(9)} -> ${move.to.padEnd(10)} ${move.actor.padEnd(21)} ${move.cause}`,
+      `  ${(move.from ?? "").padEnd(9)} -> ${move.to.padEnd(10)} ${move.actor.padEnd(21)} ${move.record.padEnd(18)} ${move.cause}`,
     );
   }
 }
@@ -812,21 +814,31 @@ for (const company of ["org_456", "org_789"]) {
   console.log(`The audit log of ${company}:`);
   console.log();
 
+  // STEP 22, decision 157: which proposal each record of a move is about.
+  const byRecord = await proposalsByRecord(company);
+
   for (const record of await theLog(company)) {
     // STEP 14: a read that handed out confidential data is a record of its own, after the
     // decision that allowed it: `read` where a decision says ALLOW or DENY, and how many rows left.
     const rows = record.row_count;
     const isARead = record.kind === "classified_read";
+    // STEP 22, decision 157: and so is each move of a proposal: `move`, the state it
+    // entered, and the proposal, which its record names; the record of its creation cannot, and
+    // the move that names that record says which it was.
+    const isAMove = record.kind === "proposal_transition";
+    const proposal = record.resources?.[0]?.split("/").at(-1) ?? byRecord.get(record.record_id);
 
     console.log(
       [
         String(record.sequence).padStart(2),
-        (record.authorization ?? (isARead ? "read" : "-")).padEnd(5),
+        (record.authorization ?? (isARead ? "read" : isAMove ? "move" : "-")).padEnd(5),
         (record.operation ?? "(none resolved)").padEnd(19),
         record.identity.subject.padEnd(21),
         (isARead
           ? `${record.result}, ${rows} ${rows === 1 ? "row" : "rows"}`
-          : record.result
+          : isAMove
+            ? `${record.result} ${proposal ?? "(no move names it)"}`
+            : record.result
         ).padEnd(22),
         `${record.record_hash.slice(0, 14)}...`,
         // STEP 19: an unattended record's subject is the slip's signer, so the line says who

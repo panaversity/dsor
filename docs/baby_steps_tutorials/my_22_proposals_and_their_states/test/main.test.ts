@@ -518,11 +518,38 @@ describe("the program a learner runs", () => {
       "payment.cancel@1 COMMITTED",
       "payment.cancel@1 FAILED",
     ]);
-    expect(out).toMatch(/ {12}-> PROPOSED {3}accounts-payable-fte {2}payment\.cancel@1 invoked\n/);
+    // NEW IN STEP 22, decision 157: and each move beside the record of it in the log.
     expect(out).toContain(
-      "  EXECUTING -> FAILED     dsor                  the handler answered STALE_STATE",
+      "            -> PROPOSED   accounts-payable-fte  audit:org_456:75   payment.cancel@1 invoked\n",
+    );
+    expect(out).toContain(
+      "  EXECUTING -> FAILED     dsor                  audit:org_456:79   the handler answered STALE_STATE",
     );
     expect(out).toMatch(/ {2}prop_\d+ is COMMITTED\. Moved back to EXECUTING: refused\n/);
+  });
+
+  it("DSOR-AUD-01: the printed log shows every move of a proposal as a record of its own, with the state it entered", () => {
+    // NEW IN STEP 22, decision 157: every move is in the log, written by the statement that makes
+    // it. prop_10, the agent's stale cancel, is made, decided, READY, EXECUTING and FAILED: five
+    // records, four of them moves, each saying the state it entered and the proposal.
+    const lines = demo().report.split("\n");
+    const line = (sequence: string, column: string, result: string): string =>
+      [
+        sequence,
+        column.padEnd(5),
+        "payment.cancel@1".padEnd(19),
+        "user_123".padEnd(21),
+        result.padEnd(22),
+        "sha256:HASH...  unattended: by accounts-payable-fte under del_100",
+      ].join("  ");
+
+    // Nine commands carried out, four moves each, and one refused by the slip's limit, two.
+    expect(lines.filter((l) => /^\s*\d+\s+move\s/.test(l))).toHaveLength(38);
+    expect(lines).toContain(line("75", "move", "PROPOSED prop_10"));
+    expect(lines).toContain(line("76", "ALLOW", "ALLOWED"));
+    expect(lines).toContain(line("77", "move", "READY prop_10"));
+    expect(lines).toContain(line("78", "move", "EXECUTING prop_10"));
+    expect(lines).toContain(line("79", "move", "FAILED prop_10"));
   });
 
   it("DSOR-FRS-01a: the demo's reads say how old they are — the agent's INV-1008 is current, with a time and a source", () => {
