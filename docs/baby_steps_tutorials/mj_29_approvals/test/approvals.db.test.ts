@@ -208,6 +208,17 @@ describe("C4 and C5: on the database, DSoR keeps each approval (step 29's README
     expect(await proposals.approvals("org_456", id)).toStrictEqual([]);
   });
 
+  // Found by step 29's review, finding L2: line ⑨'s look asks the store whether a proposal's time
+  // has come, by the database's clock, so a dry run hears what the real call hears.
+  it("DSOR-APR-04a: on the database, the store says whether a proposal's time has come: not for a new one, yes a moment after a short life ends, and never for another company's", async () => {
+    const fresh = await waitingFor([CFO_BY_8]);
+    const short = await waitingFor([CFO_BY_8], "PT1S");
+    expect(await proposals.isDue("org_456", fresh)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(await proposals.isDue("org_456", short)).toBe(true);
+    expect(await proposals.isDue("org_789", short)).toBe(false);
+  });
+
   it("DSOR-TEN-01b: on the database, org_789 sees no approval of org_456's, and cannot approve its proposal", async () => {
     const id = await waitingFor([CFO_BY_8]);
     expect(

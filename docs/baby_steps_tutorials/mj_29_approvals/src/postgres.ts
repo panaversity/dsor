@@ -1895,6 +1895,18 @@ function proposalsThrough(run: Runner): ProposalStore {
     },
     approvals: async (tenant: string, id: string): Promise<Approval[]> =>
       run(tenant, (client) => approvalsIn(client, tenant, id)),
+    // By the database's clock as it reads now. DSoR's own WHERE, the company first, with row-level
+    // security behind it (DSOR-TEN-01b).
+    isDue: async (tenant: string, id: string): Promise<boolean> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<{ due: boolean }>(
+          `SELECT expires_at <= clock_timestamp() AS due FROM dsor.proposals
+            WHERE tenant_id = $1 AND id = $2`,
+          [tenant, id],
+        );
+        if (rows.length > 1) throw new Error(`one id names ${rows.length} proposals, not 1`);
+        return rows[0]?.due === true;
+      }),
   });
 }
 

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { payloadHash } from "../src/canonical.ts";
 import type { Control, ControlsSource } from "../src/controls.ts";
 import type { Answer } from "../src/envelope.ts";
+import type { Principal } from "../src/principals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import {
   ADMIN,
@@ -19,8 +20,9 @@ import {
   keyed,
   shippedWith,
   SUPERVISOR,
+  withPlanted,
 } from "./helpers.ts";
-import { ruleWorldOnTuesday, shippedRule, type RuleWorld } from "./rule-world.ts";
+import { heard, ruleWorldOnTuesday, shippedRule, T0, type RuleWorld } from "./rule-world.ts";
 
 const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
 
@@ -332,5 +334,88 @@ describe("C3: only the request with that fingerprint, only a waiting proposal, o
       approved_by: "cfo_100",
     });
     expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+});
+
+// A second CFO of org_456, planted for the tests that need two people with one role.
+const CFO_200: RequestEnvelope = { token: "tok_cfo200", tenant: "org_456" };
+const cfo200 = {
+  id: "cfo_200",
+  type: "human",
+  memberships: [{ tenant_id: "org_456", roles: ["CFO"] }],
+} as unknown as Principal;
+
+/** The decision record of the call that gave this answer. */
+async function recordOf(w: RuleWorld, answer: Answer) {
+  const records = await w.log.records();
+  return records.find(
+    (r) => r.kind === "decision" && r.correlation.request_id === answer.correlation.request_id,
+  );
+}
+
+describe("From step 29's review: line ⑨ says no before any work, and the store's own no reaches the caller", () => {
+  // Found by the review, finding L2: the look never checked the time, so a dry run said yes where
+  // the real call said no.
+  it("DSOR-APR-04a: INV-1008's proposal, past its seven days and not yet swept, is refused at line ⑨: CONFLICT, the record says DENY, a dry run hears the same, and nothing is approved", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    w.clock.now = T0 + 7 * 24 * 60 * 60 * 1000;
+    const answer = await approves(w, CFO, uri, payload_hash);
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${id}'s time came at 2026-10-13T15:05:00.000Z, so it is not approved`,
+    });
+    expect((await recordOf(w, answer))?.authorization).toBe("DENY");
+    const dry = { ...CFO, mode: "validate_only" as const };
+    expect(await w.ask(dry, "proposal.approve", { proposal: uri, payload_hash })).toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  // Found by the review, finding L7: the store checks again what line ⑨ checks, with the same
+  // words, so a look that lost a check still refused, after the work began. Only the record shows
+  // where the no came from.
+  it("Step 29: line ⑨'s refusals come before any work, so their records say DENY: cfo_100 approving twice, and a second CFO when only a tenant administrator is still asked for", async () => {
+    const w = await ruleWorldOnTuesday(controlsOf(shippedRule(), ADMIN_ABOVE_30000));
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    await approves(w, CFO, uri, payload_hash);
+    const twice = await approves(w, CFO, uri, payload_hash);
+    expect(twice).toMatchObject({
+      code: "CONFLICT",
+      message: `cfo_100 approved proposal ${id} already`,
+    });
+    expect((await recordOf(w, twice))?.authorization).toBe("DENY");
+    const second = await withPlanted("tok_cfo200", cfo200, () =>
+      approves(w, CFO_200, uri, payload_hash),
+    );
+    expect(second).toMatchObject({
+      code: "CONFLICT",
+      message: `what cfo_200 may approve of proposal ${id} is approved already`,
+    });
+    expect((await recordOf(w, second))?.authorization).toBe("DENY");
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 1 });
+  });
+
+  // Found by the review, finding M6: no test reached the store's own refusal. Two CFOs approve at
+  // the same moment: both looks find the proposal waiting, and the store gives the approval to the
+  // first only.
+  it("Step 29: cfo_100 and cfo_200 approve INV-1008 at the same moment: one is approved, and the other hears CONFLICT from the store, with no approval kept", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const answers = await withPlanted("tok_cfo200", cfo200, () =>
+      Promise.all([approves(w, CFO, uri, payload_hash), approves(w, CFO_200, uri, payload_hash)]),
+    );
+    expect(answers.map(heard).sort()).toStrictEqual([
+      "COMMITTED",
+      "CONFLICT",
+    ]);
+    expect(answers).toContainEqual(
+      expect.objectContaining({
+        code: "CONFLICT",
+        message: `proposal ${id} moved on to APPROVED while it was being approved`,
+      }),
+    );
+    expect(await stateOf(w, id)).toStrictEqual({ state: "APPROVED", approvals: 1 });
   });
 });

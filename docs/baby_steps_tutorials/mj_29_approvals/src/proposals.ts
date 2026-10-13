@@ -176,6 +176,10 @@ export type ProposalStore = {
   approve: (tenant: string, id: string, offer: Offer, by: MoveBy) => Promise<Approving>;
   // And every approval of one proposal, in the order they were given.
   approvals: (tenant: string, id: string) => Promise<Approval[]>;
+  // And whether one proposal's time has come, by the store's own clock, which the sweep and the
+  // approval's step read too. Line ⑨'s look asks it, so a dry run hears what the real call hears.
+  // Found by step 29's review, finding L2.
+  isDue: (tenant: string, id: string) => Promise<boolean>;
 };
 
 // A proposal whose time has come, and the state it waited in (step 27's README,
@@ -274,6 +278,7 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
     throw new Error("this call approves no proposal");
   },
   approvals: async () => [],
+  isDue: async () => false,
 });
 
 /** A record kept in memory: the record, its id, its place in the log, and its time. */
@@ -468,6 +473,11 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     },
     approvals: async (tenant: string, id: string): Promise<Approval[]> =>
       structuredClone(approvalsOf(tenant, proposalUri(tenant, id))),
+    // By the store's clock, as due reads it.
+    isDue: async (tenant: string, id: string): Promise<boolean> => {
+      const row = rows.get(keyOf(tenant, id));
+      return row !== undefined && Date.parse(row.expires_at) <= now();
+    },
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),
   });

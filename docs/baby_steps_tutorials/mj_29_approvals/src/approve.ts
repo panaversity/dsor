@@ -60,6 +60,13 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
     const why = `proposal ${id} is ${found.state}, and only a PENDING_APPROVAL proposal is approved`;
     throw new Refusal("CONFLICT", why, "internal");
   }
+  // DSOR-APR-04a: and only while its time has not come, though no sweep has moved it yet. The
+  // store's own clock decides, as it does for the sweep. Found by step 29's review, finding L2: a dry
+  // run said yes, and the real call's work said no.
+  if (await look.proposals.isDue(tenant, id)) {
+    const why = `proposal ${id}'s time came at ${found.expires_at}, so it is not approved`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
   // Decision D3: a role the proposal waits for, in this company.
   const asked = [...new Set(found.requires.map((requirement) => requirement.approval.role))];
   if (!asked.some((role) => roles.includes(role))) {
