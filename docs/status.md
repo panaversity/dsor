@@ -113,10 +113,10 @@ one before it:
 | `my_19_unattended_mode_and_the_role_source` | 696 | at 2 a.m. nobody is logged in: an agent's command under a slip is `unattended`, its subject the slip's signer and the agent in its actor chain, the slip named on the record; what the signer holds is asked of the company's directory, and no fresh answer is no answer |
 | `my_20_idempotency_keys` | 732 | every command carries an idempotency key beside its arguments, claimed with one INSERT at §21.7; the same key and request get the recorded answer and nothing runs twice, a different request under the key is refused, and fifty at once make one payment |
 | `my_21_optimistic_concurrency` | 751 | invoices and payments carry a version raised in the same UPDATE as every change; every command declares its concurrency strategy, an optimistic command says the version it decided on, and a record that moved on is refused `STALE_STATE` before any business rule, with no new version handed over |
-| `my_22_proposals_and_their_states` | 753 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2, without its compensation line, and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended |
-| `my_23_three_ways_to_call` | 779 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
-| `my_24_limits_with_reservations` | 806 | a slip has a daily limit, 200,000.00 USD for del_100; each payment books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
-| `my_25_revocation_and_the_emergency_brake` | 876 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer revokes it, and what waited under it is cancelled; none of it asks the agent |
+| `my_22_proposals_and_their_states` | 829 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2, without its compensation line, and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended; since decision 157 every move is written with its own audit record in one statement, and the database refuses a move without one |
+| `my_23_three_ways_to_call` | 868 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
+| `my_24_limits_with_reservations` | 910 | a slip has a daily limit, 200,000.00 USD for del_100; each payment, and no other command, books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
+| `my_25_revocation_and_the_emergency_brake` | 1007 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer, supervisor or approver, revokes it, active or suspended, and what waited under it is cancelled, if it is still what was read; none of it asks the agent |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -151,7 +151,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 143 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 157 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
