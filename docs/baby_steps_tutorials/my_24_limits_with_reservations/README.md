@@ -85,6 +85,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_23
 | `test/database.test.ts` | start-up refuses an application that may delete a total or a reservation, or write one settled, and the reservations without the policy that keeps a settled one |
 | `test/the-lock-at-start-up.test.ts` | an account one `SET ROLE` from owning the reservations is refused; and the lock's refusals are asked of the day totals and the reservations too |
 | `test/control-plane-store.test.ts` | the day totals and the reservations are in DSoR's own schema |
+| `test/delegations.test.ts` | a slip whose daily limit is not a number is refused like one whose limit per payment is not |
 | `test/support/story.ts` | putting the story back empties the day totals and the reservations, and gives del_100 its daily limit again |
 | `test/support/one-day.ts` | new — a test that counts one day's bookings is skipped, not failed, when midnight UTC falls while it runs |
 
@@ -135,9 +136,10 @@ twenty-one, it applies 022 and 023. The two new tests are the step's "done when"
 fifty reservations of 5,000.00 at once over a pool of twenty connections book exactly forty, and the
 day stops at 200,000.00; and with 195,000.00 booked first, fifty payments at once through the door
 race for room for one, and at most one is made. Broken on purpose, reading the total and then
-writing it, the first booked all fifty and the second made three. Both were measured on
-2026-10-11, before a request that lost its place at the end of the company's log tried the next
-one.
+writing it, the first booked all fifty, in three runs of three. The second made one: since decision
+157 the fifty take turns at the company's log, and the turns keep the broken bookings apart
+(measured 2026-10-13; on 2026-10-11, before those turns, it made three). So the first test is the
+one that sees this mistake.
 
 ## Break it
 
@@ -158,9 +160,9 @@ then the INSERT that adds it, with no condition.
 One: the fifty reservations at once. Every other test books one payment at a time, or the same
 payment twice, which its key still stops, and every one of them still passes, which is exactly why
 the mistake is so easy to make. On a real server, in the database tier, the same break booked all
-fifty, 250,000.00, and through the door made three payments where there was room for one. Both
-were measured on 2026-10-11, before a request that lost its place at the end of the company's log
-tried the next one.
+fifty, 250,000.00, in three runs of three. Through the door it made one payment, where on 2026-10-11
+it made three: since decision 157 the fifty take turns at the company's log, and the turns keep the
+broken bookings apart, so only the store's test sees this break now.
 
 ### Break 2 · a release keeps its amount on the day
 

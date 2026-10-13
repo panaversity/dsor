@@ -36,6 +36,8 @@ a unit test of fifty payments through the door passed with one made and proved n
 removed; the demo sends its payments one after another. And a payment books before its decision is
 recorded, so the bookings of requests about to lose the log race count for a moment: one payment in
 each real-server run was refused `LIMIT_EXCEEDED` with room left. The limit erred toward refusing.
+Since decision 157 they no longer lose it: a record that loses its place tries the next one, and
+fifty of fifty were made on a real server.
 
 **The day's 34,500.00 before the demo's ten** includes the 400.00 prepared in step 23's section,
 held while it waits at READY, and two payments since cancelled: cancelling does not give an amount
@@ -60,7 +62,9 @@ tenants apart, and no way for the agent alone past the limit. It found, as
 - **A reservation settled when its proposal's last move was not written** (measured): now only when
   the history holds the move.
 - **The race through the door could not fail** (measured): now 195,000.00 is booked first, and the
-  fifty race for room for one; broken on a real server, three were made.
+  fifty race for room for one; broken on a real server, three were made. Since decision 157 the fifty
+  take turns at the log, and the same break made one, three runs of three: only the store's test of
+  fifty reservations sees it now.
 - **`reserve()` took any currency, and a settled reservation was "already"**: both fixed, and the
   stage's currency refusal and an answered `TRANSACTION_FAILED` tested.
 

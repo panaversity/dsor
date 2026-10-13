@@ -58,7 +58,8 @@ payment was still stopped, after an ALLOW was on the record.
 
 One reviewer, read-only, with probes in its own copy. It found the brake before the claim, read from
 DSoR's store, never the arguments; freezes kept to their company; a lift final; a slip beyond the
-application's reach once not active; and revoking and cancelling in one statement. It found, as
+application's reach once revoked or expired (a suspended one, too, until decision 156 let its signer
+revoke it); and revoking and cancelling in one statement. It found, as
 [decision 143](decisions.md):
 
 - **A refusal recorded as ALLOW** (measured): who may revoke, and who may release, moved to §21.9.
