@@ -535,3 +535,10 @@ for a human. An agent may gather evidence; it does not settle these alone.
     The `my_22` learner build follows the plain words: its map has no compensation moves,
     though its `payment.create` is declared `compensatable`. Should the plain words say "final,
     except for compensation"?
+81. **Where does a transition record say what moved?** `DSOR-AUD-01` asks for a record of every
+    proposal transition, and `DSOR-APR-01b` for each transition's actor and cause. The audit
+    record has `kind: proposal_transition` and a `result`, but no field for the state left, the
+    actor that moved it, or the cause. The `my_22` learner build writes the state entered as the
+    `result`, and the state left, the actor and the cause as text in `reason`, where they are
+    inside the hash but not separate fields. Should `audit-record.schema.json` give a transition
+    `from`, `to`, `actor` and `cause`?
