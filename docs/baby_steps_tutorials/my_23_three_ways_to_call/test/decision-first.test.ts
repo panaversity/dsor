@@ -18,6 +18,7 @@ import {
   theLog,
   validateAuditRecord,
   verifyChain,
+  type AuditRecord,
 } from "../src/audit.ts";
 import { resetRequestIds } from "../src/envelopes.ts";
 import { getInvoice } from "../src/invoice.ts";
@@ -124,13 +125,12 @@ describe("the decision is written down first", () => {
       throw new Error(`expected a refusal then a result, got ${refused.kind} then ${issued.kind}`);
     }
 
-    expect(await theLog("org_456")).toHaveLength(2);
-    expect((await theLog("org_456"))[0]!.correlation.request_id).toBe(
+    // STEP 22, decision 157: the refusal is one record. The issue is five, its decision and the
+    // records of its proposal's four moves, and every one of them names the issue's request.
+    expect((await theLog("org_456")).map((r) => r.correlation.request_id)).toStrictEqual([
       refused.envelope.correlation.request_id,
-    );
-    expect((await theLog("org_456"))[1]!.correlation.request_id).toBe(
-      issued.envelope.correlation.request_id,
-    );
+      ...Array.from({ length: 5 }, () => issued.envelope.correlation.request_id),
+    ]);
 
     // Two requests, two ids, two records. Nothing shared by accident.
     expect((await theLog("org_456"))[0]!.correlation.request_id).not.toBe(
@@ -178,6 +178,10 @@ describe("the decision is written down first", () => {
    * the other way round — asserting DENY — is what I did first, and it failed, which is how the gap
    * got found rather than shipped.
    *
+   * STEP 22, decision 157: for a command, the log now holds how it ended too. Its proposal's moves
+   * each have a record, and the last says FAILED. The decision's record still says ALLOW, as it
+   * should: it is the record of the decision. A query has no proposal, and the gap stays for it.
+   *
    * There is a second reason these refusals arrive late, and it is step 04's, not step 08's: the
    * `validate the input` stage only checks that the arguments can be written down. It does not check
    * them against the contract's input schema, so a missing `invoice` is not caught at §21.6 where it
@@ -216,13 +220,27 @@ describe("the decision is written down first", () => {
       expect(answer.envelope.code, where).toBe(code);
 
       // Recorded, and recorded as an ALLOW — because the decision was to allow it.
-      expect(await theLog("org_456"), where).toHaveLength(1);
-      expect((await theLog("org_456"))[0]!.authorization, where).toBe("ALLOW");
-      expect((await theLog("org_456"))[0]!.result, where).toBe("ALLOWED");
+      // STEP 22, decision 157: one decision, beside the records of a command's moves.
+      const decisions = (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+      expect(decisions, where).toHaveLength(1);
+      expect(decisions[0]!.authorization, where).toBe("ALLOW");
+      expect(decisions[0]!.result, where).toBe("ALLOWED");
 
       // Which means the record and the answer disagree about how this went. That is the limit: the
       // outcome needs §21.15, and the step that brings it is where this stops being true.
-      expect((await theLog("org_456"))[0]!.result, where).not.toBe(answer.envelope.code);
+      expect(decisions[0]!.result, where).not.toBe(answer.envelope.code);
+
+      // STEP 22, decision 157: for a command, the log now says how it ended as well: the record of
+      // its proposal's last move, to FAILED, with the handler's code in its reason. A query has no
+      // proposal, and its decision is still all the log says about it.
+      if (id === "invoice.issue") {
+        expect((await theLog("org_456")).at(-1), where).toMatchObject({
+          kind: "proposal_transition",
+          result: "FAILED",
+          reason: `EXECUTING -> FAILED by dsor: the handler answered ${code}`,
+        });
+      }
     }
   });
 
@@ -320,7 +338,16 @@ describe("the decision is written down first", () => {
       (await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009, expected_version: 1 }))
         .kind,
     ).toBe("result");
-    expect(await theLog("org_456")).toHaveLength(1);
+    // STEP 22, decision 157: its decision, and the records of its proposal's four moves. The broken
+    // clock stopped the first request a stage earlier now, at §21.8: the record of the proposal's
+    // first move needs the clock too.
+    expect((await theLog("org_456")).map((r) => r.kind)).toStrictEqual([
+      "proposal_transition",
+      "decision",
+      "proposal_transition",
+      "proposal_transition",
+      "proposal_transition",
+    ]);
   });
 
   /**
@@ -460,15 +487,18 @@ describe("the decision is written down first", () => {
       throw new Error(`expected a result, got ${issued.kind}`);
     }
 
-    expect((await theLog("org_456"))[0]!.payload_hash).toBe(issued.envelope.payload_hash);
+    // STEP 22, decision 157: the decisions, read out of a log that also holds the records of the
+    // issue's moves, which carry the same hash.
+    const decisions = async (): Promise<readonly AuditRecord[]> =>
+      (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+    expect((await decisions())[0]!.payload_hash).toBe(issued.envelope.payload_hash);
 
     // Different arguments, different fingerprint.
     const other = await callOperation(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
 
     expect(other.kind).toBe("data");
-    expect((await theLog("org_456"))[1]!.payload_hash).not.toBe(
-      (await theLog("org_456"))[0]!.payload_hash,
-    );
+    expect((await decisions())[1]!.payload_hash).not.toBe((await decisions())[0]!.payload_hash);
   });
 
   // The §21.6 refusal, which is the only decision-stage refusal that arrives with no payload hash.
@@ -712,7 +742,9 @@ describe("the decision is written down first", () => {
     // out that nothing checked those.
     // STEP 14: five, not four — the supervisor's read left as confidential and was written down
     // too, and that record validates against the schema like the rest (it is `classified_read`).
-    expect(await theLog("org_456")).toHaveLength(5);
+    // STEP 22, decision 157: nine — the supervisor's issue is a proposal, and the records of its
+    // four moves validate too (they are `proposal_transition`).
+    expect(await theLog("org_456")).toHaveLength(9);
 
     for (const record of await theLog("org_456")) {
       expect(validateAuditRecord(record), record.record_id).toBe(true);
@@ -729,8 +761,9 @@ describe("the decision is written down first", () => {
     await callOperation(SUPERVISOR, "invoice.issue", { invoice: INV_1009, expected_version: 1 });
 
     // Five records: the caller with no login was counted instead, and STEP 14 the supervisor's read
-    // is written down after its decision, with no authorization of its own.
-    expect(await theLog("org_456")).toHaveLength(5);
+    // is written down after its decision, with no authorization of its own. STEP 22, decision 157:
+    // nine, with the records of the issue's four moves, none of which is a decision.
+    expect(await theLog("org_456")).toHaveLength(9);
     expect(countedWithoutARecord()).toBe(1);
     expect(verifyChain(await theLog("org_456"), await theHead("org_456"))).toBe(true);
     expect((await theLog("org_456")).map((record) => record.authorization)).toEqual([
@@ -738,7 +771,11 @@ describe("the decision is written down first", () => {
       undefined, // STEP 14: the record of the read
       "DENY",
       "DENY",
+      undefined, // STEP 22, decision 157: the issue's proposal is made, PROPOSED
       "ALLOW",
+      undefined, // READY
+      undefined, // EXECUTING
+      undefined, // COMMITTED
     ]);
   });
 });

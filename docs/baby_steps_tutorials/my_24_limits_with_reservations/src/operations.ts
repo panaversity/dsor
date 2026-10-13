@@ -66,7 +66,7 @@ import { parseUri } from "./uri.ts";
 import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./payment.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
-import { audit, OutcomeUnknown } from "./audit.ts";
+import { audit, type DecisionToRecord, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
 // NEW IN STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
@@ -74,6 +74,7 @@ import { reserve, settleReservation, usedToday } from "./reservation.ts";
 import { money } from "./money.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
+  type ForTheRecord,
   moveProposal,
   moveProposalThrough,
   type MoveOutcome,
@@ -1391,6 +1392,10 @@ const claimTheKey: Stage["run"] = async (context) => {
  *
  * If it cannot be written, nothing is decided and nothing runs: a command with no proposal has no
  * record of where it is.
+ *
+ * STEP 22, decision 157: the statement that writes it writes the record of its first move
+ * too, in the request's name. If nobody can say whether that statement was written, the answer is
+ * that nobody knows.
  */
 const createTheProposal: Stage["run"] = async (context) => {
   // STEP 23: and proposes nothing: a dry run makes no proposal (DSOR-OPR-06, decision 138).
@@ -1399,6 +1404,7 @@ const createTheProposal: Stage["run"] = async (context) => {
   }
 
   const { principal, tenant, contract, payload, payloadHash, claim } = context;
+  const by = forTheRecord(context);
 
   if (
     principal === undefined ||
@@ -1406,7 +1412,10 @@ const createTheProposal: Stage["run"] = async (context) => {
     contract === undefined ||
     payload === undefined ||
     payloadHash === undefined ||
-    claim === undefined
+    claim === undefined ||
+    // STEP 22, decision 157: a type guard. There are words for the records whenever there
+    // is a principal, a contract and a payload hash, the three clauses above.
+    by === undefined
   ) {
     return refuse(
       principal?.id ?? "(nobody)",
@@ -1430,21 +1439,37 @@ const createTheProposal: Stage["run"] = async (context) => {
   const operation = `${contract.id}@${contract.version}`;
 
   try {
-    const proposal = await propose({
-      tenant,
-      operation,
-      // STEP 23: as it was called; a dry run never gets here.
-      mode: context.mode === "propose_only" ? "propose_only" : "execute",
-      payload,
-      payloadHash,
-      requester: JSON.stringify(requester),
-      idempotencyKey: claim.key,
-      actor: principal.id,
-      cause: `${operation} invoked`,
-    });
+    const proposal = await propose(
+      {
+        tenant,
+        operation,
+        // STEP 23: as it was called; a dry run never gets here.
+        mode: context.mode === "propose_only" ? "propose_only" : "execute",
+        payload,
+        payloadHash,
+        requester: JSON.stringify(requester),
+        idempotencyKey: claim.key,
+        actor: principal.id,
+        cause: `${operation} invoked`,
+      },
+      by,
+    );
 
     return carryOn({ ...context, proposal });
-  } catch {
+  } catch (failure) {
+    // STEP 22, decision 157: the connection failed before the server answered, and the
+    // record of the first move is not there, or it is and the proposal could not be read back.
+    // The statement may still land, with its proposal. "Nothing was done" would be a guess, and a
+    // retry on the same key would make a second proposal beside it (DSOR-UNK-01b).
+    if (failure instanceof OutcomeUnknown) {
+      return refuse(
+        principal.id,
+        "OUTCOME_UNKNOWN",
+        `the proposal for this ${contract.id} request may or may not have been written; nothing was carried out, and it is left for reconciliation`,
+        context.requestId,
+      );
+    }
+
     return refuse(
       principal.id,
       "EVIDENCE_STORE_UNAVAILABLE",
@@ -1453,6 +1478,49 @@ const createTheProposal: Stage["run"] = async (context) => {
     );
   }
 };
+
+/**
+ * STEP 22, decision 157: whose authority a request used, as its records say it: under a slip,
+ * the slip §21.3 found, the person who signed it, and when the company's directory knew what they
+ * hold. One function for the request's decision and for the records of the moves it makes, so the
+ * two can never say it differently (lesson 17).
+ */
+function underSlipOf(context: Context): DecisionToRecord["underSlip"] {
+  // Decision 149: the slip §21.3 found, whether or not it could be used.
+  const slipFound = context.delegation ?? context.unusableSlip;
+
+  return slipFound === undefined
+    ? undefined
+    : {
+        delegation: slipFound.id,
+        delegator: slipFound.delegator,
+        ...(context.authorityAsOf === undefined ? {} : { asOf: context.authorityAsOf }),
+      };
+}
+
+/**
+ * STEP 22, decision 157: what the records of a command's moves say about the request that
+ * made them: who logged in, the request's id, its slip, and the proposal's operation and payload
+ * hash. Undefined only for a context without a principal, a contract or a payload hash, and a
+ * proposal is made at §21.8, after all three.
+ */
+function forTheRecord(context: Context): ForTheRecord | undefined {
+  const { principal, contract, payloadHash } = context;
+
+  if (principal === undefined || contract === undefined || payloadHash === undefined) {
+    return undefined;
+  }
+
+  const underSlip = underSlipOf(context);
+
+  return {
+    subject: principal.id,
+    requestId: context.requestId,
+    operation: `${contract.id}@${contract.version}`,
+    payloadHash,
+    ...(underSlip === undefined ? {} : { underSlip }),
+  };
+}
 
 /**
  * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
@@ -1700,8 +1768,9 @@ const recordTheDecision: Stage["run"] = async (context) => {
         ? [undefined]
         : principal.memberships.map((m) => m.tenantId);
 
-  // Decision 149: the slip §21.3 found, whether or not it could be used.
-  const slipFound = context.delegation ?? context.unusableSlip;
+  // Decision 149: the slip §21.3 found, whether or not it could be used. STEP 22, decision
+  // 157: worked out by `underSlipOf`, which the records of the request's moves use too.
+  const underSlip = underSlipOf(context);
 
   let written;
   // STEP 10: which logs took the write, so the caller is told the truth on a partial failure.
@@ -1735,15 +1804,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
         // Decision 130: whenever §21.3 found the slip, refusals after it included, and with the
         // directory's time when it gave one; with none, the record has the decision's own.
         // Decision 149: and a slip it found and could not use, because a limit on it is not an amount.
-        ...(slipFound === undefined
-          ? {}
-          : {
-              underSlip: {
-                delegation: slipFound.id,
-                delegator: slipFound.delegator,
-                ...(context.authorityAsOf === undefined ? {} : { asOf: context.authorityAsOf }),
-              },
-            }),
+        ...(underSlip === undefined ? {} : { underSlip }),
       });
 
       if (written !== undefined && tenant !== undefined) {
@@ -2055,6 +2116,8 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
 async function prepare(context: Context, progress: Progress): Promise<OperationAnswer> {
   const { principal, tenant, contract, proposal, payloadHash: hash, recorded, requestId } = context;
   const semantics = contract?.execution?.semantics;
+  // STEP 22, decision 157: the request, as the record of the move to READY names it.
+  const by = forTheRecord(context);
 
   if (
     principal === undefined ||
@@ -2062,7 +2125,10 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
     proposal === undefined ||
     hash === undefined ||
     recorded === undefined ||
-    semantics === undefined
+    semantics === undefined ||
+    // STEP 22, decision 157: a type guard: there are words for the record whenever there is a
+    // principal, a contract and a payload hash, which the clauses above ask for.
+    by === undefined
   ) {
     return Object.freeze({
       kind: "error",
@@ -2086,11 +2152,15 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
       "READY",
       "dsor",
       `allowed: the decision is recorded as ${recorded}; waiting to be released`,
+      // STEP 22, decision 157: with its record, in the same statement.
+      by,
     );
-  } catch {
+  } catch (failure) {
     // Decision 153: the door's own move out of PROPOSED threw, so PROPOSED read back is not yet a
     // proof that nothing was written; the door's move to DENIED, written, settles it.
-    progress.moveLost = true;
+    // STEP 22, decision 157: only when nobody knows whether it was written, as for the door's
+    // move before a handler: a refused statement can never land.
+    progress.moveLost = failure instanceof OutcomeUnknown;
 
     let now: ProposalState | undefined;
 
@@ -2238,15 +2308,21 @@ interface Progress {
  * happened: a proposal left EXECUTING is one whose outcome nobody recorded. DSOR-EXE-04b will have
  * such a record treated as OUTCOME_UNKNOWN, and nothing here does that yet: it arrives with intent
  * records in step 36, and reconciliation in step 38 (decision 153).
+ *
+ * STEP 22, decision 157: the move's record is written with it, in the name of the request,
+ * `by`. Each try takes up to ten places in the log. A move that cannot be written leaves no record
+ * either: the log says EXECUTING too.
  */
 async function finishTheProposal(
   tenant: string,
   proposal: string,
   to: ProposalState,
   cause: string,
+  by: ForTheRecord,
   from: ProposalState = "EXECUTING",
 ): Promise<MoveOutcome["kind"] | "unknown"> {
-  const move = (): Promise<MoveOutcome> => moveProposal(tenant, proposal, from, to, "dsor", cause);
+  const move = (): Promise<MoveOutcome> =>
+    moveProposal(tenant, proposal, from, to, "dsor", cause, by);
 
   try {
     return (await move().catch(move)).kind;
@@ -2302,6 +2378,8 @@ export function makeDoor(
       contract !== undefined && Object.hasOwn(handlerTable, contract.id)
         ? handlerTable[contract.id]
         : undefined;
+    // STEP 22, decision 157: the request, as the records of its proposal's moves name it.
+    const by = forTheRecord(context);
 
     // STEP 08: nothing executes without the receipt from §21.11.
     //
@@ -2328,7 +2406,10 @@ export function makeDoor(
       handler === undefined ||
       recorded === undefined ||
       // STEP 22: and a command with no proposal has no record of where it is (decision 136).
-      (contract.kind === "command" && context.proposal === undefined)
+      (contract.kind === "command" && context.proposal === undefined) ||
+      // STEP 22, decision 157: a type guard, like the first clauses: there are words for the
+      // records of the moves whenever there is a principal, a contract and a payload hash.
+      by === undefined
     ) {
       // Named inside the block, not computed above it. Both existed for a while — a ternary chain
       // that picked the name, *and* these clauses for the narrowing — and a mutation sweep found the
@@ -2379,7 +2460,8 @@ export function makeDoor(
 
     if (proposal !== undefined) {
       // Decision 137: both moves in one statement. One at a time, a failure between them left the
-      // proposal READY for good, with nothing ever to carry it out.
+      // proposal READY for good, with nothing ever to carry it out. STEP 22, decision 157:
+      // and the same statement writes their two records in the log; without them, neither move.
       let started: MoveOutcome | undefined;
 
       try {
@@ -2391,14 +2473,20 @@ export function makeDoor(
             ["READY", "EXECUTING", `handed to ${contract.id}`],
           ],
           "dsor",
+          by,
         );
-      } catch {
+      } catch (failure) {
         // The write failed, or only its reply was lost. Read the proposal back to know which: at
         // EXECUTING, the move was this request's own, since no other request has this proposal; at
         // PROPOSED, nothing was written yet. A read that fails too leaves it unknown. Decision 153:
         // "yet", because a write whose reply was lost can still land after the read, and only the
         // door's move to DENIED, written, settles it.
-        progress.moveLost = true;
+        //
+        // STEP 22, decision 157: only when nobody knows whether it was written. Every other
+        // failure is one the log settled already: a statement the server refused, or one ten places
+        // in the log could not take, can never land. Taken as lost, a log too busy to take DENIED
+        // either turned a true "nothing was done" into OUTCOME_UNKNOWN, and kept the key for nothing.
+        progress.moveLost = failure instanceof OutcomeUnknown;
 
         let now: ProposalState | undefined;
 
@@ -2473,6 +2561,7 @@ export function makeDoor(
           proposal,
           "OUTCOME_UNKNOWN",
           "the handler threw, so nobody knows whether it ran",
+          by,
         );
       }
 
@@ -2499,7 +2588,7 @@ export function makeDoor(
                 `the handler answered with ${answer.kind === "data" ? "a row" : "a page"}, not a receipt`,
               ];
 
-      await finishTheProposal(tenant, proposal, ended, cause);
+      await finishTheProposal(tenant, proposal, ended, cause, by);
 
       // Decision 153: and the caller is told what the record says. A refusal with another code went
       // out as it came: TRANSACTION_FAILED, retry safe_same_key, an invitation to make the payment
@@ -2704,11 +2793,16 @@ export function makeDoor(
             : await carryOut(walked.context, startedAt, progress);
     const claim = walked.context.claim;
     const { proposal, tenant } = walked.context;
+    // STEP 22, decision 157: the request, as the record of the move to DENIED names it.
+    const by = forTheRecord(walked.context);
 
     // STEP 22: refused before anything moved it: DENIED, with the code that refused it.
     if (
       proposal !== undefined &&
       tenant !== undefined &&
+      // STEP 22, decision 157: a type guard: a proposal is made at §21.8, after the
+      // principal, the contract and the payload hash are known.
+      by !== undefined &&
       progress.state === "PROPOSED" &&
       answer.kind === "error"
     ) {
@@ -2717,6 +2811,7 @@ export function makeDoor(
         proposal,
         "DENIED",
         `refused: ${answer.envelope.code}`,
+        by,
         "PROPOSED",
       );
 

@@ -33,10 +33,14 @@ beforeAll(async () => {
   owner = new Pool({ connectionString: OWNER, max: 1 });
   application = new Pool({ connectionString: APPLICATION, max: 2 });
   await applyMigrations(asRunner(owner), fileURLToPath(new URL("../migrations", import.meta.url)));
+  // NEW IN STEP 22, decision 157: the moves first: each names its record in the log.
+  await owner.query("DELETE FROM dsor.proposal_moves");
   await owner.query("DELETE FROM dsor.audit");
 });
 
 afterEach(async () => {
+  // NEW IN STEP 22, decision 157: the moves first: each names its record in the log.
+  await owner?.query("DELETE FROM dsor.proposal_moves");
   await owner?.query("DELETE FROM dsor.audit");
 });
 

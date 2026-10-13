@@ -224,7 +224,7 @@ describe("an INSERT whose reply is lost", () => {
       },
     });
 
-    // Step 09 refused it here. STEP 22, decision 157: the whole INSERT was refused, so nothing of
+    // Step 09 refused it here. NEW IN STEP 22, decision 157: the whole INSERT was refused, so nothing of
     // it was written, and the next place is tried, from a new read of the end.
     const ours = await audit(aDecision("req_ours"));
 
@@ -334,7 +334,7 @@ describe("an INSERT refused because the row is already there", () => {
 
     expect(first?.record_id).toBe("audit:org_456:0");
 
-    // Step 09 refused the second here. STEP 22, decision 157: its INSERT was refused whole, so it
+    // Step 09 refused the second here. NEW IN STEP 22, decision 157: its INSERT was refused whole, so it
     // tries the next place, from a new read of the end, and is written there. Two rows at two places.
     const second = await audit(aDecision("req_1"));
 
@@ -368,7 +368,7 @@ describe("an INSERT refused because the row is already there", () => {
     // at my position; my SELECT finds a row at my record_id — and, before `trace_id`, with my hash.
     // Now the hashes differ, the row is recognised as someone else's, and I am told the write failed,
     // which is true: my statement can never commit into a position the primary key has given away.
-    // STEP 22, decision 157: and so it tries the next place instead, and is written there.
+    // NEW IN STEP 22, decision 157: and so it tries the next place instead, and is written there.
     setClock(() => "2026-10-04T00:00:00.000Z");
 
     let interrupted = false;
@@ -416,7 +416,7 @@ describe("an INSERT refused because the row is already there", () => {
     // "is there a row" failed a test; once 23505 is short-circuited that test no longer reaches the
     // comparison. This one does: a connection error (no SQLSTATE) while a different writer's row
     // sits at my record_id. Not mine, but definitely not landing either — so EVIDENCE_STORE_UNAVAILABLE
-    // is true, and OUTCOME_UNKNOWN would be an over-statement. STEP 22, decision 157: and so the
+    // is true, and OUTCOME_UNKNOWN would be an over-statement. NEW IN STEP 22, decision 157: and so the
     // next place is tried, where mine is written. Taken for mine, it would be the receipt for theirs.
     useDatabase(connection);
 

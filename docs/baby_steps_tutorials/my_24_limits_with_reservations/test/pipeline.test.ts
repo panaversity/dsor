@@ -301,7 +301,12 @@ describe("the pipeline", () => {
 
     // The point of the whole step: no evidence, so nothing happened.
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
-    expect(await theLog("org_456")).toHaveLength(0);
+    // STEP 22, decision 157: the log holds the records of the proposal's two moves, made at §21.8
+    // and refused to DENIED, and no decision: the blind stage wrote none.
+    expect((await theLog("org_456")).map((r) => `${r.kind} ${r.result}`)).toStrictEqual([
+      "proposal_transition PROPOSED",
+      "proposal_transition DENIED",
+    ]);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
     const real = await callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
@@ -310,7 +315,14 @@ describe("the pipeline", () => {
     });
 
     expect(real.kind).toBe("result");
-    expect(await theLog("org_456")).toHaveLength(1);
+    // STEP 22, decision 157: its decision, beside the records of its proposal's four moves.
+    expect((await theLog("org_456")).slice(2).map((r) => r.kind)).toStrictEqual([
+      "proposal_transition",
+      "decision",
+      "proposal_transition",
+      "proposal_transition",
+      "proposal_transition",
+    ]);
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("issued");
   });
 
@@ -410,7 +422,13 @@ describe("the pipeline", () => {
       expect(answer.kind === "error" && answer.envelope.message).toContain(
         "a record of the decision",
       );
-      expect(await theLog("org_456")).toHaveLength(0);
+      // STEP 22, decision 157: and no decision in the log. A dry run makes no proposal, so the log
+      // is empty; a prepared one's proposal leaves the records of its two moves, made and DENIED.
+      expect((await theLog("org_456")).map((r) => `${r.kind} ${r.result}`)).toStrictEqual(
+        request.mode === "propose_only"
+          ? ["proposal_transition PROPOSED", "proposal_transition DENIED"]
+          : [],
+      );
       expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
       // And nothing waits at READY: a dry run makes no proposal, and a prepared one is DENIED.
       expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(

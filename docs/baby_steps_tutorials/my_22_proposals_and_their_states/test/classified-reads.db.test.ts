@@ -47,6 +47,8 @@ async function putTheStoryBack(): Promise<void> {
     await owner.query(statement);
   }
 
+  // NEW IN STEP 22, decision 157: the moves first: each names its record in the log.
+  await owner.query("DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')");
   await owner.query("DELETE FROM dsor.audit WHERE tenant IN ('org_456', 'org_789')");
 }
 

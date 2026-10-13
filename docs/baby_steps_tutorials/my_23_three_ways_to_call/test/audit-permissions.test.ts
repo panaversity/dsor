@@ -509,15 +509,18 @@ describe("the REVOKE lines, where there is something to revoke", () => {
   });
 
   it("DSOR-AUD-04a: TRUNCATE in particular is taken back", async () => {
-    await db.exec("GRANT TRUNCATE ON dsor.audit TO dsor_runtime;");
+    // STEP 22, decision 157: on the proposals' moves too, and both at once. A move names its record
+    // in the log, and PostgreSQL refuses to empty a table that another table's key points at unless
+    // that table is emptied with it, so "TRUNCATE dsor.audit" alone is refused whatever the rights.
+    await db.exec("GRANT TRUNCATE ON dsor.audit, dsor.proposal_moves TO dsor_runtime;");
     await db.exec(A_DECISION);
 
-    expect(await asTheApplication("TRUNCATE dsor.audit")).toBe("allowed");
+    expect(await asTheApplication("TRUNCATE dsor.audit, dsor.proposal_moves")).toBe("allowed");
 
     await db.exec(A_DECISION);
     await reapplyThePermissions();
 
-    expect(await asTheApplication("TRUNCATE dsor.audit")).toMatch(
+    expect(await asTheApplication("TRUNCATE dsor.audit, dsor.proposal_moves")).toMatch(
       /permission denied for table audit/,
     );
 

@@ -635,6 +635,14 @@ if (finished !== undefined) {
     "EXECUTING",
     "dsor",
     "run it again",
+    // NEW IN STEP 22, decision 157: the record it would have, in user_123's name. The database
+    // refuses the move, so the record is not written either.
+    {
+      subject: "user_123",
+      requestId: "the-demo",
+      operation: finished.operation,
+      payloadHash: finished.payloadHash,
+    },
   );
 
   console.log();

@@ -300,7 +300,12 @@ describe("the pipeline", () => {
 
     // The point of the whole step: no evidence, so nothing happened.
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
-    expect(await theLog("org_456")).toHaveLength(0);
+    // NEW IN STEP 22, decision 157: the log holds the records of the proposal's two moves, made at §21.8
+    // and refused to DENIED, and no decision: the blind stage wrote none.
+    expect((await theLog("org_456")).map((r) => `${r.kind} ${r.result}`)).toStrictEqual([
+      "proposal_transition PROPOSED",
+      "proposal_transition DENIED",
+    ]);
 
     // And the real pipeline does the same call, records it, and issues the invoice.
     const real = await callOperation({ loggedInAs: "user_123" }, "invoice.issue", {
@@ -309,7 +314,14 @@ describe("the pipeline", () => {
     });
 
     expect(real.kind).toBe("result");
-    expect(await theLog("org_456")).toHaveLength(1);
+    // NEW IN STEP 22, decision 157: its decision, beside the records of its proposal's four moves.
+    expect((await theLog("org_456")).slice(2).map((r) => r.kind)).toStrictEqual([
+      "proposal_transition",
+      "decision",
+      "proposal_transition",
+      "proposal_transition",
+      "proposal_transition",
+    ]);
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("issued");
   });
 

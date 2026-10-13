@@ -8,6 +8,11 @@
 -- The application adds to these tables and changes nothing in them. The rules of §26.2 are kept by
 -- the database, in constraints, so no code path, careless or not, can write a move that is not on
 -- the map, leave a state twice, or leave a finished one.
+--
+-- NEW IN STEP 22, decision 157: and every move names its record in the audit log, so no code path
+-- can write a move that the log does not have (DSOR-AUD-01). This file was edited in place to add
+-- that, as decision 123 did for 008: no database anyone keeps had run it. A database that ran the
+-- earlier 020 is refused by `pnpm migrate`'s checksum, and is made again.
 
 -- The map of §26.2: every move a proposal may make. A state with no move out of it is finished.
 -- The moves into and out of compensation wait for compensation, which this program does not have.
@@ -71,6 +76,11 @@ CREATE TABLE dsor.proposal_moves (
   at         TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   actor      TEXT NOT NULL CHECK (actor <> ''),
   cause      TEXT NOT NULL CHECK (cause <> ''),
+  -- NEW IN STEP 22, decision 157: the move's record in the company's audit log, written by the
+  -- same statement. A move with none, or with one the log does not have, is refused; and a record a
+  -- move names cannot be deleted. Not UNIQUE: a place in the log lost to another record would then
+  -- be refused here too, and read as the map refusing the move.
+  record     TEXT NOT NULL REFERENCES dsor.audit (record_id),
   CHECK ((from_state IS NULL) = (to_state = 'PROPOSED')),
   FOREIGN KEY (tenant, proposal) REFERENCES dsor.proposals (tenant, id),
   -- On the map. A move out of a finished state has nothing here to point at, so it is refused.
@@ -91,7 +101,8 @@ REVOKE ALL ON SEQUENCE dsor.proposal_numbers FROM PUBLIC;
 GRANT SELECT ON dsor.proposals, dsor.proposal_moves TO dsor_runtime;
 GRANT INSERT (tenant, operation, mode, payload, payload_hash, requester, idempotency_key)
   ON dsor.proposals TO dsor_runtime;
-GRANT INSERT (tenant, proposal, from_state, to_state, actor, cause)
+-- NEW IN STEP 22, decision 157: and the record each move names.
+GRANT INSERT (tenant, proposal, from_state, to_state, actor, cause, record)
   ON dsor.proposal_moves TO dsor_runtime;
 GRANT USAGE ON SEQUENCE dsor.proposal_numbers TO dsor_runtime;
 

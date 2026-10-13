@@ -14,6 +14,7 @@ import { migrationsIn } from "../../src/migrations.ts";
 import { storyStatements } from "./story.ts";
 import { APPLICATION_ROLE, overPGlite } from "../../src/database.ts";
 import { forgetTheLog as forgetTheLogAsWhoeverIsConnected } from "../../src/audit.ts";
+import type { ForTheRecord } from "../../src/proposal.ts";
 import { useDatabase } from "../../src/store.ts";
 
 /** The owner's own connection, for the seams below. Set by `aDatabase`. */
@@ -102,7 +103,24 @@ export async function asTheOwner<T>(run: () => Promise<T>): Promise<T> {
  *
  * `audit.ts` still exports the eraser, and it still runs as whoever is connected — which is now
  * the application, who may not DELETE. Tests import this one instead.
+ *
+ * STEP 22, decision 157: the company's proposal moves first. Each names its record in the
+ * log, and the database refuses to delete a record a move names.
  */
 export async function forgetTheLog(tenant: string): Promise<void> {
-  await asTheOwner(() => forgetTheLogAsWhoeverIsConnected(tenant));
+  await asTheOwner(async () => {
+    await theOwner().query("DELETE FROM dsor.proposal_moves WHERE tenant = $1", [tenant]);
+    await forgetTheLogAsWhoeverIsConnected(tenant);
+  });
 }
+
+/**
+ * STEP 22, decision 157: the request a test moves a proposal for, as the record of each move
+ * names it. A person's request, `user_123` asking, for a payment whose payload hash is a stand-in.
+ */
+export const BY_A_TEST: ForTheRecord = Object.freeze({
+  subject: "user_123",
+  requestId: "req_test",
+  operation: "payment.create@1",
+  payloadHash: "sha256:0000",
+});

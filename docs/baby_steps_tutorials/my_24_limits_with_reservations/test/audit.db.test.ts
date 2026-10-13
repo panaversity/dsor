@@ -49,6 +49,8 @@ beforeAll(async () => {
   application = new Pool({ connectionString: APPLICATION, max: 3 });
 
   await applyMigrations(asRunner(owner), fileURLToPath(new URL("../migrations", import.meta.url)));
+  // STEP 22, decision 157: the moves first: each names its record in the log.
+  await owner.query("DELETE FROM dsor.proposal_moves");
   await owner.query("DELETE FROM dsor.audit");
 });
 
@@ -63,6 +65,8 @@ afterAll(async () => {
   // which cost an hour to explain, and which a learner running `pnpm test:db` before `pnpm start`
   // would hit with no idea why. A test that shares a database with the program cleans up after
   // itself. Found live 2026-10-04.
+  // STEP 22, decision 157: the moves first: each names its record in the log.
+  await owner?.query("DELETE FROM dsor.proposal_moves");
   await owner?.query("DELETE FROM dsor.audit");
   await owner?.end();
   await application?.end();
@@ -148,6 +152,8 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
    * is checkable rather than decorative.
    */
   it("DSOR-AUD-01: two writers cannot both claim one position in the chain", async () => {
+    // STEP 22, decision 157: the moves first: each names its record in the log.
+    await owner.query("DELETE FROM dsor.proposal_moves");
     await owner.query("DELETE FROM dsor.audit");
 
     // Three different record ids, all claiming position 0 of the same chain. Nothing here collides
@@ -177,6 +183,8 @@ describe.skipIf(!haveAServer)("against a real server, as a real second user", ()
   it("DSOR-AUD-01: one record id cannot be written twice, by the primary key", async () => {
     // The other constraint, kept as its own test now that the one above no longer covers it by
     // accident. Same id, two different positions — so only `audit_pkey` can refuse it.
+    // STEP 22, decision 157: the moves first: each names its record in the log.
+    await owner.query("DELETE FROM dsor.proposal_moves");
     await owner.query("DELETE FROM dsor.audit");
 
     const [first, firstParams] = aDecision(0, "audit:org_456:same");
@@ -285,6 +293,8 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
   });
 
   it("DSOR-AUD-01: a collision of the program's own row shape is refused by the primary key", async () => {
+    // STEP 22, decision 157: the moves first: each names its record in the log.
+    await owner.query("DELETE FROM dsor.proposal_moves");
     await owner.query("DELETE FROM dsor.audit");
 
     const [sql, params] = aDecision(0); // record_id audit:org_456:0 AND (chain, sequence) = (…, 0)
@@ -300,6 +310,8 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
   });
 
   it("DSOR-AUD-01: three writers at once, on three real connections, leave one verifiable chain", async () => {
+    // STEP 22, decision 157: the moves first: each names its record in the log.
+    await owner.query("DELETE FROM dsor.proposal_moves");
     await owner.query("DELETE FROM dsor.audit");
     setClock(() => "2026-10-04T00:00:00.000Z");
     useDatabase(overPool(application)); // a pool of three: the three calls really do run side by side

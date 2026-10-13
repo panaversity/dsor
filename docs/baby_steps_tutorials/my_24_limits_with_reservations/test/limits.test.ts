@@ -23,7 +23,7 @@ import { moveProposalThrough, propose, proposalsOf } from "../src/proposal.ts";
 import { contractsFromDisk, loadRegistry } from "../src/registry.ts";
 import { reserve, settleReservation, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, BY_A_TEST, resetTheStory } from "./support/database.ts";
 import { makeDoor } from "./support/door.ts";
 import { onOneDay } from "./support/one-day.ts";
 
@@ -31,17 +31,21 @@ const DAILY = money("200000.00", "USD");
 
 /** A proposal of org_456's agent, for a payment, to reserve against. */
 const aProposal = (): Promise<string> =>
-  propose({
-    tenant: "org_456",
-    operation: "payment.create@1",
-    mode: "execute",
-    payload: "{}",
-    payloadHash: "sha256:0",
-    requester: '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
-    idempotencyKey: `limits-${Math.random()}`,
-    actor: "accounts-payable-fte",
-    cause: "payment.create@1 invoked",
-  });
+  propose(
+    {
+      tenant: "org_456",
+      operation: "payment.create@1",
+      mode: "execute",
+      payload: "{}",
+      payloadHash: "sha256:0",
+      requester:
+        '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
+      idempotencyKey: `limits-${Math.random()}`,
+      actor: "accounts-payable-fte",
+      cause: "payment.create@1 invoked",
+    },
+    BY_A_TEST,
+  );
 
 let db: PGlite;
 
@@ -166,6 +170,7 @@ async function endedAs(id: string, end: "COMMITTED" | "FAILED"): Promise<void> {
       ["EXECUTING", end, `ended ${end}`],
     ],
     "dsor",
+    BY_A_TEST,
   );
 
   if (moved.kind !== "moved") {
@@ -436,7 +441,10 @@ describe("the agent's payments against del_100's day", () => {
 
     useDatabase({
       async query<T>(sql: string, params?: unknown[], tenant?: string) {
-        if (!failed && sql.includes("INSERT INTO dsor.audit")) {
+        // STEP 22, decision 157: the decision's own statement, which is the log's INSERT and nothing
+        // else. The proposal's creation writes the log too, inside its WITH, and failing that one
+        // fails the request at §21.8, before anything is booked.
+        if (!failed && sql.trimStart().startsWith("INSERT INTO dsor.audit")) {
           failed = true;
 
           throw Object.assign(new Error("the log is full"), { code: "53100" });
@@ -727,13 +735,16 @@ describe("a day's total that cannot be booked, or read", () => {
 
     expect(answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
     expect(answer.envelope.retry).toBe("safe_same_key");
-    // This request's records: its decision, a DENY that says why.
+    // This request's records: its decision, a DENY that says why. STEP 22, decision 157: between
+    // the records of its proposal's two moves, made and DENIED, which are not decisions.
     expect(
       (await theLog("org_456"))
         .filter((r) => r.correlation.request_id === answer.envelope.correlation.request_id)
         .map((r) => `${r.kind} ${r.authorization} ${r.result}: ${r.reason}`),
     ).toStrictEqual([
+      "proposal_transition undefined PROPOSED: (new) -> PROPOSED by accounts-payable-fte: payment.create@1 invoked",
       "decision DENY EVIDENCE_STORE_UNAVAILABLE: the day's total for del_100 could not be booked; nothing was done",
+      "proposal_transition undefined DENIED: PROPOSED -> DENIED by dsor: refused: EVIDENCE_STORE_UNAVAILABLE",
     ]);
     expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
     expect(await usedToday("org_456", "del_100")).toBe("0.00");

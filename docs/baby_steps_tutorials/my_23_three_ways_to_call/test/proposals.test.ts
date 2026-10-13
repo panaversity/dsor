@@ -23,7 +23,7 @@ import {
   stateOf,
 } from "../src/proposal.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, BY_A_TEST, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 
 // §26.2's diagram, written out by hand from the specification, without the moves into and out of
@@ -71,25 +71,46 @@ const EVERY_STATE: readonly ProposalState[] = [
 
 /** A proposal of org_456's, the agent asking for a payment, as a test needs one. */
 const aProposal = (): Promise<string> =>
-  propose({
-    tenant: "org_456",
-    operation: "payment.create@1",
-    mode: "execute",
-    payload:
-      '{"invoice":"dsor://org_456/invoice/INV-1009","amount":{"value":"2500.00","currency":"USD"}}',
-    payloadHash: "sha256:0000",
-    requester: '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
-    idempotencyKey: "pay-1009",
-    actor: "accounts-payable-fte",
-    cause: "payment.create@1 invoked",
-  });
+  propose(
+    {
+      tenant: "org_456",
+      operation: "payment.create@1",
+      mode: "execute",
+      payload:
+        '{"invoice":"dsor://org_456/invoice/INV-1009","amount":{"value":"2500.00","currency":"USD"}}',
+      payloadHash: "sha256:0000",
+      requester:
+        '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
+      idempotencyKey: "pay-1009",
+      actor: "accounts-payable-fte",
+      cause: "payment.create@1 invoked",
+    },
+    // STEP 22, decision 157: the record of its first move is in a test's request's name.
+    BY_A_TEST,
+  );
+
+/**
+ * STEP 22, decision 157: a record that is in the log: the one a proposal's first move names. A
+ * move written by hand must name one, or the database refuses it for that before any other rule;
+ * naming this one lets a test reach the rule it is about.
+ */
+const aRecordOf = async (id: string): Promise<string | undefined> =>
+  (await movesOf("org_456", id))[0]?.record;
 
 /** Walk a proposal along a path of states, each move by `dsor`. */
 async function walk(id: string, path: readonly ProposalState[]): Promise<void> {
   for (let i = 1; i < path.length; i += 1) {
     const from = path[i - 1] as ProposalState;
     const to = path[i] as ProposalState;
-    const outcome = await moveProposal("org_456", id, from, to, "dsor", `test walks to ${to}`);
+    const outcome = await moveProposal(
+      "org_456",
+      id,
+      from,
+      to,
+      "dsor",
+      `test walks to ${to}`,
+      BY_A_TEST,
+    );
 
     if (outcome.kind !== "moved") {
       throw new Error(`the walk could not move from ${from} to ${to}`);
@@ -153,6 +174,7 @@ describe("a proposal and its moves", () => {
 
   it("DSOR-APR-01b: a move with no actor or no cause is refused by the database", async () => {
     const id = await aProposal();
+    const record = await aRecordOf(id);
 
     for (const [actor, cause] of [
       ["", "a cause"],
@@ -160,9 +182,9 @@ describe("a proposal and its moves", () => {
     ] as const) {
       await expect(
         theDatabase("org_456").query(
-          `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
-           VALUES ('org_456', $1, 'PROPOSED', 'READY', $2, $3)`,
-          [id, actor, cause],
+          `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
+           VALUES ('org_456', $1, 'PROPOSED', 'READY', $2, $3, $4)`,
+          [id, actor, cause, record],
         ),
       ).rejects.toThrow(/check constraint/);
     }
@@ -174,7 +196,7 @@ describe("a proposal and its moves", () => {
     const id = await aProposal();
 
     expect(
-      await moveProposal("org_456", id, "PROPOSED", "COMMITTED", "dsor", "skip ahead"),
+      await moveProposal("org_456", id, "PROPOSED", "COMMITTED", "dsor", "skip ahead", BY_A_TEST),
     ).toStrictEqual({
       kind: "refused",
     });
@@ -185,7 +207,9 @@ describe("a proposal and its moves", () => {
   it("DSOR-APR-01a: a move out of a state the proposal is not in is refused", async () => {
     const id = await aProposal();
 
-    expect(await moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "jump")).toStrictEqual({
+    expect(
+      await moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "jump", BY_A_TEST),
+    ).toStrictEqual({
       kind: "refused",
     });
     expect(await stateOf("org_456", id)).toBe("PROPOSED");
@@ -194,13 +218,15 @@ describe("a proposal and its moves", () => {
   it("DSOR-APR-01a: a second first move, into PROPOSED again, is refused", async () => {
     const id = await aProposal();
 
+    // STEP 22, decision 157: with a record, so that what refuses it is "entered once", and not the
+    // missing record, which would refuse it for a reason this test is not about.
     await expect(
       theDatabase("org_456").query(
-        `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
-         VALUES ('org_456', $1, NULL, 'PROPOSED', 'dsor', 'again')`,
-        [id],
+        `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
+         VALUES ('org_456', $1, NULL, 'PROPOSED', 'dsor', 'again', $2)`,
+        [id, await aRecordOf(id)],
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/duplicate key/);
   });
 });
 
@@ -223,7 +249,7 @@ describe("a finished proposal refuses to move to any other state", () => {
 
       for (const to of EVERY_STATE) {
         expect(
-          await moveProposal("org_456", id, finished, to, "dsor", "try to leave"),
+          await moveProposal("org_456", id, finished, to, "dsor", "try to leave", BY_A_TEST),
         ).toStrictEqual({
           kind: "refused",
         });
@@ -243,17 +269,19 @@ describe("a finished proposal refuses to move to any other state", () => {
 
     it(`DSOR-APR-01c: ${finished}, by ${path.join(" -> ")}, takes no move with no "from" into any of the ${EVERY_STATE.length} states`, async () => {
       const id = await aProposal();
+      const record = await aRecordOf(id);
 
       await walk(id, path);
 
       for (const to of EVERY_STATE) {
         // Not through moveProposal: the SQL a careless handler would write, with the application's
         // own rights. A move into PROPOSED is the one the CHECK allows, and "entered once" refuses it.
+        // STEP 22, decision 157: naming a record in the log, which a careless handler could find.
         await expect(
           theDatabase("org_456").query(
-            `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
-             VALUES ('org_456', $1, NULL, $2, 'dsor', 'a second first move')`,
-            [id, to],
+            `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
+             VALUES ('org_456', $1, NULL, $2, 'dsor', 'a second first move', $3)`,
+            [id, to, record],
           ),
         ).rejects.toThrow(to === "PROPOSED" ? /duplicate key/ : /check constraint/);
       }
@@ -270,11 +298,12 @@ describe("a finished proposal refuses to move to any other state", () => {
     await walk(id, ["PROPOSED", "READY", "EXECUTING", "COMMITTED"]);
 
     // Not through moveProposal: a careless handler next year, with the application's own rights.
+    // STEP 22, decision 157: naming a record in the log, so that it is the map that refuses it.
     await expect(
       theDatabase("org_456").query(
-        `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
-         VALUES ('org_456', $1, 'COMMITTED', 'FAILED', 'dsor', 'call it a failure')`,
-        [id],
+        `INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
+         VALUES ('org_456', $1, 'COMMITTED', 'FAILED', 'dsor', 'call it a failure', $2)`,
+        [id, await aRecordOf(id)],
       ),
     ).rejects.toThrow(/foreign key/);
     await expect(
@@ -300,13 +329,23 @@ describe("a proposal runs at most once", () => {
 
     await walk(id, ["PROPOSED", "READY"]);
 
+    const logBefore = (await theLog("org_456")).length;
     const outcomes = await Promise.all([
-      moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "the first"),
-      moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "the second"),
+      moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "the first", BY_A_TEST),
+      moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "the second", BY_A_TEST),
     ]);
 
     expect(outcomes.map((o) => o.kind).sort()).toStrictEqual(["moved", "refused"]);
     expect((await movesOf("org_456", id)).filter((m) => m.to === "EXECUTING")).toHaveLength(1);
+    // STEP 22, decision 157: and one record of it. The refused move was written nowhere, the log
+    // included, and the place it lost to the first was not tried again: a state left twice is the
+    // map's refusal, which no other place can cure. This file keeps the log between tests, so the
+    // records are this proposal's, from this test.
+    expect(
+      (await theLog("org_456"))
+        .slice(logBefore)
+        .filter((r) => r.kind === "proposal_transition" && r.result === "EXECUTING"),
+    ).toHaveLength(1);
   });
 });
 
@@ -319,8 +358,8 @@ describe("a state is left once, whatever the move", () => {
     await walk(id, ["PROPOSED", "PENDING_APPROVAL"]);
 
     const outcomes = await Promise.all([
-      moveProposal("org_456", id, "PENDING_APPROVAL", "APPROVED", "cfo_100", "approved"),
-      moveProposal("org_456", id, "PENDING_APPROVAL", "REJECTED", "cfo_100", "rejected"),
+      moveProposal("org_456", id, "PENDING_APPROVAL", "APPROVED", "cfo_100", "approved", BY_A_TEST),
+      moveProposal("org_456", id, "PENDING_APPROVAL", "REJECTED", "cfo_100", "rejected", BY_A_TEST),
     ]);
 
     expect(outcomes.map((o) => o.kind).sort()).toStrictEqual(["moved", "refused"]);
@@ -367,7 +406,7 @@ describe("the application adds, and changes nothing", () => {
     expect(await stateOf("org_789", id)).toBeUndefined();
     expect(await movesOf("org_789", id)).toStrictEqual([]);
     expect(
-      await moveProposal("org_789", id, "PROPOSED", "READY", "dsor", "from outside"),
+      await moveProposal("org_789", id, "PROPOSED", "READY", "dsor", "from outside", BY_A_TEST),
     ).toStrictEqual({
       kind: "refused",
     });
@@ -407,7 +446,8 @@ const historyOf = async (id: string): Promise<unknown[][]> =>
  * The program's store, failing every write of moves that names one of the states, until it is put
  * back, or only the first `times` of them. With `replyLost`, the write happens and only its reply
  * is lost (decision 137). With `readBackFails`, once a write has failed, every read of a proposal's
- * state fails too (decision 153).
+ * state fails too (decision 153), and STEP 22, decision 157, every look for a record by its id: the
+ * door would otherwise find the move's own record, and know the move was written.
  */
 function failingMovesInto(
   states: readonly ProposalState[],
@@ -434,7 +474,12 @@ function failingMovesInto(
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
 
-      if (readBackFails && failed && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) {
+      if (
+        readBackFails &&
+        failed &&
+        (sql.includes("SELECT m.to_state FROM dsor.proposal_moves") ||
+          sql.includes("SELECT record_hash FROM dsor.audit WHERE record_id"))
+      ) {
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
 
@@ -696,8 +741,11 @@ describe("the door makes a proposal for every command and moves it", () => {
     useDatabase({
       async query<T>(sql: string, params?: unknown[], tenant?: string) {
         // The proposal's own statement. A move's says "dsor.proposal_moves", which this does not match.
+        // STEP 22, decision 157: refused by the server, a disk that is full, so nothing of it can
+        // land. A connection that fails before the server answers is OUTCOME_UNKNOWN now: the
+        // statement may still land (transitions.test.ts).
         if (sql.includes("INSERT INTO dsor.proposals")) {
-          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+          throw Object.assign(new Error("the disk is full"), { code: "53100" });
         }
 
         return connection.query<T>(sql, params, tenant);
@@ -913,6 +961,7 @@ describe("the door makes a proposal for every command and moves it", () => {
           ["READY", "COMMITTED", "skipping EXECUTING"],
         ],
         "dsor",
+        BY_A_TEST,
       ),
     ).toStrictEqual({ kind: "refused" });
     expect(await stateOf("org_456", id)).toBe("PROPOSED");
@@ -926,6 +975,7 @@ describe("the door makes a proposal for every command and moves it", () => {
           ["READY", "EXECUTING", "handed over"],
         ],
         "dsor",
+        BY_A_TEST,
       ),
     ).toStrictEqual({ kind: "moved" });
     expect(await stateOf("org_456", id)).toBe("EXECUTING");
@@ -994,11 +1044,21 @@ describe("the door makes a proposal for every command and moves it", () => {
   it("a last move that cannot be written leaves the proposal EXECUTING, and the caller is still told", async () => {
     // Decision 153: not titled DSOR-EXE-04b, which asks that such a proposal be treated as
     // OUTCOME_UNKNOWN. Nothing here does that yet; it arrives with intent records, in step 36.
+    const logBefore = (await theLog("org_456")).length;
+
     failingMovesInto(["COMMITTED"]);
 
     const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
 
     expect(answer.kind).toBe("result");
     expect(await stateOf("org_456", "prop_1")).toBe("EXECUTING");
+    // STEP 22, decision 157: and the log says no more than the history: the last record of a move
+    // this request wrote is EXECUTING, and there is no record of COMMITTED.
+    const records = (await theLog("org_456"))
+      .slice(logBefore)
+      .filter((r) => r.kind === "proposal_transition");
+
+    expect(records.at(-1)?.result).toBe("EXECUTING");
+    expect(records.some((r) => r.result === "COMMITTED")).toBe(false);
   });
 });

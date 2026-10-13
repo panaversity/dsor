@@ -645,6 +645,14 @@ if (finished !== undefined) {
     "EXECUTING",
     "dsor",
     "run it again",
+    // STEP 22, decision 157: the record it would have, in user_123's name. The database
+    // refuses the move, so the record is not written either.
+    {
+      subject: "user_123",
+      requestId: "the-demo",
+      operation: finished.operation,
+      payloadHash: finished.payloadHash,
+    },
   );
 
   console.log();
@@ -685,8 +693,9 @@ console.log(
 // NEW IN STEP 24: del_100's day. Ten payments of 25,000.00, one after another: each is within the
 // limit per payment, and together they are not within the day's. Each books its amount against the
 // day's total in one statement, and the one that would pass the limit is refused (decision 140). One
-// after another, because requests at once in one company mostly lose the race for its log, step
-// 09's, and the limit would not be what refused them; the race on the limit is the database tier's.
+// after another, so they print in the order they were sent, and the refused ones come last; the
+// race on the limit is the database tier's. STEP 22, decision 157: this used to say that requests
+// at once in one company mostly lose the race for its log, which a lost place tried again ended.
 console.log();
 console.log("del_100's day: 200000.00 USD. Ten payments of 25,000.00, one after another:");
 console.log();

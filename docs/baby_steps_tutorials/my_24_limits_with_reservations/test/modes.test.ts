@@ -215,6 +215,16 @@ describe("validate_only is a dry run", () => {
     expect(last?.result).toBe("VALIDATED");
   });
 
+  it("DSOR-OPR-06: a dry run leaves its decision and no record of any move", async () => {
+    // STEP 22, decision 157: a move is written with its record, and a dry run makes no proposal to
+    // move, so the log holds its decision and nothing else.
+    await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, { mode: "validate_only" });
+
+    expect((await theLog("org_456")).map((r) => `${r.kind} ${r.result}`)).toStrictEqual([
+      "decision VALIDATED",
+    ]);
+  });
+
   it("DSOR-OPR-06: a dry run of a payment makes no payment, and takes no payment number", async () => {
     const before = await paymentsOf("org_456");
     const answer = await callOperation(
@@ -304,6 +314,26 @@ describe("propose_only prepares a command and stops at READY", () => {
     expect(rows[0]?.mode).toBe("propose_only");
   });
 
+  it("DSOR-AUD-01: a prepared command leaves the records of PROPOSED and READY, and none after them", async () => {
+    // STEP 22, decision 157: each of its two moves has its record, around its decision. Nothing
+    // moves it past READY, so no record says anything more happened.
+    await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, {
+      idempotencyKey: "issue-prepared-on-record",
+      mode: "propose_only",
+    });
+
+    const log = await theLog("org_456");
+
+    expect(log.map((r) => `${r.kind} ${r.result}`)).toStrictEqual([
+      "proposal_transition PROPOSED",
+      "decision ALLOWED",
+      "proposal_transition READY",
+    ]);
+    expect(log.at(-1)?.reason).toMatch(
+      /^PROPOSED -> READY by dsor: allowed: .*waiting to be released$/,
+    );
+  });
+
   it("DSOR-OPR-05: a prepared payment is not made", async () => {
     const before = await paymentsOf("org_456");
     const answer = await callOperation(
@@ -374,7 +404,8 @@ describe("propose_only prepares a command and stops at READY", () => {
 
 /**
  * The store, for one write of moves naming `state`: the write happens and its reply is lost; with
- * `readsFail`, reading a proposal's state back fails too.
+ * `readsFail`, reading a proposal's state back fails too, and STEP 22, decision 157, so does every
+ * look for a record by its id: the door would otherwise find the move's own record, and know.
  */
 function aLostReply(state: string, readsFail: boolean): () => void {
   const connection = overPGlite(db);
@@ -389,7 +420,12 @@ function aLostReply(state: string, readsFail: boolean): () => void {
         throw Object.assign(new Error("the reply was lost"), { code: "ECONNRESET" });
       }
 
-      if (readsFail && lost && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) {
+      if (
+        readsFail &&
+        lost &&
+        (sql.includes("SELECT m.to_state FROM dsor.proposal_moves") ||
+          sql.includes("SELECT record_hash FROM dsor.audit WHERE record_id"))
+      ) {
         throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
       }
 
