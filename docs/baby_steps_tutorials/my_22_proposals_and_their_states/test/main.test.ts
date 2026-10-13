@@ -438,8 +438,9 @@ describe("the program a learner runs", () => {
     expect(theAgents.length).toBeGreaterThanOrEqual(5);
     expect(theAgents.every((line) => /\s{2}user_123\s/.test(line))).toBe(true);
     // Decision 152: the agent reads INV-1009 through the door, as itself, and then issues it on the
-    // version that read gave, under the slip: two records, side by side. NEW IN STEP 22, decision
-    // 157: with the record of the issue's proposal being made between them, under the slip too.
+    // version that read gave, under the slip: two records, side by side. NEW IN STEP 22,
+    // decision 157: with the record of the issue's proposal being made between them, under the
+    // slip too.
     expect(lines).toContain(
       [
         " 7",

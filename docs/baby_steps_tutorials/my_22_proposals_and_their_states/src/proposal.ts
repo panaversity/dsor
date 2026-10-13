@@ -257,8 +257,8 @@ function refusedByTheMap(error: unknown): boolean {
  * Move a proposal from one state to another, if it is in that state and the map has the move.
  *
  * One INSERT, and the database decides. Two requests that both try to move a proposal out of READY
- * both reach it, and exactly one is written: a state is left at most once. NEW IN STEP 22, decision
- * 157: the INSERT is one of a statement that also writes the move's record; see
+ * both reach it, and exactly one is written: a state is left at most once. NEW IN STEP 22,
+ * decision 157: the INSERT is one of a statement that also writes the move's record; see
  * `moveProposalThrough`, which this is with one move.
  */
 export async function moveProposal(

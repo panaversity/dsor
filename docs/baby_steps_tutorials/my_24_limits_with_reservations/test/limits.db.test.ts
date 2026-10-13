@@ -111,6 +111,11 @@ describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real
     // limit a thousand times higher passed it too, a review measured. With 195,000.00 booked first,
     // the fifty race for room for exactly one: every one of them books at §21.10, before the log,
     // so the booking is where they race, and any two made would pass the limit.
+    //
+    // STEP 22, decision 157: the log no longer lets only two or three through, because a record
+    // that loses its place tries the next one: measured on a local PostgreSQL 17, one made and
+    // forty-nine LIMIT_EXCEEDED in each of four runs. Booking 195,000.00 first is still what makes
+    // a second payment made a pass of the limit.
     const first = await propose(
       {
         tenant: "org_456",

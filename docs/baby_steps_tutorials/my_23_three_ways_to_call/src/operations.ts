@@ -1678,8 +1678,8 @@ const recordTheDecision: Stage["run"] = async (context) => {
         ? [undefined]
         : principal.memberships.map((m) => m.tenantId);
 
-  // Decision 149: the slip §21.3 found, whether or not it could be used. STEP 22, decision
-  // 157: worked out by `underSlipOf`, which the records of the request's moves use too.
+  // Decision 149: the slip §21.3 found, whether or not it could be used. STEP 22,
+  // decision 157: worked out by `underSlipOf`, which the records of the request's moves use too.
   const underSlip = underSlipOf(context);
 
   let written;
