@@ -42,7 +42,11 @@
 // cites version 4 cannot be switched on. Since step 29, approvals, in memory: the agent, and
 // admin_100, whom the rule does not ask, cannot approve INV-1008's 31,400.00 USD; cfo_100 cannot
 // with another request's fingerprint, and can with its own; and with a second rule on, INV-2012
-// waits for the CFO and a tenant administrator both. Then it prints the log: the records it can read,
+// waits for the CFO and a tenant administrator both. Since step 30, who may not approve, in
+// memory: with a third rule on, an AP supervisor approves payments above 10,000 USD. user_123, an
+// AP supervisor, may not approve the agent's INV-1012, since user_123 signed del_100, nor INV-2013,
+// which user_123 asked for; cfo_100 is not an AP supervisor; and the agent approves nothing. Then
+// it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -1547,6 +1551,8 @@ const approvalInvoices = memoryInvoices([
   bill("INV-2009", "900.00", "USD"),
   // Above both rules' lines.
   bill("INV-2012", "35000.00", "USD"),
+  // NEW IN STEP 30: above the AP supervisor's line, and below the CFO's.
+  bill("INV-2013", "12000.00", "USD"),
 ]);
 const approvalDrafted: Payment[] = [];
 const approvalPayments = memoryPayments(approvalDrafted);
@@ -1668,6 +1674,63 @@ console.log(
 console.log(
   `  payments drafted: ${approvalDrafted.length}, INV-2009's; the approved ones wait for step 31`,
 );
+
+// NEW IN STEP 30: who may not approve, in the same world (step 30's README, the story's numbers).
+// cfo_100 writes and switches on a third rule of org_456's own: above 10,000 USD, one AP supervisor
+// approves (decision D6). user_123 is the company's only AP supervisor, and signed del_100, the
+// agent's slip. So no one may approve the agent's INV-1012, or user_123's own INV-2013, and both wait
+// until they expire: the price of segregation of duties in a small team.
+console.log("who may not approve, in memory, in the same world:");
+const SUPERVISOR_RULE = "dsor://org_456/rule/supervisor-above-10000";
+const supervisorDraft = await approvalCall(withKey(CFO_100, "sod-rule-draft"), "rule.draft", {
+  rule: SUPERVISOR_RULE,
+  draft: textWith({
+    condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("10000", "USD"))',
+    effect: { require_approval: { role: "ap_supervisor", quorum: 1 } },
+    authority: { system: "local" },
+    tests: [
+      { state: usd("10000.00"), expect: "ALLOW" },
+      { state: usd("10000.01"), expect: "REQUIRE_APPROVAL" },
+    ],
+  }),
+  reason: "an AP supervisor approves every payment above 10,000 USD",
+});
+console.log(
+  "  cfo_100 drafts supervisor-above-10000, a rule of org_456's own:",
+  ruleHeard(supervisorDraft),
+);
+const supervisorOn = await approvalCall(withKey(CFO_100, "sod-rule-on"), "rule.activate", {
+  rule: SUPERVISOR_RULE,
+  version: 1,
+  reason: "a second pair of eyes on every payment above 10,000 USD",
+});
+console.log("  cfo_100 switches it on:", ruleHeard(supervisorOn));
+const agents = await approvalPay("INV-1012");
+console.log("  the agent drafts INV-1012, 22,750.00 USD:", waitHeard(agents));
+const agentsScreen = await screenOf(agents);
+console.log(
+  "  user_123, who signed del_100, approves it:",
+  await approveAs(SUPERVISOR_123, agentsScreen.uri, agentsScreen.payload_hash),
+);
+console.log(
+  "  cfo_100 approves it:",
+  await approveAs(CFO_100, agentsScreen.uri, agentsScreen.payload_hash),
+);
+const own = await approvalCall(withKey(SUPERVISOR_123, "sod-INV-2013"), "payment.create", {
+  invoice: "dsor://org_456/invoice/INV-2013",
+  expected_version: 1,
+});
+console.log("  user_123 drafts INV-2013, 12,000.00 USD, on their own login:", waitHeard(own));
+const ownScreen = await screenOf(own);
+console.log(
+  "  user_123 approves it:",
+  await approveAs(SUPERVISOR_123, ownScreen.uri, ownScreen.payload_hash),
+);
+console.log(
+  "  the agent approves INV-1012:",
+  await approveAs(AGENT, agentsScreen.uri, agentsScreen.payload_hash),
+);
+console.log("  both wait: org_456 has no AP supervisor outside their chains");
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

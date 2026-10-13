@@ -189,6 +189,24 @@ describe("the program", () => {
       ]) {
         expect(approvals).toMatch(line);
       }
+      // NEW IN STEP 30: who may not approve, in memory: the AP supervisor's rule, and the people in
+      // each request's chain (step 30's README, the story's numbers).
+      const sod = output.slice(output.indexOf("who may not approve, in memory"));
+      for (const line of [
+        "cfo_100 drafts supervisor-above-10000, a rule of org_456's own: version 1, draft",
+        "cfo_100 switches it on: version 1, active",
+        "the agent drafts INV-1012, 22,750.00 USD: PENDING_APPROVAL, needs ap_supervisor x1 (supervisor-above-10000)",
+        "user_123, who signed del_100, approves it: SOD_VIOLATION: user_123 may not approve proposal prop_",
+        ": user_123 signed slip del_100, which the agent that asked works under",
+        "cfo_100 approves it: AUTHORIZATION_DENIED: cfo_100 holds none of the roles proposal prop_",
+        "user_123 drafts INV-2013, 12,000.00 USD, on their own login: PENDING_APPROVAL, needs ap_supervisor x1 (supervisor-above-10000)",
+        "user_123 approves it: SOD_VIOLATION: user_123 may not approve proposal prop_",
+        ": user_123 asked for it",
+        'the agent approves INV-1012: AUTHORIZATION_DENIED: "proposal.approve" is for people only, and accounts-payable-fte is not a person',
+        "both wait: org_456 has no AP supervisor outside their chains",
+      ]) {
+        expect(sod).toMatch(line);
+      }
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
       expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");
