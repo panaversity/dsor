@@ -1777,6 +1777,43 @@ first, and to talk through steps 28, 28b, and 29 together after.
   act; step 28's D1 to D21, step 28b's D1 to D15, and step 29's D1 to D15; the twelve breaks to
   predict; and open questions 113 to 122.
 
+### Step 30, who may not approve, built first by the learner's choice (2026-10-13)
+
+Copied from step 29, with a database of its own. On 2026-10-13, after step 29, the learner chose
+"Build 30 too, review 4": build step 30 the same way, and then review steps 28, 28b, 29, and 30
+together.
+
+- **The decisions:** D1 to D10 are Claude Code's, written before any code, each with its downside.
+  The review changed D8: the count itself counts people now (finding L5). All of them are for the
+  learner to review.
+- **The pieces:** A, AP supervisors may approve (D5), and a rule may ask for one (D6); B, DSOR-SOD-02
+  at line ⑨, in `src/segregation.ts`; C, tests titled DSOR-SOD-01a, 01b, and 04c for what step 29
+  holds; D, the program's story. One commit each, each test red first, each piece broken on purpose.
+- **The breaks:** B2 went as the design expected. B1, B3, and B4 did not. The subject check covers
+  the slip's signer for an agent's call; the count itself counts people since the review; and an
+  agent holds no role, so no approve permission of its own. Of 26 breaks of my own, in memory and
+  on the database, two survived, and each became a test: the slip read in org_789, and the signer
+  read on the database.
+- **The review:** no high finding, one medium, seven low, and 33 breaks of the reviewer's own, 4 of
+  which survived. M1, two approvals by one person at once, became two database tests. Their first
+  version passed with no lock and no key, because the two calls did not overlap, so the tests hold
+  the company's ending lock by hand until both calls wait for it. L1, L2, L3, L5, and L6 were fixed;
+  L4 and L7 were recorded. L7 is the store of slips in memory, from an earlier step, which accepts
+  two slips with one id.
+- **Lessons for the next builds:**
+  - Two calls sent with `Promise.all` need not overlap. A concurrency test proves something only
+    when it makes the overlap happen, and fails without the lock: hold the lock by hand until both
+    calls wait for it.
+  - A new permission can weaken an old test. With `payment:approve` on ap_supervisor, a test of a
+    person with two roles passed with code that read only the first role.
+  - A break can be held by a check the design did not name. Run the break before writing what it
+    shows.
+  - The session's deny rules cover `.env.example` too. A copy without it fails one test in every
+    run: say so, and leave that test out of the counts.
+- **For the learner's session:** steps 28, 28b, 29, and 30 together: the visual story, now with four
+  acts; step 28's D1 to D21, step 28b's D1 to D15, step 29's D1 to D15, and step 30's D1 to D10;
+  the sixteen breaks to predict; and open questions 113 to 123.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

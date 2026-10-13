@@ -818,3 +818,12 @@ for a human. An agent may gather evidence; it does not settle these alone.
     approval would then be given at the release, by the releaser's call, in cfo_100's name. Should
     `proposal.approve` refuse `propose_only`, or should a release of it count only from the
     approver?
+
+123. **Should DSoR warn when nobody outside a request's chain can give the approval a rule asks
+    for?** DSOR-SOD-02 keeps the person who signed an agent's slip from approving the agent's
+    requests. In step 30's learner build, org_456 has one AP supervisor, user_123, who signed
+    `del_100`, and a rule of the company's own asks an AP supervisor to approve payments above
+    10,000 USD. Every such payment of the agent waits until it expires, and nothing says so ahead of
+    time. Step 29's learner build checks that a rule asks only for a role that could approve at all;
+    nothing checks that someone outside the chain holds it. Should the switch-on of such a rule, or
+    the answer to a request it stops, say that nobody may approve it?
