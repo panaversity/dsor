@@ -303,18 +303,24 @@ async function theDecisionAndTheRecordOfTheMoveTo(
     throw new Error(`expected a decision, and a record of ${proposal}'s move to ${state}`);
   }
 
+  // Found by a review of these tests: and it is a record of that move. A move that named its
+  // decision's record would have the decision compared with itself, and pass.
+  expect(move).toMatchObject({ kind: "proposal_transition", result: state });
+
   return { decision: decisions[0], move };
 }
 
 /**
  * The record of a move against the decision of the request that made it: the same request, asked
- * by the same login, under the same slip, in the same name. A person's authority is as of each
- * record's own time, so that one field is the move's own; an agent's is as of the directory's
- * answer to the request, the same in both.
+ * by the same login, about the same command, under the same slip, in the same name. A person's
+ * authority is as of each record's own time, so that one field is the move's own; an agent's is
+ * as of the directory's answer to the request, the same in both.
  */
 function expectTheSameRequest(move: AuditRecord, decision: AuditRecord): void {
   expect(move.correlation.request_id).toBe(decision.correlation.request_id);
   expect(move.correlation.principal_id).toBe(decision.correlation.principal_id);
+  expect(move.operation).toBe(decision.operation);
+  expect(move.payload_hash).toBe(decision.payload_hash);
   expect(move.delegation).toBe(decision.delegation);
   expect(move.identity).toStrictEqual(
     decision.identity.mode === "direct"
@@ -350,6 +356,54 @@ describe("a move's record is in the name of the request that made it, never dsor
     await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009);
 
     const { decision, move } = await theDecisionAndTheRecordOfTheMoveTo("prop_1", "DENIED");
+
+    expect(decision).toMatchObject({
+      result: "ALLOWED",
+      identity: { mode: "direct", subject: "user_123", actor_chain: [] },
+    });
+    expect(decision.delegation).toBeUndefined();
+    expectTheSameRequest(move, decision);
+  });
+
+  // Found by a review of these tests: the door's catch around a handler that throws writes a move
+  // with the request's words too, to OUTCOME_UNKNOWN, and with its record in dsor's name every test
+  // stayed green, the ones above included.
+
+  it("DSOR-AUD-01: the record of a move to OUTCOME_UNKNOWN, after its handler threw, is in the name of its request: the agent's use of user_123's authority under del_100, as its decision says", async () => {
+    await expect(
+      makeDoor(PIPELINE, {
+        "payment.create": () => {
+          throw new Error("the bank hung up half way");
+        },
+      })(AGENT, "payment.create", PAY_2500),
+    ).rejects.toThrow(/half way/);
+
+    const { decision, move } = await theDecisionAndTheRecordOfTheMoveTo(
+      "prop_1",
+      "OUTCOME_UNKNOWN",
+    );
+
+    expect(decision).toMatchObject({
+      result: "ALLOWED",
+      identity: { mode: "unattended", subject: "user_123", actor_chain: ["accounts-payable-fte"] },
+      delegation: "del_100",
+    });
+    expectTheSameRequest(move, decision);
+  });
+
+  it("DSOR-AUD-01: the record of a move to OUTCOME_UNKNOWN, after its handler threw, is in the name of its request: a person's own, user_123's, as their decision says", async () => {
+    await expect(
+      makeDoor(PIPELINE, {
+        "invoice.issue": () => {
+          throw new Error("the ledger went away half way");
+        },
+      })(SUPERVISOR, "invoice.issue", ISSUE_1009),
+    ).rejects.toThrow(/half way/);
+
+    const { decision, move } = await theDecisionAndTheRecordOfTheMoveTo(
+      "prop_1",
+      "OUTCOME_UNKNOWN",
+    );
 
     expect(decision).toMatchObject({
       result: "ALLOWED",
