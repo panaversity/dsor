@@ -6,9 +6,11 @@
 // user_124, a second AP supervisor, lives in these tests only. And what step 29 built, held here by
 // the rules' own ids: an agent never approves, every approver is a person, and a quorum counts
 // distinct people (DSOR-SOD-01a, DSOR-SOD-01b, DSOR-SOD-04c).
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { approvalOf, stillOpen, type Approval, type Bindable } from "../src/approvals.ts";
 import type { Control, ControlsSource } from "../src/controls.ts";
-import type { Answer } from "../src/envelope.ts";
+import type { Answer, Requirement } from "../src/envelope.ts";
 import type { Principal } from "../src/principals.ts";
 import type { MoveBy, ProposalDraft, Requester } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
@@ -461,5 +463,38 @@ describe("C5: a quorum counts distinct people (step 30's README, decision D8)", 
       "cfo_100",
       "cfo_200",
     ]);
+  });
+
+  // Found by step 30's review, finding L5: the count counted approvals, so one person counted once
+  // only because each approval was checked when it was added.
+  it("DSOR-SOD-04c: the count itself counts people: two approvals by cfo_100, which a store that forgot to check could keep, leave a quorum of two CFOs open, and one by cfo_200 closes it", () => {
+    const twoCfos: Requirement = {
+      approval: { role: "CFO", quorum: 2 },
+      control: "high-value-payment",
+      control_version: 8,
+    };
+    const bindable: Bindable = {
+      uri: "dsor://org_456/proposal/prop_1008",
+      tenant: "org_456",
+      operation: "payment.create@1",
+      resources: ["dsor://org_456/invoice/INV-1008"],
+      payload_hash: `sha256:${"0".repeat(64)}`,
+      expires_at: "2026-10-13T15:05:00.000Z",
+      requires: [twoCfos],
+    };
+    /** One CFO's approval, made as if nobody had approved yet. */
+    const by = (person: string) =>
+      approvalOf(bindable, [], {
+        id: `apr_${randomUUID()}`,
+        risk: "medium",
+        bound_state: { mode: "predicate", versions: {} },
+        approver: person,
+        roles: ["CFO"],
+        at: "2026-10-13T09:05:00.000Z",
+      }) as Approval;
+    const first = by("cfo_100");
+    const again = by("cfo_100");
+    expect(stillOpen([twoCfos], [first, again])).toStrictEqual([twoCfos]);
+    expect(stillOpen([twoCfos], [first, again, by("cfo_200")])).toStrictEqual([]);
   });
 });

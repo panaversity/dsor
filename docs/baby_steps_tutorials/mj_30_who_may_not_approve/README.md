@@ -82,7 +82,8 @@ This folder is a copy of step 29.
 - **D8. A quorum counts distinct people (DSOR-SOD-04c).** Step 29's store counts one person once,
   and the database keeps one approval for each person and proposal. Agents never approve, so
   distinct approvers are distinct people: one effective principal each. This step holds it with
-  tests titled by its id. *Downside:* a person's two logins count as two, as in D2.
+  tests titled by its id. Since its review, the count itself counts people too, not approvals
+  (finding L5). *Downside:* a person's two logins count as two, as in D2.
 - **D9. Owner-approval mode is not built.** It is the map's exercise (§16.2): the safety nets that
   let a one-person business approve its own agent's work. No company can turn it on, every approval
   keeps `sod_mode: standard`, and DSOR-SOD-02 always applies. *Downside:* a one-person business

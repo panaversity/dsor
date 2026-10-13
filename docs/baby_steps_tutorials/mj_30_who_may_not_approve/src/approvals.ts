@@ -80,10 +80,15 @@ export function stillOpen(
   given: readonly Approval[],
 ): Requirement[] {
   return requires.filter((requirement) => {
-    const approvers = given.filter((approval) =>
-      approval.satisfies.some((line) => names(line, requirement)),
+    // NEW IN STEP 30: DSOR-SOD-04c: the count counts people, not approvals. One person counts once
+    // here too, not only when an approval is added (step 30's README, decision D8; found by step
+    // 30's review, finding L5).
+    const people = new Set(
+      given
+        .filter((approval) => approval.satisfies.some((line) => names(line, requirement)))
+        .flatMap((approval) => approval.approvers.map((approver) => approver.principal)),
     );
-    return approvers.length < requirement.approval.quorum;
+    return people.size < requirement.approval.quorum;
   });
 }
 
