@@ -442,9 +442,8 @@ function hashOf(record: Readonly<Record<string, unknown>>): string {
  * grow. §21.11's rule is the other half, and it lands in the pipeline: if the evidence cannot be
  * written, the command does not run.
  *
- * NEW IN STEP 22, decision 157: the parts of writing a record have names now (`copyOf`, `theEndOf`,
- * `theTimeNow`, `sealAt`, `theRecordsAlone`, `isItMine`, below), because a proposal's moves write
- * their records with the same parts, in the statement that makes the move.
+ * NEW IN STEP 22, decision 157: the writing itself is `recordTogether`'s, below, the routine a
+ * proposal's moves share. Here it writes one record, in a statement that writes nothing else.
  */
 export async function audit(decision: DecisionToRecord): Promise<AuditRecord | undefined> {
   // Read **once**, into a copy, before anything is decided. A review read `decision.subject` three
@@ -467,127 +466,235 @@ export async function audit(decision: DecisionToRecord): Promise<AuditRecord | u
     return undefined;
   }
 
-  // A chain is named after a company this program serves, and nothing else. The only caller is
-  // `recordTheDecision`, whose tenant comes from memberships validated at load — so this is a bug
-  // check, not a refusal, and it throws like a record the schema rejects.
+  const { records } = await recordTogether(tenant, [copy], theRecordsAlone);
+
+  return records[0];
+}
+
+/**
+ * NEW IN STEP 22, decision 157: how many places at the end of a company's log one write tries, one
+ * after another, before it gives up. Ten, with the pause below, are the smallest settings that let
+ * twenty commands sent at once all through on a real PostgreSQL, measured.
+ */
+export const PLACES_TO_TRY: number = 10;
+
+/** NEW IN STEP 22, decision 157: the longest pause before the next place, in milliseconds, per place lost so far. */
+const PAUSE_MS = 25;
+
+/**
+ * NEW IN STEP 22, decision 157: a pause before the next place, chosen at random, and longer after
+ * each place lost. At random, because writers that lost one place together and tried again at once
+ * would read the same new end and collide again. Measured on a real PostgreSQL, twenty commands
+ * sent at once: 4 went through with no pause, and 20 with this one. PGlite cannot show the
+ * difference, because it runs one statement at a time; the database tier can.
+ */
+function aPauseAfter(placesLost: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.random() * PAUSE_MS * placesLost));
+}
+
+/**
+ * NEW IN STEP 22, decision 157: records, written at the end of the company's log by one statement,
+ * together with the change they are the record of: all of it, or none of it.
+ *
+ * `statementFor` is handed the records, sealed at the places they will take, and gives back the one
+ * statement that writes them, and the change beside them. A decision has no change beside it, so
+ * `audit` hands it `theRecordsAlone`. A proposal's move is written by the statement that writes its
+ * record (proposal.ts), so the log never says a move happened that did not, and no move happens
+ * that the log does not say.
+ *
+ * Returns the records, and the rows the statement gave back. `rows` is undefined when the reply was
+ * lost and the first record was found written: the statement committed, and its rows never arrived.
+ */
+export async function recordTogether<Row>(
+  tenant: string,
+  decisions: readonly DecisionToRecord[],
+  statementFor: (records: readonly AuditRecord[]) => StatementToSend,
+  places: number = PLACES_TO_TRY,
+): Promise<{
+  readonly records: readonly AuditRecord[];
+  readonly rows: readonly Row[] | undefined;
+}> {
+  // A chain is named after a company this program serves, and nothing else. The callers are
+  // `recordTheDecision`, whose tenant comes from memberships validated at load, and a proposal's
+  // moves, whose tenant is its request's — so this is a bug check, not a refusal, and it throws like
+  // a record the schema rejects.
   if (!isKnownTenant(tenant)) {
     throw new TypeError(`${tenant} is not a company this program serves; no record was written`);
   }
 
+  // Read once, before the first place is tried, so that every try writes what the first would have
+  // (lesson 16). `audit` hands over a copy already, and `copyOf` hands a copy back as it is.
+  const copies = decisions.map(copyOf);
   const chain = chainOf(tenant);
-
-  // STEP 09: the position comes from the table.
-  //
-  // Step 08 took it from `log.length` and left a note saying this is where it has to become real.
-  // It is still a read and then a write, and it has to be: `sequence` and `previous_hash` are both
-  // inside the hash, so they must be known *before* the record exists. There is no single statement
-  // that computes them, hashes the result and inserts it.
-  //
-  // What changes is what happens when two requests read the same answer. In step 08 both wrote and
-  // the log quietly held two records at one position. Here the second INSERT fails — so the race is
-  // **refused** rather than absorbed. The caller gets EVIDENCE_STORE_UNAVAILABLE, whose retry class
-  // is `safe_same_key`, which is true: nothing ran.
-  //
-  // Which constraint refuses it, measured rather than assumed: for the program's own rows it is
-  // `audit_pkey`, because `record_id` is `${chain}:${sequence}` and so two writers at one position
-  // collide on the primary key as well, and PostgreSQL names the primary key first. This comment
-  // used to say `UNIQUE (chain, sequence)`, and that constraint earns its place differently — it is
-  // what keeps the ordering argument below true if the shape of `record_id` ever changes, and it is
-  // what `audit.db.test.ts` races three *distinct* ids against.
-  //
-  // "Untestable in-process" was the claim here once, because one PGlite connection cannot race
-  // itself. The interleaving does not need real concurrency, only control over the order, and
-  // `audit-race.test.ts` holds one writer at this read while another commits. What does need a real
-  // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
   // STEP 11: for this chain's company, and every statement below says so to PostgreSQL.
   const db = theDatabase(tenant);
-  const end = await theEndOf(db, chain);
 
-  // The clock is read **after** the tail, and the order is the guarantee, not a detail. Why is
-  // `theTimeNow`'s to say, below.
-  const at = theTimeNow();
-  const written = sealAt(copy, tenant, chain, end.sequence, end.previous, at);
+  for (let placesTried = 1; ; placesTried += 1) {
+    // STEP 09: the position comes from the table.
+    //
+    // Step 08 took it from `log.length` and left a note saying this is where it has to become real.
+    // It is still a read and then a write, and it has to be: `sequence` and `previous_hash` are both
+    // inside the hash, so they must be known *before* the record exists. There is no single statement
+    // that computes them, hashes the result and inserts it.
+    //
+    // What changes is what happens when two requests read the same answer. In step 08 both wrote and
+    // the log quietly held two records at one position. In step 09 the second INSERT failed, so the
+    // race was **refused** rather than absorbed: the caller got EVIDENCE_STORE_UNAVAILABLE, retry
+    // `safe_same_key`, which was true, because nothing ran. NEW IN STEP 22, decision 157: and now the
+    // write that lost tries the next place, after a pause, up to `places` of them. It may, because
+    // PostgreSQL refused its whole statement: nothing of it was written, so nothing is written twice.
+    //
+    // Which constraint refuses it, measured rather than assumed: for the program's own rows it is
+    // `audit_pkey`, because `record_id` is `${chain}:${sequence}` and so two writers at one position
+    // collide on the primary key as well, and PostgreSQL names the primary key first. This comment
+    // used to say `UNIQUE (chain, sequence)`, and that constraint earns its place differently — it is
+    // what keeps the ordering argument below true if the shape of `record_id` ever changes, and it is
+    // what `audit.db.test.ts` races three *distinct* ids against.
+    //
+    // "Untestable in-process" was the claim here once, because one PGlite connection cannot race
+    // itself. The interleaving does not need real concurrency, only control over the order, and
+    // `audit-race.test.ts` holds one writer at this read while another commits. What does need a real
+    // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
+    const end = await theEndOf(db, chain);
 
-  // One INSERT, with every value as a parameter rather than pasted into the SQL. Not politeness:
-  // `reason` holds a caller's own words, and a caller's words in a SQL string is how an audit log
-  // ends up executing them.
-  //
-  // STEP 09: and a failure here is not the same thing as a failure to write.
-  //
-  // Step 08's store was a JavaScript array. An array either takes the record or throws, and there is
-  // no third answer. A database on the other side of a network has one: the INSERT commits and the
-  // **reply** is lost. Measured, by dropping the reply of a committed INSERT:
-  //
-  //     the caller is told: EVIDENCE_STORE_UNAVAILABLE  retry: safe_same_key
-  //                         "could not be written down, so it was not carried out"
-  //     the log holds 1 record(s):
-  //        seq 0  ALLOW  ALLOWED  req_1
-  //
-  // Both halves of what the caller was told are false. It *was* written down. And retrying on
-  // `safe_same_key` writes a second ALLOWED record for the same request. Worse than either: an
-  // auditor reconstructing that request finds ALLOWED, while the caller holds a refusal — the log
-  // and the answer disagree, which is the one thing a decision record exists to prevent.
-  //
-  // `DSOR-UNK-01b` is the rule and it is about exactly this: an unknown outcome is reported as
-  // unknown, never as a retryable error. So this does not guess. It looks — and when it cannot
-  // look, it says so, with `OutcomeUnknown`, which the pipeline turns into `OUTCOME_UNKNOWN`.
-  const { sql, params } = theRecordsAlone([written]);
+    // The clock is read **after** the tail, and the order is the guarantee, not a detail. Why is
+    // `theTimeNow`'s to say, below. Read again for every place tried, so the argument holds for each.
+    const at = theTimeNow();
+    // Each record at the next place, chained to the one before it. One time for all of them, because
+    // one statement writes them.
+    const records: AuditRecord[] = [];
 
-  try {
-    await db.query(sql, params);
-  } catch (failure) {
-    // A unique violation is PostgreSQL *telling* us the INSERT did not commit: the position is
-    // taken. Nothing to look for, and the caller may safely be told the write failed.
-    if (isUniqueViolation(failure)) {
-      throw failure;
+    for (const copy of copies) {
+      const before = records.at(-1);
+
+      records.push(
+        sealAt(
+          copy,
+          tenant,
+          chain,
+          end.sequence + records.length,
+          before?.record_hash ?? end.previous,
+          at,
+        ),
+      );
     }
 
-    // Two kinds of failure, and they mean different things. A **server** error carries a SQLSTATE:
-    // the server received the statement and refused it, so the row is not there and never will be.
-    // Anything else is a **connection** that went quiet — a reply lost, a socket reset, a timeout —
-    // and nobody on this side knows what the server did with the statement. It may have committed.
-    // It may still be running. A review found the first version treating both the same.
-    const theServerDecided = isServerError(failure);
-    const found = await isItMine(db, written);
+    const { sql, params } = statementFor(records);
 
-    // Four outcomes, in the order that makes each one a true statement.
+    // Every value is a parameter rather than pasted into the SQL: see `theRecordsAlone`.
     //
-    // Mine is there: the reply was lost, not the record. Equal hashes mean THIS attempt, because
-    // `correlation.trace_id` is a fresh UUID per attempt and is inside the hash — without it a
-    // byte-identical record from another writer passed this test and two decisions became one row.
-    if (found === "mine") {
-      // Returning it keeps the log and the answer agreeing: the decision is recorded, so the
-      // command may proceed. Falls through to `return written`.
-    } else if (found === "someone else's") {
-      // Someone else's row holds my position. Mine cannot commit now — the primary key will refuse
-      // it even if the statement is still in flight — so "nothing was written" is true, and
-      // `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` is the right answer.
-      throw failure;
-    } else if (theServerDecided) {
-      // Not there, and the server said no. Definitive. Same answer.
-      throw failure;
-    } else {
+    // STEP 09: and a failure here is not the same thing as a failure to write.
+    //
+    // Step 08's store was a JavaScript array. An array either takes the record or throws, and there is
+    // no third answer. A database on the other side of a network has one: the INSERT commits and the
+    // **reply** is lost. Measured, by dropping the reply of a committed INSERT:
+    //
+    //     the caller is told: EVIDENCE_STORE_UNAVAILABLE  retry: safe_same_key
+    //                         "could not be written down, so it was not carried out"
+    //     the log holds 1 record(s):
+    //        seq 0  ALLOW  ALLOWED  req_1
+    //
+    // Both halves of what the caller was told are false. It *was* written down. And retrying on
+    // `safe_same_key` writes a second ALLOWED record for the same request. Worse than either: an
+    // auditor reconstructing that request finds ALLOWED, while the caller holds a refusal — the log
+    // and the answer disagree, which is the one thing a decision record exists to prevent.
+    //
+    // `DSOR-UNK-01b` is the rule and it is about exactly this: an unknown outcome is reported as
+    // unknown, never as a retryable error. So this does not guess. It looks — and when it cannot
+    // look, it says so, with `OutcomeUnknown`, which the pipeline turns into `OUTCOME_UNKNOWN`.
+    try {
+      const { rows } = await db.query<Row>(sql, params);
+
+      return { records, rows };
+    } catch (failure) {
+      // NEW IN STEP 22, decision 157: another record took the place first. PostgreSQL said so, and
+      // refused the whole statement: nothing of it was written, the change beside the records
+      // included. So the next place is tried, after a pause, until `places` have been.
+      if (lostThePlace(failure)) {
+        if (placesTried < places) {
+          await aPauseAfter(placesTried);
+
+          continue;
+        }
+
+        throw failure;
+      }
+
+      // Two kinds of failure, and they mean different things. A **server** error carries a SQLSTATE:
+      // the server received the statement and refused it, so the row is not there and never will be.
+      // Anything else is a **connection** that went quiet — a reply lost, a socket reset, a timeout —
+      // and nobody on this side knows what the server did with the statement. It may have committed.
+      // It may still be running. A review found the first version treating both the same.
+      //
+      // NEW IN STEP 22, decision 157: so a server's refusal is thrown at once, with nothing to look
+      // for. Step 09 looked anyway, and could only ever find nothing, or another writer's record.
+      if (isServerError(failure)) {
+        throw failure;
+      }
+
+      // A type guard in this step: every statement here carries at least one record.
+      const first = records[0];
+
+      if (first === undefined) {
+        throw failure;
+      }
+
+      const found = await isItMine(db, first);
+
+      // Three outcomes, in the order that makes each one a true statement.
+      //
+      // Mine is there: the reply was lost, not the record. Equal hashes mean THIS attempt, because
+      // `correlation.trace_id` is a fresh UUID per attempt and is inside the hash — without it a
+      // byte-identical record from another writer passed this test and two decisions became one row.
+      // And the record is the statement's, so whatever was written beside it was written too.
+      if (found === "mine") {
+        return { records, rows: undefined };
+      }
+
+      // Someone else's row holds my place. Mine cannot commit now — the primary key will refuse it
+      // even if the statement is still in flight — so nothing of it was written. Step 09 told the
+      // caller so; NEW IN STEP 22, decision 157: the next place is tried instead, as for a place lost.
+      if (found === "someone else's") {
+        if (placesTried < places) {
+          await aPauseAfter(placesTried);
+
+          continue;
+        }
+
+        throw failure;
+      }
+
       // Not there, and the server never answered. The statement may still be executing on a
       // connection we no longer hold, and the row may land after this line. "Not found" is a
       // snapshot, not a proof — a hostile review pointed at exactly this window. Unknown.
       throw new OutcomeUnknown(
-        `the decision ${written.record_id} may or may not have been recorded: the connection ` +
+        `the record ${first.record_id} may or may not have been written: the connection ` +
           `failed before the server answered, and the record is not there yet`,
         failure,
       );
     }
   }
-
-  return written;
 }
+
+/** NEW IN STEP 22, decision 157: the copies `copyOf` has made, so that none is copied twice. */
+const copiesMade = new WeakSet<DecisionToRecord>();
 
 /**
  * NEW IN STEP 22, decision 157: everything a caller said, read once (lesson 16), the caller's text
  * made storable and capped. Each field is read exactly once, by destructuring: `audit` used to read
  * `reason`, `resources` and `underSlip` twice each, once to ask whether they were there and once to
  * copy them, and a getter could answer the two differently.
+ *
+ * A copy is handed back as it is. `audit` copies before it decides whether to count, and
+ * `recordTogether` copies whatever it is handed, and capping a capped text again does not leave it
+ * alone: a reason of two million characters was told "2000000 characters, 1999500 dropped" by the
+ * first copy and "539 characters, 39 dropped" by the second, measured.
  */
 function copyOf(decision: DecisionToRecord): DecisionToRecord {
+  if (copiesMade.has(decision)) {
+    return decision;
+  }
+
   const {
     kind,
     subject,
@@ -604,7 +711,7 @@ function copyOf(decision: DecisionToRecord): DecisionToRecord {
     underSlip,
   } = decision;
 
-  return Object.freeze({
+  const copy: DecisionToRecord = Object.freeze({
     kind,
     subject,
     tenant,
@@ -618,6 +725,10 @@ function copyOf(decision: DecisionToRecord): DecisionToRecord {
     rowCount,
     underSlip: underSlip === undefined ? undefined : Object.freeze({ ...underSlip }),
   });
+
+  copiesMade.add(copy);
+
+  return copy;
 }
 
 /**
@@ -921,7 +1032,7 @@ async function isItMine(
     found = rows[0];
   } catch (cannotLook) {
     throw new OutcomeUnknown(
-      `the decision ${written.record_id} may or may not have been recorded: the write failed ` +
+      `the record ${written.record_id} may or may not have been written: the write failed ` +
         `and the store could not be asked`,
       cannotLook,
     );
@@ -961,11 +1072,17 @@ function isServerError(error: unknown): boolean {
   return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) && /[0-9]/.test(code);
 }
 
-/** PostgreSQL's own word for "that row is already there": SQLSTATE 23505, from `pg` and PGlite alike. */
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    error !== null && typeof error === "object" && (error as { code?: unknown }).code === "23505"
-  );
+/**
+ * NEW IN STEP 22, decision 157: did another record take this place first? PostgreSQL's own word for
+ * "that row is already there", SQLSTATE 23505, from `pg` and PGlite alike, and on the log's own
+ * table: whichever of its keys refused, the record's id or its `(chain, sequence)`, it names the
+ * table `audit`. Only the log's. A 23505 on `proposal_moves` is a state entered or left twice, which
+ * no other place in the log can cure. Measured on PGlite and on a real PostgreSQL: both name it.
+ */
+function lostThePlace(error: unknown): boolean {
+  const { code, table } = (error ?? {}) as { code?: unknown; table?: unknown };
+
+  return code === "23505" && table === "audit";
 }
 
 /**

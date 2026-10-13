@@ -224,13 +224,17 @@ describe("an INSERT whose reply is lost", () => {
       },
     });
 
-    await expect(audit(aDecision("req_ours"))).rejects.toThrow(/duplicate key|unique/i);
+    // Step 09 refused it here. STEP 22, decision 157: the whole INSERT was refused, so nothing of
+    // it was written, and the next place is tried, from a new read of the end.
+    const ours = await audit(aDecision("req_ours"));
 
-    // Their record is untouched and still the only one.
+    // Their record is untouched, and ours is at the next place.
     const log = await theLog("org_456");
 
-    expect(log).toHaveLength(1);
-    expect(log[0]?.correlation.request_id).toBe("req_theirs");
+    expect(log.map((r) => r.correlation.request_id)).toStrictEqual(["req_theirs", "req_ours"]);
+    expect(log[0]?.record_hash).toBe(theirs?.record_hash);
+    expect(ours?.record_id).toBe("audit:org_456:1");
+    expect(ours?.record_hash).toBe(log[1]?.record_hash);
     expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
 });
@@ -330,12 +334,16 @@ describe("an INSERT refused because the row is already there", () => {
 
     expect(first?.record_id).toBe("audit:org_456:0");
 
-    await expect(audit(aDecision("req_1"))).rejects.toMatchObject({ code: "23505" });
+    // Step 09 refused the second here. STEP 22, decision 157: its INSERT was refused whole, so it
+    // tries the next place, from a new read of the end, and is written there. Two rows at two places.
+    const second = await audit(aDecision("req_1"));
 
     const log = await theLog("org_456");
 
-    expect(log).toHaveLength(1);
+    expect(log.map((r) => r.record_id)).toStrictEqual(["audit:org_456:0", "audit:org_456:1"]);
     expect(log[0]?.record_hash).toBe(first?.record_hash);
+    expect(log[1]?.record_hash).toBe(second?.record_hash);
+    expect(second?.record_hash).not.toBe(first?.record_hash);
   });
 
   it("DSOR-EXE-02: two attempts at one decision never hash to the same bytes", async () => {
@@ -360,6 +368,7 @@ describe("an INSERT refused because the row is already there", () => {
     // at my position; my SELECT finds a row at my record_id — and, before `trace_id`, with my hash.
     // Now the hashes differ, the row is recognised as someone else's, and I am told the write failed,
     // which is true: my statement can never commit into a position the primary key has given away.
+    // STEP 22, decision 157: and so it tries the next place instead, and is written there.
     setClock(() => "2026-10-04T00:00:00.000Z");
 
     let interrupted = false;
@@ -386,18 +395,20 @@ describe("an INSERT refused because the row is already there", () => {
 
     useDatabase(wrapped);
 
-    await expect(audit(aDecision("req_1"))).rejects.toThrow(/Connection terminated/);
+    const mine = await audit(aDecision("req_1"));
 
     useDatabase(connection);
 
     const log = await theLog("org_456");
 
-    expect(log).toHaveLength(1);
-    expect(log[0]?.correlation.request_id).toBe("req_1");
-    // Exactly one receipt was handed out, and it was the other writer's.
+    expect(log).toHaveLength(2);
+    // One receipt for each row, and mine is not the other writer's.
     const theirs = (await theOtherWriter) as { record_hash: string } | undefined;
 
     expect(theirs?.record_hash).toBe(log[0]?.record_hash);
+    expect(mine?.record_id).toBe("audit:org_456:1");
+    expect(mine?.record_hash).toBe(log[1]?.record_hash);
+    expect(mine?.record_hash).not.toBe(theirs?.record_hash);
   });
 
   it("DSOR-EXE-03b: another writer's row at my position is a failed write, not an unknown one", async () => {
@@ -405,7 +416,8 @@ describe("an INSERT refused because the row is already there", () => {
     // "is there a row" failed a test; once 23505 is short-circuited that test no longer reaches the
     // comparison. This one does: a connection error (no SQLSTATE) while a different writer's row
     // sits at my record_id. Not mine, but definitely not landing either — so EVIDENCE_STORE_UNAVAILABLE
-    // is true, and OUTCOME_UNKNOWN would be an over-statement.
+    // is true, and OUTCOME_UNKNOWN would be an over-statement. STEP 22, decision 157: and so the
+    // next place is tried, where mine is written. Taken for mine, it would be the receipt for theirs.
     useDatabase(connection);
 
     const theirs = await audit(aDecision("req_theirs"));
@@ -435,23 +447,83 @@ describe("an INSERT refused because the row is already there", () => {
       },
     });
 
-    // One attempt, inspected two ways. The first version of this test called `audit` twice and the
-    // second call honestly succeeded at position 1 — the wrapper only interferes once.
-    const outcome: unknown = await audit(aDecision("req_mine")).then(
-      () => "resolved",
-      (failure: unknown) => failure,
-    );
-
-    expect(outcome).toBeInstanceOf(Error);
-    expect(outcome).not.toBeInstanceOf(OutcomeUnknown);
-    expect((outcome as Error).message).toMatch(/Connection terminated/);
+    // One call. The first version of this test called `audit` twice and the second call honestly
+    // succeeded at position 1 — the wrapper only interferes once.
+    const mine = await audit(aDecision("req_mine"));
 
     useDatabase(connection);
 
     const log = await theLog("org_456");
 
-    expect(log).toHaveLength(1);
-    expect(log[0]?.correlation.request_id).toBe("req_theirs");
+    expect(log.map((r) => r.correlation.request_id)).toStrictEqual(["req_theirs", "req_mine"]);
+    expect(log[0]?.record_hash).toBe(theirs?.record_hash);
+    expect(mine?.record_id).toBe("audit:org_456:1");
+    expect(mine?.record_hash).toBe(log[1]?.record_hash);
+  });
+});
+
+// STEP 22, decision 157: a place another record took first is not the end of the write. The
+// whole statement was refused, so nothing of it was written, and the next place is tried.
+describe("a place in the log that another record took first", () => {
+  /**
+   * The store, with another writer's decision written at the end of the log just before each of
+   * this writer's INSERTs, the first `times` of them: the place this writer chose is taken each time.
+   * The other writer goes straight to the real database, so only this writer's INSERTs are counted.
+   */
+  function anotherWriterFirst(times: number): { attempts: number } {
+    const counted = { attempts: 0 };
+    let left = times;
+    const wrapped: Database = {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("INSERT INTO dsor.audit")) {
+          counted.attempts += 1;
+
+          if (left > 0) {
+            left -= 1;
+            useDatabase(connection);
+            await audit(aDecision("req_theirs"));
+            useDatabase(wrapped);
+          }
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    };
+
+    useDatabase(wrapped);
+
+    return counted;
+  }
+
+  it("DSOR-AUD-01: a decision that loses its place is written at the next one", async () => {
+    const counted = anotherWriterFirst(1);
+    const mine = await audit(aDecision("req_mine"));
+
+    useDatabase(connection);
+
+    const log = await theLog("org_456");
+
+    expect(counted.attempts).toBe(2);
+    expect(log.map((r) => r.correlation.request_id)).toStrictEqual(["req_theirs", "req_mine"]);
+    // The receipt is the record at the second place, read back as written.
+    expect(mine?.record_id).toBe("audit:org_456:1");
+    expect(mine?.record_hash).toBe(log[1]?.record_hash);
+    expect(verifyChain(log, await theHead("org_456"))).toBe(true);
+  });
+
+  it("DSOR-EXE-03b: a decision whose place is taken every time is given up after ten places, and nothing of it is written", async () => {
+    const counted = anotherWriterFirst(Number.POSITIVE_INFINITY);
+
+    await expect(audit(aDecision("req_mine"))).rejects.toMatchObject({ code: "23505" });
+
+    useDatabase(connection);
+
+    const log = await theLog("org_456");
+
+    expect(counted.attempts).toBe(10);
+    expect(log).toHaveLength(10);
+    expect(log.every((r) => r.correlation.request_id === "req_theirs")).toBe(true);
+    expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
 });
 
