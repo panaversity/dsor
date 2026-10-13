@@ -505,8 +505,15 @@ function aPauseAfter(placesLost: number): Promise<void> {
  * record (proposal.ts), so the log never says a move happened that did not, and no move happens
  * that the log does not say.
  *
- * Returns the records, and the rows the statement gave back. `rows` is undefined when the reply was
- * lost and the first record was found written: the statement committed, and its rows never arrived.
+ * Returns the records, as they were sealed, and the rows the statement gave back. `rows` is
+ * undefined when the reply was lost and the first record was found written: the statement
+ * committed, and its rows never arrived.
+ *
+ * NEW IN STEP 25, decision 157, found by a review: sealed is not written. A record that waits on a
+ * condition (`recordInsertIf`) is written only if the condition holds, and the statement succeeds
+ * either way: a brake that stops an agent's moves writes neither the moves nor their records, and a
+ * revocation that revokes nothing writes no record of a cancel. Only the rows say which happened:
+ * `moved` for a proposal's moves, `revoked` for a revocation.
  */
 export async function recordTogether<Row>(
   tenant: string,
@@ -1045,12 +1052,17 @@ export function recordInsertIf(condition: string, written: AuditRecord, params: 
  * STEP 22, decision 157: after a write failed, is its record there? Asked by `record_id`, and
  * checked by `record_hash`. Step 09's look-up, which `audit` ran in its own body.
  *
- * On the connection that just failed, which is usually a connection that is gone. So this read
- * can fail too, and the first version let that error escape and become
- * `EVIDENCE_STORE_UNAVAILABLE` with retry `safe_same_key` — the exact pre-fix behaviour, on the
- * exact case that happens when a server restarts. Here the honest answer is that nobody knows,
- * and the retry class that says so is `after_reconciliation`, which does not permit a fresh
- * attempt.
+ * Asked through the same store as the write, though not always on the same connection. PGlite has
+ * one. A pool hands each statement whichever connection is free, and drops one that is gone
+ * (database.ts), so after a lost connection this asks on another, a new one if it must. Decision
+ * 157, found by a review: this said it asked "on the connection that just failed", which is true
+ * of PGlite's one connection, and of a pool only by chance.
+ *
+ * Either way this read can fail too: a server that went away is not there for a new connection
+ * either. The first version let that error escape and become `EVIDENCE_STORE_UNAVAILABLE` with
+ * retry `safe_same_key` — the exact pre-fix behaviour, on the exact case that happens when a server
+ * restarts. Here the honest answer is that nobody knows, and the retry class that says so is
+ * `after_reconciliation`, which does not permit a fresh attempt.
  */
 async function isItMine(
   db: Statements,
