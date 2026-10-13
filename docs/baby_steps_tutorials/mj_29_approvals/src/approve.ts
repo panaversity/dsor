@@ -8,7 +8,7 @@ import { stillOpen, type Approving, type Offer, type Risk } from "./approvals.ts
 import { readBound } from "./bound.ts";
 import { Refusal } from "./envelope.ts";
 import { approvePermissionOf } from "./permissions.ts";
-import { proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
+import { isProposalOf, proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
 import { preview, type Contract } from "./registry.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { formatUri } from "./uri.ts";
@@ -40,6 +40,12 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
   if (look.identity !== "direct") {
     const why = `${NAME} is accepted only in direct identity mode, on the approver's own login`;
     throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id
+  // through, so another company's address meets line ②'s refusal first. Found by step 29's
+  // review, finding L1: the parse below threw, and the caller heard INTERNAL_ERROR.
+  if (!isProposalOf(tenant, uri)) {
+    throw new Refusal("RESOURCE_NOT_FOUND", `no proposal ${preview(uri)}`, "internal");
   }
   const id = proposalIdOf(tenant, uri);
   const found = await look.proposals.get(tenant, id);

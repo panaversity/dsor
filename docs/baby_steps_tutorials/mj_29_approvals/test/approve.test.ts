@@ -539,3 +539,31 @@ describe("From step 29's review: only the call's own company counts, and each fi
     expect(at >= before && at <= after).toBe(true);
   });
 });
+
+describe("From step 29's review: a proposal's address that names no proposal", () => {
+  // Found by the review, finding L1: an address whose id is not a proposal's reached line ⑨'s
+  // parse, which threw, so the answer was INTERNAL_ERROR. The input schema stays loose: the
+  // cross-tenant suite sends another company's address with an id it does not have, and expects
+  // TENANT_MISMATCH before line ⑥ looks at the id.
+  it.each([
+    ["a name for an id", "dsor://org_456/proposal/foo"],
+    ["an id in capital letters", "dsor://org_456/proposal/prop_ABCDEF01-2345-4678-89AB-0123456789AB"],
+  ])(
+    "Step 29: %s is no proposal of org_456: RESOURCE_NOT_FOUND at line ⑨, recorded DENY",
+    async (_what, proposal) => {
+      const w = await ruleWorldOnTuesday();
+      const { payload_hash } = await drafted(w, "INV-1008");
+      const answer = await approves(w, CFO, proposal, payload_hash);
+      expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+      expect((await recordOf(w, answer))?.authorization).toBe("DENY");
+    },
+  );
+
+  it("Step 29: an invoice's address is no proposal's: line ⑥ refuses it, VALIDATION_FAILED", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { payload_hash } = await drafted(w, "INV-1008");
+    expect(
+      await approves(w, CFO, "dsor://org_456/invoice/INV-1008", payload_hash),
+    ).toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+});
