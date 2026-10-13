@@ -141,7 +141,7 @@ twenty, it applies 021. This step adds no test of its own to this tier: nothing 
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `868` with `1 skipped`; in the repository it is `868 passed`.
+is not beside it, so the total reads `874` with `1 skipped`; in the repository it is `874 passed`.
 
 ### Break 1 · a dry run claims its key
 
@@ -150,7 +150,7 @@ The map's "break it" in spirit: a dry run that leaves something behind. In `src/
 `if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  14 failed | 853 passed | 1 skipped (868)
+ Tests  14 failed | 859 passed | 1 skipped (874)
 ```
 
 More than the five predicted, and for one reason: a dry run sent without a key, as most of them are,
@@ -165,7 +165,7 @@ and then counts the claims, finds one left behind.
 In `src/operations.ts`, change `? "VALIDATED"` to `? "ALLOWED"`.
 
 ```text
- Tests  2 failed | 865 passed | 1 skipped (868)
+ Tests  2 failed | 871 passed | 1 skipped (874)
 ```
 
 The two tests that read the log after a dry run: one looks for VALIDATED, and the other for the dry
@@ -179,15 +179,16 @@ In `src/operations.ts`, change `? await prepare(walked.context, progress)` to
 `? await carryOut(walked.context, startedAt, progress)`.
 
 ```text
- Tests  17 failed | 850 passed | 1 skipped (868)
+ Tests  19 failed | 854 passed | 1 skipped (874)
 ```
 
 The caller asked to prepare a payment, and it was made. Twelve tests in `test/modes.test.ts`: the
 READY answer, the payment not made, the replay, the records of PROPOSED and READY and none after
 them, the two moves to READY that fail, two of those whose reply is lost, the key a prepared command
-released, and the three that prepare every command in the registry. And five of the demo's: its
+released, and the three that prepare every command in the registry. Five of the demo's: its
 count of payments, and four tests of its log, where the prepared payment's moves no longer stop at
-READY.
+READY. And the two tests that compare a prepared READY's record with its decision, the agent's and
+a person's.
 
 ## Build it yourself with Claude Code
 

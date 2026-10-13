@@ -151,7 +151,7 @@ EXECUTING on a real server; see what this step leaves, below.
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `1007` with `1 skipped`; in the repository it is `1007 passed`.
+is not beside it, so the total reads `1014` with `1 skipped`; in the repository it is `1014 passed`.
 
 ### Break 1 · §21.4 asks nothing
 
@@ -161,7 +161,7 @@ The map's "break it" turned round: take the brake out of the checklist. In `src/
 `|| true` before its `)`.
 
 ```text
- Tests  11 failed | 995 passed | 1 skipped (1007)
+ Tests  11 failed | 1002 passed | 1 skipped (1014)
 ```
 
 Fewer than you might think, and that is the second lock. A stopped agent's payment is still stopped,
@@ -180,7 +180,7 @@ In `src/operations.ts`, in the door, after the comment
 `principal.type === "agent" ? principal.id : null,` to `null,`.
 
 ```text
- Tests  3 failed | 1003 passed | 1 skipped (1007)
+ Tests  3 failed | 1010 passed | 1 skipped (1014)
 ```
 
 Three: a suspension and a freeze, each pulled between the decision and the handler, and the test
@@ -194,14 +194,15 @@ In `src/delegation.ts`, in `revokeSlip`, change `WHERE EXISTS (SELECT 1 FROM rev
 `WHERE false AND EXISTS (SELECT 1 FROM revoked)`.
 
 ```text
- Tests  7 failed | 999 passed | 1 skipped (1007)
+ Tests  8 failed | 1005 passed | 1 skipped (1014)
 ```
 
 The slip is revoked, and the payments that were waiting for approval under it, or approved, stay
-where they were, ready to run once released, with their amounts still held against the day. Seven
+where they were, ready to run once released, with their amounts still held against the day. Eight
 tests in `test/revoke.test.ts` notice. Each expects a proposal under del_100 cancelled, the record
 of that move, or its amount given back, including the two where what waits changes while the slip
-is revoked, and the one that checks that another slip's proposals are left alone.
+is revoked, the one that checks that another slip's proposals are left alone, and the one whose reply is lost
+after the revocation committed.
 
 ## Build it yourself with Claude Code
 

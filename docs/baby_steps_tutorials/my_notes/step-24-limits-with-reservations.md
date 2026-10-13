@@ -1,6 +1,6 @@
 # Step 24 · Limits with reservations
 
-Folder: [`my_24_limits_with_reservations`](../my_24_limits_with_reservations/README.md) · 910 tests,
+Folder: [`my_24_limits_with_reservations`](../my_24_limits_with_reservations/README.md) · 916 tests,
 plus 59 in the database tier
 Spec: [§13.4](../../../specs/dsor/02-security.md#134-cumulative-limits) · `DSOR-DEL-06a`,
 `DSOR-DEL-06b`, `DSOR-DEL-06c`, `DSOR-DEL-06d` and `DSOR-DEL-06e`, the approval states of `06c` and

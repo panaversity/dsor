@@ -145,7 +145,7 @@ one that sees this mistake.
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `910` with `1 skipped`; in the repository it is `910 passed`.
+is not beside it, so the total reads `916` with `1 skipped`; in the repository it is `916 passed`.
 
 ### Break 1 · read the total, check it, then write it
 
@@ -154,7 +154,7 @@ statement with two: a SELECT of the day's total, a check in TypeScript that the 
 then the INSERT that adds it, with no condition.
 
 ```text
- Tests  1 failed | 908 passed | 1 skipped (910)
+ Tests  1 failed | 914 passed | 1 skipped (916)
 ```
 
 One: the fifty reservations at once. Every other test books one payment at a time, or the same
@@ -169,7 +169,7 @@ broken bookings apart, so only the store's test sees this break now.
 In `src/reservation.ts`, change `WHERE $3 = 'released' AND` to `WHERE $3 = 'never' AND`.
 
 ```text
- Tests  8 failed | 901 passed | 1 skipped (910)
+ Tests  8 failed | 907 passed | 1 skipped (916)
 ```
 
 A refused payment is marked released, and its amount still counts against the day: each refusal
@@ -183,7 +183,7 @@ In `src/operations.ts`, in the daily limit's part of `checkTheSlipsLimit`, chang
 `if (context.mode === "validate_only") {` to `if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  6 failed | 903 passed | 1 skipped (910)
+ Tests  6 failed | 909 passed | 1 skipped (916)
 ```
 
 A dry run has no proposal to book for, so it is refused for that: the agent can no longer ask "would

@@ -1,7 +1,7 @@
 # Step 25 · Revocation and the emergency brake
 
 Folder: [`my_25_revocation_and_the_emergency_brake`](../my_25_revocation_and_the_emergency_brake/README.md)
-· 1007 tests, plus 72 in the database tier
+· 1014 tests, plus 72 in the database tier
 Spec: [§13.3](../../../specs/dsor/02-security.md#133-revocation-and-subdelegation),
 [§18](../../../specs/dsor/02-security.md#18-operational-controls) · `DSOR-OPS-01a`,
 `DSOR-OPS-01c`, `DSOR-OPS-01d`, and `DSOR-DEL-04a` and `DSOR-DEL-04c` in part
@@ -74,4 +74,4 @@ expiry half of `DSOR-DEL-04c`; a command past §21.3 when its slip is revoked; t
 login believed.
 
 Every fix was broken once and failed as predicted; the README's three breaks were measured twice on
-the final code, agreeing: 11, 3 and 7 failing.
+the final code, agreeing: 11, 3 and 8 failing.

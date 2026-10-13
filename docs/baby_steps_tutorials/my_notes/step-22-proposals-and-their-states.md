@@ -1,6 +1,6 @@
 # Step 22 · Proposals and their states
 
-Folder: [`my_22_proposals_and_their_states`](../my_22_proposals_and_their_states/README.md) · 829
+Folder: [`my_22_proposals_and_their_states`](../my_22_proposals_and_their_states/README.md) · 833
 tests, plus 57 in the database tier
 Spec: [§26.2](../../../specs/dsor/03-execution.md#262-lifecycle) · `DSOR-APR-01a`, `DSOR-APR-01b`,
 `DSOR-APR-01c`, and `DSOR-IDM-04` in part
@@ -68,4 +68,4 @@ Five were written down instead; they are the limits above.
 
 Decision 137's three fixes were broken once each and failed exactly their one test, though the
 one-statement half of the first was first broken by decision 153; the README's
-five breaks were measured twice on the final code, agreeing: 5, 3, 37, 16 and 9 failing.
+five breaks were measured twice on the final code, agreeing: 5, 3, 40, 16 and 9 failing.

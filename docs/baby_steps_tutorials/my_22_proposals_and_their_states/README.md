@@ -238,7 +238,7 @@ With no pause before the next place, 3 or 4 of twenty. With one place and no sec
 
 Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `829` with `1 skipped`; in the repository it is `829 passed`.
+is not beside it, so the total reads `833` with `1 skipped`; in the repository it is `833 passed`.
 
 ### Break 1 · the map gets a way out of COMMITTED
 
@@ -246,7 +246,7 @@ The map's "break it". In `migrations/020_proposals.sql`, add one more move to th
 `('COMMITTED', 'FAILED')`.
 
 ```text
- Tests  5 failed | 823 passed | 1 skipped (829)
+ Tests  5 failed | 827 passed | 1 skipped (833)
 ```
 
 The map test, the two tests that try every move out of a COMMITTED proposal, and the one that writes
@@ -261,7 +261,7 @@ rules guard each other.
 In `migrations/020_proposals.sql`, delete `UNIQUE (tenant, proposal, from_state),`.
 
 ```text
- Tests  3 failed | 825 passed | 1 skipped (829)
+ Tests  3 failed | 829 passed | 1 skipped (833)
 ```
 
 The test of two different moves out of one state at once fails: approved and rejected together,
@@ -277,15 +277,15 @@ record. Two moves into the same state, the race out of READY, are still caught, 
 In `src/operations.ts`, delete the line ``["READY", "EXECUTING", `handed to ${contract.id}`],``.
 
 ```text
- Tests  37 failed | 791 passed | 1 skipped (829)
+ Tests  40 failed | 792 passed | 1 skipped (833)
 ```
 
 The handler runs on a proposal that is only READY, and its last move, out of EXECUTING, has nothing
 to point at, so every proposal the door carries out is left READY. The handler still ran, and the
 payment was still made. Nothing in the history says so, and nothing in the log either: for each
-command carried out, the log is two records short, with no EXECUTING and no ending. So thirty-seven
-tests that follow a command to its end fail: fourteen of the door's moves, eleven of the moves'
-records, the demo's list and five tests of its log, and six more that read the log, five in
+command carried out, the log is two records short, with no EXECUTING and no ending. So forty
+tests that follow a command to its end fail: fourteen of the door's moves, fourteen of the moves'
+records, three of them the tests that compare a refused or unknown move's record with its decision, the demo's list and five tests of its log, and six more that read the log, five in
 `test/decision-first.test.ts` and one in `test/pipeline.test.ts`.
 
 ### Break 4 · the records are written just before the moves
@@ -320,7 +320,7 @@ the moves in a second one. Replace the `try` block's `await recordTogether(...)`
 ```
 
 ```text
- Tests  16 failed | 812 passed | 1 skipped (829)
+ Tests  16 failed | 816 passed | 1 skipped (833)
 ```
 
 Every move the database refuses now leaves a record that says it happened. The demo's last line
@@ -336,7 +336,7 @@ In `src/audit.ts`, change `export const PLACES_TO_TRY: number = 10;` to
 `export const PLACES_TO_TRY: number = 1;`.
 
 ```text
- Tests  9 failed | 819 passed | 1 skipped (829)
+ Tests  9 failed | 823 passed | 1 skipped (833)
 ```
 
 A request whose place at the end of the log is taken is refused again, as in step 09, with nothing
