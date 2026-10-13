@@ -272,7 +272,7 @@ Copy `my_19_unattended_mode_and_the_role_source` to a new folder and ask:
 A claim whose answer could not be written, because the store failed after the request ran, because
 a handler threw, because its release could not be written, or because the claim's own reply was
 lost, keeps no answer: a retry with its key waits and is told `OUTCOME_UNKNOWN` until someone
-reconciles it, which is step 37's. A replay records nothing, and the fingerprint depends on the
+reconciles it, which is step 38's. A replay records nothing, and the fingerprint depends on the
 order of the request's fields until canonical JSON, step 29. There is one mode, execute;
 `propose_only` and the proposal whose id is the key of its execution (`DSOR-IDM-04`) are steps 22
 and 23. Passing a key on to the bank's system (`DSOR-IDM-03`) waits for a connector that takes one.
