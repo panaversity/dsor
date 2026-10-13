@@ -497,7 +497,9 @@ export function ruleProblems(
     // nothing.
     const call = context.approveCall;
     if (call === undefined) {
-      return [`${name}: its effect asks for an approval, and no contract of proposal.approve gives one`];
+      return [
+        `${name}: its effect asks for an approval, and no contract of proposal.approve gives one`,
+      ];
     }
     if (held.has(call) !== true) {
       const holds = `${call}, the permission to call proposal.approve`;

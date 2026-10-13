@@ -57,7 +57,14 @@ describe("C8: a rule asks only for an approval that someone can give (step 29's 
     "Step 29: a draft that asks for an approval by a role holding %s is refused: nobody holding it could give the approval",
     async (_what, permissions, problem) => {
       const roles = rolesFile({ ...STARTING_ROLES, approver_clerk: permissions });
-      const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, undefined, roles);
+      const w = await ruleWorldOnTuesday(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        roles,
+      );
       const answer = await draft(w, {
         effect: { require_approval: { role: "approver_clerk", quorum: 1 } },
       });
@@ -115,7 +122,9 @@ describe("From step 29's review: a proposal.* command never waits for an approva
     });
     const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, around);
     const drafted = await w.draft("INV-1008");
-    const id = String("proposal" in drafted ? drafted.proposal : "").split("/").at(-1)!;
+    const id = String("proposal" in drafted ? drafted.proposal : "")
+      .split("/")
+      .at(-1)!;
     const kept = await w.proposals.get("org_456", id);
     const answer = await w.ask(keyed(CFO), "proposal.approve", {
       proposal: kept!.uri,

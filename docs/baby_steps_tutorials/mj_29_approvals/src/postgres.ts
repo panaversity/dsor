@@ -1701,7 +1701,7 @@ export function createDbProposals(pool: pg.Pool): ProposalStore {
 // PostgreSQL would fail one of them. So each takes the company's ending lock, alone, before it
 // lists its work, until its transaction ends. Found by step 25c's review (finding M1; step 25c's
 // README, decision D13).
-// NEW IN STEP 29: and an approval takes it too, before it locks the proposal. A tear-up or a sweep
+// NEW IN STEP 29: and an approval takes it too, before it reads the proposal. A tear-up or a sweep
 // that listed a proposal as PENDING_APPROVAL would otherwise find it APPROVED a moment later, and
 // leave it so: its move starts from the state it listed (step 29's README, decision D9).
 function endingKey(tenant: string): string {

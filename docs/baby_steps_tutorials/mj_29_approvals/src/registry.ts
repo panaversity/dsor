@@ -334,7 +334,8 @@ export function buildRegistry(
     const approving = contracts.get("proposal.approve")?.["authorization"] as
       | { permission?: unknown }
       | undefined;
-    const approveCall = typeof approving?.permission === "string" ? approving.permission : undefined;
+    const approveCall =
+      typeof approving?.permission === "string" ? approving.permission : undefined;
     const context = { governable, riskOf, policy, roles, approvePermission, approveCall };
     return ruleProblems(ruleName(tenant, raw, place), raw, tenant, context, tests);
   };

@@ -1,8 +1,8 @@
 // DSoR keeps each approval, on the database (step 29's README, claims C4 and C5, decisions D8, D9,
 // and D11). dsor.approvals keeps each approval whole, in approval.schema.json's shape. dsor_runtime
 // adds approvals and never changes or removes one. The approval and the move to APPROVED are one
-// step, under the company's ending lock and the proposal's row lock, so two approvers at once never
-// both leave a proposal waiting. A real PostgreSQL, never a mock.
+// step, under the company's ending lock, which a tear-up and a sweep take too, so two approvers at
+// once never both leave a proposal waiting. A real PostgreSQL, never a mock.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
@@ -371,11 +371,15 @@ describe("D9: on the database, two approvals at once (step 29's README, decision
     try {
       await client.query("BEGIN");
       await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
-      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('dsor.ending/org_456', 0))");
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('dsor.ending/org_456', 0))",
+      );
       const approving = cfoApproves(id);
       await callsWaiting(observer, 1);
       // The approval's transaction began before the expiry. Its step runs after it.
-      await new Promise((resolve) => setTimeout(resolve, Math.max(0, expiresAt - Date.now()) + 300));
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(0, expiresAt - Date.now()) + 300),
+      );
       await client.query("COMMIT");
       expect(await approving).toStrictEqual({ refused: "expired" });
     } finally {

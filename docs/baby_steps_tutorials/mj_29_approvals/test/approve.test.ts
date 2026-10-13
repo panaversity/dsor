@@ -416,10 +416,7 @@ describe("From step 29's review: line ⑨ says no before any work, and the store
     const answers = await withPlanted("tok_cfo200", cfo200, () =>
       Promise.all([approves(w, CFO, uri, payload_hash), approves(w, CFO_200, uri, payload_hash)]),
     );
-    expect(answers.map(heard).sort()).toStrictEqual([
-      "COMMITTED",
-      "CONFLICT",
-    ]);
+    expect(answers.map(heard).sort()).toStrictEqual(["COMMITTED", "CONFLICT"]);
     expect(answers).toContainEqual(
       expect.objectContaining({
         code: "CONFLICT",
@@ -456,18 +453,31 @@ describe("From step 29's review: only the call's own company counts, and each fi
       data: {
         state: "PENDING_APPROVAL",
         waits_for: [
-          { approval: { role: "CFO", quorum: 1 }, control: "high-value-payment", control_version: 8 },
+          {
+            approval: { role: "CFO", quorum: 1 },
+            control: "high-value-payment",
+            control_version: 8,
+          },
         ],
       },
     });
     const [approval] = await w.proposals.approvals("org_456", id);
-    expect(approval?.approvers).toMatchObject([{ principal: "two_100", basis: "role:tenant_admin" }]);
+    expect(approval?.approvers).toMatchObject([
+      { principal: "two_100", basis: "role:tenant_admin" },
+    ]);
   });
 
   // Found by the review, finding M5: the look's permissions from every company passed every test.
   it("DSOR-APR-07: a person whose org_456 role may call proposal.approve and who is CFO in org_789 cannot approve in org_456: org_456's permissions lack payment:approve", async () => {
     const roles = rolesFile({ ...STARTING_ROLES, approver_clerk: ["proposal:approve"] });
-    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, undefined, undefined, roles);
+    const w = await ruleWorldOnTuesday(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      roles,
+    );
     const { uri, payload_hash } = await drafted(w, "INV-1008");
     const answer = await withPlanted("tok_two", inTwo(["approver_clerk"]), () =>
       approves(w, TWO_COMPANIES, uri, payload_hash),
@@ -547,7 +557,10 @@ describe("From step 29's review: a proposal's address that names no proposal", (
   // TENANT_MISMATCH before line ⑥ looks at the id.
   it.each([
     ["a name for an id", "dsor://org_456/proposal/foo"],
-    ["an id in capital letters", "dsor://org_456/proposal/prop_ABCDEF01-2345-4678-89AB-0123456789AB"],
+    [
+      "an id in capital letters",
+      "dsor://org_456/proposal/prop_ABCDEF01-2345-4678-89AB-0123456789AB",
+    ],
   ])(
     "Step 29: %s is no proposal of org_456: RESOURCE_NOT_FOUND at line ⑨, recorded DENY",
     async (_what, proposal) => {
@@ -562,9 +575,9 @@ describe("From step 29's review: a proposal's address that names no proposal", (
   it("Step 29: an invoice's address is no proposal's: line ⑥ refuses it, VALIDATION_FAILED", async () => {
     const w = await ruleWorldOnTuesday();
     const { payload_hash } = await drafted(w, "INV-1008");
-    expect(
-      await approves(w, CFO, "dsor://org_456/invoice/INV-1008", payload_hash),
-    ).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await approves(w, CFO, "dsor://org_456/invoice/INV-1008", payload_hash)).toMatchObject({
+      code: "VALIDATION_FAILED",
+    });
   });
 });
 
@@ -601,7 +614,11 @@ describe("From step 29's review: only a person's own call is approval evidence",
       const w = await ruleWorldOnTuesday();
       const { id, uri, payload_hash } = await drafted(w, "INV-1008");
       const envelope = mode === "validate_only" ? { ...AGENT, mode } : { ...keyed(AGENT), mode };
-      for (const named of [{ approver: "cfo_100" }, { subject: "cfo_100" }, { on_behalf_of: "cfo_100" }]) {
+      for (const named of [
+        { approver: "cfo_100" },
+        { subject: "cfo_100" },
+        { on_behalf_of: "cfo_100" },
+      ]) {
         const answer = await w.ask(envelope, "proposal.approve", {
           proposal: uri,
           payload_hash,
