@@ -1666,6 +1666,19 @@ const recordTheDecision: Stage["run"] = async (context) => {
       );
     }
 
+    // NEW IN STEP 22, decision 157, found by a review: and an outcome already unknown stays unknown.
+    // A creation nobody could confirm arrives here refused OUTCOME_UNKNOWN at §21.8. When the log
+    // then refused its record too, the answer below won: "send it again", the key was released while
+    // the proposal could still land, and the retry made a second one (DSOR-UNK-01b).
+    if (denial?.code === "OUTCOME_UNKNOWN") {
+      return refuse(
+        principal?.id ?? "(nobody)",
+        "OUTCOME_UNKNOWN",
+        `${denial.message}; and the decision could not be written down either`,
+        context.requestId,
+      );
+    }
+
     // The decision could not be written, so there is no honouring DSOR-EXE-02 by answering. The
     // caller is told that instead, and because this stage sits before anything executes, nothing
     // has happened yet. `EVIDENCE_STORE_UNAVAILABLE` is the §28 code for it, retry

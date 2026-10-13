@@ -510,6 +510,50 @@ describe("a reply that is lost", () => {
     );
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("draft");
   });
+
+  it("DSOR-UNK-01b: a creation nobody can confirm stays OUTCOME_UNKNOWN when its decision cannot be written either, and no second proposal is made", async () => {
+    // Found by a review. §21.11 runs after a refusal, to write it down, and when the log refused that
+    // record too, its own refusal won: EVIDENCE_STORE_UNAVAILABLE, safe to send again. The key was
+    // released, and a retry made a second proposal beside a first that might still land.
+    const request = { idempotencyKey: "issue-1009-unknown-then-unwritten" };
+    const connection = overPGlite(db);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (theCreation(sql)) {
+          throw aLostConnection();
+        }
+
+        if (sql.trimStart().startsWith("INSERT INTO dsor.audit")) {
+          throw Object.assign(new Error("the server refused it"), { code: "53100" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    const answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("OUTCOME_UNKNOWN");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("after_reconciliation");
+
+    useDatabase(overPGlite(db));
+
+    // Sent again with its key: the same answer, and still no proposal at all.
+    expect(await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request)).toStrictEqual(
+      answer,
+    );
+
+    const proposals = await asTheOwner(async () => {
+      const { rows } = await db.query<{ id: string }>(
+        "SELECT id FROM dsor.proposals WHERE tenant = 'org_456'",
+      );
+
+      return rows.map((r) => r.id);
+    });
+
+    expect(proposals).toStrictEqual([]);
+  });
 });
 
 describe("after every path the door has", () => {
