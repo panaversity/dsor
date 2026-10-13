@@ -384,6 +384,51 @@ describe("propose_only prepares a command and stops at READY", () => {
     expect(sentAgain.kind === "result" && sentAgain.envelope.outcome).toBe("READY");
   });
 
+  it("DSOR-EXE-03b: a move to READY the server refused is nothing done even when the proposal cannot be read back: DENIED, and the key may be sent again", async () => {
+    // STEP 22, decision 157, found by a review: a refused move can never land, so there is nothing
+    // to read back. Read back all the same, a read that failed made this OUTCOME_UNKNOWN, kept the
+    // key, and wrote no DENIED.
+    const request = { idempotencyKey: "issue-prepared-refused-unread", mode: "propose_only" };
+    const connection = overPGlite(db);
+    let refused = false;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (
+          !refused &&
+          sql.includes("INSERT INTO dsor.proposal_moves") &&
+          params?.includes("READY")
+        ) {
+          refused = true;
+
+          throw Object.assign(new Error("the server refused it"), { code: "53100" });
+        }
+
+        if (refused && sql.includes("SELECT m.to_state FROM dsor.proposal_moves")) {
+          throw Object.assign(new Error("the store went away"), { code: "ECONNRESET" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+    } finally {
+      useDatabase(connection);
+    }
+
+    expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("safe_same_key");
+    expect((await proposalsOf("org_456")).map((p) => p.state)).toStrictEqual(["DENIED"]);
+
+    const sentAgain = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(sentAgain.kind === "result" && sentAgain.envelope.outcome).toBe("READY");
+  });
+
   it("DSOR-APR-01a: a prepared command the rules refuse is DENIED, as one executed would be", async () => {
     const answer = await callOperation(
       AGENT,

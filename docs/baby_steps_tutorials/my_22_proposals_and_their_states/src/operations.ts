@@ -2148,12 +2148,17 @@ export function makeDoor(
         // either turned a true "nothing was done" into OUTCOME_UNKNOWN, and kept the key for nothing.
         progress.moveLost = failure instanceof OutcomeUnknown;
 
-        let now: ProposalState | undefined;
+        // NEW IN STEP 22, decision 157, found by a review: and only then is there anything to read
+        // back. A move that can never land left the proposal PROPOSED; read back all the same, a read
+        // that failed made that true "nothing was done" OUTCOME_UNKNOWN, and kept the key for nothing.
+        let now: ProposalState | undefined = "PROPOSED";
 
-        try {
-          now = await stateOf(tenant, proposal);
-        } catch {
-          now = undefined;
+        if (progress.moveLost) {
+          try {
+            now = await stateOf(tenant, proposal);
+          } catch {
+            now = undefined;
+          }
         }
 
         if (now === "EXECUTING") {

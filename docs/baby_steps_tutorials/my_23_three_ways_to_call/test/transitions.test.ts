@@ -393,6 +393,27 @@ describe("no record claims a move that did not happen", () => {
     expect(sentAgain.kind).toBe("result");
     expect((await getInvoice("org_456", "INV-1009")).value?.status).toBe("issued");
   });
+
+  it("DSOR-EXE-03b: a move the server refused is nothing done even when the proposal cannot be read back: DENIED, and the key may be sent again", async () => {
+    // Found by a review. A move the server refused can never land, so the proposal is still
+    // PROPOSED; the door read it back all the same, and a read that failed made a true "nothing was
+    // done" into OUTCOME_UNKNOWN, kept the key, and wrote no DENIED.
+    const request = { idempotencyKey: "issue-1009-refused-unread" };
+
+    withAFault(aMoveNaming("EXECUTING"), "refused", { readBackFails: true });
+
+    const refused = await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request);
+
+    expect(refused.kind === "error" && refused.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
+    expect(refused.kind === "error" && refused.envelope.retry).toBe("safe_same_key");
+
+    useDatabase(overPGlite(db));
+
+    expect(await stateOf("org_456", "prop_1")).toBe("DENIED");
+    expect((await callOperation(SUPERVISOR, "invoice.issue", ISSUE_1009, request)).kind).toBe(
+      "result",
+    );
+  });
 });
 
 describe("a place in the log that another record took first", () => {
