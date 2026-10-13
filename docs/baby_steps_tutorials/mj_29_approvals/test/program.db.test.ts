@@ -169,6 +169,26 @@ describe("the program", () => {
       ]) {
         expect(output).toMatch(line);
       }
+      // NEW IN STEP 29: the approvals, in memory: who may approve, with which fingerprint, and a
+      // second rule that asks for a second person (step 29's README, the story's numbers).
+      const approvals = output.slice(output.indexOf("approvals, in memory"));
+      for (const line of [
+        "the agent drafts INV-2009, 900.00 USD: answered, PAY-",
+        "the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment)",
+        'the agent approves its own payment: AUTHORIZATION_DENIED: "proposal.approve" is for people only, and accounts-payable-fte is not a person',
+        "admin_100 approves it: AUTHORIZATION_DENIED: admin_100 holds none of the roles proposal prop_",
+        "cfo_100 approves it, with the 900.00 USD payment's fingerprint: APPROVAL_MISMATCH",
+        "cfo_100 approves it, with its own fingerprint: APPROVED, by approval apr_",
+        "cfo_100 approves it again: CONFLICT: proposal prop_",
+        "cfo_100 drafts admin-above-30000, a rule of org_456's own: version 1, draft",
+        "cfo_100 switches it on: version 1, active",
+        "the agent drafts INV-2012, 35,000.00 USD: PENDING_APPROVAL, needs tenant_admin x1 (admin-above-30000), CFO x1 (high-value-payment)",
+        "cfo_100 approves it: PENDING_APPROVAL, still waits for tenant_admin",
+        "admin_100 approves it: APPROVED, by approval apr_",
+        "payments drafted: 1, INV-2009's; the approved ones wait for step 31",
+      ]) {
+        expect(approvals).toMatch(line);
+      }
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
       expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");

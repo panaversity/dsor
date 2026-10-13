@@ -39,7 +39,10 @@
 // with a stand-in for KSoR: the finance team publishes version 5 of the payment-approval policy,
 // dsor-scheduler's sweep marks version 8 stale and leaves cfo_100 a notice, every payment waits
 // for the CFO until cfo_100 switches on a version that cites version 5, and a version that still
-// cites version 4 cannot be switched on. Then it prints the log: the records it can read,
+// cites version 4 cannot be switched on. NEW IN STEP 29: approvals, in memory: the agent, and
+// admin_100, whom the rule does not ask, cannot approve INV-1008's 31,400.00 USD; cfo_100 cannot
+// with another request's fingerprint, and can with its own; and with a second rule on, INV-2012
+// waits for the CFO and a tenant administrator both. Then it prints the log: the records it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -1224,8 +1227,9 @@ console.log(
 console.log(
   `  the day's total under del_100: ${await ruleReservations.used("org_456", "del_100", "USD")} USD`,
 );
-// Nothing approves until step 29. A week later the waiting payments are past their time, and the
-// sweep expires them and gives their bookings back (step 27's README, decision D11).
+// Nobody approves in this story: step 29's own story below does. A week later the waiting payments
+// are past their time, and the sweep expires them and gives their bookings back (step 27's README,
+// decision D11).
 ruleClock.now = Date.parse("2026-10-13T15:05:00Z");
 const ruleSweep = await ruleCall(withKey(SCHEDULER, "rule-sweep"), "proposal.expire_due", ORG_456);
 console.log("  a week later, dsor-scheduler sweeps org_456:", sweepHeard(ruleSweep));
@@ -1529,6 +1533,138 @@ const cites5On = await driftRule(CFO_100, "rule.activate", { version: 10, reason
 console.log("  cfo_100 switches version 10 on:", ruleHeard(cites5On));
 console.log("  the agent drafts INV-2010, 19,500.00 USD:", waitHeard(await driftPay("INV-2010")));
 console.log("  the agent drafts INV-2011, 21,000.00 USD:", waitHeard(await driftPay("INV-2011")));
+
+// NEW IN STEP 29: approvals, in memory, with a store of their own (step 29's README, the story's
+// numbers). The agent drafts INV-1008, 31,400.00 USD, and it waits for the CFO. The agent cannot
+// approve its own payment, and neither can admin_100, whom the rule does not ask. cfo_100 approves
+// it first with the fingerprint of the 900.00 USD payment, and DSoR refuses; then with its own, and
+// it is APPROVED. Then cfo_100 switches on a second rule of org_456's own, and INV-2012, 35,000.00
+// USD, waits for the CFO and a tenant administrator: one approval is not enough. An approved
+// payment waits for step 31's proposal.execute, so nothing more is drafted.
+console.log("approvals, in memory, with a store of their own:");
+const approvalInvoices = memoryInvoices([
+  ...structuredClone(invoices),
+  bill("INV-2009", "900.00", "USD"),
+  // Above both rules' lines.
+  bill("INV-2012", "35000.00", "USD"),
+]);
+const approvalDrafted: Payment[] = [];
+const approvalPayments = memoryPayments(approvalDrafted);
+const approvalSlips = memorySlips(limited);
+const approvalProposals = memoryProposals(() => lifeClock.now);
+const approvalRules = memoryControls(readControls(CONTROLS));
+const approvalWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  approvalInvoices,
+  approvalPayments,
+  approvalSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    approvalInvoices,
+    approvalPayments,
+    approvalProposals,
+    memoryReservations(() => lifeClock.now),
+    approvalSlips,
+    undefined,
+    memoryRates(() => lifeClock.now),
+    approvalRules,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  approvalRules,
+  storyKsors(),
+);
+const approvalLog = createLog();
+const approvalCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(approvalWorld, approvalLog, who, name, input);
+let approvalKeys = 0;
+/** The agent drafts a payment of one of org_456's bills, in this world. */
+const approvalPay = (id: string): Promise<Answer> =>
+  approvalCall(withKey(AGENT, `approval-${id}`), "payment.create", {
+    invoice: `dsor://org_456/invoice/${id}`,
+    expected_version: 1,
+  });
+/** The proposal an answer names, as an approval screen reads it from DSoR's own store. */
+async function screenOf(answer: Answer): Promise<{ uri: string; payload_hash: string }> {
+  const id = String("proposal" in answer ? answer.proposal : "").split("/").at(-1) ?? "";
+  const kept = await approvalProposals.get("org_456", id);
+  if (kept === undefined) throw new Error("the story's proposal is not there");
+  return { uri: kept.uri, payload_hash: kept.payload_hash };
+}
+/** Someone approves a proposal with a fingerprint, with a key of its own, and what they heard. */
+async function approveAs(who: RequestEnvelope, uri: string, payload_hash: string): Promise<string> {
+  const key = withKey(who, `approval-${++approvalKeys}`);
+  const answer = await approvalCall(key, "proposal.approve", { proposal: uri, payload_hash });
+  if (!("data" in answer)) return heard(answer);
+  const { id, state, waits_for } = answer.data as {
+    id: string;
+    state: string;
+    waits_for: { approval: { role: string } }[];
+  };
+  if (state === "APPROVED") return `APPROVED, by approval ${id}`;
+  return `${state}, still waits for ${waits_for.map((r) => r.approval.role).join(" and ")}`;
+}
+const small = await approvalPay("INV-2009");
+console.log("  the agent drafts INV-2009, 900.00 USD:", waitHeard(small));
+const large = await approvalPay("INV-1008");
+console.log("  the agent drafts INV-1008, 31,400.00 USD:", waitHeard(large));
+// An approval screen reads both from DSoR's store: its address, and the fingerprint of its request.
+const largeScreen = await screenOf(large);
+const smallScreen = await screenOf(small);
+const approveLarge = (who: RequestEnvelope, payload_hash = largeScreen.payload_hash) =>
+  approveAs(who, largeScreen.uri, payload_hash);
+console.log("  the agent approves its own payment:", await approveLarge(AGENT));
+console.log("  admin_100 approves it:", await approveLarge(ADMIN_100));
+console.log(
+  "  cfo_100 approves it, with the 900.00 USD payment's fingerprint:",
+  await approveLarge(CFO_100, smallScreen.payload_hash),
+);
+console.log("  cfo_100 approves it, with its own fingerprint:", await approveLarge(CFO_100));
+console.log("  cfo_100 approves it again:", await approveLarge(CFO_100));
+// A second rule of org_456's own, with no policy in KSoR behind it: local (DSOR-CTL-01b).
+const ADMIN_RULE = "dsor://org_456/rule/admin-above-30000";
+const adminDraft = await approvalCall(withKey(CFO_100, "approval-rule-draft"), "rule.draft", {
+  rule: ADMIN_RULE,
+  draft: textWith({
+    condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
+    effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+    authority: { system: "local" },
+    tests: [
+      { state: usd("30000.00"), expect: "ALLOW" },
+      { state: usd("30000.01"), expect: "REQUIRE_APPROVAL" },
+    ],
+  }),
+  reason: "a tenant administrator approves every payment above 30,000 USD too",
+});
+console.log("  cfo_100 drafts admin-above-30000, a rule of org_456's own:", ruleHeard(adminDraft));
+const adminOn = await approvalCall(withKey(CFO_100, "approval-rule-on"), "rule.activate", {
+  rule: ADMIN_RULE,
+  version: 1,
+  reason: "the board asked for a second pair of eyes",
+});
+console.log("  cfo_100 switches it on:", ruleHeard(adminOn));
+const both = await approvalPay("INV-2012");
+console.log("  the agent drafts INV-2012, 35,000.00 USD:", waitHeard(both));
+const bothScreen = await screenOf(both);
+console.log(
+  "  cfo_100 approves it:",
+  await approveAs(CFO_100, bothScreen.uri, bothScreen.payload_hash),
+);
+console.log(
+  "  admin_100 approves it:",
+  await approveAs(ADMIN_100, bothScreen.uri, bothScreen.payload_hash),
+);
+// Approved is not paid: step 31's proposal.execute releases an approved proposal.
+console.log(
+  `  payments drafted: ${approvalDrafted.length}, INV-2009's; the approved ones wait for step 31`,
+);
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
