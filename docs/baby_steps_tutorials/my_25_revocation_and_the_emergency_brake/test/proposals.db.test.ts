@@ -18,6 +18,7 @@ import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { moveProposal, moveProposalThrough, movesOf, propose, stateOf } from "../src/proposal.ts";
 import { useDatabase } from "../src/store.ts";
+import { BY_A_TEST } from "./support/database.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
@@ -44,18 +45,30 @@ afterAll(async () => {
 
 /** A proposal of its own each run, because the database is kept between runs, walked to READY. */
 async function aReadyProposal(): Promise<string> {
-  const id = await propose({
-    tenant: "org_456",
-    operation: "payment.create@1",
-    mode: "execute",
-    payload: "{}",
-    payloadHash: "sha256:0",
-    requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
-    idempotencyKey: `race-${Date.now()}`,
-    actor: "user_123",
-    cause: "payment.create@1 invoked",
-  });
-  const ready = await moveProposal("org_456", id, "PROPOSED", "READY", "dsor", "allowed");
+  const id = await propose(
+    {
+      tenant: "org_456",
+      operation: "payment.create@1",
+      mode: "execute",
+      payload: "{}",
+      payloadHash: "sha256:0",
+      requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
+      idempotencyKey: `race-${Date.now()}`,
+      actor: "user_123",
+      cause: "payment.create@1 invoked",
+    },
+    // STEP 22, decision 157: each move's record is in a test's request's name.
+    BY_A_TEST,
+  );
+  const ready = await moveProposal(
+    "org_456",
+    id,
+    "PROPOSED",
+    "READY",
+    "dsor",
+    "allowed",
+    BY_A_TEST,
+  );
 
   if (ready.kind !== "moved") {
     throw new Error(`could not make ${id} READY`);
@@ -69,7 +82,14 @@ describe.skipIf(!haveAServer)("one proposal, twenty requests at once, on a real 
     const id = await aReadyProposal();
     const outcomes = await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
-        moveProposalThrough("org_456", id, [["READY", "EXECUTING", `request ${i}`]], "dsor", null),
+        moveProposalThrough(
+          "org_456",
+          id,
+          [["READY", "EXECUTING", `request ${i}`]],
+          "dsor",
+          null,
+          BY_A_TEST,
+        ),
       ),
     );
 
@@ -81,13 +101,20 @@ describe.skipIf(!haveAServer)("one proposal, twenty requests at once, on a real 
   it("DSOR-APR-01c: twenty moves out of a COMMITTED proposal at once: none is written", async () => {
     const id = await aReadyProposal();
 
-    await moveProposalThrough("org_456", id, [["READY", "EXECUTING", "carried out"]], "dsor", null);
-    await moveProposal("org_456", id, "EXECUTING", "COMMITTED", "dsor", "done");
+    await moveProposalThrough(
+      "org_456",
+      id,
+      [["READY", "EXECUTING", "carried out"]],
+      "dsor",
+      null,
+      BY_A_TEST,
+    );
+    await moveProposal("org_456", id, "EXECUTING", "COMMITTED", "dsor", "done", BY_A_TEST);
 
     const outcomes = await Promise.all(
       (["FAILED", "EXECUTING", "OUTCOME_UNKNOWN", "READY", "CANCELLED"] as const).flatMap((to) =>
         Array.from({ length: 4 }, () =>
-          moveProposal("org_456", id, "COMMITTED", to, "dsor", "leave"),
+          moveProposal("org_456", id, "COMMITTED", to, "dsor", "leave", BY_A_TEST),
         ),
       ),
     );

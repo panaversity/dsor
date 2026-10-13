@@ -16,6 +16,9 @@
 
 import { money, type Money } from "./money.ts";
 import { theDatabase } from "./store.ts";
+// NEW IN STEP 25, decision 157: a revocation's moves to CANCELLED have their records too.
+import { recordInsertIf, recordTogether } from "./audit.ts";
+import { type Asked, type ProposalState, transition } from "./proposal.ts";
 
 export type DelegationStatus = "active" | "suspended" | "revoked" | "expired";
 
@@ -229,7 +232,35 @@ export type Revoked =
   /** It had ended when the statement ran, revoked or expired already: nothing was changed. */
   | { readonly kind: "ended" }
   /** Decision 156: `by` did not sign it, or there is no such slip: nothing was changed. */
-  | { readonly kind: "not_theirs" };
+  | { readonly kind: "not_theirs" }
+  /**
+   * NEW IN STEP 25, decision 157: what waits under the slip was different each time it was read,
+   * up to `LOOKS_AT_WHAT_WAITS` times, so nothing was changed.
+   */
+  | { readonly kind: "changed" };
+
+/**
+ * NEW IN STEP 25, decision 157: the proposals waiting under a slip, for approval or approved, with
+ * the operation and payload hash the records of their moves carry. One text, for the read and for
+ * the statement that checks what it read: a second copy could drift from the first (lesson 17).
+ * `$1` is the company, and `$2` the slip.
+ */
+const WAITING_UNDER_A_SLIP = `
+  SELECT m.proposal, m.to_state, p.operation, p.payload_hash
+    FROM dsor.proposals p
+    JOIN dsor.proposal_moves m ON m.tenant = p.tenant AND m.proposal = p.id
+   WHERE p.tenant = $1
+     AND (p.requester::jsonb ->> 'delegation') = $2
+     AND m.to_state IN ('PENDING_APPROVAL', 'APPROVED')
+     AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
+                      WHERE n.tenant = m.tenant AND n.proposal = m.proposal
+                        AND n.from_state = m.to_state)`;
+
+/**
+ * NEW IN STEP 25, decision 157: how many times a revocation reads what waits before it gives up.
+ * Nothing can wait for approval before step 29, so only a test makes this matter yet.
+ */
+export const LOOKS_AT_WHAT_WAITS: number = 5;
 
 /**
  * NEW IN STEP 25: revoke an active slip, and cancel what was waiting under it (DSOR-DEL-04a,
@@ -248,53 +279,135 @@ export type Revoked =
  * it. Both happen, or neither: there is no moment at which the slip is revoked and its approved
  * proposals are still waiting to run. A prepared proposal, READY, is left: §26.2 has no move from
  * READY to CANCELLED, and step 31's proposal.execute checks the slip again before anything runs.
+ *
+ * NEW IN STEP 25, decision 157: and each move to CANCELLED has its record in the log, in the name of
+ * the request that revoked, `asked`, written by the same statement. A record's hash is made here, in
+ * the program, so what waits is read first, and the statement revokes only if what waits is still
+ * what was read: a proposal that started waiting in between has no record ready, and would be left
+ * waiting under a revoked slip. If it changed, nothing is written, and it is read again, at most
+ * `LOOKS_AT_WHAT_WAITS` times: then the answer is that it kept changing, and nothing was revoked.
  */
 export async function revokeSlip(
   tenant: string,
   id: string,
   by: string,
   reason: string,
+  asked: Asked,
 ): Promise<Revoked> {
-  const { rows } = await theDatabase(tenant).query<{
-    revoked: number;
-    theirs: boolean;
-    cancelled: string[];
-  }>(
-    `WITH revoked AS (
-       UPDATE dsor.delegations
-          SET status = 'revoked', revoked_by = $3, revoked_at = clock_timestamp(), revoked_reason = $4
-        WHERE tenant = $1 AND id = $2 AND status IN ('active', 'suspended') AND delegator = $3
-        RETURNING id
-     ),
-     waiting AS (
-       SELECT m.proposal, m.to_state
-         FROM dsor.proposals p
-         JOIN dsor.proposal_moves m ON m.tenant = p.tenant AND m.proposal = p.id
-        WHERE p.tenant = $1
-          AND (p.requester::jsonb ->> 'delegation') = $2
-          AND m.to_state IN ('PENDING_APPROVAL', 'APPROVED')
-          AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
-                           WHERE n.tenant = m.tenant AND n.proposal = m.proposal
-                             AND n.from_state = m.to_state)
-     ),
-     cancelled AS (
-       INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause)
-       SELECT $1, w.proposal, w.to_state, 'CANCELLED', 'dsor', $2 || ' was revoked by ' || $3
-         FROM waiting w
-        WHERE EXISTS (SELECT 1 FROM revoked)
-       RETURNING proposal
-     )
-     SELECT (SELECT count(*) FROM revoked)::int AS revoked,
-            EXISTS (SELECT 1 FROM dsor.delegations
-                     WHERE tenant = $1 AND id = $2 AND delegator = $3) AS theirs,
-            COALESCE((SELECT array_agg(proposal ORDER BY proposal) FROM cancelled), '{}') AS cancelled`,
-    [tenant, id, by, reason],
-  );
-  const row = rows[0];
+  const cause = `${id} was revoked by ${by}`;
 
-  if (row?.revoked === 1) {
-    return Object.freeze({ kind: "revoked", cancelled: Object.freeze([...row.cancelled]) });
+  for (let looks = 1; looks <= LOOKS_AT_WHAT_WAITS; looks += 1) {
+    const { rows: waiting } = await theDatabase(tenant).query<{
+      proposal: string;
+      to_state: ProposalState;
+      operation: string;
+      payload_hash: string;
+    }>(`${WAITING_UNDER_A_SLIP} ORDER BY m.proposal`, [tenant, id]);
+    // What was read, as the statement reads it again: each proposal and the state it waits in.
+    const read = waiting.map((w) => `${w.proposal} ${w.to_state}`);
+    const { rows } = await recordTogether<{
+      revoked: number;
+      same: boolean;
+      theirs: boolean;
+      cancelled: string[];
+    }>(
+      tenant,
+      waiting.map((w) =>
+        transition(
+          { ...asked, operation: w.operation, payloadHash: w.payload_hash },
+          tenant,
+          w.proposal,
+          w.to_state,
+          "CANCELLED",
+          "dsor",
+          cause,
+        ),
+      ),
+      (records) => {
+        const params: unknown[] = [tenant, id, by, reason, read];
+        // Nothing waiting: no moves and no records, and no parameter for them, because PostgreSQL
+        // refuses a parameter the statement never uses.
+        let cancelling = "";
+        let cancelled = "'{}'::text[]";
+
+        if (waiting.length > 0) {
+          params.push(cause);
+
+          const moves = waiting.map((w, i) => {
+            params.push(w.proposal, w.to_state, records[i]?.record_id);
+
+            const at = params.length;
+
+            return `($${at - 2}, $${at - 1}, $${at})`;
+          });
+
+          cancelling = `,
+            cancelled AS (
+              INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
+              SELECT $1, v.proposal, v.from_state, 'CANCELLED', 'dsor', $6, v.record
+                FROM (VALUES ${moves.join(", ")}) AS v (proposal, from_state, record)
+               WHERE EXISTS (SELECT 1 FROM revoked)
+              RETURNING proposal
+            ),
+            ${records
+              .map(
+                (written, i) =>
+                  `r${i} AS (${recordInsertIf("EXISTS (SELECT 1 FROM cancelled)", written, params)})`,
+              )
+              .join(",\n")}`;
+          cancelled =
+            "COALESCE((SELECT array_agg(proposal ORDER BY proposal) FROM cancelled), '{}')";
+        }
+
+        return {
+          sql: `WITH waiting AS (${WAITING_UNDER_A_SLIP}),
+                still AS (
+                  SELECT COALESCE(array_agg(proposal || ' ' || to_state), '{}') AS waiting_now
+                    FROM waiting
+                ),
+                same AS (
+                  SELECT (SELECT waiting_now FROM still) @> $5::text[]
+                     AND (SELECT waiting_now FROM still) <@ $5::text[] AS ok
+                ),
+                revoked AS (
+                  UPDATE dsor.delegations
+                     SET status = 'revoked', revoked_by = $3, revoked_at = clock_timestamp(),
+                         revoked_reason = $4
+                   WHERE tenant = $1 AND id = $2 AND status IN ('active', 'suspended')
+                     AND delegator = $3 AND (SELECT ok FROM same)
+                  RETURNING id
+                )${cancelling}
+                SELECT (SELECT count(*) FROM revoked)::int AS revoked,
+                       (SELECT ok FROM same) AS same,
+                       EXISTS (SELECT 1 FROM dsor.delegations
+                                WHERE tenant = $1 AND id = $2 AND delegator = $3) AS theirs,
+                       ${cancelled} AS cancelled`,
+          params,
+        };
+      },
+    );
+    const row = rows?.[0];
+
+    // The reply was lost, and the first record was found written: the statement committed, and
+    // a record is written only beside its move, and a move only beside the revocation.
+    if (rows === undefined || row?.revoked === 1) {
+      return Object.freeze({
+        kind: "revoked",
+        cancelled: Object.freeze(
+          row === undefined ? waiting.map((w) => w.proposal) : [...row.cancelled],
+        ),
+      });
+    }
+
+    if (row?.theirs !== true) {
+      return Object.freeze({ kind: "not_theirs" });
+    }
+
+    // Revoked nothing, though the slip is the signer's: it had ended, or what waits changed.
+    if (row.same) {
+      return Object.freeze({ kind: "ended" });
+    }
   }
 
-  return Object.freeze(row?.theirs === true ? { kind: "ended" } : { kind: "not_theirs" });
+  return Object.freeze({ kind: "changed" });
 }

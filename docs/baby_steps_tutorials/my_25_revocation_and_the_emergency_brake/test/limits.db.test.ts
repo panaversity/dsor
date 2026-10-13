@@ -21,6 +21,7 @@ import { callOperation } from "../src/operations.ts";
 import { propose } from "../src/proposal.ts";
 import { reserve, usedToday } from "../src/reservation.ts";
 import { useDatabase } from "../src/store.ts";
+import { BY_A_TEST } from "./support/database.ts";
 
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
@@ -80,17 +81,20 @@ describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real
   it("DSOR-DEL-06a: fifty reservations of 5,000.00 at once: exactly forty, and the day stops at the limit", async () => {
     const ids = await Promise.all(
       Array.from({ length: 50 }, () =>
-        propose({
-          tenant: "org_456",
-          operation: "payment.create@1",
-          mode: "execute",
-          payload: "{}",
-          payloadHash: "sha256:0",
-          requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
-          idempotencyKey: `race-${randomUUID()}`,
-          actor: "user_123",
-          cause: "payment.create@1 invoked",
-        }),
+        propose(
+          {
+            tenant: "org_456",
+            operation: "payment.create@1",
+            mode: "execute",
+            payload: "{}",
+            payloadHash: "sha256:0",
+            requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
+            idempotencyKey: `race-${randomUUID()}`,
+            actor: "user_123",
+            cause: "payment.create@1 invoked",
+          },
+          BY_A_TEST,
+        ),
       ),
     );
     const outcomes = await Promise.all(
@@ -107,17 +111,20 @@ describe.skipIf(!haveAServer)("fifty at once against 200,000.00 a day, on a real
     // limit a thousand times higher passed it too, a review measured. With 195,000.00 booked first,
     // the fifty race for room for exactly one: every one of them books at §21.10, before the log,
     // so the booking is where they race, and any two made would pass the limit.
-    const first = await propose({
-      tenant: "org_456",
-      operation: "payment.create@1",
-      mode: "execute",
-      payload: "{}",
-      payloadHash: "sha256:0",
-      requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
-      idempotencyKey: `booked-first-${randomUUID()}`,
-      actor: "user_123",
-      cause: "payment.create@1 invoked",
-    });
+    const first = await propose(
+      {
+        tenant: "org_456",
+        operation: "payment.create@1",
+        mode: "execute",
+        payload: "{}",
+        payloadHash: "sha256:0",
+        requester: '{"mode":"direct","subject":"user_123","actor_chain":[]}',
+        idempotencyKey: `booked-first-${randomUUID()}`,
+        actor: "user_123",
+        cause: "payment.create@1 invoked",
+      },
+      BY_A_TEST,
+    );
 
     expect(
       await reserve("org_456", first, "del_100", money("195000.00", "USD"), DAILY),

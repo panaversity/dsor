@@ -8,7 +8,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { theLog } from "../src/audit.ts";
+import { theLog, type AuditRecord } from "../src/audit.ts";
 import { overPGlite } from "../src/database.ts";
 import { revokeSlip } from "../src/delegation.ts";
 import { money } from "../src/money.ts";
@@ -18,15 +18,23 @@ import {
   moveProposalThrough,
   movesOf,
   propose,
+  proposalsOf,
   type ProposalState,
   stateOf,
 } from "../src/proposal.ts";
 import { reserve, usedToday } from "../src/reservation.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, BY_A_TEST, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
+
+/**
+ * NEW IN STEP 25, decision 157: the last decision in org_456's log. A command that gets past §21.8
+ * leaves the records of its proposal's moves after its decision, so the log's last record is not it.
+ */
+const lastDecision = async (): Promise<AuditRecord | undefined> =>
+  (await theLog("org_456")).filter((r) => r.kind === "decision").at(-1);
 const CFO = { loggedInAs: "cfo_100" };
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const DEL_100 = "dsor://org_456/delegation/del_100";
@@ -90,21 +98,24 @@ async function aProposal(
   actor: string,
   path: readonly ProposalState[],
 ): Promise<string> {
-  const id = await propose({
-    tenant: "org_456",
-    operation: "payment.create@1",
-    mode: "execute",
-    payload: "{}",
-    payloadHash: "sha256:0",
-    requester: JSON.stringify(requester),
-    idempotencyKey: `revoke-${Math.random()}`,
-    actor,
-    cause: "payment.create@1 invoked",
-  });
+  const id = await propose(
+    {
+      tenant: "org_456",
+      operation: "payment.create@1",
+      mode: "execute",
+      payload: "{}",
+      payloadHash: "sha256:0",
+      requester: JSON.stringify(requester),
+      idempotencyKey: `revoke-${Math.random()}`,
+      actor,
+      cause: "payment.create@1 invoked",
+    },
+    BY_A_TEST,
+  );
   const steps = path.slice(1).map((to, i) => [path[i] as ProposalState, to, `to ${to}`] as const);
 
   if (steps.length > 0) {
-    await moveProposalThrough("org_456", id, steps, "dsor", null);
+    await moveProposalThrough("org_456", id, steps, "dsor", null, BY_A_TEST);
   }
 
   return id;
@@ -195,7 +206,7 @@ describe("delegation.revoke: the person who signed a slip tears it up", () => {
     // words alone do not show it: the statement asks who signed the slip too, and refuses in the same
     // words after §21.11 has recorded ALLOW. Without this line the test stayed green with the signer
     // check deleted, as it did when §21.5 refused her for want of delegation:revoke.
-    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
+    expect((await lastDecision())?.authorization).toBe("DENY");
     expect(await statusOfDel100()).toBe("active");
   });
 
@@ -266,6 +277,166 @@ describe("what was waiting under the slip", () => {
     expect((await movesOf("org_456", waiting)).at(-1)?.cause).toBe(
       "del_100 was revoked by user_123",
     );
+  });
+
+  it("DSOR-DEL-04c: each proposal a revocation cancels has a record of its move, in the name of the person who revoked", async () => {
+    // NEW IN STEP 25, decision 157: a move to CANCELLED is a move like any other, so it has its
+    // record in the log, written by the statement that revokes the slip and makes the move.
+    const waiting = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+    const approved = await underDel100(["PROPOSED", "PENDING_APPROVAL", "APPROVED"]);
+    const answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+      target: DEL_100,
+      reason: "stop",
+    });
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(answer)}`);
+    }
+
+    // This file keeps the log between tests, so the records are this revocation's.
+    const cancellations = (await theLog("org_456")).filter(
+      (r) =>
+        r.kind === "proposal_transition" &&
+        r.result === "CANCELLED" &&
+        r.correlation.request_id === answer.envelope.correlation.request_id,
+    );
+
+    expect(cancellations.map((r) => r.reason)).toStrictEqual([
+      "PENDING_APPROVAL -> CANCELLED by dsor: del_100 was revoked by user_123",
+      "APPROVED -> CANCELLED by dsor: del_100 was revoked by user_123",
+    ]);
+
+    for (const [record, id] of [
+      [cancellations[0], waiting],
+      [cancellations[1], approved],
+    ] as const) {
+      // In user_123's name, by the revocation's own request; about the proposal it moved.
+      expect(record).toMatchObject({
+        identity: { mode: "direct", subject: "user_123", actor_chain: [] },
+        correlation: { request_id: answer.envelope.correlation.request_id },
+        resources: [`dsor://org_456/proposal/${id}`],
+        operation: "payment.create@1",
+        payload_hash: "sha256:0",
+      });
+      // And the move names it.
+      expect((await movesOf("org_456", id)).at(-1)?.record).toBe(record?.record_id);
+    }
+  });
+
+  /**
+   * NEW IN STEP 25, decision 157: the store, with a new proposal made to wait under del_100 just
+   * after each of the first `times` reads of what waits under it, as approvals one day will.
+   */
+  function newWorkAfterEachRead(times: number): { readonly reads: () => number } {
+    const connection = overPGlite(db);
+    let reads = 0;
+    const wrapped = {
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        const result = await connection.query<T>(sql, params, tenant);
+
+        if (
+          sql.includes("(p.requester::jsonb ->> 'delegation') = $2") &&
+          !sql.includes("WITH waiting") &&
+          reads < times
+        ) {
+          reads += 1;
+          useDatabase(connection);
+
+          try {
+            await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+          } finally {
+            useDatabase(wrapped);
+          }
+        }
+
+        return result;
+      },
+    };
+
+    useDatabase(wrapped);
+
+    return { reads: () => reads };
+  }
+
+  it("DSOR-DEL-04c: a proposal that starts waiting while the slip is revoked is cancelled too, with its record", async () => {
+    // NEW IN STEP 25, decision 157: the revocation reads what waits, to write each cancellation's
+    // record, and then writes. A proposal that starts waiting in between is not in what it read: it
+    // revokes only if what waits is still what it read, and otherwise reads again.
+    await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+
+    const store = newWorkAfterEachRead(1);
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+        target: DEL_100,
+        reason: "stop",
+      });
+    } finally {
+      useDatabase(overPGlite(db));
+    }
+
+    if (answer.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(answer)}`);
+    }
+
+    // Read twice: the second time, the late one was there too.
+    expect(store.reads()).toBe(1);
+    // Both payments waiting under del_100 are cancelled, the one that started late included.
+    expect(
+      (await proposalsOf("org_456"))
+        .filter((p) => p.operation === "payment.create@1")
+        .map((p) => p.state),
+    ).toStrictEqual(["CANCELLED", "CANCELLED"]);
+    // And each has the record of its move, from this revocation.
+    expect(
+      (await theLog("org_456")).filter(
+        (r) =>
+          r.kind === "proposal_transition" &&
+          r.result === "CANCELLED" &&
+          r.correlation.request_id === answer.envelope.correlation.request_id,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("DSOR-DEL-04c: a revocation that keeps finding new work waiting revokes nothing, and answers CONFLICT", async () => {
+    // NEW IN STEP 25, decision 157: it reads again at most five times. Every time, something new
+    // waits; so it gives up, and nothing is changed: not the slip, and nothing under it.
+    await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+
+    const store = newWorkAfterEachRead(Number.POSITIVE_INFINITY);
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+        target: DEL_100,
+        reason: "stop",
+      });
+    } finally {
+      useDatabase(overPGlite(db));
+    }
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected CONFLICT, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(store.reads()).toBe(5);
+    expect(answer.envelope.code).toBe("CONFLICT");
+    expect(answer.envelope.message).toBe(
+      "what waits under del_100 changed each of the 5 times it was read; nothing was revoked",
+    );
+    expect(await statusOfDel100()).toBe("active");
+    expect(
+      (await proposalsOf("org_456")).filter((p) => p.state === "PENDING_APPROVAL"),
+    ).toHaveLength(6);
+    expect(
+      (await theLog("org_456")).some(
+        (r) =>
+          r.kind === "proposal_transition" &&
+          r.result === "CANCELLED" &&
+          r.correlation.request_id === answer.envelope.correlation.request_id,
+      ),
+    ).toBe(false);
   });
 
   it("DSOR-DEL-04c: a proposal already finished, or prepared and READY, is left as it is", async () => {
@@ -418,7 +589,7 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
       target: "dsor://org_456/delegation/del_200",
       reason: "not mine",
     });
-    const last = (await theLog("org_456")).at(-1);
+    const last = await lastDecision();
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
     expect(last?.authorization).toBe("DENY");
@@ -435,14 +606,14 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
     await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "once" });
     await callOperation(SUPERVISOR, "delegation.revoke", { target: DEL_100, reason: "twice" });
 
-    expect((await theLog("org_456")).at(-1)?.result).toBe("CONFLICT");
+    expect((await lastDecision())?.result).toBe("CONFLICT");
 
     await callOperation(SUPERVISOR, "delegation.revoke", {
       target: "dsor://org_456/delegation/del_999",
       reason: "no such slip",
     });
 
-    expect((await theLog("org_456")).at(-1)?.result).toBe("AUTHORIZATION_DENIED");
+    expect((await lastDecision())?.result).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-DEL-04a: cfo_100 revokes del_200, which she signed", async () => {
@@ -456,7 +627,7 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
     });
 
     expect(answer.kind === "result" && answer.envelope.data?.["status"]).toBe("revoked");
-    expect((await theLog("org_456")).at(-1)?.authorization).toBe("ALLOW");
+    expect((await lastDecision())?.authorization).toBe("ALLOW");
 
     const { rows } = await theDatabase("org_456").query<{ status: string; revoked_by: string }>(
       "SELECT status, revoked_by FROM dsor.delegations WHERE tenant = 'org_456' AND id = 'del_200'",
@@ -521,7 +692,7 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
     );
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
-    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
+    expect((await lastDecision())?.authorization).toBe("DENY");
     expect(await statusOf("del_200")).toBe("active");
   });
 
@@ -566,8 +737,12 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
               const done = await stage.run(context);
 
               // user_123's other revocation lands here, after this one's decision and before its
-              // handler, as two sent at once can.
-              await revokeSlip("org_456", "del_100", "user_123", "the first of two");
+              // handler, as two sent at once can. NEW IN STEP 25, decision 157: in a request of its
+              // own, as the records of what it cancels say.
+              await revokeSlip("org_456", "del_100", "user_123", "the first of two", {
+                subject: "user_123",
+                requestId: "req_the_first_of_two",
+              });
 
               return done;
             },

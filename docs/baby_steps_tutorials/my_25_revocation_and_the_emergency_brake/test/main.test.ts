@@ -170,13 +170,16 @@ describe("the program a learner runs", () => {
       // STEP 14: the gaps — 1, 5, 26, 28, 30 since decision 152 — are the records of reads, which
       // this filter does not count: the supervisor's and the CFO's reads of one invoice, and the three
       // pages, each written down after the decision that allowed it. The agent's reads leave none.
+      // STEP 22, decision 157: and the records of moves, which are not decisions either. The reads
+      // are 1, 5, 30, 32 and 34 now.
       expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
-        0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27,
-        29, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,
-        53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 0, 1,
+        0, 2, 3, 4, 6, 7, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31,
+        33, 36, 41, 46, 51, 53, 54, 55, 57, 61, 63, 68, 73, 78, 82, 84, 87, 92, 97, 102, 107, 112,
+        117, 122, 125, 128, 131, 134, 138, 139, 141, 146, 151, 155, 157, 0, 1,
       ]);
 
-      expect(out).toContain("org_456: 65 records, chain verifies against the head: true"); // Decision 152: 60 decisions, 5 reads
+      // Decision 152: 60 decisions, 5 reads. STEP 22, decision 157: and 96 records of moves.
+      expect(out).toContain("org_456: 161 records, chain verifies against the head: true");
       expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
       expect(out).toContain("2 refusals counted without a record");
 
@@ -190,12 +193,13 @@ describe("the program a learner runs", () => {
     }));
 
   it("DSOR-AUD-01: an unknown operation is recorded with no operation field", () => {
-    // The whole line for record 10 (STEP 14: two reads sit before it now; decision 152: and the
-    // agent's read of INV-1009), because the fallback label is now also printed for §21.2
+    // The whole line for record 14 (STEP 14: two reads sit before it now; decision 152: and the
+    // agent's read of INV-1009; STEP 22, decision 157: and the records of the four moves of the
+    // agent's issue), because the fallback label is now also printed for §21.2
     // refusals. Built with the printer's own widths rather than typed, so the test pins the
     // content — DENY, no operation, UNSUPPORTED_CAPABILITY — and not a guess at the spacing.
     const line = [
-      "10",
+      "14",
       "DENY ",
       "(none resolved)".padEnd(19),
       "user_123".padEnd(21),
@@ -229,16 +233,19 @@ describe("the program a learner runs", () => {
 
       const first = demo().report;
 
-      expect(records(first, "org_456")).toBe(65); // Decision 152: 60 decisions and 5 reads
+      // Decision 152: 60 decisions and 5 reads. STEP 22, decision 157: and 96 records of moves.
+      expect(records(first, "org_456")).toBe(161);
       expect(records(first, "org_789")).toBe(2);
-      expect(first).toContain("org_456: 65 records, chain verifies against the head: true");
+      expect(first).toContain("org_456: 161 records, chain verifies against the head: true");
 
       // A second process. Nothing is shared with the first but the directory on disk.
       const second = demo().report;
 
-      expect(records(second, "org_456")).toBe(128); // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it never happen
+      // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it
+      // never happen. STEP 22, decision 157: 137 more records, moves included.
+      expect(records(second, "org_456")).toBe(298);
       expect(records(second, "org_789")).toBe(4);
-      expect(second).toContain("org_456: 128 records, chain verifies against the head: true");
+      expect(second).toContain("org_456: 298 records, chain verifies against the head: true");
       expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
       // Run one's records are still there, unchanged, among run two's.
@@ -284,8 +291,9 @@ describe("the program a learner runs", () => {
       // And genuinely different underneath — ten hashes each, none of them shared.
       const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
-      expect(hashesOf(first.raw)).toHaveLength(67); // Decision 152: 65 and 2, reads included
-      expect(hashesOf(second.raw)).toHaveLength(67);
+      // Decision 152: 65 and 2, reads included. STEP 22, decision 157: 161 and 2, moves included.
+      expect(hashesOf(first.raw)).toHaveLength(163);
+      expect(hashesOf(second.raw)).toHaveLength(163);
       expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
     }));
 
@@ -450,7 +458,8 @@ describe("the program a learner runs", () => {
     expect(theAgents.length).toBeGreaterThanOrEqual(5);
     expect(theAgents.every((line) => /\s{2}user_123\s/.test(line))).toBe(true);
     // Decision 152: the agent reads INV-1009 through the door, as itself, and then issues it on the
-    // version that read gave, under the slip: two records, side by side.
+    // version that read gave, under the slip: two records, side by side. STEP 22, decision 157:
+    // with the record of the issue's proposal being made between them, under the slip too.
     expect(lines).toContain(
       [
         " 7",
@@ -463,7 +472,7 @@ describe("the program a learner runs", () => {
     );
     expect(lines).toContain(
       [
-        " 8",
+        " 9",
         "ALLOW",
         "invoice.issue@1".padEnd(19),
         "user_123".padEnd(21),

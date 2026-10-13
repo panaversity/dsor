@@ -7,7 +7,7 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { theLog } from "../src/audit.ts";
+import { theLog, type AuditRecord } from "../src/audit.ts";
 import { liftTheBrake, pullTheBrake, whatStops } from "../src/controls.ts";
 import { paymentsOf } from "../src/payment.ts";
 import { mayReleaseABrake, PIPELINE } from "../src/operations.ts";
@@ -22,10 +22,17 @@ import {
 } from "../src/proposal.ts";
 import { overPGlite, refuseIfItCanRewriteHistory } from "../src/database.ts";
 import { theDatabase, useDatabase } from "../src/store.ts";
-import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, BY_A_TEST, resetTheStory } from "./support/database.ts";
 import { callOperation, makeDoor } from "./support/door.ts";
 
 const AGENT = "accounts-payable-fte";
+
+/**
+ * NEW IN STEP 25, decision 157: the last decision in org_456's log. A command that gets past §21.8
+ * leaves the records of its proposal's moves after its decision, so the log's last record is not it.
+ */
+const lastDecision = async (): Promise<AuditRecord | undefined> =>
+  (await theLog("org_456")).filter((r) => r.kind === "decision").at(-1);
 
 let db: PGlite;
 
@@ -156,7 +163,7 @@ describe("§21.4: a stopped agent changes nothing", () => {
     expect(answer.kind === "error" && answer.envelope.code).toBe("AGENT_SUSPENDED");
     expect(answer.kind === "error" && answer.envelope.retry).toBe("never");
     expect(await paymentsOf("org_456")).toStrictEqual(before);
-    expect((await theLog("org_456")).at(-1)?.result).toBe("AGENT_SUSPENDED");
+    expect((await lastDecision())?.result).toBe("AGENT_SUSPENDED");
     // Before §21.8: there was nothing to propose.
     expect(await proposalsOf("org_456")).toStrictEqual([]);
   });
@@ -215,7 +222,7 @@ describe("§21.4: a stopped agent changes nothing", () => {
     expect(answer.kind === "error" && answer.envelope.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
     expect(await paymentsOf("org_456")).toStrictEqual(before);
     expect(await proposalsOf("org_456")).toStrictEqual([]);
-    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
+    expect((await lastDecision())?.authorization).toBe("DENY");
   });
 
   it("DSOR-OPS-01a: the refusal says who pulled the brake, and never why", async () => {
@@ -280,6 +287,44 @@ describe("a brake pulled after §21.4 still stops the handler", () => {
       );
     });
   }
+
+  it("DSOR-OPS-01c: a brake pulled after the decision stops the moves to READY and EXECUTING, and no record says they happened", async () => {
+    // NEW IN STEP 25, decision 157: a move and its record are one statement, and the brake stops
+    // the moves inside it, with no error. The records are written only if the moves were, or the
+    // log would say the proposal went READY and EXECUTING when it never did.
+    const list = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              await pullTheBrake("org_456", AGENT, "user_123", "pulled mid-flight");
+
+              return done;
+            },
+          })
+        : stage,
+    );
+    const answer = await makeDoor(list)(AGENT_LOGIN, "payment.create", PAY);
+
+    if (answer.kind !== "error") {
+      throw new Error(`expected AGENT_SUSPENDED, got ${JSON.stringify(answer)}`);
+    }
+
+    expect(answer.envelope.code).toBe("AGENT_SUSPENDED");
+    // This request's records: its proposal made, its decision, and its proposal DENIED. None says
+    // READY or EXECUTING.
+    expect(
+      (await theLog("org_456"))
+        .filter((r) => r.correlation.request_id === answer.envelope.correlation.request_id)
+        .map((r) => `${r.kind} ${r.result}`),
+    ).toStrictEqual([
+      "proposal_transition PROPOSED",
+      "decision ALLOWED",
+      "proposal_transition DENIED",
+    ]);
+  });
 
   it("DSOR-OPS-01c: a person's command is not stopped by a brake on the agent", async () => {
     await pullTheBrake("org_456", undefined, "cfo_100", "month-end close");
@@ -373,7 +418,7 @@ describe("control.suspend: people pull the brake and release it", () => {
 
     expect(answer.kind === "error" && answer.envelope.code).toBe("AUTHORIZATION_DENIED");
     expect(answer.kind === "error" && answer.envelope.message).toMatch(/only a person/);
-    expect((await theLog("org_456")).at(-1)?.authorization).toBe("DENY");
+    expect((await lastDecision())?.authorization).toBe("DENY");
     expect(await whatStops("org_456", AGENT)).toBeDefined();
   });
 
@@ -500,20 +545,30 @@ describe("two brakes at once", () => {
 describe("no way into EXECUTING forgets the brake", () => {
   /** A proposal of the agent's, at READY. */
   async function aReadyProposal(): Promise<string> {
-    const id = await propose({
-      tenant: "org_456",
-      operation: "payment.create@1",
-      mode: "execute",
-      payload: "{}",
-      payloadHash: "sha256:0",
-      requester:
-        '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
-      idempotencyKey: `ready-${Math.random()}`,
-      actor: AGENT,
-      cause: "payment.create@1 invoked",
-    });
+    const id = await propose(
+      {
+        tenant: "org_456",
+        operation: "payment.create@1",
+        mode: "execute",
+        payload: "{}",
+        payloadHash: "sha256:0",
+        requester:
+          '{"mode":"unattended","subject":"user_123","actor_chain":["accounts-payable-fte"]}',
+        idempotencyKey: `ready-${Math.random()}`,
+        actor: AGENT,
+        cause: "payment.create@1 invoked",
+      },
+      BY_A_TEST,
+    );
 
-    await moveProposalThrough("org_456", id, [["PROPOSED", "READY", "allowed"]], "dsor", null);
+    await moveProposalThrough(
+      "org_456",
+      id,
+      [["PROPOSED", "READY", "allowed"]],
+      "dsor",
+      null,
+      BY_A_TEST,
+    );
 
     return id;
   }
@@ -522,7 +577,15 @@ describe("no way into EXECUTING forgets the brake", () => {
     const id = await aReadyProposal();
 
     expect(
-      await moveProposal("org_456", id, "READY", "EXECUTING", "dsor", "around the brake"),
+      await moveProposal(
+        "org_456",
+        id,
+        "READY",
+        "EXECUTING",
+        "dsor",
+        "around the brake",
+        BY_A_TEST,
+      ),
     ).toStrictEqual({
       kind: "refused",
     });
@@ -542,6 +605,7 @@ describe("no way into EXECUTING forgets the brake", () => {
         [["READY", "EXECUTING", "handed over"]],
         "dsor",
         AGENT,
+        BY_A_TEST,
       ),
     ).toStrictEqual({ kind: "stopped" });
     expect(
@@ -551,6 +615,7 @@ describe("no way into EXECUTING forgets the brake", () => {
         [["READY", "EXECUTING", "handed over"]],
         "dsor",
         null,
+        BY_A_TEST,
       ),
     ).toStrictEqual({ kind: "moved" });
   });

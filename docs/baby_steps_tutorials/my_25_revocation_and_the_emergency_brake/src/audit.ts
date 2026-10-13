@@ -83,7 +83,10 @@ const FIELDS: readonly string[] = Object.freeze(
  */
 export const AUDIT_SCHEMA_FIELDS: number = FIELDS.length;
 
-/** What kind of thing the record is about. The schema's own list; this step writes `decision`. */
+/**
+ * What kind of thing the record is about. The schema's own list. This step writes `decision`,
+ * `classified_read` (step 14), and STEP 22, decision 157, `proposal_transition`.
+ */
 export type AuditKind =
   | "decision"
   | "proposal_transition"
@@ -1007,6 +1010,22 @@ function theRecordsAlone(records: readonly AuditRecord[]): StatementToSend {
 }
 
 /**
+ * STEP 22, decision 157: the INSERT of one record, as a part of a larger statement, whose
+ * values are added to `params`. A proposal's move and its record are written by one statement
+ * (proposal.ts), and this is the record's part of it. One INSERT per record, and not one VALUES list
+ * for all of them, so that a step that writes a record only on a condition can say so for each.
+ *
+ * NEW IN STEP 25, decision 157: and this step does: a record is written only if `condition` holds,
+ * `INSERT ... SELECT $1, ... WHERE condition`. A brake can stop a proposal's moves inside their
+ * statement, and a revocation can find the slip ended; a record written all the same would say a move
+ * happened that did not. Each value still takes its column's type: a SELECT over a VALUES list would
+ * hand them over as text, and the log's sequence, time and JSON columns refuse text, measured.
+ */
+export function recordInsertIf(condition: string, written: AuditRecord, params: unknown[]): string {
+  return `INSERT INTO dsor.audit (${COLUMNS}) SELECT ${valuesOf(written, params)} WHERE ${condition}`;
+}
+
+/**
  * STEP 22, decision 157: after a write failed, is its record there? Asked by `record_id`, and
  * checked by `record_hash`. Step 09's look-up, which `audit` ran in its own body.
  *
@@ -1166,6 +1185,9 @@ export function countedWithoutARecord(): number {
  *
  * It also erases the aggregated count, which is the only evidence an unauthenticated flood ever
  * happened. And it bumps `run`, so the record ids it frees are never handed out twice.
+ *
+ * STEP 22, decision 157: a record a proposal's move names cannot be deleted, so the owner
+ * deletes the company's moves first (test/support/database.ts does), and only then calls this.
  */
 export async function forgetTheLog(tenant: string): Promise<void> {
   // DELETE, which the application's own account is not allowed to run — so this only works for a
