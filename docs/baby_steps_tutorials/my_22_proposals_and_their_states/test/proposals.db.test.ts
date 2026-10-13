@@ -14,6 +14,7 @@
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { theLog, type AuditRecord } from "../src/audit.ts";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { moveProposal, movesOf, propose, stateOf } from "../src/proposal.ts";
@@ -89,6 +90,9 @@ describe.skipIf(!haveAServer)("one proposal, twenty requests at once, on a real 
     expect(outcomes.filter((o) => o.kind === "moved")).toHaveLength(1);
     expect(outcomes.filter((o) => o.kind === "refused")).toHaveLength(19);
     expect((await movesOf("org_456", id)).filter((m) => m.to === "EXECUTING")).toHaveLength(1);
+    // NEW IN STEP 22, decision 157: and one record of it in the log. The nineteen refused were
+    // written nowhere, the log included, whatever places they lost on the way.
+    expect((await recordsOfMovesOf(id)).filter((r) => r.result === "EXECUTING")).toHaveLength(1);
   });
 
   it("DSOR-APR-01c: twenty moves out of a COMMITTED proposal at once: none is written", async () => {
@@ -107,5 +111,22 @@ describe.skipIf(!haveAServer)("one proposal, twenty requests at once, on a real 
 
     expect(outcomes.every((o) => o.kind === "refused")).toBe(true);
     expect(await stateOf("org_456", id)).toBe("COMMITTED");
+    // NEW IN STEP 22, decision 157: and the log says no more than that: the records of its moves
+    // to READY, EXECUTING and COMMITTED, and none of the twenty refused.
+    expect((await recordsOfMovesOf(id)).map((r) => r.result)).toStrictEqual([
+      "READY",
+      "EXECUTING",
+      "COMMITTED",
+    ]);
   });
 });
+
+/**
+ * NEW IN STEP 22, decision 157: the records of a proposal's moves that name it: every one but the
+ * record of its creation, which cannot.
+ */
+async function recordsOfMovesOf(id: string): Promise<readonly AuditRecord[]> {
+  return (await theLog("org_456")).filter(
+    (r) => r.kind === "proposal_transition" && r.resources?.[0] === `dsor://org_456/proposal/${id}`,
+  );
+}
