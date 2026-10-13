@@ -556,6 +556,66 @@ describe("what was waiting under the slip", () => {
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
 
+  it("DSOR-DEL-04a: a revocation whose reply is lost after it committed is found by its records: its signer is told the slip is revoked, and what it cancelled gives its amount back to the day", async () => {
+    // NEW IN STEP 25, decision 157, found by a review: the statement that revokes commits, and its
+    // reply is lost. The records of its cancels are looked for and found, so it happened, and
+    // `revokeSlip` says so where `rows` is undefined. With that test deleted every test stayed
+    // green, and the revocation answered AUTHORIZATION_DENIED, its own proposal was recorded
+    // FAILED, and 40,000.00 USD stayed held against the day.
+    const waiting = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
+    const approved = await underDel100(["PROPOSED", "PENDING_APPROVAL", "APPROVED"]);
+
+    await reserve(
+      "org_456",
+      approved,
+      "del_100",
+      money("40000.00", "USD"),
+      money("200000.00", "USD"),
+    );
+
+    const connection = overPGlite(db);
+    let lost = 0;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        // The statement that revokes runs, and its reply never arrives.
+        if (lost === 0 && sql.includes("WITH waiting AS")) {
+          lost += 1;
+          await connection.query(sql, params, tenant);
+
+          throw Object.assign(new Error("the reply was lost"), { code: "ECONNRESET" });
+        }
+
+        return connection.query<T>(sql, params, tenant);
+      },
+    });
+
+    let answer;
+
+    try {
+      answer = await callOperation(SUPERVISOR, "delegation.revoke", {
+        target: DEL_100,
+        reason: "stop",
+      });
+    } finally {
+      useDatabase(connection);
+    }
+
+    expect(lost).toBe(1);
+    expect(answer.kind === "result" && answer.envelope.data).toMatchObject({
+      status: "revoked",
+      cancelled: 2,
+    });
+    expect(await statusOfDel100()).toBe("revoked");
+    expect(await stateOf("org_456", waiting)).toBe("CANCELLED");
+    expect(await stateOf("org_456", approved)).toBe("CANCELLED");
+    expect(await usedToday("org_456", "del_100")).toBe("0.00");
+    // And the revocation's own proposal is COMMITTED: the log says it was done, because it was.
+    expect(
+      (await proposalsOf("org_456")).find((p) => p.operation === "delegation.revoke@1")?.state,
+    ).toBe("COMMITTED");
+  });
+
   it("DSOR-DEL-04c: proposals under another slip, or asked for directly, are left as they are", async () => {
     // Decision 156: one line of the statement keeps the cancelling to the revoked slip, and no test
     // held it. Without it, user_123 revoking del_100 cancelled a payment approved under del_200,
