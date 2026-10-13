@@ -48,7 +48,8 @@ describe("reading the contracts folder", () => {
   // README, decision D7).
   // Changed in step 28b: fifteen, with the sweep of where each rule came from (step 28b's
   // README, decision D4).
-  it("the shipped folder holds the fifteen contracts", () => {
+  // Changed in step 29: sixteen, with proposal.approve (step 29's README, decision D1).
+  it("the shipped folder holds the sixteen contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "control.lift.json",
       "control.suspend.json",
@@ -58,6 +59,7 @@ describe("reading the contracts folder", () => {
       "invoice.list.json",
       "payment.cancel.json",
       "payment.create.json",
+      "proposal.approve.json",
       "proposal.expire_due.json",
       "rate.load.json",
       "rule.activate.json",

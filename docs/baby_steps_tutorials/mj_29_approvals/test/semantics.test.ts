@@ -112,6 +112,9 @@ describe("C1: every command declares its semantics in its contract", () => {
       ["invoice.issue", "atomic"],
       ["payment.cancel", "atomic"],
       ["payment.create", "compensatable"],
+      // NEW IN STEP 29: and proposal.approve, atomic: the approval and its move in one
+      // transaction (step 29's README, decision D9).
+      ["proposal.approve", "atomic"],
       ["proposal.expire_due", "atomic"],
       // And rate.load, atomic too: a sheet is written whole, or not at all (step
       // 26's README, decision D6).

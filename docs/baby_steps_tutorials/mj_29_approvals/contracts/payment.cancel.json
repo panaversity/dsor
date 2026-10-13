@@ -5,7 +5,7 @@
   "effect": "mutating",
   "input": { "schema": "PaymentCancelRequest" },
   "output": { "schema": "Payment" },
-  "authorization": { "permission": "payment:cancel" },
+  "authorization": { "permission": "payment:cancel", "approve_permission": "payment:approve" },
   "tenancy": { "required": true },
   "delegation": { "required": true },
   "idempotency": { "required": true },

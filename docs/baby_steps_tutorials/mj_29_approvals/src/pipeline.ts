@@ -43,7 +43,7 @@ import {
 import { decisionOf, type Authority, type DecisionLog, type Read } from "./log.ts";
 import { NO_PAYMENTS } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
-import { checkPermission } from "./permissions.ts";
+import { checkPermission, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import {
@@ -54,6 +54,7 @@ import {
   requesterOf,
   urisIn,
   type Opening,
+  type ProposalStore,
 } from "./proposals.ts";
 import { preview, type Registry } from "./registry.ts";
 import {
@@ -385,6 +386,9 @@ export async function call(
       //   review, finding M5. Read through the pool, four calls at once on a pool of two each held
       //   a connection and waited for another, for ever.
       controls: ControlStore,
+      // NEW IN STEP 29: and the proposals, which an approval's look reads: the claim's own, or,
+      //   in a dry run, the claim store's, outside any claim.
+      proposals: ProposalStore,
       reserveFor?: string,
       // It answers the approvals a control asks for, when one does.
     ): Promise<Requirement[] | undefined> => {
@@ -405,6 +409,12 @@ export async function call(
               registry.checkRule,
               // And the call's own company's KSoR (step 28b's README, D12).
               policyLook(registry.ksors, tenant),
+              // NEW IN STEP 29: and what an approval looks at (step 29's README, decisions D2,
+              //   D5, and D10).
+              requesterOf(caller, under, tenant, new Date().toISOString()).identity_mode,
+              proposals,
+              registry.contracts,
+              permissionsOf(caller, registry.roles, tenant),
             ),
           );
         return bound;
@@ -498,6 +508,8 @@ export async function call(
           registry.claims.rates,
           // And the world's rules, outside any claim.
           registry.controls,
+          // NEW IN STEP 29: and the proposals, outside any claim.
+          registry.claims.proposals,
         );
       } catch (thrown) {
         // Masked as the real call's refusal is, as it leaves the claim (step 23's README, decision
@@ -548,7 +560,9 @@ export async function call(
             const now = new Date().toISOString();
             // And DSoR's question to the company's own KSoR, for the sweep.
             const ksor = policyLook(registry.ksors, tenant);
-            const work = { tenant, caller, stores, correlation, now, ksor };
+            // NEW IN STEP 29: and every contract, for an approval (step 29's README, decision D7).
+            const contracts = registry.contracts;
+            const work = { tenant, caller, stores, correlation, now, ksor, contracts };
             returned = await own.change(copy, work);
           } else if (handler !== undefined) {
             returned = await handler(copy, companyOf(stores.invoices, tenant, reads, payments));
@@ -644,7 +658,8 @@ export async function call(
                     //   DENIED. A pull waits for a draft that is past this point. So no proposal of
                     //   a braked agent enters EXECUTING after the brake takes effect (DSOR-OPS-01c;
                     //   step 25b's README, decisions L8, D4, and D8).
-                    const { invoices, reservations, slips, brakes, rates, controls } = stores;
+                    const { invoices, reservations, slips, brakes, rates, controls, proposals } =
+                      stores;
                     await holdBrake(caller, contract, brakes, tenant);
                     // And line ③ again, under the slip's lock. A draft that passed
                     //   line ③ a moment before a tear-up waits for it, then is refused, and its
@@ -659,6 +674,7 @@ export async function call(
                       brakes,
                       rates,
                       controls,
+                      proposals,
                       reserveFor,
                     );
                     // A control's approval stops the proposal at PENDING_APPROVAL.
@@ -888,8 +904,9 @@ export async function call(
 
   // ⑫ Stop here when an approval is missing, or the mode is propose_only or
   //   validate_only. A call that needs an approval stopped above, after line ⑩, at
-  //   PENDING_APPROVAL, before any work (step 27's README, decision D10). Giving an approval: not
-  //   built yet, step 29.
+  //   PENDING_APPROVAL, before any work (step 27's README, decision D10). Changed in step 29: an
+  //   approval is a call of its own, proposal.approve, which moves the waiting proposal to
+  //   APPROVED. Executing it is step 31's.
   // A propose_only call and a dry run stopped earlier, inside decide, because the
   //   code at line ⑨ does the work that §21 puts after this line. Both come here only after line
   //   ⑪'s record (step 23's README, decision 8).

@@ -8,6 +8,7 @@
 // under the slip that waits for an approval moves to CANCELLED, and its reservation is released,
 // in the same transaction (DSOR-DEL-04a, DSOR-DEL-04c, and DSOR-DEL-06d in
 // specs/dsor/02-security.md, section 13).
+import { approveWorkFor } from "./approve.ts";
 import { brakeWorkFor, type BrakeStore } from "./brakes.ts";
 import { driftWorkFor, type PolicyLook } from "./drift.ts";
 import { expiryWorkFor } from "./expiry.ts";
@@ -16,6 +17,7 @@ import { Refusal, type Correlation } from "./envelope.ts";
 import type { Mover } from "./log.ts";
 import type { MoneyPolicies, MoneyPolicy } from "./policies.ts";
 import type { Principal } from "./principals.ts";
+import type { ProposalStore, Requester } from "./proposals.ts";
 import { ruleWorkFor } from "./lifecycle.ts";
 import { rateWorkFor, type RateStore } from "./rates.ts";
 import { preview, type Contract } from "./registry.ts";
@@ -45,6 +47,13 @@ export type OwnLook = {
   // And DSoR's question to the company's KSoR, which a switch-on asks (step
   // 28b's README, decision D12).
   ksor: PolicyLook;
+  // NEW IN STEP 29: and what an approval looks at: the call's identity mode, the company's
+  // proposals and their approvals, read only, every contract, and the caller's permissions in this
+  // company (step 29's README, decisions D2, D5, and D10).
+  identity: Requester["identity_mode"];
+  proposals: Pick<ProposalStore, "get" | "approvals">;
+  contracts: ReadonlyMap<string, Contract>;
+  permissions: ReadonlySet<string>;
 };
 
 /** What DSoR's own change gets after line ⑩: the company, the caller, DSoR's stores, and the call. */
@@ -58,6 +67,9 @@ export type OwnStores = {
   // And DSoR's question to the company's KSoR, for the sweep (step 28b's README,
   // decision D2).
   ksor: PolicyLook;
+  // NEW IN STEP 29: and every contract, which an approval reads its target's risk and binds from
+  // (step 29's README, decision D7).
+  contracts: ReadonlyMap<string, Contract>;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */
@@ -76,6 +88,7 @@ export function ownWorkFor(): Record<string, OwnWork> {
   // And the commands of a rule's life (step 28's README, decision D7).
   // And the sweep that checks where each rule came from (step 28b's README,
   // decision D4).
+  // NEW IN STEP 29: and proposal.approve (step 29's README, decision D1).
   return {
     "delegation.revoke": { check: mayTearUp, change: tearUp },
     ...brakeWorkFor(),
@@ -83,6 +96,7 @@ export function ownWorkFor(): Record<string, OwnWork> {
     ...rateWorkFor(),
     ...ruleWorkFor(),
     ...driftWorkFor(),
+    ...approveWorkFor(),
   };
 }
 
@@ -102,6 +116,12 @@ export function lookFor(
   checkRule: RuleCheck,
   // And DSoR's question to the call's own company's KSoR.
   ksor: PolicyLook,
+  // NEW IN STEP 29: and the call's identity mode, the proposals, read only too, every contract, and
+  // what the caller may do in this company.
+  identity: Requester["identity_mode"],
+  proposals: ProposalStore,
+  contracts: ReadonlyMap<string, Contract>,
+  permissions: ReadonlySet<string>,
 ): OwnLook {
   // The roles of this company only: a tenant administrator of org_789 is no tenant
   // administrator in org_456.
@@ -117,6 +137,13 @@ export function lookFor(
     controls: { versions: (company, id) => controls.versions(company, id) },
     checkRule,
     ksor,
+    identity,
+    proposals: {
+      get: (company, id) => proposals.get(company, id),
+      approvals: (company, id) => proposals.approvals(company, id),
+    },
+    contracts,
+    permissions,
   };
 }
 
@@ -215,8 +242,9 @@ async function tearUp(input: unknown, work: OwnStores): Promise<unknown> {
   let cancelled = 0;
   for (const waiting of await stores.proposals.waiting(tenant, id)) {
     // A move that finds the proposal moved on already changes nothing, so its reservation stays
-    // and it is not counted. Approvals arrive in step 29, which must keep a tear-up and an
-    // approval of one proposal apart.
+    // and it is not counted. Changed in step 29: an approval takes the company's ending lock too,
+    // as this list does, so a proposal approved a moment before is listed APPROVED, and cancelled
+    // (step 29's README, decision D9).
     if (await stores.proposals.move(tenant, waiting.id, waiting.state, "CANCELLED", by)) {
       await stores.reservations.release(tenant, waiting.id);
       cancelled += 1;

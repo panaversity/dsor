@@ -88,6 +88,9 @@ export type ClaimStore = {
   // And the sheets of rates, for a dry run's line ⑩, which converts as a real call
   // does, outside any claim (step 26's README, claim C3).
   rates: RateStore;
+  // NEW IN STEP 29: and the proposals, for a dry run's line ⑨, which an approval's look reads
+  // outside any claim (step 29's README, decision D5).
+  proposals: ProposalStore;
   /**
    * Claims the key and runs the work, or gives back the outcome recorded for the same request,
    * or refuses a different request with IDEMPOTENCY_CONFLICT.
@@ -326,7 +329,7 @@ export function memoryClaims(
     if (held.mode !== mode) throw usedInAnotherMode(scope.operation, held.mode);
     return { ...fresh(ended), replay_of: held.requestId };
   };
-  return Object.freeze({ run, reservations, rates });
+  return Object.freeze({ run, reservations, rates, proposals });
 }
 
 // The outcome, with a copy of its value, so no caller can change what the claim keeps.

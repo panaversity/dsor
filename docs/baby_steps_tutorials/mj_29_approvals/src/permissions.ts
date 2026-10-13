@@ -233,6 +233,15 @@ export function peopleOnly(contract: Contract): boolean {
   return ours?.people_only === true;
 }
 
+// NEW IN STEP 29: the permission that decides who approves an operation: its contract's
+// approve_permission, the specification's own field (DSOR-APR-07; step 29's README, decision D2).
+/** The permission an operation's approver needs, or undefined when its contract names none. */
+export function approvePermissionOf(contract: Contract | undefined): string | undefined {
+  const authorization = contract?.["authorization"] as { approve_permission?: unknown } | undefined;
+  const named = authorization?.approve_permission;
+  return typeof named === "string" ? named : undefined;
+}
+
 // The same, for DSoR's own scheduled work (step 25c's README, decision D14).
 /** True when the contract says that only a login of the subject type system may call it. */
 export function systemOnly(contract: Contract): boolean {

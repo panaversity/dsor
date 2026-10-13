@@ -54,8 +54,9 @@ describe("the program", () => {
       // And rate.load (step 26's README, decision L2).
       // And the four commands of a rule's life, last in name order (step 28's README, decision D7).
       // And the sweep of where each rule came from (step 28b's README, decision D4).
+      // And proposal.approve (step 29's README, decision D1).
       expect(output).toMatch(
-        /operations: \[\s+'control\.lift',\s+'control\.suspend',\s+'delegation\.revoke',\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'payment\.cancel',\s+'payment\.create',\s+'proposal\.expire_due',\s+'rate\.load',\s+'rule\.activate',\s+'rule\.check_authority',\s+'rule\.draft',\s+'rule\.retire',\s+'rule\.suspend'\s+\]/,
+        /operations: \[\s+'control\.lift',\s+'control\.suspend',\s+'delegation\.revoke',\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'payment\.cancel',\s+'payment\.create',\s+'proposal\.approve',\s+'proposal\.expire_due',\s+'rate\.load',\s+'rule\.activate',\s+'rule\.check_authority',\s+'rule\.draft',\s+'rule\.retire',\s+'rule\.suspend'\s+\]/,
       );
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.

@@ -961,6 +961,8 @@ export function createDbClaims(
     reservations: createDbReservations(pool),
     // And the sheets of rates, for a dry run's line ⑩ (step 26's README, claim C3).
     rates: createDbRates(pool),
+    // NEW IN STEP 29: and the proposals, for a dry run's line ⑨ (step 29's README, decision D5).
+    proposals: createDbProposals(pool),
     run: async (
       scope: ClaimScope,
       payloadHash: string,

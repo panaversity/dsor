@@ -5,7 +5,7 @@
   "effect": "additive",
   "input": { "schema": "PaymentCreateRequest" },
   "output": { "schema": "Payment" },
-  "authorization": { "permission": "payment:create" },
+  "authorization": { "permission": "payment:create", "approve_permission": "payment:approve" },
   "tenancy": { "required": true },
   "delegation": { "required": true },
   "idempotency": { "required": true },

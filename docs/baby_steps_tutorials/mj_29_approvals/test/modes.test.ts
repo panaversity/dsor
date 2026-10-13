@@ -774,7 +774,9 @@ describe("from the review: every command, in each mode", () => {
       // decision D19).
       // And step 28b's 6: the sweep rule.check_authority, dsor-scheduler in each company (step
       // 28b's README, decision D4).
-      expect(report.attacks).toHaveLength(144);
+      // And step 29's 9: proposal.approve, 2 callers in org_456 and 1 in org_789 (step 29's
+      // README, decision D2).
+      expect(report.attacks).toHaveLength(153);
     },
   );
 

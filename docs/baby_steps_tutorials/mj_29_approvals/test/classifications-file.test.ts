@@ -86,6 +86,25 @@ const LABELS = {
     unanswered: "internal",
     marked: "internal",
   },
+  // NEW IN STEP 29: an approval's answer, what it still waits for, and each approval asked for
+  // (step 29's README, decision D14).
+  Approval: {
+    tenant_id: "internal",
+    id: "internal",
+    proposal: "internal",
+    state: "internal",
+    waits_for: "Requirement[]",
+    expires_at: "internal",
+  },
+  Requirement: {
+    approval: "internal ApprovalAsked",
+    control: "internal",
+    control_version: "internal",
+  },
+  ApprovalAsked: {
+    role: "internal",
+    quorum: "internal",
+  },
 };
 
 /** A classifications file, as start-up would read it from disk. */

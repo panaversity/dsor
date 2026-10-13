@@ -66,5 +66,22 @@
     "asked": "internal",
     "unanswered": "internal",
     "marked": "internal"
+  },
+  "Approval": {
+    "tenant_id": "internal",
+    "id": "internal",
+    "proposal": "internal",
+    "state": "internal",
+    "waits_for": "Requirement[]",
+    "expires_at": "internal"
+  },
+  "Requirement": {
+    "approval": "internal ApprovalAsked",
+    "control": "internal",
+    "control_version": "internal"
+  },
+  "ApprovalAsked": {
+    "role": "internal",
+    "quorum": "internal"
   }
 }

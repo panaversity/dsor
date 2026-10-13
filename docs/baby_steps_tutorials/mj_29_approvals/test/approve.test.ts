@@ -1,0 +1,341 @@
+// proposal.approve, the command (step 29's README, claims C2 and C3, decisions D1 to D14). A person
+// approves a waiting proposal on their own login, with its fingerprint. The agent drafts INV-1008,
+// 31,400.00 USD, which waits for the CFO, by version 8 of high-value-payment.
+import { readFileSync } from "node:fs";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import { describe, expect, it } from "vitest";
+import { payloadHash } from "../src/canonical.ts";
+import type { Control, ControlsSource } from "../src/controls.ts";
+import type { Answer } from "../src/envelope.ts";
+import type { RequestEnvelope } from "../src/request.ts";
+import {
+  ADMIN,
+  AGENT,
+  CFO,
+  contract,
+  DEL_101,
+  FIRM_IN_456,
+  FOREIGN_URI,
+  keyed,
+  shippedWith,
+  SUPERVISOR,
+} from "./helpers.ts";
+import { ruleWorldOnTuesday, shippedRule, type RuleWorld } from "./rule-world.ts";
+
+const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
+
+// A second rule of org_456: above 30,000 USD, one approval by a tenant administrator (decision D15).
+const ADMIN_ABOVE_30000: Control = {
+  ...shippedRule(),
+  id: "admin-above-30000",
+  version: 1,
+  condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
+  effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+};
+
+/** A controls file with these rules of org_456. */
+function controlsOf(...rules: Control[]): ControlsSource {
+  return { file: "controls.json", text: JSON.stringify({ org_456: rules, org_789: [] }) };
+}
+
+/** The id of the proposal an answer names. */
+function idOf(answer: Answer): string {
+  return String("proposal" in answer ? answer.proposal : "")
+    .split("/")
+    .at(-1)!;
+}
+
+/** The agent drafts this bill, and the test reads its proposal as an approval screen would. */
+async function drafted(w: RuleWorld, invoice: string) {
+  const answer = await w.draft(invoice);
+  const id = idOf(answer);
+  const kept = await w.proposals.get("org_456", id);
+  if (kept === undefined) throw new Error("no proposal");
+  return { answer, id, uri: kept.uri, payload_hash: kept.payload_hash };
+}
+
+/** One approval call, with a fresh key unless the envelope names one. */
+function approves(
+  w: RuleWorld,
+  who: RequestEnvelope,
+  proposal: string,
+  payload_hash: string,
+): Promise<Answer> {
+  const envelope = "idempotency_key" in who ? who : keyed(who);
+  return w.ask(envelope, "proposal.approve", { proposal, payload_hash });
+}
+
+/** The proposal's state, and its approvals, as DSoR keeps them. */
+async function stateOf(w: RuleWorld, id: string) {
+  const kept = await w.proposals.get("org_456", id);
+  return { state: kept?.state, approvals: (await w.proposals.approvals("org_456", id)).length };
+}
+
+describe("C2: only a person, in person, approves (step 29's README, decisions D2, D3, and D10)", () => {
+  it("DSOR-APR-05a: the agent cannot approve its own proposal: line ⑤ refuses it, for people only, and INV-1008 still waits", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, AGENT, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: '"proposal.approve" is for people only, and accounts-payable-fte is not a person',
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  it("DSOR-APR-05a: a system login, dsor-scheduler, cannot approve either", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, SCHEDULER, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: '"proposal.approve" is for people only, and dsor-scheduler is not a person',
+    });
+  });
+
+  // Line ⑤ refuses every caller that is not a person, by the contract's people_only, so line ⑨'s
+  // own check of the identity mode is reached only by a contract that lost that flag.
+  it("DSOR-APR-05a: line ⑨ checks the call's identity mode itself: with people_only gone from the contract, an agent under a slip that cfo_100 signed, listing proposal:approve, passes line ⑤ and is refused at line ⑨", async () => {
+    const { extensions: _gone, ...approve } = contract("proposal.approve");
+    const bySigner = { ...DEL_101, delegator: "cfo_100", permissions: ["proposal:approve"] };
+    const w = await ruleWorldOnTuesday(undefined, [bySigner], undefined, shippedWith(approve));
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, FIRM_IN_456, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"proposal.approve" is accepted only in direct identity mode, on the approver\'s own login',
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  // Every call of a command is a proposal, an approval's too, and proposal.approve names no
+  // approve_permission.
+  it("DSOR-APR-07: a proposal whose operation names no approve_permission is approved by no one: the proposal of cfo_100's own approval call", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    const call = await approves(w, CFO, uri, payload_hash);
+    const own = await w.proposals.get("org_456", idOf(call));
+    expect(own?.operation).toBe("proposal.approve@1");
+    expect(await approves(w, CFO, own!.uri, own!.payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "proposal.approve@1 names no approve_permission, so no one approves it",
+    });
+  });
+
+  it("Step 29: user_123, the supervisor, holds no proposal:approve, so line ⑤ refuses her", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, SUPERVISOR, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+    });
+  });
+
+  it("Step 29: admin_100 may approve payments, and INV-1008 waits for the CFO: AUTHORIZATION_DENIED, and it still waits", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, ADMIN, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: `admin_100 holds none of the roles proposal ${id} waits for: CFO`,
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  it("DSOR-APR-07: the permission that decides is payment.create's approve_permission: a CFO role without payment:approve cannot approve, though it holds proposal:approve", async () => {
+    const roles = JSON.parse(readFileSync(new URL("../roles.json", import.meta.url), "utf8")) as Record<
+      string,
+      string[]
+    >;
+    roles["CFO"] = roles["CFO"]!.filter((permission) => permission !== "payment:approve");
+    const w = await ruleWorldOnTuesday(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { file: "roles.json", text: JSON.stringify(roles) },
+    );
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "cfo_100 may not approve payment.create@1: it needs payment:approve",
+    });
+  });
+
+  it("Step 29: a proposal that is not there is RESOURCE_NOT_FOUND, and one of org_789's is refused at line ②, before any look", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { payload_hash } = await drafted(w, "INV-1008");
+    const none = "dsor://org_456/proposal/prop_00000000-0000-4000-8000-000000000000";
+    expect(await approves(w, CFO, none, payload_hash)).toMatchObject({
+      code: "RESOURCE_NOT_FOUND",
+    });
+    const theirs = "dsor://org_789/proposal/prop_00000000-0000-4000-8000-000000000000";
+    expect(await approves(w, CFO, theirs, payload_hash)).toMatchObject({
+      code: "TENANT_MISMATCH",
+      message: FOREIGN_URI,
+    });
+  });
+});
+
+describe("C3: only the request with that fingerprint, only a waiting proposal, only once by each person (step 29's README, decisions D5 and D9)", () => {
+  it("DSOR-APR-09: cfo_100 approves INV-1008's proposal with the fingerprint of another request, INV-1012's: APPROVAL_MISMATCH, and it still waits, with no approval", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri } = await drafted(w, "INV-1008");
+    const other = await drafted(w, "INV-1012");
+    expect(await approves(w, CFO, uri, other.payload_hash)).toMatchObject({
+      code: "APPROVAL_MISMATCH",
+      message: `the fingerprint is not the one of proposal ${id}'s request`,
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  it("DSOR-APR-09: the fingerprint is the stored request's: SHA-256 over its canonical JSON, which the approver can compute from the request itself", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    const request = { invoice: "dsor://org_456/invoice/INV-1008", expected_version: 1 };
+    expect(payloadHash(request)).toBe(payload_hash);
+    expect(await approves(w, CFO, uri, payloadHash(request))).toMatchObject({
+      outcome: "COMMITTED",
+    });
+  });
+
+  it("Step 29: cfo_100 approves INV-1008's proposal with its own fingerprint: it is APPROVED, and the answer names the approval, the state, nothing more to wait for, and the expiry", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const answer = await approves(w, CFO, uri, payload_hash);
+    const proposal = await w.proposals.get("org_456", id);
+    const [approval] = await w.proposals.approvals("org_456", id);
+    expect(answer).toMatchObject({
+      outcome: "COMMITTED",
+      data: {
+        tenant_id: "org_456",
+        id: approval?.id,
+        proposal: uri,
+        state: "APPROVED",
+        waits_for: [],
+        expires_at: proposal?.expires_at,
+      },
+    });
+    expect(approval?.id).toMatch(/^apr_[0-9a-f-]{36}$/);
+    expect(proposal?.state).toBe("APPROVED");
+  });
+
+  it("DSOR-APR-01b: the move to APPROVED is recorded with its actor, cfo_100, and its cause", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    await approves(w, CFO, uri, payload_hash);
+    expect((await w.proposals.get("org_456", id))?.transitions.at(-1)).toMatchObject({
+      from: "PENDING_APPROVAL",
+      to: "APPROVED",
+      actor: "cfo_100",
+      cause: "approved by cfo_100",
+    });
+  });
+
+  it("DSOR-APR-02a: the approval the call made passes approval.schema.json: INV-1008 at version 1, medium risk, version 8 of high-value-payment, cfo_100 on the basis role:CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    await approves(w, CFO, uri, payload_hash);
+    const [approval] = await w.proposals.approvals("org_456", id);
+    const ajv = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });
+    const schema = (file: string) =>
+      JSON.parse(readFileSync(new URL(`../schemas/${file}`, import.meta.url), "utf8")) as object;
+    ajv.addSchema(schema("common.schema.json"));
+    const validate = ajv.compile(schema("approval.schema.json"));
+    expect(validate(approval) ? [] : validate.errors).toStrictEqual([]);
+    expect(approval).toMatchObject({
+      operation: "payment.create@1",
+      resources: ["dsor://org_456/invoice/INV-1008"],
+      payload_hash,
+      risk: "medium",
+      bound_state: { mode: "predicate", versions: { "dsor://org_456/invoice/INV-1008": 1 } },
+      satisfies: [
+        { control: "high-value-payment", version: 8, requirement: { role: "CFO", quorum: 1 } },
+      ],
+      approvers: [{ principal: "cfo_100", basis: "role:CFO" }],
+      sod_mode: "standard",
+      status: "active",
+    });
+  });
+
+  it("Step 29: cfo_100 approves again, with a new key: CONFLICT, it is APPROVED; and the same key again answers as the first call did", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const first = keyed(CFO);
+    const answer = await approves(w, first, uri, payload_hash);
+    expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${id} is APPROVED, and only a PENDING_APPROVAL proposal is approved`,
+    });
+    expect(await approves(w, first, uri, payload_hash)).toMatchObject({
+      outcome: "COMMITTED",
+      data: (answer as { data: unknown }).data,
+    });
+    expect((await stateOf(w, id)).approvals).toBe(1);
+  });
+
+  it("Step 29: a proposal that never waited is not approved: INV-1012's payment, 22,750.00 USD, is COMMITTED, and its approval hears CONFLICT", async () => {
+    const w = await ruleWorldOnTuesday();
+    const other = await drafted(w, "INV-1012");
+    expect(other.answer).toMatchObject({ outcome: "COMMITTED" });
+    expect(await approves(w, CFO, other.uri, other.payload_hash)).toMatchObject({
+      code: "CONFLICT",
+    });
+  });
+
+  it("DSOR-AUT-02c: with admin-above-30000 on too, INV-1008 waits for both: after cfo_100 it still waits, for a tenant administrator; cfo_100 again hears CONFLICT; after admin_100 it is APPROVED", async () => {
+    const w = await ruleWorldOnTuesday(controlsOf(shippedRule(), ADMIN_ABOVE_30000));
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
+      outcome: "COMMITTED",
+      data: {
+        state: "PENDING_APPROVAL",
+        waits_for: [
+          {
+            approval: { role: "tenant_admin", quorum: 1 },
+            control: "admin-above-30000",
+            control_version: 1,
+          },
+        ],
+      },
+    });
+    expect(await approves(w, CFO, uri, payload_hash)).toMatchObject({
+      code: "CONFLICT",
+      message: `cfo_100 approved proposal ${id} already`,
+    });
+    expect(await approves(w, ADMIN, uri, payload_hash)).toMatchObject({
+      outcome: "COMMITTED",
+      data: { state: "APPROVED", waits_for: [] },
+    });
+    expect(await stateOf(w, id)).toStrictEqual({ state: "APPROVED", approvals: 2 });
+  });
+
+  it("Step 29: an approved proposal waits: nothing executes it, and no payment is drafted (step 31 builds proposal.execute)", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { uri, payload_hash } = await drafted(w, "INV-1008");
+    await approves(w, CFO, uri, payload_hash);
+    expect(w.drafted).toStrictEqual([]);
+  });
+
+  it("Step 29: a dry run of cfo_100's approval says ALLOW and approves nothing; with another fingerprint it hears what the real call hears", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri, payload_hash } = await drafted(w, "INV-1008");
+    const dry = { ...CFO, mode: "validate_only" as const };
+    expect(await w.ask(dry, "proposal.approve", { proposal: uri, payload_hash })).toMatchObject({
+      outcome: "VALIDATED",
+      decision: "ALLOW",
+    });
+    const other = `sha256:${"0".repeat(64)}`;
+    expect(await w.ask(dry, "proposal.approve", { proposal: uri, payload_hash: other })).toMatchObject(
+      { code: "APPROVAL_MISMATCH" },
+    );
+    expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
+  });
+
+  it("DSOR-APR-05b: an approval never travels through the agent: payment.create's input has no place for one, and line ⑥ refuses it", async () => {
+    const w = await ruleWorldOnTuesday();
+    const answer = await w.ask(keyed(AGENT), "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      expected_version: 1,
+      approved_by: "cfo_100",
+    });
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+});

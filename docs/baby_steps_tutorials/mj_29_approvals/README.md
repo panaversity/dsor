@@ -94,13 +94,17 @@ for the learner to review, and each one says what it costs. This folder is a cop
   other change, the owner's too. An approval satisfies only what the proposal waits for.
   *Downside:* a rule changed after the proposal was made does not change what it waits for. Step 31
   checks again at execution (DSOR-APR-03b).
-- **D5. Line ⑨'s order: which proposal, who, its state, then the fingerprint.** The proposal must be
-  one of this company's, or `RESOURCE_NOT_FOUND`. Then the approver: the target's
-  `approve_permission` and a role it waits for, or `AUTHORIZATION_DENIED`. Then its state: only a
-  `PENDING_APPROVAL` proposal is approved, and only once by each person, or `CONFLICT`. Last, the
-  fingerprint: `APPROVAL_MISMATCH` unless it equals the stored one (DSOR-APR-09). All of it before
-  any work, so a refused approval writes no approval. *Downside:* an approver who may approve
-  learns whether a proposal of their company exists.
+- **D5. Line ⑨'s order: the call's mode, which proposal, who may approve its operation, its state,
+  the approver's role, then the fingerprint.** A call that is not in `direct` mode is refused
+  `AUTHORIZATION_DENIED`. The proposal must be one of this company's, or `RESOURCE_NOT_FOUND`. The
+  approver must hold the target's `approve_permission`, or `AUTHORIZATION_DENIED`. Only a
+  `PENDING_APPROVAL` proposal is approved, or `CONFLICT`. The approver must hold a role it waits
+  for, or `AUTHORIZATION_DENIED`, and approves once, while a requirement of that role is still
+  open, or `CONFLICT`. Last, the fingerprint: `APPROVAL_MISMATCH` unless it equals the stored one
+  (DSOR-APR-09). All of it comes before any work, so a refused approval writes no approval. The
+  store's step checks the state again, and the time, under the ending lock (decision D9).
+  *Downside:* a person who holds `proposal:approve` learns whether a proposal of their company
+  exists, and one who may approve its operation learns its state.
 - **D6. Canonical JSON in full (DSOR-APR-02b).** Step 20's canonical JSON passes RFC 8785's own
   examples. One part was missing: RFC 8785 takes only I-JSON, and text that holds a *lone
   surrogate*, half of a character that UTF-16 writes in two parts, is not I-JSON. Two programs would

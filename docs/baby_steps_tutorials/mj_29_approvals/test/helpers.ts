@@ -129,9 +129,26 @@ export const STARTING_ROLES: Record<string, string[]> = {
   ],
   // The CFO and the tenant administrator may ask to draft and to manage a rule.
   // Line ⑨ decides whose rule (step 28's README, decision D8).
-  CFO: ["invoice:read", "delegation:revoke", "rule:draft", "rule:manage"],
+  // Changed in step 29: and approve a payment: proposal:approve lets them call proposal.approve,
+  // and payment:approve, the payment commands' approve_permission, decides (step 29's README,
+  // decision D2).
+  CFO: [
+    "invoice:read",
+    "delegation:revoke",
+    "rule:draft",
+    "rule:manage",
+    "proposal:approve",
+    "payment:approve",
+  ],
   ap_clerk: ["invoice:read", "payment:create.propose", "delegation:revoke"],
-  tenant_admin: ["delegation:revoke", "control:suspend", "rule:draft", "rule:manage"],
+  tenant_admin: [
+    "delegation:revoke",
+    "control:suspend",
+    "rule:draft",
+    "rule:manage",
+    "proposal:approve",
+    "payment:approve",
+  ],
   // And, since step 28b, sweeps the policies the rules cite (step 28b's README, decision D4).
   scheduler: ["proposal:expire", "rule:check"],
   rate_loader: ["rate:load"],
