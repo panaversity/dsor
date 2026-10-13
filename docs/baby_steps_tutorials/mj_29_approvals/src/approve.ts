@@ -1,0 +1,185 @@
+// NEW IN STEP 29: proposal.approve, DSoR's own command for a person's approval of a waiting proposal
+// (§26.1; step 29's README, decisions D1 to D14). Line ⑨ looks first, and changes nothing: which
+// proposal, whether this person may approve its operation, its state, their roles and their earlier
+// approval, and last the fingerprint. The work after line ⑩ asks the store for one step: the
+// approval, and the move to APPROVED when it is the last one the proposal waits for.
+import { randomUUID } from "node:crypto";
+import { stillOpen, type Approving, type Offer, type Risk } from "./approvals.ts";
+import { readBound } from "./bound.ts";
+import { Refusal } from "./envelope.ts";
+import { approvePermissionOf } from "./permissions.ts";
+import { isProposalOf, proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
+import { preview, type Contract } from "./registry.ts";
+import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
+import { formatUri } from "./uri.ts";
+
+/** The input that line ⑥ checked: the proposal's URI, and the fingerprint the approver saw. */
+type ApproveInput = { proposal: string; payload_hash: string };
+
+const NAME = JSON.stringify("proposal.approve");
+
+/** The contract of the operation a proposal names, without its version. */
+function targetOf(
+  contracts: ReadonlyMap<string, Contract>,
+  proposal: Proposal,
+): Contract | undefined {
+  return contracts.get(proposal.operation.split("@")[0] ?? proposal.operation);
+}
+
+/**
+ * Line ⑨, for an approval: one look, in decision D5's order. Who may approve the operation is
+ * asked before the state, so a person who may not approve learns nothing of the proposal but that
+ * it is there. The fingerprint is compared last (DSOR-APR-09).
+ */
+async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
+  const { tenant, caller, roles } = look;
+  const { proposal: uri, payload_hash } = input as ApproveInput;
+  // DSOR-APR-05a: a person's own call, on the login DSoR gave them. Line ⑤ refused every caller that
+  // is not a person, by the contract's people_only. This is DSoR's own second look, by the call's
+  // identity mode and the caller's type, so an approval never rests on one flag (decision D10).
+  if (look.identity !== "direct") {
+    const why = `${NAME} is accepted only in direct identity mode, on the approver's own login`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  // And a person's: a system login calls in direct mode too. Found by step 29's review, finding
+  // L4: with people_only lost, a system login holding the CFO's role approved.
+  if (caller.type !== "human") {
+    const why = `${NAME} is accepted only from a person, on their own login`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id
+  // through, so another company's address meets line ②'s refusal first. Found by step 29's
+  // review, finding L1: the parse below threw, and the caller heard INTERNAL_ERROR.
+  if (!isProposalOf(tenant, uri)) {
+    throw new Refusal("RESOURCE_NOT_FOUND", `no proposal ${preview(uri)}`, "internal");
+  }
+  const id = proposalIdOf(tenant, uri);
+  const found = await look.proposals.get(tenant, id);
+  if (found === undefined) {
+    throw new Refusal("RESOURCE_NOT_FOUND", `no proposal ${preview(id)}`, "internal");
+  }
+  // DSOR-APR-07: the permission that decides is the target operation's approve_permission.
+  const needed = approvePermissionOf(targetOf(look.contracts, found));
+  if (needed === undefined) {
+    const why = `${found.operation} names no approve_permission, so no one approves it`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  if (!look.permissions.has(needed)) {
+    const why = `${caller.id} may not approve ${found.operation}: it needs ${needed}`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  if (found.state !== "PENDING_APPROVAL" || found.requires === undefined) {
+    const why = `proposal ${id} is ${found.state}, and only a PENDING_APPROVAL proposal is approved`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
+  // DSOR-APR-04a: and only while its time has not come, though no sweep has moved it yet. The
+  // store's own clock decides, as it does for the sweep. Found by step 29's review, finding L2: a dry
+  // run said yes, and the real call's work said no.
+  if (await look.proposals.isDue(tenant, id)) {
+    const why = `proposal ${id}'s time came at ${found.expires_at}, so it is not approved`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
+  // Decision D3: a role the proposal waits for, in this company.
+  const asked = [...new Set(found.requires.map((requirement) => requirement.approval.role))];
+  if (!asked.some((role) => roles.includes(role))) {
+    const why = `${caller.id} holds none of the roles proposal ${id} waits for: ${asked.join(", ")}`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  const given = await look.proposals.approvals(tenant, id);
+  if (given.some((approval) => approval.approvers.some((a) => a.principal === caller.id))) {
+    throw new Refusal("CONFLICT", `${caller.id} approved proposal ${id} already`, "internal");
+  }
+  const open = stillOpen(found.requires, given);
+  if (!open.some((requirement) => roles.includes(requirement.approval.role))) {
+    const why = `what ${caller.id} may approve of proposal ${id} is approved already`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
+  // DSOR-APR-09: last, the fingerprint. The approver approves the request with this fingerprint,
+  // and no other.
+  if (payload_hash !== found.payload_hash) {
+    const why = `the fingerprint is not the one of proposal ${id}'s request`;
+    throw new Refusal("APPROVAL_MISMATCH", why, "internal");
+  }
+}
+
+/** The risk level a contract names. Start-up checked every contract against the schema. */
+function riskOf(contract: Contract): Risk {
+  return (contract["risk"] as { level: Risk }).level;
+}
+
+/** The words of a refusal of the store's step, which ran after line ⑨'s look. */
+function wordsOf(
+  id: string,
+  person: string,
+  done: Extract<Approving, { refused: string }>,
+): string {
+  if (done.refused === "moved") {
+    return `proposal ${id} moved on to ${done.state ?? "another state"} while it was being approved`;
+  }
+  if (done.refused === "expired") return `proposal ${id} expired before it was approved`;
+  if (done.refused === "twice") return `${person} approved proposal ${id} already`;
+  return `what ${person} may approve of proposal ${id} is approved already`;
+}
+
+/**
+ * The approval's work, after line ⑩, inside the claim's transaction: the approval, in its shape,
+ * and the store's one step. It answers with the approval's id, the proposal's state after it, what
+ * the proposal still waits for, and when the approval expires (decision D14).
+ */
+async function approve(input: unknown, work: OwnStores): Promise<unknown> {
+  const { tenant, caller, stores, correlation, now, contracts } = work;
+  const { proposal: uri } = input as ApproveInput;
+  const id = proposalIdOf(tenant, uri);
+  const found = await stores.proposals.get(tenant, id);
+  const target = found === undefined ? undefined : targetOf(contracts, found);
+  // Line ⑨ found both a moment ago, and neither goes away.
+  if (found === undefined || target === undefined)
+    throw new Error("the proposal line ⑨ found is gone");
+  // Decision D7: the state that the target's contract binds, as DSoR reads it now: the version of
+  // each invoice the proposal names. A critical operation's approval binds it strictly, as
+  // approval.schema.json asks.
+  const { state } = await readBound(target, found.payload, stores.invoices, tenant);
+  const versions = Object.fromEntries(
+    Object.values(state).map((invoice) => [
+      formatUri({ tenant_id: tenant, entity: "invoice", id: invoice.id }),
+      invoice.version,
+    ]),
+  );
+  const risk = riskOf(target);
+  const roles = caller.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [];
+  const offer: Offer = {
+    id: `apr_${randomUUID()}`,
+    risk,
+    bound_state: { mode: risk === "critical" ? "strict_version" : "predicate", versions },
+    approver: caller.id,
+    roles,
+    // This tutorial's logins carry no time of their own, so the time of the call (decision D7).
+    at: now,
+  };
+  // DSOR-APR-01b: the move to APPROVED names the approver, who made it through their own call.
+  const by: MoveBy = {
+    mover: {
+      mode: "direct",
+      subject: caller.id,
+      actor_chain: [],
+      subject_authority: { source: "token", as_of: now },
+    },
+    cause: `approved by ${caller.id}`,
+    correlation,
+  };
+  const done = await stores.proposals.approve(tenant, id, offer, by);
+  if ("refused" in done) throw new Refusal("CONFLICT", wordsOf(id, caller.id, done), "internal");
+  return {
+    tenant_id: tenant,
+    id: done.approval.id,
+    proposal: uri,
+    state: done.state,
+    waits_for: done.waits_for,
+    expires_at: done.approval.expires_at,
+  };
+}
+
+/** DSoR's own work for proposal.approve. */
+export function approveWorkFor(): Record<string, OwnWork> {
+  return { "proposal.approve": { check: mayApprove, change: approve } };
+}
