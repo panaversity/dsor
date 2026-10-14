@@ -394,3 +394,27 @@ describe("C4: an approval counts only while it lasts, and only for its request (
     ).resolves.toBeUndefined();
   });
 });
+
+// Found by step 31's review, finding M1: a sheet of rates that is too old is a check that cannot be
+//   made now, as a directory with no recent answer is (D15). The release invalidated the payment.
+describe("C5: no usable exchange rate is a 'not now', not a 'no' (step 31's README, decision D15)", () => {
+  it("DSOR-MON-04: four days after INV-2004 was approved, its sheet of rates is too old: the release hears FRESHNESS_UNSATISFIABLE, the payment waits APPROVED, and the same key releases it once a fresh sheet is loaded", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri } = await approved(w, "INV-2004");
+    w.clock.now += 4 * 24 * 60 * 60 * 1000;
+    const once = keyed(AGENT);
+    const first = await w.ask(once, "proposal.execute", { proposal: uri });
+    expect(first).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE", retry: "after_delay" });
+    expect(await afterwards(w, id)).toMatchObject({ state: "APPROVED", drafted: 0 });
+    expect(await w.reservations.get("org_456", id)).toMatchObject({ state: "held" });
+    await w.rates.load("org_456", {
+      source: "ecb-daily",
+      base: "EUR",
+      published_at: new Date(w.clock.now - 60 * 60 * 1000).toISOString(),
+      rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+    });
+    expect(await w.ask(once, "proposal.execute", { proposal: uri })).toMatchObject({
+      outcome: "COMMITTED",
+    });
+  });
+});

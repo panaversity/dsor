@@ -629,6 +629,10 @@ export async function call(
       }
       const { invoices, reservations, slips, brakes, rates, controls, proposals } = stores;
       // Inside the claim, the booking is found again by the proposal's id, and not made twice (D4).
+      // A limit that no usable rate can convert to is a check that cannot be made now: the payment
+      //   still does not run (DSOR-MON-04), and it waits for a fresh sheet (D15). Found by step 31's
+      //   review, finding M1: a late sheet invalidated an approved payment.
+      unconvertibleOfRecord = undefined;
       const requires = await decideBeforeWork(
         invoices,
         reservations,
@@ -639,7 +643,13 @@ export async function call(
         proposals,
         inClaim ? id : undefined,
         asked,
-      );
+      ).catch((thrown: unknown) => {
+        if (thrown instanceof Refusal && thrown.code === "LIMIT_EXCEEDED" && unconvertibleOfRecord) {
+          const why = `no rate is usable now, so proposal ${id} waits: ${thrown.message}`;
+          throw new Refusal("FRESHNESS_UNSATISFIABLE", why, "public");
+        }
+        throw thrown;
+      });
       const given = await proposals.approvals(tenant, id);
       await line(10, () => checkApprovals(loaded, requires ?? [], given, slips, tenant));
     };
