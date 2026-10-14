@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaymentCancelRequest",
+  "description": "The input of payment.cancel: the canonical URI of the payment to cancel, and the version of that payment its caller decided on (step 21's README, decisions 4 and 5). This tutorial's own schema: the specification names payment.cancel and does not define its input. The pattern is the specification's resourceUri; the /payment/ part beside it is this tutorial's.",
+  "type": "object",
+  "properties": {
+    "payment": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/payment/"
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "The version of the payment that the caller read, and decided on. §38 names expected_version an argument of a tool (step 21's README, decisions 3 to 5). At most 2147483647, the largest version the database's integer column holds (step 21's README, decision 10)."
+    }
+  },
+  "required": ["payment", "expected_version"],
+  "additionalProperties": false
+}

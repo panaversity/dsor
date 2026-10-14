@@ -1,0 +1,72 @@
+// Only a successful query carries freshness, because a refusal holds no data.
+// And a successful query whose code read nothing is refused: a label for it would be
+// invented (step 15's README, C6 and decision 6).
+import { describe, expect, it } from "vitest";
+import { createLog } from "../src/log.ts";
+import { call } from "../src/pipeline.ts";
+import { CFO, INV_1008_OF_456, UNEXPECTED, log, registry, registryRunning } from "./helpers.ts";
+
+const GET_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
+
+describe("C6: only a successful query carries freshness", () => {
+  // Guards: a refusal is an error envelope, which never had a freshness field. They pass
+  // with or without this step's code, so their titles name the decision (break Z3).
+  it("decision 1: a refusal after the code read, RESOURCE_NOT_FOUND, carries no freshness", async () => {
+    const answer = await call(registry, log, CFO, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-9999",
+    });
+    expect(answer).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    expect(answer).not.toHaveProperty("freshness");
+  });
+
+  it("decision 1: a refusal before the code runs, TENANT_MISMATCH, carries no freshness", async () => {
+    const answer = await call(registry, log, CFO, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+    expect(answer).toMatchObject({ code: "TENANT_MISMATCH" });
+    expect(answer).not.toHaveProperty("freshness");
+  });
+
+  it("decision 1: a refusal of the caller, AUTHORIZATION_DENIED, carries no freshness", async () => {
+    const answer = await call(registry, log, { ...CFO, tenant: "org_789" }, "invoice.get", {
+      invoice: "dsor://org_789/invoice/INV-1008",
+    });
+    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(answer).not.toHaveProperty("freshness");
+  });
+
+  // The code returns INV-1008 from its own memory, without asking the store. DSoR has no
+  // read to label it with, so the answer would be a label made up. A bug in the code: the
+  // code ran, so its record says ALLOW, with INTERNAL_ERROR as its result.
+  it("decision 6: a query whose code returns data without reading is refused with INTERNAL_ERROR", async () => {
+    const own = createLog();
+    const answer = await call(
+      registryRunning(() => structuredClone(INV_1008_OF_456)),
+      own,
+      CFO,
+      "test.run",
+      GET_1008,
+    );
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR", message: UNEXPECTED });
+    expect(answer).not.toHaveProperty("freshness");
+    expect(await own.records()).toMatchObject([
+      { authorization: "ALLOW", result: "INTERNAL_ERROR" },
+    ]);
+  });
+
+  // Found by the mutation sweep, 2026-10-02: the label taken right after the copy, before the
+  // company check and the 64 KiB check, passed every test. The label is taken last, so an
+  // answer an earlier check refuses is refused for that check's reason (step 15's README,
+  // decision 5). Here, 70,000 bytes, read from nothing: refused for its size, not its label.
+  it("decision 5: an answer too large, from code that read nothing, is refused for its size", async () => {
+    const huge = { ...structuredClone(INV_1008_OF_456), note: "x".repeat(70_000) };
+    const answer = await call(
+      registryRunning(() => huge),
+      log,
+      CFO,
+      "test.run",
+      GET_1008,
+    );
+    expect(answer).toMatchObject({ code: "UNSUPPORTED_CAPABILITY" });
+  });
+});

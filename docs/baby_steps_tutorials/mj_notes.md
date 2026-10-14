@@ -114,6 +114,71 @@ Step 18 recorded six, the first two from this page:
 - 71: whether anyone but a person may sign a slip.
 - 72: whether the running example's slip should run out on 2026-12-31.
 
+### Who may lift a slip's hold?
+
+Recorded as open question 76. Step 19b's decision 16 renamed a hold a suspension.
+
+DSOR-IDN-07 says DSoR suspends every slip of a signer whom the role source reports as
+suspended or deprovisioned. No rule says who may turn a suspended slip on again. DSOR-DEL-04a
+names who may revoke a slip (its signer and a tenant administrator), and DSOR-OPS-01d says an
+agent's suspension is lifted only by a person who holds `control:suspend`. Nor does IDN-07 say
+how fast the slips change, or whether a report from one company's role source reaches the
+person's slips in another company. Step 19b's design must choose, until the spec says.
+
+### Is `none` a concurrency strategy?
+
+§23 lists three strategies: `optimistic`, `pessimistic`, and `connector_managed`. The contract
+schema, `operation-contract.schema.json`, allows a fourth: `none`. DSOR-CON-01a says that every
+command must declare a strategy. If `none` counts, a command can declare that nothing is
+checked, and the rule asks only for a word. Step 21's learner build accepts `none` at start-up,
+and no shipped command declares it. Should §23 name `none`, and say which commands may use it?
+
+### Who is a tenant administrator?
+
+DSOR-DEL-04a says a slip "MUST be revocable by its delegator and by a tenant administrator", and
+§26.1 lets "the requester or a tenant administrator" call `proposal.cancel`. The specification
+defines no role and no permission for a tenant administrator, and the running example has none.
+Step 25's design proposes a role of the tutorial's own, `tenant_admin`, held by a new person,
+`admin_100` (decision L2). Should the specification name the role, or a permission for it?
+
+### May an agent pull the emergency brake?
+
+DSOR-OPS-01d lets only "a human holding `control:suspend`" lift a suspension or a freeze, and §45
+says that agents "never lift suspensions". Nothing says who may *pull* the brake. A watchdog
+agent could stop a runaway agent in seconds, at 03:10, when no person is awake. A compromised
+agent could freeze every agent in the company. Step 25's design recommends people only, both
+ways (decision L6). Should §18 say who may apply a suspension or a freeze?
+
+### What happens to a READY proposal when its slip is torn up?
+
+DSOR-DEL-04c cancels the slip's PENDING_APPROVAL and APPROVED proposals, and §26.2 draws no move
+from READY to CANCELLED. So a draft prepared in `propose_only` mode stays READY under a torn-up
+slip, with its booking held. It can never run, because the release checks the slip again. Its
+record says "allowed, may go" about work that can never go (open question 90; step 25's decision
+L4). In the understanding session of 2026-10-10, the learner expected the tear-up to cancel it
+with the rest. A scratch copy with two lines changed did that, in memory: the tear-up cancelled
+three proposals, not two, and the day's total fell to 31,400.00 USD, not 62,800.00. On the
+database, the trigger would still refuse the move until its picture changed too. Should §26.2
+draw READY → CANCELLED, and should DSOR-DEL-04c name READY?
+
+**Proposed by the learner (2026-10-10): yes, and READY can expire too.** The change to propose:
+§26.2 draws READY → CANCELLED and READY → EXPIRED; DSOR-DEL-04c names READY beside
+PENDING_APPROVAL and APPROVED; a new requirement gives a READY proposal an expiry. DSOR-DEL-06d
+already releases the booking at CANCELLED and at EXPIRED. One more reason: §26.1 gives the
+requester `proposal.cancel`, and today the picture lets nobody cancel a prepared draft. The
+learner asked for it to be built too. It is one new idea, so it gets a small step of its own, and
+that step's README names this proposal. Built on 2026-10-10 as step 25c, `mj_25c_ready_can_end`
+(open questions 90, 96, and 105).
+
+### Should a suspended agent's dry run be refused?
+
+§18 says a suspended agent "can make no state change". A dry run makes none, so the words allow
+it. Step 25b refuses it (decision L7), because a dry run must hear what the real call would hear
+(step 23's decision 3). AWS answers the same way: EC2's `DryRun` gives `UnauthorizedOperation`
+when the real call would be refused. **Proposed by the learner (2026-10-10):** §18 says that a
+suspension or a freeze refuses a command in every invocation mode, `validate_only` included. No
+code changes: step 25b does this already (open question 104).
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -262,6 +327,11 @@ reviewer for a mutation sweep too.
   to edit nothing, made a copy of the step to run checks in, in the scratchpad folder that
   held the build's break scripts, and deleted it after. The build rebuilt its scripts from the
   session. Every agent now gets the name of the one folder it may write in.
+- **Ask which idea led to the answer** (steps 20 and 21, 2026-10-07). The same wrong answer came
+  four times in step 21's part 1. Explanations and runs side by side did not move it. A question
+  whose options were the possible reasons did: the learner picked two, and each one got its own
+  answer. Then one line of code, traced with the run's values, and the learner ran the script
+  with two values in their own terminal.
 
 ## Bugs found in earlier builds
 
@@ -386,6 +456,19 @@ Step 08 found one more on 2026-09-27:
     working that helped".
   - **Database runs time out under load.** With seven suites on Neon at once, a few tests
     timed out at 30 seconds, in runs before and after the fix. Every rerun was green.
+
+### A race test that fails while its draft is on its way (found 2026-10-09)
+
+- **Where:** `test/limits.db.test.ts`, the test of a draft decided on the invoice's next version, in
+  step 24 (`mj_24_limits_with_reservations`). Step 25 copied the same pattern into
+  `test/revocation.db.test.ts`.
+- **What:** the test holds a row lock from a second connection, and its `finally` releases that
+  connection with no ROLLBACK. When the test fails before its COMMIT, the row stays locked and the
+  draft stays on its way. The next test's owner script runs with `spawnSync`, which blocks the
+  test process, so the draft can never finish, and the script waits for its lock until its time
+  limit. Step 25b's reviewer hit a 10-minute pile-up.
+- **Fixed in:** steps 25 and 25b. Their `finally` rolls back, releases, and waits for the draft.
+- **Still in:** step 24. Repeat the fix there by hand, if step 24 is run again.
 
 ## Proposed for the house list and the map
 
@@ -857,6 +940,885 @@ pages for the parts that did not land.
   a job change to line ③: a change of status stops at line ③, and a change of job at line ⑤,
   the ③-and-⑤ split again in a new form. Q5 gave the right code and predicted step 19b's write
   to the slip. One card settled all three: what the directory says, and where DSoR stops.
+
+### Step 19b, before design (2026-10-06)
+
+Step 19b is this learner build's own step: DSOR-IDN-07, split out of step 19 (step 19's
+decision 6). Five parts: the gap and the rule, every slip she signed, the change and its
+record, coming back, and two calls at once. Real runs on step 19's code, and on a throwaway
+PostgreSQL in the scratchpad for the transaction and the race.
+
+- **"Turned off means revoked", the third and fourth time.** Part 1 answered
+  `DELEGATION_REVOKED` for a suspended slip, and its re-check answered `revoked` for a person
+  who left for good. The everyday phrase "revoke her access" pulls hard. What the rule says:
+  IDN-07 suspends, for "deprovisioned" too, and a hold is lifted by a person, while a torn-up
+  slip never comes back. A three-row card (on hold, torn up, past its date) closed the part.
+- **Step 17's rule, carried inside a transaction.** Part 3 kept the first write when the
+  second failed, which is right without a transaction. A plain SQL side-by-side (each write on
+  its own: `del_100` on hold and one record; one transaction: nothing changed) gave the rule
+  its missing clause: unless both writes are inside one transaction.
+- **Design questions for step 19b's Phase A:** which of her slips (only the reporting
+  company's, or every company's); when (only at a call, or also a sweep of every signer); a
+  new store question, every slip a person signed; the new database right, `status` only; the
+  holds and their `delegation_change` records in one transaction, and whether the call's own
+  record joins it; the record's `identity` for a change DSoR makes on the directory's word;
+  who lifts a hold, and through what; a call that heard "suspended" just before an admin's
+  lift; and the breaks (the record fails, two calls at once, she comes back, one slip lifted).
+
+### Step 19b, the design (2026-10-06)
+
+- **Eight decisions, each chosen by the two tests the learner named,** closest to production
+  and deepest understanding: the folder `mj_19b_suspended_slips`; only the reporting company's
+  slips; only at a call; `UPDATE (status)` only, with a new kind in `store.json`; the holds and
+  their records in one transaction at line ③; the record names DSoR itself; no lift through
+  DSoR before step 25; a hold that cannot be written gives `INTERNAL_ERROR`; and "not listed"
+  counts as gone. The learner took the recommended option every time.
+- **Break predictions: 3 of 4 as expected.** B1 (no hold), B2 (no company filter: the second
+  lock holds), and B4 (two transactions: holds without records) matched. B4 shows that Part 3's
+  transaction lesson landed. B3 kept "only if still active" in place after the break deleted
+  it, so a torn-up slip stayed `revoked` in the prediction: Habit 1, credit for a check that no
+  line asks any more.
+- **Nothing is committed,** by the learner's rule from 2026-10-06. The project's `CLAUDE.md`
+  asks for each built piece to be committed; the learner's rule wins on this branch.
+
+### Step 19b, the build (2026-10-06)
+
+- **"The database cancels both".** The learner predicted that two calls at once leave no record
+  of a suspension. A scratch PostgreSQL ran the same two transactions three ways: as built (the
+  second waits, reads again, changes nothing: 1 record), under SERIALIZABLE (the database does
+  cancel, but only the second: still 1), and without "only if still active" (2). The instinct
+  is half right: a database cancels on a collision, and one side always wins. The last hotel
+  room carried it: the second clerk finds the hook empty.
+- **B3 at run time, as at design.** The broken copy turned the torn-up `del_101` into a
+  suspended slip, with a record. The prediction described the step as built: Habit 1 again,
+  credit for a check that the break had deleted.
+- **A right on a column limits the column, not the words in it.** The review's highest
+  finding: `GRANT UPDATE (status)` let `dsor_runtime` write `active` over `revoked`. A
+  restrictive row-level security policy (migration 012b) now allows one change only, active to
+  suspended. It was tried on a scratch database before the learner chose it.
+- **A word already taken.** "Hold" is the specification's word for a resource held while an
+  outcome is unknown (`RESOURCE_HELD`, `hold_on_unknown`), and `AGENTS.md` lists "holds"
+  in the control-plane store. The step now says "suspend", the rule's own word. These notes
+  keep "on hold" where they quote the learner.
+- **Decisions 12 to 16:** DSoR's own log reader reads decisions only; the database allows only
+  active to suspended; the record carries the call's whole correlation (DSOR-COR-01a); an
+  answer that says she is not active needs no roles; and the word "suspend". The learner took
+  the recommended option each time.
+- **Facts the build got wrong, and fixed:** migration 012 ran four minutes into the first
+  database run, while the notes said it had not run; the database test files run one at a
+  time, so per-test signers exist because a suspension is permanent; and the first message,
+  "could not put", claimed more than DSoR knew: "could not confirm".
+- **A scratch PostgreSQL as the sweep's database.** The whole database suite in 44 seconds,
+  against 20 minutes on Neon, and breaks that would have suspended the story's real slips on
+  the shared branch ran there safely. Two changes made it behave like Neon: the owner joins
+  `pg_write_all_data`, and the cluster checks passwords.
+- **Sweeps:** 33 breaks first, 9 survived (two only changed an order). After the fixes, 18
+  breaks, all caught, among them the policy made permissive.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Step 20, understanding (2026-10-07)
+
+Five parts were planned: the lost answer, one insert, the fingerprint, the four parts of a
+claim's scope, and the claim inside the transaction. Part 1, the lost answer, ran on step 19b's
+own code: a retry of `payment.create` for INV-1008 drafted PAY-902 beside PAY-901, and the log
+held two records with one request id. The learner predicted it. The learner stopped at part 2
+and was away for the rest of the step.
+
+- **Design questions left for Phase A:** where the key travels; its form; whether a query may
+  carry one; which parts make up a claim's scope, and whether the contract's version is one;
+  what a fingerprint covers; whether the claim and the work share a transaction; what a replay
+  returns, and how it is masked; and what a refusal from the code leaves behind. Claude Code
+  took all of them while the learner was away: step 20's README, decisions 1 to 13.
+
+### Step 20, the build (2026-10-07)
+
+The learner was away and asked for steps 20 and 21 to be built, with every decision taken by
+the learner's two tests: closest to production, and deepest understanding.
+
+- **§22's last paragraph reversed a decision.** Decision 9 first let a refusal from the code
+  keep no claim. "A recorded `DENY` is replayed like any other result": a late copy of a refused
+  request must not draft after the caller has moved on. The claim now keeps the code's refusal,
+  and only an accident, an `INTERNAL_ERROR`, or a `safe_same_key` refusal releases it.
+- **Break B1, measured.** Look first, then insert: one draft, because the primary key still
+  held, and 9 of 50 callers heard `INTERNAL_ERROR`. Without the primary key: 10 drafts of
+  31,400.00 USD. The `SELECT` protected nothing.
+- **A green suite that tests less.** The cross-tenant suite passed while every command it sent
+  stopped at line ⑦ for want of a key. It sends keys now.
+- **A test that two callers pass cannot see a missing company.** B2 needed one caller,
+  firm-ap-fte, in both companies. The review found the same gap on the database for the caller
+  and the operation: user_123 heard the agent's PAY-902.
+- **A test that passes when nothing happens.** Nothing deletes a claim, so the 24-hour test
+  passed with an age command that aged nothing. It now reads the age from the database's clock.
+- **Local PostgreSQL again,** because every Neon branch is in use: the full database suite in 50
+  seconds. The learner can delete `step-11` and make `step-20` from `step-19b` later.
+- **Review and sweep:** the reviewer's 35 breaks left 15 survivors; after the fixes, 32 breaks,
+  all caught. Final: 1388 unit tests, 217 database tests, the clean copy, the root check.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Step 21, the build (2026-10-07)
+
+Built while the learner was away, after step 20, with every decision taken by the learner's two
+tests. No understanding session yet: it is owed, with step 20's parts 2 to 5.
+
+- **The lock that was not allowed.** The first plan locked the invoice with `FOR SHARE`. A real
+  run refused it to `dsor_runtime` (`42501`): a row lock needs a right to change the table. The
+  check moved into the write itself, `INSERT … WHERE EXISTS` and `UPDATE … WHERE version`, which
+  is optimistic concurrency's own form.
+- **The story must match what the caller sees.** The first story was a credit note, but the
+  agent's clearance hides amounts. A changed payee, VENDOR-44 to VENDOR-99, is a failure the
+  agent can see. A run of step 20's code drafted PAY-901, 31,400.00 USD to VENDOR-99.
+- **A test that two outcomes pass cannot tell them apart.** A payment changes only when it is
+  cancelled, so the status alone refused every stale cancel. Only a draft changed outside DSoR,
+  still a draft, shows the version doing its work: break B4.
+- **The review's two highest findings:** a trigger switched off passed start-up, because
+  PostgreSQL prints it as if it were on; and the check held only at `READ COMMITTED`, which DSoR
+  now sets itself. That also closes the level that step 20's claims relied on.
+- **Review and sweep:** the reviewer's 29 breaks left 10 survivors; after the fixes, 29 breaks,
+  all caught. Final: 1434 unit tests, 234 database tests on a local PostgreSQL, the clean copy,
+  and the root check.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Steps 20 and 21, understanding after the build (2026-10-07)
+
+Both steps were built while the learner was away, so this session came after the build. Step 20
+resumed at part 2. Step 21 had five parts: the changed payee, who raises the version, the check
+is the write, facts first, and what a version cannot see. A real run settled every answer: the
+step's own code in memory, scratch copies that followed the learner's rule, and a local
+PostgreSQL 17.
+
+- **A new habit: "DSoR's own read replaces the caller's claim."** Step 17's rule, "DSoR reads the
+  facts itself", was stretched over `expected_version`. The learner expected a draft on the
+  version that DSoR reads now: with no version, with a screen's version, and with a wrong
+  version. But a version is a claim about the caller's own decision. DSoR reads the invoice to
+  check that claim, never to replace it. Four predictions in step 21's part 1 came from this one
+  idea.
+- **Habit 1 again.** Step 20's part 5 named it. In step 21, line ⑥'s pass got credit for "may
+  this run?", but line ⑥ asks only whether the input is well formed. The trigger got credit for
+  "did a value change?", but it runs at every `UPDATE`.
+- **Habit 2's family again.** In step 20's part 4, a claim's scope was taken as the slip
+  signer's, not the calling principal's. In step 21, "a draft on the current version" said yes
+  to a decision that nobody can show was made on that version.
+- **What moved the new habit.** Two explanations and two runs side by side did not. A question
+  that listed the possible reasons found it: the learner picked "DSoR reads facts itself" and "a
+  valid input runs". Then line 70, traced with the run's values, and the learner's own run of
+  `node future21.ts 1` and `2`. From then on, the predictions reasoned with versions. Part 4's
+  prediction joined the two steps: the same key with a new version hears
+  `IDEMPOTENCY_CONFLICT`, because the version is part of the fingerprint.
+- **The learner's own design.** A trigger with `WHEN (OLD.* IS DISTINCT FROM NEW.*)` raises the
+  version only when a value changes. It removes decision 2's downside: a caller sent back for a
+  save that changed nothing. A scratch run showed its cost: a row with a `json` column cannot be
+  compared (`42883 operator does not exist: json = json`).
+- **Wording to fix in step 21.** The migration's first comment and the README's definition of a
+  trigger say "at each change of a row". Both mean every `UPDATE`, also one that changes no
+  value. The learner read "change" as "a value changes".
+- **Design questions for a later revision of step 21:**
+  1. Should a save that changes no value raise the version? Every `UPDATE` (now: any table, but
+     callers read again for nothing), or a real change only (the learner's trigger: fewer
+     refusals, and no `json` columns).
+  2. A row removed and added again restarts at version 1 (open question 87). A scratch run
+     drafted PAY-905 to VENDOR-99 on a decision made on the old row. Options: one sequence for
+     every row's version, a content hash, or no removal of invoices.
+  3. A counter is easy to guess. A draft with a guessed `expected_version` of 1, and no read,
+     passed. Accept it, because the check is about change and not about reading, or use a
+     version that is hard to guess.
+  4. There is no `payment.get`. After a stale cancel, the refusal's message is the only place
+     where a caller finds the payment's version (decision 7).
+  5. Only start-up reads the triggers, so a trigger switched off while DSoR runs is not seen
+     until the next start. Check at each command, check on a timer, or accept it and record it.
+
+### Step 22, before design: two parts, then decide and build (2026-10-07)
+
+- **Built in another order.** After part 2 the learner asked whether to build first and understand
+  after. Claude Code recommended a middle way: take the decisions now, build, and finish parts 3
+  to 5 on the real code. Before the build every run was a sketch, and part 1 had felt ambiguous.
+  The learner chose that.
+- **Part 1, told again.** The first telling put three places, a dump of JSON, a list of schema
+  errors, and the spec's example in one turn, and its question offered a "stale" call decided on a
+  version higher than the record's. The learner called half of it ambiguous. Told again as one
+  story in time order, with one picture of the four states and one question, it landed: a replay
+  with the same key names the same proposal, and makes none.
+- **The decisions, all the recommended ones:** COMMITTED and FAILED are final; a refusal from the
+  code ends FAILED; two guards, DSoR's code and a trigger; the answer names the proposal; the move
+  to EXECUTING is one conditional statement. Two followed from the spec and were stated, for the
+  learner to object to: no proposal before line ⑧, and the whole picture built.
+- **A fact found after a decision.** DSOR-AUD-01 makes every proposal transition an audit record.
+  It was found while reading the code for the build, after the learner had chosen "a table of its
+  own" for the history. The decision went back to the learner, and changed to the log.
+- **Questions for the specification:** open questions 89 to 91.
+
+### Step 22, the build (2026-10-07)
+
+Built after the learner's decisions, while the learner was away.
+
+- **The schema cannot hold the picture.** `proposal.schema.json` lists the 17 states and no move:
+  a record with PENDING_APPROVAL to EXECUTING in its history passes it. So the moves live in
+  DSoR's code and in a trigger, and a database test compares the two, move by move, from every
+  state, the three that nothing reaches yet too.
+- **Where line ⑧ sits in the claim's transaction is the design.** Opened inside the savepoint of
+  the code's work, a refusal rolled the proposal back with the work, and the call ended
+  INTERNAL_ERROR with no proposal (break B3). Opened before it, the proposal ends FAILED and
+  keeps its records.
+- **Two guards, each shown holding alone.** With the trigger gone, `dsor_runtime`'s own UPDATE
+  moved a COMMITTED proposal back to READY (B1). With DSoR's check gone, the database refused the
+  same move with the same words (B2).
+- **The review's highest finding: an upgrade that breaks replays.** A claim answered before
+  migration 015 keeps no proposal, and its replay would answer INTERNAL_ERROR forever. Migration
+  015 now refuses a database whose claims hold answers. And any code could name a proposal,
+  another company's too, in a refusal of its own: only the checklist names it now, from the claim.
+- **Three sweeps.** 33 breaks of the step's pieces, 29 caught. The reviewer's 26, rewritten for
+  the fixed code, with one of the migration's guard: 27, 20 caught. The 11 that survived each
+  reached a part no call of the story reaches, and each part got a test of its own. A third run
+  caught all 8 it ran.
+- **A JavaScript trap, found live.** `String.replace` reads `$$` in its replacement as one
+  `$`. A script that inserted the migration's guard wrote `DO $`, and the migration failed on a
+  fresh database. Edits by script now use split and join, which read nothing.
+- **Nothing is committed,** by the learner's rule from 2026-10-06.
+
+### Step 23, the decisions and the build (2026-10-08)
+
+The learner chose to build step 23 first and understand steps 22 and 23 together after, as with
+steps 20 and 21. Seven decisions in two rounds, each with a recommendation; the learner took every
+one. Claude Code built the step while the learner was away.
+
+- **The decisions.** No `proposal.execute` until step 31. A dry run runs lines ① to ⑥ only. Its
+  "no" is the real call's error envelope. The mode travels in the envelope, and a key keeps its
+  mode. The `.propose` permission is built, and ap_clerk gets `payment:create.propose`. A dry run
+  carries no key. A query carries no mode, not even `execute`.
+- **A missing stop that fails closed.** With the dry run's stop deleted, the dry run went on to
+  line ⑦, which asked for a key. A dry run carries none, so it was refused, and wrote nothing
+  (break B1). One decision guarded another.
+- **One word between "prepare" and "pay".** With the `.propose` form wanted in every mode, the
+  clerk's agent drafted PAY-903 in `execute` mode (break B3).
+- **A key that forgets its mode answers the wrong question truthfully.** A call that asked to
+  prepare heard that a payment was made, and a call that asked to execute heard READY while nothing
+  ran (break B2).
+- **No re-indent.** Lines ① to ⑩ became one function, `decide`, which returns where each mode
+  stops. Its body kept its place, so the diff shows the change and not the move.
+- **A false kill in the sweep.** `store.json` changed, and only the database tests ran after it.
+  One unit test then failed with no break at all, and it "killed" 13 database-side breaks. The
+  test was fixed, and the 13 ran again. Before a sweep, run both tiers on the step itself, and read
+  which test killed each break.
+- **The review: no guarantee broke, and four gaps had one cause.** In `propose_only` mode no code
+  runs, so the checks before line ⑦ are the whole guard, and only `payment.create` was tried in
+  the new modes. A copy where only `payment.create` heard the mode cancelled PAY-901 when asked
+  to prepare its cancel, and every test passed. Now every command is tried in each mode, and step
+  12's cross-tenant suite runs in both new modes too.
+- **A spec tension, found by the review.** A dry run that learns its signer is gone suspends the
+  signer's slips (DSOR-IDN-07), though DSOR-OPR-06 forbids a dry run's side effects. Kept, and
+  recorded as open question 95.
+- **The README review caught a false promise.** Decision 2 said step 32 would bring the version
+  check before the work. It does not: §21 checks the version at line 14, after a dry run returns.
+- **`.env.example` is the learner's to copy.** The deny rule on `.env.*` stops Claude Code from
+  reading or writing it, so the copy of step 22 left it out, and one test fails until it is there.
+- **Next: one understanding session for both steps:** step 22's parts 3 to 5, then step 23, on the
+  real code. Three points from step 22 to tell the learner: the reviewer's challenge to decision 1
+  (M1, open question 89), the order of the records (M2), and decision 15, which Claude Code took.
+- **Nothing is committed.**
+
+### Step 24, built overnight (2026-10-08)
+
+The learner asked for step 24 too, and went to sleep: "also do 24 then we will understand these 3".
+No one could answer questions, so Claude Code made every decision, each marked "(Claude Code)" in
+the README with its downside, for the learner to review before the session on steps 22 to 24.
+
+- **The one big choice: how DSoR knows what a command spends.** The specification does not say
+  (open question 99). The contract says it: `payment.create` binds its invoice, and spends the
+  invoice's open amount. DSoR reads it itself at line ⑨, before the limits at line ⑩, so a dry run
+  can check the limits too.
+- **Line ⑩ before the work.** READY and EXECUTING moved after it, as step 22 promised, and a
+  refusal there ends a proposal DENIED. The code's work runs after line ⑩ with no number.
+- **Step 23's decision 2 is extended,** not reversed: a dry run now runs lines ⑨ and ⑩, which are
+  DSoR's own and write nothing. The learner should confirm this.
+- **The story's del_100 keeps no limits in the shared database.** A day's spending carries from run
+  to run. The program tells the limits in memory, and the database tests use del_190 for intake-fte.
+- **Breaks, measured.** Read, check, then write: fifty drafts at once made 25, and the day held
+  785,000 USD against 200,000. FAILED that releases nothing kept 31,400 USD for a draft never made.
+  A dry run that reserves: six questions filled the day.
+- **Tests after the code, this once.** The code came first, against red first. The tests then
+  failed against step 23's code, at import. The sweep is the real proof: 40 breaks, and every one
+  now fails a test, after three new tests (two daily limits on one slip, the day's first amount
+  alone over the limit, and a replay of a refused draft on the database). One "kill" was a syntax
+  error, not a test, and was run again as a real break.
+- **The review's high finding: the limits checked one amount, and the code drafted another.** Line
+  ⑨ read the invoice at one version, and the code read it again. An agent that named the next
+  version drafted 120,000.00 USD under a reservation of 31,400.00, on the real database. Now the
+  work drafts only on the version line ⑨ read (decision 16). The first build's decision 2 said
+  step 21's version check covered this gap. It did not, because the caller chooses that version.
+- **A decision reversed by the specification.** Decision 9 said a prepared call reserves nothing,
+  because DSOR-DEL-06c does not name READY. §21 and §26.4 say otherwise: only a dry run takes no
+  reservation. A prepared call reserves now. The learner should look at this one first.
+- **Three smaller fixes.** A replay of a denial was recorded ALLOW (decision 17). A refused
+  prepared call could not be replayed on the database. A paid invoice's 0.00 hit a database check
+  as an accident (decision 18). And a slip with a limit of `-5` refused every payment (decision 19).
+- **Seventeen breaks left every test green,** though the code was right in most of them. Each got
+  a test. A third sweep then ran them again with each fix undone: 21 of 23 failed a test. The two
+  left, the day's first amount equal to the limit and the day taken from the session's time zone,
+  got database tests. The time-zone test runs in two sessions, twelve hours behind UTC and fourteen
+  ahead, because the test database's own Karachi zone shares UTC's date for 19 hours a day.
+- **The unit tests' group names did not match the README's claims.** The groups said C1 to C6, and
+  the README's claims are C1 to C15. Each group now names the README's claims.
+- **Nothing is committed.**
+
+### Step 25, the design before the session (2026-10-09)
+
+The learner read the story page of steps 22 to 24, then asked for step 25's design: "design 25
+… and then 22-25 will be understood after that". So this design came before the step's
+understanding session, against the usual order, at the learner's request. Steps 22 to 24 were
+committed and pushed on 2026-10-08, at the learner's request: c155f8f, f6dbc25, 6bd3909,
+2a36250, and bf56a81 for the `.env.example` files the learner copied in.
+
+- **The folder:** `mj_25_revocation_and_the_emergency_brake`, a copy of step 24, with
+  `.env.example` this time. Its README holds the design only. Its code and tests are step 24's.
+- **Nothing is decided.** Nine questions for the learner, L1 to L9, each with options, downsides,
+  and a recommendation, and ten details that Claude Code proposes, D1 to D10.
+- **The first question is the step's size (L1).** Tearing up a slip and pulling the brake are one
+  goal and two mechanisms. The recommendation is to split them, 25 and 25b, as 19 and 19b were.
+- **The hardest question is the race (L8).** Line ④ runs before the claim's transaction, so a
+  draft can pass line ④ a moment before the brake, and still enter EXECUTING. The recommendation
+  checks again inside the claim's transaction, under a lock that the brake takes alone.
+- **Step 24 already has part of it:** line ③ refuses a torn-up slip with `DELEGATION_REVOKED`,
+  and reads the slip from the store at every call, which meets §44's L3 bound for revocation.
+- **Two words that look alike:** step 19b suspends slips, and step 25 suspends agents. The README
+  warns about it, and the session should check that the difference landed.
+- **Two questions for the specification,** above: who a tenant administrator is, and whether an
+  agent may pull the brake. They go to `research/open-questions.md` at the hand-over.
+- **Next:** the understanding session of steps 22 (parts 3 to 5), 23, 24, and 25. Then L1 to L9
+  through the ask tool, one at a time. Then the build.
+- **Nothing is committed.**
+
+### Step 25, the build and the review (2026-10-09)
+
+The learner asked for the build before the understanding session: "first complete 25 build",
+then "Keep 25b, then 26". So Claude Code took each recommendation of the design, and marked each
+decision "(Claude Code)", for the learner to review.
+
+- **The folder** became `mj_25_revocation` when decision L1 split the step. Step 25b, the
+  emergency brake, is a folder of its own.
+- **The README names its decisions as the code does:** L1 to L5 for the design's questions, D1
+  to D15 for the ones found while designing and building. The first README numbered them 1 to
+  16, and most of the code's references pointed nowhere.
+- **The first sweep:** 35 small breaks. 26 were killed, 8 survived and got tests, and 1 was
+  killed by accident, by a test that timed out under load. Two mistakes: two sweeps ran at once
+  on one database, and two tests waited on the whole server's locks.
+- **The review:** two medium findings and five small ones. The check of who is asking ran inside
+  the work, after DSoR had said yes, so a refusal was recorded ALLOW, and a dry run said
+  VALIDATED (M1). "Revocable by its delegator" held only because every signer was a supervisor
+  (M2). All were fixed red first, except two that are a comment and an open question. A sweep of
+  the 18 fixes: 16 killed, 1 survived and got a test, and 1 was caught by a timeout.
+- **Lessons for the next builds:**
+  - A check that only reads belongs at line ⑨, not in the work. A refusal from the work is
+    recorded ALLOW, and a dry run cannot see it.
+  - A refusal that tells "not yours" from "not there" tells which records exist.
+  - "People only" is `type === "human"`, never "not an agent". A list of what is refused misses
+    the type nobody thought of.
+  - Inside a claim, read only through the claim's own stores. A read that takes a second
+    connection from a small pool can wait for ever.
+  - Redact `postgresql://` as well as `postgres://`. A scratch copy's `.env` was printed by
+    mistake on 2026-10-09: local passwords only, for the scratch PostgreSQL.
+- **For the learner's session:** each "(Claude Code)" decision, and the six that the review
+  changed: L3, D3, D4, D7, D13, and D15.
+
+### Step 25b, the emergency brake, built while the learner was away (2026-10-09)
+
+The learner chose the split, "Keep 25b, then 26", and then asked for the build at once: "go ahead,
+build 25b after 25 is done". So Claude Code took the recommendations of step 25's design
+questions L6 to L9, and marked each decision "(Claude Code)", for the learner to review.
+
+- **The folder:** `mj_25b_the_emergency_brake`, a copy of step 25, database `dsor_step25b`. Step 24's
+  markers were still in step 25, and were removed there first; step 25's were removed in 25b.
+- **Line ④ is built.** It reads `dsor.brakes` at every call and refuses each command from a braked
+  agent, in every mode. The check runs again right after line ⑧, inside the claim, under a
+  PostgreSQL advisory lock: shared for an agent's command, alone for a pull.
+- **Found while building:** the brake's refusal was masked inside the claim and not at line ④, so
+  an agent of low clearance heard two different answers for one brake. Its words are public now.
+- **Found by the sweep:** a test that fails must still end. The two race tests left a transaction
+  open when they failed, and the file waited for ever.
+- **A mistake in the sweep's runner:** a time limit killed `npx`, and vitest went on running
+  against the sweep's database beside the next break's run, so the first run's database
+  results could not be trusted, and the sweep ran again. Lesson: a time limit kills the whole
+  process group. In the end all 28 breaks were killed by the tests meant for them.
+- **For the learner's session:** L3, L6 to L9, and D1 to D14 in the README, and the two new
+  questions for the specification, 102 and 103.
+
+### Steps 22 to 25b, understanding after the build (2026-10-09 to 2026-10-10)
+
+All five steps were built before this session, two of them while the learner was away. The first
+message started in the middle of step 22. It used code names before plain words, and gave no
+sentence from the spec and no example from production. The learner rejected it: "your
+explanation is failing on all ends i.e: connection to spec, prod systems, real world understanding
+and explain in simple english". So each part got the same eight sections: the everyday picture,
+the problem, the spec's words, real companies, what DSoR does, a real run, known and unknown, and
+one prediction. While the learner was busy, the session became a workbook page: ten parts, every
+run done in advance on scratch copies of `mj_22` and `mj_25b`, and the learner's first choice of
+each prediction saved in the page's own store. The answers were read back the next morning, and
+the two parts marked "not clear yet" were taught again in the conversation.
+
+- **A new shape of Habit 1: "when the slip goes, all its work goes."** Part 8's prediction
+  cancelled P3 (READY) with P1 and P2. The re-check cancelled P5, which was EXECUTING. The
+  question that listed the possible reasons came back with all four: the slip is checked all the
+  time, all open work is cancelled, any state can be cancelled, and stopping is safer. Two of them
+  credit a check with a question it does not ask: line ③ asks once for each call, and the
+  tear-up's list asks for two states only. What moved it: one run for each reason, then
+  `src/proposals.ts:309` traced with each proposal's state, then the learner's own run of
+  `node zz-move.ts EXECUTING CANCELLED`. The four runs were a tear-up in the middle of P5's work
+  (P5 finished COMMITTED), the five proposals after a tear-up (`cancelled: 2`), the picture asked
+  through the step's own `canMove`, and a copy where a tear-up may cancel EXECUTING work. That
+  copy left a CANCELLED record beside a payment that was written.
+- **Part 9 was predicted right, but all four of its pieces were unclear:** why a dry run is
+  refused, why reads work, brake or tear-up, and who pulls and who lifts. One line answered all
+  four: line ④ stops a call only when the caller is an agent and the call is a command
+  (`src/brakes.ts:126`). The re-check, a brake over a weekend, was right: the waiting work was
+  untouched, and reads went on.
+- **What worked:** the eight sections, a page that saves only the first choice, and a copy changed
+  in two lines, so that the learner's answer comes true beside the real one.
+- **A mistake caught before the learner saw it:** every right answer on the first page was A. The
+  options were shuffled, and the page was published again.
+- **The scratchpad was wiped overnight,** with the scratch database and the outputs of the runs.
+  The page and its saved answers live on claude.ai, so nothing the learner did was lost. The runs
+  that need no database were made again from the step folders.
+- **Design questions for the learner, not decided:**
+  1. A READY proposal under a torn-up slip (open question 90): cancel it, as the learner
+     expected, or leave it, as the spec says now. The spec changes first, then both guards. For
+     step 31, which builds the release.
+  2. Should a braked agent's dry run hear AGENT_SUSPENDED (step 25b's decision L7), when §18
+     stops only "state change"?
+  3. Should a braked agent still read? It can copy out what it reads (the downside of L7).
+  4. Who holds `control:suspend` (decision L3: not the CFO), and may an agent pull the brake
+     (L6, open question 102)?
+  5. What a draft on its way hears when the pull's wait reaches a time limit (finding M1).
+  6. One lift releases a brake that two people pulled for two reasons (L9).
+  7. Step 26's seven questions, drafted on the workbook page: where the rates live, who writes
+     them, where a company's money policy lives, how two amounts are compared, when a rate is too
+     old, whether DSOR-MON-06 belongs in step 26, and whether the record keeps the rate now or in
+     step 33.
+  8. Every decision marked "(Claude Code)" in the READMEs of steps 22 to 25b is still the
+     learner's to review.
+- **Claude Code's answers for production, asked for by the learner (2026-10-10), not decided:**
+  1. Cancel a READY proposal under a torn-up slip, and let READY expire too. `proposal.cancel`
+     (§26.1) cannot cancel a prepared draft today either, because the picture has no READY →
+     CANCELLED.
+  2. Keep L7: a braked agent's dry run hears AGENT_SUSPENDED, as an AWS `DryRun` answers
+     `UnauthorizedOperation` when the real call would be refused.
+  3. Let the person choose at the pull: stop changes only, or stop reads too, for an agent that
+     may be hijacked.
+  4. Make pulling wide and lifting narrow: two permissions. The CFO and a watchdog may pull; a
+     watchdog may brake one agent only, never freeze the company, and each automatic pull calls
+     a person. Only people lift.
+  5. Keep the lock's window tiny: no transaction stays open during the bank's call (step 36). A
+     draft out of time before EXECUTING is refused and safe to retry; during the call it is
+     "outcome unknown" (step 37). A time limit on the pull calls a person, and never skips the
+     rule.
+  6. One hold for each person and reason, as in lockout–tagout: the agent works again only when
+     every hold is lifted.
+  7. Step 26's questions: answered one at a time in step 26's session.
+  8. Change for production: the limit's day in the company's own time zone (step 24, decision 3);
+     a checksum of each guard's body at start-up (step 22, decision 3); the proposal id passed
+     to the bank as its idempotency key (DSOR-IDM-03); a dry run for a `.propose` holder (step
+     23, decision 5); step-up authentication for an administrator's tear-up of another person's
+     slip (step 25, L2); a narrow database path for the tear-up (step 25, D5).
+- **The learner's answers (2026-10-10):** 1, propose the spec change, write it in these notes and
+  in the README of the step that builds it, and build it (see "What happens to a READY proposal
+  when its slip is torn up?"). 2, the same: a proposal, with no code change. 3 and 4, agreed: a
+  brake that can also stop reads, and two permissions, wide to pull and narrow to lift. Each
+  waits for a step of its own. 5 to 8: not answered yet.
+- **The learner's question: should the database not run on UTC, with the time zone in a
+  setting?** Yes, for storage and clocks: `timestamptz` and UTC everywhere, as now. A company's
+  business day is a separate thing: one DSoR serves companies in many time zones, so the zone
+  belongs in each company's policy, not in the server's settings. The day of a limit is then the
+  UTC moment seen in that zone, `(now() AT TIME ZONE 'Asia/Karachi')::date`. The setting holds an
+  IANA zone name, never a fixed offset such as `+05:00`, because daylight saving time moves the
+  offset twice a year in many places. This changes step 24's decision 3, so it waits for a later
+  step, and start-up would check the name against `Intl.supportedValuesOf("timeZone")`.
+
+### Step 26, understanding and the decisions (2026-10-10)
+
+The first step taught with the eight sections from the start. Five parts: the PKR hole, exact
+comparison, where a rate comes from, no good rate, and the day's total in another currency. The
+runs used the spec package's own reference (`packages/spec/src/reference-money.ts`) and its tests,
+scratch copies of `mj_25b` in memory, and sketches marked as sketches. The scratch database was
+gone, and no part needed one.
+
+- **One miss, settled by its re-check:** a cancelled booking given back "in the invoice's own
+  money, 9,000.00 EUR". The run put three ways beside the real spending: the stored 9,782.61 USD
+  matches it; Thursday's rate makes 444.66 USD of room from nothing; EUR leaves the USD total as
+  it was and takes a EUR total below zero. The re-check, a commit on Thursday that keeps 9,782.61
+  USD, was right.
+- **The learner's questions:** a company's time zone for the day of a limit (above, for a later
+  step), and how currencies are managed in production, which became the step itself.
+- **The decisions, all as recommended:**
+  1. Rates live in DSoR's own table: one row for each source, currency, and time.
+  2. A rate is written by a DSoR command, `rate.load`, through the checklist with a record. A
+     scheduled job calls it.
+  3. Each company's money policy lives in a file checked at start-up against the spec's
+     tenant-policy schema, as `role-sources.json` is.
+  4. The database's clock decides that a rate is too old.
+  5. Two amounts in different currencies are compared by multiplying across, with no rounding.
+  6. DSOR-MON-06 comes into step 26. A booking is converted when it is made, stored in the
+     limit's currency rounded up at the sixth decimal place, and given back as stored.
+  7. A decision that converted records the rate, its source, and its time in its log record.
+     DSOR-MON-05 itself stays step 33's.
+  8. Step 25c, a READY proposal that can be cancelled and can expire, is built first, from 25b.
+     Step 26 then copies 25c.
+- **The design questions, 2026-10-10, after 25c was built,** all taken as recommended: a new
+  login `dsor-rates` loads the rates; each company keeps its own; a rate is kept as its source
+  wrote it; one conversion takes both rates from the newest sheet; a rate's age counts from the
+  sheet's publication, by the database's clock; a sheet is written once; a refusal for no usable
+  rate names the cause; a sheet from a source the policy does not name is refused. They are D1 to
+  D8 in `mj_26_money_done_right/README.md`.
+- **The break predictions:** B1, B4, and B5 as expected. B2, an old sheet used as if fresh, was
+  predicted as still refused, "something else in DSoR still finds the sheet too old". B3 showed a
+  mistake in the design, not in the learner: the design expected a booking kept in EUR to pass,
+  and the learner said it is refused from the first, because step 24's reservation store refuses
+  another currency. The learner was right, so B5 was added for this step's own rule, one day's
+  total in the limit's currency.
+
+### Step 25c, the learner's proposal, built (2026-10-10)
+
+The learner proposed a change to the specification, "a READY proposal can end", and asked for it
+to be built before step 26: "We propose spec change document in ntes and step radmen and implment
+tlik this". It is one new idea, so it became a small step of its own, `mj_25c_ready_can_end`,
+copied from step 25b, with database `dsor_step25c`. Step 26 copies it.
+
+- **The decisions:** L1 to L3 and D1 to D4 were the learner's, each taken as recommended. D5 to
+  D15 are Claude Code's, for the learner to review: D5 to D10 found while designing, D11 while
+  building, and D12 to D15 from the review.
+- **The breaks, against the learner's predictions:** B3 was predicted right. B1 and B4 were
+  missed for one reason: both let the picture decide. In B1 the code's copy of the picture was
+  taken as the only one, and the database's trigger refused the move. In B4 a move that the
+  picture allows was taken as a move that happens, and the tear-up's list never asked for it. B2
+  expected the database to release a booking by itself; only DSoR's code does.
+- **Found while building:** the tests' own role table had no `scheduler`, so start-up refused
+  every registry built with it; the tear-up's list on the database had no `ORDER BY`; the first
+  tear-up of a test file now cancels READY drafts that other files left; and claim C7's test
+  proves nothing on a database built from nothing, so it was checked by hand on one with older
+  proposals.
+- **The first sweep:** 33 small breaks, 26 killed. The 7 that survived each got a test, and a
+  second run killed all 7.
+- **The review:** one high finding, three medium, seven small. The high one: a prepared draft
+  already inside its transaction when its slip was torn up still reached READY, because line ③
+  read the slip once, before the claim. Step 25 had left that for step 29; this step's own claim
+  needed it now. The fix reads the slip again inside the claim, under an advisory lock that the
+  tear-up takes alone (D12). A sweep and a tear-up could deadlock, and a database test made it
+  happen (D13). An agent could sweep when a role and a slip both allowed it (D14).
+- **The second sweep:** 19 breaks of the fixes and of the reviewer's untested breaks. 18 were
+  killed at once; the one that survived got a test, and was killed by it.
+- **Lessons for the next builds:**
+  - A check made once, before a transaction, cannot see what changes during it. A guarantee about
+    "after the tear-up" needs the check again inside the claim, under a lock the tear-up takes.
+  - Two operations that each move many rows and then give back a shared total can deadlock. One
+    lock per company, taken first, keeps them one at a time.
+  - Run `pnpm typecheck` after each edit, not only the tests. vitest runs TypeScript without
+    checking types: `holdSlip` read an id from an object that had none. It was found by reading
+    a refusal; a typecheck run afterwards names it at once.
+  - On a shared database, a test that counts must count what the database holds. Other files
+    leave rows behind.
+  - A migration's backfill test needs rows made before the migration. On a database built from
+    nothing it passes whatever the migration does.
+  - Count time in hours and milliseconds, never in calendar days: a day of a time zone whose
+    clocks change is 23 or 25 hours long.
+  - `pnpm migrate` sets `dsor_runtime`'s password for the whole PostgreSQL server. A broken copy
+    gets a server of its own, so it can never change the step's own password.
+- **For the learner's session:** D5 to D15, the habit behind B1 and B4, and open questions 104
+  and 105.
+
+### Step 26, money done right, built (2026-10-10)
+
+Step 26 copies step 25c, as decision L8 asked, with database `dsor_step26`.
+
+- **The decisions:** L1 to L8 and D1 to D8 were the learner's, each taken as recommended. D9 to
+  D15 are Claude Code's, found while designing, for the learner to review. The review changed the
+  learner's D7 and added D16 and D17, for the learner to review too.
+- **The breaks, against the learner's predictions:** B1, B3, B4, and B5 were predicted right. B2
+  was missed: the learner expected that "something else in DSoR still finds the sheet too old".
+  Nothing else does. One line decides that a rate is too old, and without it Tuesday's sheet
+  converted on Saturday. Whether a second guard belongs there is left open.
+- **Found while building:** the tests' own role table had no `rate_loader`; step 24's test of
+  another currency expected the old words; the claim store had to give its rates to a dry run; a
+  refusal records the rates it was refused with; and the owner's `add` made every test invoice in
+  USD.
+- **The sweep:** 41 small breaks, 34 killed. The 7 that survived each got a test, and a second run
+  killed all 7.
+- **The review:** one high finding, three medium, and several small ones. The high one: the words
+  of a refusal for no usable rate named the bill's currency, which the agent's clearance hides, and
+  a dry run told it with no key at all. D7, as recommended, carried the leak, and its downside was
+  written as "which currencies have no rate", so the learner could not see it. Now the agent hears
+  "no usable rate", and the record names the currency and the cause. The medium ones: a repeated or
+  future sheet was refused inside the work, after DSoR said yes (D16 moves it to line ⑨); nothing
+  tested each company's own policy, source, and sheets; and nothing loaded an older sheet after a
+  newer one.
+- **The second sweep:** 20 breaks, 8 of them the reviewer's that no test saw. All 20 were killed.
+- **Lessons for the next builds:**
+  - A guard that stands behind two others still needs a test of its own. The schema and the
+    database's CHECK both keep a rate of zero away, so nothing tested the third guard, and a zero
+    there makes every bill fit.
+  - `toMatchObject` proves only what it names. A record that says too much passes it.
+  - A test of a unique index needs rows that every other key lets through. Here the primary key
+    refused each second sheet first, so the one-base index was never tried.
+  - Test a function at its own edge. With a sheet that lists USD, "USD kept as it is" and "USD
+    converted at 1" give the same answer.
+  - Words are output too. A refusal's message leaves DSoR like any field, so everything it holds
+    must be within the caller's clearance. A decision's downside must name what the caller learns,
+    and from whom it is hidden.
+  - A check that refuses inside the work, after DSoR said yes, ends the proposal FAILED and lets a
+    dry run say yes. Step 25 found this once; ask "does every refusal come before the work?" for
+    each new command.
+  - When both companies of the story share a setting, a test cannot tell "this company's setting"
+    from "the first company's". Give the second company a different value in at least one test.
+  - A race is tested by making it happen: hold the first call inside its claim, wait until the
+    second is waiting on its lock, then let the first go.
+- **For the learner's session:** D9 to D17, D7 as the review changed it, the habit behind B2, and
+  open questions 106 and 107.
+
+### Steps 25c and 26, understanding after the build (2026-10-11), stopped at part 5
+
+Six parts were planned, to hand back about twenty "(Claude Code)" decisions, four missed breaks,
+and open questions 104 to 107. Parts 1 to 4 ran, each with real runs in a scratch copy of step 26
+and a scratch database: a sweep sent twice with one key, a rate of zero written past `rate.load`,
+a change to `expires_at`, a tear-up racing a prepared draft, and an agent that holds `rate:load`.
+
+- **The habit, again: "the role decides" (a form of Habit 1).** Four answers stopped at the first
+  check that said yes: "rate.load is the only way in", "it moves proposals, so it may change any
+  column", "it holds rate:load", and "right login, right role". Each time another guard said no:
+  the database's CHECK, a right on one column only, line ⑤'s `system_only`, and line ⑨'s source
+  rule, decision D8, which the learner chose. The answers that followed a timeline were right.
+- **The learner, in their words:** "feels like i am not thinking before answer anymore", then "I
+  don't want to answer, why are we studying this, you have lost me". The parts were long, the
+  options were written to tempt, and the session drifted into the database's internals, far from
+  the two steps' ideas. Its purpose was never agreed.
+- **What changed (2026-10-11):** each step from 27 on goes understand, discuss, look at it
+  visually, document the decisions, build in steps, test, review, then test the understanding.
+  Questions that test understanding come at the end, not in every part. Every piece is its own
+  commit.
+- **Left for the learner to read, not to be quizzed on:** 25c's D5 to D15 and 26's D9 to D17,
+  in each step's README under "(Claude Code)", and open questions 104 to 107.
+
+### Step 27, controls in CEL, built while the learner was away (2026-10-11 to 2026-10-12)
+
+The learner asked for the whole build first, and the review after: "first build it all then i will
+review". Step 27 copies step 26, with a database of its own on a scratch server.
+
+- **The decisions:** D1 to D18 are Claude Code's, written before any code, each with its downside.
+  The review changed D3, D5, D9, D10, D12, D13, and D16, and added D19 to D21. All of them are for
+  the learner to review.
+- **The pieces:** A, the environment a condition runs in; B, `controls.json` and its check at
+  start-up, with the tests; C1, several controls, one answer; C2, line ⑩ and `PENDING_APPROVAL`;
+  C3, the record's controls on the database; D11, the sweep expires a waiting payment; G, the
+  program's story. One commit each, each test red first, each broken on purpose.
+- **The breaks:** B1, B2, and B4 went as the design expected. B3's expectation was wrong: the
+  control's own test of a currency with no rate stopped the break at start-up. B1 found that the
+  program checked `controls.json` only when its last world was built. The learner's predictions
+  are still to be asked.
+- **The sweep:** 85 small breaks, 28 survived, every one a missing test. Each got a test. Run
+  again, 25 were caught, and the other 3 are defensive copies.
+- **The review:** two high findings, five medium, seventeen low. The high ones: the program's
+  database stories run with no controls, and nothing said so; and the controls and the limits each
+  read "the newest sheet", so a sheet loaded between the two split one decision. The medium ones:
+  a stale control evaluated as active; contract predicates neither evaluated nor refused; a test
+  that tests nothing passing by its error; and "after the command ran" said of a waiting payment.
+- **Lessons for the next builds:**
+  - Read the store once for one decision. Two parts of one line that each ask the store can see
+    two different worlds.
+  - An error applies a control's effect. So a test whose control asks for the CFO, or denies,
+    passes when the condition errs, and proves nothing about what the condition read. Give the
+    condition an answer that differs from its error's: a control that allows the story's case.
+  - A test vector that gives nothing passes by its error. Ask "what if the test gives nothing?"
+  - A world that the program builds late is checked late. Check every file at start-up, before
+    the first story.
+  - A comment that says "not built yet" goes stale on the day it is built. Search for the step's
+    own number when it lands.
+  - Run the repository's formatter on each changed file before its commit.
+- **For the learner's session:** D1 to D21, the four breaks to predict, open questions 108 to 113,
+  and the refusal of `matches`.
+
+### Step 27, understanding after the build (2026-10-12)
+
+The session followed the order of 2026-10-11: the purpose first, three short parts with real runs and
+no quiz inside them, one picture, the learner's review of the 21 decisions as one list, then four
+predictions, each settled by a real run in a scratch copy of the step.
+
+- **The parts:** a rule that a program can check (the control and its five sample cases); what line
+  ⑩ answers (allow, wait for the CFO, or refuse, and the strictest answer wins); and what happens
+  when DSoR cannot tell (an error applies the control's effect). The learner then clicked every box
+  of the picture of line ⑩, and each question got an answer with a run.
+- **The decisions:** the learner asked to talk about groups A (where rules live, and start-up) and B
+  (what a condition sees), heard each decision's reason and its other way, and kept all 21.
+- **A new habit: "straight to the payment".** Predictions 1 and 3 went to the call and skipped the
+  sample cases that start-up runs before any payment. Asked which ideas led there, the learner
+  picked four: a control's tests taken for the developers' test suite; start-up taken to check a
+  control's shape only; a change to the code taken to touch calls only; and test 5's error not
+  seen. Each got its own run, and the learner ran the deciding line with two values.
+- **Prediction 4 was not answered.** The learner said: "Honestly I am unable to answer, so why not
+  build first and complete, and then make a visual story for me." The run showed the fourth break
+  caught only by the developers' tests, and that gave the story its picture of two nets.
+- **The visual story:** "The CFO Rule", an artifact page of ten scenes, at
+  https://claude.ai/artifact/8hziAceZsXoiW59FRL9GkL (private to the learner).
+- **For the next sessions:** before any prediction, draw where each check runs: at start-up, or at
+  a call. Then ask about one call at a time. When a prediction cannot be answered, show it as a
+  story instead of asking again.
+- **Design questions for step 28:** whether a broken control should stop only its own company (D2's
+  other way), and how a stale control behaves through `on_stale` and its grace (D3).
+
+### Step 28, who may switch a rule on, built first by the learner's choice (2026-10-12 to 2026-10-13)
+
+The understanding session of step 28 began from zero, and the learner said the explanations assumed
+half of what they knew. Then they asked "why not build first understand later", heard the reason
+for the usual order, and chose to build first, with a visual story after. The map's step 28 holds
+two ideas, so the build is its first half, who may switch a rule on; the second half, where a rule
+came from, is step 28b, not built. Step 28 copies step 27, with a database of its own.
+
+- **The decisions:** D1 to D19 are Claude Code's, written before any code, each with its downside;
+  D19, org_789's tenant administrator, came while building. The review changed D5, D6, D10, D12,
+  D15, and D16, and added D20 and D21. All of them are for the learner to review.
+- **The pieces:** A, the rules in a store, read by line ⑩ at every call; B, `dsor.controls` on the
+  database; C, `rule.draft` and the four contracts; D, `rule.activate` and its race on the
+  database; E, `rule.suspend` and `rule.retire`; G, the program. One commit each, each test red
+  first, each broken on purpose.
+- **The breaks:** B1 to B4 went as the design expected. B2 showed two checks, line ⑤ and line ⑨,
+  either of which holds. The break of line ⑥ during piece C found a hole: a draft that named a
+  time it took effect looked switched on before, and could move the owner of record.
+- **The sweep:** 58 small breaks, 16 survived, 13 of them missing tests. Run again with a test for
+  each, 13 were caught; the other 3 change nothing that DSoR does.
+- **The review:** two high findings, five medium, sixteen low. The high ones: in memory, a switch-on
+  was two moves, so a retirement at the same moment left no rule, and a payment between the two
+  moves met none; and a condition could loop inside a loop and stall every company. The medium
+  ones: a new rule's owner names themselves (left open, question 114); the owner switched on a
+  version by its number, unread (D20, and question 115); a deadlock on the database, shown live;
+  and two missing tests. The database now has a trigger that draws a version's moves.
+- **Lessons for the next builds:**
+  - A change of two parts is one step of the store, or it is not one change. In memory, a wait
+    between the parts lets another call in.
+  - Inside a claim, read every store through the claim. A second connection from the same pool
+    waits for ever when the pool is full.
+  - A rule that a person writes over the network is code that the server runs: bound what it can
+    do, its loops too.
+  - Write a commit's counts only after the run that prints them. Twice a count was written before
+    its run, and twice it was wrong.
+  - Copying a step's `.env` into a scratch copy was refused once. Run database breaks in a copy
+    whose own `.env` was written by command for its own server, such as the sweep's.
+- **For the learner's session:** the visual story, D1 to D21, the four breaks to predict, and open
+  questions 113 to 115.
+
+### Step 28b, where a rule came from, built first by the learner's choice (2026-10-13)
+
+The second half of the map's step 28, copied from step 28, with a database of its own. The
+learner's choice of 2026-10-12, to build first and understand after, covered both halves.
+
+- **The decisions:** D1 to D15 are Claude Code's, written before any code, each with its downside.
+  The review changed the words of D4, D5, D11, D12, and D13, and made D6 true for the two
+  commands. All of them are for the learner to review, beside step 28's D1 to D21.
+- **The pieces:** A, a stand-in for KSoR and DSoR's question to it; B, the stale mark, in memory and
+  on the database (migration 024, and `dsor.notices`); C, line ⑩'s answer for a stale rule, and
+  the record; D, the sweep, `rule.check_authority`; E, what a rule may cite, and a grace of at most
+  30 days; F, a switch-on asks KSoR; G, the program. One commit each, each test red first, each
+  piece broken on purpose.
+- **The breaks:** B1 to B4 went as the design expected. Each piece's own breaks, about 70 in all,
+  found five survivors: four have tests now, and one changes nothing a caller can see.
+- **Found while building:** piece F's first test found that a switch-on could not replace a stale
+  version. It looked for the live version among the active and suspended ones only.
+- **The review:** one high finding, five medium, six low. The high one: the owner could not suspend
+  or retire a stale version through the commands, so a stale rule whose `on_stale` is `deny`,
+  with KSoR down, refused every payment, and nobody could stop it. The medium ones: the record
+  lost the fingerprint of the text the rule enforces; three places where the code was right and no
+  test held it; and DSOR-CTL-03a met in part, with no timer and a notice that nothing reads.
+- **Lessons for the next builds:**
+  - A test of a store is not a test of the command over it. H1 passed every test of the store.
+  - Name a thing once. "Policies" meant the money policies and KSoR's both, until the question
+    to KSoR was named `ksor`.
+  - zsh does not split a variable into words: a list of test files in one variable ran no test at
+    all. Name each file, or run the script with bash.
+  - A commit's message says what its runs proved. One message said six breaks were caught where
+    five were, and was corrected before the next commit.
+- **The visual story:** "When the CFO Rule Changes", an artifact page of fourteen scenes in two
+  acts, at https://claude.ai/artifact/XSRMSYFiSjsvxte2XbfGEg (private to the learner).
+- **For the learner's session:** the visual story of both halves, step 28's D1 to D21 and step
+  28b's D1 to D15, the eight breaks to predict, and open questions 113 to 119.
+
+### Step 29, approvals, built first by the learner's choice (2026-10-13)
+
+Copied from step 28b, with a database of its own. On 2026-10-13 the learner asked to build step 29
+first, and to talk through steps 28, 28b, and 29 together after.
+
+- **The decisions:** D1 to D15 are Claude Code's, written before any code, each with its downside.
+  The build changed the words of D4 (the schema's own field, `requires`), D5 (the state before the
+  role), and D9 (the company's ending lock, not a lock of the proposal's row). The review changed
+  D5, D7, D10, and D13 again. All of them are for the learner to review.
+- **The pieces:** A, canonical JSON in full; B, a waiting proposal keeps what it waits for
+  (migration 025); C, DSoR keeps each approval (migration 026); D, `proposal.approve`; E, an
+  approval expires with its proposal; F, a rule asks only for an approval someone can give; G, the
+  program. One commit each, each test red first, each piece broken on purpose.
+- **The breaks:** B1 and B3 went as the design expected. B2 and B4 did not: a second check stopped
+  each, line ⑨'s own look at the identity mode, and the next check of the roles. Each piece's own
+  breaks, about 60 in all, found four survivors, and each changed the code or added a test.
+- **The review:** no high finding, seven medium, eleven low, and 59 breaks of the reviewer's own,
+  14 of which survived. The medium ones: an approval given after the expiry, when it waited for a
+  sweep's lock, since `now()` is the time a transaction began; a rule that asks for a role without
+  `proposal:approve`; a README that said the fingerprint alone protects the approver; and four
+  places where code was right and no test held it. All were fixed, each test red first; L8 and L11
+  were recorded, with open question 122.
+- **Lessons for the next builds:**
+  - A refusal can carry a `state` too. A test that told success from refusal by `state` read a
+    refusal as an approval; tell them apart by a field only success has.
+  - A list in an answer needs labels of its own, field by field, or the masking step refuses the
+    whole answer, `INTERNAL_ERROR`.
+  - A draft in the step folder is part of the step. Piece D's draft of `src/approve.ts` failed the
+    typecheck of piece C's check. Drafts belong in the scratchpad until their piece starts.
+  - `now()` in PostgreSQL is the time the transaction began. A check of time after a lock wait reads
+    `clock_timestamp()`.
+  - The cross-tenant suite sends another company's address with a made-up id, and expects
+    `TENANT_MISMATCH`. An input pattern stricter than the specification's breaks it; refuse the
+    form of an id in line ⑨'s look instead.
+  - Run first, then write the commit. One message named a count before the run printed it, and the
+    count was wrong. Another said the formatter changed no token, and it adds trailing commas. Both
+    messages were corrected before the next commit.
+- **The visual story:** "When the CFO Rule Changes", version 2, adds Act 3, the approvals, six
+  scenes from real runs, and step 29's breaks and review, at the same address,
+  https://claude.ai/artifact/XSRMSYFiSjsvxte2XbfGEg (private to the learner).
+- **For the learner's session:** steps 28, 28b, and 29 together: the visual story, now with a third
+  act; step 28's D1 to D21, step 28b's D1 to D15, and step 29's D1 to D15; the twelve breaks to
+  predict; and open questions 113 to 122.
+
+### Step 30, who may not approve, built first by the learner's choice (2026-10-13)
+
+Copied from step 29, with a database of its own. On 2026-10-13, after step 29, the learner chose
+"Build 30 too, review 4": build step 30 the same way, and then review steps 28, 28b, 29, and 30
+together.
+
+- **The decisions:** D1 to D10 are Claude Code's, written before any code, each with its downside.
+  The review changed D8: the count itself counts people now (finding L5). All of them are for the
+  learner to review.
+- **The pieces:** A, AP supervisors may approve (D5), and a rule may ask for one (D6); B, DSOR-SOD-02
+  at line ⑨, in `src/segregation.ts`; C, tests titled DSOR-SOD-01a, 01b, and 04c for what step 29
+  holds; D, the program's story. One commit each, each test red first, each piece broken on purpose.
+- **The breaks:** B2 went as the design expected. B1, B3, and B4 did not. The subject check covers
+  the slip's signer for an agent's call; the count itself counts people since the review; and an
+  agent holds no role, so no approve permission of its own. Of 26 breaks of my own, in memory and
+  on the database, two survived, and each became a test: the slip read in org_789, and the signer
+  read on the database.
+- **The review:** no high finding, one medium, seven low, and 33 breaks of the reviewer's own, 4 of
+  which survived. M1, two approvals by one person at once, became two database tests. Their first
+  version passed with no lock and no key, because the two calls did not overlap, so the tests hold
+  the company's ending lock by hand until both calls wait for it. L1, L2, L3, L5, and L6 were fixed;
+  L4 and L7 were recorded. L7 is the store of slips in memory, from an earlier step, which accepts
+  two slips with one id.
+- **Lessons for the next builds:**
+  - Two calls sent with `Promise.all` need not overlap. A concurrency test proves something only
+    when it makes the overlap happen, and fails without the lock: hold the lock by hand until both
+    calls wait for it.
+  - A new permission can weaken an old test. With `payment:approve` on ap_supervisor, a test of a
+    person with two roles passed with code that read only the first role.
+  - A break can be held by a check the design did not name. Run the break before writing what it
+    shows.
+  - The session's deny rules cover `.env.example` too. A copy without it fails one test in every
+    run: say so, and leave that test out of the counts.
+- **The visual story:** "When the CFO Rule Changes", version 4, at the same address,
+  https://claude.ai/artifact/XSRMSYFiSjsvxte2XbfGEg (private to the learner). Version 3 added who
+  may not approve: four scenes from real runs, the chain drawn link by link, and step 30's breaks
+  and review. Version 4 opens with step 27, at the learner's request ("I don't know that"): the
+  rule itself, eight scenes from step 27's own page "The CFO Rule", with its breaks, review, and
+  decisions in the closing scenes. The page now has five acts and 32 scenes.
+- **For the learner's session:** steps 27, 28, 28b, 29, and 30 together: the visual story, now with
+  five acts; step 27's D1 to D21, step 28's D1 to D21, step 28b's D1 to D15, step 29's D1 to D15,
+  and step 30's D1 to D10; the twenty breaks to predict; and open questions 108 to 123.
 
 ## Still unknown
 

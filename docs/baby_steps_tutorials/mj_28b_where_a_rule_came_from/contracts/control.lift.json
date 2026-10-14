@@ -1,0 +1,46 @@
+{
+  "id": "control.lift",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "BrakeRequest"
+  },
+  "output": {
+    "schema": "Brake"
+  },
+  "authorization": {
+    "permission": "control:suspend"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "people_only": true
+    }
+  }
+}

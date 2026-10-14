@@ -1,0 +1,91 @@
+{
+  "schemas": {
+    "app": { "side": "company", "runtime": ["USAGE"] },
+    "dsor": { "side": "dsor", "runtime": ["USAGE"] },
+    "public": { "side": "none", "runtime": ["USAGE"] }
+  },
+  "tables": {
+    "app.invoices": {
+      "kind": "business",
+      "tenant": "tenant_id",
+      "runtime": { "table": ["SELECT"] },
+      "triggers": [
+        "CREATE TRIGGER invoices_version BEFORE UPDATE ON app.invoices FOR EACH ROW EXECUTE FUNCTION app.next_version()"
+      ]
+    },
+    "app.payments": {
+      "kind": "business-written",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "tenant_id",
+            "invoice_id",
+            "vendor_id",
+            "amount_value",
+            "amount_currency",
+            "status"
+          ],
+          "UPDATE": ["status"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER payments_version BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION app.next_version()"
+      ]
+    },
+    "dsor.audit": {
+      "kind": "append-only",
+      "tenant": "tenant",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "record_id",
+            "kind",
+            "operation",
+            "authorization",
+            "result",
+            "reason",
+            "correlation",
+            "tenant",
+            "extensions",
+            "resources",
+            "row_count",
+            "connector",
+            "identity",
+            "delegation"
+          ]
+        }
+      }
+    },
+    "dsor.delegations": {
+      "kind": "control-written",
+      "tenant": "tenant_id",
+      "runtime": { "table": ["SELECT"], "columns": { "UPDATE": ["status"] } }
+    },
+    "dsor.idempotency": {
+      "kind": "control-claimed",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "tenant_id",
+            "principal",
+            "operation",
+            "idempotency_key",
+            "payload_hash",
+            "request_id"
+          ],
+          "UPDATE": ["answer"]
+        }
+      }
+    },
+    "dsor.migrations": {
+      "kind": "bookkeeping",
+      "tenant": null,
+      "runtime": { "table": [] }
+    }
+  }
+}
