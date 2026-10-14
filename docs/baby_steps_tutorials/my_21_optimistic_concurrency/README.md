@@ -118,7 +118,7 @@ also asks for a draft. The unit tier proves that, with a draft decided on as the
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `751` with `1 skipped`; in the repository it is `751 passed`.
+is not beside it, so the total reads `754` with `1 skipped`; in the repository it is `754 passed`.
 
 ### Break 1 · the version is not in the UPDATE
 
@@ -126,7 +126,7 @@ In `src/invoice.ts`, change `AND status = 'draft' AND version = $3` to
 `AND status = 'draft' AND $3::int > 0`, which still uses the number and no longer compares it.
 
 ```text
- Tests  2 failed | 748 passed | 1 skipped (751)
+ Tests  2 failed | 751 passed | 1 skipped (754)
 ```
 
 Only two, and that is the lesson. In almost every stale case the record also left the draft state,
@@ -141,7 +141,7 @@ In `src/invoice.ts`, change `SET status = 'issued', version = version + 1` to
 `SET status = 'issued'`.
 
 ```text
- Tests  6 failed | 744 passed | 1 skipped (751)
+ Tests  6 failed | 747 passed | 1 skipped (754)
 ```
 
 The record changes and its version stays at 1, so a caller who decided on version 1 finds the
@@ -156,7 +156,7 @@ new version, 2, and expects `CONFLICT`; it is told `STALE_STATE`, because the in
 In `src/operations.ts`, change `strategy === "optimistic") {` to `strategy === "pessimistic") {`.
 
 ```text
- Tests  2 failed | 748 passed | 1 skipped (751)
+ Tests  2 failed | 751 passed | 1 skipped (754)
 ```
 
 A command with no version is still refused, because the handler asks again. But it is refused after
