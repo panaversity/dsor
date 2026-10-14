@@ -20,9 +20,13 @@
 //   PENDING_APPROVAL, which the trigger refuses (step 29's README, decision D4).
 // - starts-waiting (since step 29): add a proposal that already names what it waits for, which the
 //   trigger refuses too.
+// - tamper <id> (since step 31): the stored request of one of org_456's proposals changed by hand,
+//   with the trigger switched off for that one statement, as a store that went wrong would leave
+//   it. The only command that commits: the release's check of the fingerprint must find it (step
+//   31's README, claim C1). The new request names INV-1009 in place of the invoice it named.
 // Run by the tests as:
 //   node test/owner-proposals.ts rewrite <column> | skip | unreachable | guard | backfill | due |
-//   starts-waiting
+//   starts-waiting | tamper <id>
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
@@ -169,6 +173,24 @@ try {
       result = { ours: ids.includes(ours), theirs: ids.includes(theirs) };
     } finally {
       await other.query("DELETE FROM dsor.proposals WHERE id = ANY($1)", [[ours, theirs]]);
+      await other.end();
+    }
+  } else if (command === "tamper") {
+    // On its own connection, so the ROLLBACK below cannot undo it.
+    const other = new pg.Pool({ connectionString: owner, max: 1 });
+    try {
+      await other.query("BEGIN");
+      await other.query("ALTER TABLE dsor.proposals DISABLE TRIGGER proposals_move");
+      const changed = await other.query(
+        `UPDATE dsor.proposals
+            SET payload = jsonb_set(payload, '{invoice}', '"dsor://org_456/invoice/INV-1009"')
+          WHERE tenant_id = 'org_456' AND id = $1`,
+        [column],
+      );
+      await other.query("ALTER TABLE dsor.proposals ENABLE TRIGGER proposals_move");
+      await other.query("COMMIT");
+      result = { changed: changed.rowCount };
+    } finally {
       await other.end();
     }
   } else {
