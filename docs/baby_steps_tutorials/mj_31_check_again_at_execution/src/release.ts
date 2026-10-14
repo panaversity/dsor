@@ -121,10 +121,14 @@ export async function mayRelease(
   }
   // And only while its time has not come, though no sweep has moved it yet: its approval
   // expires with it (DSOR-APR-04a).
-  if (await isDue()) {
-    const why = `proposal ${id}'s time came at ${found.expires_at}, so it is not released`;
-    throw new Refusal("CONFLICT", why, "internal");
-  }
+  if (await isDue()) throw timeCame(found);
+}
+
+/** The refusal of a proposal whose time has come, though no sweep has moved it yet. */
+export function timeCame(found: Proposal): Refusal {
+  const id = found.uri.slice(found.uri.lastIndexOf("/") + 1);
+  const why = `proposal ${id}'s time came at ${found.expires_at}, so it is not released`;
+  return new Refusal("CONFLICT", why, "internal");
 }
 
 /** The roles the person or agent that asked holds now, and, for an agent, the slip it works under now. */
@@ -239,6 +243,12 @@ export async function checkApprovals(
       }
     }
   }
+  // Only an approval that is active and binds this very request counts: one for another
+  //   fingerprint approved another request (DSOR-APR-09). Its expiry is its proposal's, which the
+  //   release reads again just before the work (found by step 31's review, finding M2).
+  const counted = given.filter(
+    (a) => a.status === "active" && a.payload_hash === found.payload_hash,
+  );
   for (const now of requires) {
     const { control, control_version: version } = now;
     const { role, quorum } = now.approval;
@@ -248,7 +258,7 @@ export async function checkApprovals(
     }
     // One person counts once (DSOR-SOD-04c), and only for the role their approval met.
     const people = new Set(
-      given
+      counted
         .filter((a) =>
           a.satisfies.some((line) => line.control === control && line.requirement.role === role),
         )

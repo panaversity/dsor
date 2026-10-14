@@ -72,6 +72,7 @@ import {
   mayRelease,
   releases,
   targetOf,
+  timeCame,
 } from "./release.ts";
 import {
   checkedKey,
@@ -877,6 +878,13 @@ export async function call(
                     const why = `proposal ${id} is INVALIDATED: ${causeOf(thrown)}`;
                     const refused = new Refusal("APPROVAL_INVALIDATED", why, "internal");
                     return { proposal: released, refused };
+                  }
+                  // The proposal's time is read again, by the store's clock, after the check again,
+                  //   which may wait for the company's directory: an approval expires with its
+                  //   proposal (DSOR-APR-04a). Found by step 31's review, finding M2: a release that
+                  //   began a moment before the expiry ran after it.
+                  if (await stores.proposals.isDue(tenant, id)) {
+                    return { proposal: released, refused: timeCame(loaded) };
                   }
                   // The move to EXECUTING names who released it. It moves only a proposal still in
                   //   the state the gate read, so of two releases at once, one moves it, and the

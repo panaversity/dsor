@@ -3,6 +3,7 @@
 // approval and its release. Each test changes one thing in that time, and the release must see it.
 import { describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
+import { checkApprovals } from "../src/release.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ADMIN, AGENT, CFO, DEL_100, keyed, SUPERVISOR } from "./helpers.ts";
 import {
@@ -339,5 +340,57 @@ describe("C2 and C3: a dry run of a release checks again too (DSOR-OPR-06, D13)"
     });
     expect(dry).toMatchObject({ outcome: "VALIDATED" });
     expect(await release(w, AGENT, uri)).toMatchObject({ outcome: "COMMITTED" });
+  });
+});
+
+describe("C4: an approval counts only while it lasts, and only for its request (DSOR-APR-03b, DSOR-APR-04a)", () => {
+  it("DSOR-APR-04a: a release after INV-1008's time has come, though no sweep has moved it, hears CONFLICT, and nothing is paid", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri } = await approved(w);
+    const kept = (await w.proposals.get("org_456", id))!;
+    w.clock.now = Date.parse(kept.expires_at) + 1000;
+    expect(await release(w, AGENT, uri)).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${id}'s time came at ${kept.expires_at}, so it is not released`,
+    });
+    expect(await afterwards(w, id)).toMatchObject({ state: "APPROVED", drafted: 0 });
+  });
+
+  // Found by step 31's review, finding M2: the expiry was read once, before the check again, which
+  //   may wait two seconds for the company's directory.
+  it("DSOR-APR-04a: a release that began a moment before INV-1008's expiry, and waited for a stuck directory, is not paid after it: CONFLICT", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri } = await approved(w);
+    const kept = (await w.proposals.get("org_456", id))!;
+    w.clock.now = Date.parse(kept.expires_at) - 1000;
+    // The directory takes the question and never answers, so the role source waits its two
+    //   seconds, then uses the answer it kept from the draft. Meanwhile the proposal's time comes.
+    w.directories.get("org_456")!.turn("stuck");
+    const late = setTimeout(() => {
+      w.clock.now = Date.parse(kept.expires_at) + 1000;
+    }, 500);
+    try {
+      expect(await release(w, SUPERVISOR, uri)).toMatchObject({
+        code: "CONFLICT",
+        message: `proposal ${id}'s time came at ${kept.expires_at}, so it is not released`,
+      });
+    } finally {
+      clearTimeout(late);
+    }
+    expect(await afterwards(w, id)).toMatchObject({ state: "APPROVED", drafted: 0 });
+  });
+
+  it("DSOR-APR-09: an approval that binds another fingerprint counts for nothing at the release", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id } = await approved(w);
+    const kept = (await w.proposals.get("org_456", id))!;
+    const given = await w.proposals.approvals("org_456", id);
+    const other = given.map((a) => ({ ...a, payload_hash: `sha256:${"0".repeat(64)}` }));
+    await expect(
+      checkApprovals(kept, kept.requires ?? [], other, w.registry.delegations, "org_456"),
+    ).rejects.toThrow("high-value-payment version 8 asks for an approval by CFO, and 0 counts");
+    await expect(
+      checkApprovals(kept, kept.requires ?? [], given, w.registry.delegations, "org_456"),
+    ).resolves.toBeUndefined();
   });
 });
