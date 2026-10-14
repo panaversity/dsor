@@ -644,7 +644,11 @@ export async function call(
         inClaim ? id : undefined,
         asked,
       ).catch((thrown: unknown) => {
-        if (thrown instanceof Refusal && thrown.code === "LIMIT_EXCEEDED" && unconvertibleOfRecord) {
+        if (
+          thrown instanceof Refusal &&
+          thrown.code === "LIMIT_EXCEEDED" &&
+          unconvertibleOfRecord
+        ) {
           const why = `no rate is usable now, so proposal ${id} waits: ${thrown.message}`;
           throw new Refusal("FRESHNESS_UNSATISFIABLE", why, "public");
         }
@@ -879,7 +883,9 @@ export async function call(
                       cause: `the check at the release refused it: ${thrown.code}`,
                       correlation,
                     };
-                    if (!(await stores.proposals.move(tenant, id, loaded.state, "INVALIDATED", by))) {
+                    if (
+                      !(await stores.proposals.move(tenant, id, loaded.state, "INVALIDATED", by))
+                    ) {
                       const why = `proposal ${id} was released by another call`;
                       const refused = new Refusal("CONFLICT", why, "internal");
                       return { proposal: released, refused };

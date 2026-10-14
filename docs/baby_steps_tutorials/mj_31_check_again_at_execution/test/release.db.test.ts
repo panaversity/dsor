@@ -137,7 +137,11 @@ async function bookingOf(id: string): Promise<unknown> {
 async function switchOn(text: Record<string, unknown>): Promise<void> {
   const rule = "dsor://org_456/rule/high-value-payment";
   const reason = "a stricter line, by a test";
-  const drafted = await call(registry, log, keyed(CFO), "rule.draft", { rule, draft: text, reason });
+  const drafted = await call(registry, log, keyed(CFO), "rule.draft", {
+    rule,
+    draft: text,
+    reason,
+  });
   const version = (drafted as { data: { version: number } }).data.version;
   const on = await call(registry, log, keyed(CFO), "rule.activate", { rule, version, reason });
   expect(on).toMatchObject({ data: { status: "active" } });

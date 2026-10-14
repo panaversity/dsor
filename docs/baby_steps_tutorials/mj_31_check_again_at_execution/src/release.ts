@@ -160,7 +160,11 @@ export async function askerNow(
   if (requester.delegation !== undefined && asker !== undefined) {
     const agent = principalNamed(asker);
     if (agent === undefined) {
-      throw new Refusal("AUTHORIZATION_DENIED", `${asker}, which asked, has no login now`, "internal");
+      throw new Refusal(
+        "AUTHORIZATION_DENIED",
+        `${asker}, which asked, has no login now`,
+        "internal",
+      );
     }
     const slip = await checkDelegation(agent, target, stores.slips, tenant);
     if (slip?.id !== requester.delegation) {

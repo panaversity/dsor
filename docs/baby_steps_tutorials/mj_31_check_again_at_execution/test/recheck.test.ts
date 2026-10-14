@@ -10,13 +10,7 @@ import type { Contract } from "../src/registry.ts";
 import type { Slip } from "../src/slips.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ADMIN, AGENT, CFO, contract, DEL_100, keyed, SUPERVISOR, withPlanted } from "./helpers.ts";
-import {
-  ruleCall,
-  ruleWorldOnTuesday,
-  textOf,
-  version9,
-  type RuleWorld,
-} from "./rule-world.ts";
+import { ruleCall, ruleWorldOnTuesday, textOf, version9, type RuleWorld } from "./rule-world.ts";
 
 /** The URI of the proposal an answer names. */
 function uriOf(answer: Answer): string {
@@ -48,7 +42,9 @@ function release(w: RuleWorld, who: RequestEnvelope, uri: string) {
 
 /** A rule's test lines at its line in USD: the line itself is allowed, a cent above it is not. */
 function linesAt(value: string) {
-  const usd = (amount: string) => ({ invoice: { open_amount: { value: amount, currency: "USD" } } });
+  const usd = (amount: string) => ({
+    invoice: { open_amount: { value: amount, currency: "USD" } },
+  });
   const above = (Number(value) + 0.01).toFixed(2);
   return [
     { state: usd(`${value}.00`), expect: "ALLOW" },
@@ -124,11 +120,15 @@ describe("C4: an approval counts for the role and quorum the rules ask for now (
     await switchOn(w, textOf(version9()));
     expect(await release(w, AGENT, uri)).toMatchObject({ outcome: "COMMITTED" });
     expect(w.drafted.map((p) => p.invoice_id)).toEqual(["INV-1008"]);
-    const record = (await w.log.records()).filter((r) => r.operation === "proposal.execute@1").at(-1)!;
+    const record = (await w.log.records())
+      .filter((r) => r.operation === "proposal.execute@1")
+      .at(-1)!;
     expect(record).toMatchObject({
       controls: [{ id: "high-value-payment", version: 9, outcome: "REQUIRE_APPROVAL" }],
       extensions: {
-        "org.panaversity.steps": { approved_under: [{ control: "high-value-payment", version: 8 }] },
+        "org.panaversity.steps": {
+          approved_under: [{ control: "high-value-payment", version: 8 }],
+        },
       },
     });
   });
@@ -249,7 +249,12 @@ describe("C3: every check runs again, for the person or agent that asked (DSOR-A
         at: new Date().toISOString(),
       },
       {
-        mover: { mode: "direct", subject: "user_123", actor_chain: [], subject_authority: { source: "token", as_of: new Date().toISOString() } },
+        mover: {
+          mode: "direct",
+          subject: "user_123",
+          actor_chain: [],
+          subject_authority: { source: "token", as_of: new Date().toISOString() },
+        },
         cause: "planted by a test",
         correlation: { request_id: "req_planted" },
       },
@@ -428,8 +433,15 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
   /** admin_100 drafts and switches on a rule of org_456's own, at this address, with this text. */
   async function adminRule(w: RuleWorld, name: string, text: Record<string, unknown>) {
     const rule = `dsor://org_456/rule/${name}`;
-    const draft = { ...textOf(version9()), owner: "admin_100", authority: { system: "local", rule: name }, ...text };
-    expect(await ruleCall(w, ADMIN, "rule.draft", { draft }, rule)).toMatchObject({ data: { version: 1 } });
+    const draft = {
+      ...textOf(version9()),
+      owner: "admin_100",
+      authority: { system: "local", rule: name },
+      ...text,
+    };
+    expect(await ruleCall(w, ADMIN, "rule.draft", { draft }, rule)).toMatchObject({
+      data: { version: 1 },
+    });
     expect(await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule)).toMatchObject({
       data: { status: "active" },
     });
@@ -449,7 +461,9 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
     });
     const answer = await release(w, AGENT, uri);
     await expectInvalidated(w, answer, id, "APPROVED");
-    expect((await afterwards(w, id)).cause).toBe("the check at the release refused it: POLICY_DENIED");
+    expect((await afterwards(w, id)).cause).toBe(
+      "the check at the release refused it: POLICY_DENIED",
+    );
   });
 
   it("DSOR-APR-03a: the rules decide for the asker, not the caller: a rule that refuses a person's own payment above 5,000 USD does not stop user_123's release of the agent's prepared INV-1009", async () => {
@@ -490,7 +504,11 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
   it("DSOR-APR-03a: user_150, a person who prepared INV-1009 on their own login, loses their role before user_123 releases it: invalidated, AUTHORIZATION_DENIED", async () => {
     const w = await ruleWorldOnTuesday();
     const person = (roles: string[]) =>
-      ({ id: "user_150", type: "human", memberships: [{ tenant_id: "org_456", roles }] }) as unknown as Principal;
+      ({
+        id: "user_150",
+        type: "human",
+        memberships: [{ tenant_id: "org_456", roles }],
+      }) as unknown as Principal;
     const USER_150: RequestEnvelope = { token: "tok_150", tenant: "org_456" };
     const prepared = await withPlanted("tok_150", person(["ap_supervisor"]), () =>
       w.ask({ ...keyed(USER_150), mode: "propose_only" }, "payment.create", {
@@ -518,7 +536,9 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
     const held = new Set(["invoice:read", "payment:create"]);
     await expect(
       mayRelease(kept, target, { caller: agent, slip: other, held }, async () => false),
-    ).rejects.toThrow(`accounts-payable-fte may not release proposal ${id}: it was not asked for under accounts-payable-fte's own slip`);
+    ).rejects.toThrow(
+      `accounts-payable-fte may not release proposal ${id}: it was not asked for under accounts-payable-fte's own slip`,
+    );
   });
 
   it("DSOR-APR-03a: an agent that works under another slip now than the one it asked under is not the asker any more: DELEGATION_REQUIRED", async () => {
@@ -530,7 +550,14 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
       find: async () => ({ slip: { ...DEL_100, id: "del_199" }, past: false }),
     };
     await expect(
-      askerNow(kept, contract("payment.create") as Contract, w.registry.roles, w.registry.roleSource, { slips, brakes: NO_BRAKES }, "org_456"),
+      askerNow(
+        kept,
+        contract("payment.create") as Contract,
+        w.registry.roles,
+        w.registry.roleSource,
+        { slips, brakes: NO_BRAKES },
+        "org_456",
+      ),
     ).rejects.toThrow("accounts-payable-fte works under another slip now, and asked under del_100");
   });
 });
