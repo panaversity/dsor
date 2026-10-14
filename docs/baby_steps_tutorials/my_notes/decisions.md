@@ -4125,6 +4125,11 @@ be refused with `IDEMPOTENCY_CONFLICT`.
    connection takes them in turn, and in the database tier, on a real server, over a pool of many
    connections, where they truly race.
 
+> **Corrected 2026-10-14 — see decision 158.** Item 4's two seconds were measured on a PostgreSQL on
+> this machine. On Neon, 127 ms away, the forty-nine others stopped waiting while the first request
+> was still being carried out, and most of their refusals then lost their place in the log. A
+> request waits up to thirty seconds now.
+
 ## 132 · What step 20's review found, and what was chosen (2026-10-11)
 
 **Decided by:** Claude, on the learner's standing instruction of this date, "go with your
@@ -5538,3 +5543,163 @@ every move has its record and every refusal is DENIED, and "most of twenty" only
 Two of the build's commits failed a check at their own point and were fixed in the commit that
 needed it, so every commit on the branch passes by itself: a formatting fix, and the type a test
 helper's options declare.
+
+> **Corrected 2026-10-14 — see decision 158.** Item 3's ten places were enough on this machine and
+> not on Neon, 127 ms away, where fifty reads at once from one company left 36 to 39 of them refused.
+> From step 22 a company's log takes one writer at a time; the ten places stay for a writer that does
+> not take turns, and "most of twenty, on this machine" became "all twenty, on any server".
+
+## 158 · On a database far away: a request waits thirty seconds for its twin, and a company's log takes one writer at a time (2026-10-14)
+
+**Decided by:** Claude, on the learner's "go ahead" to the recommendation, "make requests wait in
+line for their company's log". The questions that came up while building it are below, each put as
+it would have been asked, each answer the recommendation, and open to reversal.
+
+**The problem.** On 2026-10-14 the database tiers of steps 16 to 25 ran against Neon for the first
+time, each on its own database. Until then they had run on a PostgreSQL on this machine. A round
+trip from this machine to Neon took 127 ms (the median of fifteen). Steps 16 to 19 passed. Steps 20
+to 25 each failed one to three tests, and every one of them sent twenty or fifty requests at once:
+
+- **Fifty requests with one key** (steps 20 to 25) made one payment, as they must, but not every
+  caller was handed its receipt. On Neon one payment request takes seconds. The forty-nine others
+  stopped waiting after two, and each wrote its refusal to the company's log at the same moment.
+  Measured in step 20 as it was, two runs: one receipt, 47 or 48 `EVIDENCE_STORE_UNAVAILABLE`,
+  because the refusal's own record lost its place, and one or two `OUTCOME_UNKNOWN`.
+- **Fifty reservations at once, and fifty payments through the door** (steps 24 and 25): a raw
+  `duplicate key value violates unique constraint "audit_pkey"` came out of `propose`, an error
+  with no envelope, and the door's test ran out of its thirty seconds.
+- **Fifty reads at once by one company**, sent on purpose in step 22 to see it: 36 to 39 of the
+  fifty were refused `EVIDENCE_STORE_UNAVAILABLE`, in each of three runs, each having lost its place
+  at the end of the log ten times in a row. Decision 157 had seen it coming, 8 to 18 of twenty with
+  delays added, and asked "most of twenty" only of a server on this machine.
+
+Two settings had been measured where a round trip takes a fraction of a millisecond, and neither
+held 127 ms away.
+
+1. **A request waits up to thirty seconds for the same request still being carried out, not two**
+   (Q2, a). From step 20, where decision 131 chose two. Measured on Neon, fifty requests with one
+   key: every one handed the receipt, in about ten seconds in step 20, and in every step after it.
+   A replay writes no record, so nothing races for the log. The wait ends when the answer is there,
+   so a request near its database is not slowed. Every test in the file of the key waits two seconds,
+   set with `setInFlightWait`, because thirty is longer than a test may take; one test sets thirty
+   back and moves the clock to show it holds (B1, below).
+   **Rejected:** two seconds with a test that accepts `OUTCOME_UNKNOWN`, which is true but tells
+   forty-nine callers nobody knows when the answer is seconds away; a wait that grows with the
+   measured distance, which is more machinery than the step needs.
+2. **A company's log takes one writer at a time** (Q1, the recommendation). From step 22, where
+   decision 157 made a lost place something to try again. A writer waits for its company's turn,
+   reads the end of the log, writes after it, and commits; only then can the next one read the end.
+   PostgreSQL keeps the turn with an advisory lock, `pg_advisory_xact_lock`, taken by the turn's
+   first statement together with the company, and let go when the transaction ends.
+   Measured on Neon: fifty reads at once, 50 of 50 answered in each of two runs, in 39 seconds
+   (the refused runs had taken 32); twenty payments at once, 20 of 20 in each of three runs, in about
+   34 seconds; with the turns taken away, 12 and 11 of twenty. The ten places stay, for a writer
+   that does not take turns: a test's stand-in, or a person at the database. **Rejected:** more
+   places and longer pauses, which only move the point where it breaks, and each try is eight round
+   trips, about a second on Neon; a function in the database that reads and writes in one round
+   trip, because the hash is the program's and the start-up check refuses a function the
+   application may run as its owner.
+3. **Steps 20 and 21 keep step 09's lesson** (Q3, a). Their log refuses a lost place instead of
+   trying the next, and nothing in them sends many records at once: fifty requests with one key
+   write one decision. Measured in step 20 with the turns taken away: fifty receipts. **Rejected:**
+   turns from step 20, which would change step 09's lesson two steps before decision 157 does.
+4. **The files that send fifty at once get three minutes** (Q4, a): `vi.setConfig` for the file.
+   From step 20 for the fifty with one key, which must outlast the thirty-second wait, and from step
+   24 for the limits, whose two tests took about fifty seconds each on Neon. The rest of the tier
+   keeps thirty seconds a test, so a test that hangs is still found in thirty. **Rejected:** three
+   minutes for the whole tier.
+5. **"Most of twenty, on this machine" becomes "all twenty, on any server"** (told, not asked).
+   From step 22. The skip and its helper `onThisMachine` are gone, so steps 22 to 25 skip no
+   database test. One more test, from step 22, holds `org_456`'s turn itself and asks PostgreSQL's
+   list of locks whether a writer is waiting for it; with the turns taken away it fails at once.
+
+**Found on the way.** With the wait at thirty seconds, the unit test about a claim whose reply was
+lost ran out of its thirty seconds of test time while its second request was still waiting. That
+request went on into the tests after it, and made a payment in the test about fifty retries, which
+then counted two. A test that runs out of time does not stop the requests it started. The test
+waits two seconds now, as it did before.
+
+**What a review found, and what was chosen** (the requirement-reviewer subagent, on the first build).
+Each was fixed in the step that first has it and carried forward, except where it says recorded.
+
+- **A turn needs READ COMMITTED** (A1). At REPEATABLE READ a transaction reads from the snapshot of its
+  first statement, taken before the wait, so every writer that waited would read an old end. The
+  server's turn begins `BEGIN ISOLATION LEVEL READ COMMITTED`, PGlite's says it first. Broken on
+  purpose on Neon, with the database's default set to REPEATABLE READ: a plain `BEGIN` lost its single
+  place, and the turn as built kept it. A unit test asks PGlite for the level inside a turn.
+- **A turn could be held for ever** (A2), by a program that stalls or whose network goes quiet.
+  The turn's first statement sets `idle_in_transaction_session_timeout` to ten seconds for its
+  transaction. A database test holds a turn quiet for twenty seconds: the next writer goes on after
+  about ten, and with the limit taken away it waited the twenty. The turn's connection now listens for
+  an error event, because the server ending a connection between two statements would otherwise
+  stop the program.
+- **Waiting for a turn held a connection** (A3), so a crowd of `org_456`'s requests could take every
+  connection in the pool and keep `org_789`'s waiting. The program now keeps its own line for each
+  log, before a connection is taken. A database test with a pool of three: `org_789`'s request is
+  written while `org_456`'s turn is held and its crowd waits; without the program's line it was kept
+  waiting.
+- **A failed look after the first request was seen running said "nothing was done"** (A4). It is
+  told `OUTCOME_UNKNOWN` now, as when the wait runs out, from step 20. The other half, steps 20 and
+  21, where a waiter's own refusal cannot be recorded and §28 makes it `safe_same_key`, is a question
+  for the specification: **recorded**, open question 131.
+- **The thirty seconds were pinned only as a number** (B1). A unit test now moves the clock
+  twenty-five seconds at the first look and gives the answer after it; counting two seconds, it
+  fails. **Tests that wait could run out of time and leave their requests running** (B2): every
+  test in the file waits two seconds, set before each. **The lock test** (B3) asks only for this
+  database's lock of this line, always lets the turn go, and proves the end is read inside the turn,
+  with a second program and a writer allowed one place. **The fifty with one key** (B5) get three
+  minutes, more than the wait. **"All twenty, because of the turns"** (B4) is true only far away; the
+  test's name now says only "all twenty, on any server".
+- **Words** (C2 to C9): the READMEs, the tests' comments, and a comment in step 25's revocation that
+  left open a moment the turns close. And one fix of code: the statement is built before the records
+  are said to be sent, so a builder that throws is a refusal, never an unknown outcome (C9).
+- **`inTurn` is optional** (C10), for the tests' stand-ins, which are a `query` and nothing else, and
+  which therefore all test the path without turns. **Recorded, not changed:** both real connections
+  have it, and the answers both paths give are the same code; the turn's own statements are pinned
+  on a stub pool (R4, below), and its failures on a real server, in `commit-dies.db.test.ts` and the
+  tests above.
+- **The brake can wait behind the agent** (C6): every record waits its turn, so an agent's crowd
+  delays a person's `control.suspend`. **Recorded:** open question 130, beside `DSOR-OPS-02`, which
+  no step builds yet.
+
+**What a second review found, and what was chosen** (the same subagent, on the fixes).
+
+- **The program's line could be held for ever** (R1). It let the next request go only when a turn
+  ended, so a turn whose statement never came back, a network gone quiet without closing, held every
+  later request of its company in this program, a person's brake among them, while PostgreSQL had
+  long since let the turn go. The line now lets the next request go as soon as the turn before it is
+  taken; that request waits on the database's lock, which PostgreSQL lets go after ten seconds idle.
+  A line holds two connections at most. The quiet-turn test now runs both writers in one program,
+  which failed before this change. **Rejected:** a timer on every statement of a turn, which would
+  also have to end a connection whose statement never answered, more machinery than the step needs.
+- **A first look that found the key taken and then failed still said "nothing was done"** (R2). A
+  statement after the key is found taken now fails as `TakenButUnread`, and the caller is told
+  `OUTCOME_UNKNOWN`, from step 20. A unit test fails the first look's retake.
+- **In an outage the line hands out its refusals one after another** (R3), each after the pool's
+  wait for a connection, so fifty requests are refused over minutes rather than at once.
+  **Recorded:** a deadline in the line would also refuse a crowd that is only slow, and on Neon a
+  crowd of fifty takes most of a minute.
+- **The pool's turn was tested only on a real server** (R4), where READ COMMITTED is the default anyway,
+  so a plain `BEGIN` passed every test. Three unit tests on a stub pool now pin the turn's statements,
+  its ROLLBACK, and the line: broken on purpose, a plain `BEGIN`, no line, and a line let go only at
+  the end each fail one of them.
+- **Two race tests had stopped racing** (R5): their writers took turns. They write through a
+  database that takes no turns now, as a person at the database would, so their twenty truly race.
+  **The twenty-five seconds** (R6): the test of the thirty-second wait jumps twenty-five, not
+  twenty-nine, so a slow machine has five seconds to answer, and it answers its claim and waits for
+  its request whatever happens, so nothing it starts runs on into the next test.
+- **Words**: a turn's `work` must never ask for a turn in its own line; a revocation waits for the
+  same turns, under `DSOR-DEL-04b` (open question 130); and the sentences that called a limit
+  measured, or step 24's four runs made in turns.
+
+**What it costs.** On Neon a turn holds the log for about three round trips, so one company's log
+takes two or three writers a second from this machine; near its database it takes hundreds. The
+database tiers on Neon, after the review's fixes, each on its own database: 39, 51, 51, 51, 52, 53,
+60, 60, 62 and 75 tests for steps 16 to 25, every one passing, none skipped. Step 25's tier took ten
+minutes there. Steps 20 to 25 have more unit tests now, 735, 754, 840, 881, 923 and 1021, and their
+twenty-two breaks were measured again, twice each, the passes agreeing.
+Nineteen fail as many tests as before. Three of step 20's do not: its first fails four where it
+failed two, because the tests of the wait notice a look at the claim by its INSERT, and under that
+break a look begins with a SELECT; its third and fourth fail forty and thirty-three where they failed
+eighteen and thirteen, because every repeat the demo sends now waits thirty seconds, and all
+twenty-three of the demo's tests run out of time.

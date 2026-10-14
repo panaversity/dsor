@@ -867,3 +867,25 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `result`, and the state left, the actor and the cause as text in `reason`, where they are
     inside the hash but not separate fields. Should `audit-record.schema.json` give a transition
     `from`, `to`, `actor` and `cause`?
+
+130. **Can an agent's own traffic delay a person's brake past §44?** `DSOR-OPS-01b` asks a
+    suspension or freeze to take effect for new decisions within §44's bound, 60 seconds at L2 and
+    5 seconds at L3, "without cooperation from the agent runtime". In the `my_22` to `my_25`
+    learner builds every record goes to the end of its company's log one writer at a time (decision
+    158 in the learner's notes), so a person's `control.suspend` waits for its turns behind the
+    agent's records already waiting. On a database 127 ms away a turn is a few round trips, and
+    twenty payments sent at once took about 34 seconds. A revocation waits for the same turns, and
+    `DSOR-DEL-04b` asks it to take effect within 60 seconds at L2. Nothing yet limits how many
+    requests an agent sends (`DSOR-OPS-02`). Should a control command's records go ahead of the
+    agent's, or is a rate limit the only answer the specification needs?
+
+131. **What is a waiting retry told when its own refusal cannot be recorded?** A request with the
+    idempotency key of one still being carried out waits for its answer, and if none comes it is
+    told `OUTCOME_UNKNOWN`. That refusal is a decision, so `DSOR-EXE-02` records it before the
+    response, and if the record cannot be written, `DSOR-EXE-03b` refuses with
+    `EVIDENCE_STORE_UNAVAILABLE`, whose retry class §28 fixes at `safe_same_key`: nothing was done,
+    send it again. For the retry that is true; the first request, still running, may yet do it.
+    Measured in the `my_20` learner build on a database 127 ms away, before decision 158: of fifty
+    requests with one key, 47 or 48 were told `EVIDENCE_STORE_UNAVAILABLE` this way. Should an
+    evidence failure after `OUTCOME_UNKNOWN` keep `OUTCOME_UNKNOWN`, or should §28 let
+    `EVIDENCE_STORE_UNAVAILABLE` carry another retry class here?
