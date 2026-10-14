@@ -3933,7 +3933,7 @@ beside the README's eight, which were measured twice:
 | a person's scopes are ignored | 1 | 1, that test |
 | a suspended slip counts as active | 2: the suspended slip, the revoked one | those 2 |
 
-> **2026-10-13:** the question about `LIMIT_EXCEEDED`'s retry class is open question 76.
+> **2026-10-13:** the question about `LIMIT_EXCEEDED`'s retry class is open question 124.
 
 ## 129 · Step 19's decisions, taken on the learner's instruction before any code (2026-10-11)
 
@@ -4076,7 +4076,7 @@ beside the README's six, which were measured twice:
 
 > **Corrected 2026-10-13 — see decision 150.** Item 1 closed the upper end only: a year 0000 with a
 > `+` offset still broke the record, and a day that does not exist, such as 31 September, was read
-> as the next one. The question about `subject_authority.as_of` is open question 77.
+> as the next one. The question about `subject_authority.as_of` is open question 125.
 
 ## 131 · Step 20's decisions, taken on the learner's instruction before any code (2026-10-11)
 
@@ -4203,7 +4203,7 @@ beside the README's five, which were measured twice:
 > **Corrected 2026-10-13 — see decision 151.** Item 3's retry of every failed write of an answer
 > could release a claim another request had taken back, so one key made two payments. A release is
 > written once now; only a kept answer is tried again. The question about a replay's record is open
-> question 78.
+> question 126.
 
 ## 133 · Step 21's decisions, taken on the learner's instruction before any code (2026-10-11)
 
@@ -4412,7 +4412,7 @@ runs agreed: a way out of COMMITTED fails 4, a state left twice fails 1, and a h
 the move to EXECUTING fails 9.
 
 > **Corrected 2026-10-13 — see decision 153.** The map is §26.2's without its compensation line
-> (open question 80). "The first is finished as DENIED" holds only once DENIED is written: a
+> (open question 128). "The first is finished as DENIED" holds only once DENIED is written: a
 > refused request's proposal can stay PROPOSED. And the one-statement half of the first fix was
 > never broken on purpose; decision 153 broke it, and it failed its new test.
 
@@ -4731,7 +4731,7 @@ the brake 1, and a revocation cancelling nothing 2.
 
 > **Corrected 2026-10-13 — see decision 156.** "Revocation stops new decisions" understated it: a
 > command already past §21.3 when the slip is revoked is still decided under it, recorded as ALLOW
-> after the revocation, and run. The question for the editor is open question 79, and it names
+> after the revocation, and run. The question for the editor is open question 127, and it names
 > `control.suspend`'s target too.
 
 ## 144 · Steps 22 to 24's ordering walk gets two minutes of its own, found when CI gave every folder its own machine (2026-10-12)
@@ -4816,7 +4816,7 @@ step 24's guard for runs that cross midnight UTC around step 21's new counts, an
 halves in migration 025 and the README. Where decisions 153 and 156 met, two step 25 tests failed,
 and were fixed (decision 156).
 
-The questions for the specification that these steps found are open questions 76 to 80 in
+The questions for the specification that these steps found are open questions 124 to 129 in
 `research/open-questions.md`.
 
 ## 146 · What the second review found in step 15, and what was chosen (2026-10-13)
@@ -5511,7 +5511,7 @@ of another company could be written into this chain; and five branches had no te
   says one write runs on one connection from its read of the log's end to its INSERT, and
   `audit.ts` in steps 09 to 21 says a lost write is looked up on the connection that failed.
 - The audit record's schema has no fields for a move's from-state, actor or cause; they are in its
-  reason (open question 81). A move's time and its record's time come from two clocks.
+  reason (open question 129). A move's time and its record's time come from two clocks.
 - Start-up does not ask whether a move must still name its record. Step 25's `CONFLICT` carries the
   retry class `never`. A revocation cannot see a proposal that starts waiting while it runs, and a
   waiting proposal that moves after its read makes the statement throw; nothing reaches either
