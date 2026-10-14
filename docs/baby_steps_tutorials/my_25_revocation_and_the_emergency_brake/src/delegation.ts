@@ -287,11 +287,14 @@ export const LOOKS_AT_WHAT_WAITS: number = 5;
  * waiting under a revoked slip. If it changed, nothing is written, and it is read again, at most
  * `LOOKS_AT_WHAT_WAITS` times: then the answer is that it kept changing, and nothing was revoked.
  *
- * One moment is left, found by a review, and nothing before step 29 can reach it. The statement
- * reads what waits as its snapshot saw it, and PostgreSQL holds only the slip's row while it runs:
- * a move into waiting that commits after that snapshot, and before this statement commits, is not
- * seen, and its proposal waits under a revoked slip. Step 29's move into waiting must lock the
- * slip's row first, `FOR SHARE`, so that it waits for a revocation that is running.
+ * One moment was left, found by a review. The statement reads what waits as its snapshot saw it,
+ * and PostgreSQL holds only the slip's row while it runs: a move into waiting that committed after
+ * that snapshot, and before this statement committed, was not seen, and its proposal waited under a
+ * revoked slip. STEP 22, decision 158: the company's turn at its log closes it. Every move is
+ * written with its record in the company's turn, and so is this statement, so no move commits while
+ * it runs, and at READ COMMITTED it reads every move committed before its turn began. A writer that
+ * does not take turns, a person at the database, is what is left: step 29's move into waiting can
+ * still lock the slip's row first, `FOR SHARE`.
  */
 export async function revokeSlip(
   tenant: string,

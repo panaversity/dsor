@@ -131,7 +131,7 @@ needs del_100; revoking is shown in `test/revoke.test.ts` instead.
 
 ### The database tier
 
-`pnpm check` needs no server. The seventy-two tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The seventy-five tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -151,7 +151,7 @@ EXECUTING on a real server; see what this step leaves, below.
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `1014` with `1 skipped`; in the repository it is `1014 passed`.
+is not beside it, so the total reads `1021` with `1 skipped`; in the repository it is `1021 passed`.
 
 ### Break 1 · §21.4 asks nothing
 
@@ -161,7 +161,7 @@ The map's "break it" turned round: take the brake out of the checklist. In `src/
 `|| true` before its `)`.
 
 ```text
- Tests  11 failed | 1002 passed | 1 skipped (1014)
+ Tests  11 failed | 1009 passed | 1 skipped (1021)
 ```
 
 Fewer than you might think, and that is the second lock. A stopped agent's payment is still stopped,
@@ -180,7 +180,7 @@ In `src/operations.ts`, in the door, after the comment
 `principal.type === "agent" ? principal.id : null,` to `null,`.
 
 ```text
- Tests  3 failed | 1010 passed | 1 skipped (1014)
+ Tests  3 failed | 1017 passed | 1 skipped (1021)
 ```
 
 Three: a suspension and a freeze, each pulled between the decision and the handler, and the test
@@ -194,7 +194,7 @@ In `src/delegation.ts`, in `revokeSlip`, change `WHERE EXISTS (SELECT 1 FROM rev
 `WHERE false AND EXISTS (SELECT 1 FROM revoked)`.
 
 ```text
- Tests  8 failed | 1005 passed | 1 skipped (1014)
+ Tests  8 failed | 1012 passed | 1 skipped (1021)
 ```
 
 The slip is revoked, and the payments that were waiting for approval under it, or approved, stay
@@ -279,15 +279,25 @@ only by its name: `principal` or `delegation`, alone or with `_id`. Both command
 `target`. That is a reading of the rule and not a change to it, written down for the editor in
 decision 143, and the brake's half in decision 156.
 
-The agent's own traffic can still make the brake fail, written down in decision 156. Pulling a
-brake, or revoking a slip, is a decision in the company's log like any request, and its record
-races the agent's records for the log's next place. Since step 22, a record that loses its place
-tries the next one, up to ten. So only an agent that takes ten places in a row from one of the
-person's records can make `control.suspend` come back `EVIDENCE_STORE_UNAVAILABLE`, with nothing
-done, and the person must send it again. Measured on a local PostgreSQL 17, with one and with five
-agents sending payments without a pause: the person's `control.suspend` landed on its first try in
-each of twenty runs, ten with a new key each try and ten with the same key. Nothing limits how many
-requests an agent sends: `DSOR-OPS-02` asks for that, and no step on the map builds it yet.
+The agent's own traffic can delay the brake. Since decision 158 it cannot make the brake lose its
+place. Pulling a brake, or revoking a slip, is a decision in the company's log like any request, and
+its records need the log's next places as the agent's records do. Decision 156 wrote down that an
+agent taking ten places in a row from one of the person's records could make `control.suspend` come
+back `EVIDENCE_STORE_UNAVAILABLE`, with nothing done. Now every record waits for the company's turn
+at the log (step 22), so the person's records wait behind the agent's records already waiting,
+instead of losing their places. Before the turns, measured on a local PostgreSQL 17 with one and
+with five agents sending payments without a pause, the person's `control.suspend` landed on its
+first try in each of twenty runs.
+
+The wait is the price, and it grows with the agent's traffic. A `control.suspend` needs its turn at
+the log before its handler pulls the brake, and every record already waiting goes first; on Neon,
+127 ms away, each turn is a few round trips. `DSOR-OPS-01b` asks a suspension to take effect
+within 60 seconds at level 2 and 5 seconds at level 3 (§44), whatever the agent does, and
+`DSOR-DEL-04b` asks the same 60 seconds of a revocation at level 2, which waits for the same turns.
+A busy enough agent on a database far enough away can make either wait longer than that. Nothing limits how many requests an agent
+sends: `DSOR-OPS-02` asks for that, and no step on the map builds it yet. Open question 130 asks
+whether a person's control should go ahead of the agent's records. The brake can also still fail
+as any request can, when the database cannot be reached.
 
 Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
 the application may read a view or a table beside the tenant tables, because a view runs with its

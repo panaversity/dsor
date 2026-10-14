@@ -36,7 +36,13 @@ beforeAll(async () => {
   owner = new Pool({ connectionString: OWNER, max: 1 });
   await applyMigrations(asRunner(owner), fileURLToPath(new URL("../migrations", import.meta.url)));
   application = new Pool({ connectionString: APPLICATION, max: 20 });
-  useDatabase(overPool(application));
+  // STEP 22, decision 158, found by a second review: through a database that takes no turns. A
+  // proposal's moves are written with their records, in its company's turn at the log, so through
+  // the pool's own turns the twenty would go one at a time. Here they still race, as moves written by
+  // something that takes no turns would.
+  const raced = overPool(application);
+
+  useDatabase({ query: (sql, params, tenant) => raced.query(sql, params, tenant) });
 });
 
 afterAll(async () => {

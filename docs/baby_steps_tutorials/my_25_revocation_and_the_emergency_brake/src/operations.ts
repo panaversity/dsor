@@ -74,7 +74,7 @@ import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./paym
 // writes a record lives too.
 import { audit, type DecisionToRecord, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
-import { type Claim, claimKey, KEY, settleKey } from "./idempotency.ts";
+import { type Claim, claimKey, KEY, settleKey, TakenButUnread } from "./idempotency.ts";
 // STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
 import { reserve, settleReservation, usedToday } from "./reservation.ts";
 // NEW IN STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
@@ -1551,8 +1551,35 @@ function modeFrom(
   return { mode: requested };
 }
 
-/** STEP 20: how long a request waits for the same request, still being carried out, to finish. */
-const IN_FLIGHT_WAIT_MS = 2000;
+/**
+ * STEP 20: how long a request waits for the same request, still being carried out, to finish.
+ *
+ * STEP 20, decision 158: thirty seconds, not two. Two was measured on a PostgreSQL on this
+ * machine, where a whole payment takes a few milliseconds. On Neon, 127 ms away, a request is dozens
+ * of round trips. Fifty requests with one key, measured in step 20: one payment was made, but the
+ * other forty-nine stopped waiting after two seconds, while the first was still being carried out.
+ * Each then wrote its refusal to the company's log at the same moment, and 47 or 48 of those writes
+ * lost their place, so their callers were told EVIDENCE_STORE_UNAVAILABLE. With thirty, all fifty
+ * were handed the receipt. The wait ends as soon as the answer is there, so a near database still
+ * answers in milliseconds.
+ */
+export const IN_FLIGHT_WAIT_MS: number = 30_000;
+
+/** STEP 20, decision 158: the wait in force, which only a test changes. */
+let inFlightWait = IN_FLIGHT_WAIT_MS;
+
+/**
+ * Wait at most `ms` for a request still being carried out. Tests only: a test pins the wait
+ * running out, and thirty seconds of it is longer than a test may take.
+ */
+export function setInFlightWait(ms: number): void {
+  inFlightWait = ms;
+}
+
+/** Give the wait back. One name for it, as `resetClock` has, so a break of it is a whole break. */
+export function resetInFlightWait(): void {
+  inFlightWait = IN_FLIGHT_WAIT_MS;
+}
 
 /**
  * STEP 20: and how often it looks while it waits: at first soon, then half as often each
@@ -1612,8 +1639,11 @@ const claimTheKey: Stage["run"] = async (context) => {
     operation: contract.id,
     key,
   });
-  const until = Date.now() + IN_FLIGHT_WAIT_MS;
+  const until = Date.now() + inFlightWait;
   let look = IN_FLIGHT_LOOK_MS;
+  // STEP 20, decision 158, found by a review: whether a look has seen the first request still
+  // being carried out.
+  let sawItRunning = false;
 
   for (;;) {
     let found;
@@ -1625,7 +1655,20 @@ const claimTheKey: Stage["run"] = async (context) => {
         payloadHash,
         context.mode === "propose_only" ? "propose_only" : "execute",
       );
-    } catch {
+    } catch (failure) {
+      // STEP 20, decision 158, found by a review: once a look has seen the first request still
+      // being carried out, a look that fails cannot say that nothing was done: the first may still do
+      // it. The caller is told what it would be told when the wait runs out. And the same once the
+      // first look has found the key taken, before it could read the claim (a second review).
+      if (sawItRunning || failure instanceof TakenButUnread) {
+        return refuse(
+          principal.id,
+          "OUTCOME_UNKNOWN",
+          `no answer is recorded for the first ${contract.id} request with the key ${key}, and it could not be asked again: it may still be running, or it may have ended without one`,
+          context.requestId,
+        );
+      }
+
       return refuse(
         principal.id,
         "EVIDENCE_STORE_UNAVAILABLE",
@@ -1677,6 +1720,8 @@ const claimTheKey: Stage["run"] = async (context) => {
 
     // Still being carried out: waited for, a little at a time, and then given its answer. Told at
     // once, forty-nine of fifty callers would be told something nobody knows yet.
+    sawItRunning = true;
+
     if (Date.now() >= until) {
       return refuse(
         principal.id,

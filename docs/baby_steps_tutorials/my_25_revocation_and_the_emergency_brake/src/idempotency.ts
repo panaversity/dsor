@@ -50,6 +50,25 @@ const WHERE = "tenant = $1 AND principal = $2 AND operation = $3 AND key = $4";
  * primary key lets exactly one in; the other's INSERT does nothing and returns no row. Checking for
  * the key first and inserting it after is the mistake §22 names: both checks pass, and both run.
  */
+/**
+ * STEP 20, decision 158, found by a second review: the key was found taken, by a request that may
+ * still be running, and a statement after that failed. The stage tells the caller the outcome is
+ * unknown, as it does once it has seen that request running, and never that nothing was done.
+ */
+export class TakenButUnread extends Error {
+  constructor(key: string, cause: unknown) {
+    super(`the key ${key} is taken, and what became of its request could not be read`, { cause });
+    this.name = "TakenButUnread";
+  }
+}
+
+/** STEP 20, decision 158: a statement after the key was found taken, whose failure says so. */
+function afterTaken<T>(key: string, statement: Promise<T>): Promise<T> {
+  return statement.catch((failure: unknown) => {
+    throw new TakenButUnread(key, failure);
+  });
+}
+
 export async function claimKey(
   claim: Claim,
   payloadHash: string,
@@ -74,20 +93,26 @@ export async function claimKey(
 
   // Taken already. A claim released because nothing ran is taken back by the same request, in one
   // UPDATE, so that of two retries only one gets it.
-  const { rows: retaken } = await db.query(
-    `UPDATE dsor.idempotency_keys SET answer = NULL, claimed_at = now()
+  const { rows: retaken } = await afterTaken(
+    claim.key,
+    db.query(
+      `UPDATE dsor.idempotency_keys SET answer = NULL, claimed_at = now()
       WHERE ${WHERE} AND payload_hash = $5 AND mode = $6 AND answer = '${RELEASED}'
       RETURNING key`,
-    by,
+      by,
+    ),
   );
 
   if (retaken.length === 1) {
     return Object.freeze({ kind: "claimed" });
   }
 
-  const { rows } = await db.query<{ payload_hash: string; mode: string; answer: string | null }>(
-    `SELECT payload_hash, mode, answer FROM dsor.idempotency_keys WHERE ${WHERE}`,
-    by.slice(0, 4),
+  const { rows } = await afterTaken(
+    claim.key,
+    db.query<{ payload_hash: string; mode: string; answer: string | null }>(
+      `SELECT payload_hash, mode, answer FROM dsor.idempotency_keys WHERE ${WHERE}`,
+      by.slice(0, 4),
+    ),
   );
   const found = rows[0];
 
