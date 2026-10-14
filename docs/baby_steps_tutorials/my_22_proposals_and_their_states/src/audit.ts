@@ -568,31 +568,16 @@ export async function recordTogether<Row>(
     // itself. The interleaving does not need real concurrency, only control over the order, and
     // `audit-race.test.ts` holds one writer at this read while another commits. What does need a real
     // server is the constraint under genuine parallelism, and that is still `audit.db.test.ts`.
-    const end = await theEndOf(db, chain);
-
-    // The clock is read **after** the tail, and the order is the guarantee, not a detail. Why is
-    // `theTimeNow`'s to say, below. Read again for every place tried, so the argument holds for each.
-    const at = theTimeNow();
-    // Each record at the next place, chained to the one before it. One time for all of them, because
-    // one statement writes them.
-    const records: AuditRecord[] = [];
-
-    for (const copy of copies) {
-      const before = records.at(-1);
-
-      records.push(
-        sealAt(
-          copy,
-          tenant,
-          chain,
-          end.sequence + records.length,
-          before?.record_hash ?? end.previous,
-          at,
-        ),
-      );
-    }
-
-    const { sql, params } = statementFor(records);
+    //
+    // NEW IN STEP 22, decision 158: and the read and the write are one turn now. A writer waits for its
+    // company's turn at the log, reads the end, writes after it and commits, and only then may the
+    // next writer read, so two writers never read the same end. Measured on Neon, 127 ms away: fifty
+    // reads sent at once by one company, each writing its decision, and 36 to 39 of them lost ten
+    // places in a row and were refused. In turns, all fifty were answered, in 39 seconds where the
+    // refused ones had taken 32: one writer at a time, 127 ms away, is round trips one after another.
+    // The tries stay, for a writer that does not take turns: a test's stand-in, or a person at the
+    // database.
+    let records: AuditRecord[] = [];
 
     // Every value is a parameter rather than pasted into the SQL: see `theRecordsAlone`.
     //
@@ -616,7 +601,42 @@ export async function recordTogether<Row>(
     // unknown, never as a retryable error. So this does not guess. It looks — and when it cannot
     // look, it says so, with `OutcomeUnknown`, which the pipeline turns into `OUTCOME_UNKNOWN`.
     try {
-      const { rows } = await db.query<Row>(sql, params);
+      const rows = await db.inTurn(chain, async (inTurn) => {
+        const end = await theEndOf(inTurn, chain);
+
+        // The clock is read **after** the tail, and the order is the guarantee, not a detail. Why is
+        // `theTimeNow`'s to say, below. Read again for every place tried, so the argument holds for each.
+        const at = theTimeNow();
+        // Each record at the next place, chained to the one before it. One time for all of them,
+        // because one statement writes them.
+        const sealed: AuditRecord[] = [];
+
+        for (const copy of copies) {
+          const before = sealed.at(-1);
+
+          sealed.push(
+            sealAt(
+              copy,
+              tenant,
+              chain,
+              end.sequence + sealed.length,
+              before?.record_hash ?? end.previous,
+              at,
+            ),
+          );
+        }
+
+        // Found by a review: the statement is built before `records` says what was sent. A builder
+        // that throws has sent nothing, and with `records` still empty the catch below says so,
+        // instead of looking for a record and calling a statement never sent an unknown outcome.
+        const { sql, params } = statementFor(sealed);
+
+        records = sealed;
+
+        const { rows: written } = await inTurn.query<Row>(sql, params);
+
+        return written;
+      });
 
       return { records, rows };
     } catch (failure) {
@@ -1015,8 +1035,10 @@ export interface StatementToSend {
  * Every value is a parameter rather than pasted into the SQL. Not politeness: `reason` holds a
  * caller's own words, and a caller's words in a SQL string is how an audit log ends up executing
  * them.
+ *
+ * NEW IN STEP 22, decision 158: exported, for the test that gives a writer a single place.
  */
-function theRecordsAlone(records: readonly AuditRecord[]): StatementToSend {
+export function theRecordsAlone(records: readonly AuditRecord[]): StatementToSend {
   const params: unknown[] = [];
   const rows = records.map((written) => `(${valuesOf(written, params)})`);
 

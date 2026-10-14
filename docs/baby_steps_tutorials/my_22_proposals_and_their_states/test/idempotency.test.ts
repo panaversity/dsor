@@ -19,7 +19,7 @@
 // refused with IDEMPOTENCY_CONFLICT.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetClock, setClock, theLog } from "../src/audit.ts";
 import { type ErrorEnvelope, refusal } from "../src/envelopes.ts";
 import {
@@ -28,6 +28,8 @@ import {
   makeDoor,
   type OperationAnswer,
   PIPELINE,
+  resetInFlightWait,
+  setInFlightWait,
 } from "../src/operations.ts";
 import { createPayment, paymentsOf } from "../src/payment.ts";
 import { aDirectory, useDirectory } from "../src/directory.ts";
@@ -58,10 +60,18 @@ beforeEach(async () => {
   // The claims of the tests before, which would otherwise answer this test's requests: the keys
   // here are meant, and some repeat between tests. As the owner; the application may delete none.
   await asTheOwner(() => db.exec("DELETE FROM dsor.idempotency_keys"));
+  // STEP 20, decision 158: two seconds' wait for a request still being carried out, in every
+  // test here, where the program waits thirty. A test that waits it out must not run out of its own
+  // time first. Found when the wait became thirty: two tests that wait ran out of theirs while their
+  // requests still waited, and those requests went on into the tests after them and made payments
+  // there. A test that runs out of time does not stop what it started. The thirty seconds have a test
+  // of their own, below, which sets them back.
+  setInFlightWait(2000);
 });
 
 afterEach(() => {
   resetClock();
+  resetInFlightWait();
   useDirectory("org_456", undefined);
   useDirectory("org_789", undefined);
   // The real connection again, after a test that put a broken one in front of it.
@@ -378,7 +388,8 @@ describe("fifty at once", () => {
 describe("a claim with no answer", () => {
   it("DSOR-IDM-01c: the same request waits for it, and is then told only what is known", async () => {
     // Decision 132: a claim whose first request never recorded an answer told every retry the first
-    // request "has not finished", which nobody knew. The two-second wait running out is pinned too.
+    // request "has not finished", which nobody knew. The wait running out is pinned too, at the two
+    // seconds this file waits.
     const measured = await pay("to-learn-the-fingerprint");
 
     if (measured.kind !== "result") {
@@ -427,8 +438,138 @@ describe("a claim with no answer", () => {
     const refusal = refusalOf(await pay("no-answer", other));
 
     expect(refusal.code).toBe("IDEMPOTENCY_CONFLICT");
-    // Well under the two-second wait: refused before any waiting.
+    // Well under the two seconds this file waits: refused before any waiting.
     expect(Date.now() - started).toBeLessThan(1000);
+    expect(await paymentsFor1009()).toBe(1);
+  });
+});
+
+describe("the wait for a request still being carried out", () => {
+  /** A claim of the agent's on `key`, for the fingerprint of the story's payment, with no answer yet. */
+  async function aClaimStillRunning(key: string): Promise<void> {
+    const measured = await pay("to-learn-the-fingerprint");
+
+    if (measured.kind !== "result") {
+      throw new Error(`expected a receipt, got ${JSON.stringify(measured)}`);
+    }
+
+    await asTheOwner(() =>
+      db.query(
+        `INSERT INTO dsor.idempotency_keys (tenant, principal, operation, key, payload_hash)
+         VALUES ('org_456', 'accounts-payable-fte', 'payment.create', $1, $2)`,
+        [key, measured.envelope.payload_hash],
+      ),
+    );
+  }
+
+  it("DSOR-IDM-01c: the same request still waits after twenty-five seconds, and is handed the answer when it comes", async () => {
+    // STEP 20, decision 158, found by a review: the wait in force is thirty seconds. A test that
+    // pinned the number pinned only the number: `until` could have counted two seconds and every
+    // test passed. Here the clock jumps twenty-five seconds at the first look, and the answer comes
+    // after it. A wait of two would have said OUTCOME_UNKNOWN at that look. Twenty-five, not
+    // twenty-nine, so a slow machine has five seconds to give the answer, not one (a second review).
+    resetInFlightWait();
+    await aClaimStillRunning("still-running");
+
+    const { rows } = await asTheOwner(() =>
+      db.query<{ answer: string }>(
+        "SELECT answer FROM dsor.idempotency_keys WHERE key = 'to-learn-the-fingerprint'",
+      ),
+    );
+    const real = overPGlite(db);
+    const clock = Date.now;
+    let ahead = 0;
+    let looks = 0;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock() + ahead);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("INSERT INTO dsor.idempotency_keys")) {
+          looks += 1;
+          ahead = 25_000;
+        }
+
+        return real.query<T>(sql, params, tenant);
+      },
+    });
+
+    const answer = (): Promise<unknown> =>
+      asTheOwner(() =>
+        db.query(
+          "UPDATE dsor.idempotency_keys SET answer = $1 WHERE key = 'still-running' AND answer IS NULL",
+          [rows[0]?.answer],
+        ),
+      );
+    const waiting = pay("still-running");
+
+    try {
+      await expect.poll(() => looks).toBeGreaterThanOrEqual(1);
+      await answer();
+
+      expect((await waiting).kind).toBe("result");
+      expect(await paymentsFor1009()).toBe(1);
+    } finally {
+      // Found by a second review: a request this test leaves waiting would look on into the tests
+      // after it, and make a payment there. So it is answered, and waited for, whatever happened.
+      now.mockRestore();
+      await answer();
+      await waiting.catch(() => {});
+    }
+  });
+
+  it("DSOR-UNK-01b: a look that fails after the first request was seen running is told OUTCOME_UNKNOWN, not that nothing was done", async () => {
+    // STEP 20, decision 158, found by a review: a look at the claim that failed was answered
+    // EVIDENCE_STORE_UNAVAILABLE, "nothing was done", even after an earlier look had seen the first
+    // request still being carried out, which may still do it. Thirty seconds of waiting is many more
+    // looks than two, so that answer had many more chances to be wrong.
+    await aClaimStillRunning("seen-running");
+
+    const real = overPGlite(db);
+    let looks = 0;
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("INSERT INTO dsor.idempotency_keys") && ++looks === 2) {
+          throw Object.assign(new Error("Connection terminated unexpectedly"), {
+            code: "ECONNRESET",
+          });
+        }
+
+        return real.query<T>(sql, params, tenant);
+      },
+    });
+
+    const refusal = refusalOf(await pay("seen-running"));
+
+    expect(looks).toBe(2);
+    expect(refusal.code).toBe("OUTCOME_UNKNOWN");
+    expect(refusal.message).toMatch(/could not be asked again/);
+    expect(await paymentsFor1009()).toBe(1);
+  });
+
+  it("DSOR-UNK-01b: a first look that finds the key taken and cannot read its claim is told OUTCOME_UNKNOWN", async () => {
+    // STEP 20, decision 158, found by a second review: the first look found the key taken, and the
+    // statement after that failed, before any look had seen the request that holds it. It was told
+    // that nothing was done, while that request may still be running.
+    await aClaimStillRunning("taken-unread");
+
+    const real = overPGlite(db);
+
+    useDatabase({
+      async query<T>(sql: string, params?: unknown[], tenant?: string) {
+        if (sql.includes("SET answer = NULL, claimed_at = now()")) {
+          throw Object.assign(new Error("Connection terminated unexpectedly"), {
+            code: "ECONNRESET",
+          });
+        }
+
+        return real.query<T>(sql, params, tenant);
+      },
+    });
+
+    const refusal = refusalOf(await pay("taken-unread"));
+
+    expect(refusal.code).toBe("OUTCOME_UNKNOWN");
     expect(await paymentsFor1009()).toBe(1);
   });
 });

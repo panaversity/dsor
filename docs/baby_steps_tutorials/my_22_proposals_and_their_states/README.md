@@ -98,14 +98,41 @@ names none, or names a record the log does not have. The demo finds a creation's
 ### When two requests reach the end of the log together
 
 A record's fingerprint covers its place in the log, and the fingerprint of the record before it.
-So DSoR reads the end of the log first, and then writes. Two requests can read the same end. The
-database keeps the first statement. It refuses the second one whole, the move with it, so nothing of
-it was written. In step 09 the second request was then refused. Now it waits a few milliseconds,
-chosen at random so that the requests that lost do not all come back at once. Then it reads the new
-end and tries the next place, up to ten places. After ten it gives up. Before the handler runs, the
-request is then refused, with nothing done. After it, the payment stands and the caller is told so,
-and the proposal stays EXECUTING, in its history and in the log, for reconciliation (below).
-Decisions and the records of reads follow the same rule.
+So DSoR reads the end of the log first, and then writes after it. If two requests read the same
+end, only one can write there: the database keeps the first statement and refuses the second one
+whole, the move with it, so nothing of it is written. In step 09 the second request was refused.
+
+So each company's log takes **one writer at a time** (decision 158). A request waits for its
+company's turn, reads the end, writes after it, and commits. Only then can the next request read
+the end, so a request that waits its turn never loses its place. Three details keep the turn safe:
+
+- PostgreSQL keeps the turn with an *advisory lock*: a lock on a name, here the company's log,
+  instead of on a row. It ends with the transaction, so a request that crashes cannot keep the others
+  waiting.
+- A turn that sits idle for ten seconds is ended by PostgreSQL, so a program that stalls, or whose
+  network goes quiet, cannot keep the others waiting either.
+- A turn reads at *READ COMMITTED*, the level where each statement sees everything committed before
+  it began, so it sees the record the writer before it left. The turn says so itself, because a
+  database can make a stricter level its default.
+
+Inside the program, one company's requests also wait in a line of their own, without a connection,
+until the turn before them is taken. Otherwise fifty of `org_456`'s requests would take every
+connection to wait with, and `org_789`'s next request would wait behind them. The line lets the next
+request go when the turn before it is taken, not when that turn ends, so a turn whose statement never
+comes back holds the program's line no longer than PostgreSQL holds the turn.
+
+A writer that does not wait its turn, such as a person typing at the database, can still take a
+place first. For that writer the older rule stays: the request that lost waits a few milliseconds,
+chosen at random so that the requests that lost do not all come back at once, reads the new end, and
+tries the next place, up to ten places. After ten it gives up. Before the handler runs, the request
+is then refused, with nothing done. After it, the payment stands and the caller is told so, and the
+proposal stays EXECUTING, in its history and in the log, for reconciliation (below). Decisions and
+the records of reads follow the same rule.
+
+The turns came after the step was first built. On Neon, 127 ms away, fifty reads sent at once by one
+company lost their place so often that 36 to 39 of them were refused. In turns, all fifty were
+answered, in 39 seconds where the refused ones had taken 32: far from its database, one writer at a
+time is slower.
 
 ## Why it matters
 
@@ -136,23 +163,24 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_21
 | --- | --- |
 | `migrations/020_proposals.sql` | new — the map of moves, the proposals, written once, and their moves; the constraints that keep the map, and a history that is one line; the application may add and read, and nothing else; each move names its record in the audit log, and the database refuses a move that names none |
 | `src/proposal.ts` | new — make a proposal with its first move, move it, move it through several states in one statement, read its moves, its state, and a company's list; each move is written with its record in the log by the same statement, and the creation's record is found through the move that names it |
-| `src/audit.ts` | the parts of writing a record have names (`copyOf`, `theEndOf`, `sealAt` and the rest), so a move's statement can write its record; `recordTogether` writes every record, and one that loses its place at the end of the log waits a random moment and tries the next, up to ten places; after any other failure it looks for its record first, and an error of SQLSTATE class 08 is a connection lost, not the server's refusal; a record of another company's is refused |
+| `src/audit.ts` | the parts of writing a record have names (`copyOf`, `theEndOf`, `sealAt` and the rest), so a move's statement can write its record; `recordTogether` writes every record, and one that loses its place at the end of the log waits a random moment and tries the next, up to ten places; from decision 158 it reads the end and writes in one turn, and a company's log gives one writer a turn at a time; after any other failure it looks for its record first, and an error of SQLSTATE class 08 is a connection lost, not the server's refusal; a record of another company's is refused |
 | `src/operations.ts` | §21.6 refuses a command whose arguments take more than 64 KiB, since its proposal keeps them for good; a stage at §21.8 makes the proposal; §21.11 refuses a command with none; the door moves it to READY and EXECUTING together before the handler, and to COMMITTED, FAILED or OUTCOME_UNKNOWN after, and tells the caller `OUTCOME_UNKNOWN` when it is; DENIED when a later stage refuses, and after a lost reply, "nothing was done" only once DENIED is written; the records of the moves are in the request's name, and a creation nobody can confirm is `OUTCOME_UNKNOWN`, which stays so when its decision cannot be written either; a move that can never land is not read back |
 | `src/pipeline.ts` | the stage is required by name, after the claim; the context carries the proposal and the payload's text |
 | `src/envelopes.ts` | the receipt names the real proposal, handed in, not counted; one from another company is refused |
-| `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map |
+| `src/database.ts` | start-up knows eight tenant tables, and refuses an application that may change a proposal, a move or the map; decision 158's turn: one transaction at READ COMMITTED, whose first statement waits for the company's log and lets it sit idle ten seconds at most, after a line of the program's own |
 | `src/main.ts` | where each command of this run went, the stale cancel move by move with each move's record, a COMMITTED proposal refusing to move back, and each move in the printed log as a line marked `move` |
 | `test/proposals.test.ts` | new — the map, the moves, finished proposals refusing every move, even one with no "from", the race, the rights, and the door's moves on every path, a lost reply that lands late or cannot be read back among them |
 | `test/proposals.db.test.ts` | new — twenty moves out of READY at once on a real server, and twenty out of COMMITTED, each leaving no record of a move that was refused |
 | `test/transitions.test.ts` | new — every move's record, what it says and in whose name; no record for a refused move; a move without a record refused by the database; the record of the move to EXECUTING that cannot be written; a place in the log taken once, and every time; lost replies, of a move and of a creation; every path of the door |
-| `test/transitions.db.test.ts` | new — twenty payments at once on a real server: every move with its record, every refusal DENIED, and, on a server on this machine, most of them carried out |
+| `test/transitions.db.test.ts` | new — twenty payments at once on a real server: every move with its record, every refusal DENIED, and all twenty carried out, on any server (decision 158) |
+| `test/audit.db.test.ts` | decision 158: a writer waits for its company's turn at the log and reads the end only then; another company's request is not kept waiting; a turn left quiet ends |
 | `test/audit-lost-reply.test.ts` | a decision that loses its place is written at the next one, and one that loses every place is given up after ten; four of step 09's tests now see ours written at the next place, theirs untouched; a write that ran and came back with a server's error is found by its record, and an error of class 08 is unknown |
 | `test/audit-per-tenant.test.ts` | a record of another company's is never written in this company's chain |
 | `test/decision-first.test.ts`, `test/pipeline.test.ts`, `test/audit-permissions.test.ts` | the log has records of moves now: they read its decisions, or count the moves; TRUNCATE takes the moves with the log; a command whose decision alone cannot be written is carried out by nobody |
 | `test/support/database.ts`, `test/audit.db.test.ts`, `test/classified-reads.db.test.ts`, `test/commit-dies.db.test.ts` | a reset deletes the company's moves before its log, because a move names its record; the words a test's own moves are recorded under |
-| `src/store.ts` | a comment: tests now swap the database in the middle of a write, to take its place in the log |
+| `src/store.ts` | a comment: tests now swap the database in the middle of a write, to take its place in the log; decision 158: a company's statements can wait for a turn |
 | the tests that pin the pipeline | ten stages now, and all 3,628,800 orderings walked one at a time |
-| `test/database.test.ts` | the new start-up refusal, one right at a time: an application that may change a proposal, a move or the map |
+| `test/database.test.ts` | the new start-up refusal, one right at a time: an application that may change a proposal, a move or the map; decision 158: a turn reads at READ COMMITTED |
 | `test/control-plane-store.test.ts` | DSoR's store has six tables now: the proposals, their moves and the map |
 | `test/envelopes.test.ts` | a receipt names a real proposal, and one naming another company's proposal is never built |
 | `test/main.test.ts` | the demo's list of where each command went, one proposal move by move |
@@ -207,7 +235,7 @@ database refuses.
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-seven tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The sixty tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -221,24 +249,34 @@ nineteen, it applies 020. Migration 020 was changed in place when the moves gain
 database that ran the older 020 is refused: `pnpm migrate` says 020 "has changed since it was
 applied". Make `dsor_step22` again.
 
-Four of the tests race on a real pool. Twenty requests try to move one proposal out of READY at the
-same moment: exactly one is written, with one record of EXECUTING. Twenty try to move a COMMITTED
-proposal anywhere: none is, and no record says one was. Twenty payments are sent at once: every move
-has its record, every record of a move has its move, and every refusal leaves its proposal DENIED.
-And, on a server on this machine, at least fifteen of those twenty are carried out, because a
-request that loses its place at the end of the log tries the next one. On a server further away,
-such as Neon, each statement waits longer and fewer get through: with delays added on purpose,
-8 to 18 of twenty, so that number is asked only of a local server. Only a
-real server can show that: PGlite runs one statement at a time, so nothing in the unit tier ever
-reaches the end of the log together. Measured on a local PostgreSQL 17 with a pool of twenty: twenty
-of twenty were carried out in each of four runs, and fifty of fifty in each of four runs of fifty.
-With no pause before the next place, 3 or 4 of twenty. With one place and no second, none.
+Four of the tests send twenty at once on a real pool. In two of them the twenty take no turns at the
+log, as a person at the database would not, so they truly race. Twenty requests try to move one
+proposal out of READY at the same moment: exactly one is written, with one record of EXECUTING.
+Twenty try to move a COMMITTED proposal anywhere: none is, and no record says one was. Twenty
+payments are sent at once through the program's own turns: every move has its record, every record
+of a move has its move, and every refusal leaves its proposal DENIED. And all twenty are carried
+out, on any server (decision 158). Only a real server can show that: PGlite runs one statement at a
+time, so nothing in the unit tier ever reaches the end of the log together.
+
+Before the turns, that last test asked only for most of the twenty, and only of a server on this
+machine. There, with a pause before the next place, twenty of twenty were carried out in each of
+four runs, and fifty of fifty in each of four runs of fifty; with no pause, 3 or 4 of twenty; with
+one place and no second, none. Further away fewer got through: with delays added on purpose, 8 to
+18 of twenty, and on Neon, 127 ms away, 12 and 11. With the turns, Neon carried out 20 of 20 in
+each of three runs, in about 34 seconds.
+
+Three more tests hold `org_456`'s turn themselves. The first holds it from a second program and asks
+PostgreSQL whether a writer waits for it; while the writer waits, a writer that takes no turns
+writes the end of the log, and the waiting writer, allowed one place only, must still write after
+it, so it read the end only once its turn was given. The second lets `org_456`'s crowd wait while
+`org_789`'s request is written. The third leaves a turn quiet for twenty seconds: the writer behind
+it goes on after about ten.
 
 ## Break it
 
 Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `833` with `1 skipped`; in the repository it is `833 passed`.
+is not beside it, so the total reads `840` with `1 skipped`; in the repository it is `840 passed`.
 
 ### Break 1 · the map gets a way out of COMMITTED
 
@@ -246,7 +284,7 @@ The map's "break it". In `migrations/020_proposals.sql`, add one more move to th
 `('COMMITTED', 'FAILED')`.
 
 ```text
- Tests  5 failed | 827 passed | 1 skipped (833)
+ Tests  5 failed | 834 passed | 1 skipped (840)
 ```
 
 The map test, the two tests that try every move out of a COMMITTED proposal, and the one that writes
@@ -261,7 +299,7 @@ rules guard each other.
 In `migrations/020_proposals.sql`, delete `UNIQUE (tenant, proposal, from_state),`.
 
 ```text
- Tests  3 failed | 829 passed | 1 skipped (833)
+ Tests  3 failed | 836 passed | 1 skipped (840)
 ```
 
 The test of two different moves out of one state at once fails: approved and rejected together,
@@ -277,7 +315,7 @@ record. Two moves into the same state, the race out of READY, are still caught, 
 In `src/operations.ts`, delete the line ``["READY", "EXECUTING", `handed to ${contract.id}`],``.
 
 ```text
- Tests  40 failed | 792 passed | 1 skipped (833)
+ Tests  40 failed | 799 passed | 1 skipped (840)
 ```
 
 The handler runs on a proposal that is only READY, and its last move, out of EXECUTING, has nothing
@@ -320,7 +358,7 @@ the moves in a second one. Replace the `try` block's `await recordTogether(...)`
 ```
 
 ```text
- Tests  16 failed | 816 passed | 1 skipped (833)
+ Tests  16 failed | 823 passed | 1 skipped (840)
 ```
 
 Every move the database refuses now leaves a record that says it happened. The demo's last line
@@ -336,15 +374,17 @@ In `src/audit.ts`, change `export const PLACES_TO_TRY: number = 10;` to
 `export const PLACES_TO_TRY: number = 1;`.
 
 ```text
- Tests  9 failed | 823 passed | 1 skipped (833)
+ Tests  9 failed | 830 passed | 1 skipped (840)
 ```
 
 A request whose place at the end of the log is taken is refused again, as in step 09, with nothing
 written. The unit tier sees it only where a test takes a place on purpose: six tests in
-`test/audit-lost-reply.test.ts`, and three in `test/transitions.test.ts`. On a real server it is the
-crowd that pays. A payment now writes four statements into the log, each of which must win its
-place the first time: twenty payments sent at once made none, in each of three runs, and on a local
-server the database tier's test of twenty at once fails.
+`test/audit-lost-reply.test.ts`, and three in `test/transitions.test.ts`. Before decision 158 the
+crowd paid for it on a real server: a payment writes four statements into the log, each of which had
+to win its place the first time, and twenty payments sent at once made none, in each of three runs.
+Now each request waits for its turn and never loses its place. On Neon, with one place only, the
+twenty were all made, and both of the database tier's tests of twenty at once passed. One place is a
+risk only for a writer that does not take turns, which is what the unit tests break.
 
 ## Build it yourself with Claude Code
 
@@ -456,14 +496,15 @@ The records of the moves leave limits of their own:
   and the chain shows an edit, not a deletion from the end. While a move names a record, that
   record cannot be deleted by itself, and the log cannot be emptied with TRUNCATE by itself; a
   TRUNCATE of the log and the moves together, or with CASCADE, empties both.
-- **Each company's log has one end that all its requests share.** A request that loses ten places
-  before its handler runs is refused, with nothing done; a last move that loses them twice leaves
-  its proposal EXECUTING, as said above. Ten places, and a pause of up to 25 milliseconds more after each
-  place lost, were measured on one machine against a local PostgreSQL 17, not on Neon, where each
-  round trip takes longer.
-- **A request in a crowd waits**: up to about 1.1 seconds for one record, and twice that for a last
-  move tried twice. A retry with the same key waits 2 seconds for the first request, so it can be
-  told `OUTCOME_UNKNOWN` while the first is still in the crowd.
+- **Each company's log has one end that all its requests share**, and one writer at a time
+  (decision 158). A request that waits its turn never loses its place. A writer that does not wait,
+  a test's stand-in or a person at the database, can still take it first, and then the ten places
+  apply: a request that loses ten before its handler runs is refused, with nothing done, and a last
+  move that loses them twice leaves its proposal EXECUTING, as said above.
+- **A request in a crowd waits for its turn**, one turn after another. On Neon, 127 ms away, a turn
+  takes a few round trips, and twenty payments at once took about 34 seconds. A retry with the same
+  key waits up to 30 seconds for the first request (decision 158), so a first request slower than
+  that still leaves the retry told `OUTCOME_UNKNOWN`.
 - **Proposal numbers can skip.** A creation that loses its place has already taken its number.
 - **The record's schema has no field for the state a move left, its actor or its cause.** They are
   words in the record's reason. That is a question for the specification.

@@ -5,9 +5,13 @@
 // together, and all but one of them lose the place. Tried again at once, they read the same new end
 // together, and lose again. This is the tier that can see the pause has to be random.
 //
+// NEW IN STEP 22, decision 158: or it was, until each company's log took one writer at a time. Now
+// the twenty wait for their turns and none loses its place; the pause is for a writer that does not
+// take turns. This tier is still the one that can see it, because PGlite never has a crowd.
+//
 // Runs only under `pnpm test:db`, with DSOR_DB_URL and DSOR_DB_OWNER_URL set, like pool.db.test.ts.
-// Decision 157, found by a review: and how many of the twenty are carried out is asked only of a
-// server on this machine. Why is beside that test, at the end.
+// Decision 157, found by a review, asked how many of the twenty are carried out only of a server on
+// this machine. Decision 158 asks all twenty of any server, in that test, at the end.
 //
 // Rule DSOR-AUD-01: every command decision, every proposal transition, and every read covered by
 // DSOR-CLS-05 MUST produce a durable audit record that validates against audit-record.schema.json.
@@ -26,19 +30,6 @@ import { storyStatements } from "./support/story.ts";
 const APPLICATION = process.env.DSOR_DB_URL;
 const OWNER = process.env.DSOR_DB_OWNER_URL;
 const haveAServer = (APPLICATION ?? "").trim() !== "" && (OWNER ?? "").trim() !== "";
-
-/**
- * Decision 157, found by a review: is the application's server on this machine? Its address says so:
- * 127.0.0.1, localhost or ::1. A connection string that cannot be read as an address is taken as
- * one far away.
- */
-function onThisMachine(url: string | undefined): boolean {
-  try {
-    return ["127.0.0.1", "localhost", "[::1]"].includes(new URL(url ?? "").hostname.toLowerCase());
-  } catch {
-    return false;
-  }
-}
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const A_SMALL_PAYMENT = {
@@ -91,8 +82,8 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
     // Decision 157, found by a review: two minutes for this test, not the tier's thirty seconds.
     // With a pause of up to 100 ms before and after each round trip, 100 ms a round trip on
     // average, twenty at once took 22 to 25 seconds, and with up to 200 ms, 43 to 57, measured on
-    // this machine. Neon itself was not measured. A test that runs out of time fails, whatever the
-    // server did.
+    // this machine. NEW IN STEP 22, decision 158: on Neon, 127 ms away, in turns, 46 seconds. A test
+    // that runs out of time fails, whatever the server did.
     const answers = await twentyAtOnce();
 
     // As the owner, the company's moves beside the records they name, and the records of moves
@@ -146,11 +137,13 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
     expect([...requestsOf.values()].every((requests) => requests.size === 1)).toBe(true);
 
     // Decision 157, found by a review: and every command refused in the crowd was refused before it
-    // ran: its proposal is DENIED, or it made none. On this machine most runs refuse none. With a
-    // slow link several are refused, each because it lost ten places in a row, and in every run
+    // ran: its proposal is DENIED, or it made none. On this machine most runs refused none. With a
+    // slow link several were refused, each because it lost ten places in a row, and in every run
     // measured, up to 200 ms before and after each round trip, each of them was DENIED or had made
     // none. The door promises a little less: it gives DENIED two tries of ten places, and a proposal
     // it could not deny stays PROPOSED (decision 153). No run measured has come to that.
+    // NEW IN STEP 22, decision 158: in turns, none is refused for its place, near or far; a refusal
+    // of any other kind is still asked the same.
     const { rows: made } = await owner.query<{ request: string; state: string }>(
       `SELECT a.correlation ->> 'request_id' AS request,
               (SELECT n.to_state FROM dsor.proposal_moves n
@@ -178,22 +171,22 @@ describe.skipIf(!haveAServer)("twenty commands at once, on a real pool", () => {
     }
   }, 120_000);
 
-  // Decision 157, found by a review: asked only of a server on this machine. How many are carried
-  // out depends on how long each statement holds its place at the end of the log, and across a
-  // network that is several round trips: more requests read the same end together, and more of them
-  // lose ten places in a row. Measured on PostgreSQL 17 with a pool of twenty: on this machine, 20 of
-  // 20 every run. With a pause of up to 30 ms before and after each statement, 12 to 15. With a
-  // pause of up to 10 ms before and after each round trip inside a statement's transaction, as a
-  // server far away adds them, 8 to 11, and with up to 100 ms, 4 to 8. On Neon the bar would fail
-  // with nothing wrong, so it is skipped there, and the report says so. The test above runs on
-  // every server.
-  it.skipIf(!onThisMachine(APPLICATION))(
-    "DSOR-AUD-01: most of twenty commands at once are carried out on a server on this machine, because a lost place is tried again after a random pause",
-    async () => {
-      // On this machine: 20 of 20, every run. With no pause, 4 of 20; with one try, none.
-      const answers = await twentyAtOnce();
+  // Decision 157, found by a review, asked this only of a server on this machine, and only for
+  // most of the twenty. How many were carried out depended on how long each statement held its place
+  // at the end of the log, and across a network that is several round trips: more requests read the
+  // same end together, and more of them lost ten places in a row. Measured on PostgreSQL 17 with a
+  // pool of twenty: on this machine, 20 of 20 every run. With a pause of up to 30 ms before and after
+  // each statement, 12 to 15. With a pause of up to 10 ms before and after each round trip inside a
+  // statement's transaction, as a server far away adds them, 8 to 11, and with up to 100 ms, 4 to 8.
+  //
+  // NEW IN STEP 22, decision 158: every server, and all twenty. Each command waits for its
+  // company's turn at the log, so none loses a place, near or far. Measured on Neon, 127 ms away:
+  // 20 of 20 in each of three runs, in about 34 seconds; with the turns taken away, 12 and 11. On this
+  // machine twenty of twenty were carried out before the turns too, by the ten places, so only a
+  // server far away tells the two apart. The turn itself is tested in audit.db.test.ts, on any server.
+  it("DSOR-AUD-01: all twenty commands at once are carried out, on any server", async () => {
+    const answers = await twentyAtOnce();
 
-      expect(answers.filter((a) => a.kind === "result").length).toBeGreaterThanOrEqual(15);
-    },
-  );
+    expect(answers.filter((a) => a.kind === "result").length).toBe(20);
+  }, 120_000);
 });

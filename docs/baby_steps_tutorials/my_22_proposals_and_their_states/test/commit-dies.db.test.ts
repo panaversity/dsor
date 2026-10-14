@@ -69,7 +69,9 @@ function aDecision(id: string): DecisionToRecord {
  * The INSERT's COMMIT, and not the first COMMIT on the connection: the writer reads the tail in a
  * transaction of its own before it inserts, and a first version of this fault killed that one. The
  * writer then threw before its recovery was reached — correctly, since nothing had been written —
- * and the test measured the wrong moment.
+ * and the test measured the wrong moment. NEW IN STEP 22, decision 158: the writer now reads the tail
+ * and inserts in one transaction, its turn at the log, so the COMMIT that holds the INSERT is the
+ * turn's own, and it is still the one this fault kills.
  */
 function withACommitThatDies(thenDead: boolean): Pool {
   let died = false;
