@@ -47,6 +47,7 @@ import { checkPermission, effectivePermissions, permissionsOf } from "./permissi
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import {
+  callerMover,
   closeProposal,
   isProposalOf,
   NO_PROPOSALS,
@@ -55,9 +56,10 @@ import {
   requesterOf,
   urisIn,
   type Opening,
+  type Proposal,
   type ProposalStore,
 } from "./proposals.ts";
-import { preview, type Registry } from "./registry.ts";
+import { preview, type Contract, type Handler, type Registry } from "./registry.ts";
 import { mayRelease, releases, targetOf } from "./release.ts";
 import {
   checkedKey,
@@ -69,7 +71,7 @@ import {
   type RequestEnvelope,
 } from "./request.ts";
 import { semanticsOf } from "./semantics.ts";
-import { lookFor } from "./revocation.ts";
+import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
@@ -540,7 +542,15 @@ export async function call(
         if (target === undefined)
           throw new Error(`proposal ${id} holds an operation with no contract`);
         await mayRelease(loaded, target, releaser, () => proposals.isDue(tenant, id));
-        return loaded;
+        // The company's code runs the stored request. DSoR's own work, a brake or a rule prepared
+        //   in propose_only mode, is not released in this step: its own look at line ⑨ would
+        //   run again first (step 31's README, decision D14).
+        const code = registry.handlers.get(target.id);
+        if (code === undefined) {
+          const why = `releasing ${preview(target.id)}, which is DSoR's own work, is not built yet`;
+          throw new Refusal("UNSUPPORTED_CAPABILITY", why);
+        }
+        return { loaded, target, code };
       });
     if (released !== undefined) {
       // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id
@@ -615,7 +625,13 @@ export async function call(
     // A query's code is line ⑨'s read, as before. A command's work runs after line
     //   ⑩, with no number of its own: it is the work of §21's line 14, which step 36 puts in its
     //   place, after the intent record (step 24's README, decision 6).
-    const runCode = (stores: WorkStores): Promise<unknown> => {
+    // NEW IN STEP 31: and the job it runs: the call's own code and input, or, for a release, the
+    //   code of the operation the proposal holds and the request it stored (DSOR-APR-10).
+    type Job = { handler: Handler | undefined; own: OwnWork | undefined; input: unknown };
+    const runCode = (
+      stores: WorkStores,
+      job: Job = { handler, own, input: copy },
+    ): Promise<unknown> => {
       const work = async (): Promise<unknown> => {
         allowed = true;
         // The code works inside the active company only. It gets line ①'s copy, the one
@@ -635,16 +651,19 @@ export async function call(
           // DSoR's own change gets DSoR's own stores, inside the claim, with the
           //   caller. The company's code never gets them (step 25's README, decision D2).
           let returned: unknown;
-          if (own !== undefined) {
+          if (job.own !== undefined) {
             const now = new Date().toISOString();
             // And DSoR's question to the company's own KSoR, for the sweep.
             const ksor = policyLook(registry.ksors, tenant);
             // And every contract, for an approval (step 29's README, decision D7).
             const contracts = registry.contracts;
             const work = { tenant, caller, stores, correlation, now, ksor, contracts };
-            returned = await own.change(copy, work);
-          } else if (handler !== undefined) {
-            returned = await handler(copy, companyOf(stores.invoices, tenant, reads, payments));
+            returned = await job.own.change(job.input, work);
+          } else if (job.handler !== undefined) {
+            returned = await job.handler(
+              job.input,
+              companyOf(stores.invoices, tenant, reads, payments),
+            );
           } else {
             throw new Error("an operation with no code reached its work");
           }
@@ -679,6 +698,10 @@ export async function call(
     //   moves PROPOSED and READY, and waits there. The code does not run (step 23's README,
     //   decisions 1, 4, and 12).
     let returned: unknown;
+    // NEW IN STEP 31: what the answer describes: the call's own request and contract, or, for a
+    //   release, the request that ran and the contract of its operation. Its fingerprint, the
+    //   kind of its answer, and its semantics are the stored request's (DSOR-APR-10).
+    let answered: { hash: string; contract: Contract } = { hash, contract };
     try {
       if (contract["kind"] === "query" && key === undefined) {
         // A query makes no proposal, so its stores hold none to write (decision 7).
@@ -703,30 +726,65 @@ export async function call(
           keyOfRecord = { key: scope.key };
           // NEW IN STEP 31: a release's line ⑧ loads the proposal, and line ⑨'s gate decides,
           //   inside the claim. A refusal there is kept with the claim, beside the loaded
-          //   proposal, which it leaves where it was.
+          //   proposal, which it leaves where it was. A release that passes reads the state the
+          //   stored request binds, moves the proposal to EXECUTING, and runs the stored request
+          //   with the code of the operation it holds, pinned to what it read. Its last move and
+          //   its booking's end follow, as a draft's do (DSOR-APR-10; step 31's README, decisions D4
+          //   and D10).
           if (released !== undefined) {
+            let job: (Job & { loaded: Proposal; target: Contract }) | undefined;
             const steps: ProposalSteps = {
               open: (stores) =>
                 line(8, async () => {
+                  let gated: Awaited<ReturnType<typeof gate>>;
                   try {
-                    await gate(stores.proposals, released);
+                    gated = await gate(stores.proposals, released);
                   } catch (thrown) {
                     if (isOutcome(thrown)) return { proposal: released, refused: thrown };
                     throw thrown;
                   }
-                  // The check on live data and the work come in this step's next pieces.
-                  const why = "the release itself is not built yet";
-                  return {
-                    proposal: released,
-                    refused: new Refusal("UNSUPPORTED_CAPABILITY", why),
-                  };
+                  const { loaded, target, code } = gated;
+                  const id = proposalIdOf(tenant, released);
+                  // Line ⑨ reads the state the stored request binds: for a payment, the invoice it
+                  //   names. The work's writes are pinned to it, as a draft's are.
+                  const bound = await line(9, () =>
+                    readBound(target, loaded.payload, stores.invoices, tenant),
+                  );
+                  boundState = bound.state;
+                  // The move to EXECUTING names who released it. It moves only a proposal still in
+                  //   the state the gate read, so of two releases at once, one moves it, and the
+                  //   other hears CONFLICT (D10).
+                  const now = new Date().toISOString();
+                  const mover = callerMover(requesterOf(caller, under, tenant, now));
+                  const by = { mover, cause: `released by ${caller.id}`, correlation };
+                  if (!(await stores.proposals.move(tenant, id, loaded.state, "EXECUTING", by))) {
+                    const why = `proposal ${id} was released by another call`;
+                    const refused = new Refusal("CONFLICT", why, "internal");
+                    return { proposal: released, refused };
+                  }
+                  job = { handler: code, own: undefined, input: loaded.payload, loaded, target };
+                  return { proposal: released };
                 }),
-              close: async () => {
-                throw new Error("a release that ran no work has nothing to close");
+              // The proposal's last move, COMMITTED or FAILED, by DSoR, as a draft's. Then its
+              //   booking: committed with COMMITTED, so it stays counted on the day it was drafted,
+              //   and released with FAILED (D4).
+              close: async (stores, proposal, outcome) => {
+                if (job === undefined) throw new Error("a release closed a proposal it never ran");
+                const ending: Opening = {
+                  tenant,
+                  draft: job.loaded,
+                  correlation,
+                  lifetime: lifetimeOf(registry, tenant),
+                };
+                await closeProposal(stores.proposals, ending, proposal, outcome);
+                const id = proposalIdOf(tenant, proposal);
+                if ("value" in outcome) await stores.reservations.commit(tenant, id);
+                else await stores.reservations.release(tenant, id);
               },
             };
-            const nothing = async (): Promise<never> => {
-              throw new Error("a release runs no work of its own yet");
+            const running = (stores: WorkStores): Promise<unknown> => {
+              if (job === undefined) throw new Error("a release ran before its proposal opened");
+              return runCode(stores, job);
             };
             return {
               scope,
@@ -735,7 +793,7 @@ export async function call(
                 hash,
                 mode,
                 correlation.request_id,
-                nothing,
+                running,
                 steps,
               ),
             };
@@ -875,6 +933,15 @@ export async function call(
           };
         }
         returned = claimed.value;
+        // Read again after the claim, so a replay, whose claim ran nothing, describes it too.
+        if (released !== undefined) {
+          const ran = await registry.claims.proposals.get(tenant, proposalIdOf(tenant, released));
+          const target = ran === undefined ? undefined : targetOf(registry.contracts, ran);
+          if (ran === undefined || target === undefined) {
+            throw new Error("a release that ran has no proposal, or no operation");
+          }
+          answered = { hash: ran.payload_hash, contract: target };
+        }
       }
     } catch (thrown) {
       // A refusal the code throws is masked as its answer would be
@@ -898,7 +965,7 @@ export async function call(
     // the check all read one copy (step 14's README, decision 3). Found by the Stage 2
     // review, and fixed from step 14 on. Masking comes before the size check, so the size
     // measured below is the size that leaves (step 14's README, decision 5).
-    const kind = (contract["output"] as { schema: string }).schema;
+    const kind = (answered.contract["output"] as { schema: string }).schema;
     const shown = show(data, kind, registry.classifications, clearanceOf(caller));
     // Ours, not §21's. No query's result leaves larger than DSoR gives in
     // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
@@ -938,7 +1005,7 @@ export async function call(
       // A command's answer states the semantics its contract declares, never
       // a word of its code (DSOR-EXE-05b). No freshness: DSOR-FRS-01a names query results,
       // and a write is not a read (step 17's README, decision 2).
-      const semantics = semanticsOf(contract);
+      const semantics = semanticsOf(answered.contract);
       // The outcome, the proposal, and the fingerprint of the request, so the
       // answer passes result-envelope.schema.json (DSOR-SCH-01; step 22's README, decision 5).
       if (proposalOfRecord === undefined) throw new Error("a command answered with no proposal");
@@ -946,7 +1013,7 @@ export async function call(
       return {
         outcome: "COMMITTED",
         proposal: proposalOfRecord,
-        payload_hash: hash,
+        payload_hash: answered.hash,
         data: shown.data,
         classification,
         ...listed,
