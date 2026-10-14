@@ -92,9 +92,10 @@ export async function mayRelease(
     // The agent that asked, and only under the slip it asked under (DSOR-APR-11).
     const asker = found.requester.actor_chain[0];
     const under = found.requester.delegation;
+    // The words name neither the slip nor the person that asked: a caller who may not release
+    //   learns nothing of the proposal but that it is there. Found by step 31's review, finding L1.
     if (asker !== caller.id || slip === undefined || under !== slip.id) {
-      const asked = under === undefined ? "by a person" : `under slip ${under}`;
-      no(`it was asked for ${asked}, not under ${caller.id}'s own`);
+      no(`it was not asked for under ${caller.id}'s own slip`);
     }
     // And with the full permission: an agent that may only prepare may not release what it
     // prepared, which is why propose_only exists (D2).

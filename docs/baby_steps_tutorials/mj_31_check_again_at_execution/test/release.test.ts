@@ -122,7 +122,8 @@ describe("C2: who may release (step 31's README, decisions D2 and D12)", () => {
     const { id, uri } = await approved(w);
     expect(await release(w, FIRM_IN_456, uri)).toMatchObject({
       code: "AUTHORIZATION_DENIED",
-      message: `firm-ap-fte may not release proposal ${id}: it was asked for under slip del_100, not under firm-ap-fte's own`,
+      // Changed by step 31's review, finding L1: the words named the slip that asked.
+      message: `firm-ap-fte may not release proposal ${id}: it was not asked for under firm-ap-fte's own slip`,
     });
     expect(await stateOf(w, id)).toBe("APPROVED");
   });
