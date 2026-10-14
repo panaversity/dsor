@@ -718,8 +718,10 @@ DSOR-SOD-01a, DSOR-SOD-02, DSOR-SOD-04c.
 Hours pass between approval and execution. `proposal.execute` runs every check again
 on live data, and it runs the stored request only. The caller cannot send a new one.
 **Spec:** [§26.4](../../specs/dsor/03-execution.md#264-re-evaluation-at-execution) ·
-DSOR-APR-03a, DSOR-APR-03b, DSOR-APR-03c, DSOR-APR-10, DSOR-APR-13.
-**Done when:** suspending VENDOR-44 after approval makes the proposal `INVALIDATED`.
+DSOR-APR-03a, DSOR-APR-03b, DSOR-APR-03c, DSOR-APR-03d, DSOR-APR-10, DSOR-APR-11, DSOR-APR-13.
+**Done when:** a stricter rule switched on after the approval makes the proposal `INVALIDATED`.
+Changed by the learner's build of this step (its D1): DSoR keeps no vendor record until step 32's
+preconditions, so suspending VENDOR-44 moves to step 32.
 
 ### 32 · `32_preconditions_and_one_attempt_at_a_time`
 
@@ -728,7 +730,8 @@ invoice is issued. Only one attempt may be open on a payment, and an invoice's u
 amount already counts payments that are waiting.
 **Spec:** [§25.1](../../specs/dsor/03-execution.md#251-in-flight-exclusivity) ·
 DSOR-EXC-01, DSOR-EXC-02, DSOR-FRS-02a.
-**Done when:** drafting PAY-902 for the same invoice is refused while PAY-901 waits.
+**Done when:** drafting PAY-902 for the same invoice is refused while PAY-901 waits, and
+suspending VENDOR-44 after an approval makes the proposal `INVALIDATED` at its release.
 
 ### 33 · `33_the_decision_bundle`
 

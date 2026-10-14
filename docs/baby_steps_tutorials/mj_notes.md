@@ -1820,6 +1820,49 @@ together.
   five acts; step 27's D1 to D21, step 28's D1 to D21, step 28b's D1 to D15, step 29's D1 to D15,
   and step 30's D1 to D10; the twenty breaks to predict; and open questions 108 to 123.
 
+### Step 31, check again at execution, designed by the learner (2026-10-14 to 2026-10-15)
+
+Copied from step 30, with a database of its own (port 55462, `dsor31`). The learner asked to design
+step 31 and took every decision, one at a time: D1 to D11 through questions, six points the
+specification settles accepted as one list, and D12 and D13 as building began. The learner also
+predicted all four breaks before any code. The build followed in five pieces.
+
+- **The decisions:** D1 to D13 are the learner's. D14 to D18 were found later in the build and are
+  Claude Code's, each with its downside, for the learner to review: DSoR's own work is not
+  released (D14); a check that cannot be made now leaves the payment waiting (D15); a gone signer
+  invalidates and suspends nothing yet (D16); a cause starts with its own code (D17); a rule the
+  request was never decided under is new, and invalidates (D18).
+- **The pieces:** A, the release's front, who may release, and what; B, the stored request runs,
+  once; C, the check again on live data, whose 12 tests were all `COMMITTED` before it, the stale
+  approval paid; D, the database, migration 027 and two releases at once; E, the program's four
+  scenes, in a world of their own, since step 30's world has two later rules on.
+- **The learner's breaks:** all four predictions right. B1, the check skipped: INV-2012 paid on one
+  CFO's yes. B2, the caller's request run: INV-1002 paid, but only once three guards were broken
+  (start-up's schema check, the payment pinned to what line ⑨ read, and the fingerprint). B3, the
+  booking kept: the next 21,000.00 USD draft hears `LIMIT_EXCEEDED`. B4, D2 gone: the preparing
+  agent releases its own INV-1009.
+- **The review:** one high, three medium, four low, and 18 breaks of the reviewer's own, 9 of which
+  survived. H1, the dry run that skipped the check again, Claude Code had found already, rereading
+  D13 while answering the README's review. M1, a late sheet of rates that invalidated an approved
+  payment, now waits (D15). M2, the expiry read once before a wait of up to two seconds, is read
+  again before the work. M3, the survivors, each became a test. L1 fixed; L2, L3 recorded (L3 is
+  open question 126); one break of the slip's lock still survives, recorded.
+- **The reader's review:** the second idea had no picture (the flight plan to Lahore is it now),
+  "gate" meant two things, and ten words were undefined.
+- **Counts:** unit 2210, database 489, at 54c30e2.
+- **Lessons for the next builds:**
+  - Reread each decision against the code at the end. D13's dry run was written and never built,
+    and every test passed.
+  - A test login planted with `withPlanted` is gone outside it. A check of the asker then says "no
+    login now", and a test can pass for that reason. Pin the cause, not only the code.
+  - A store made with `now = Date.now` keeps the real clock: faking `Date` later does not reach it.
+  - Masking hides a cause from a low clearance. Read causes as a person, or the test reads a mask.
+  - In memory, two calls at once never both pass a read before either writes. Hold the row from a
+    third connection on the database, and use a pool of its own for the holder and the watcher: the
+    registry's pool of two serves the calls, and a third need hangs every test after it.
+  - Start-up's own checks stop some breaks before they run. Report the break as the developer would
+    really make it, and say which guards had to go.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

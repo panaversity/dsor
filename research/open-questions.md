@@ -818,6 +818,9 @@ for a human. An agent may gather evidence; it does not settle these alone.
     approval would then be given at the release, by the releaser's call, in cfo_100's name. Should
     `proposal.approve` refuse `propose_only`, or should a release of it count only from the
     approver?
+    *Since step 31's learner build:* `proposal.execute` does not release DSoR's own work, so a
+    prepared approval is never released there: it hears `UNSUPPORTED_CAPABILITY` (that step's D14).
+    The question stays for the day such a release is built.
 
 123. **Should DSoR warn when nobody outside a request's chain can give the approval a rule asks
     for?** DSOR-SOD-02 keeps the person who signed an agent's slip from approving the agent's
@@ -827,3 +830,25 @@ for a human. An agent may gather evidence; it does not settle these alone.
     time. Step 29's learner build checks that a rule asks only for a role that could approve at all;
     nothing checks that someone outside the chain holds it. Should the switch-on of such a rule, or
     the answer to a request it stops, say that nobody may approve it?
+
+124. **May a `READY` proposal move to `INVALIDATED`?** §26.2's picture draws `APPROVED` to
+    `INVALIDATED`, and no move out of `READY` but to `EXECUTING`. DSOR-APR-03c says a proposal moves
+    to `INVALIDATED` when "a new `REQUIRE_*` or `DENY` outcome appears" at its release. In step 31's
+    learner build, the agent prepares INV-1009 in `propose_only` mode, a rule then asks the CFO above
+    5,000 USD, and user_123's release invalidates it: the build adds the move, as step 25c added
+    `READY` to `CANCELLED` and `EXPIRED` (open question 90). Should §26.2 draw it, or should such a
+    proposal move on to `PENDING_APPROVAL` and wait for the approval the new rule asks for?
+
+125. **Should `proposal.execute` take `propose_only` mode?** DSOR-OPR-05 lets every command be
+    called in three modes. A release prepared in `propose_only` mode would itself wait for a release.
+    Step 31's learner build refuses that mode for `proposal.execute` with `VALIDATION_FAILED`, and
+    allows a dry run, which checks everything again and moves nothing (its D13). Should
+    DSOR-OPR-05 name the release as an exception?
+
+126. **Should a brake or a suspended signer invalidate a waiting payment, or only stop it for now?**
+    DSOR-APR-03c invalidates a proposal when a check fails at its release. In step 31's learner build,
+    a check that cannot be made now (a directory with no recent answer, no usable exchange rate)
+    leaves the proposal waiting, and the same key may retry (its D15). But an emergency brake on the
+    agent, or a signer the directory lists as suspended, invalidates it for good, though both can be
+    lifted within the hour. Should the specification separate a "no" that can be lifted from a "no"
+    that cannot, at the release?
