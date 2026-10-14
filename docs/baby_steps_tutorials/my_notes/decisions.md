@@ -5555,6 +5555,12 @@ helper's options declare.
 line for their company's log". The questions that came up while building it are below, each put as
 it would have been asked, each answer the recommendation, and open to reversal.
 
+**Confirmed by the learner, 2026-10-15.** Asked afterwards, in plain words with the trade-offs of
+each: how a company's log meets a crowd (one writer at a time, chosen; try again more times; refuse
+the losers, as step 09 does), and how long a repeat of a request waits for the first (up to thirty
+seconds, chosen; keep two seconds; a wait that grows with the distance). Both answers are what is
+built.
+
 **The problem.** On 2026-10-14 the database tiers of steps 16 to 25 ran against Neon for the first
 time, each on its own database. Until then they had run on a PostgreSQL on this machine. A round
 trip from this machine to Neon took 127 ms (the median of fifteen). Steps 16 to 19 passed. Steps 20
