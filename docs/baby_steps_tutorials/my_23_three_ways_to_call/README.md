@@ -125,7 +125,7 @@ moves to PROPOSED and READY, and nothing after them. The third, prop_12, has all
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-seven tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The sixty tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -141,7 +141,7 @@ twenty, it applies 021. This step adds no test of its own to this tier: nothing 
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `874` with `1 skipped`; in the repository it is `874 passed`.
+is not beside it, so the total reads `881` with `1 skipped`; in the repository it is `881 passed`.
 
 ### Break 1 · a dry run claims its key
 
@@ -150,7 +150,7 @@ The map's "break it" in spirit: a dry run that leaves something behind. In `src/
 `if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  14 failed | 859 passed | 1 skipped (874)
+ Tests  14 failed | 866 passed | 1 skipped (881)
 ```
 
 More than the five predicted, and for one reason: a dry run sent without a key, as most of them are,
@@ -165,7 +165,7 @@ and then counts the claims, finds one left behind.
 In `src/operations.ts`, change `? "VALIDATED"` to `? "ALLOWED"`.
 
 ```text
- Tests  2 failed | 871 passed | 1 skipped (874)
+ Tests  2 failed | 878 passed | 1 skipped (881)
 ```
 
 The two tests that read the log after a dry run: one looks for VALIDATED, and the other for the dry
@@ -179,7 +179,7 @@ In `src/operations.ts`, change `? await prepare(walked.context, progress)` to
 `? await carryOut(walked.context, startedAt, progress)`.
 
 ```text
- Tests  19 failed | 854 passed | 1 skipped (874)
+ Tests  19 failed | 861 passed | 1 skipped (881)
 ```
 
 The caller asked to prepare a payment, and it was made. Twelve tests in `test/modes.test.ts`: the

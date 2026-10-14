@@ -26,6 +26,34 @@ import { PGlite } from "@electric-sql/pglite";
 import { Pool } from "pg";
 import { applyMigrations, type Runner } from "./migrations.ts";
 import { useDatabase, type Database } from "./audit.ts";
+import type { Statements } from "./store.ts";
+
+/**
+ * STEP 22, decision 158: the company, and the turn in one line, said in one statement, the
+ * first of the transaction after its isolation level. `pg_advisory_xact_lock` waits until no other transaction holds the same
+ * key, then holds it until this transaction ends, commit or rollback: PostgreSQL lets it go, so a
+ * program that dies mid-turn cannot keep the line waiting. The key is two numbers, both names
+ * hashed: `dsor.audit` for the log's lines, and the line's own name. Two names that hash alike
+ * only wait for each other; they never share a turn's statements.
+ *
+ * Found by a review: and a program that does not die but stalls, or whose network goes quiet
+ * without closing, would hold the turn for ever. So the turn also says how long its transaction may
+ * sit idle between statements: ten seconds, then PostgreSQL ends the connection and lets the turn
+ * go. A turn's own pauses are one round trip each, 127 ms to Neon.
+ */
+const TAKE_THE_TURN =
+  "SELECT set_config('dsor.tenant_id', $1, true), " +
+  "set_config('idle_in_transaction_session_timeout', '10s', true), " +
+  "pg_advisory_xact_lock(hashtext('dsor.audit'), hashtext($2))";
+
+/**
+ * STEP 22, decision 158, found by a review: a turn reads the end of the log after its lock
+ * is given, and that read sees the last writer's record only at READ COMMITTED, where each statement
+ * takes a fresh snapshot. At REPEATABLE READ the whole transaction would read from the snapshot of its
+ * first statement, taken before the wait, and every writer that waited would read an old end. A
+ * database or a role can make either the default, so the turn says which it needs.
+ */
+const AT_READ_COMMITTED = "SET TRANSACTION ISOLATION LEVEL READ COMMITTED";
 
 /**
  * STEP 11: PGlite, as a connection that can say the company.
@@ -45,6 +73,22 @@ export function overPGlite(db: PGlite): Database {
 
             return tx.query<T>(sql, params);
           }),
+
+    // STEP 22, decision 158: one transaction for the whole turn. PGlite has one connection and
+    // runs one transaction at a time, so nobody else is ever in the line; the lock is still taken, so
+    // the tests run the same SQL as the server does. PGlite's BEGIN cannot name an isolation level,
+    // so the transaction names it first.
+    inTurn: <T>(
+      tenant: string,
+      line: string,
+      work: (statements: Statements) => Promise<T>,
+    ): Promise<T> =>
+      db.transaction(async (tx) => {
+        await tx.query(AT_READ_COMMITTED);
+        await tx.query(TAKE_THE_TURN, [tenant, line]);
+
+        return work({ query: <R>(sql: string, params?: unknown[]) => tx.query<R>(sql, params) });
+      }),
   };
 }
 
@@ -58,6 +102,72 @@ export function overPGlite(db: PGlite): Database {
  * the connection back — clean, because the setting died with the transaction.
  */
 export function overPool(pool: Pool): Database {
+  // STEP 22, decision 158, found by a review: the turns this program waits for, one line at
+  // a time, before a connection is taken. Waiting for a turn on the database holds a connection, so
+  // fifty requests of org_456 would take every connection in the pool to wait, and org_789's next
+  // request would wait for one behind them. Here they wait without one, and only the first in the
+  // line takes a connection to wait on the database's lock. The line lets it go as soon as the turn
+  // before it is taken, not when that turn ends (found by a second review): a turn whose statement
+  // never comes back would otherwise hold the line for ever, where the database's lock is let go when
+  // the turn has sat idle ten seconds. So a line holds two connections at most, the turn's and the next
+  // one's. The lock on the database still keeps two programs on one database in turn.
+  const waiting = new Map<string, Promise<void>>();
+
+  // STEP 22, decision 158: a turn on the database is one connection, held from BEGIN to
+  // COMMIT, as a statement with a company is below. The turn is taken by the transaction's first
+  // statement, with the company, so waiting costs no round trip of its own: on Neon, 127 ms away, each
+  // one is a tenth of a second that every writer behind this one waits too.
+  async function onTheDatabase<T>(
+    tenant: string,
+    line: string,
+    work: (statements: Statements) => Promise<T>,
+    taken: () => void,
+  ): Promise<T> {
+    const client = await pool.connect();
+    let dead = false;
+    // A connection the server ends between two statements, as it ends a turn left idle too long,
+    // says so as an event, and an event nobody listens for stops the program. The statement after it
+    // fails, and the catch below hears of it there.
+    const heard = (): void => {};
+
+    client.on("error", heard);
+
+    try {
+      // `BEGIN` can name the isolation level, so the server's turn costs no round trip for it.
+      await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      await client.query(TAKE_THE_TURN, [tenant, line]);
+      // The turn is this transaction's now; the next request in the program's line may go and wait
+      // for it on the database.
+      taken();
+
+      const result = await work({
+        query: async <R>(sql: string, params?: unknown[]): Promise<{ rows: R[] }> => {
+          const { rows } = await client.query(sql, params);
+
+          return { rows: rows as R[] };
+        },
+      });
+
+      await client.query("COMMIT");
+
+      return result;
+    } catch (failure) {
+      // A refused statement leaves an aborted transaction, which ROLLBACK clears and which lets the
+      // turn go; a connection that is gone is discarded, and the server lets the turn go when it
+      // notices.
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        dead = true;
+      }
+
+      throw failure;
+    } finally {
+      client.off("error", heard);
+      client.release(dead);
+    }
+  }
+
   return {
     async query<T>(sql: string, params?: unknown[], tenant?: string): Promise<{ rows: T[] }> {
       if (tenant === undefined) {
@@ -91,6 +201,34 @@ export function overPool(pool: Pool): Database {
         throw failure;
       } finally {
         client.release(dead);
+      }
+    },
+
+    // STEP 22, decision 158: in the program's line first, in the order the requests came,
+    // and then in the database's.
+    async inTurn<T>(
+      tenant: string,
+      line: string,
+      work: (statements: Statements) => Promise<T>,
+    ): Promise<T> {
+      const before = waiting.get(line) ?? Promise.resolve();
+      let done = (): void => {};
+      const mine = new Promise<void>((resolve) => {
+        done = resolve;
+      });
+      const last = before.then(() => mine);
+
+      waiting.set(line, last);
+      await before;
+
+      try {
+        return await onTheDatabase(tenant, line, work, done);
+      } finally {
+        done();
+
+        if (waiting.get(line) === last) {
+          waiting.delete(line);
+        }
       }
     },
   };
