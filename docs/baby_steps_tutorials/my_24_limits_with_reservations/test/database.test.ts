@@ -765,3 +765,29 @@ describe("the one door to the audit log's database", () => {
     expect(mentions).toStrictEqual({ "audit.ts": 2, "database.ts": 4, "store.ts": 3 });
   });
 });
+
+describe("a turn at the log", () => {
+  it("DSOR-AUD-01: a turn reads at READ COMMITTED, whatever the connection's default", async () => {
+    // STEP 22, decision 158, found by a review: a turn reads the end of the log after its lock
+    // is given, and only READ COMMITTED shows it the record the writer before it committed. A
+    // database or a role can make REPEATABLE READ the default, so the turn says which level it needs.
+    const db = await aDatabase();
+    const turn = overPGlite(db).inTurn;
+
+    if (turn === undefined) {
+      throw new Error("PGlite takes no turns");
+    }
+
+    await db.exec("SET default_transaction_isolation = 'repeatable read'");
+
+    const level = await turn("org_456", "audit:org_456", async (statements) => {
+      const { rows } = await statements.query<{ transaction_isolation: string }>(
+        "SHOW transaction_isolation",
+      );
+
+      return rows[0]?.transaction_isolation;
+    });
+
+    expect(level).toBe("read committed");
+  });
+});

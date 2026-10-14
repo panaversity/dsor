@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { money } from "../src/money.ts";
@@ -29,6 +29,13 @@ const haveAServer = (APPLICATION ?? "").trim() !== "" && (OWNER ?? "").trim() !=
 
 const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
 const DAILY = money("200000.00", "USD");
+
+/**
+ * NEW IN STEP 24, decision 158: how long fifty at once may take, for every test in this file. The
+ * tier's thirty seconds a test were chosen with a PostgreSQL on this machine in mind. On Neon, 127 ms away, a
+ * request is dozens of round trips, and a company's log takes one writer at a time.
+ */
+vi.setConfig({ testTimeout: 180_000 });
 
 let owner: Pool;
 let application: Pool;

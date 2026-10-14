@@ -30,11 +30,33 @@
  */
 export interface Database {
   query: <T>(sql: string, params?: unknown[], tenant?: string) => Promise<{ rows: T[] }>;
+
+  /**
+   * STEP 22, decision 158: several statements in one transaction for one company, run only
+   * when it is their turn in `line`, and the turn lasts until the transaction ends. A second caller
+   * in the same line waits for the first to commit or roll back. The log is the one line today:
+   * `recordTogether` reads the end of a company's log and writes after it in one turn. A turn's
+   * `work` must never ask for a turn in its own line: it would wait for itself, for ever.
+   *
+   * Optional, and only for a test's stand-in, which is a `query` and nothing else. Without it the
+   * statements run one transaction each, with no turn, as they did before this decision. Both real
+   * connections in database.ts have it.
+   */
+  inTurn?: <T>(
+    tenant: string,
+    line: string,
+    work: (statements: Statements) => Promise<T>,
+  ) => Promise<T>;
 }
 
 /** What a store is handed: statements that are always for one company. */
 export interface Statements {
   query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+}
+
+/** STEP 22, decision 158: the company's statements, and a way to wait for a turn. */
+export interface StatementsInTurn extends Statements {
+  inTurn: <T>(line: string, work: (statements: Statements) => Promise<T>) => Promise<T>;
 }
 
 let database: Database | undefined;
@@ -58,7 +80,7 @@ export function useDatabase(db: Database): void {
  * wants rows without saying whose is a bug in the program, and the database's own answer to that
  * bug — no rows — would come back as a tidy "not found" and hide it.
  */
-export function theDatabase(tenant: string): Statements {
+export function theDatabase(tenant: string): StatementsInTurn {
   if (database === undefined) {
     throw new TypeError(
       "there is no database: call useDatabase() before reading or recording anything. " +
@@ -81,8 +103,11 @@ export function theDatabase(tenant: string): Statements {
   // write another request's record at the place this write chose; they swap it back before this
   // write goes on, so the capture is still a property worth having rather than one anything relies on.
   const connection = database;
+  const query: Statements["query"] = (sql, params) => connection.query(sql, params, tenant);
 
   return {
-    query: (sql, params) => connection.query(sql, params, tenant),
+    query,
+    inTurn: (line, work) =>
+      connection.inTurn === undefined ? work({ query }) : connection.inTurn(tenant, line, work),
   };
 }

@@ -79,7 +79,7 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_23
 | `src/database.ts` | start-up knows ten tenant tables, asks for the second policy, and refuses an application that may delete a total or a reservation |
 | `src/main.ts` | ten payments of 25,000.00 against the day, one after another |
 | `test/limits.test.ts` | new — the limit, booking, the race of fifty reservations, settling with the history, the door's payments and their reservations, and a booking the store refuses |
-| `test/limits.db.test.ts` | new — fifty reservations at once on a real server, and fifty payments through the door racing for room for one |
+| `test/limits.db.test.ts` | new — fifty reservations at once on a real server, and fifty payments through the door racing for room for one; three minutes a test, for a database far away (decision 158) |
 | `test/main.test.ts` | ten more decisions in the demo's log, and the records of thirty-two more moves, and what a second run the same day changes |
 | `test/modes.test.ts` | calling every command all three ways checks the day's reservations and totals too, beside the invoices, payments and slips |
 | `test/database.test.ts` | start-up refuses an application that may delete a total or a reservation, or write one settled, and the reservations without the policy that keeps a settled one |
@@ -122,7 +122,7 @@ of 25,000.00 are refused. Tomorrow, in UTC, the day starts again.
 
 ### The database tier
 
-`pnpm check` needs no server. The fifty-nine tests in `pnpm test:db` need two real logins and a
+`pnpm check` needs no server. The sixty-two tests in `pnpm test:db` need two real logins and a
 database of this step's own:
 
 ```bash
@@ -145,7 +145,7 @@ one that sees this mistake.
 
 Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `916` with `1 skipped`; in the repository it is `916 passed`.
+is not beside it, so the total reads `923` with `1 skipped`; in the repository it is `923 passed`.
 
 ### Break 1 · read the total, check it, then write it
 
@@ -154,7 +154,7 @@ statement with two: a SELECT of the day's total, a check in TypeScript that the 
 then the INSERT that adds it, with no condition.
 
 ```text
- Tests  1 failed | 914 passed | 1 skipped (916)
+ Tests  1 failed | 921 passed | 1 skipped (923)
 ```
 
 One: the fifty reservations at once. Every other test books one payment at a time, or the same
@@ -169,7 +169,7 @@ broken bookings apart, so only the store's test sees this break now.
 In `src/reservation.ts`, change `WHERE $3 = 'released' AND` to `WHERE $3 = 'never' AND`.
 
 ```text
- Tests  8 failed | 907 passed | 1 skipped (916)
+ Tests  8 failed | 914 passed | 1 skipped (923)
 ```
 
 A refused payment is marked released, and its amount still counts against the day: each refusal
@@ -183,7 +183,7 @@ In `src/operations.ts`, in the daily limit's part of `checkTheSlipsLimit`, chang
 `if (context.mode === "validate_only") {` to `if (context.mode === ("never" as string)) {`.
 
 ```text
- Tests  6 failed | 909 passed | 1 skipped (916)
+ Tests  6 failed | 916 passed | 1 skipped (923)
 ```
 
 A dry run has no proposal to book for, so it is refused for that: the agent can no longer ask "would
@@ -220,10 +220,10 @@ Copy `my_23_three_ways_to_call` to a new folder and ask:
    OUTCOME_UNKNOWN, and its reservation stays held, because nobody knows whether it ran.
 4. Yes. It may still run, so it holds its reservation.
 5. The limit, `LIMIT_EXCEEDED`: each books its amount at §21.10, and only one fits. Their records
-   race for the end of the company's log too, but a record that loses its place tries the next one
-   (step 22). Measured on a local PostgreSQL 17, four runs: one made, forty-nine `LIMIT_EXCEEDED`,
-   each time. A request that lost ten places before its payment was made would be refused
-   `EVIDENCE_STORE_UNAVAILABLE`, with nothing done.
+   wait for their turns at the end of the company's log too (step 22, decision 158), so none
+   loses its place. Measured on a local PostgreSQL 17 before the turns, four runs: one made,
+   forty-nine `LIMIT_EXCEEDED`, each time. On Neon, 127 ms away, in turns, the test of it passes
+   too, more slowly.
 
 </details>
 
@@ -246,8 +246,8 @@ that booked nothing, then released, gives back what it never took. It could as w
 past the limit, because a payment is not tied to its reservation; that tie, which would make the
 limit the database's and not only the pipeline's, is a later step's. What the database keeps is the
 race and the settled reservation. Cancelling a payment does not give its amount back to the day.
-A request that books and then cannot write its decision, because it lost ten places at the end of
-the company's log, holds its amount for a moment, so another can be refused `LIMIT_EXCEEDED` with
+A request that books and then cannot write its decision, because the log could not be written,
+holds its amount for a moment, so another can be refused `LIMIT_EXCEEDED` with
 room that is given back a moment later: the limit errs toward refusing. One window, a day in UTC;
 the schema's other windows, and the company's own time zone, are not built. An amount in another
 currency is refused until step 26. The states of approval, and their holds and releases, come with

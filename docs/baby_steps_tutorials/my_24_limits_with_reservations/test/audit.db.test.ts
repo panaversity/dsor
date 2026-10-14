@@ -18,10 +18,13 @@ import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { openTheDatabase, overPool } from "../src/database.ts";
 import {
   audit,
+  type Database,
+  recordTogether,
   resetClock,
   setClock,
   theHead,
   theLog,
+  theRecordsAlone,
   useDatabase,
   verifyChain,
 } from "../src/audit.ts";
@@ -314,7 +317,12 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
     await owner.query("DELETE FROM dsor.proposal_moves");
     await owner.query("DELETE FROM dsor.audit");
     setClock(() => "2026-10-04T00:00:00.000Z");
-    useDatabase(overPool(application)); // a pool of three: the three calls really do run side by side
+    // STEP 22, decision 158, found by a second review: through a database that takes no turns,
+    // so that the three really do run side by side on a pool of three. In turns they would go one at
+    // a time, and this test is about writers that race, as a writer that takes no turns still can.
+    const raced = overPool(application);
+
+    useDatabase({ query: (sql, params, tenant) => raced.query(sql, params, tenant) });
 
     const decision = (id: string) =>
       ({
@@ -349,4 +357,211 @@ describe.skipIf(!haveAServer)("the program's own writer, against a real server",
     expect(log).toHaveLength(won.length);
     expect(verifyChain(log, await theHead("org_456"))).toBe(true);
   });
+
+  /** STEP 22, decision 158: a decision of user_123's, for `tenant`, under a request id of its own. */
+  const decisionFor = (tenant: string, requestId: string) =>
+    ({
+      kind: "decision",
+      subject: "user_123",
+      tenant,
+      requestId,
+      operation: "invoice.get@1",
+      authorization: "ALLOW",
+      result: "ALLOWED",
+    }) as const;
+
+  /**
+   * STEP 22, decision 158: how many transactions on this database wait for org_456's turn at
+   * its log. Asked of the turn's own key, `hashtext('dsor.audit')` and `hashtext('audit:org_456')`,
+   * so another database's tests, or another line, are not counted (found by a review).
+   */
+  async function waitingForTheTurn(): Promise<number | undefined> {
+    const { rows } = await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_locks
+        WHERE locktype = 'advisory' AND NOT granted
+          AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+          AND classid = hashtext('dsor.audit')::oid
+          AND objid = hashtext('audit:org_456')::oid
+          AND objsubid = 2`,
+    );
+
+    return rows[0]?.n;
+  }
+
+  /**
+   * STEP 22, decision 158: org_456's turn at its log, held through `db` until let go. A turn may
+   * sit idle ten seconds, so the holder says a word to the database every two.
+   */
+  function holdTheTurn(db: Database): {
+    held: Promise<void>;
+    holding: Promise<void>;
+    letGo: () => void;
+  } {
+    const turn = db.inTurn;
+
+    if (turn === undefined) {
+      throw new Error("the pool takes no turns");
+    }
+
+    let letGo = (): void => {};
+    const until = new Promise<boolean>((resolve) => {
+      letGo = () => resolve(true);
+    });
+    let inside = (): void => {};
+    const holding = new Promise<void>((resolve) => {
+      inside = resolve;
+    });
+    const held = turn("org_456", "audit:org_456", async (statements) => {
+      inside();
+
+      while (
+        !(await Promise.race([
+          until,
+          new Promise<boolean>((r) => setTimeout(() => r(false), 2000)),
+        ]))
+      ) {
+        await statements.query("SELECT 1");
+      }
+    });
+
+    return { held, holding, letGo };
+  }
+
+  it("DSOR-AUD-01: a writer waits for its company's turn at the log, reads the end only then, and writes after it", async () => {
+    // STEP 22, decision 158. Measured on Neon, 127 ms away: fifty reads sent at once by one
+    // company raced for the end of its log, and most of them lost ten places in a row and were
+    // refused. Now a writer waits for the company's turn. This test holds the turn itself, as another
+    // program on the same database would, and asks PostgreSQL whether the writer waits for it. While
+    // it waits, a writer that takes no turns, as a person at the database would, writes the end of
+    // the log. The waiting writer may take one place only, so it must read the end after its turn is
+    // given, or it loses that place and fails.
+    await owner.query("DELETE FROM dsor.proposal_moves");
+    await owner.query("DELETE FROM dsor.audit");
+    setClock(() => "2026-10-04T00:00:00.000Z");
+
+    // Two programs: this pool holds the turn, and a second one's writer waits for it.
+    const secondPool = new Pool({ connectionString: APPLICATION, max: 2 });
+    const second = overPool(secondPool);
+    const { held, holding, letGo } = holdTheTurn(overPool(application));
+
+    try {
+      await holding;
+      useDatabase(second);
+
+      const writer = recordTogether(
+        "org_456",
+        [decisionFor("org_456", "req_waits")],
+        theRecordsAlone,
+        1,
+      );
+
+      await expect.poll(waitingForTheTurn, { timeout: 20_000, interval: 100 }).toBe(1);
+
+      useDatabase({ query: (sql, params, tenant) => second.query(sql, params, tenant) });
+      await audit(decisionFor("org_456", "req_takes_no_turn"));
+      useDatabase(second);
+
+      letGo();
+      await held;
+
+      const { records } = await writer;
+      const log = await theLog("org_456");
+
+      expect(records[0]?.sequence).toBe(1);
+      expect(log).toHaveLength(2);
+      expect(verifyChain(log, await theHead("org_456"))).toBe(true);
+    } finally {
+      letGo();
+      await held.catch(() => {});
+      await secondPool.end();
+    }
+  }, 60_000);
+
+  it("DSOR-TEN-02a: one company's crowd at its log waits in the program, and another company's request is not kept waiting", async () => {
+    // STEP 22, decision 158, found by a review: waiting for a turn on the database holds a
+    // connection, so a crowd of org_456's writers could take every connection in the pool, and
+    // org_789's next request would wait behind them for one. Here the pool has three: org_456's turn
+    // takes one, the first of its crowd takes another to wait on the database's lock, the rest wait in
+    // the program, and org_789 is given the third.
+    await owner.query("DELETE FROM dsor.proposal_moves");
+    await owner.query("DELETE FROM dsor.audit");
+    setClock(() => "2026-10-04T00:00:00.000Z");
+
+    const threePool = new Pool({ connectionString: APPLICATION, max: 3 });
+    const db = overPool(threePool);
+
+    useDatabase(db);
+
+    const { held, holding, letGo } = holdTheTurn(db);
+
+    try {
+      await holding;
+
+      const crowd = ["req_crowd_1", "req_crowd_2", "req_crowd_3"].map((id) =>
+        audit(decisionFor("org_456", id)),
+      );
+      const other = audit(decisionFor("org_789", "req_other"));
+      const outcome = await Promise.race([
+        other.then(() => "written"),
+        new Promise<string>((resolve) => setTimeout(() => resolve("kept waiting"), 15_000)),
+      ]);
+
+      expect(outcome).toBe("written");
+
+      letGo();
+      await held;
+      await Promise.all(crowd);
+
+      expect(await theLog("org_456")).toHaveLength(3);
+    } finally {
+      letGo();
+      await held.catch(() => {});
+      await threePool.end();
+    }
+  }, 60_000);
+
+  it("DSOR-AUD-01: a turn whose program goes quiet ends after ten seconds, and the next writer is given it", async () => {
+    // STEP 22, decision 158, found by a review: a program that stalls in its turn, or whose
+    // network goes quiet without closing, would hold its company's log for ever. Its turn ends when it
+    // has sat idle ten seconds, and the writer behind it goes on. One program, found by a second
+    // review: the writer waits in the program's line first, which lets it go once the quiet turn is
+    // taken, and then on the database's lock, which PostgreSQL lets go.
+    await owner.query("DELETE FROM dsor.proposal_moves");
+    await owner.query("DELETE FROM dsor.audit");
+    setClock(() => "2026-10-04T00:00:00.000Z");
+
+    const onePool = new Pool({ connectionString: APPLICATION, max: 3 });
+    const holder = overPool(onePool);
+
+    if (holder.inTurn === undefined) {
+      throw new Error("the pool takes no turns");
+    }
+
+    let inside = (): void => {};
+    const holding = new Promise<void>((resolve) => {
+      inside = resolve;
+    });
+    const quiet = holder.inTurn("org_456", "audit:org_456", async () => {
+      inside();
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+    });
+
+    try {
+      await holding;
+      useDatabase(holder);
+
+      const started = Date.now();
+      const written = await audit(decisionFor("org_456", "req_after_the_quiet_one"));
+      const waited = Date.now() - started;
+
+      expect(written?.sequence).toBe(0);
+      // It waited for the turn, and not for the twenty seconds the quiet one meant to keep it.
+      expect(waited).toBeGreaterThanOrEqual(9_000);
+      expect(waited).toBeLessThan(18_000);
+      await expect(quiet).rejects.toThrow();
+    } finally {
+      await quiet.catch(() => {});
+      await onePool.end();
+    }
+  }, 60_000);
 });
