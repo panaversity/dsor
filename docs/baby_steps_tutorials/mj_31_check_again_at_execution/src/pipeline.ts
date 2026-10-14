@@ -43,11 +43,12 @@ import {
 import { decisionOf, type Authority, type DecisionLog, type Read } from "./log.ts";
 import { NO_PAYMENTS } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
-import { checkPermission, permissionsOf } from "./permissions.ts";
+import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import {
   closeProposal,
+  isProposalOf,
   NO_PROPOSALS,
   openProposal,
   proposalIdOf,
@@ -57,6 +58,7 @@ import {
   type ProposalStore,
 } from "./proposals.ts";
 import { preview, type Registry } from "./registry.ts";
+import { mayRelease, releases, targetOf } from "./release.ts";
 import {
   checkedKey,
   checkedMode,
@@ -280,7 +282,11 @@ export async function call(
     // For an agent, with the roles its signer holds now, which line ③ found.
     // In the call's mode. In propose_only mode the .propose form is enough (§7.3;
     // step 23's README, decision 5).
-    line(5, () =>
+    // NEW IN STEP 31: but not for a release. Line ⑤ runs before DSoR knows which proposal is
+    //   released, so line ⑨ decides who may release it, once line ⑧ has loaded it: "the requester,
+    //   or a human holding the target permission" (§26.1; step 31's README, decision D12).
+    line(5, () => {
+      if (releases(contract)) return;
       checkPermission(
         caller,
         contract,
@@ -289,8 +295,8 @@ export async function call(
         found?.slip,
         found?.authority.roles,
         mode,
-      ),
-    );
+      );
+    });
 
     // ⑥ Validate the input against the operation's input schema.
     //   It checks line ①'s copy, the one the code gets (step 07's README, decision 9).
@@ -319,6 +325,13 @@ export async function call(
     // "is it built", so a foreign URI is never answered as "not built yet" (step 10's
     // README, decision 4).
     checkUrisInTenant(copy, tenant);
+    // NEW IN STEP 31: a release runs now, so it takes no propose_only mode: a release prepared
+    //   would wait for another release (step 31's README, decision D13). A dry run is allowed.
+    //   After the check of the URIs' company, so an attempt on another company is refused as one.
+    if (releases(contract) && mode === "propose_only") {
+      const why = `${JSON.stringify(contract.id)} releases now, so it takes no propose_only mode`;
+      throw new Refusal("VALIDATION_FAILED", why);
+    }
 
     // Ours, not §21's: is it built? Never before ⑤, so "not allowed" is never answered as
     // "not built yet" (step 06's README, C5), and never before ⑥ (step 07's README,
@@ -327,7 +340,8 @@ export async function call(
     // Or DSoR's own work, for a command that changes DSoR's own store: its check
     //   at line ⑨, and its change after line ⑩ (step 25's README, decisions D2 and D7).
     const own = registry.own.get(name);
-    if (!handler && !own) {
+    // NEW IN STEP 31: and a release, which runs the code of the proposal it loads.
+    if (!handler && !own && !releases(contract)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
     }
     // A command's code runs. Step 04's decision 1 refused every command
@@ -498,6 +512,62 @@ export async function call(
       });
     };
 
+    // NEW IN STEP 31: a release loads the proposal its input names, at line ⑧, instead of
+    //   making one (§21: "Create the proposal, or load it (proposal.execute)"). Line ⑨ then asks
+    //   who may release it and whether it waits to be released (step 31's README, decisions D2
+    //   and D7). The gate reads the claim's own store inside the claim, and the claim store's
+    //   outside it, in a dry run.
+    const released = releases(contract) ? (copy as { proposal: string }).proposal : undefined;
+    const releaser = {
+      caller,
+      slip: found?.slip,
+      held: effectivePermissions(
+        caller,
+        registry.roles,
+        tenant,
+        found?.slip,
+        found?.authority.roles,
+      ),
+    };
+    const gate = async (proposals: ProposalStore, uri: string) =>
+      line(9, async () => {
+        const id = proposalIdOf(tenant, uri);
+        const loaded = await proposals.get(tenant, id);
+        if (loaded === undefined) {
+          throw new Refusal("RESOURCE_NOT_FOUND", `no proposal ${preview(id)}`, "internal");
+        }
+        const target = targetOf(registry.contracts, loaded);
+        if (target === undefined)
+          throw new Error(`proposal ${id} holds an operation with no contract`);
+        await mayRelease(loaded, target, releaser, () => proposals.isDue(tenant, id));
+        return loaded;
+      });
+    if (released !== undefined) {
+      // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id
+      //   through, so another company's address met line ②'s refusal first, as for an approval.
+      if (!isProposalOf(tenant, released)) {
+        throw new Refusal("RESOURCE_NOT_FOUND", `no proposal ${preview(released)}`, "internal");
+      }
+      // A dry run of a release asks line ⑨, outside any claim, and moves nothing (D13).
+      if (mode === "validate_only") {
+        try {
+          await gate(registry.claims.proposals, released);
+        } catch (thrown) {
+          throw maskRefusal(thrown, clearanceOf(caller));
+        }
+        allowed = true;
+        return { outcome: "VALIDATED", decision: "ALLOW", correlation };
+      }
+      // Before line ⑦, the proposal must be there: line ⑦ keeps an answer beside the
+      //   proposal it names, and a proposal that is not there never comes to be.
+      if (
+        (await registry.claims.proposals.get(tenant, proposalIdOf(tenant, released))) === undefined
+      ) {
+        const why = `no proposal ${preview(proposalIdOf(tenant, released))}`;
+        throw new Refusal("RESOURCE_NOT_FOUND", why, "internal");
+      }
+    }
+
     // A dry run stops here, after line ⑩. It skips line ⑦'s claim and line ⑧'s
     //   proposal (§21: "A validate_only invocation skips steps 7 and 8"), and the code, which does
     //   the work, so nothing can be written (DSOR-OPR-06). A "no" was thrown above, as the real
@@ -631,6 +701,45 @@ export async function call(
           const scope = claimScope(contract, key, tenant, caller.id);
           // Named in the record from here on, a refusal of the key too.
           keyOfRecord = { key: scope.key };
+          // NEW IN STEP 31: a release's line ⑧ loads the proposal, and line ⑨'s gate decides,
+          //   inside the claim. A refusal there is kept with the claim, beside the loaded
+          //   proposal, which it leaves where it was.
+          if (released !== undefined) {
+            const steps: ProposalSteps = {
+              open: (stores) =>
+                line(8, async () => {
+                  try {
+                    await gate(stores.proposals, released);
+                  } catch (thrown) {
+                    if (isOutcome(thrown)) return { proposal: released, refused: thrown };
+                    throw thrown;
+                  }
+                  // The check on live data and the work come in this step's next pieces.
+                  const why = "the release itself is not built yet";
+                  return {
+                    proposal: released,
+                    refused: new Refusal("UNSUPPORTED_CAPABILITY", why),
+                  };
+                }),
+              close: async () => {
+                throw new Error("a release that ran no work has nothing to close");
+              },
+            };
+            const nothing = async (): Promise<never> => {
+              throw new Error("a release runs no work of its own yet");
+            };
+            return {
+              scope,
+              claimed: await registry.claims.run(
+                scope,
+                hash,
+                mode,
+                correlation.request_id,
+                nothing,
+                steps,
+              ),
+            };
+          }
           // What line ⑧ writes, made here, so the claim's work never reads the request again.
           const opening: Opening = {
             tenant,

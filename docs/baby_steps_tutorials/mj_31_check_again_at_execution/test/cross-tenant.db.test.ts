@@ -59,6 +59,8 @@ describe("the suite, on the database", () => {
       "payment.create",
       // And step 29's proposal.approve.
       "proposal.approve",
+      // And step 31's release (step 31's README, decision D12).
+      "proposal.execute",
       "proposal.expire_due",
       "rate.load",
       // And step 28's four commands of a rule's life.
@@ -78,7 +80,9 @@ describe("the suite, on the database", () => {
     // in org_789: 9 more (step 29's README, decision D2).
     // Changed in step 30: and proposal.approve by user_123 in org_456 and user_700 in org_789, AP
     // supervisors: 6 more (step 30's README, decision D5).
-    expect(report.attacks).toHaveLength(159);
+    // Changed in step 31: and proposal.execute, by every member of each company that line ③ lets
+    // through, 7 in org_456 and 5 in org_789: 36 more (step 31's README, decision D12).
+    expect(report.attacks).toHaveLength(195);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -132,7 +136,9 @@ describe("the suite, on the database", () => {
       // org_789, (2 and 1) × 3 (step 29's README, decision D2).
       // Changed in step 30: and proposal.approve, user_123 in org_456 and user_700 in org_789, 1 × 3
       // each (step 30's README, decision D5).
-      expect(made).toHaveLength(home === "org_456" ? 90 : 69);
+      // Changed in step 31: and proposal.execute, 7 callers in org_456 and 5 in org_789, × 3 each
+      // (step 31's README, decision D12).
+      expect(made).toHaveLength(home === "org_456" ? 111 : 84);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({

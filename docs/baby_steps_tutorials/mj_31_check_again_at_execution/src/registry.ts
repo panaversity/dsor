@@ -50,6 +50,7 @@ import {
   type RoleTableSource,
   type Roles,
 } from "./permissions.ts";
+import { releaseProblems } from "./release.ts";
 import { ownProblems, type OwnWork } from "./revocation.ts";
 import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
@@ -275,6 +276,9 @@ export function buildRegistry(
   // And no contract names a .propose form as the permission it needs (step 23's
   // README, decision 14).
   problems.push(...proposeProblems(contracts.values()));
+  // NEW IN STEP 31: and only proposal.execute is a release, whose caller line ⑨ decides, and it
+  // says so (step 31's README, decision D12).
+  problems.push(...releaseProblems(contracts.values()));
   // And every bind is a path line ⑨ can read, and every spends names a bound
   // invoice (step 24's README, decision 2).
   problems.push(...bindProblems(contracts.values()));

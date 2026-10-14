@@ -778,7 +778,9 @@ describe("from the review: every command, in each mode", () => {
       // README, decision D2).
       // Changed in step 30: and 6 more for proposal.approve, user_123 in org_456 and user_700 in
       // org_789, AP supervisors (step 30's README, decision D5).
-      expect(report.attacks).toHaveLength(159);
+      // Changed in step 31: and 36 for proposal.execute, every member of each company that line
+      // ③ lets through, 7 in org_456 and 5 in org_789 (step 31's README, decision D12).
+      expect(report.attacks).toHaveLength(195);
     },
   );
 

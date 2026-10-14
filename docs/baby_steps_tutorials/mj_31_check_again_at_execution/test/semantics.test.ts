@@ -115,6 +115,9 @@ describe("C1: every command declares its semantics in its contract", () => {
       // And proposal.approve, atomic: the approval and its move in one
       // transaction (step 29's README, decision D9).
       ["proposal.approve", "atomic"],
+      // And proposal.execute, atomic: the release, its work, and its moves in one transaction
+      // (step 31's README, decision D10).
+      ["proposal.execute", "atomic"],
       ["proposal.expire_due", "atomic"],
       // And rate.load, atomic too: a sheet is written whole, or not at all (step
       // 26's README, decision D6).

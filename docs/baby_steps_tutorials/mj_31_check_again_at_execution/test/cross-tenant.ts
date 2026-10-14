@@ -8,6 +8,7 @@ import { checkDelegation } from "../src/delegation.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { DecisionLog } from "../src/log.ts";
 import { effectivePermissions, peopleOnly } from "../src/permissions.ts";
+import { releases } from "../src/release.ts";
 import { call } from "../src/pipeline.ts";
 import { logins, type Principal } from "../src/principals.ts";
 import type { Slip } from "../src/slips.ts";
@@ -96,6 +97,15 @@ export async function attackersOf(
     // And line ⑤'s first question: a contract for people only refuses every
     // caller that is not a person, whatever it holds (step 25's README, decision D4).
     if (peopleOnly(contract) && principal.type !== "human") continue;
+    // NEW IN STEP 31: a release's line ⑤ asks nothing, so every member of the company that line
+    //   ③ lets through attacks it. Line ⑨ decides who may release, after the URI's company is
+    //   checked (step 31's README, decision D12).
+    if (releases(contract)) {
+      if (principal.memberships.some((m) => m.tenant_id === home)) {
+        attackers.push({ id: principal.id, token });
+      }
+      continue;
+    }
     // And line ⑤'s own question: a person's roles, or an agent's slip cut down to its signer
     // (DSOR-DEL-02). Her roles now, as line ③ found them.
     const may = effectivePermissions(
