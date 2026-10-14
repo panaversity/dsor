@@ -217,6 +217,7 @@ its downside, for the learner to review. This folder is a copy of step 30.
 | `src/release.ts` | **New.** Who may release and what (`mayRelease`, D2 and D7). The asker checked again (`askerNow`). The approvals against what the rules ask for now, with segregation of duties (`checkApprovals`, D3 and D18). The version the request was decided on (`checkDecidedOn`, D5). Which refusals invalidate (`invalidates`, D15), and the cause the caller hears (`causeOf`, D17) |
 | `src/pipeline.ts` | Line ⑤ skips a release. Line ⑧ loads the proposal instead of making one. The check again runs inside the claim: line ⑨ and line ⑩'s own code, now for any request and asker, not only the call's own. Then the move to `EXECUTING`, the stored request's work, and its end, with its booking |
 | `src/proposals.ts`, `migrations/027_ready_can_be_invalidated.sql` | The move from `READY` to `INVALIDATED`, in memory and in the database's trigger (D6) |
+| `src/limits.ts` | A dry run of a release counts the proposal's own booking once: a held booking fits (`booked`, D13) |
 | `src/log.ts` | A release's record names the rule versions its request was decided under, `approved_under` (DSOR-APR-03d) |
 | `src/registry.ts` | Start-up refuses the release's extension on any other command, and `proposal.execute` without it |
 | `src/main.ts` | The story of the release, in four scenes, in a world of its own (D11) |
@@ -369,6 +370,8 @@ This is how the step was built.
 | 7 | Piece D | The database: migration 027, and two releases at once |
 | 8 | Piece E | The program's story |
 | 9 | Break it | B1 to B4, against the learner's predictions; and breaks of each piece |
+| 10 | Review | A reviewer who had not seen the conversation, who broke the code 18 times in a copy of its own: one high finding, three medium, four low. A second reviewer read this README as a beginner would |
+| 11 | Fix | H1, M1, M2, M3, and L1, each red first or broken on purpose, in five commits; L2, L3, and one break recorded; the README's words |
 
 To start it in a new session:
 
@@ -445,9 +448,51 @@ signed. Each question changes one thing before the release on Friday.
 - **Masking hides the cause from a low clearance.** intake-fte's clearance is below `internal`, so it
   hears `APPROVAL_INVALIDATED` without the words (D17). The database tests that read a cause release
   as user_123.
+- **The design's promise was not the code's.** D13 says a dry run of a release checks again. The
+  code's dry run checked only who may release. Rereading D13 to answer the README's review found it.
 - **A lost race needs the database.** In memory, two releases at once never both pass the check of who may release. The
   database test holds the proposal's row from a third connection, so both releases pass that check and
   wait at the move. One moves it. The other finds it moved, and hears `CONFLICT`.
+
+### The reviews
+
+A reviewer who had not seen the conversation read the code after piece E. It broke the code 18 times
+in a copy of its own. Nothing it tried ran a request that was not stored or not approved, ran one
+proposal twice, or lost or spent a booking twice.
+
+- **H1, fixed: a dry run skipped the check again.** It asked only who may release. So after the
+  version that asks for two CFOs, a dry run said `VALIDATED`, where the release says
+  `APPROVAL_INVALIDATED`. D13 promised otherwise. Claude Code found the same gap while answering the
+  README's review, before this report came. Now one function checks again, for the release and for
+  its dry run, and the dry run hears that the proposal "would be INVALIDATED". It counts the
+  proposal's own booking once: a test under a day of 40,000 USD holds that.
+- **M1, fixed: a late sheet of rates lost an approved payment.** Four days after INV-2004 was
+  approved, no sheet was fresh enough to convert its rupees, and the limit's refusal invalidated it.
+  No usable rate is a check that cannot be made now (D15). The release now hears
+  `FRESHNESS_UNSATISFIABLE`, the payment waits, and the same key releases it once a fresh sheet is
+  loaded.
+- **M2, fixed: an approval could be used after it expired.** The release read the expiry once,
+  before the check again, which may wait two seconds for the directory. A release that began a moment
+  before the expiry ran after it. It reads the expiry again just before the work. And the count of
+  approvals takes only an active one that names the stored request's fingerprint.
+- **M3, fixed with tests: eight guards held, and no test held them.** A rule that refuses after the
+  approval, a rule that reads who acted, a slip past its date, a person who lost their role, and the
+  two checks of the slip's id. Each now has a test, and each test failed when its guard was broken.
+- **L1, fixed:** an agent that may not release heard the slip the proposal was asked under. It hears
+  only that the proposal was not asked for under its own slip.
+- **L2, recorded:** the contract names the permission `proposal:execute`, which nothing checks. The
+  specification's schema asks every contract to name one, and D12 says line ⑨ decides instead.
+- **L3, recorded:** a brake, and a signer the directory lists as suspended, invalidate the payment
+  for good, though both can be lifted. The same question as D15: open question 126.
+- **L4, done at hand-over:** the status page, the map's "done when", and the rules met.
+- **One break survived, recorded:** with the slip's lock gone from the check again, every test still
+  passed. A test would race a release against a tear-up of the slip, on the database.
+
+A second reviewer read this README as a beginner would. It found that the second idea, "only what
+was approved runs", had no picture, that "gate" meant both a place and a check, and that ten words
+were used before they were defined. The flight plan, one meaning for each word, and the list of
+words fix these. It also found a question whose premise seemed to contradict itself: question 4 now
+says where each permission comes from.
 
 ### Left open on purpose
 
