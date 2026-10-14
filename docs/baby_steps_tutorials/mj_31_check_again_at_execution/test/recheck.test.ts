@@ -3,9 +3,13 @@
 // approval and its release. Each test changes one thing in that time, and the release must see it.
 import { describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
-import { checkApprovals } from "../src/release.ts";
+import { NO_BRAKES } from "../src/brakes.ts";
+import { principalNamed, type Principal } from "../src/principals.ts";
+import { askerNow, checkApprovals, mayRelease } from "../src/release.ts";
+import type { Contract } from "../src/registry.ts";
+import type { Slip } from "../src/slips.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { ADMIN, AGENT, CFO, DEL_100, keyed, SUPERVISOR } from "./helpers.ts";
+import { ADMIN, AGENT, CFO, contract, DEL_100, keyed, SUPERVISOR, withPlanted } from "./helpers.ts";
 import {
   ruleCall,
   ruleWorldOnTuesday,
@@ -416,5 +420,117 @@ describe("C5: no usable exchange rate is a 'not now', not a 'no' (step 31's READ
     expect(await w.ask(once, "proposal.execute", { proposal: uri })).toMatchObject({
       outcome: "COMMITTED",
     });
+  });
+});
+
+// Found by step 31's review, finding M3: each of these guards held, and no test held it.
+describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03c, DSOR-APR-11)", () => {
+  /** admin_100 drafts and switches on a rule of org_456's own, at this address, with this text. */
+  async function adminRule(w: RuleWorld, name: string, text: Record<string, unknown>) {
+    const rule = `dsor://org_456/rule/${name}`;
+    const draft = { ...textOf(version9()), owner: "admin_100", authority: { system: "local", rule: name }, ...text };
+    expect(await ruleCall(w, ADMIN, "rule.draft", { draft }, rule)).toMatchObject({ data: { version: 1 } });
+    expect(await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule)).toMatchObject({
+      data: { status: "active" },
+    });
+  }
+  const usd = (value: string) => ({ invoice: { open_amount: { value, currency: "USD" } } });
+
+  it("DSOR-APR-03c: a rule that refuses payments above 30,000 USD, switched on after the approval: INV-1008's release is invalidated, POLICY_DENIED", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri } = await approved(w);
+    await adminRule(w, "no-payment-above-30000", {
+      condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
+      effect: { deny: { reason: "the board froze large payments" } },
+      tests: [
+        { state: usd("30000.00"), expect: "ALLOW" },
+        { state: usd("30000.01"), expect: "DENY" },
+      ],
+    });
+    const answer = await release(w, AGENT, uri);
+    await expectInvalidated(w, answer, id, "APPROVED");
+    expect((await afterwards(w, id)).cause).toBe("the check at the release refused it: POLICY_DENIED");
+  });
+
+  it("DSOR-APR-03a: the rules decide for the asker, not the caller: a rule that refuses a person's own payment above 5,000 USD does not stop user_123's release of the agent's prepared INV-1009", async () => {
+    const w = await ruleWorldOnTuesday();
+    const prepared = await w.ask({ ...keyed(AGENT), mode: "propose_only" }, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1009",
+      expected_version: 1,
+    });
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    // A rule's own tests run with no actor, as a person's own call does.
+    await adminRule(w, "no-own-payment-above-5000", {
+      condition:
+        'size(actor_chain) == 0 && dsor_exceeds(state.invoice.open_amount, dsor_money("5000", "USD"))',
+      effect: { deny: { reason: "a person pays above 5,000 USD only through the agent's slip" } },
+      tests: [
+        { state: usd("5000.00"), expect: "ALLOW" },
+        { state: usd("5000.01"), expect: "DENY" },
+      ],
+    });
+    expect(await release(w, SUPERVISOR, uriOf(prepared))).toMatchObject({ outcome: "COMMITTED" });
+    expect(w.drafted.map((p) => p.invoice_id)).toEqual(["INV-1009"]);
+  });
+
+  it("DSOR-APR-03a: del_100 passes its date after the approval: user_123's release of INV-1008 is invalidated, DELEGATION_EXPIRED", async () => {
+    // The store of slips reads the real clock it was made with, so the slip really passes its date:
+    //   two seconds after the test begins.
+    const soon = { ...DEL_100, expires_at: new Date(Date.now() + 2000).toISOString() };
+    const w = await ruleWorldOnTuesday(undefined, [soon]);
+    const { id, uri } = await approved(w);
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const answer = await release(w, SUPERVISOR, uri);
+    await expectInvalidated(w, answer, id, "APPROVED");
+    expect((await afterwards(w, id)).cause).toBe(
+      "the check at the release refused it: DELEGATION_EXPIRED",
+    );
+  });
+
+  it("DSOR-APR-03a: user_150, a person who prepared INV-1009 on their own login, loses their role before user_123 releases it: invalidated, AUTHORIZATION_DENIED", async () => {
+    const w = await ruleWorldOnTuesday();
+    const person = (roles: string[]) =>
+      ({ id: "user_150", type: "human", memberships: [{ tenant_id: "org_456", roles }] }) as unknown as Principal;
+    const USER_150: RequestEnvelope = { token: "tok_150", tenant: "org_456" };
+    const prepared = await withPlanted("tok_150", person(["ap_supervisor"]), () =>
+      w.ask({ ...keyed(USER_150), mode: "propose_only" }, "payment.create", {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        expected_version: 1,
+      }),
+    );
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    const answer = await withPlanted("tok_150", person([]), () =>
+      release(w, SUPERVISOR, uriOf(prepared)),
+    );
+    await expectInvalidated(w, answer, idOf(prepared), "READY");
+    expect((await afterwards(w, idOf(prepared))).cause).toBe(
+      "the check at the release refused it: AUTHORIZATION_DENIED",
+    );
+  });
+
+  it("DSOR-APR-11: the agent's own release under a slip other than the one it asked under is refused at line ⑨", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id } = await approved(w);
+    const kept = (await w.proposals.get("org_456", id))!;
+    const target = contract("payment.create") as Contract;
+    const agent = principalNamed("accounts-payable-fte")!;
+    const other = { ...DEL_100, id: "del_199" } as unknown as Slip;
+    const held = new Set(["invoice:read", "payment:create"]);
+    await expect(
+      mayRelease(kept, target, { caller: agent, slip: other, held }, async () => false),
+    ).rejects.toThrow(`accounts-payable-fte may not release proposal ${id}: it was not asked for under accounts-payable-fte's own slip`);
+  });
+
+  it("DSOR-APR-03a: an agent that works under another slip now than the one it asked under is not the asker any more: DELEGATION_REQUIRED", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id } = await approved(w);
+    const kept = (await w.proposals.get("org_456", id))!;
+    const slips = {
+      ...w.registry.delegations,
+      find: async () => ({ slip: { ...DEL_100, id: "del_199" }, past: false }),
+    };
+    await expect(
+      askerNow(kept, contract("payment.create") as Contract, w.registry.roles, w.registry.roleSource, { slips, brakes: NO_BRAKES }, "org_456"),
+    ).rejects.toThrow("accounts-payable-fte works under another slip now, and asked under del_100");
   });
 });
