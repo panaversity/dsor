@@ -2,12 +2,19 @@
 // README, decisions D2, D7, D12, and D13). Line ⑧ loads the proposal the input names, instead of
 // making one. Line ⑨ first asks who may release it, and whether it waits to be released. Then the
 // stored request is checked again on live data, and runs.
-import { Refusal } from "./envelope.ts";
-import { covers } from "./permissions.ts";
-import { actsAsAgent, type Principal } from "./principals.ts";
+import type { RoleSource } from "./authority.ts";
+import { holdBrake, type BrakeStore } from "./brakes.ts";
+import { checkDelegation, holdSlip } from "./delegation.ts";
+import type { Approval } from "./approvals.ts";
+import { Refusal, type ErrorCode, type Requirement } from "./envelope.ts";
+import { checkPermission, covers, type Roles } from "./permissions.ts";
+import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
 import type { Proposal } from "./proposals.ts";
-import type { Contract } from "./registry.ts";
-import type { Slip } from "./slips.ts";
+import { preview, type Contract } from "./registry.ts";
+import { staleRefusal } from "./concurrency.ts";
+import type { Invoice } from "./invoice.ts";
+import { inChain } from "./segregation.ts";
+import type { Slip, SlipStore } from "./slips.ts";
 
 // The release's own extension: its caller is decided at line ⑨, once the proposal is loaded,
 // not at line ⑤, which runs before DSoR knows which proposal is released. The specification's
@@ -117,5 +124,156 @@ export async function mayRelease(
   if (await isDue()) {
     const why = `proposal ${id}'s time came at ${found.expires_at}, so it is not released`;
     throw new Refusal("CONFLICT", why, "internal");
+  }
+}
+
+/** The roles the person or agent that asked holds now, and, for an agent, the slip it works under now. */
+export type AskerNow = { roles: readonly string[]; slip: Slip | undefined };
+
+/**
+ * Lines ③ to ⑤ again, for the person or agent that asked for the stored request, not for the
+ * caller who releases it (DSOR-APR-03a; step 31's README, decision D1). For an agent: it still
+ * works under the slip it asked under, its signer still holds what the directory says now, no brake
+ * stops it, and the slip still holds, under the slip's lock, as at a draft. Then, for both, the
+ * permission the request needs, in the mode it was made in: an agent that prepared in propose_only
+ * mode needs only the .propose form, and its release needed the full one, which line ⑨'s gate
+ * checked of the caller (decision D2).
+ */
+export async function askerNow(
+  found: Proposal,
+  target: Contract,
+  roles: Roles,
+  roleSource: RoleSource,
+  stores: { slips: SlipStore; brakes: BrakeStore },
+  tenant: string,
+): Promise<AskerNow> {
+  const { requester } = found;
+  const asker = requester.actor_chain[0];
+  if (requester.delegation !== undefined && asker !== undefined) {
+    const agent = principalNamed(asker);
+    if (agent === undefined) {
+      throw new Refusal("AUTHORIZATION_DENIED", `${asker}, which asked, has no login now`, "internal");
+    }
+    const slip = await checkDelegation(agent, target, stores.slips, tenant);
+    if (slip?.id !== requester.delegation) {
+      const why = `${asker} works under another slip now, and asked under ${requester.delegation}`;
+      throw new Refusal("DELEGATION_REQUIRED", why, "internal");
+    }
+    // The signer's authority, from the directory, asked now. A directory that cannot answer is
+    //   not a "no": its refusal leaves the proposal waiting (decision D15). A signer it reports as
+    //   gone is a "no", and the slip is suspended at the agent's next call (line ③).
+    const authority = await roleSource.authorityOf(tenant, slip, JSON.stringify(target.id));
+    await holdBrake(agent, target, stores.brakes, tenant);
+    await holdSlip(agent, target, slip.id, stores.slips, tenant);
+    checkPermission(agent, target, roles, tenant, slip, authority.roles, found.mode);
+    return { roles: authority.roles, slip };
+  }
+  // A person who asked for herself: what she holds in DSoR's own table now.
+  const person = principalNamed(requester.subject);
+  if (person === undefined) {
+    const why = `${requester.subject}, who asked, has no login now`;
+    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+  }
+  checkPermission(person, target, roles, tenant, undefined, undefined, found.mode);
+  return {
+    roles: person.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [],
+    slip: undefined,
+  };
+}
+
+// A refusal that says only "not now": the check could not be made, so it says nothing about the
+// request. It leaves the proposal waiting, and the claim is undone, so the same key may try again
+// (step 31's README, decision D15).
+const NOT_NOW: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  "INTERNAL_ERROR",
+  "CONNECTOR_UNAVAILABLE",
+  "TRANSACTION_FAILED",
+  "EVIDENCE_STORE_UNAVAILABLE",
+  "DEPENDENCY_TIMEOUT",
+  "RATE_LIMITED",
+  "FRESHNESS_UNSATISFIABLE",
+]);
+
+/** True when a refusal of the check again says no to the request, which invalidates it. */
+export function invalidates(refusal: Refusal): boolean {
+  return !NOT_NOW.has(refusal.code);
+}
+
+/**
+ * What the caller hears of why: the code, and the words when they may hear them, as an approval's
+ * caller hears its refusal's (step 31's README, decision D8).
+ */
+export function causeOf(refusal: Refusal): string {
+  const shown = refusal.label === "public" || refusal.label === "internal";
+  return shown ? `${refusal.code}: ${refusal.message}` : refusal.code;
+}
+
+/**
+ * The approvals the stored request has, against what the rules ask for now (DSOR-APR-03b,
+ * DSOR-APR-03c; step 31's README, decision D3). First, no approver may be in the requesting chain,
+ * read from DSoR's records now, as step 30's approval checks (DSOR-SOD-02). Then each approval the
+ * rules ask for now: a rule that was not asked about when the request was decided is new, and
+ * invalidates. A rule that was, in this version or another, counts the people whose approval met
+ * its role, and needs its quorum of them now.
+ */
+export async function checkApprovals(
+  found: Proposal,
+  // What the rules ask for now: line ⑩'s answer for the stored request, or none.
+  requires: readonly Requirement[],
+  given: readonly Approval[],
+  slips: Pick<SlipStore, "get">,
+  tenant: string,
+): Promise<void> {
+  for (const approval of given) {
+    for (const { principal } of approval.approvers) {
+      const why = await inChain(found.requester, principal, slips, tenant);
+      if (why !== undefined) {
+        throw new Refusal("SOD_VIOLATION", `${principal} may not approve it: ${why}`, "internal");
+      }
+    }
+  }
+  for (const now of requires) {
+    const { control, control_version: version } = now;
+    const { role, quorum } = now.approval;
+    if (!(found.requires ?? []).some((then) => then.control === control)) {
+      const why = `${control} version ${version} asks for an approval that was not asked for when the request was made`;
+      throw new Refusal("APPROVAL_REQUIRED", why, "internal");
+    }
+    // One person counts once (DSOR-SOD-04c), and only for the role their approval met.
+    const people = new Set(
+      given
+        .filter((a) =>
+          a.satisfies.some((line) => line.control === control && line.requirement.role === role),
+        )
+        .flatMap((a) => a.approvers.map((approver) => approver.principal)),
+    );
+    if (people.size < quorum) {
+      const wanted = quorum === 1 ? "an approval" : `${quorum} approvals`;
+      const why = `${control} version ${version} asks for ${wanted} by ${role}, and ${people.size} counts`;
+      throw new Refusal("APPROVAL_REQUIRED", why, "internal");
+    }
+  }
+}
+
+/**
+ * The version an optimistic stored request was decided on, its expected_version, when it names
+ * one, as the field the check again reads (step 31's README, decision D5).
+ */
+export function decidedOnOf(target: Contract, payload: unknown): { decidedOn?: number } {
+  const strategy = (target["concurrency"] as { strategy?: unknown } | undefined)?.strategy;
+  const version = (payload as { expected_version?: unknown } | null)?.expected_version;
+  return strategy === "optimistic" && typeof version === "number" ? { decidedOn: version } : {};
+}
+
+// Only an invoice is bound in this tutorial, and only payment.create binds one: the record its
+// expected_version names. A contract that bound two records would leave this check unsure which,
+// so it checks only one, and the code's own check stays, as the store's does (DSOR-CON-01b).
+/** Refuses with STALE_STATE when the one record line ⑨ read has moved on from the version decided on. */
+export function checkDecidedOn(state: Record<string, Invoice>, decided: number): void {
+  const records = Object.values(state);
+  if (records.length !== 1) return;
+  const invoice = records[0]!;
+  if (invoice.version !== decided) {
+    throw staleRefusal(`invoice ${preview(invoice.id)}`, invoice.version, decided);
   }
 }

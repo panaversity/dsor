@@ -31,7 +31,7 @@ async function approved(w: RuleWorld) {
   return { id, uri: kept.uri, payload_hash: kept.payload_hash };
 }
 
-/** The agent prepares INV-1009, 12,500.00 USD, in propose_only mode: it waits READY. */
+/** The agent prepares INV-1009, 7,425.00 USD, in propose_only mode: it waits READY. */
 async function prepared(w: RuleWorld) {
   const answer = await w.ask({ ...keyed(AGENT), mode: "propose_only" }, "payment.create", {
     invoice: "dsor://org_456/invoice/INV-1009",

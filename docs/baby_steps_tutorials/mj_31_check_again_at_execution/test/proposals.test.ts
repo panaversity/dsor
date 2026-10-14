@@ -51,6 +51,8 @@ const DRAWN: readonly (readonly [State, State])[] = [
   ["READY", "EXECUTING"],
   ["READY", "CANCELLED"],
   ["READY", "EXPIRED"],
+  // NEW IN STEP 31: the check again at the release (step 31's README, decision D6).
+  ["READY", "INVALIDATED"],
   ["PENDING_APPROVAL", "APPROVED"],
   ["PENDING_APPROVAL", "REJECTED"],
   ["PENDING_APPROVAL", "EXPIRED"],

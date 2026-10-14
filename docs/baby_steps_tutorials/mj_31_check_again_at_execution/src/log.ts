@@ -58,6 +58,10 @@ export type Decision = {
       // version of its policy in force, which the audit record's controls field has no place for
       // (DSOR-CTL-04; step 28b's README, decision D11).
       stale?: StaleOfRecord[];
+      // NEW IN STEP 31: at a release, the version of each rule the request was decided under,
+      //   beside the version the controls field names now, which DSOR-APR-03d puts in the decision
+      //   bundle, which step 33 builds (step 31's README, decision D3).
+      approved_under?: { control: string; version: number }[];
     };
   };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
@@ -432,6 +436,8 @@ export function decisionOf(
   deniedBy?: Denial[],
   // And each stale control line ⑩ evaluated, with the version in force.
   stale?: StaleOfRecord[],
+  // And, at a release, the versions the request was decided under.
+  approvedUnder?: { control: string; version: number }[],
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -461,6 +467,7 @@ export function decisionOf(
     ...(unconvertible === undefined ? {} : { unconvertible: { ...unconvertible } }),
     ...(deniedBy === undefined ? {} : { denied_by: structuredClone(deniedBy) }),
     ...(stale === undefined || stale.length === 0 ? {} : { stale: structuredClone(stale) }),
+    ...(approvedUnder === undefined ? {} : { approved_under: structuredClone(approvedUnder) }),
   };
   return {
     kind: "decision",

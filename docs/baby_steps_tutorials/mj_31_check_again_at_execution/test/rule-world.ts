@@ -6,6 +6,7 @@ import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { readControls, type Control, type ControlsSource } from "../src/controls.ts";
 import type { Answer } from "../src/envelope.ts";
+import type { FakeDirectory } from "../src/directory.ts";
 import { invoices, memoryInvoices, type Invoice } from "../src/invoice.ts";
 import type { FakeKsor } from "../src/ksor.ts";
 import { readLifetimes } from "../src/lifetimes.ts";
@@ -78,6 +79,10 @@ export type RuleWorld = {
   registry: Registry;
   // And each company's KSoR, whose switches a test turns (step 28b's README, decision D1).
   ksors: Map<string, FakeKsor>;
+  // NEW IN STEP 31: and the invoices and each company's directory, which a test changes between
+  //   an approval and its release, as the accounts system and the directory change them.
+  bills: Invoice[];
+  directories: Map<string, FakeDirectory>;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -99,7 +104,9 @@ export function ruleWorld(
   ksors: Map<string, FakeKsor> = storyKsors(),
 ): RuleWorld {
   const clock = { now: T0 };
-  const store = memoryInvoices([...structuredClone(invoices), ...structuredClone(BILLS)]);
+  const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
+  const store = memoryInvoices(bills);
+  const directories = storyDirectories();
   const drafted: Payment[] = [];
   const payments = memoryPayments(drafted);
   const proposals = memoryProposals(() => clock.now);
@@ -125,7 +132,7 @@ export function ruleWorld(
     store,
     payments,
     slips,
-    storyDirectories(),
+    directories,
     readRoleSettings(),
     memoryClaims(store, payments, proposals, reservations, slips, brakes, rates, given),
     ownWorkFor(),
@@ -156,6 +163,8 @@ export function ruleWorld(
     log,
     registry,
     ksors,
+    bills,
+    directories,
   };
 }
 

@@ -49,6 +49,7 @@ import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
 import {
   callerMover,
   closeProposal,
+  dsorMover,
   isProposalOf,
   NO_PROPOSALS,
   openProposal,
@@ -58,9 +59,20 @@ import {
   type Opening,
   type Proposal,
   type ProposalStore,
+  type Requester,
 } from "./proposals.ts";
 import { preview, type Contract, type Handler, type Registry } from "./registry.ts";
-import { mayRelease, releases, targetOf } from "./release.ts";
+import {
+  askerNow,
+  causeOf,
+  checkApprovals,
+  checkDecidedOn,
+  decidedOnOf,
+  invalidates,
+  mayRelease,
+  releases,
+  targetOf,
+} from "./release.ts";
 import {
   checkedKey,
   checkedMode,
@@ -72,7 +84,7 @@ import {
 } from "./request.ts";
 import { semanticsOf } from "./semantics.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
-import { NO_SLIPS, type SlipStore } from "./slips.ts";
+import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 import { isTenantId } from "./uri.ts";
@@ -150,6 +162,8 @@ export async function call(
   // Set only from the claim, so no code can name a proposal of its own (step 22's README,
   // decision 5). Found by the review.
   let failedProposal: string | undefined;
+  // NEW IN STEP 31: at a release, the rule versions the stored request was decided under.
+  let approvedUnderOfRecord: { control: string; version: number }[] | undefined;
   // The mode line ① read, or execute when the envelope names none. A command's
   // record names it (step 23's README, decision 10).
   let modeOfRecord: Mode | undefined;
@@ -359,26 +373,38 @@ export async function call(
     //   A dry run only checks it (DSOR-DEL-06a, DSOR-DEL-06b, DSOR-DEL-06e; §21: a dry run "takes
     //   no reservation in step 10"; step 24's README, decisions 4, 8, and 9). A person's own call
     //   runs under no slip, so no limit applies (decision 10).
-    const limits = limitsOf(found?.slip);
     // What line ⑨ read, which the work's writes are pinned to (step 24's README,
     // decision 16).
     let boundState: Bound["state"] = {};
+    // NEW IN STEP 31: the request line ⑨ and line ⑩ decide: its contract, the request, DSoR's own
+    //   work for it, who asked for it, the roles they hold now, and the slip it runs under. For a
+    //   call, the call itself. For a release, the stored request (step 31's README, decision D1).
+    const asCalled = (): Asked => ({
+      contract,
+      copy,
+      own,
+      requester: requesterOf(caller, under, tenant, new Date().toISOString()),
+      roles:
+        found?.authority.roles ??
+        caller.memberships.find((m) => m.tenant_id === tenant)?.roles ??
+        [],
+      slip: found?.slip,
+    });
     // What a control's condition may read: Appendix B's eight variables, from DSoR's
     //   own reads and line ⑥'s checked input. The subject is the person: the slip's signer for an
     //   agent's call, with what the directory says the person holds now (DSOR-CTL-06; step 27's
     //   README, decision D5).
-    const factsOf = (state: Bound["state"]): Facts => {
-      const requester = requesterOf(caller, under, tenant, new Date().toISOString());
-      const own = caller.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [];
-      const roles = found?.authority.roles ?? own;
-      const level = (contract["risk"] as { level?: unknown } | undefined)?.level;
+    // NEW IN STEP 31: of the request asked about: the call's own, or, at a release, the stored
+    //   request, for the person or agent that asked for it, with what they hold now.
+    const factsOf = (state: Bound["state"], asked: Asked): Facts => {
+      const { requester, roles, slip } = asked;
+      const level = (asked.contract["risk"] as { level?: unknown } | undefined)?.level;
       return {
-        input: structuredClone(copy) as Record<string, unknown>,
+        input: structuredClone(asked.copy) as Record<string, unknown>,
         state: structuredClone(state) as Record<string, unknown>,
         principal: { id: requester.subject, type: requester.subject_type, roles: [...roles] },
         actor_chain: [...requester.actor_chain],
-        delegation:
-          found === undefined ? null : (structuredClone(found.slip) as Record<string, unknown>),
+        delegation: slip === undefined ? null : (structuredClone(slip) as Record<string, unknown>),
         tenant: tenantOf(tenant, registry.moneyPolicies.get(tenant)),
         risk: String(level ?? ""),
         now: new Date(),
@@ -406,10 +432,18 @@ export async function call(
       //   in a dry run, the claim store's, outside any claim.
       proposals: ProposalStore,
       reserveFor?: string,
+      // NEW IN STEP 31: and the request asked about, the call's own unless a release names the
+      //   stored one (DSOR-APR-03a).
+      asked: Asked = asCalled(),
       // It answers the approvals a control asks for, when one does.
     ): Promise<Requirement[] | undefined> => {
+      const { contract, copy, own } = asked;
+      const limits = limitsOf(asked.slip);
       const { state, spends } = await line(9, async () => {
         const bound = await readBound(contract, copy, invoices, tenant);
+        // NEW IN STEP 31: at a release, facts first: a request decided on another version of the
+        //   record is refused before any rule is asked (DSOR-APR-03c; step 31's README, D5).
+        if (asked.decidedOn !== undefined) checkDecidedOn(bound.state, asked.decidedOn);
         if (own !== undefined)
           await own.check(
             copy,
@@ -458,7 +492,7 @@ export async function call(
           const used = new Set<string>();
           // One set of facts for the evaluation and for the reasons of a refusal, so both read one
           //   time (step 28b's README, decision D9).
-          const facts = factsOf(state);
+          const facts = factsOf(state, asked);
           outcomes = evaluateControls(book, contract.id, facts, sheet, used);
           controlsOfRecord = outcomes;
           staleOfRecord = staleOf(book, contract.id);
@@ -480,7 +514,7 @@ export async function call(
         await checkLimits({
           operation: contract.id,
           tenant,
-          slip: found?.slip.id,
+          slip: asked.slip?.id,
           limits,
           spends,
           store,
@@ -745,12 +779,72 @@ export async function call(
                   }
                   const { loaded, target, code } = gated;
                   const id = proposalIdOf(tenant, released);
-                  // Line ⑨ reads the state the stored request binds: for a payment, the invoice it
-                  //   names. The work's writes are pinned to it, as a draft's are.
-                  const bound = await line(9, () =>
-                    readBound(target, loaded.payload, stores.invoices, tenant),
-                  );
-                  boundState = bound.state;
+                  // The check again, on live data, for the stored request and whoever asked for it:
+                  //   its fingerprint, lines ③ to ⑤ for the asker, line ⑨'s read, line ⑩'s rules and
+                  //   limits, and the approvals against what the rules ask for now. A "no" moves the
+                  //   proposal to INVALIDATED, gives its booking back, and is what the caller hears.
+                  //   A check that cannot be made now leaves it waiting (DSOR-APR-03a, DSOR-APR-03b,
+                  //   DSOR-APR-03c; step 31's README, decisions D1, D3, D5, D6, D8, and D15).
+                  try {
+                    await line(9, async () => {
+                      if (payloadHash(loaded.payload) !== loaded.payload_hash) {
+                        const why = `proposal ${id}'s stored request does not match its fingerprint`;
+                        throw new Refusal("APPROVAL_MISMATCH", why, "internal");
+                      }
+                    });
+                    const asker = await line(9, () =>
+                      askerNow(loaded, target, registry.roles, registry.roleSource, stores, tenant),
+                    );
+                    const asked: Asked = {
+                      contract: target,
+                      copy: loaded.payload,
+                      own: undefined,
+                      requester: loaded.requester,
+                      roles: asker.roles,
+                      slip: asker.slip,
+                      ...decidedOnOf(target, loaded.payload),
+                    };
+                    if (loaded.requires !== undefined) {
+                      approvedUnderOfRecord = loaded.requires.map((r) => ({
+                        control: r.control,
+                        version: r.control_version,
+                      }));
+                    }
+                    const { invoices, reservations, slips, brakes, rates, controls, proposals } =
+                      stores;
+                    // The booking is found again by the proposal's id, and not made twice (D4).
+                    const requires = await decideBeforeWork(
+                      invoices,
+                      reservations,
+                      slips,
+                      brakes,
+                      rates,
+                      controls,
+                      proposals,
+                      id,
+                      asked,
+                    );
+                    const given = await proposals.approvals(tenant, id);
+                    await line(10, () =>
+                      checkApprovals(loaded, requires ?? [], given, slips, tenant),
+                    );
+                  } catch (thrown) {
+                    if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
+                    const by = {
+                      mover: dsorMover(loaded.requester),
+                      cause: `the check at the release refused it: ${thrown.code}`,
+                      correlation,
+                    };
+                    if (!(await stores.proposals.move(tenant, id, loaded.state, "INVALIDATED", by))) {
+                      const why = `proposal ${id} was released by another call`;
+                      const refused = new Refusal("CONFLICT", why, "internal");
+                      return { proposal: released, refused };
+                    }
+                    await stores.reservations.release(tenant, id);
+                    const why = `proposal ${id} is INVALIDATED: ${causeOf(thrown)}`;
+                    const refused = new Refusal("APPROVAL_INVALIDATED", why, "internal");
+                    return { proposal: released, refused };
+                  }
                   // The move to EXECUTING names who released it. It moves only a proposal still in
                   //   the state the gate read, so of two releases at once, one moves it, and the
                   //   other hears CONFLICT (D10).
@@ -1057,6 +1151,7 @@ export async function call(
           controlsOfRecord,
           denialsOfRecord,
           staleOfRecord,
+          approvedUnderOfRecord,
         ),
       ),
     );
@@ -1107,6 +1202,18 @@ export async function call(
   //   step 23's review found it.
   return answer;
 }
+
+/** The request lines ⑨ and ⑩ decide, and who asked for it, as they are now. */
+type Asked = {
+  contract: Contract;
+  copy: unknown;
+  own: OwnWork | undefined;
+  requester: Requester;
+  roles: readonly string[];
+  slip: Slip | undefined;
+  // At a release, the version of the bound record the stored request was decided on.
+  decidedOn?: number;
+};
 
 // A label without its record's version.
 /** The label, with no resource_version. */

@@ -193,9 +193,11 @@ async function planted(w: World, path: ("PENDING_APPROVAL" | "APPROVED")[]): Pro
 }
 
 describe("C1: the picture", () => {
-  it("Step 25c: a READY proposal may move to EXECUTING, CANCELLED, or EXPIRED, and to nothing else (step 25c's README, claim C1)", () => {
+  // Changed in step 31: and to INVALIDATED, when the check again at its release says no (step 31's
+  //   README, decision D6).
+  it("Step 25c: a READY proposal may move to EXECUTING, CANCELLED, EXPIRED, or, since step 31, INVALIDATED, and to nothing else (step 25c's README, claim C1)", () => {
     const out = STATES.filter((to) => canMove("READY", to)).sort();
-    expect(out).toStrictEqual(["CANCELLED", "EXECUTING", "EXPIRED"]);
+    expect(out).toStrictEqual(["CANCELLED", "EXECUTING", "EXPIRED", "INVALIDATED"]);
   });
 
   it("DSOR-APR-01c: CANCELLED and EXPIRED stay final: nothing moves out of either", () => {

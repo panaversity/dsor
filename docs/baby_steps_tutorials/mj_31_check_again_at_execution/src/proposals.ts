@@ -43,7 +43,10 @@ const DRAWN: Readonly<Record<State, readonly State[]>> = Object.freeze({
   // And a READY proposal may end without running: CANCELLED when its slip is torn
   // up, and EXPIRED when its company's lifetime has passed. §26.2 does not draw these two moves
   // yet. The learner proposed them (open question 90; step 25c's README, claim C1).
-  READY: Object.freeze(["EXECUTING", "CANCELLED", "EXPIRED"] as State[]),
+  // NEW IN STEP 31: and INVALIDATED, when the check again at its release says no: a rule switched
+  //   on since asks for an approval, or another check fails. §26.2 does not draw this move; DSOR-
+  //   APR-03c asks for it (step 31's README, decision D6).
+  READY: Object.freeze(["EXECUTING", "CANCELLED", "EXPIRED", "INVALIDATED"] as State[]),
   PENDING_APPROVAL: Object.freeze(["APPROVED", "REJECTED", "EXPIRED", "CANCELLED"] as State[]),
   APPROVED: Object.freeze([
     "EXECUTING",
