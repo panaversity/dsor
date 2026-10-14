@@ -186,7 +186,8 @@ describe("the program", () => {
         "the agent drafts INV-2012, 35,000.00 USD: PENDING_APPROVAL, needs tenant_admin x1 (admin-above-30000), CFO x1 (high-value-payment)",
         "cfo_100 approves it: PENDING_APPROVAL, still waits for tenant_admin",
         "admin_100 approves it: APPROVED, by approval apr_",
-        "payments drafted: 1, INV-2009's; the approved ones wait for step 31",
+        // Changed in step 31: the release has scenes of its own, in a world of their own.
+        "payments drafted: 1, INV-2009's; the approved ones wait for their release",
       ]) {
         expect(approvals).toMatch(line);
       }
@@ -208,6 +209,29 @@ describe("the program", () => {
         "INV-1012's proposal: PENDING_APPROVAL, INV-2013's: PENDING_APPROVAL; org_456 has no AP supervisor outside their chains",
       ]) {
         expect(sod).toMatch(line);
+      }
+      // The release, in memory, in a world of its own: what was approved is paid, what a stricter
+      // rule now stops is invalidated, and the release runs only the stored request (step 31's
+      // README, the story's numbers).
+      const releases = output.slice(output.indexOf("releases, in memory, in a world of their own"));
+      for (const line of [
+        "the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment)",
+        "cfo_100 approves it: APPROVED",
+        "the agent releases it: COMMITTED, INV-1008 31400.00 USD drafted",
+        "INV-1008's proposal: COMMITTED, its booking committed",
+        "cfo_100 switches on admin-above-30000: version 1, active",
+        "the agent drafts INV-2012, 35,000.00 USD: PENDING_APPROVAL, needs tenant_admin x1 (admin-above-30000), CFO x1 (high-value-payment)",
+        "admin_100 approves it: APPROVED",
+        "cfo_100 switches on a version that asks for two CFOs: version 9, active, version 8 retired",
+        "the agent releases INV-2012: APPROVAL_INVALIDATED: proposal prop_",
+        " is INVALIDATED: APPROVAL_REQUIRED: high-value-payment version 9 asks for 2 approvals by CFO, and 1 counts",
+        "INV-2012's proposal: INVALIDATED, its booking released",
+        'the agent releases INV-1008\'s proposal and sends invoice INV-1002 with it: VALIDATION_FAILED: the input of "proposal.execute" is not valid: must NOT have additional properties: "invoice"',
+        "the agent prepares INV-1009, 7,425.00 USD, in propose_only mode: READY",
+        "user_123 releases it: COMMITTED, INV-1009 7425.00 USD drafted",
+        "payments drafted in this world: INV-1008, INV-1009",
+      ]) {
+        expect(releases).toMatch(line);
       }
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");

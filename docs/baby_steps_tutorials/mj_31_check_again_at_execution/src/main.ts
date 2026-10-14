@@ -45,8 +45,12 @@
 // waits for the CFO and a tenant administrator both. Since step 30, who may not approve, in
 // memory: with a third rule on, an AP supervisor approves payments above 10,000 USD. user_123, an
 // AP supervisor, may not approve the agent's INV-1012, since user_123 signed del_100, nor INV-2013,
-// which user_123 asked for; cfo_100 is not an AP supervisor; and the agent approves nothing. Then
-// it prints the log: the records it can read,
+// which user_123 asked for; cfo_100 is not an AP supervisor; and the agent approves nothing. Since
+// step 31, the release, in memory, in a world of its own: the agent releases INV-1008, which cfo_100
+// approved, and it is paid; cfo_100 switches on a version of the CFO's rule that asks for two CFOs,
+// and INV-2012's release is invalidated, its booking back; a release that sends another invoice is
+// refused; and user_123 releases a payment the agent prepared. Then it prints the log: the records
+// it can read,
 // one company at a time, and how many it cannot read. Last, it shows that a log which
 // cannot take a record turns a "yes" into a refusal. Found by the Stage 2 review: this
 // header described step 13's program, and left out the masking and cfo_100's read.
@@ -1543,8 +1547,9 @@ console.log("  the agent drafts INV-2011, 21,000.00 USD:", waitHeard(await drift
 // approve its own payment, and neither can admin_100, whom the rule does not ask. cfo_100 approves
 // it first with the fingerprint of the 900.00 USD payment, and DSoR refuses; then with its own, and
 // it is APPROVED. Then cfo_100 switches on a second rule of org_456's own, and INV-2012, 35,000.00
-// USD, waits for the CFO and a tenant administrator: one approval is not enough. An approved
-// payment waits for step 31's proposal.execute, so nothing more is drafted.
+// USD, waits for the CFO and a tenant administrator: one approval is not enough. Nothing releases
+// an approved payment in this world, so nothing more is drafted. Changed in step 31: the release
+// has scenes of its own, below, in a world of their own.
 console.log("approvals, in memory, with a store of their own:");
 const approvalInvoices = memoryInvoices([
   ...structuredClone(invoices),
@@ -1670,9 +1675,9 @@ console.log(
   "  admin_100 approves it:",
   await approveAs(ADMIN_100, bothScreen.uri, bothScreen.payload_hash),
 );
-// Approved is not paid: step 31's proposal.execute releases an approved proposal.
+// Approved is not paid: proposal.execute releases an approved proposal, in step 31's scenes below.
 console.log(
-  `  payments drafted: ${approvalDrafted.length}, INV-2009's; the approved ones wait for step 31`,
+  `  payments drafted: ${approvalDrafted.length}, INV-2009's; the approved ones wait for their release`,
 );
 
 // Who may not approve, in the same world (step 30's README, the story's numbers).
@@ -1743,6 +1748,164 @@ async function stateOfAnswer(answer: Answer): Promise<string> {
 console.log(
   `  INV-1012's proposal: ${await stateOfAnswer(agents)}, INV-2013's: ${await stateOfAnswer(own)};` +
     " org_456 has no AP supervisor outside their chains",
+);
+
+// NEW IN STEP 31: the release, in memory, in a world of its own (step 31's README, decision D11
+//   and the story's numbers). The world above has two more rules on, switched on after INV-1008
+//   was approved, so its release would be invalidated there. Here only the CFO's rule is on at
+//   first. The agent releases INV-1008, which cfo_100 approved, and the payment is drafted. Then
+//   INV-2012 is approved by the CFO and a tenant administrator, and cfo_100 switches on a version
+//   that asks for two CFOs: its release is invalidated, and its booking goes back to the day. A
+//   release that sends a new invoice is refused at line ⑥. Last, user_123 releases a payment that
+//   the agent prepared in propose_only mode.
+console.log("releases, in memory, in a world of their own:");
+const releaseInvoices = memoryInvoices([
+  ...structuredClone(invoices),
+  bill("INV-2012", "35000.00", "USD"),
+]);
+const releaseDrafted: Payment[] = [];
+const releasePayments = memoryPayments(releaseDrafted);
+const releaseSlips = memorySlips(limited);
+const releaseProposals = memoryProposals(() => lifeClock.now);
+const releaseBookings = memoryReservations(() => lifeClock.now);
+const releaseRules = memoryControls(readControls(CONTROLS));
+const releaseWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  releaseInvoices,
+  releasePayments,
+  releaseSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    releaseInvoices,
+    releasePayments,
+    releaseProposals,
+    releaseBookings,
+    releaseSlips,
+    undefined,
+    memoryRates(() => lifeClock.now),
+    releaseRules,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  releaseRules,
+  storyKsors(),
+);
+const releaseLog = createLog();
+let releaseKeys = 0;
+/** One call in this world, with a key of its own unless the envelope names a mode. */
+const releaseCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(releaseWorld, releaseLog, withKey(who, `release-${++releaseKeys}`), name, input);
+/** The proposal an answer names, as DSoR keeps it. */
+async function keptOf(answer: Answer) {
+  const id =
+    String("proposal" in answer ? answer.proposal : "")
+      .split("/")
+      .at(-1) ?? "";
+  const kept = await releaseProposals.get("org_456", id);
+  if (kept === undefined) throw new Error("the story's proposal is not there");
+  return kept;
+}
+/** Someone approves the proposal an answer names, with its own fingerprint, and what DSoR says. */
+async function approvesIt(who: RequestEnvelope, answer: Answer): Promise<string> {
+  const { uri, payload_hash } = await keptOf(answer);
+  const approval = await releaseCall(who, "proposal.approve", { proposal: uri, payload_hash });
+  if (!("data" in approval)) return heard(approval);
+  return String((approval.data as { state: string }).state);
+}
+/** Someone releases the proposal an answer names, and what they hear, with the payment drafted. */
+async function releasesIt(who: RequestEnvelope, answer: Answer, more = {}): Promise<string> {
+  const { uri } = await keptOf(answer);
+  const released = await releaseCall(who, "proposal.execute", { proposal: uri, ...more });
+  if (!("outcome" in released)) return heard(released);
+  const last = releaseDrafted.at(-1);
+  const paid =
+    last === undefined
+      ? ""
+      : `, ${last.invoice_id} ${last.amount.value} ${last.amount.currency} drafted`;
+  return `${released.outcome}${paid}`;
+}
+/** The proposal's state, and its booking's, as DSoR keeps them. */
+async function endOf(answer: Answer): Promise<string> {
+  const kept = await keptOf(answer);
+  const id = kept.uri.split("/").at(-1) ?? "";
+  const booking = (await releaseBookings.get("org_456", id))?.state ?? "none";
+  return `${kept.state}, its booking ${booking}`;
+}
+const toRelease = await releaseCall(AGENT, "payment.create", {
+  invoice: "dsor://org_456/invoice/INV-1008",
+  expected_version: 1,
+});
+console.log("  the agent drafts INV-1008, 31,400.00 USD:", waitHeard(toRelease));
+console.log("  cfo_100 approves it:", await approvesIt(CFO_100, toRelease));
+console.log("  the agent releases it:", await releasesIt(AGENT, toRelease));
+console.log("  INV-1008's proposal:", await endOf(toRelease));
+// The second rule, as in step 29's scenes, so INV-2012 waits for two people.
+const releaseAdminRule = await releaseCall(CFO_100, "rule.draft", {
+  rule: ADMIN_RULE,
+  draft: textWith({
+    condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
+    effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+    authority: { system: "local" },
+    tests: [
+      { state: usd("30000.00"), expect: "ALLOW" },
+      { state: usd("30000.01"), expect: "REQUIRE_APPROVAL" },
+    ],
+  }),
+  reason: "a tenant administrator approves every payment above 30,000 USD too",
+});
+const releaseAdminOn = await releaseCall(CFO_100, "rule.activate", {
+  rule: ADMIN_RULE,
+  version: (releaseAdminRule as { data: { version: number } }).data.version,
+  reason: "the board asked for a second pair of eyes",
+});
+console.log("  cfo_100 switches on admin-above-30000:", ruleHeard(releaseAdminOn));
+const twoPeople = await releaseCall(AGENT, "payment.create", {
+  invoice: "dsor://org_456/invoice/INV-2012",
+  expected_version: 1,
+});
+console.log("  the agent drafts INV-2012, 35,000.00 USD:", waitHeard(twoPeople));
+console.log("  cfo_100 approves it:", await approvesIt(CFO_100, twoPeople));
+console.log("  admin_100 approves it:", await approvesIt(ADMIN_100, twoPeople));
+// On Thursday, a stricter version of the CFO's rule: two CFOs, above the same line.
+const twoCfos = await releaseCall(CFO_100, "rule.draft", {
+  rule: RULE,
+  draft: textWith({ effect: { require_approval: { role: "CFO", quorum: 2 } } }),
+  reason: "two CFOs approve every payment above 25,000 USD",
+});
+const twoCfosOn = await releaseCall(CFO_100, "rule.activate", {
+  rule: RULE,
+  version: (twoCfos as { data: { version: number } }).data.version,
+  reason: "the board asked for two CFOs",
+});
+console.log("  cfo_100 switches on a version that asks for two CFOs:", ruleHeard(twoCfosOn));
+console.log("  the agent releases INV-2012:", await releasesIt(AGENT, twoPeople));
+console.log("  INV-2012's proposal:", await endOf(twoPeople));
+// The release takes the proposal's address and nothing else (DSOR-APR-13).
+console.log(
+  "  the agent releases INV-1008's proposal and sends invoice INV-1002 with it:",
+  await releasesIt(AGENT, toRelease, { invoice: "dsor://org_456/invoice/INV-1002" }),
+);
+const prepared1009 = await call(
+  releaseWorld,
+  releaseLog,
+  { ...withKey(AGENT, "release-prepare-INV-1009"), mode: "propose_only" },
+  "payment.create",
+  { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 },
+);
+console.log(
+  "  the agent prepares INV-1009, 7,425.00 USD, in propose_only mode:",
+  heard(prepared1009),
+);
+console.log("  user_123 releases it:", await releasesIt(SUPERVISOR_123, prepared1009));
+console.log(
+  `  payments drafted in this world: ${releaseDrafted.map((p) => p.invoice_id).join(", ")}`,
 );
 
 // Every call above left one record in the log before its answer was returned, the
