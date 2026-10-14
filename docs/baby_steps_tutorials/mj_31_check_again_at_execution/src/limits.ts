@@ -236,6 +236,10 @@ export type LimitCheck = {
   // The proposal to reserve for, in execute and propose_only modes. A dry run has none, so the
   // day's limit is checked only.
   reserveFor?: string;
+  // NEW IN STEP 31: or, in a dry run of a release, the proposal whose booking is made already. Its
+  //   amount is in the day's total, so a held booking fits, as the release finds it again and books
+  //   nothing more (step 31's README, decisions D4 and D13).
+  booked?: string;
   store: ReservationStore;
   // The company's sheets of rates and its money policy, for an amount in another
   // currency than a limit, and who to tell which rates a conversion used, for its decision's
@@ -362,9 +366,12 @@ export async function checkLimits(check: LimitCheck): Promise<void> {
         ? undefined
         : convertUp(spends, daily.currency, sheet);
   if (booking === undefined) throw new Refusal("LIMIT_EXCEEDED", noRate(forOneDay), "public");
+  const held = check.booked === undefined ? undefined : await store.get(tenant, check.booked);
   const fits =
-    reserveFor === undefined
-      ? await store.fits(tenant, slip, booking, daily)
-      : await store.reserve(tenant, reserveFor, slip, booking, daily);
+    held?.state === "held"
+      ? true
+      : reserveFor === undefined
+        ? await store.fits(tenant, slip, booking, daily)
+        : await store.reserve(tenant, reserveFor, slip, booking, daily);
   if (!fits) throw new Refusal("LIMIT_EXCEEDED", forOneDay, "public");
 }

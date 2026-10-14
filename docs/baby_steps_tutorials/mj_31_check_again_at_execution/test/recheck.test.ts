@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { ADMIN, AGENT, CFO, keyed, SUPERVISOR } from "./helpers.ts";
+import { ADMIN, AGENT, CFO, DEL_100, keyed, SUPERVISOR } from "./helpers.ts";
 import {
   ruleCall,
   ruleWorldOnTuesday,
@@ -305,5 +305,39 @@ describe("C5: what an invalidated release leaves (DSOR-APR-03c, D4, D8)", () => 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("C2 and C3: a dry run of a release checks again too (DSOR-OPR-06, D13)", () => {
+  it("DSOR-OPR-06: after the version that asks for two CFOs, a dry run of INV-1008's release hears that it would be invalidated, with the cause, and nothing moves", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { id, uri } = await approved(w);
+    await switchOn(w, {
+      ...textOf(version9()),
+      effect: { require_approval: { role: "CFO", quorum: 2 } },
+    });
+    const dry = await w.ask({ ...AGENT, mode: "validate_only" }, "proposal.execute", {
+      proposal: uri,
+    });
+    expect(dry).toMatchObject({
+      code: "APPROVAL_INVALIDATED",
+      message: `proposal ${id} would be INVALIDATED: APPROVAL_REQUIRED: high-value-payment version 9 asks for 2 approvals by CFO, and 1 counts`,
+    });
+    expect(await afterwards(w, id)).toMatchObject({ state: "APPROVED", drafted: 0 });
+    expect(await w.reservations.get("org_456", id)).toMatchObject({ state: "held" });
+  });
+
+  it("DSOR-OPR-06: a dry run counts the proposal's own booking once: under a day of 40,000 USD, INV-1008's 31,400.00 is booked already, and the dry run and the release both pass", async () => {
+    const day = {
+      per_transaction_limit: { value: "50000", currency: "USD" },
+      cumulative_limits: [{ window: "P1D", amount: { value: "40000", currency: "USD" } }],
+    };
+    const w = await ruleWorldOnTuesday(undefined, [{ ...DEL_100, constraints: day }]);
+    const { uri } = await approved(w);
+    const dry = await w.ask({ ...AGENT, mode: "validate_only" }, "proposal.execute", {
+      proposal: uri,
+    });
+    expect(dry).toMatchObject({ outcome: "VALIDATED" });
+    expect(await release(w, AGENT, uri)).toMatchObject({ outcome: "COMMITTED" });
   });
 });

@@ -219,6 +219,30 @@ describe("C3 to C5: the check again, on the database (DSOR-APR-03a, 03b, 03c)", 
     expect(await bookingOf(id)).toBe("released");
   });
 
+  it("DSOR-OPR-06: on the database, after the version that asks for two CFOs, a dry run of INV-9001's release hears that it would be invalidated, and nothing moves", async () => {
+    const { id, uri } = await approved();
+    try {
+      await switchOn({
+        ...textOf(version9()),
+        effect: { require_approval: { role: "CFO", quorum: 2 } },
+      });
+      const dry = await withPlanted("tok_intake", intake, () =>
+        call(registry, log, { ...SUPERVISOR, mode: "validate_only" }, "proposal.execute", {
+          proposal: uri,
+        }),
+      );
+      expect(dry).toMatchObject({
+        code: "APPROVAL_INVALIDATED",
+        message: `proposal ${id} would be INVALIDATED: APPROVAL_REQUIRED: high-value-payment version 9 asks for 2 approvals by CFO, and 1 counts`,
+      });
+    } finally {
+      ownerRules("clear");
+    }
+    expect((await proposals.get("org_456", id))?.state).toBe("APPROVED");
+    expect(await bookingOf(id)).toBe("held");
+    expect(await paymentsOf9001()).toBe(0);
+  });
+
   it("DSOR-APR-03c: on the database, the accounts system credits INV-9001 after the approval, version 2: invalidated before any work, STALE_STATE", async () => {
     const { id, uri } = await approved();
     ownerInvoices("credit", "31000.00");

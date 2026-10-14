@@ -3,7 +3,7 @@
 // making one. Line ⑨ first asks who may release it, and whether it waits to be released. Then the
 // stored request is checked again on live data, and runs.
 import type { RoleSource } from "./authority.ts";
-import { holdBrake, type BrakeStore } from "./brakes.ts";
+import { checkBrake, holdBrake, type BrakeStore } from "./brakes.ts";
 import { checkDelegation, holdSlip } from "./delegation.ts";
 import type { Approval } from "./approvals.ts";
 import { Refusal, type ErrorCode, type Requirement } from "./envelope.ts";
@@ -146,6 +146,9 @@ export async function askerNow(
   roleSource: RoleSource,
   stores: { slips: SlipStore; brakes: BrakeStore },
   tenant: string,
+  // Inside the release's claim, under the brake's and the slip's locks, as at a draft. A dry run
+  //   takes no lock: it reads the brake, and line ③'s look has read the slip.
+  inClaim = true,
 ): Promise<AskerNow> {
   const { requester } = found;
   const asker = requester.actor_chain[0];
@@ -163,8 +166,12 @@ export async function askerNow(
     //   not a "no": its refusal leaves the proposal waiting (decision D15). A signer it reports as
     //   gone is a "no", and the slip is suspended at the agent's next call (line ③).
     const authority = await roleSource.authorityOf(tenant, slip, JSON.stringify(target.id));
-    await holdBrake(agent, target, stores.brakes, tenant);
-    await holdSlip(agent, target, slip.id, stores.slips, tenant);
+    if (inClaim) {
+      await holdBrake(agent, target, stores.brakes, tenant);
+      await holdSlip(agent, target, slip.id, stores.slips, tenant);
+    } else {
+      await checkBrake(agent, target, stores.brakes, tenant);
+    }
     checkPermission(agent, target, roles, tenant, slip, authority.roles, found.mode);
     return { roles: authority.roles, slip };
   }

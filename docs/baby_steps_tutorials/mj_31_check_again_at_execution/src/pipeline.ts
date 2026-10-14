@@ -519,6 +519,7 @@ export async function call(
           spends,
           store,
           ...(reserveFor === undefined ? {} : { reserveFor }),
+          ...(asked.booked === undefined ? {} : { booked: asked.booked }),
           // The company's sheets of rates and its money policy, and where to keep
           // what a conversion used (step 26's README, decisions L3, L7, and D4).
           // The line's one read, so the limit's rates join the controls' on one
@@ -586,6 +587,61 @@ export async function call(
         }
         return { loaded, target, code };
       });
+    // NEW IN STEP 31: the check again, on live data, for the stored request and whoever asked for
+    //   it: its fingerprint, lines ③ to ⑤ for the asker, line ⑨'s read, line ⑩'s rules and limits,
+    //   and the approvals against what the rules ask for now (DSOR-APR-03a, DSOR-APR-03b,
+    //   DSOR-APR-03c; step 31's README, decisions D1, D3, D5, and D18). Inside the claim, it takes
+    //   the brake's and the slip's locks, and finds the booking again by the proposal's id. A dry
+    //   run, outside any claim, takes no lock and books nothing, and counts the proposal's own
+    //   booking once (D13).
+    const checkAgain = async (
+      stores: Omit<WorkStores, "payments">,
+      loaded: Proposal,
+      target: Contract,
+      inClaim: boolean,
+    ): Promise<void> => {
+      const id = proposalIdOf(tenant, loaded.uri);
+      await line(9, async () => {
+        if (payloadHash(loaded.payload) !== loaded.payload_hash) {
+          const why = `proposal ${id}'s stored request does not match its fingerprint`;
+          throw new Refusal("APPROVAL_MISMATCH", why, "internal");
+        }
+      });
+      const asker = await line(9, () =>
+        askerNow(loaded, target, registry.roles, registry.roleSource, stores, tenant, inClaim),
+      );
+      const asked: Asked = {
+        contract: target,
+        copy: loaded.payload,
+        own: undefined,
+        requester: loaded.requester,
+        roles: asker.roles,
+        slip: asker.slip,
+        ...decidedOnOf(target, loaded.payload),
+        ...(inClaim ? {} : { booked: id }),
+      };
+      if (loaded.requires !== undefined) {
+        approvedUnderOfRecord = loaded.requires.map((r) => ({
+          control: r.control,
+          version: r.control_version,
+        }));
+      }
+      const { invoices, reservations, slips, brakes, rates, controls, proposals } = stores;
+      // Inside the claim, the booking is found again by the proposal's id, and not made twice (D4).
+      const requires = await decideBeforeWork(
+        invoices,
+        reservations,
+        slips,
+        brakes,
+        rates,
+        controls,
+        proposals,
+        inClaim ? id : undefined,
+        asked,
+      );
+      const given = await proposals.approvals(tenant, id);
+      await line(10, () => checkApprovals(loaded, requires ?? [], given, slips, tenant));
+    };
     if (released !== undefined) {
       // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id
       //   through, so another company's address met line ②'s refusal first, as for an approval.
@@ -595,7 +651,25 @@ export async function call(
       // A dry run of a release asks line ⑨, outside any claim, and moves nothing (D13).
       if (mode === "validate_only") {
         try {
-          await gate(registry.claims.proposals, released);
+          const { loaded, target } = await gate(registry.claims.proposals, released);
+          const outside = {
+            invoices: registry.invoices,
+            reservations: registry.claims.reservations,
+            slips: registry.delegations,
+            brakes: registry.brakes,
+            rates: registry.claims.rates,
+            controls: registry.controls,
+            proposals: registry.claims.proposals,
+          };
+          try {
+            await checkAgain(outside, loaded, target, false);
+          } catch (thrown) {
+            if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
+            // The real release would invalidate it. The dry run says so, and moves nothing.
+            const id = proposalIdOf(tenant, released);
+            const why = `proposal ${id} would be INVALIDATED: ${causeOf(thrown)}`;
+            throw new Refusal("APPROVAL_INVALIDATED", why, "internal");
+          }
         } catch (thrown) {
           throw maskRefusal(thrown, clearanceOf(caller));
         }
@@ -786,48 +860,7 @@ export async function call(
                   //   A check that cannot be made now leaves it waiting (DSOR-APR-03a, DSOR-APR-03b,
                   //   DSOR-APR-03c; step 31's README, decisions D1, D3, D5, D6, D8, and D15).
                   try {
-                    await line(9, async () => {
-                      if (payloadHash(loaded.payload) !== loaded.payload_hash) {
-                        const why = `proposal ${id}'s stored request does not match its fingerprint`;
-                        throw new Refusal("APPROVAL_MISMATCH", why, "internal");
-                      }
-                    });
-                    const asker = await line(9, () =>
-                      askerNow(loaded, target, registry.roles, registry.roleSource, stores, tenant),
-                    );
-                    const asked: Asked = {
-                      contract: target,
-                      copy: loaded.payload,
-                      own: undefined,
-                      requester: loaded.requester,
-                      roles: asker.roles,
-                      slip: asker.slip,
-                      ...decidedOnOf(target, loaded.payload),
-                    };
-                    if (loaded.requires !== undefined) {
-                      approvedUnderOfRecord = loaded.requires.map((r) => ({
-                        control: r.control,
-                        version: r.control_version,
-                      }));
-                    }
-                    const { invoices, reservations, slips, brakes, rates, controls, proposals } =
-                      stores;
-                    // The booking is found again by the proposal's id, and not made twice (D4).
-                    const requires = await decideBeforeWork(
-                      invoices,
-                      reservations,
-                      slips,
-                      brakes,
-                      rates,
-                      controls,
-                      proposals,
-                      id,
-                      asked,
-                    );
-                    const given = await proposals.approvals(tenant, id);
-                    await line(10, () =>
-                      checkApprovals(loaded, requires ?? [], given, slips, tenant),
-                    );
+                    await checkAgain(stores, loaded, target, true);
                   } catch (thrown) {
                     if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
                     const by = {
@@ -1213,6 +1246,8 @@ type Asked = {
   slip: Slip | undefined;
   // At a release, the version of the bound record the stored request was decided on.
   decidedOn?: number;
+  // And, in a dry run of a release, the proposal whose booking is made already.
+  booked?: string;
 };
 
 // A label without its record's version.
