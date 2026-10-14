@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-13.
+2026-10-15.
 
 ## Specification
 
@@ -126,12 +126,12 @@ one before it:
 | `my_17_vendors_and_payments` | 623 | vendors and payments, two more record types under the same locks; every command says, in its contract and on every receipt, whether its effect can be undone, and `payment.create` is undone by `payment.cancel` |
 | `my_18_delegations` | 663 | the permission slip: every command the agent sends runs under a slip a person signed, found by DSoR itself, and its power is computed at each decision as the slip's permissions cut down to what the signer holds right now and to the login's scopes, up to the slip's limit per payment |
 | `my_19_unattended_mode_and_the_role_source` | 696 | at 2 a.m. nobody is logged in: an agent's command under a slip is `unattended`, its subject the slip's signer and the agent in its actor chain, the slip named on the record; what the signer holds is asked of the company's directory, and no fresh answer is no answer |
-| `my_20_idempotency_keys` | 732 | every command carries an idempotency key beside its arguments, claimed with one INSERT at §21.7; the same key and request get the recorded answer and nothing runs twice, a different request under the key is refused, and fifty at once make one payment |
-| `my_21_optimistic_concurrency` | 751 | invoices and payments carry a version raised in the same UPDATE as every change; every command declares its concurrency strategy, an optimistic command says the version it decided on, and a record that moved on is refused `STALE_STATE` before any business rule, with no new version handed over |
-| `my_22_proposals_and_their_states` | 833 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2, without its compensation line, and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended; since decision 157 every move is written with its own audit record in one statement, and the database refuses a move without one |
-| `my_23_three_ways_to_call` | 874 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
-| `my_24_limits_with_reservations` | 916 | a slip has a daily limit, 200,000.00 USD for del_100; each payment, and no other command, books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
-| `my_25_revocation_and_the_emergency_brake` | 1014 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer, supervisor or approver, revokes it, active or suspended, and what waited under it is cancelled, if it is still what was read; none of it asks the agent |
+| `my_20_idempotency_keys` | 735 | every command carries an idempotency key beside its arguments, claimed with one INSERT at §21.7; the same key and request get the recorded answer and nothing runs twice, a different request under the key is refused, and fifty at once make one payment; since decision 158 a request waits up to thirty seconds for the same request still being carried out |
+| `my_21_optimistic_concurrency` | 754 | invoices and payments carry a version raised in the same UPDATE as every change; every command declares its concurrency strategy, an optimistic command says the version it decided on, and a record that moved on is refused `STALE_STATE` before any business rule, with no new version handed over |
+| `my_22_proposals_and_their_states` | 840 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2, without its compensation line, and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended; since decision 157 every move is written with its own audit record in one statement, and the database refuses a move without one; since decision 158 each company's log takes one writer at a time |
+| `my_23_three_ways_to_call` | 881 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
+| `my_24_limits_with_reservations` | 923 | a slip has a daily limit, 200,000.00 USD for del_100; each payment, and no other command, books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
+| `my_25_revocation_and_the_emergency_brake` | 1021 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer, supervisor or approver, revokes it, active or suspended, and what waited under it is cancelled, if it is still what was read; none of it asks the agent |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -152,6 +152,12 @@ are true of all of them:
   Its database tier (nine tests, the same as step 09's) has been run against a local
   PostgreSQL 17 with two real logins and a database of the step's own, on 2026-10-05; the
   four migrations applied and the demo ran against that server, both chains verifying.
+- **Steps 16 to 25's database tiers pass against Neon,** each on a database of its own, on
+  2026-10-14 and 15, 127 ms from the machine that ran them: 39, 51, 51, 51, 52, 53, 60, 60, 62 and 75 tests,
+  none skipped. That first run on a database far away
+  found two settings measured on a server on the same machine: how long a request waits for the
+  same request still being carried out, and how a company's log is shared by writers. Decision 158
+  changed both.
 - **`my_09` has a second test tier.** `pnpm check` proves its guarantees against
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers what one in-process connection cannot do — logging in as a
@@ -166,7 +172,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 157 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 158 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
