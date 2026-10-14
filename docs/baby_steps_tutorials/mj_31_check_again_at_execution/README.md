@@ -501,9 +501,10 @@ says where each permission comes from.
   So this step is done when a stricter rule makes INV-2012 `INVALIDATED` (D1). The map's "done
   when" changes with this step.
 - **`READY` to `INVALIDATED`.** §26.2's picture does not draw this move. This step adds it (D6), as
-  step 25c added `READY` to `CANCELLED`. A question for the specification.
+  step 25c added `READY` to `CANCELLED`. Open question 124 in
+  [`research/open-questions.md`](../../../research/open-questions.md).
 - **No `propose_only` for a release.** DSOR-OPR-05 says every command takes the three modes. This
-  step refuses one (D13). A question for the specification.
+  step refuses one (D13). Open question 125.
 - **Releasing DSoR's own work** (D14), **suspending at the release** (D16), and **whether an
   approver must still hold the role** at the release: this step reads the role the approval
   recorded.
