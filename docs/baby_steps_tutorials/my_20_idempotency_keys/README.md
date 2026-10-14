@@ -19,7 +19,7 @@ hash, beside it:
   word. Nothing runs again, and no second decision is recorded, because none is made.
 - **The same key and a different request:** refused, `IDEMPOTENCY_CONFLICT`. A new request needs a
   new key.
-- **The same request still being carried out:** DSoR waits for it, up to two seconds, and then gives
+- **The same request still being carried out:** DSoR waits for it, up to thirty seconds, and then gives
   its answer. If it has none by then, the caller is told `OUTCOME_UNKNOWN`: nobody knows yet.
 - **A command with no key:** refused, `VALIDATION_FAILED`. Queries change nothing and need none.
 
@@ -81,13 +81,13 @@ diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_19
 | --- | --- |
 | `migrations/018_idempotency_keys.sql` | new — `dsor.idempotency_keys`: the company, the caller, the operation and the key as one primary key, the request's fingerprint, and its answer as text; the application claims and answers, and deletes and rewrites nothing; the second lock, and a second policy that keeps an answer once written |
 | `src/idempotency.ts` | new — the claim, in one INSERT, and what a request finds when it is not the first; the answer written on the claim, or the claim released |
-| `src/operations.ts` | the stage at §21.7; the door takes the request's options, and writes the answer on the claim whichever way it ends; §21.11 refuses a command with no claim |
+| `src/operations.ts` | the stage at §21.7; the door takes the request's options, and writes the answer on the claim whichever way it ends; §21.11 refuses a command with no claim; a request waits up to thirty seconds for the same request still being carried out (decision 158) |
 | `src/pipeline.ts` | a walk may end with an answer given before, `replayed`; the context carries the key and the claim |
 | `src/registry.ts`, `src/contracts/*.json` | every command's contract says it needs a key, and the registry refuses one that says not |
 | `src/database.ts` | start-up knows six tenant tables, refuses an application that may delete or rewrite a claim, and refuses the claims' table without the policy that keeps an answer |
 | `src/main.ts` | every command with a key; a payment sent twice, a different one under the same key, and fifty at once |
 | `test/support/door.ts` | new — the door the tests knock on, which gives each request a fresh key unless the test gives one |
-| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a store that fails while a claim or an answer is written, and fifty at once |
+| `test/idempotency.test.ts` | new — the table, the key, the replay, the conflict, the release, a store that fails while a claim or an answer is written, and fifty at once; the wait for a request still being carried out pinned at thirty seconds (decision 158) |
 | `test/idempotency.db.test.ts` | new — fifty at once on a real server, over a pool of twenty connections |
 | `test/database.test.ts` | start-up refuses the claims' table without the policy that keeps an answer, and an application that may delete a claim, rewrite one, or write its answer in advance |
 | `test/the-lock-at-start-up.test.ts` | an account one `SET ROLE` from owning the claims' table is refused; and the lock's refusals are asked of that table too |
@@ -148,11 +148,21 @@ login. `pnpm migrate` applies the eighteen migrations; on a server that already 
 seventeen, it applies 018. One of the fifty-two is the step's "done when" where it can truly fail:
 fifty requests with one key, sent at once over a pool of twenty connections, make one payment.
 
+On Neon that test first failed, and the reason was distance. A round trip from this machine to the
+Neon database took 127 ms, so one payment request takes seconds there, not milliseconds. One
+payment was made, as it must be. But the forty-nine other requests stopped waiting for its answer
+after two seconds. Each then wrote its own refusal to the company's log at the same moment, and in
+this step a request that loses its place at the end of the log is refused: 47 or 48 of the fifty
+callers were told `EVIDENCE_STORE_UNAVAILABLE`, and one or two `OUTCOME_UNKNOWN`. Two seconds had
+been measured on a PostgreSQL on this machine. A request now waits up to thirty seconds
+(decision 158), and on Neon all fifty were handed the receipt, in about ten seconds. A request
+close to its database is not slowed: the wait ends as soon as the answer is there.
+
 ## Break it
 
 Five, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
 The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `732` with `1 skipped`; in the repository it is `732 passed`.
+is not beside it, so the total reads `735` with `1 skipped`; in the repository it is `735 passed`.
 
 ### Break 1 · check for the key, then insert it, as two steps
 
@@ -160,13 +170,14 @@ The map's "break it". In `src/idempotency.ts`, replace the claim's one INSERT wi
 asks whether the key exists, and, when it does not, an INSERT whose result is not looked at.
 
 ```text
- Tests  2 failed | 729 passed | 1 skipped (732)
+ Tests  4 failed | 730 passed | 1 skipped (735)
 ```
 
 The fifty requests at once, in the tests and in the demo: several of them each find no key before
 any of them inserts one, and each makes a payment. Every test that sends one request at a time still
 passes, which is why the mistake is so easy to make: it is wrong only when two requests arrive
-together.
+together. Two more fail for a reason of their own: the tests of the wait (decision 158) notice a look
+at the claim by its INSERT, and under this break a look that finds the key starts with a SELECT.
 
 ### Break 2 · the fingerprint is not compared
 
@@ -174,7 +185,7 @@ In `src/idempotency.ts`, change `if (found.payload_hash !== payloadHash) {` to
 `if (found.payload_hash !== payloadHash && false) {`.
 
 ```text
- Tests  7 failed | 724 passed | 1 skipped (732)
+ Tests  7 failed | 727 passed | 1 skipped (735)
 ```
 
 The same key with another amount is given the first payment's receipt, and the caller believes a
@@ -186,13 +197,16 @@ demo's, whose conflict line and log both change.
 In `src/idempotency.ts`, put `"anyone"` where the claim names its caller.
 
 ```text
- Tests  18 failed | 713 passed | 1 skipped (732)
+ Tests  40 failed | 694 passed | 1 skipped (735)
 ```
 
 More than predicted, and honestly so: this break changed two things. Keys are shared between
 callers, which two tests are about; and the door writes each answer under the real caller, so no
-answer is ever found again, and every replay waits out its two seconds. A break should change one
-thing; this one shows how much rests on the claim and its answer naming the same caller.
+answer is ever found again, and every replay waits out its wait. In `test/idempotency.test.ts` that
+is two seconds, set for the file, and seventeen of its tests fail. In the demo it is the program's
+thirty seconds (decision 158), and every repeat the demo sends waits all of it, so all twenty-three
+tests of the demo fail too, and the break takes minutes to run. A break should change one thing;
+this one shows how much rests on the claim and its answer naming the same caller.
 
 ### Break 4 · the answer is not kept
 
@@ -201,19 +215,19 @@ In `src/operations.ts`, replace the line that writes a kept answer on the claim,
 `void settleKey;`.
 
 ```text
- Tests  13 failed | 718 passed | 1 skipped (732)
+ Tests  33 failed | 701 passed | 1 skipped (735)
 ```
 
-Nothing runs twice: the claim still holds the key. But every retry waits two seconds and is told
-nobody knows, where it should have been given its answer. Nine tests of the key, and four of the
-demo's.
+Nothing runs twice: the claim still holds the key. But every retry waits out its wait and is told
+nobody knows, where it should have been given its answer. Ten tests of the key, at the two seconds
+their file waits, and all twenty-three of the demo's, whose repeats each wait the program's thirty.
 
 ### Break 5 · a refusal from the walk is kept
 
 In `src/operations.ts`, change `answer.envelope.retry === "safe_same_key";` to `false;`.
 
 ```text
- Tests  4 failed | 727 passed | 1 skipped (732)
+ Tests  4 failed | 730 passed | 1 skipped (735)
 ```
 
 A request refused because the decision could not be written down is answered "safe to send again",
@@ -247,7 +261,7 @@ Copy `my_19_unattended_mode_and_the_role_source` to a new folder and ask:
    mistake or a second request, and DSoR cannot tell which. A new request needs a new key.
 3. Two requests that arrive together both check, both find no key, and both run. One INSERT under a
    primary key lets the database pick exactly one winner.
-4. They wait for the first one's answer, up to two seconds, and are given it. If no answer is
+4. They wait for the first one's answer, up to thirty seconds, and are given it. If no answer is
    recorded by then, they are told `OUTCOME_UNKNOWN`: the first request may still be running, or it
    may have ended without recording one.
 5. That answer says nothing ran and the same request may be sent again. Kept, it would be given to

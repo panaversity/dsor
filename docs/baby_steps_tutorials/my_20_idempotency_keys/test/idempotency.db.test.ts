@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { overPool } from "../src/database.ts";
 import { applyMigrations, asRunner } from "../src/migrations.ts";
 import { callOperation } from "../src/operations.ts";
@@ -27,6 +27,14 @@ const PAYMENT = {
   invoice: "dsor://org_456/invoice/INV-1009",
   amount: { value: "2500.00", currency: "USD" },
 };
+
+/**
+ * NEW IN STEP 20, decision 158: three minutes for this file's test. A request waits up to thirty seconds
+ * for the same request still being carried out, as long as the tier gives a whole test, so a test
+ * with no more time than that could run out before its waiters answer, and leave them running into
+ * the next file (found by a review). On Neon, 127 ms away, the fifty took about ten seconds.
+ */
+vi.setConfig({ testTimeout: 180_000 });
 
 let owner: Pool;
 let application: Pool;
