@@ -13,11 +13,16 @@
 // top level, so importing it would mean running it, and there would be nothing to call.
 
 import { execFileSync } from "node:child_process";
+// fileURLToPath, not `new URL(…).pathname`: on Windows the pathname of a file URL is "/D:/…",
+// which Node reads as a relative path under the current drive — "D:\D:\…", and nothing is there.
+// Steps 01 to 07 and 09 onwards already say this; this file was the one that did not. Found by
+// CI on Windows, 2026-10-07.
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /** The program's output, with the hashes replaced so two runs can be compared. */
 function demo(): string {
-  const out = execFileSync("node", [new URL("../src/main.ts", import.meta.url).pathname], {
+  const out = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
     encoding: "utf8",
   });
 
@@ -104,12 +109,16 @@ describe("the program a learner runs", () => {
     expect(second).toBe(first);
 
     const hashes = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
-    const raw = execFileSync("node", [new URL("../src/main.ts", import.meta.url).pathname], {
+    const raw = execFileSync("node", [fileURLToPath(new URL("../src/main.ts", import.meta.url))], {
       encoding: "utf8",
     });
-    const again = execFileSync("node", [new URL("../src/main.ts", import.meta.url).pathname], {
-      encoding: "utf8",
-    });
+    const again = execFileSync(
+      "node",
+      [fileURLToPath(new URL("../src/main.ts", import.meta.url))],
+      {
+        encoding: "utf8",
+      },
+    );
 
     expect(hashes(raw)).toHaveLength(10);
     expect(hashes(raw)).not.toEqual(hashes(again));

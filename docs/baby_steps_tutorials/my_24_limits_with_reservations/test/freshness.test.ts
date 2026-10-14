@@ -1,0 +1,425 @@
+// STEP 15: every answer says how old its data is, and from where.
+//
+// Measured on step 14's demo: the agent's answer for INV-1008 is `issued`, and nothing more. It
+// does not say when that was true, or where it came from. An agent that keeps the answer in its
+// memory cannot tell an hour-old copy from a fresh read, and neither can a person checking its work.
+//
+// Rule DSOR-FRS-01a: every query result MUST state `observed_at`, the `resource_version` where one
+// exists, the connector, and the freshness mode actually delivered.
+// Rule DSOR-FRS-01b: DSoR MUST NOT label a cached value `CURRENT`.
+
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { theLog } from "../src/audit.ts";
+import { leaveTheDoor } from "../src/boundary.ts";
+import { overPGlite } from "../src/database.ts";
+import { success } from "../src/envelopes.ts";
+import { cannotBeLabelled, readNow } from "../src/freshness.ts";
+import type { Invoice } from "../src/invoice.ts";
+import { PIPELINE } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
+import { findPerson } from "../src/people.ts";
+import { useDatabase } from "../src/store.ts";
+import { aDatabase, resetTheStory } from "./support/database.ts";
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const INV_1008 = "dsor://org_456/invoice/INV-1008";
+
+let db: PGlite;
+
+beforeAll(async () => {
+  db = await aDatabase();
+  await resetTheStory();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+describe("every answer says how old its data is", () => {
+  it("DSOR-FRS-01a: the agent's INV-1008 says it is current, read from postgres within this request", async () => {
+    const before = Date.now();
+    const answer = await callOperation(AGENT, "invoice.get", { invoice: INV_1008 });
+    const after = Date.now();
+
+    expect(answer.kind).toBe("data");
+
+    if (answer.kind === "data") {
+      expect(answer.freshness.mode).toBe("current");
+      expect(answer.freshness.connector).toBe("postgres");
+
+      const observed = Date.parse(answer.freshness.observed_at);
+
+      expect(observed).toBeGreaterThanOrEqual(before);
+      expect(observed).toBeLessThanOrEqual(after);
+      // Decision 120: the label names no version. STEP 21: the row does, `version`, and the
+      // label does not repeat it (decision 134).
+      expect("resource_version" in answer.freshness).toBe(false);
+    }
+  });
+
+  it("DSOR-FRS-01a: a page says it too, once for the whole page, because a page is one read", async () => {
+    const before = Date.now();
+    const answer = await callOperation(SUPERVISOR, "invoice.list", { limit: 3 });
+    const after = Date.now();
+
+    expect(answer.kind).toBe("page");
+
+    if (answer.kind === "page") {
+      expect(answer.freshness.mode).toBe("current");
+      expect(answer.freshness.connector).toBe("postgres");
+
+      const observed = Date.parse(answer.freshness.observed_at);
+
+      expect(observed).toBeGreaterThanOrEqual(before);
+      expect(observed).toBeLessThanOrEqual(after);
+    }
+  });
+});
+
+/** INV-1008 as a handler might hand it over, built in the test rather than read. */
+const INV_1008_ROW = Object.freeze({
+  uri: INV_1008,
+  tenantId: "org_456",
+  id: "INV-1008",
+  vendor: "VENDOR-44",
+  amount: Object.freeze({ value: "31400.00", currency: "USD" }),
+  status: "issued",
+}) as unknown as Invoice;
+
+/** A door whose invoice.get and invoice.list hand over INV-1008 with whatever label they are given. */
+const handingLabel = (label: () => unknown) =>
+  makeDoor(PIPELINE, {
+    "invoice.get": async (_args, _contract, askedBy) => ({
+      kind: "data",
+      askedBy,
+      invoice: INV_1008_ROW,
+      freshness: label() as never,
+    }),
+    "invoice.list": async (_args, _contract, askedBy) => ({
+      kind: "page",
+      askedBy,
+      page: { invoices: [INV_1008_ROW], next: undefined },
+      freshness: label() as never,
+    }),
+  });
+
+describe("the door insists on a label", () => {
+  // Decision 120: the code that reads writes the label, and the door refuses a read without one,
+  // as the program's own error, like a row with no address. A read written next year that forgets
+  // its label fails loudly instead of answering.
+  const notALabel: readonly [string, () => unknown][] = [
+    ["no label at all", () => undefined],
+    // Decision 146: `null` too, which JavaScript calls an object. With the check for it taken out,
+    // the door threw a raw TypeError after the decision was recorded, and no test failed.
+    ["a null label", () => null],
+    // Decision 120 spells the modes as the schemas do. §27's capitals are not one of them here.
+    ["its mode in capitals", () => ({ ...readNow(), mode: "CURRENT" })],
+    ["a mode that is not one of the four", () => ({ ...readNow(), mode: "fresh" })],
+    ["no time", () => ({ ...readNow(), observed_at: undefined })],
+    ["a time that is not a time", () => ({ ...readNow(), observed_at: "yesterday" })],
+    // Decision 121: an exact ISO time only, and not one in the future. JavaScript reads "2026" as
+    // a date, and a date object is not text at all. The year is labelled observational, so the
+    // check on an old `current` cannot be what refuses it: measured, it was, until this said so.
+    [
+      "a time that is only a year",
+      () => ({ ...readNow(), mode: "observational", observed_at: "2026" }),
+    ],
+    ["a time that is a date object", () => ({ ...readNow(), observed_at: new Date() })],
+    [
+      "a time in the future",
+      () => ({ ...readNow(), observed_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() }),
+    ],
+    ["an empty connector", () => ({ ...readNow(), connector: "" })],
+    ["no connector at all", () => ({ mode: "current", observed_at: new Date().toISOString() })],
+  ];
+
+  for (const [what, label] of notALabel) {
+    it(`DSOR-FRS-01a: a read with ${what} is the program's own error, never to retry`, async () => {
+      const door = handingLabel(label);
+
+      for (const answer of [
+        await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+        await door(AGENT, "invoice.list", {}),
+      ]) {
+        expect(answer.kind).toBe("error");
+
+        if (answer.kind === "error") {
+          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.retry).toBe("never");
+        }
+      }
+    });
+  }
+
+  it("DSOR-FRS-01a: a query that answers with a command's receipt is the program's own error, never to retry", async () => {
+    // Decision 121. A receipt carries no freshness label, so a query whose code copied
+    // invoice.issue's shape would leave unlabelled, and its read would not be written down either.
+    const door = makeDoor(PIPELINE, {
+      "invoice.get": async (_args, _contract, askedBy) => ({
+        kind: "result",
+        askedBy,
+        envelope: success({
+          data: INV_1008_ROW as unknown as Readonly<Record<string, unknown>>,
+          semantics: "atomic",
+          payloadHash: "sha256:0",
+          tenant: "org_456",
+          proposal: "dsor://org_456/proposal/prop_1",
+          requestId: "req_0",
+          principalId: askedBy,
+        }),
+      }),
+    });
+    const answer = await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 });
+
+    expect(answer.kind).toBe("error");
+
+    if (answer.kind === "error") {
+      expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+      expect(answer.envelope.retry).toBe("never");
+    }
+  });
+
+  it("DSOR-FRS-01a: the label that leaves is exactly its three parts, so nothing rides along in it", async () => {
+    // Decision 117's lesson, for the label: built from its named parts, not copied whole. On a
+    // single invoice and on a page (decision 121), and through `leaveTheDoor` alone as well.
+    const door = handingLabel(() => ({ ...readNow(), copy: INV_1008_ROW }));
+    const direct = leaveTheDoor(findPerson("accounts-payable-fte")!, {
+      kind: "data",
+      askedBy: "accounts-payable-fte",
+      invoice: INV_1008_ROW,
+      freshness: { ...readNow(), copy: INV_1008_ROW } as never,
+    });
+
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+      direct,
+    ]) {
+      expect(answer.kind === "data" || answer.kind === "page").toBe(true);
+
+      if (answer.kind === "data" || answer.kind === "page") {
+        expect(Object.keys(answer.freshness).sort()).toStrictEqual([
+          "connector",
+          "mode",
+          "observed_at",
+        ]);
+        expect(JSON.stringify(answer)).not.toContain("31400.00");
+      }
+    }
+  });
+});
+
+describe("a value read before this request is never current", () => {
+  // §27: `current` is read from the system of record within this request. A label that says
+  // `current` with a time from before the request began is a saved copy calling itself fresh, the
+  // lie DSOR-FRS-01b forbids. The door knows when the request began, on the program's own clock,
+  // the same clock the label's time comes from (decision 120).
+  const anHourAgo = (): string => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  it("DSOR-FRS-01b: a value read an hour ago and labelled current is the program's own error, never to retry", async () => {
+    const door = handingLabel(() => ({ ...readNow(), observed_at: anHourAgo() }));
+
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+      // Decision 146: the supervisor's read is confidential, so a read that leaves is written down
+      // as READ (DSOR-CLS-05). That record names the rows that were returned (decision 116), and a
+      // refused read returned none. With the refusal moved below the record, no test failed.
+      await door(SUPERVISOR, "invoice.get", { invoice: INV_1008 }),
+    ]) {
+      expect(answer.kind).toBe("error");
+
+      if (answer.kind === "error") {
+        expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+        expect(answer.envelope.retry).toBe("never");
+
+        // The log holds what was decided for this request, and nothing more.
+        const requestId = answer.envelope.correlation.request_id;
+        const records = (await theLog("org_456")).filter(
+          (record) => record.correlation.request_id === requestId,
+        );
+
+        expect(records.map((record) => record.kind)).toStrictEqual(["decision"]);
+      }
+    }
+  });
+
+  it("DSOR-FRS-01b: the same saved value, labelled for what it is, leaves with its label and its time", async () => {
+    // Decision 120 rejected relabelling: the door does not change a label, it refuses a false one.
+    // A label that tells the truth about a saved copy is no lie, and leaves as it came. Decision
+    // 146: on a page too. This test asked for a single invoice only, so a door that wrote `current`
+    // on every page passed every test.
+    const savedAt = anHourAgo();
+    const door = handingLabel(() => ({
+      mode: "observational",
+      observed_at: savedAt,
+      connector: "postgres",
+    }));
+
+    for (const answer of [
+      await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+      await door(AGENT, "invoice.list", {}),
+    ]) {
+      expect(answer.kind === "data" || answer.kind === "page").toBe(true);
+
+      if (answer.kind === "data" || answer.kind === "page") {
+        expect(answer.freshness).toStrictEqual({
+          mode: "observational",
+          observed_at: savedAt,
+          connector: "postgres",
+        });
+      }
+    }
+  });
+
+  it("DSOR-FRS-01b: the door reads a label once, so the label it checks is the label that leaves", async () => {
+    // Decision 146, decision 116's rule for a label. With the label passed on uncopied, a label
+    // whose mode said `observational` to the check and `current` on the way out left an hour-old
+    // value labelled current, and no test failed. Careless code does not write a label like this
+    // (decision 119). The copy makes it harmless: the mode is read once, and both see that.
+    const savedAt = anHourAgo();
+    let reads = 0;
+    const door = handingLabel(() => ({
+      get mode() {
+        reads += 1;
+
+        return reads === 1 ? "observational" : "current";
+      },
+      observed_at: savedAt,
+      connector: "postgres",
+    }));
+
+    for (const [id, args] of [
+      ["invoice.get", { invoice: INV_1008 }],
+      ["invoice.list", {}],
+    ] as const) {
+      reads = 0;
+
+      const answer = await door(AGENT, id, args);
+
+      expect(answer.kind === "data" || answer.kind === "page").toBe(true);
+
+      if (answer.kind === "data" || answer.kind === "page") {
+        expect(answer.freshness).toStrictEqual({
+          mode: "observational",
+          observed_at: savedAt,
+          connector: "postgres",
+        });
+      }
+
+      expect(reads).toBe(1);
+    }
+  });
+
+  it("DSOR-FRS-01b: the line is the moment the request began: read then is current, a millisecond earlier is not", () => {
+    // Decision 121: only an hour-old label was tested, so a check that allowed any slack under an
+    // hour would have passed. This test hands the check a start time. Where the door takes that
+    // time from is the next test's (decision 146).
+    const startedAt = Date.now() - 1000;
+    const readAt = (ms: number) => ({
+      kind: "data" as const,
+      askedBy: "accounts-payable-fte",
+      invoice: INV_1008_ROW,
+      freshness: {
+        mode: "current" as const,
+        observed_at: new Date(ms).toISOString(),
+        connector: "postgres",
+      },
+    });
+
+    expect(cannotBeLabelled(readAt(startedAt), startedAt, "query")).toBeUndefined();
+    expect(cannotBeLabelled(readAt(startedAt - 1), startedAt, "query")).toMatch(
+      /before this request began/,
+    );
+  });
+
+  it("DSOR-FRS-01b: the line is when this request began, not when the door was built", async () => {
+    // Decision 146. The program builds its door once, when it starts: that is `callOperation`.
+    // The tests above hand the door a label an hour old, older than any door, and the one above
+    // this hands the check its start time. So a door that took the time once, when it was built,
+    // passed them all, and so did a door that allowed up to an hour of slack. A value saved after
+    // start-up could then leave labelled current.
+    //
+    // `vi.setSystemTime` holds the program's clock at a time this test chooses, and the clock moves
+    // only when the test moves it. So "a millisecond later" is one millisecond, exactly, and a door
+    // with a millisecond of slack fails this test. On the real clock the test waited 5 ms or a
+    // little more: a door with 1 ms of slack always passed it, and one with 5 ms sometimes did.
+    const builtAt = Date.now();
+    let savedAt = new Date(builtAt).toISOString();
+
+    vi.setSystemTime(builtAt);
+
+    try {
+      const door = handingLabel(() => ({ ...readNow(), observed_at: savedAt }));
+
+      // Read the moment its request began, so current. This first question is also there for a
+      // door that took the time once, at its first request: that passed the test without it.
+      expect((await door(AGENT, "invoice.get", { invoice: INV_1008 })).kind).toBe("data");
+
+      // The value is saved a second later, and asked for a millisecond after that.
+      vi.setSystemTime(builtAt + 1000);
+      savedAt = new Date().toISOString();
+      vi.setSystemTime(builtAt + 1001);
+
+      for (const answer of [
+        await door(AGENT, "invoice.get", { invoice: INV_1008 }),
+        await door(AGENT, "invoice.list", {}),
+      ]) {
+        expect(answer.kind).toBe("error");
+
+        if (answer.kind === "error") {
+          expect(answer.envelope.code).toBe("INTERNAL_ERROR");
+          expect(answer.envelope.retry).toBe("never");
+        }
+      }
+    } finally {
+      // The real clock again, for the tests after this one.
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("when the label's time is taken", () => {
+  it("DSOR-FRS-01a: before the query, so the data is at least as fresh as the label says", async () => {
+    // Decision 121. Taken after the reply, the time was a round trip later than the data, so the
+    // label claimed more freshness than was true. A connection that answers 50 ms late shows it:
+    // the label's time must be no later than the moment the invoices were asked for.
+    const real = overPGlite(db);
+    let asked = 0;
+
+    useDatabase({
+      query: async <T>(sql: string, params?: unknown[], tenant?: string) => {
+        if (sql.includes("FROM public.invoices")) {
+          asked = Date.now();
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        return real.query<T>(sql, params, tenant);
+      },
+    });
+
+    try {
+      // Decision 146: a page too. This test asked for a single invoice only, so a page labelled
+      // after the reply passed every test.
+      for (const [id, args] of [
+        ["invoice.get", { invoice: INV_1008 }],
+        ["invoice.list", { limit: 3 }],
+      ] as const) {
+        asked = 0;
+
+        const answer = await callOperation(AGENT, id, args);
+
+        expect(answer.kind === "data" || answer.kind === "page").toBe(true);
+
+        if (answer.kind === "data" || answer.kind === "page") {
+          expect(asked).toBeGreaterThan(0);
+          expect(Date.parse(answer.freshness.observed_at)).toBeLessThanOrEqual(asked);
+        }
+      }
+    } finally {
+      useDatabase(real);
+    }
+  });
+});

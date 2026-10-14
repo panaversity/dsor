@@ -52,14 +52,62 @@ jobs:
       - run: pnpm coverage:req
 
   # Each baby step is its own project with its own lockfile, and must pass by itself.
-  # rules-met.md claims a step's tests pass; this job is what makes that true.
-  baby-steps:
-    name: Baby steps
+  # rules-met.md claims a step's tests pass; the three jobs below are what make that true.
+  #
+  # One job per step folder and system. Measured 2026-10-11: one job walking every folder in turn
+  # took from 35 minutes to more than 60 with 40 to 45 folders, as fast or slow as its machine. It
+  # was cut off at 60 on Windows with 41, 43, 44 and 45 folders, and on Ubuntu with 43 and 45. The
+  # `mj_` folders and `my_01` to `my_08` take seconds each. From `my_09` on, a `my_` folder runs its
+  # test files one at a time, most of them with an in-memory PostgreSQL of their own, and takes 1 to
+  # 6.5 minutes, depending on the step and the machine; on average each step takes 15 to 20 seconds
+  # longer than the one before. Walked in turn, the limit would need raising every few steps.
+  #
+  # The folders are listed when the run starts, so a new step is checked without editing this file,
+  # up to 128 folders: a matrix makes at most 256 jobs, and each folder takes two. Past that, give
+  # each system a matrix job of its own.
+  baby-steps-list:
+    name: Baby steps, listed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      steps: ${{ steps.list.outputs.steps }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every folder with a package.json is a step
+        id: list
+        shell: bash
+        working-directory: docs/baby_steps_tutorials
+        # Reverse name order puts the `my_` folders first, the highest number first. From `my_09`
+        # on they are the slow ones, so when every runner is busy they start first and the run ends
+        # sooner.
+        run: |
+          steps=$(for dir in */; do
+            if [ -f "$dir/package.json" ]; then printf '%s\n' "${dir%/}"; fi
+          done | sort -r | jq --raw-input . | jq --slurp --compact-output .)
+          if [ "$steps" = "[]" ]; then
+            echo "::error::No folder in docs/baby_steps_tutorials has a package.json."
+            exit 1
+          fi
+          echo "$steps" | jq --raw-output '.[]'
+          echo "steps=$steps" >> "$GITHUB_OUTPUT"
+
+  baby-step:
+    # The fixed prefix keeps a folder's name from making another job's name.
+    name: Baby step ${{ matrix.step }} (${{ matrix.os }})
+    needs: baby-steps-list
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # Measured 2026-10-11: the slowest folder Windows reached, my_20, took 6.5 minutes there. This
+    # is a net against a hang. If a folder comes near it, measure again.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
+      # panaversity is on GitHub's Free plan: 20 jobs at once, for all of its repositories together.
+      # Without a cap this run would take all 20 for ten minutes or more on every push.
+      max-parallel: 12
       matrix:
+        step: ${{ fromJSON(needs.baby-steps-list.outputs.steps) }}
         # Students unzip and run the steps on Windows.
         os: [ubuntu-latest, windows-latest]
     steps:
@@ -67,12 +115,35 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: pnpm check in every step
+      # Found 2026-10-10, in job 114277267129: on a fresh Windows machine the first `node` run of a
+      # TypeScript file took 33 seconds, and the next one 0.3, while the test around it allowed 5.
+      # The old job paid that once, in its first folder. Every folder gets a fresh machine now, so
+      # each pays it here, timed, outside any test's limit.
+      - name: Run node on TypeScript once, before any test
+        if: runner.os == 'Windows'
         shell: bash
         run: |
-          for step in docs/baby_steps_tutorials/*/; do
-            [ -f "$step/package.json" ] || continue
-            echo "::group::$step"
-            (cd "$step" && pnpm install --frozen-lockfile && pnpm check)
-            echo "::endgroup::"
-          done
+          time node --input-type=module-typescript --eval 'const warm: number = 0'
+      - name: pnpm check in this step
+        shell: bash
+        working-directory: docs/baby_steps_tutorials/${{ matrix.step }}
+        run: pnpm install --frozen-lockfile && pnpm check
+
+  # One answer for every step on both systems, so a reader, or a branch rule, has one name to look
+  # at. It passes only when the listing and every step's job passed, and it runs when one failed, to
+  # say so.
+  baby-steps:
+    name: Baby steps
+    needs: [baby-steps-list, baby-step]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every step passed on both systems
+        shell: bash
+        env:
+          LISTED: ${{ needs.baby-steps-list.result }}
+          CHECKED: ${{ needs.baby-step.result }}
+        run: |
+          echo "listing the folders: $LISTED; checking them: $CHECKED"
+          [ "$LISTED" = success ] && [ "$CHECKED" = success ]

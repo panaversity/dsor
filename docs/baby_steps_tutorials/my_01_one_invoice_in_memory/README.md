@@ -147,10 +147,10 @@ it("DSOR-MON-01: INV-1008 is 31400.00 USD, an amount and a currency", () => { �
 The convention is not decoration. In `packages/` — the repository's own implementation,
 not this tutorial — `pnpm coverage:req` reads test titles to count which of the 268
 rules a test names. That command walks `packages/` only, so it never sees this folder,
-and neither does the repository's `pnpm test:unit`. CI does check this folder's links
-and its formatting; it does not run its tests. Your step is run by you. You use the
-convention here so the habit is already yours when you write a test that does get
-counted.
+and neither does the repository's `pnpm test:unit`. CI checks this folder's links and
+its formatting, and runs its `pnpm check`, tests included, on Ubuntu and on Windows, but
+nothing counts those tests. You use the convention here so the habit is already yours
+when you write a test that does get counted.
 
 Eight of this step's nineteen tests carry `DSOR-MON-01`: four in `test/money.test.ts`, three in
 `test/invoice.test.ts`, and one in `test/main.test.ts`. The other **eleven** carry no id, and that
