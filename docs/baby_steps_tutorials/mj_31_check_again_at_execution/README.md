@@ -5,21 +5,23 @@ live data, and it runs only the request that was stored.
 
 ## In plain words
 
-Steps 27 to 30 made a payment wait: for the CFO's approval, or, in `propose_only` mode, for a
-person to release it. Nothing released it, so an approved payment waited until it expired. This
-step builds the release, `proposal.execute`.
+A payment can wait: for the CFO's approval since step 29, or, prepared in `propose_only` mode,
+for a person since step 23. Until now nothing released a waiting payment. This step builds the
+release, `proposal.execute`, and it does two things.
 
-Hours or days can pass between the approval and the release. So DSoR does not trust Tuesday's
-checks on Friday. Think of the pilot's checklist again: after a long wait at the gate, the pilot
-runs the checklist again before take-off, because the weather and the runway may have changed. At
-the release, DSoR runs its checklist again, for the stored request, on live data. If any check now
-says no, or a rule now asks for an approval that the payment does not have, the payment is not
-made. Its proposal, the order-tracking page of that request, says `INVALIDATED`.
+First, it checks again. Days can pass between the approval and the release. A pilot who waited a
+long time on the ground runs the checklist again before take-off, because the weather may have
+changed. DSoR runs its checklist again too, on live data, and if any check now says no, nothing is
+paid: the proposal, the order-tracking page of that request, says `INVALIDATED`.
+
+Second, it runs only what was approved. The control tower approved a flight plan to Lahore, and at
+the runway the pilot cannot switch it to Karachi. The release takes only the proposal's address,
+and runs the request that was stored with it.
 
 ## Why it matters
 
-On Tuesday the agent drafts INV-2012, 35,000.00 USD. It waits for the CFO and a tenant
-administrator. On Wednesday cfo_100 and admin_100 approve it. On Thursday cfo_100 switches on a
+On Tuesday the agent drafts INV-2012, 35,000.00 USD. It waits for the CFO, by the CFO's rule, and
+for a tenant administrator, by a second rule, `admin-above-30000`. On Wednesday cfo_100 and admin_100 approve it. On Thursday cfo_100 switches on a
 stricter version of the CFO rule: above 25,000 USD, two CFOs. On Friday the agent releases
 INV-2012. If DSoR trusted Wednesday's approvals, it would pay 35,000.00 USD with one CFO's yes,
 where the company's rule now asks for two. The specification names this bug: "What was true when
@@ -35,6 +37,23 @@ The circled numbers are lines of DSoR's checklist, as in step 30. Line ③ check
 the emergency brake, line ⑤ the caller's permission, and line ⑥ the input. Line ⑦ claims the
 idempotency key, line ⑧ makes the proposal, or, for a release, loads it. Line ⑨ is DSoR's own
 look before any work, and line ⑩ checks the rules and the limits.
+
+Words this step uses, each from an earlier step:
+
+- **The asker and the caller.** The asker is whoever asked for the payment: here, the agent that
+  drafted it. The caller is whoever asks for the release now. They can be different: user_123 may
+  release what the agent asked for. The check again is about the asker.
+- **The fingerprint.** A short code worked out from the stored request, the specification's
+  *payload hash* (step 29). Any change to the request changes it, and an approval names it.
+- **The booking.** Money set aside against the slip's limit for the day, when the payment is
+  drafted, like holding the last hotel room (step 24's *reservation*).
+- **The quorum.** How many people of one role must approve (step 29).
+- **The claim.** At line ⑦, DSoR marks the request's idempotency key as in use, so a copy of the
+  same request gets the first answer back and runs nothing twice (step 20).
+- **A label and a clearance.** Each message has a label that says how secret it is. A caller
+  hears the message only if their clearance, how much they may see, is high enough (step 14).
+- **A trigger.** A rule inside PostgreSQL that refuses a change it does not allow, here a move
+  between two states that the picture of §26.2 does not draw (step 22).
 
 ### How this step was made
 
@@ -69,7 +88,7 @@ its downside, for the learner to review. This folder is a copy of step 30.
 
 - **D1. Step 31 checks again what DSoR already checks:** the slip, the emergency brake, the
   requester's permission, the invoice's version, the company's rules, the limits, segregation of
-  duties, and the approvals. The map said step 31 is done when suspending VENDOR-44 after the
+  duties, and the approvals. The map of all steps (`../readme.md`) said step 31 is done when suspending VENDOR-44 after the
   approval invalidates the proposal. DSoR keeps no vendor record yet: checking a vendor's status is
   a precondition, step 32's idea. So step 31 is done when a stricter rule switched on after the
   approval makes INV-2012 `INVALIDATED`. *Downside:* the map's "done when" changes, in the map, in
@@ -82,13 +101,14 @@ its downside, for the learner to review. This folder is a copy of step 30.
 - **D3. An approval still counts while the current rules ask for a role and quorum it meets.**
   cfo_100 approved for version 8 of the CFO rule. If version 9 asks for one CFO too, the approval
   counts, and the record names both versions (DSOR-APR-03d). A version that asks for two CFOs, a new
-  rule that asks someone else, or a `DENY`, makes the proposal `INVALIDATED`. *Downside:* cfo_100
-  approved under version 8's line; version 9's other changes do not ask the CFO again.
+  rule that asks someone else, or a `DENY`, makes the proposal `INVALIDATED`. *Downside:* version 9
+  may change other things too. If its role and quorum still match, cfo_100 is not asked to look
+  again.
 - **D4. The booking is kept, then spent.** Tuesday's booking of 31,400.00 USD against `del_100`'s
   day is found again by the proposal's id and is not booked again. The one-payment limit, 50,000
   USD, is checked again on live data. If the payment runs, the booking is spent. If the proposal
-  is `INVALIDATED`, the booking goes back to the day. *Downside:* Friday's own day never sees
-  INV-1008: it counts on Tuesday, the day it was drafted.
+  is `INVALIDATED`, the booking goes back to the day. *Downside:* INV-1008 counts against
+  Tuesday's limit for the day, not Friday's, though the money leaves on Friday.
 - **D5. A changed invoice invalidates.** The stored request names `expected_version: 1`. If the
   invoice is now version 2, the proposal is `INVALIDATED` before any work: a failed precondition,
   not a failed payment. *Downside:* a harmless change to the invoice sends the payment back to be
@@ -121,19 +141,17 @@ its downside, for the learner to review. This folder is a copy of step 30.
   the proposal. The contract says so in an extension, and start-up refuses that extension on any
   other command. *Downside:* line ⑤ checks nothing for this one command. So the caller who may
   release is checked once, at line ⑨, and nowhere else.
-- **D13. A release takes two modes, not three.** A dry run, `validate_only`, runs line ⑨'s gate
-  and the check again, and moves nothing. `propose_only` is refused with `VALIDATION_FAILED`: a
-  release that was only prepared would wait for another release. The refusal comes after the check
-  that every address names the caller's company, so an attempt on another company is refused as
-  one. *Downside:* DSOR-OPR-05 says every command takes the three modes. This is the tutorial's
+- **D13. A release takes two modes, not three.** A dry run, `validate_only`, asks who may release
+  and checks again, and moves nothing. `propose_only` is refused with `VALIDATION_FAILED`. A release
+  that was only prepared would wait for another release. *Downside:* DSOR-OPR-05 says every command takes the three modes. This is the tutorial's
   choice against it, and a question for the specification.
 
 ### Decisions found while building (Claude Code)
 
-- **D14. Only a proposal of the company's code is released.** DSoR's own work, such as a brake or a
-  rule, can be prepared in `propose_only` mode. Its release would have to run DSoR's own look at
-  line ⑨ again first. In this step it hears `UNSUPPORTED_CAPABILITY`, from the gate, so a dry run
-  hears it too. *Downside:* a prepared brake waits until it expires.
+- **D14. Only a business request, such as a payment, is released.** DSoR's own work, such as a
+  brake or a rule, can be prepared in `propose_only` mode too. Its release would have to run DSoR's
+  own look at line ⑨ again first. In this step it hears `UNSUPPORTED_CAPABILITY`, and so does a dry
+  run. *Downside:* a prepared brake waits until it expires.
 - **D15. A check that cannot be made now is not a "no".** When the company's directory has no recent
   answer (`FRESHNESS_UNSATISFIABLE`), or DSoR meets a fault, the proposal stays `APPROVED` or
   `READY`. The idempotency claim is undone, so the same key may try again later. *Downside:* a
@@ -156,7 +174,7 @@ its downside, for the learner to review. This folder is a copy of step 30.
 | When | Who | Asks | DSoR answers |
 |---|---|---|---|
 | Friday | the agent | releases INV-1008, 31,400.00 USD, which cfo_100 approved | `COMMITTED`, a payment is drafted, the booking is spent |
-| Friday | cfo_100 | switches on a version of the CFO rule that asks for two CFOs | active |
+| Thursday | cfo_100 | switches on a version of the CFO rule that asks for two CFOs | active |
 | Friday | the agent | releases INV-2012, 35,000.00 USD, which one CFO and one tenant administrator approved | `APPROVAL_INVALIDATED`: two CFOs are asked for now. The proposal is `INVALIDATED`, and its 35,000.00 USD goes back to the day |
 | Friday | the agent | releases a proposal, with `invoice: INV-1002` in the input | `VALIDATION_FAILED` at line ⑥ |
 | Friday | user_123 | releases a payment the agent prepared in `propose_only` mode | `COMMITTED`, a payment is drafted |
@@ -204,7 +222,7 @@ its downside, for the learner to review. This folder is a copy of step 30.
 | `src/main.ts` | The story of the release, in four scenes, in a world of its own (D11) |
 | `test/release.test.ts`, `test/release-run.test.ts`, `test/recheck.test.ts`, `test/release.db.test.ts` | **New.** The claims C1 to C6 |
 | `test/rule-world.ts`, `test/owner-proposals.ts` | The test world shows its invoices and directories, so a test changes them between an approval and a release. The owner can change a stored request behind the trigger's back, for one test |
-| The other tests | The pinned lists grow by one contract, its 36 cross-company attacks, its modes, and the new move out of `READY` |
+| The other tests | The pinned lists grow by one contract, its 36 cross-company attacks (one company's caller trying the other company's addresses), its modes, and the new move out of `READY` |
 
 Step 30's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
 for "NEW IN STEP" finds only this step's lesson.
@@ -271,6 +289,8 @@ B4, the preparing agent releases its own INV-1009: AUTHORIZATION_DENIED: … its
 
 B3's scene gives `del_100` a limit of 50,000 USD for one day, so that one booking more or less
 decides the next draft. The design said 20,000 USD; the story's bill is INV-2007, 21,000.00 USD.
+INV-2007 waits for an approval because the scene's version 9 asks for it above 20,000 USD. Its
+booking is made all the same: line ⑩ books before a payment waits (step 27).
 
 **B1. The release trusts Tuesday's decision.** In `src/pipeline.ts`, the check again was skipped:
 
@@ -294,8 +314,8 @@ In the first form, only the work used the caller's fields:
 B2a, release with INV-1002: INTERNAL_ERROR: DSoR hit an unexpected error; drafted: none
 ```
 
-Nothing was paid. Line ⑨ read INV-1008, and the payments store is pinned to what line ⑨ read (step
-24). A draft of INV-1002 was refused as a fault. In the second form, the check and the work both
+Nothing was paid. Line ⑨ read INV-1008, and the payments store accepts a draft only for an
+invoice that line ⑨ read (step 24). So the draft of INV-1002 failed as a fault. In the second form, the check and the work both
 used them, and the fingerprint was worked out again from the new request:
 
 ```text
@@ -311,12 +331,17 @@ fingerprint, the check of the stored request's fingerprint would have invalidate
 
 ```text
 B3, after INV-1008's invalidated release, INV-2007, 21,000.00 USD: LIMIT_EXCEEDED: "payment.create" would pass slip del_100's limit for one day
+```
+
+The learner predicted `LIMIT_EXCEEDED`. Right. The 31,400.00 USD of INV-1008, a payment that will
+never be made, still counted, and 21,000.00 more passed the day's 50,000. The program, in its own
+scene, showed the same leak for INV-2012:
+
+```text
 INV-2012's proposal: INVALIDATED, its booking held
 ```
 
-The learner predicted `LIMIT_EXCEEDED`. Right. 31,400.00 USD of a payment that will never be made
-still counted, and 21,000.00 more passed the day's 50,000. The second line is the program's. One
-test failed, and so did the program's.
+One test failed, and so did the program's.
 
 **B4. An agent that may only prepare releases what it prepared.** In `src/release.ts`, D2's check
 of the full permission was gone:
@@ -357,8 +382,8 @@ restored. When a break survives, no test holds what it broke.
 
 | Move | What failed |
 | --- | --- |
-| Piece A | 15 tests, red first. Broken on purpose 8 ways: each check of the gate gone, in turn, and the extension on another command. Each made tests fail; the extension's break, start-up |
-| Piece B | 8 tests, red first: a release answered "not built yet". Broken on purpose 3 ways: the booking given back on success, the answer's fingerprint taken from the release's input, and a lost race allowed to run. The first two made tests fail. The race survived in memory, where the second release finds the proposal moved at the gate already. The database test of piece D holds it |
+| Piece A | 15 tests, red first. Broken on purpose 8 ways: each check of who may release gone, in turn, and the extension on another command. Each made tests fail; the extension's break, start-up |
+| Piece B | 8 tests, red first: a release answered "not built yet". Broken on purpose 3 ways: the booking given back on success, the answer's fingerprint taken from the release's input, and a lost race allowed to run. The first two made tests fail. The race survived in memory, where the second release finds the proposal moved already, when it asks who may release. The database test of piece D holds it |
 | Piece C | 12 tests, red first: every one was `COMMITTED`, the bug of "Why it matters". One more test, of an approval that met another role, after a gap was seen. Broken on purpose 7 ways: approvals not compared, an approval counted for any role, the asker not checked again, a "not now" that invalidates, no check of the invoice's version, no segregation of duties, and the booking kept. Each made tests fail |
 | Piece D | 7 database tests. Broken on purpose 2 ways: the lost race allowed to run, which the race test caught, and the trigger without migration 027, where the release of a `READY` proposal failed with `INTERNAL_ERROR` |
 | Piece E | The program's test. B1 and B3 changed its lines |
@@ -375,8 +400,9 @@ signed. Each question changes one thing before the release on Friday.
    the record name that it did not name before?
 3. The agent sends `{ proposal, invoice: INV-1002 }`. What happens, and why can the caller never
    change the request at the release?
-4. The directory moves user_123 to `ap_clerk` on Thursday. user_123, who still has `payment:create`
-   on their own login, releases INV-1008. What happens, and whose permission was checked?
+4. On Thursday the company's directory moves user_123 to `ap_clerk`. DSoR's own table of logins
+   still lists user_123 as an AP supervisor, so user_123 may release INV-1008 on their own login.
+   What happens, and whose permission is checked again?
 5. The directory is off on Friday, and its last answer is two hours old. What does the release hear,
    and can the same idempotency key be sent again later?
 
@@ -391,10 +417,11 @@ signed. Each question changes one thing before the release on Friday.
    approval was for the request that was stored, with its fingerprint. A release that ran anything
    else would run a request that nobody approved (DSOR-APR-13, DSOR-APR-10, B2).
 4. `APPROVAL_INVALIDATED`, with `AUTHORIZATION_DENIED` as its cause. The release checks the asker
-   again, not only the caller. The asker is the agent, and it acts with what user_123 holds now:
-   `ap_clerk` may only prepare a payment (D1).
+   again, not only the caller. The asker is the agent, and its slip lends it only what user_123
+   holds now, by the directory: `ap_clerk` may only prepare a payment (DSOR-APR-03a, D1).
 5. `FRESHNESS_UNSATISFIABLE`. The proposal still waits, and its booking is held. The claim was undone,
-   so the same key may try again, and it succeeds once the directory answers (D15).
+   so the same key may try again later (its retry class is `after_delay`), and it succeeds once the
+   directory answers (D15).
 
 </details>
 
@@ -402,7 +429,7 @@ signed. Each question changes one thing before the release on Friday.
 
 ### Found while building
 
-- **Two more of D1's rules.** D12, that line ⑤ cannot check the caller of a release, and D13, a
+- **Two more of the learner's decisions.** D12, that line ⑤ cannot check the caller of a release, and D13, a
   release's modes, were found as building began. The learner took both. D14 to D18 were found later,
   and are Claude Code's.
 - **A world of its own for the story.** In step 30's world, two more rules were on, switched on after
@@ -418,13 +445,13 @@ signed. Each question changes one thing before the release on Friday.
 - **Masking hides the cause from a low clearance.** intake-fte's clearance is below `internal`, so it
   hears `APPROVAL_INVALIDATED` without the words (D17). The database tests that read a cause release
   as user_123.
-- **A lost race needs the database.** In memory, two releases at once never both pass the gate. The
-  database test holds the proposal's row from a third connection, so both releases pass the gate and
+- **A lost race needs the database.** In memory, two releases at once never both pass the check of who may release. The
+  database test holds the proposal's row from a third connection, so both releases pass that check and
   wait at the move. One moves it. The other finds it moved, and hears `CONFLICT`.
 
 ### Left open on purpose
 
-- **A vendor's status.** The map said step 31 is done when suspending VENDOR-44 after the approval
+- **A vendor's status.** The map of all steps (`../readme.md`) said step 31 is done when suspending VENDOR-44 after the approval
   invalidates the proposal. DSoR keeps no vendor record yet: that is a precondition, step 32's idea.
   So this step is done when a stricter rule makes INV-2012 `INVALIDATED` (D1). The map's "done
   when" changes with this step.
